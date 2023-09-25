@@ -1,6 +1,6 @@
 #include "CkGameplayDebugger.h"
 
-#include "CkGameplayDebugger/Debugger/CkDebugger_Category.h"
+#include "CkGameplayDebugger/Category/CkDebugger_Category.h"
 
 #define LOCTEXT_NAMESPACE "FCkGameplayDebuggerModule"
 

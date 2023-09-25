@@ -13,30 +13,6 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-FCk_Payload_GameplayDebugger_OnCollectData::
-    FCk_Payload_GameplayDebugger_OnCollectData(
-        APlayerController* InOwnerPC,
-        AActor* InDebugActor,
-        AGameplayDebuggerCategoryReplicator* InReplicator)
-    : _OwnerPC(InOwnerPC)
-    , _DebugActor(InDebugActor)
-    , _Replicator(InReplicator)
-{
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-FCk_Payload_GameplayDebugger_OnDrawData::
-    FCk_Payload_GameplayDebugger_OnDrawData(
-        APlayerController* InOwnerPC,
-        FGameplayDebuggerCanvasContext* InCanvasContext,
-        AGameplayDebuggerCategoryReplicator* InReplicator)
-    : _OwnerPC(InOwnerPC)
-    , _CanvasContext(InCanvasContext)
-    , _Replicator(InReplicator)
-{
-}
-
 #if WITH_GAMEPLAY_DEBUGGER
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -44,7 +20,6 @@ FCk_Payload_GameplayDebugger_OnDrawData::
 TSharedPtr<FCk_GameplayDebugger_Category> FCk_GameplayDebugger_Category::_This;
 
 // --------------------------------------------------------------------------------------------------------------------
-
 
 FCk_GameplayDebugger_Category::
     FCk_GameplayDebugger_Category()
@@ -86,14 +61,14 @@ auto
     FCk_GameplayDebugger_Category::
     DrawData(
         APlayerController* InOwnerPC,
-        FGameplayDebuggerCanvasContext& CanvasContext)
+        FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
     // TODO: Pull this from user settings
-    CanvasContext.FontRenderInfo.bEnableShadow = true;
-    CanvasContext.Font = GEngine->GetTinyFont();
+    InCanvasContext.FontRenderInfo.bEnableShadow = true;
+    InCanvasContext.Font = GEngine->GetTinyFont();
 
-    _OnDrawDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnDrawData{InOwnerPC, &CanvasContext, GetReplicator()});
+    _OnDrawDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnDrawData{InOwnerPC, &InCanvasContext, GetReplicator()});
 }
 
 auto

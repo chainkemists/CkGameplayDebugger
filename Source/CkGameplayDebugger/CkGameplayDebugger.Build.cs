@@ -1,7 +1,7 @@
 using System.IO;
 using UnrealBuildTool;
 
-public class CkGameplayDebugger : CkModuleRules
+public class CkGameplayDebugger : ModuleRules
 {
     public CkGameplayDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
@@ -16,18 +16,21 @@ public class CkGameplayDebugger : CkModuleRules
             "Engine",
             "Slate",
             "SlateCore",
-            "InputCore"
+            "InputCore",
+            "DeveloperSettings",
+
+            "CkCore"
         });
 
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)
-		{
-			PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=1");
+        {
+            PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=1");
 
-			PrivateDependencyModuleNames.AddRange(new string[] { "GameplayDebugger" });
-		}
-		else
-		{
-			PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=0");
-		};
+            PrivateDependencyModuleNames.AddRange(new string[] { "GameplayDebugger" });
+        }
+        else
+        {
+            PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=0");
+        };
     }
 }

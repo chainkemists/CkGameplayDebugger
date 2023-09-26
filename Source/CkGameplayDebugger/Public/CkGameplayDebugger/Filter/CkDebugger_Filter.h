@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Object/CkWorldContextObject.h"
 #include "CkCore/Time/CkTime.h"
 
 #include "CkGameplayDebugger/CkDebugger_Common.h"
@@ -13,7 +14,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS(Abstract, Blueprintable, EditInlineNew)
-class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugFilter_UE : public UObject
+class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugFilter_UE : public UCk_GameWorldContextObject_UE
 {
     GENERATED_BODY()
 

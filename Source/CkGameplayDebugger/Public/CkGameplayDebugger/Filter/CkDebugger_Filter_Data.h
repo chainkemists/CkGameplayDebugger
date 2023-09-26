@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkGameplayDebugger/CkDebugger_Common.h"
 
 #include "CkGameplayDebugger/Category/CkDebugger_Category_Data.h"
 
@@ -18,7 +19,7 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_Payload_GameplayDebugger_OnDrawData _DrawData;
 
 public:
@@ -40,7 +41,7 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_Payload_GameplayDebugger_OnDrawData _DrawData;
 
 public:
@@ -62,7 +63,7 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugActorList _FilteredDebugActors;
 
 public:
@@ -84,11 +85,11 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_Payload_GameplayDebugger_OnDrawData _DrawData;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugActorList _FilteredActors;
 
 public:
@@ -111,7 +112,7 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Filter", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugActorList _SortedFilteredActors;
 
 public:

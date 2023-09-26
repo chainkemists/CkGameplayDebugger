@@ -30,11 +30,11 @@ public:
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     TWeakObjectPtr<APlayerController> _OwnerPC;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     TWeakObjectPtr<AActor> _DebugActor;
 
     UPROPERTY(Transient)
@@ -67,7 +67,7 @@ public:
 
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     TWeakObjectPtr<APlayerController> _OwnerPC;
 
     UPROPERTY(Transient)

@@ -20,11 +20,11 @@ public:
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Action", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugActorList _DebugActorList;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Ck|GameplayDebugger|Action", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     int32 _CurrentlySelectedDebugActorIndex;
 
 private:

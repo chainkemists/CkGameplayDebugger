@@ -44,6 +44,9 @@ auto
         const FCk_GameplayDebugger_GetSortedFilteredActors_Params& InParams)
     -> FCk_GameplayDebugger_DebugActorList
 {
+    if (ck::Is_NOT_Valid(this->GetWorld(), ck::IsValid_Policy_NullptrOnly{}))
+    { return {}; }
+
     _TimeSinceLastUpdate += FCk_Time{ this->GetWorld()->DeltaRealTimeSeconds };
 
     if (_CachedActorList.Get_DebugActors().IsEmpty())

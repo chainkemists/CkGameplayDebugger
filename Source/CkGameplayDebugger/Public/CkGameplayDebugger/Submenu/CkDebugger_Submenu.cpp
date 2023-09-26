@@ -1,6 +1,7 @@
 #include "CkDebugger_Submenu.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/IO/CkIO_Utils.h"
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerTypes.h"
 
 #if WITH_GAMEPLAY_DEBUGGER
@@ -39,46 +40,18 @@ auto
     if (ck::Is_NOT_Valid(canvasContext, ck::IsValid_Policy_NullptrOnly{}))
     { return; }
 
-    canvasContext->Printf
-    (
-        TEXT("{white}== {yellow}%s {white}=="),
-        *Get_MenuName().ToString()
-    );
+    canvasContext->Print(ck::Format_UE(TEXT("{{white}}== {{yellow}}{} {{white}}=="), _MenuName));
 
     const auto originalFont = canvasContext->Font;
 
-    switch (Get_TextFontSize())
+    if (_UseCustomFontSize)
     {
-        case ECk_GameplayDebugger_DrawText_FontSize::Tiny:
-        {
-            canvasContext->Font = GEngine->GetTinyFont();
-            break;
-        }
-        case ECk_GameplayDebugger_DrawText_FontSize::Small:
-        {
-            canvasContext->Font = GEngine->GetSmallFont();
-            break;
-        }
-        case ECk_GameplayDebugger_DrawText_FontSize::Medium:
-        {
-            canvasContext->Font = GEngine->GetMediumFont();
-            break;
-        }
-        case ECk_GameplayDebugger_DrawText_FontSize::Large:
-        {
-            canvasContext->Font = GEngine->GetLargeFont();
-            break;
-        }
-        default:
-        {
-            CK_INVALID_ENUM(Get_TextFontSize());
-            break;
-        }
+        canvasContext->Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(_CustomTextFontSize);
     }
 
     for (const auto& line : dataToDraw.Get_DebugDataToDraw())
     {
-        canvasContext->Printf(TEXT("%s"), *line.ToString());
+        canvasContext->Print(ck::Format_UE(TEXT("{}"), line.ToString()));
     }
 
     canvasContext->Font = originalFont;

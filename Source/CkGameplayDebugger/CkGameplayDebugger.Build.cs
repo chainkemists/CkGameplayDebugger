@@ -19,7 +19,8 @@ public class CkGameplayDebugger : ModuleRules
             "InputCore",
             "DeveloperSettings",
 
-            "CkCore"
+            "CkCore",
+            "CkSettings",
         });
 
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)

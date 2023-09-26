@@ -4,43 +4,43 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCk_GameplayDebugger_UserSettings_UE::
-    UCk_GameplayDebugger_UserSettings_UE(
-        const FObjectInitializer& InObjectInitializer)
-    : Super(InObjectInitializer)
+auto
+    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    Get_UserOverride_DebugProfile()
+    -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>
 {
-    CategoryName = FName{TEXT("ChainKemists")};
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_UserOverride_DebugProfile().LoadSynchronous();
 }
-
-
-// --------------------------------------------------------------------------------------------------------------------
-
-UCk_GameplayDebugger_ProjectSettings_UE::
-    UCk_GameplayDebugger_ProjectSettings_UE(
-        const FObjectInitializer& InObjectInitializer)
-    : Super(InObjectInitializer)
-{
-    CategoryName = FName{TEXT("ChainKemists")};
-}
-
-// --------------------------------------------------------------------------------------------------------------------
 
 auto
     UCk_Utils_GameplayDebugger_UserSettings_UE::
-    Get_DebugProfileUserOverride()
-    -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>
+    Get_UserOverride_FontSize()
+    -> TOptional<ECk_Engine_TextFontSize>
 {
-    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_DebugProfileUserOverride().LoadSynchronous();
+    const auto& debuggerUserSettings = UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>();
+
+    if (NOT debuggerUserSettings->Get_Has_UserOverride_FontSize())
+    { return {}; }
+
+    return debuggerUserSettings->Get_UserOverride_FontSize();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     UCk_Utils_GameplayDebugger_ProjectSettings_UE::
-    Get_DefaultDebugProfileToUse()
+    Get_ProjectDefault_DebugProfile()
     -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>
 {
-    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_ProjectSettings_UE>()->Get_DefaultDebugProfileToUse().LoadSynchronous();
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_ProjectSettings_UE>()->Get_ProjectDefault_DebugProfile().LoadSynchronous();
+}
+
+auto
+    UCk_Utils_GameplayDebugger_ProjectSettings_UE::
+    Get_ProjectDefault_FontSize()
+    -> ECk_Engine_TextFontSize
+{
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_ProjectSettings_UE>()->Get_ProjectDefault_FontSize();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

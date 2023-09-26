@@ -13,7 +13,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Abstract, Blueprintable, EditInlineNew)
 class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugSubmenu_UE : public UObject
 {
     GENERATED_BODY()
@@ -51,22 +51,22 @@ protected:
 private:
     // Name of the submenu displayed on screen when it is active
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Submenu|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FName _MenuName = CK_GAMEPLAY_DEBUGGER_INVALID_SUBMENU_NAME;
 
     // "Key to press to show/hide the submenu information on screen
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Submenu|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FKey  _KeyToShowMenu;
 
     // Font to use when drawing the text. The value points to the font file set in engine settings
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Submenu|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     ECk_GameplayDebugger_DrawText_FontSize _TextFontSize = ECk_GameplayDebugger_DrawText_FontSize::Tiny;
 
     // Starting Show State
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Submenu|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     ECk_GameplayDebugger_DebugSubmenu_ShowState _ShowState = ECk_GameplayDebugger_DebugSubmenu_ShowState::Visible;
 
 public:

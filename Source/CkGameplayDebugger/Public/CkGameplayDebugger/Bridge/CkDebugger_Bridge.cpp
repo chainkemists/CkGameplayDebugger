@@ -246,9 +246,9 @@ auto
         return;
     }
 
-    const auto& actorCyclingControls = _CurrentlyLoadedDebugProfile->Get_ActorCyclingControls();
+    const auto& debugNavControls = _CurrentlyLoadedDebugProfile->Get_DebugNavControls();
 
-    DoHandleFilterChanges(ownerPC, actorCyclingControls);
+    DoHandleFilterChanges(ownerPC, debugNavControls);
 
     const auto& currentlySelectedFilter = debugFilters[_CurrentlySelectedFilterIndex];
 
@@ -275,7 +275,7 @@ auto
         return;
     }
 
-    DoHandleSelectedActorChange(ownerPC, actorCyclingControls, sortedFilteredActors);
+    DoHandleSelectedActorChange(ownerPC, debugNavControls, sortedFilteredActors);
 
     // Update new currently selected debug actor
     const auto& replicator = InDrawData.Get_Replicator().Get();
@@ -427,14 +427,14 @@ auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoPerformActionsOnFilteredActors(
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter,
-        const FCk_GameplayDebugger_DebugActorList& InActors,
+        const FCk_GameplayDebugger_DebugActorList& InFilteredActors,
         FGameplayDebuggerCanvasContext* InCanvasContext) const
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
     const auto& performDebugActionParams = FCk_GameplayDebugger_PerformDebugAction_Params
     {
-        InActors,
+        InFilteredActors,
         _CurrentlySelectedActorIndex,
         InCanvasContext
     };
@@ -465,19 +465,19 @@ auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoHandleFilterChanges(
         APlayerController* const& InOwnerPC,
-        const FCk_GameplayDebugger_CyclingControls& InActorCyclingControls)
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls)
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_NextFilterKey()))
+    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_NextFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
         _CurrentlySelectedActorIndex = 0;
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_PreviousFilterKey()))
+    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_PreviousFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
         _CurrentlySelectedActorIndex = 0;
@@ -528,7 +528,7 @@ auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoHandleSelectedActorChange(
         APlayerController* const& InOwnerPC,
-        const FCk_GameplayDebugger_CyclingControls& InActorCyclingControls,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
         const TArray<TObjectPtr<AActor>>& InSortedFilteredActors)
     -> void
 {
@@ -536,19 +536,19 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_NextActorKey()))
+    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_NextActorKey()))
     {
         ++_CurrentlySelectedActorIndex;
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_PreviousActorKey()))
+    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_PreviousActorKey()))
     {
         --_CurrentlySelectedActorIndex;
     }
-    if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_FirstActorKey()))
+    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_FirstActorKey()))
     {
         _CurrentlySelectedActorIndex = 0;
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InActorCyclingControls.Get_LastActorKey()))
+    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_LastActorKey()))
     {
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
     }

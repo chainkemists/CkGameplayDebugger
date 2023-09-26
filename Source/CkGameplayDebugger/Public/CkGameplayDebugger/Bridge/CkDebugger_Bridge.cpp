@@ -140,7 +140,7 @@ auto
 
     FString mainMenu;
 
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [&](UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [&](const UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
     {
         const auto& keyToShowMenu = InSubmenu->Get_KeyToShowMenu();
         if (ck::Is_NOT_Valid(keyToShowMenu))
@@ -148,10 +148,13 @@ auto
 
         const auto& isShowing = InSubmenu->Get_ShowState() == ECk_GameplayDebugger_DebugSubmenu_ShowState::Visible;
 
-        // TODO: Use formatter
-        mainMenu += TEXT("{white}") + InSubmenu->Get_MenuName().ToString() +
-                    (isShowing ? TEXT(" {green}[") : TEXT(" {red}["))
-                    + InSubmenu->Get_KeyToShowMenu().ToString() + TEXT("] ");
+        mainMenu += ck::Format_UE
+        (
+            TEXT("{{white}}{} {}{}]"),
+            InSubmenu->Get_MenuName(),
+            isShowing ? TEXT("{{green}}[") : TEXT("{{red}}["),
+            InSubmenu->Get_KeyToShowMenu()
+        );
     });
 
     canvasContext->Print(mainMenu);
@@ -160,7 +163,7 @@ auto
 
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [&](UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
     {
-        // We handle input in DrawData since CollectData does not run while the game is paused
+        // NOTE: We handle input in "DrawData" since "CollectData" does not run while the game is paused
         const auto& keyToShowMenu = InSubmenu->Get_KeyToShowMenu();
         if (ck::Is_NOT_Valid(keyToShowMenu))
         { return; }
@@ -232,7 +235,7 @@ auto
 
     const auto& DoPrintMessageToCanvas = [&](const FString& InMessage)
     {
-        canvasContext->Printf(TEXT("%s"), *InMessage);
+        canvasContext->Print(ck::Format_UE(TEXT("{}"), InMessage));
     };
 
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
@@ -279,7 +282,7 @@ auto
 
     // Update new currently selected debug actor
     const auto& replicator = InDrawData.Get_Replicator().Get();
-    if (ck::IsValid(replicator, ck::IsValid_Policy_NullptrOnly{}))
+    if (ck::IsValid(replicator))
     {
         static constexpr auto selectActorInEditor = true;
         replicator->SetDebugActor(sortedFilteredActors[_CurrentlySelectedActorIndex], selectActorInEditor);
@@ -346,19 +349,19 @@ auto
 #if WITH_GAMEPLAY_DEBUGGER
     // Construct Filter message
     {
-        message += FString::Printf(TEXT("{white}CURRENT FILTER: {cyan}%s"), *InSelectedFilter->Get_FilterName().ToString());
+        message += ck::Format_UE(TEXT("{{white}}CURRENT FILTER: {{cyan}}{}"), InSelectedFilter->Get_FilterName());
 
         const auto& filteredDebugActors = InFilteredActors.Get_DebugActors();
 
         if (filteredDebugActors.IsEmpty())
         {
-            message += FString::Printf(TEXT(" {red}[NO ACTORS RETURNED]"));
+            message += ck::Format_UE(TEXT(" {{red}}[NO ACTORS RETURNED]"));
         }
         else
         {
-            message += FString::Printf
+            message += ck::Format_UE
             (
-                TEXT(" {white}[{yellow}%d{white}/%d]"),
+                TEXT(" {{white}}[{{yellow}}{}{{white}}/{}]"),
                 _CurrentlySelectedActorIndex + 1,
                 filteredDebugActors.Num()
             );
@@ -369,24 +372,29 @@ auto
     {
         const auto& isActionActive = InAction->Get_IsActive();
 
-        const FString isActionActiveStr = (isActionActive ? TEXT(" {green}[") : TEXT(" {red}[")) + InAction->Get_ToggleActivateKey().ToString() + TEXT("] ");
-
-        return FString::Printf
+        const FString isActionActiveStr = ck::Format_UE
         (
-            TEXT("\n\t{white}%s %s"),
-            *InAction->Get_ActionName().ToString(),
-            *isActionActiveStr
+            TEXT("{}{}]"),
+            (isActionActive ? TEXT(" {{green}}[") : TEXT(" {{red}}[")),
+            InAction->Get_ToggleActivateKey()
+        );
+
+        return ck::Format_UE
+        (
+            TEXT("\n\t{{white}}{} {}"),
+            InAction->Get_ActionName(),
+            isActionActiveStr
         );
     };
 
     // Construct Filter Actions message
     {
-        message += FString::Printf(TEXT("\n{white}FILTER ACTIONS:"));
+        message += ck::Format_UE(TEXT("\n{{white}}FILTER ACTIONS:"));
         const auto& filterDebugActions = InSelectedFilter->Get_FilterDebugActions();
 
         if (filterDebugActions.IsEmpty())
         {
-            message += FString::Printf(TEXT(" {red}[NO ACTIONS]"));
+            message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
         }
         else
         {
@@ -399,7 +407,7 @@ auto
 
     // Construct Global Actions Message
     {
-        message += FString::Printf(TEXT("\n{white}GLOBAL ACTIONS:"));
+        message += ck::Format_UE(TEXT("\n{{white}}GLOBAL ACTIONS:"));
 
         if (ck::IsValid(_CurrentlyLoadedDebugProfile))
         {
@@ -407,7 +415,7 @@ auto
 
             if (globalDebugActions.IsEmpty())
             {
-                message += FString::Printf(TEXT(" {red}[NO ACTIONS]"));
+                message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
             }
             else
             {

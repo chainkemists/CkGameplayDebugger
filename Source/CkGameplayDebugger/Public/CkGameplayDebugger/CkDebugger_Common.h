@@ -7,19 +7,6 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UENUM(BlueprintType)
-enum class ECk_GameplayDebugger_DrawText_FontSize : uint8
-{
-    Tiny,
-    Small,
-    Medium,
-    Large
-};
-
-CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECk_GameplayDebugger_DrawText_FontSize);
-
-// --------------------------------------------------------------------------------------------------------------------
-
 USTRUCT(BlueprintType)
 struct CKGAMEPLAYDEBUGGER_API FCk_GameplayDebugger_DebugActorList
 {

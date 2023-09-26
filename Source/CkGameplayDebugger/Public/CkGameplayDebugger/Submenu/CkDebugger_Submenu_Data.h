@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkGameplayDebugger/Category/CkDebugger_Category_Data.h"

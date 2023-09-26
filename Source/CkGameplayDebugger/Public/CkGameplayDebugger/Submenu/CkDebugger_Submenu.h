@@ -1,6 +1,8 @@
 #pragma once
 
+#include "CkCore/IO/CkIO_Utils.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Object/CkWorldContextObject.h"
 
 #include "CkGameplayDebugger/CkDebugger_Common.h"
 #include "CkGameplayDebugger/Submenu/CkDebugger_Submenu_Data.h"
@@ -14,7 +16,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS(Abstract, Blueprintable, EditInlineNew)
-class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugSubmenu_UE : public UObject
+class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugSubmenu_UE : public UCk_GameWorldContextObject_UE
 {
     GENERATED_BODY()
 
@@ -61,8 +63,13 @@ private:
 
     // Font to use when drawing the text. The value points to the font file set in engine settings
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    ECk_GameplayDebugger_DrawText_FontSize _TextFontSize = ECk_GameplayDebugger_DrawText_FontSize::Tiny;
+              meta = (AllowPrivateAccess = true, InlineEditConditionToggle))
+    bool _UseCustomFontSize = false;
+
+    // Font to use when drawing the text. The value points to the font file set in engine settings
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true, EditCondition = "_UseCustomFontSize"))
+    ECk_Engine_TextFontSize _CustomTextFontSize = ECk_Engine_TextFontSize::Tiny;
 
     // Starting Show State
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
@@ -72,7 +79,6 @@ private:
 public:
     CK_PROPERTY_GET(_MenuName);
     CK_PROPERTY_GET(_KeyToShowMenu);
-    CK_PROPERTY_GET(_TextFontSize);
     CK_PROPERTY_GET(_ShowState);
 };
 

@@ -57,6 +57,19 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
+    const auto GetIsServer = [&]() -> bool
+    {
+        const auto* world = this->GetWorld();
+
+        if (ck::Is_NOT_Valid(world))
+        { return true; }
+
+        return world->IsNetMode(NM_DedicatedServer) || world->IsNetMode(NM_ListenServer);
+    };
+
+    if (GetIsServer())
+    { return; }
+
     _DebugBridgeActor = Cast<ACk_GameplayDebugger_DebugBridge_UE>
     (
         UCk_Utils_Actor_UE::Request_SpawnActor
@@ -69,21 +82,21 @@ auto
     CK_ENSURE_IF_NOT(ck::IsValid(_DebugBridgeActor), TEXT("Failed to spawn Gameplay Debugger DebugBridge Actor!"))
     { return; }
 
-    const auto& debugProfileUserOverride = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_DebugProfileUserOverride();
+    const auto& userOverrideDebugProfile = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_DebugProfile();
 
-    if (ck::IsValid(debugProfileUserOverride))
+    if (ck::IsValid(userOverrideDebugProfile))
     {
-        _DebugBridgeActor->LoadNewDebugProfile(debugProfileUserOverride);
+        _DebugBridgeActor->LoadNewDebugProfile(userOverrideDebugProfile);
         return;
     }
 
-    const auto& defaultDebugProfileToUse = UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_DefaultDebugProfileToUse();
+    const auto& projectDefaultDebugProfile = UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_DebugProfile();
 
-    CK_ENSURE_IF_NOT(ck::IsValid(defaultDebugProfileToUse),
+    CK_ENSURE_IF_NOT(ck::IsValid(projectDefaultDebugProfile),
         TEXT("Invalid Gameplay Debugger Debug Profile set in the Project Settings! and NO profile override set in the Editor Preferences"))
     { return; }
 
-    _DebugBridgeActor->LoadNewDebugProfile(defaultDebugProfileToUse);
+    _DebugBridgeActor->LoadNewDebugProfile(projectDefaultDebugProfile);
 #endif
 }
 

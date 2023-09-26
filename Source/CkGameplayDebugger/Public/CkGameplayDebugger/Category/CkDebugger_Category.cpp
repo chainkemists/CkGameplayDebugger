@@ -2,13 +2,12 @@
 
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerTypes.h"
+#include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
 
 #if WITH_GAMEPLAY_DEBUGGER
-
 #include <EngineUtils.h>
 #include <Engine/Engine.h>
 #include <Engine/Canvas.h>
-
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -64,9 +63,19 @@ auto
         FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
-    // TODO: Pull this from user settings
     InCanvasContext.FontRenderInfo.bEnableShadow = true;
-    InCanvasContext.Font = GEngine->GetTinyFont();
+
+    const auto& fontSizeToUse = [&]() -> ECk_Engine_TextFontSize
+    {
+        const auto& userOverrideFont = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_FontSize();
+
+        if (ck::IsValid(userOverrideFont))
+        { return *userOverrideFont; }
+
+        return UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_FontSize();
+    }();
+
+    InCanvasContext.Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(fontSizeToUse);
 
     _OnDrawDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnDrawData{InOwnerPC, &InCanvasContext, GetReplicator()});
 }

@@ -55,6 +55,14 @@ auto
 
 auto
     UCk_GameplayDebugger_DebugAction_UE::
+    Get_HasValidActionName() const
+    -> bool
+{
+    return _ActionName != NAME_None && _ActionName != CK_GAMEPLAY_DEBUGGER_INVALID_ACTION_NAME;
+}
+
+auto
+    UCk_GameplayDebugger_DebugAction_UE::
     DoPerformDebugAction_Implementation(
         const FCk_GameplayDebugger_PerformDebugAction_Params& InParams)
     -> void

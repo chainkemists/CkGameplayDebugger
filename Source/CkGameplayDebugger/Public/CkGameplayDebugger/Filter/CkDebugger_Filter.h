@@ -12,7 +12,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Abstract, Blueprintable, EditInlineNew)
 class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugFilter_UE : public UObject
 {
     GENERATED_BODY()
@@ -49,17 +49,17 @@ protected:
 private:
     // Name of the filter displayed on screen when it is active
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Filter|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FName _FilterName = CK_GAMEPLAY_DEBUGGER_INVALID_FILTER_NAME;
 
     // List of debug action blueprints to run when the filter is active
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Filter|Params", meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced,
+              meta = (AllowPrivateAccess = true))
     TArray<TObjectPtr<class UCk_GameplayDebugger_DebugAction_UE>> _FilterDebugActions;
 
     // Frequency at which the filter is gathering and filtering actors
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|GameplayDebugger|Filter|Params", meta = (AllowPrivateAccess = true))
+              meta = (AllowPrivateAccess = true))
     FCk_Time _UpdateFrequency = FCk_Time::Zero;
 
 private:

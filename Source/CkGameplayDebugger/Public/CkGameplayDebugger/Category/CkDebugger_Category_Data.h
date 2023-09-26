@@ -1,4 +1,5 @@
 #pragma once
+
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebugger_Category_Data.generated.h"

@@ -14,19 +14,16 @@ void FCkGameplayDebuggerModule::StartupModule()
 {
 #if WITH_GAMEPLAY_DEBUGGER
     //If the gameplay debugger is available, register the category and notify the editor about the changes
-    if (IGameplayDebugger::IsAvailable())
-    {
-        IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
+    IGameplayDebugger& GameplayDebuggerModule = IGameplayDebugger::Get();
 
-        GameplayDebuggerModule.RegisterCategory
-        (
-            "CkGameplayDebugger",
-            IGameplayDebugger::FOnGetCategory::CreateStatic(&FCk_GameplayDebugger_Category::MakeInstance),
-            EGameplayDebuggerCategoryState::EnabledInGameAndSimulate
-        );
+    GameplayDebuggerModule.RegisterCategory
+    (
+        "CkGameplayDebugger",
+        IGameplayDebugger::FOnGetCategory::CreateStatic(&FCk_GameplayDebugger_Category::MakeInstance),
+        EGameplayDebuggerCategoryState::EnabledInGameAndSimulate
+    );
 
-        GameplayDebuggerModule.NotifyCategoriesChanged();
-    }
+    GameplayDebuggerModule.NotifyCategoriesChanged();
 #endif
 }
 

@@ -60,12 +60,12 @@ private:
 
     auto DoPerformActionsOnFilteredActors(
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter,
-        const FCk_GameplayDebugger_DebugActorList& InActors,
+        const FCk_GameplayDebugger_DebugActorList& InFilteredActors,
         class FGameplayDebuggerCanvasContext* InCanvasContext) const -> void;
 
     auto DoHandleFilterChanges(
         APlayerController* const& InOwnerPC,
-        const FCk_GameplayDebugger_CyclingControls& InActorCyclingControls) -> void;
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls) -> void;
 
     auto DoHandleFilterActionActivationToggling(
         APlayerController* const& InOwnerPC,
@@ -73,7 +73,7 @@ private:
 
     auto DoHandleSelectedActorChange(
         APlayerController* const& InOwnerPC,
-        const FCk_GameplayDebugger_CyclingControls& InActorCyclingControls,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
         const TArray<TObjectPtr<AActor>>& InSortedFilteredActors) -> void;
 
 private:

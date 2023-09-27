@@ -267,7 +267,7 @@ auto
 
     const auto& sortedFilteredActors = sortedFilteredActorList.Get_DebugActors();
 
-    const auto& canvasMessage = DoGet_SelectorDetailsMessage(currentlySelectedFilter, sortedFilteredActorList);
+    const auto& canvasMessage = DoGet_FormattedCanvasMessage(currentlySelectedFilter, sortedFilteredActorList);
 
     if (sortedFilteredActors.IsEmpty())
     {
@@ -336,7 +336,7 @@ auto
 
 auto
     ACk_GameplayDebugger_DebugBridge_UE::
-    DoGet_SelectorDetailsMessage(
+    DoGet_FormattedCanvasMessage(
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter,
         const FCk_GameplayDebugger_DebugActorList& InFilteredActors) const
     -> FString
@@ -480,15 +480,24 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
+    const auto currentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
+
     if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_NextFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
-        _CurrentlySelectedActorIndex = 0;
+
+        if (currentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
+        {
+            _CurrentlySelectedActorIndex = 0;
+        }
     }
     else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_PreviousFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
-        _CurrentlySelectedActorIndex = 0;
+        if (currentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
+        {
+            _CurrentlySelectedActorIndex = 0;
+        }
     }
 #endif
 }

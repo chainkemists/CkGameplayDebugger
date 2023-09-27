@@ -54,7 +54,7 @@ private:
     auto DoHandleDebugActorSelectionCycling(
         const FCk_Payload_GameplayDebugger_OnDrawData& InDrawData) -> void;
 
-    auto DoGet_SelectorDetailsMessage(
+    auto DoGet_FormattedCanvasMessage(
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter,
         const FCk_GameplayDebugger_DebugActorList& InFilteredActors) const -> FString;
 

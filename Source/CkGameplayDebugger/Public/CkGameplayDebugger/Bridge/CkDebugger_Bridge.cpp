@@ -150,7 +150,7 @@ auto
 
         mainMenu += ck::Format_UE
         (
-            TEXT("{{white}}{} {}{}]"),
+            TEXT("{{white}}{} {}{}] "),
             InSubmenu->Get_MenuName(),
             isShowing ? TEXT("{{green}}[") : TEXT("{{red}}["),
             InSubmenu->Get_KeyToShowMenu()
@@ -238,6 +238,16 @@ auto
         canvasContext->Print(ck::Format_UE(TEXT("{}"), InMessage));
     };
 
+    const auto& UpdateSelectedDebugActor = [&](AActor* InSelectedDebugActor)
+    {
+        const auto& replicator = InDrawData.Get_Replicator().Get();
+        if (ck::Is_NOT_Valid(replicator))
+        { return; }
+
+        static constexpr auto selectActorInEditor = true;
+        replicator->SetDebugActor(InSelectedDebugActor, selectActorInEditor);
+    };
+
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
@@ -271,6 +281,7 @@ auto
 
     if (sortedFilteredActors.IsEmpty())
     {
+        UpdateSelectedDebugActor(nullptr);
         DoPrintMessageToCanvas(canvasMessage);
 
         _CurrentlySelectedActorIndex = 0;
@@ -280,13 +291,7 @@ auto
 
     DoHandleSelectedActorChange(ownerPC, debugNavControls, sortedFilteredActors);
 
-    // Update new currently selected debug actor
-    const auto& replicator = InDrawData.Get_Replicator().Get();
-    if (ck::IsValid(replicator))
-    {
-        static constexpr auto selectActorInEditor = true;
-        replicator->SetDebugActor(sortedFilteredActors[_CurrentlySelectedActorIndex], selectActorInEditor);
-    }
+    UpdateSelectedDebugActor(sortedFilteredActors[_CurrentlySelectedActorIndex]);
 
     DoPerformActionsOnFilteredActors(currentlySelectedFilter, sortedFilteredActorList, canvasContext);
 

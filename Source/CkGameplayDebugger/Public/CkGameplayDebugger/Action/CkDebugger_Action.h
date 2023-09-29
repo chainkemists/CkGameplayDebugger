@@ -27,6 +27,7 @@ public:
     auto ToggleAction() -> void;
     auto PerformDebugAction(const FCk_GameplayDebugger_PerformDebugAction_Params& InParams) -> void;
     auto Get_HasValidActionName() const -> bool;
+    auto Get_HasValidActionActivationKey() const -> bool;
 
 protected:
     UFUNCTION(BlueprintNativeEvent,

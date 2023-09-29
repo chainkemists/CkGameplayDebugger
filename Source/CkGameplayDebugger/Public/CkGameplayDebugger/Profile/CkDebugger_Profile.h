@@ -16,6 +16,13 @@ class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_DebugProfile_PDA : public UCk_
 public:
     CK_GENERATED_BODY(UCk_GameplayDebugger_DebugProfile_PDA);
 
+protected:
+    auto PreSave(FObjectPreSaveContext InObjectSaveContext) -> void override;
+
+public:
+    UFUNCTION(CallInEditor,  Category = "Ck_GameplayDebugger_DebugProfile_PDA")
+    void ValidateAssetData() const;
+
 private:
     // List of available filters that can be applied
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced, meta = (AllowPrivateAccess = true))

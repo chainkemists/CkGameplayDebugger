@@ -29,6 +29,7 @@ public:
     auto DrawData(const FCk_GameplayDebugger_DrawSubmenuData_Params& InParams) -> void;
     auto ToggleShowState() -> ECk_GameplayDebugger_DebugSubmenu_ShowState;
     auto Get_HasValidSubmenuName() const -> bool;
+    auto Get_HasValidSubmenuActivationKey() const -> bool;
 
 protected:
     UFUNCTION(BlueprintNativeEvent,

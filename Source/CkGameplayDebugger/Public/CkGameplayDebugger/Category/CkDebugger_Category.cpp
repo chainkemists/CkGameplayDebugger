@@ -5,6 +5,7 @@
 #include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
 
 #if WITH_GAMEPLAY_DEBUGGER
+#include <GameFramework/PlayerController.h>
 #include <EngineUtils.h>
 #include <Engine/Engine.h>
 #include <Engine/Canvas.h>
@@ -63,6 +64,13 @@ auto
         FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
+    const auto currentWorldTime = FCk_WorldTime{InOwnerPC};
+
+    if (currentWorldTime.Get_FrameNumber() == _LastUpdated.Get_FrameNumber())
+    { return; }
+
+    _LastUpdated = currentWorldTime;
+
     InCanvasContext.FontRenderInfo.bEnableShadow = true;
 
     const auto& fontSizeToUse = [&]() -> ECk_Engine_TextFontSize

@@ -11,6 +11,17 @@
 
 auto
     UCk_GameplayDebugger_Subsystem_UE::
+    Request_LoadNewDebugProfile(class UCk_GameplayDebugger_DebugProfile_PDA* InDebugProfile) const
+    -> void
+{
+    if (ck::IsValid(_DebugBridgeActor))
+    {
+        _DebugBridgeActor->LoadNewDebugProfile(InDebugProfile);
+    }
+}
+
+auto
+    UCk_GameplayDebugger_Subsystem_UE::
     OnWorldBeginPlay(
         UWorld& InWorld)
     -> void

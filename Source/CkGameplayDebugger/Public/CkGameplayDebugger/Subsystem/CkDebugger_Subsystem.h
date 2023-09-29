@@ -12,13 +12,18 @@ class ACk_GameplayDebugger_DebugBridge_UE;
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS()
+UCLASS(DisplayName = "Gameplay Debugger Subsystem")
 class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_Subsystem_UE : public UWorldSubsystem
 {
     GENERATED_BODY()
 
 public:
     CK_GENERATED_BODY(UCk_GameplayDebugger_Subsystem_UE);
+
+public:
+    UFUNCTION(BlueprintCallable, Category = "Ck|GameplayDebugger|Subsytem")
+    void Request_LoadNewDebugProfile(
+        class UCk_GameplayDebugger_DebugProfile_PDA* InDebugProfile) const;
 
 protected:
     /** Called when world is ready to start gameplay before the game mode transitions to the correct state and call BeginPlay on all actors */

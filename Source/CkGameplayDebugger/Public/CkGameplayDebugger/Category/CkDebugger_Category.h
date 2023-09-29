@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkCore/Time/CkTime.h"
+
 #include "CkGameplayDebugger/Category/CkDebugger_Category_Data.h"
 
 #if WITH_GAMEPLAY_DEBUGGER
@@ -51,6 +53,8 @@ private:
     OnDeactivatedDelegateType _OnDeactivatedDelegate;
     OnCollectDataDelegateType _OnCollectDataDelegate;
     OnDrawDataDelegateType _OnDrawDataDelegate;
+
+    FCk_WorldTime _LastUpdated;
 
 private:
     static TSharedPtr<FCk_GameplayDebugger_Category> _This;

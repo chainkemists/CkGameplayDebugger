@@ -63,6 +63,14 @@ auto
 
 auto
     UCk_GameplayDebugger_DebugAction_UE::
+    Get_HasValidActionActivationKey() const
+    -> bool
+{
+    return ck::IsValid(_ToggleActivateKey);
+}
+
+auto
+    UCk_GameplayDebugger_DebugAction_UE::
     DoPerformDebugAction_Implementation(
         const FCk_GameplayDebugger_PerformDebugAction_Params& InParams)
     -> void

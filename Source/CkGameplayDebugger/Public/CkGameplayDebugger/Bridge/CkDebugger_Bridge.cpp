@@ -86,7 +86,8 @@ auto
 
         if (ck::IsValid(_DebugWidget))
         {
-            _DebugWidget->AddToViewport();
+            static constexpr auto zOrder = 9999;
+            _DebugWidget->AddToViewport(zOrder);
         }
     }
 

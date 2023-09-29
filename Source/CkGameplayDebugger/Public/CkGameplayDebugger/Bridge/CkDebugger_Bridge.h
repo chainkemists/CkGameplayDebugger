@@ -80,6 +80,9 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA> _CurrentlyLoadedDebugProfile;
 
+    UPROPERTY(Transient)
+    TObjectPtr<class UCk_GameplayDebugger_DebugWidget_UE> _DebugWidget;
+
 private:
     int32 _CurrentlySelectedActorIndex = 0;
     int32 _CurrentlySelectedFilterIndex = 0;

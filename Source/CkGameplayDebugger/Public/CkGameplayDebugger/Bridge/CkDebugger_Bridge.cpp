@@ -2,12 +2,14 @@
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/Object/CkObject_Utils.h"
 
 #include "CkGameplayDebugger/Action/CkDebugger_Action.h"
 #include "CkGameplayDebugger/Filter/CkDebugger_Filter.h"
 #include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
 #include "CkGameplayDebugger/Submenu/CkDebugger_Submenu.h"
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
+#include "CkGameplayDebugger/Widget/CkDebugger_Widget.h"
 
 #include <GameFramework/PlayerController.h>
 
@@ -44,8 +46,7 @@ auto
         UnloadCurrentDebugProfile();
     }
 
-    _CurrentlyLoadedDebugProfile = InDebugProfile;
-    // TODO: Do Stuff when profile is loaded, instance it ?
+    _CurrentlyLoadedDebugProfile = UCk_Utils_Object_UE::Request_CloneObject(InDebugProfile, InDebugProfile);
 #endif
 }
 
@@ -58,8 +59,13 @@ auto
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
+    if (ck::IsValid(_DebugWidget))
+    {
+        _DebugWidget->RemoveFromParent();
+        _DebugWidget= nullptr;
+    }
+
     _CurrentlyLoadedDebugProfile = nullptr;
-    // TODO: Do stuff ?
 #endif
 }
 
@@ -68,8 +74,21 @@ auto
     OnGameplayDebugger_Activated()
     -> void
 {
+#if WITH_GAMEPLAY_DEBUGGER
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
+
+    const auto& debugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget();
+
+    if (ck::IsValid(debugWidgetToCreate))
+    {
+        _DebugWidget = UCk_GameplayDebugger_DebugWidget_UE::Create(GetWorld(), debugWidgetToCreate, FCk_GameplayDebugger_DebugWidget_Params{_CurrentlyLoadedDebugProfile->Get_DebugNavControls()});
+
+        if (ck::IsValid(_DebugWidget))
+        {
+            _DebugWidget->AddToViewport();
+        }
+    }
 
     // Activate all debug submenus
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
@@ -85,6 +104,7 @@ auto
 
     // Activate the currently selected debug filter
     DoActivateCurrentlySelectedFilter();
+#endif
 }
 
 auto
@@ -92,8 +112,15 @@ auto
     OnGameplayDebugger_Deactivated()
     -> void
 {
+#if WITH_GAMEPLAY_DEBUGGER
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
+
+    if (ck::IsValid(_DebugWidget))
+    {
+        _DebugWidget->RemoveFromParent();
+        _DebugWidget= nullptr;
+    }
 
     // Deactivate all debug submenus
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
@@ -109,6 +136,7 @@ auto
     {
         InGlobalAction->DeactivateAction();
     });
+#endif
 }
 
 auto

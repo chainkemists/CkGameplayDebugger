@@ -2,60 +2,9 @@
 
 #include "CkCore/Types/DataAsset/CkDataAsset.h"
 #include "CkCore/Macros/CkMacros.h"
-
-#include <InputCoreTypes.h>
+#include "CkGameplayDebugger/CkDebugger_Common.h"
 
 #include "CkDebugger_Profile.generated.h"
-
-// --------------------------------------------------------------------------------------------------------------------
-
-USTRUCT(BlueprintType)
-struct CKGAMEPLAYDEBUGGER_API FCk_GameplayDebugger_DebugNavControls
-{
-    GENERATED_BODY()
-
-public:
-    CK_GENERATED_BODY(FCk_GameplayDebugger_DebugNavControls);
-
-private:
-    // Key to press to select the next filter in the list of filters available
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _NextFilterKey = EKeys::Up;
-
-    // Key to press to select the previous filter in the list of filters available
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _PreviousFilterKey = EKeys::Down;
-
-    // Key to press to select the next actor in the filtered lists of actor
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _NextActorKey = EKeys::Right;
-
-    // Key to press to select the previous actor in the filtered lists of actor
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _PreviousActorKey = EKeys::Left;
-
-    // Key to press to select the first actor in the filtered lists of actor
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _FirstActorKey = EKeys::Home;
-
-    // Key to press to select the last actor in the filtered lists of actor
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              meta = (AllowPrivateAccess = true))
-    FKey _LastActorKey = EKeys::End;
-
-public:
-    CK_PROPERTY_GET(_NextFilterKey);
-    CK_PROPERTY_GET(_PreviousFilterKey);
-    CK_PROPERTY_GET(_NextActorKey);
-    CK_PROPERTY_GET(_PreviousActorKey);
-    CK_PROPERTY_GET(_FirstActorKey);
-    CK_PROPERTY_GET(_LastActorKey);
-};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -83,11 +32,16 @@ private:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugNavControls _DebugNavControls;
 
+    // Optional widget to display while the GameplayDebugger is active
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    TSubclassOf<class UCk_GameplayDebugger_DebugWidget_UE> _HUD_DebugWidget;
+
 public:
     CK_PROPERTY_GET(_Submenus);
     CK_PROPERTY_GET(_Filters);
     CK_PROPERTY_GET(_GlobalActions);
     CK_PROPERTY_GET(_DebugNavControls);
+    CK_PROPERTY_GET(_HUD_DebugWidget);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

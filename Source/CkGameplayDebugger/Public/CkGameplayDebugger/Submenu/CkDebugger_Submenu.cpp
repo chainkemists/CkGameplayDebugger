@@ -80,6 +80,14 @@ auto
 
 auto
     UCk_GameplayDebugger_DebugSubmenu_UE::
+    Get_HasValidSubmenuActivationKey() const
+    -> bool
+{
+    return ck::IsValid(_KeyToShowMenu);
+}
+
+auto
+    UCk_GameplayDebugger_DebugSubmenu_UE::
     DoActivateSubmenu_Implementation()
     -> void
 {

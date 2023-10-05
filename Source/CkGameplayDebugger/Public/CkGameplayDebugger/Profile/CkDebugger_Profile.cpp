@@ -17,7 +17,6 @@ namespace ck_debug_profile
             const UObject* InTargetObject = nullptr)
         -> void
     {
-#if WITH_EDITOR
         UCk_Utils_EditorOnly_UE::Request_PushNewEditorMessage
         (
             FCk_Utils_EditorOnly_PushNewEditorMessage_Params
@@ -33,7 +32,6 @@ namespace ck_debug_profile
                 ECk_EditorMessage_DisplayPolicy::ToastNotification
             }
         );
-#endif // WITH_EDITOR
     }
 }
 
@@ -57,119 +55,119 @@ auto
     ValidateAssetData() const
     -> void
 {
-    int32 numOfInvalidSubmenus = 0;
-    int32 numOfInvalidSubmenuNames = 0;
-    int32 numOfInvalidSubmenuActivationKeys = 0;
+    int32 NumOfInvalidSubmenus = 0;
+    int32 NumOfInvalidSubmenuNames = 0;
+    int32 NumOfInvalidSubmenuActivationKeys = 0;
 
-    int32 numOfInvalidFilters = 0;
-    int32 numOfInvalidFilterNames = 0;
+    int32 NumOfInvalidFilters = 0;
+    int32 NumOfInvalidFilterNames = 0;
 
-    int32 numOfInvalidGlobalActions = 0;
-    int32 numOfInvalidGlobalActionNames = 0;
-    int32 numOfInvalidGlobalActionActivationKeys = 0;
+    int32 NumOfInvalidGlobalActions = 0;
+    int32 NumOfInvalidGlobalActionNames = 0;
+    int32 NumOfInvalidGlobalActionActivationKeys = 0;
 
     // TODO: Validate Debug Nav Controls Keys
 
-    for (const auto& debugSubmenu : _Submenus)
+    for (const auto& DebugSubmenu : _Submenus)
     {
-        if (ck::Is_NOT_Valid(debugSubmenu))
+        if (ck::Is_NOT_Valid(DebugSubmenu))
         {
-            ++numOfInvalidSubmenus;
+            ++NumOfInvalidSubmenus;
             continue;
         }
 
-        if (NOT debugSubmenu->Get_HasValidSubmenuName())
+        if (NOT DebugSubmenu->Get_HasValidSubmenuName())
         {
-            ++numOfInvalidSubmenuNames;
+            ++NumOfInvalidSubmenuNames;
         }
 
-        if (NOT debugSubmenu->Get_HasValidSubmenuActivationKey())
+        if (NOT DebugSubmenu->Get_HasValidSubmenuActivationKey())
         {
-            ++numOfInvalidSubmenuActivationKeys;
+            ++NumOfInvalidSubmenuActivationKeys;
         }
     }
 
-    for (const auto& debugFilter : _Filters)
+    for (const auto& DebugFilter : _Filters)
     {
-        if (ck::Is_NOT_Valid(debugFilter))
+        if (ck::Is_NOT_Valid(DebugFilter))
         {
-            ++numOfInvalidFilters;
+            ++NumOfInvalidFilters;
             continue;
         }
 
-        if (NOT debugFilter->Get_HasValidFilterName())
+        if (NOT DebugFilter->Get_HasValidFilterName())
         {
-            ++numOfInvalidFilterNames;
+            ++NumOfInvalidFilterNames;
         }
 
         // TODO: Validate Filter Actions
     }
 
-    for (const auto& globalDebugAction : _GlobalActions)
+    for (const auto& GlobalDebugAction : _GlobalActions)
     {
-        if (ck::Is_NOT_Valid(globalDebugAction))
+        if (ck::Is_NOT_Valid(GlobalDebugAction))
         {
-            ++numOfInvalidGlobalActions;
+            ++NumOfInvalidGlobalActions;
             continue;
         }
 
-        if (NOT globalDebugAction->Get_HasValidActionName())
+        if (NOT GlobalDebugAction->Get_HasValidActionName())
         {
-            ++numOfInvalidGlobalActionNames;
+            ++NumOfInvalidGlobalActionNames;
         }
 
-        if (NOT globalDebugAction->Get_HasValidActionActivationKey())
+        if (NOT GlobalDebugAction->Get_HasValidActionActivationKey())
         {
-            ++numOfInvalidGlobalActionActivationKeys;
+            ++NumOfInvalidGlobalActionActivationKeys;
         }
     }
 
     // Submenus
     {
-        if (numOfInvalidSubmenus > 0)
+        if (NumOfInvalidSubmenus > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu set to 'None'"), numOfInvalidSubmenus), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu set to 'None'"), NumOfInvalidSubmenus), this);
         }
 
-        if (numOfInvalidSubmenuNames > 0)
+        if (NumOfInvalidSubmenuNames > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu with an INVALID Name"), numOfInvalidSubmenuNames), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu with an INVALID Name"), NumOfInvalidSubmenuNames), this);
         }
 
-        if (numOfInvalidSubmenuActivationKeys > 0)
+        if (NumOfInvalidSubmenuActivationKeys > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu with an INVALID Activation Key"), numOfInvalidSubmenuActivationKeys), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Submenu with an INVALID Activation Key"), NumOfInvalidSubmenuActivationKeys), this);
         }
     }
 
     // Filters
     {
-        if (numOfInvalidFilters > 0)
+        if (NumOfInvalidFilters > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Filter set to 'None'"), numOfInvalidFilters), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Filter set to 'None'"), NumOfInvalidFilters), this);
         }
 
-        if (numOfInvalidFilterNames > 0)
+        if (NumOfInvalidFilterNames > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Filter with an INVALID Name"), numOfInvalidFilterNames), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Filter with an INVALID Name"), NumOfInvalidFilterNames), this);
         }
     }
 
     // Global Actions
     {
-        if (numOfInvalidGlobalActions > 0)
+        if (NumOfInvalidGlobalActions > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action set to 'None'"), numOfInvalidGlobalActions), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action set to 'None'"), NumOfInvalidGlobalActions), this);
         }
 
-        if (numOfInvalidGlobalActionNames > 0)
+        if (NumOfInvalidGlobalActionNames > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action with an INVALID Name"), numOfInvalidGlobalActionNames), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action with an INVALID Name"), NumOfInvalidGlobalActionNames), this);
         }
 
-        if (numOfInvalidGlobalActionActivationKeys > 0)
+        if (NumOfInvalidGlobalActionActivationKeys > 0)
         {
-            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action with an INVALID Activation Key"), numOfInvalidGlobalActionActivationKeys), this);
+            ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action with an INVALID Activation Key"), NumOfInvalidGlobalActionActivationKeys), this);
         }
     }
 }

@@ -25,7 +25,7 @@ private:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               meta = (AllowPrivateAccess = true))
-    int32 _CurrentlySelectedDebugActorIndex;
+    int32 _CurrentlySelectedDebugActorIndex = 0;
 
 private:
     FGameplayDebuggerCanvasContext* _CanvasContext = nullptr;

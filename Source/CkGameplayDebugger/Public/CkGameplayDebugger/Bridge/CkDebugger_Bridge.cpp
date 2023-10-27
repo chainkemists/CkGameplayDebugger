@@ -274,6 +274,7 @@ auto
         { return; }
 
         static constexpr auto selectActorInEditor = true;
+        _PreviouslySelectedActor = InSelectedDebugActor;
         replicator->SetDebugActor(InSelectedDebugActor, selectActorInEditor);
     };
 
@@ -583,6 +584,8 @@ auto
         const TArray<TObjectPtr<AActor>>& InSortedFilteredActors)
     -> void
 {
+    const auto PreviouslySelectedActorIndex = _CurrentlySelectedActorIndex;
+
 #if WITH_GAMEPLAY_DEBUGGER
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
@@ -595,6 +598,7 @@ auto
     {
         --_CurrentlySelectedActorIndex;
     }
+
     if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_FirstActorKey()))
     {
         _CurrentlySelectedActorIndex = 0;
@@ -602,6 +606,20 @@ auto
     else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_LastActorKey()))
     {
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
+    }
+
+    // Enforce Selected Actor stability if user did not request any selection change
+    if (PreviouslySelectedActorIndex == _CurrentlySelectedActorIndex && ck::IsValid(_PreviouslySelectedActor))
+    {
+        const auto& IndexOfPreviouslySelectedActor = InSortedFilteredActors.IndexOfByPredicate([&](const TObjectPtr<AActor> InSortedFilteredActor)
+        {
+            return InSortedFilteredActor == _PreviouslySelectedActor.Get();
+        });
+
+        if (IndexOfPreviouslySelectedActor != INDEX_NONE)
+        {
+            _CurrentlySelectedActorIndex = IndexOfPreviouslySelectedActor;
+        }
     }
 
     _CurrentlySelectedActorIndex = _CurrentlySelectedActorIndex % InSortedFilteredActors.Num();

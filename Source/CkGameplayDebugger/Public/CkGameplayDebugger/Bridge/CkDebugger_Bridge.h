@@ -86,6 +86,8 @@ private:
 private:
     int32 _CurrentlySelectedActorIndex = 0;
     int32 _CurrentlySelectedFilterIndex = 0;
+
+    TWeakObjectPtr<AActor> _PreviouslySelectedActor;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

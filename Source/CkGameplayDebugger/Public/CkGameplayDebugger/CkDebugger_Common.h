@@ -18,6 +18,11 @@ public:
     CK_GENERATED_BODY(FCk_GameplayDebugger_DebugNavControls);
 
 private:
+    // Key to hold down to enable Debugger keyboard controls
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    FKey _StickyModiferKey = EKeys::Insert;
+
     // Key to press to select the next filter in the list of filters available
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
               meta = (AllowPrivateAccess = true))
@@ -49,6 +54,7 @@ private:
     FKey _LastActorKey = EKeys::End;
 
 public:
+    CK_PROPERTY_GET(_StickyModiferKey);
     CK_PROPERTY_GET(_NextFilterKey);
     CK_PROPERTY_GET(_PreviousFilterKey);
     CK_PROPERTY_GET(_NextActorKey);

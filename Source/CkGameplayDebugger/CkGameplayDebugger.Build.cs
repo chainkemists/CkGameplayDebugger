@@ -21,6 +21,7 @@ public class CkGameplayDebugger : ModuleRules
             "UMG",
 
             "CkCore",
+            "CkInput",
             "CkSettings",
         });
 

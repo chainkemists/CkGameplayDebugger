@@ -4,6 +4,8 @@
 #include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Object/CkObject_Utils.h"
 
+#include "CkInput/CkInput_Utils.h"
+
 #include "CkGameplayDebugger/Action/CkDebugger_Action.h"
 #include "CkGameplayDebugger/Filter/CkDebugger_Filter.h"
 #include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
@@ -197,7 +199,7 @@ auto
         if (ck::Is_NOT_Valid(keyToShowMenu))
         { return; }
 
-        if (ownerPC->WasInputKeyJustPressed(keyToShowMenu))
+        if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(ownerPC.Get(), keyToShowMenu, _CurrentlyLoadedDebugProfile->Get_DebugNavControls().Get_StickyModiferKey()))
         {
             InSubmenu->ToggleShowState();
         }
@@ -295,7 +297,7 @@ auto
 
     const auto& currentlySelectedFilter = debugFilters[_CurrentlySelectedFilterIndex];
 
-    DoHandleFilterActionActivationToggling(ownerPC, currentlySelectedFilter);
+    DoHandleFilterActionActivationToggling(ownerPC, debugNavControls, currentlySelectedFilter);
 
     if (ck::Is_NOT_Valid(currentlySelectedFilter))
     { return; }
@@ -517,7 +519,7 @@ auto
 
     const auto currentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
 
-    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_NextFilterKey()))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
 
@@ -526,7 +528,7 @@ auto
             _CurrentlySelectedActorIndex = 0;
         }
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_PreviousFilterKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
         if (currentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
@@ -541,6 +543,7 @@ auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoHandleFilterActionActivationToggling(
         APlayerController* const& InOwnerPC,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter) const
     -> void
 {
@@ -552,7 +555,7 @@ auto
     {
         ck::algo::ForEachIsValid(InActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InValidAction) -> void
         {
-            if (NOT InOwnerPC->WasInputKeyJustPressed(InValidAction->Get_ToggleActivateKey()))
+            if (NOT UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InValidAction->Get_ToggleActivateKey(), InDebugNavControls.Get_StickyModiferKey()))
             { return; }
 
             InValidAction->ToggleAction();
@@ -590,20 +593,20 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_NextActorKey()))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextActorKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         ++_CurrentlySelectedActorIndex;
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_PreviousActorKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousActorKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         --_CurrentlySelectedActorIndex;
     }
 
-    if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_FirstActorKey()))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_FirstActorKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         _CurrentlySelectedActorIndex = 0;
     }
-    else if (InOwnerPC->WasInputKeyJustPressed(InDebugNavControls.Get_LastActorKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_LastActorKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
     }

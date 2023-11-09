@@ -69,6 +69,7 @@ private:
 
     auto DoHandleFilterActionActivationToggling(
         APlayerController* const& InOwnerPC,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
         const UCk_GameplayDebugger_DebugFilter_UE* InSelectedFilter) const -> void;
 
     auto DoHandleSelectedActorChange(

@@ -61,7 +61,7 @@ private:
     // Frequency at which the filter is gathering and filtering actors
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
               meta = (AllowPrivateAccess = true))
-    FCk_Time _UpdateFrequency = FCk_Time::Zero;
+    FCk_Time _UpdateFrequency = FCk_Time::ZeroSecond();
 
 private:
     FCk_Time _TimeSinceLastUpdate;

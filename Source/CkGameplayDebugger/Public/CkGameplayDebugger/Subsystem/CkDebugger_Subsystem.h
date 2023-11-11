@@ -12,7 +12,7 @@ class ACk_GameplayDebugger_DebugBridge_UE;
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(DisplayName = "Ck Gameplay Debugger Subsystem")
+UCLASS(DisplayName = "CkSubsystem_GameplayDebugger")
 class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_Subsystem_UE : public UWorldSubsystem
 {
     GENERATED_BODY()

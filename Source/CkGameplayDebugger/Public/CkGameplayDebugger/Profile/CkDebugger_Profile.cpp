@@ -27,10 +27,11 @@ namespace ck_debug_profile
                     {
                         FCk_TokenizedMessage{InMsg}.Set_TargetObject(const_cast<UObject*>(InTargetObject))
                     }
-                },
-                ECk_EditorMessage_Severity::Error,
-                ECk_EditorMessage_DisplayPolicy::ToastNotification
+                }
             }
+            .Set_MessageSeverity(ECk_EditorMessage_Severity::Error)
+            .Set_MessageLogDisplayPolicy(ECk_EditorMessage_MessageLog_DisplayPolicy::DoNotFocus)
+            .Set_ToastNotificationDisplayPolicy(ECk_EditorMessage_ToastNotification_DisplayPolicy::Display)
         );
     }
 }

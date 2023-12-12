@@ -11,6 +11,7 @@
 #include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
 #include "CkGameplayDebugger/Submenu/CkDebugger_Submenu.h"
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
+#include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
 #include "CkGameplayDebugger/Widget/CkDebugger_Widget.h"
 
 #include <GameFramework/PlayerController.h>
@@ -21,15 +22,15 @@ ACk_GameplayDebugger_DebugBridge_UE::
     ACk_GameplayDebugger_DebugBridge_UE()
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& gameplayDebugger = FCk_GameplayDebugger_Category::Get_Instance();
+    const auto& GameplayDebugger = FCk_GameplayDebugger_Category::Get_Instance();
 
-    if (ck::Is_NOT_Valid(gameplayDebugger))
+    if (ck::Is_NOT_Valid(GameplayDebugger))
     { return; }
 
-    gameplayDebugger->_OnActivatedDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_Activated);
-    gameplayDebugger->_OnDeactivatedDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_Deactivated);
-    gameplayDebugger->_OnCollectDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_CollectData);
-    gameplayDebugger->_OnDrawDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_DrawData);
+    GameplayDebugger->_OnActivatedDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_Activated);
+    GameplayDebugger->_OnDeactivatedDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_Deactivated);
+    GameplayDebugger->_OnCollectDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_CollectData);
+    GameplayDebugger->_OnDrawDataDelegate.BindDynamic(this, &ThisType::OnGameplayDebugger_DrawData);
 #endif
 }
 
@@ -64,7 +65,7 @@ auto
     if (ck::IsValid(_DebugWidget))
     {
         _DebugWidget->RemoveFromParent();
-        _DebugWidget= nullptr;
+        _DebugWidget = nullptr;
     }
 
     _CurrentlyLoadedDebugProfile = nullptr;
@@ -80,11 +81,14 @@ auto
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
-    const auto& debugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget();
-
-    if (ck::IsValid(debugWidgetToCreate))
+    if (const auto& DebugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget(); ck::IsValid(DebugWidgetToCreate))
     {
-        _DebugWidget = UCk_GameplayDebugger_DebugWidget_UE::Create(GetWorld(), debugWidgetToCreate, FCk_GameplayDebugger_DebugWidget_Params{_CurrentlyLoadedDebugProfile->Get_DebugNavControls()});
+        _DebugWidget = UCk_GameplayDebugger_DebugWidget_UE::Create
+        (
+            GetWorld(),
+            DebugWidgetToCreate,
+            FCk_GameplayDebugger_DebugWidget_Params{_CurrentlyLoadedDebugProfile->Get_DebugNavControls()}
+        );
 
         if (ck::IsValid(_DebugWidget))
         {
@@ -94,13 +98,15 @@ auto
     }
 
     // Activate all debug submenus
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
+    [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
     {
         InSubmenu->ActivateSubmenu();
     });
 
     // Activate all global debug actions
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(), [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(),
+    [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
     {
         InAction->ActivateAction();
     });
@@ -126,7 +132,8 @@ auto
     }
 
     // Deactivate all debug submenus
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
+    [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
     {
         InSubmenu->DeactivateSubmenu();
     });
@@ -135,7 +142,8 @@ auto
     DoDeactivateCurrentlySelectedFilter();
 
     // Deactivate all global debug actions
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(), [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InGlobalAction) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(),
+    [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InGlobalAction) -> void
     {
         InGlobalAction->DeactivateAction();
     });
@@ -161,45 +169,91 @@ auto
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
-    const auto& canvasContext = InPayload.Get_CanvasContext();
-    if (ck::Is_NOT_Valid(canvasContext, ck::IsValid_Policy_NullptrOnly{}))
+    const auto& CanvasContext = InPayload.Get_CanvasContext();
+    if (ck::Is_NOT_Valid(CanvasContext, ck::IsValid_Policy_NullptrOnly{}))
     { return; }
 
-    const auto& ownerPC = InPayload.Get_OwnerPC();
-    if (ck::Is_NOT_Valid(ownerPC))
+    const auto& OwnerPC = InPayload.Get_OwnerPC();
+    if (ck::Is_NOT_Valid(OwnerPC))
     { return; }
 
-    FString mainMenu;
-
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [&](const UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
+    if (UCk_Utils_GameplayDebugger_UserSettings_UE::Get_DisplayTranslucentBackground())
     {
-        const auto& keyToShowMenu = InSubmenu->Get_KeyToShowMenu();
-        if (ck::Is_NOT_Valid(keyToShowMenu))
+        FVector2D OutViewportSize;
+        GEngine->GameViewport->GetViewportSize(OutViewportSize);
+
+        constexpr auto BackgroundPadding = 5.0f;
+
+        const auto& BackgroundWidth = [&]()
+        {
+            switch (const auto& SelectedWidth = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_BackgroundWidth())
+            {
+                case FCk_GameplayDebugger_BackgroundWidth::OneThird:
+                {
+                    return OutViewportSize.X / 3.0f;
+                }
+                case FCk_GameplayDebugger_BackgroundWidth::Half:
+                {
+                    return OutViewportSize.X / 2.0f;
+                }
+                case FCk_GameplayDebugger_BackgroundWidth::ThreeFourth:
+                {
+                    return OutViewportSize.X * 0.75f;
+                }
+                case FCk_GameplayDebugger_BackgroundWidth::Full:
+                {
+                    return OutViewportSize.X;
+                }
+                default:
+                {
+                    CK_INVALID_ENUM(SelectedWidth);
+                    return OutViewportSize.X;
+                }
+            }
+        }();
+
+        const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), OutViewportSize.Y);
+        const auto BackgroundColor = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_BackgroundColor();
+
+        FCanvasTileItem Background(FVector2D::ZeroVector, GWhiteTexture, BackgroundSize, BackgroundColor);
+        Background.BlendMode = SE_BLEND_Translucent;
+
+        CanvasContext->DrawItem(Background, CanvasContext->DefaultX - BackgroundPadding, CanvasContext->DefaultY - BackgroundPadding);
+    }
+
+    FString MainMenu;
+
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
+    [&](const UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
+    {
+        if (const auto& KeyToShowMenu = InSubmenu->Get_KeyToShowMenu(); ck::Is_NOT_Valid(KeyToShowMenu))
         { return; }
 
-        const auto& isShowing = InSubmenu->Get_ShowState() == ECk_GameplayDebugger_DebugSubmenu_ShowState::Visible;
+        const auto& IsSubmenuVisible = InSubmenu->Get_ShowState() == ECk_GameplayDebugger_DebugSubmenu_ShowState::Visible;
 
-        mainMenu += ck::Format_UE
+        MainMenu += ck::Format_UE
         (
             TEXT("{{white}}{} {}{}] "),
             InSubmenu->Get_MenuName(),
-            isShowing ? TEXT("{{green}}[") : TEXT("{{red}}["),
+            IsSubmenuVisible ? TEXT("{{green}}[") : TEXT("{{red}}["),
             InSubmenu->Get_KeyToShowMenu()
         );
     });
 
-    canvasContext->Print(mainMenu);
+    CanvasContext->Print(MainMenu);
 
     DoHandleDebugActorSelectionCycling(InPayload);
 
-    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(), [&](UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
+    ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
+    [&](UCk_GameplayDebugger_DebugSubmenu_UE* InSubmenu) -> void
     {
         // NOTE: We handle input in "DrawData" since "CollectData" does not run while the game is paused
-        const auto& keyToShowMenu = InSubmenu->Get_KeyToShowMenu();
-        if (ck::Is_NOT_Valid(keyToShowMenu))
+        const auto& KeyToShowMenu = InSubmenu->Get_KeyToShowMenu();
+        if (ck::Is_NOT_Valid(KeyToShowMenu))
         { return; }
 
-        if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(ownerPC.Get(), keyToShowMenu, _CurrentlyLoadedDebugProfile->Get_DebugNavControls().Get_StickyModiferKey()))
+        const auto& StickyModifierKey = _CurrentlyLoadedDebugProfile->Get_DebugNavControls().Get_StickyModiferKey();
+        if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(OwnerPC.Get(), KeyToShowMenu, StickyModifierKey))
         {
             InSubmenu->ToggleShowState();
         }
@@ -230,22 +284,22 @@ auto
     if (InPreviousFilterIndex == InNewFilterIndex)
     { return; }
 
-    const auto& debugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    const auto& previousFilter = debugFilters[InPreviousFilterIndex];
-    previousFilter->DeactivateFilter();
+    const auto& PreviousFilter = DebugFilters[InPreviousFilterIndex];
+    PreviousFilter->DeactivateFilter();
 
     _CurrentlySelectedFilterIndex = InNewFilterIndex;
-    _CurrentlySelectedFilterIndex = _CurrentlySelectedFilterIndex % debugFilters.Num();
+    _CurrentlySelectedFilterIndex = _CurrentlySelectedFilterIndex % DebugFilters.Num();
 
     if (_CurrentlySelectedFilterIndex < 0)
     {
-        _CurrentlySelectedFilterIndex += debugFilters.Num();
+        _CurrentlySelectedFilterIndex += DebugFilters.Num();
         _CurrentlySelectedActorIndex = 0;
     }
 
-    const auto& newFilter = debugFilters[_CurrentlySelectedFilterIndex];
-    newFilter->ActivateFilter();
+    const auto& NewFilter = DebugFilters[_CurrentlySelectedFilterIndex];
+    NewFilter->ActivateFilter();
 #endif
 }
 
@@ -256,78 +310,78 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& ownerPC = InDrawData.Get_OwnerPC().Get();
-    if (ck::Is_NOT_Valid(ownerPC))
+    const auto& OwnerPC = InDrawData.Get_OwnerPC().Get();
+    if (ck::Is_NOT_Valid(OwnerPC))
     { return; }
 
-    const auto& canvasContext = InDrawData.Get_CanvasContext();
-    if (ck::Is_NOT_Valid(canvasContext, ck::IsValid_Policy_NullptrOnly{}))
+    const auto& CanvasContext = InDrawData.Get_CanvasContext();
+    if (ck::Is_NOT_Valid(CanvasContext, ck::IsValid_Policy_NullptrOnly{}))
     { return; }
 
     const auto& DoPrintMessageToCanvas = [&](const FString& InMessage)
     {
-        canvasContext->Print(ck::Format_UE(TEXT("{}"), InMessage));
+        CanvasContext->Print(ck::Format_UE(TEXT("{}"), InMessage));
     };
 
     const auto& UpdateSelectedDebugActor = [&](AActor* InSelectedDebugActor)
     {
-        const auto& replicator = InDrawData.Get_Replicator().Get();
-        if (ck::Is_NOT_Valid(replicator))
+        const auto& Replicator = InDrawData.Get_Replicator().Get();
+        if (ck::Is_NOT_Valid(Replicator))
         { return; }
 
-        static constexpr auto selectActorInEditor = true;
+        static constexpr auto bSelectActorInEditor = true;
         _PreviouslySelectedActor = InSelectedDebugActor;
-        replicator->SetDebugActor(InSelectedDebugActor, selectActorInEditor);
+        Replicator->SetDebugActor(InSelectedDebugActor, bSelectActorInEditor);
     };
 
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
-    const auto& debugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    if (debugFilters.IsEmpty())
+    if (DebugFilters.IsEmpty())
     {
         _CurrentlySelectedFilterIndex = 0;
         return;
     }
 
-    const auto& debugNavControls = _CurrentlyLoadedDebugProfile->Get_DebugNavControls();
+    const auto& DebugNavControls = _CurrentlyLoadedDebugProfile->Get_DebugNavControls();
 
-    DoHandleFilterChanges(ownerPC, debugNavControls);
+    DoHandleFilterChanges(OwnerPC, DebugNavControls);
 
-    const auto& currentlySelectedFilter = debugFilters[_CurrentlySelectedFilterIndex];
+    const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
-    DoHandleFilterActionActivationToggling(ownerPC, debugNavControls, currentlySelectedFilter);
+    DoHandleFilterActionActivationToggling(OwnerPC, DebugNavControls, CurrentlySelectedFilter);
 
-    if (ck::Is_NOT_Valid(currentlySelectedFilter))
+    if (ck::Is_NOT_Valid(CurrentlySelectedFilter))
     { return; }
 
-    const auto& sortedFilteredActorList = currentlySelectedFilter->Get_SortedFilteredActors
+    const auto& SortedFilteredActorList = CurrentlySelectedFilter->Get_SortedFilteredActors
     (
         FCk_GameplayDebugger_GetSortedFilteredActors_Params{InDrawData}
     );
 
-    const auto& sortedFilteredActors = sortedFilteredActorList.Get_DebugActors();
+    const auto& SortedFilteredActors = SortedFilteredActorList.Get_DebugActors();
 
-    const auto& canvasMessage = DoGet_FormattedCanvasMessage(currentlySelectedFilter, sortedFilteredActorList);
+    const auto& CanvasMessage = DoGet_FormattedCanvasMessage(CurrentlySelectedFilter, SortedFilteredActorList);
 
-    if (sortedFilteredActors.IsEmpty())
+    if (SortedFilteredActors.IsEmpty())
     {
         UpdateSelectedDebugActor(nullptr);
-        DoPrintMessageToCanvas(canvasMessage);
+        DoPrintMessageToCanvas(CanvasMessage);
 
         _CurrentlySelectedActorIndex = 0;
 
         return;
     }
 
-    DoHandleSelectedActorChange(ownerPC, debugNavControls, sortedFilteredActors);
+    DoHandleSelectedActorChange(OwnerPC, DebugNavControls, SortedFilteredActors);
 
-    UpdateSelectedDebugActor(sortedFilteredActors[_CurrentlySelectedActorIndex]);
+    UpdateSelectedDebugActor(SortedFilteredActors[_CurrentlySelectedActorIndex]);
 
-    DoPerformActionsOnFilteredActors(currentlySelectedFilter, sortedFilteredActorList, canvasContext);
+    DoPerformActionsOnFilteredActors(CurrentlySelectedFilter, SortedFilteredActorList, CanvasContext);
 
-    DoPrintMessageToCanvas(canvasMessage);
+    DoPrintMessageToCanvas(CanvasMessage);
 #endif
 }
 
@@ -337,15 +391,15 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& debugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    if (debugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
+    if (DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
     {
-        const auto& currentlySelectedFilter = debugFilters[_CurrentlySelectedFilterIndex];
+        const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
-        if (ck::IsValid(currentlySelectedFilter))
+        if (ck::IsValid(CurrentlySelectedFilter))
         {
-            currentlySelectedFilter->ActivateFilter();
+            CurrentlySelectedFilter->ActivateFilter();
         }
     }
 #endif
@@ -357,15 +411,15 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& debugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    if (debugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
+    if (DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
     {
-        const auto& currentlySelectedFilter = debugFilters[_CurrentlySelectedFilterIndex];
+        const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
-        if (ck::IsValid(currentlySelectedFilter))
+        if (ck::IsValid(CurrentlySelectedFilter))
         {
-            currentlySelectedFilter->DeactivateFilter();
+            CurrentlySelectedFilter->DeactivateFilter();
         }
     }
 #endif
@@ -381,38 +435,38 @@ auto
     if (ck::Is_NOT_Valid(InSelectedFilter))
     { return {}; }
 
-    FString message;
+    FString Message;
 
 #if WITH_GAMEPLAY_DEBUGGER
     // Construct Filter message
     {
-        message += ck::Format_UE(TEXT("{{white}}CURRENT FILTER: {{cyan}}{}"), InSelectedFilter->Get_FilterName());
+        Message += ck::Format_UE(TEXT("{{white}}CURRENT FILTER: {{cyan}}{}"), InSelectedFilter->Get_FilterName());
 
-        const auto& filteredDebugActors = InFilteredActors.Get_DebugActors();
+        const auto& FilteredDebugActors = InFilteredActors.Get_DebugActors();
 
-        if (filteredDebugActors.IsEmpty())
+        if (FilteredDebugActors.IsEmpty())
         {
-            message += ck::Format_UE(TEXT(" {{red}}[NO ACTORS RETURNED]"));
+            Message += ck::Format_UE(TEXT(" {{red}}[NO ACTORS RETURNED]"));
         }
         else
         {
-            message += ck::Format_UE
+            Message += ck::Format_UE
             (
                 TEXT(" {{white}}[{{yellow}}{}{{white}}/{}]"),
                 _CurrentlySelectedActorIndex + 1,
-                filteredDebugActors.Num()
+                FilteredDebugActors.Num()
             );
         }
     }
 
     const auto& DoGet_ActionMessage = [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> FString
     {
-        const auto& isActionActive = InAction->Get_IsActive();
+        const auto& IsActionActive = InAction->Get_IsActive();
 
-        const FString isActionActiveStr = ck::Format_UE
+        const auto IsActionActiveStr = ck::Format_UE
         (
             TEXT("{}{}]"),
-            (isActionActive ? TEXT(" {{green}}[") : TEXT(" {{red}}[")),
+            (IsActionActive ? TEXT(" {{green}}[") : TEXT(" {{red}}[")),
             InAction->Get_ToggleActivateKey()
         );
 
@@ -420,52 +474,54 @@ auto
         (
             TEXT("\n\t{{white}}{} {}"),
             InAction->Get_ActionName(),
-            isActionActiveStr
+            IsActionActiveStr
         );
     };
 
     // Construct Filter Actions message
     {
-        message += ck::Format_UE(TEXT("\n{{white}}FILTER ACTIONS:"));
-        const auto& filterDebugActions = InSelectedFilter->Get_FilterDebugActions();
+        Message += ck::Format_UE(TEXT("\n{{white}}FILTER ACTIONS:"));
+        const auto& FilterDebugActions = InSelectedFilter->Get_FilterDebugActions();
 
-        if (filterDebugActions.IsEmpty())
+        if (FilterDebugActions.IsEmpty())
         {
-            message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
+            Message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
         }
         else
         {
-            ck::algo::ForEachIsValid(filterDebugActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+            ck::algo::ForEachIsValid(FilterDebugActions,
+            [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
             {
-                message += DoGet_ActionMessage(InAction);
+                Message += DoGet_ActionMessage(InAction);
             });
         }
     }
 
     // Construct Global Actions Message
     {
-        message += ck::Format_UE(TEXT("\n{{white}}GLOBAL ACTIONS:"));
+        Message += ck::Format_UE(TEXT("\n{{white}}GLOBAL ACTIONS:"));
 
         if (ck::IsValid(_CurrentlyLoadedDebugProfile))
         {
-            const auto& globalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
+            const auto& GlobalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
 
-            if (globalDebugActions.IsEmpty())
+            if (GlobalDebugActions.IsEmpty())
             {
-                message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
+                Message += ck::Format_UE(TEXT(" {{red}}[NO ACTIONS]"));
             }
             else
             {
-                ck::algo::ForEachIsValid(globalDebugActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+                ck::algo::ForEachIsValid(GlobalDebugActions,
+                [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
             {
-                message += DoGet_ActionMessage(InAction);
+                Message += DoGet_ActionMessage(InAction);
             });
             }
         }
     }
 #endif
 
-    return message;
+    return Message;
 }
 
 auto
@@ -477,7 +533,7 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& performDebugActionParams = FCk_GameplayDebugger_PerformDebugAction_Params
+    const auto& PerformDebugActionParams = FCk_GameplayDebugger_PerformDebugAction_Params
     {
         InFilteredActors,
         _CurrentlySelectedActorIndex,
@@ -486,21 +542,23 @@ auto
 
     if (ck::IsValid(InSelectedFilter))
     {
-        const auto& filterDebugActions = InSelectedFilter->Get_FilterDebugActions();
+        const auto& FilterDebugActions = InSelectedFilter->Get_FilterDebugActions();
 
-        ck::algo::ForEachIsValid(filterDebugActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+        ck::algo::ForEachIsValid(FilterDebugActions,
+        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
         {
-            InAction->PerformDebugAction(performDebugActionParams);
+            InAction->PerformDebugAction(PerformDebugActionParams);
         });
     }
 
     if (ck::IsValid(_CurrentlyLoadedDebugProfile))
     {
-        const auto& globalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
+        const auto& GlobalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
 
-        ck::algo::ForEachIsValid(globalDebugActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+        ck::algo::ForEachIsValid(GlobalDebugActions,
+        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
         {
-            InAction->PerformDebugAction(performDebugActionParams);
+            InAction->PerformDebugAction(PerformDebugActionParams);
         });
     }
 #endif
@@ -517,13 +575,13 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    const auto currentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
+    const auto CurrentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
 
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
 
-        if (currentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
+        if (CurrentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
         {
             _CurrentlySelectedActorIndex = 0;
         }
@@ -531,7 +589,7 @@ auto
     else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
-        if (currentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
+        if (CurrentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
         {
             _CurrentlySelectedActorIndex = 0;
         }
@@ -553,28 +611,28 @@ auto
 
     const auto& DoTryToggleAllValidActions = [&](TArray<TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>> InActions) -> void
     {
-        ck::algo::ForEachIsValid(InActions, [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InValidAction) -> void
+        ck::algo::ForEachIsValid(InActions,
+        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InValidAction) -> void
         {
             if (NOT UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InValidAction->Get_ToggleActivateKey(), InDebugNavControls.Get_StickyModiferKey()))
             { return; }
 
             InValidAction->ToggleAction();
         });
-
     };
 
     if (ck::IsValid(InSelectedFilter))
     {
-        const auto& filterDebugActions = InSelectedFilter->Get_FilterDebugActions();
+        const auto& FilterDebugActions = InSelectedFilter->Get_FilterDebugActions();
 
-        DoTryToggleAllValidActions(filterDebugActions);
+        DoTryToggleAllValidActions(FilterDebugActions);
     }
 
     if (ck::IsValid(_CurrentlyLoadedDebugProfile))
     {
-        const auto& globalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
+        const auto& GlobalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
 
-        DoTryToggleAllValidActions(globalDebugActions);
+        DoTryToggleAllValidActions(GlobalDebugActions);
     }
 #endif
 }
@@ -593,20 +651,22 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextActorKey(), InDebugNavControls.Get_StickyModiferKey()))
+    const auto& StickyModifierKey = InDebugNavControls.Get_StickyModiferKey();
+
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextActorKey(), StickyModifierKey))
     {
         ++_CurrentlySelectedActorIndex;
     }
-    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousActorKey(), InDebugNavControls.Get_StickyModiferKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousActorKey(), StickyModifierKey))
     {
         --_CurrentlySelectedActorIndex;
     }
 
-    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_FirstActorKey(), InDebugNavControls.Get_StickyModiferKey()))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_FirstActorKey(), StickyModifierKey))
     {
         _CurrentlySelectedActorIndex = 0;
     }
-    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_LastActorKey(), InDebugNavControls.Get_StickyModiferKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_LastActorKey(), StickyModifierKey))
     {
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
     }

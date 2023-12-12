@@ -17,12 +17,44 @@ auto
     Get_UserOverride_FontSize()
     -> TOptional<ECk_Engine_TextFontSize>
 {
-    const auto& debuggerUserSettings = UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>();
+    const auto& DebuggerUserSettings = UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>();
 
-    if (NOT debuggerUserSettings->Get_Has_UserOverride_FontSize())
+    if (NOT DebuggerUserSettings->Get_Has_UserOverride_FontSize())
     { return {}; }
 
-    return debuggerUserSettings->Get_UserOverride_FontSize();
+    return DebuggerUserSettings->Get_UserOverride_FontSize();
+}
+
+auto
+    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    Get_DisplayTranslucentBackground()
+    -> bool
+{
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_DisplayTranslucentBackground();
+}
+
+auto
+    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    Get_BackgroundColor()
+    -> FLinearColor
+{
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_BackgroundColor();
+}
+
+auto
+    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    Get_BackgroundWidth()
+    -> FCk_GameplayDebugger_BackgroundWidth
+{
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_BackgroundWidth();
+}
+
+auto
+    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    Get_EnableTextDropShadow()
+    -> bool
+{
+    return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_EnableTextDropShadow();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

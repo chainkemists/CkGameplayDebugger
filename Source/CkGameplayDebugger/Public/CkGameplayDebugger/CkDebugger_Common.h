@@ -9,6 +9,19 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+UENUM(BlueprintType)
+enum class FCk_GameplayDebugger_BackgroundWidth
+{
+    OneThird UMETA(DislayName = "1/3 Viewport Width"),
+    Half UMETA(DislayName = "1/2 Viewport Width"),
+    ThreeFourth UMETA(DislayName = "3/4 Viewport Width"),
+    Full UMETA(DislayName = "Full Viewport Width"),
+};
+
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(FCk_GameplayDebugger_BackgroundWidth);
+
+// --------------------------------------------------------------------------------------------------------------------
+
 USTRUCT(BlueprintType)
 struct CKGAMEPLAYDEBUGGER_API FCk_GameplayDebugger_DebugNavControls
 {

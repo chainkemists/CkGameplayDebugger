@@ -18,6 +18,7 @@ public class CkGameplayDebugger : ModuleRules
             "SlateCore",
             "InputCore",
             "DeveloperSettings",
+            "RenderCore",
             "UMG",
 
             "CkCore",

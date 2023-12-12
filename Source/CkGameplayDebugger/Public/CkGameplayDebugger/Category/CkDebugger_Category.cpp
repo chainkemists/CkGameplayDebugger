@@ -64,16 +64,16 @@ auto
         FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
-    const auto currentWorldTime = FCk_WorldTime{InOwnerPC};
+    const auto CurrentWorldTime = FCk_WorldTime{InOwnerPC};
 
-    if (currentWorldTime.Get_FrameNumber() == _LastUpdated.Get_FrameNumber())
+    if (CurrentWorldTime.Get_FrameNumber() == _LastUpdated.Get_FrameNumber())
     { return; }
 
-    _LastUpdated = currentWorldTime;
+    _LastUpdated = CurrentWorldTime;
 
-    InCanvasContext.FontRenderInfo.bEnableShadow = true;
+    InCanvasContext.FontRenderInfo.bEnableShadow = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_EnableTextDropShadow();
 
-    const auto& fontSizeToUse = [&]() -> ECk_Engine_TextFontSize
+    const auto& FontSizeToUse = [&]() -> ECk_Engine_TextFontSize
     {
         const auto& userOverrideFont = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_FontSize();
 
@@ -83,7 +83,7 @@ auto
         return UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_FontSize();
     }();
 
-    InCanvasContext.Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(fontSizeToUse);
+    InCanvasContext.Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(FontSizeToUse);
 
     _OnDrawDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnDrawData{InOwnerPC, &InCanvasContext, GetReplicator()});
 }

@@ -14,6 +14,7 @@ public class CkGameplayDebugger : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "EngineSettings",
             "Slate",
             "SlateCore",
             "InputCore",

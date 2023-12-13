@@ -25,7 +25,7 @@ namespace ck_debug_profile
                 FCk_MessageSegments
                 {
                     {
-                        FCk_TokenizedMessage{InMsg}.Set_TargetObject(const_cast<UObject*>(InTargetObject))
+                        FCk_TokenizedMessage{InMsg}.Set_TargetObject(InTargetObject)
                     }
                 }
             }
@@ -53,7 +53,7 @@ auto
 
 auto
     UCk_GameplayDebugger_DebugProfile_PDA::
-    ValidateAssetData() const
+    ValidateAssetData()
     -> void
 {
     int32 NumOfInvalidSubmenus = 0;
@@ -68,6 +68,15 @@ auto
     int32 NumOfInvalidGlobalActionActivationKeys = 0;
 
     // TODO: Validate Debug Nav Controls Keys
+
+    const auto DoUpdate_TotalValidationErrors = [&]()
+    {
+        const auto& SubmenuErrors      = NumOfInvalidSubmenus + NumOfInvalidSubmenuNames + NumOfInvalidSubmenuActivationKeys;
+        const auto& FilterErrors       = NumOfInvalidFilters + NumOfInvalidFilterNames;
+        const auto& GlobalActionErrors = NumOfInvalidGlobalActions + NumOfInvalidGlobalActionNames + NumOfInvalidGlobalActionActivationKeys;
+
+        _TotalValidationErrors = SubmenuErrors + FilterErrors + GlobalActionErrors;
+    };
 
     for (const auto& DebugSubmenu : _Submenus)
     {
@@ -171,6 +180,8 @@ auto
             ck_debug_profile::PushAssetErrorNotification(ck::Format_UE(TEXT("Debug Profile has [{}] Global Action with an INVALID Activation Key"), NumOfInvalidGlobalActionActivationKeys), this);
         }
     }
+
+    DoUpdate_TotalValidationErrors();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

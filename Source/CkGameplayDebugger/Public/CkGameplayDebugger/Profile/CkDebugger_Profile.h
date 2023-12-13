@@ -18,32 +18,47 @@ public:
 
 protected:
     auto PreSave(FObjectPreSaveContext InObjectSaveContext) -> void override;
-
 public:
-    UFUNCTION(CallInEditor,  Category = "Ck_GameplayDebugger_DebugProfile_PDA")
-    void ValidateAssetData() const;
+    UFUNCTION(CallInEditor,  Category = "Validation")
+    void ValidateAssetData();
 
 private:
+    UPROPERTY(VisibleDefaultsOnly,
+              Category = "Ck|Validation",
+              meta = (AllowPrivateAccess = true))
+    int32 _TotalValidationErrors;
+
     // List of available filters that can be applied
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced, meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced,
+              Category = "Ck|Config",
+              meta = (AllowPrivateAccess = true))
     TArray<TObjectPtr<class UCk_GameplayDebugger_DebugSubmenu_UE>> _Submenus;
 
     // List of available filters that can be applied
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced, meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced,
+              Category = "Ck|Config",
+              meta = (AllowPrivateAccess = true))
     TArray<TObjectPtr<class UCk_GameplayDebugger_DebugFilter_UE>> _Filters;
 
     // List of actions that are run regardless of which filter is currently active
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced, meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Instanced,
+              Category = "Ck|Config",
+              meta = (AllowPrivateAccess = true))
     TArray<TObjectPtr<class UCk_GameplayDebugger_DebugAction_UE>> _GlobalActions;
 
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              Category = "Ck|Config",
+              meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugNavControls _DebugNavControls;
 
     // Optional widget to display while the GameplayDebugger is active
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              Category = "Ck|Config",
+              meta = (AllowPrivateAccess = true))
     TSubclassOf<class UCk_GameplayDebugger_DebugWidget_UE> _HUD_DebugWidget;
 
 public:
+    CK_PROPERTY_GET(_TotalValidationErrors);
     CK_PROPERTY_GET(_Submenus);
     CK_PROPERTY_GET(_Filters);
     CK_PROPERTY_GET(_GlobalActions);

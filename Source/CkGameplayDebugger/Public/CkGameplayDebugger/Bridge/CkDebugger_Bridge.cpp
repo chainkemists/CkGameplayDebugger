@@ -329,9 +329,9 @@ auto
         if (ck::Is_NOT_Valid(Replicator))
         { return; }
 
-        static constexpr auto bSelectActorInEditor = true;
+        static constexpr auto SelectActorInEditor = true;
         _PreviouslySelectedActor = InSelectedDebugActor;
-        Replicator->SetDebugActor(InSelectedDebugActor, bSelectActorInEditor);
+        Replicator->SetDebugActor(InSelectedDebugActor, SelectActorInEditor);
     };
 
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))

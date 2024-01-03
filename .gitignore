@@ -41,6 +41,9 @@
 *.VC.db
 *.VC.opendb
 
+# misc
+*.ffs_db
+
 # Precompiled Assets
 SourceArt/**/*.png
 SourceArt/**/*.tga
@@ -72,3 +75,4 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+

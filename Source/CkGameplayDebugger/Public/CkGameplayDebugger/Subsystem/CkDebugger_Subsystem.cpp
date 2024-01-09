@@ -2,6 +2,8 @@
 
 #include "CkCore/Actor/CkActor_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
+
+#include "CkGameplayDebugger/CkGameplayDebugger_Log.h"
 #include "CkGameplayDebugger/Bridge/CkDebugger_Bridge.h"
 #include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
 
@@ -56,10 +58,10 @@ auto
 auto
     UCk_GameplayDebugger_Subsystem_UE::
     DoesSupportWorldType(
-        const EWorldType::Type WorldType) const
+        const EWorldType::Type InWorldType) const
     -> bool
 {
-    return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
+    return InWorldType == EWorldType::Game || InWorldType == EWorldType::PIE;
 }
 
 auto
@@ -70,12 +72,12 @@ auto
 #if WITH_GAMEPLAY_DEBUGGER
     const auto GetIsServer = [&]() -> bool
     {
-        const auto* world = this->GetWorld();
+        const auto* World = this->GetWorld();
 
-        if (ck::Is_NOT_Valid(world))
+        if (ck::Is_NOT_Valid(World))
         { return true; }
 
-        return world->IsNetMode(NM_DedicatedServer) || world->IsNetMode(NM_ListenServer);
+        return World->IsNetMode(NM_DedicatedServer) || World->IsNetMode(NM_ListenServer);
     };
 
     if (GetIsServer())
@@ -93,21 +95,20 @@ auto
     CK_ENSURE_IF_NOT(ck::IsValid(_DebugBridgeActor), TEXT("Failed to spawn Gameplay Debugger DebugBridge Actor!"))
     { return; }
 
-    const auto& userOverrideDebugProfile = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_DebugProfile();
-
-    if (ck::IsValid(userOverrideDebugProfile))
+    if (const auto& UserOverrideDebugProfile = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_DebugProfile();
+        ck::IsValid(UserOverrideDebugProfile))
     {
-        _DebugBridgeActor->LoadNewDebugProfile(userOverrideDebugProfile);
+        _DebugBridgeActor->LoadNewDebugProfile(UserOverrideDebugProfile);
         return;
     }
 
-    const auto& projectDefaultDebugProfile = UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_DebugProfile();
+    const auto& ProjectDefaultDebugProfile = UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_DebugProfile();
 
-    CK_ENSURE_IF_NOT(ck::IsValid(projectDefaultDebugProfile),
+    CK_LOG_ERROR_NOTIFY_IF_NOT(ck::gameplay_debugger, ck::IsValid(ProjectDefaultDebugProfile),
         TEXT("Invalid Gameplay Debugger Debug Profile set in the Project Settings! and NO profile override set in the Editor Preferences"))
     { return; }
 
-    _DebugBridgeActor->LoadNewDebugProfile(projectDefaultDebugProfile);
+    _DebugBridgeActor->LoadNewDebugProfile(ProjectDefaultDebugProfile);
 #endif
 }
 

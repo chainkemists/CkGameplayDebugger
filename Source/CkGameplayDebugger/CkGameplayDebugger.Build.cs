@@ -23,6 +23,7 @@ public class CkGameplayDebugger : ModuleRules
 
             "CkCore",
             "CkInput",
+            "CkLog",
             "CkSettings",
         });
 

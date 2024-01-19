@@ -10,7 +10,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 UENUM(BlueprintType)
-enum class FCk_GameplayDebugger_BackgroundWidth
+enum class FCk_GameplayDebugger_BackgroundWidth : uint8
 {
     OneThird UMETA(DislayName = "1/3 Viewport Width"),
     Half UMETA(DislayName = "1/2 Viewport Width"),
@@ -66,6 +66,21 @@ private:
               meta = (AllowPrivateAccess = true))
     FKey _LastActorKey = EKeys::End;
 
+    // Key to press to select the next UWorld
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    FKey _NextWorldKey = EKeys::PageUp;
+
+    // Key to press to select the previous UWorld
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    FKey _PrevWorldKey = EKeys::PageDown;
+
+    // Key to press to toggle between the Server UWorld and the FIRST Client UWorld
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    FKey _ServerClientWorldToggleKey = EKeys::Delete;
+
 public:
     CK_PROPERTY_GET(_StickyModiferKey);
     CK_PROPERTY_GET(_NextFilterKey);
@@ -74,6 +89,9 @@ public:
     CK_PROPERTY_GET(_PreviousActorKey);
     CK_PROPERTY_GET(_FirstActorKey);
     CK_PROPERTY_GET(_LastActorKey);
+    CK_PROPERTY_GET(_NextWorldKey);
+    CK_PROPERTY_GET(_PrevWorldKey);
+    CK_PROPERTY_GET(_ServerClientWorldToggleKey);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

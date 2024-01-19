@@ -1,6 +1,8 @@
 #include "CkDebugger_ActorsOfClassFilter.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/World/CkWorld_Utils.h"
+
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerTypes.h"
 
 #include <Engine/World.h>
@@ -16,41 +18,41 @@ auto
     -> FCk_GameplayDebugger_GatherAndFilterActors_Result
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& drawData = InParams.Get_DrawData();
+    const auto& DrawData = InParams.Get_DrawData();
 
-    const auto& ownerPC = drawData.Get_OwnerPC().Get();
-    if (ck::Is_NOT_Valid(ownerPC))
+    const auto& OwnerPC = DrawData.Get_OwnerPC().Get();
+    if (ck::Is_NOT_Valid(OwnerPC))
     { return {}; }
 
-    const auto& controlledPawn = ownerPC->GetPawn();
-    if (ck::Is_NOT_Valid(controlledPawn))
+    if (const auto& ControlledPawn = OwnerPC->GetPawn();
+        ck::Is_NOT_Valid(ControlledPawn))
     { return {}; }
 
-    const auto& canvasContext = drawData.Get_CanvasContext();
-    if (ck::Is_NOT_Valid(canvasContext, ck::IsValid_Policy_NullptrOnly{}))
+    const auto& CanvasContext = DrawData.Get_CanvasContext();
+    if (ck::Is_NOT_Valid(CanvasContext, ck::IsValid_Policy_NullptrOnly{}))
     { return {}; }
 
-    const auto& filteredActors = [&]() -> FCk_GameplayDebugger_DebugActorList
+    const auto& FilteredActors = [&]() -> FCk_GameplayDebugger_DebugActorList
     {
-        TArray<AActor*> outFoundActors;
-        UGameplayStatics::GetAllActorsOfClass(GetWorld(), _ValidActorClass, outFoundActors);
+        TArray<AActor*> FoundActors;
+        UGameplayStatics::GetAllActorsOfClass(Cast<UObject>(DrawData.Get_CurrentWorld().Get()), _ValidActorClass, FoundActors);
 
         switch (_ActorVisibilityPolicy)
         {
             case ECk_GameplayDebugger_Filter_ActorVisibility_Policy::Default:
             {
-                return FCk_GameplayDebugger_DebugActorList{outFoundActors};
+                return FCk_GameplayDebugger_DebugActorList{FoundActors};
             };
             case ECk_GameplayDebugger_Filter_ActorVisibility_Policy::VisibleOnScreenOnly:
             {
                 const auto& Get_IsOnScreen = [&](const AActor* InActor) -> bool
                 {
-                    return DoGet_ActorScreenPosition(*InActor, *canvasContext).Z > 0;
+                    return DoGet_ActorScreenPosition(*InActor, *CanvasContext).Z > 0;
                 };
 
-                const auto& actorsOnScreen = outFoundActors.FilterByPredicate(Get_IsOnScreen);
+                const auto& ActorsOnScreen = FoundActors.FilterByPredicate(Get_IsOnScreen);
 
-                return FCk_GameplayDebugger_DebugActorList{actorsOnScreen};
+                return FCk_GameplayDebugger_DebugActorList{ActorsOnScreen};
             }
             default:
             {
@@ -62,7 +64,7 @@ auto
 
     return FCk_GameplayDebugger_GatherAndFilterActors_Result
     {
-        FCk_GameplayDebugger_DebugActorList{filteredActors}
+        FCk_GameplayDebugger_DebugActorList{FilteredActors}
     };
 #else
     return {};

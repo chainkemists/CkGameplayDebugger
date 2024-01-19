@@ -1,7 +1,10 @@
 #include "CkDebugger_Bridge.h"
 
+#include "GameplayDebuggerConfig.h"
+
 #include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 #include "CkCore/Object/CkObject_Utils.h"
 
 #include "CkInput/CkInput_Utils.h"
@@ -348,6 +351,7 @@ auto
     const auto& DebugNavControls = _CurrentlyLoadedDebugProfile->Get_DebugNavControls();
 
     DoHandleFilterChanges(OwnerPC, DebugNavControls);
+    DoHandleWorldChange(OwnerPC, DebugNavControls, InDrawData.Get_AvailableWorlds());
 
     const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
@@ -356,9 +360,61 @@ auto
     if (ck::Is_NOT_Valid(CurrentlySelectedFilter))
     { return; }
 
+    const auto CurrentWorldToUse = InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex];
+    {
+        // followed GameplayDebuggerLocalController:307
+        const auto NetModeText = [&]()
+        {
+            if (CurrentWorldToUse->IsNetMode(NM_DedicatedServer))
+            {
+                return TEXT("== Dedicated Server ==");
+            }
+            if (CurrentWorldToUse->IsNetMode(NM_Client))
+            {
+                return TEXT("== Client == ");
+            }
+            if (CurrentWorldToUse->IsNetMode(NM_ListenServer))
+            {
+                return TEXT("== Listen Server ==");
+            }
+            if (CurrentWorldToUse->IsNetMode(NM_Standalone))
+            {
+                return TEXT("== Standalone ==");
+            }
+
+            return TEXT("NO NETMODE");
+        }();
+
+        float TimestampSizeX = 0.0f, TimestampSizeY = 0.0f;
+        InDrawData.Get_CanvasContext()->MeasureString(NetModeText, TimestampSizeX, TimestampSizeY);
+
+        const auto SettingsCDO = UGameplayDebuggerConfig::StaticClass()->GetDefaultObject<UGameplayDebuggerConfig>();
+        const auto PaddingLeft = SettingsCDO->DebugCanvasPaddingLeft;
+        const auto PaddingRight = SettingsCDO->DebugCanvasPaddingRight;
+        const auto PaddingTop = SettingsCDO->DebugCanvasPaddingTop;
+
+        const auto SimulateMode = FGameplayDebuggerAddonBase::IsSimulateInEditor() || InDrawData.Get_Replicator()->IsEditorWorldReplicator();
+
+        const float DPIScale = InDrawData.Get_CanvasContext()->Canvas->GetDPIScale();
+        const float CanvasSizeX = (InDrawData.Get_CanvasContext()->Canvas->SizeX / DPIScale) - PaddingLeft - PaddingRight;
+        const float UsePaddingTop = PaddingTop + (SimulateMode ? 30.0f : 0) + 30.0f;
+
+        InDrawData.Get_CanvasContext()->PrintAt((CanvasSizeX - TimestampSizeX) * 0.5f, UsePaddingTop, FColor::Cyan, FString{NetModeText}.ToUpper());
+    }
+
     const auto& SortedFilteredActorList = CurrentlySelectedFilter->Get_SortedFilteredActors
     (
-        FCk_GameplayDebugger_GetSortedFilteredActors_Params{InDrawData}
+        FCk_GameplayDebugger_GetSortedFilteredActors_Params
+        {
+            FCk_Payload_GameplayDebugger_OnDrawData
+            {
+                InDrawData.Get_OwnerPC(),
+                InDrawData.Get_CanvasContext(),
+                InDrawData.Get_Replicator(),
+                InDrawData.Get_AvailableWorlds(),
+                InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex]
+            }
+        }
     );
 
     const auto& SortedFilteredActors = SortedFilteredActorList.Get_DebugActors();
@@ -577,7 +633,7 @@ auto
 
     const auto CurrentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
 
-    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex + 1);
 
@@ -586,13 +642,61 @@ auto
             _CurrentlySelectedActorIndex = 0;
         }
     }
-    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousFilterKey(), InDebugNavControls.Get_StickyModiferKey()))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_PreviousFilterKey()))
     {
         DoChangeFilter(_CurrentlySelectedFilterIndex, _CurrentlySelectedFilterIndex - 1);
         if (CurrentSelectedFilterIndexCopy != _CurrentlySelectedFilterIndex)
         {
             _CurrentlySelectedActorIndex = 0;
         }
+    }
+#endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoHandleWorldChange(
+        APlayerController* const& InOwnerPC,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
+        const TArray<TWeakObjectPtr<UWorld>>& InAvailableWorlds)
+    -> void
+{
+#if WITH_GAMEPLAY_DEBUGGER
+    if (ck::Is_NOT_Valid(InOwnerPC))
+    { return; }
+
+    const auto CurrentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
+
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextWorldKey()))
+    {
+        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Increment_WithWrap(_CurrentWorldToUseIndex, FCk_IntRange{0, InAvailableWorlds.Num()});
+    }
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_PrevWorldKey()))
+    {
+        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Decrement_WithWrap(_CurrentWorldToUseIndex, FCk_IntRange{0, InAvailableWorlds.Num()});
+    }
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_ServerClientWorldToggleKey()))
+    {
+        const auto SelectedWorldIndex = InAvailableWorlds.IndexOfByPredicate([&](const TWeakObjectPtr<UWorld>& InWorld)
+        {
+            const auto CurrentWorldNetMode = InAvailableWorlds[_CurrentWorldToUseIndex]->GetNetMode();
+
+            if (CurrentWorldNetMode == NM_Client)
+            {
+                if (InWorld->IsNetMode(NM_DedicatedServer) || InWorld->IsNetMode(NM_ListenServer) || InWorld->IsNetMode(NM_Standalone))
+                { return true; }
+            }
+            else
+            {
+                if (InWorld->IsNetMode(NM_Client))
+                { return true; }
+            }
+
+            return false;
+        });
+
+        if (SelectedWorldIndex != INDEX_NONE)
+        { _CurrentWorldToUseIndex = SelectedWorldIndex; }
     }
 #endif
 }
@@ -653,20 +757,20 @@ auto
 
     const auto& StickyModifierKey = InDebugNavControls.Get_StickyModiferKey();
 
-    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_NextActorKey(), StickyModifierKey))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextActorKey()))
     {
         ++_CurrentlySelectedActorIndex;
     }
-    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_PreviousActorKey(), StickyModifierKey))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_PreviousActorKey()))
     {
         --_CurrentlySelectedActorIndex;
     }
 
-    if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_FirstActorKey(), StickyModifierKey))
+    if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_FirstActorKey()))
     {
         _CurrentlySelectedActorIndex = 0;
     }
-    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InDebugNavControls.Get_LastActorKey(), StickyModifierKey))
+    else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_LastActorKey()))
     {
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
     }

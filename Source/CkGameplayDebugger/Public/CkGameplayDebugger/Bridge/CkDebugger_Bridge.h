@@ -67,6 +67,11 @@ private:
         APlayerController* const& InOwnerPC,
         const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls) -> void;
 
+    auto DoHandleWorldChange(
+        APlayerController* const& InOwnerPC,
+        const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
+        const TArray<TWeakObjectPtr<UWorld>>& InAvailableWorlds) -> void;
+
     auto DoHandleFilterActionActivationToggling(
         APlayerController* const& InOwnerPC,
         const FCk_GameplayDebugger_DebugNavControls& InDebugNavControls,
@@ -87,6 +92,8 @@ private:
 private:
     int32 _CurrentlySelectedActorIndex = 0;
     int32 _CurrentlySelectedFilterIndex = 0;
+
+    int32 _CurrentWorldToUseIndex = 0;
 
     TWeakObjectPtr<AActor> _PreviouslySelectedActor;
 };

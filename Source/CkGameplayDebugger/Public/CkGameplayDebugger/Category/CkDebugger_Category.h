@@ -56,6 +56,9 @@ private:
 
     FCk_WorldTime _LastUpdated;
 
+    TArray<TWeakObjectPtr<UWorld>> _Worlds;
+    int32 _NextWorldToUse = 0;
+
 private:
     static TSharedPtr<FCk_GameplayDebugger_Category> _This;
 };

@@ -1,5 +1,8 @@
 #include "CkDebugger_Category.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.inl.h"
+#include "CkCore/World/CkWorld_Utils.h"
+
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
 #include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerTypes.h"
 #include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
@@ -64,6 +67,11 @@ auto
         FGameplayDebuggerCanvasContext& InCanvasContext)
     -> void
 {
+    _Worlds = ck::algo::Transform<decltype(_Worlds)>(UCk_Utils_World_UE::Get_AllAvailableGameWorlds(), [](UWorld* InWorld)
+    {
+        return InWorld;
+    });
+
     const auto CurrentWorldTime = FCk_WorldTime{InOwnerPC};
 
     if (CurrentWorldTime.Get_FrameNumber() == _LastUpdated.Get_FrameNumber())
@@ -75,17 +83,30 @@ auto
 
     const auto& FontSizeToUse = [&]() -> ECk_Engine_TextFontSize
     {
-        const auto& userOverrideFont = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_FontSize();
+        const auto& UserOverrideFont = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_FontSize();
 
-        if (ck::IsValid(userOverrideFont))
-        { return *userOverrideFont; }
+        if (ck::IsValid(UserOverrideFont))
+        { return *UserOverrideFont; }
 
         return UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_FontSize();
     }();
 
     InCanvasContext.Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(FontSizeToUse);
 
-    _OnDrawDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnDrawData{InOwnerPC, &InCanvasContext, GetReplicator()});
+    if (_Worlds.IsEmpty())
+    { return; }
+
+    _OnDrawDataDelegate.ExecuteIfBound
+    (
+        FCk_Payload_GameplayDebugger_OnDrawData
+        {
+            InOwnerPC,
+            &InCanvasContext,
+            GetReplicator(),
+            _Worlds,
+            _Worlds[_NextWorldToUse]
+        }
+    );
 }
 
 auto

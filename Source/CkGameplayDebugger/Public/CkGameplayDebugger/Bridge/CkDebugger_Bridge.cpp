@@ -191,19 +191,19 @@ auto
         {
             switch (const auto& SelectedWidth = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_BackgroundWidth())
             {
-                case FCk_GameplayDebugger_BackgroundWidth::OneThird:
+                case ECk_GameplayDebugger_BackgroundWidth::OneThird:
                 {
                     return OutViewportSize.X / 3.0f;
                 }
-                case FCk_GameplayDebugger_BackgroundWidth::Half:
+                case ECk_GameplayDebugger_BackgroundWidth::Half:
                 {
                     return OutViewportSize.X / 2.0f;
                 }
-                case FCk_GameplayDebugger_BackgroundWidth::ThreeFourth:
+                case ECk_GameplayDebugger_BackgroundWidth::ThreeFourth:
                 {
                     return OutViewportSize.X * 0.75f;
                 }
-                case FCk_GameplayDebugger_BackgroundWidth::Full:
+                case ECk_GameplayDebugger_BackgroundWidth::Full:
                 {
                     return OutViewportSize.X;
                 }

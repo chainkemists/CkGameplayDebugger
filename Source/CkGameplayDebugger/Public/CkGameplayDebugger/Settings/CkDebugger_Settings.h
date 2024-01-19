@@ -41,7 +41,7 @@ private:
 
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
               meta = (AllowPrivateAccess = true, EditCondition = "_DisplayTranslucentBackground"))
-    FCk_GameplayDebugger_BackgroundWidth _BackgroundWidth = FCk_GameplayDebugger_BackgroundWidth::Half;
+    ECk_GameplayDebugger_BackgroundWidth _BackgroundWidth = ECk_GameplayDebugger_BackgroundWidth::Half;
 
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
               meta = (AllowPrivateAccess = true))
@@ -88,7 +88,7 @@ public:
     static auto Get_UserOverride_FontSize() -> TOptional<ECk_Engine_TextFontSize>;
     static auto Get_DisplayTranslucentBackground() -> bool;
     static auto Get_BackgroundColor() -> FLinearColor;
-    static auto Get_BackgroundWidth() -> FCk_GameplayDebugger_BackgroundWidth;
+    static auto Get_BackgroundWidth() -> ECk_GameplayDebugger_BackgroundWidth;
     static auto Get_EnableTextDropShadow() -> bool;
 };
 

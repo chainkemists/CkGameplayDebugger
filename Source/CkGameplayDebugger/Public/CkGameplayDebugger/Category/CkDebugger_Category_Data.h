@@ -61,9 +61,11 @@ struct CKGAMEPLAYDEBUGGER_API FCk_Payload_GameplayDebugger_OnDrawData
 public:
     FCk_Payload_GameplayDebugger_OnDrawData() = default;
     FCk_Payload_GameplayDebugger_OnDrawData(
-        APlayerController* InOwnerPC,
+        TWeakObjectPtr<APlayerController> InOwnerPC,
         FGameplayDebuggerCanvasContext* InCanvasContext,
-        AGameplayDebuggerCategoryReplicator* InReplicator);
+        TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> InReplicator,
+        TArray<TWeakObjectPtr<UWorld>> InAvailableWorlds,
+        TWeakObjectPtr<UWorld> InCurrentWorld);
 
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
@@ -73,6 +75,12 @@ protected:
     UPROPERTY(Transient)
     TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> _Replicator;
 
+    UPROPERTY(Transient)
+    TArray<TWeakObjectPtr<UWorld>> _AvailableWorlds;
+
+    UPROPERTY(Transient)
+    TWeakObjectPtr<UWorld> _CurrentWorld;
+
 private:
     FGameplayDebuggerCanvasContext* _CanvasContext = nullptr;
 
@@ -80,6 +88,8 @@ public:
     CK_PROPERTY_GET(_OwnerPC);
     CK_PROPERTY_GET(_Replicator);
     CK_PROPERTY_GET(_CanvasContext);
+    CK_PROPERTY_GET(_AvailableWorlds);
+    CK_PROPERTY_GET(_CurrentWorld);
 };
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(

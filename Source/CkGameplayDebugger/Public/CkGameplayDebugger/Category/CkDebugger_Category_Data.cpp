@@ -17,11 +17,15 @@ FCk_Payload_GameplayDebugger_OnCollectData::
 
 FCk_Payload_GameplayDebugger_OnDrawData::
     FCk_Payload_GameplayDebugger_OnDrawData(
-        APlayerController* InOwnerPC,
+        TWeakObjectPtr<APlayerController> InOwnerPC,
         FGameplayDebuggerCanvasContext* InCanvasContext,
-        AGameplayDebuggerCategoryReplicator* InReplicator)
+        TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> InReplicator,
+        TArray<TWeakObjectPtr<UWorld>> InAvailableWorlds,
+        TWeakObjectPtr<UWorld> InCurrentWorld)
     : _OwnerPC(InOwnerPC)
     , _Replicator(InReplicator)
+    , _AvailableWorlds(MoveTemp(InAvailableWorlds))
+    , _CurrentWorld(InCurrentWorld)
     , _CanvasContext(InCanvasContext)
 {
 }

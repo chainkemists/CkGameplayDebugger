@@ -1,6 +1,7 @@
 #include "CkDebugger_Filter.h"
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
+#include "CkCore/World/CkWorld_Utils.h"
 
 #include "CkGameplayDebugger/Action/CkDebugger_Action.h"
 
@@ -61,19 +62,19 @@ auto
 
     _TimeSinceLastUpdate = _TimeSinceLastUpdate - _UpdateFrequency;
 
-    const auto& drawData = InParams.Get_DrawData();
+    const auto& DrawData = InParams.Get_DrawData();
 
-    const auto& filteredActors = GatherAndFilterActors(FCk_GameplayDebugger_GatherAndFilterActors_Params{drawData});
-    const auto& sortedFilteredActors = SortFilteredActors
+    const auto& FilteredActors = GatherAndFilterActors(FCk_GameplayDebugger_GatherAndFilterActors_Params{DrawData});
+    const auto& SortedFilteredActors = SortFilteredActors
     (
         FCk_GameplayDebugger_SortFilteredActors_Params
         {
-            drawData,
-            filteredActors.Get_FilteredDebugActors()
+            DrawData,
+            FilteredActors.Get_FilteredDebugActors()
         }
     );
 
-    _CachedActorList = sortedFilteredActors.Get_SortedFilteredActors();
+    _CachedActorList = SortedFilteredActors.Get_SortedFilteredActors();
     return _CachedActorList;
 }
 

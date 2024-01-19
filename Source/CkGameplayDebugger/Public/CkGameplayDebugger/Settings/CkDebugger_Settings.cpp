@@ -44,7 +44,7 @@ auto
 auto
     UCk_Utils_GameplayDebugger_UserSettings_UE::
     Get_BackgroundWidth()
-    -> FCk_GameplayDebugger_BackgroundWidth
+    -> ECk_GameplayDebugger_BackgroundWidth
 {
     return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_BackgroundWidth();
 }

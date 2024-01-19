@@ -10,7 +10,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 UENUM(BlueprintType)
-enum class FCk_GameplayDebugger_BackgroundWidth : uint8
+enum class ECk_GameplayDebugger_BackgroundWidth : uint8
 {
     OneThird UMETA(DislayName = "1/3 Viewport Width"),
     Half UMETA(DislayName = "1/2 Viewport Width"),
@@ -18,7 +18,7 @@ enum class FCk_GameplayDebugger_BackgroundWidth : uint8
     Full UMETA(DislayName = "Full Viewport Width"),
 };
 
-CK_DEFINE_CUSTOM_FORMATTER_ENUM(FCk_GameplayDebugger_BackgroundWidth);
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECk_GameplayDebugger_BackgroundWidth);
 
 // --------------------------------------------------------------------------------------------------------------------
 

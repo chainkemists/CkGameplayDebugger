@@ -78,28 +78,28 @@ auto
     -> FCk_GameplayDebugger_SortFilteredActors_Result
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& drawData = InParams.Get_DrawData();
+    const auto& DrawData = InParams.Get_DrawData();
 
-    const auto& ownerPC = drawData.Get_OwnerPC().Get();
-    if (ck::Is_NOT_Valid(ownerPC))
+    const auto& OwnerPC = DrawData.Get_OwnerPC().Get();
+    if (ck::Is_NOT_Valid(OwnerPC))
     { return {}; }
 
-    const auto& controlledPawn = ownerPC->GetPawn();
-    if (ck::Is_NOT_Valid(controlledPawn))
+    const auto& ControlledPawn = OwnerPC->GetPawn();
+    if (ck::Is_NOT_Valid(ControlledPawn))
     { return {}; }
 
-    const auto& canvasContext = drawData.Get_CanvasContext();
-    if (ck::Is_NOT_Valid(canvasContext, ck::IsValid_Policy_NullptrOnly{}))
+    const auto& CanvasContext = DrawData.Get_CanvasContext();
+    if (ck::Is_NOT_Valid(CanvasContext, ck::IsValid_Policy_NullptrOnly{}))
     { return {}; }
 
-    const auto& pawnLocation = controlledPawn->GetActorLocation();
+    const auto& PawnLocation = ControlledPawn->GetActorLocation();
 
     const auto& Get_IsNear = [&](const AActor& InActor) -> bool
     {
-        return FVector::DistSquared(InActor.GetActorLocation(), pawnLocation) < Get_SortingMaxDistance();
+        return FVector::DistSquared(InActor.GetActorLocation(), PawnLocation) < Get_SortingMaxDistance();
     };
 
-    const auto& sortingPredicate = [&](const AActor& lhs, const AActor& rhs) -> bool
+    const auto& SortingPredicate = [&](const AActor& lhs, const AActor& rhs) -> bool
     {
         const auto& isLhsNear = Get_IsNear(lhs);
         const auto& isRhsNear = Get_IsNear(rhs);
@@ -107,15 +107,15 @@ auto
         if (isLhsNear != isRhsNear)
         { return isLhsNear; }
 
-        return DoGet_ActorScreenPosition(lhs, *canvasContext).X < DoGet_ActorScreenPosition(rhs, *canvasContext).X;
+        return DoGet_ActorScreenPosition(lhs, *CanvasContext).X < DoGet_ActorScreenPosition(rhs, *CanvasContext).X;
     };
 
-    auto sortedFilteredActors = InParams.Get_FilteredActors().Get_DebugActors();
-    sortedFilteredActors.Sort(sortingPredicate);
+    auto SortedFilteredActors = InParams.Get_FilteredActors().Get_DebugActors();
+    SortedFilteredActors.Sort(SortingPredicate);
 
     return FCk_GameplayDebugger_SortFilteredActors_Result
     {
-        FCk_GameplayDebugger_DebugActorList{sortedFilteredActors}
+        FCk_GameplayDebugger_DebugActorList{SortedFilteredActors}
     };
 #else
     return {};
@@ -133,13 +133,12 @@ auto
     static constexpr double notVisible = -1.0;
     static constexpr double visible = 1.0;
 
-    //const auto& location = InActor.GetActorLocation() + FVector{0, 0, InActor.GetSimpleCollisionHalfHeight()};
-    const auto& location = InActor.GetActorLocation();
-    const auto& isActorLocationVisible = InCanvasContext.IsLocationVisible(location);
+    const auto& ActorLocation = InActor.GetActorLocation();
+    const auto& IsActorLocationVisible = InCanvasContext.IsLocationVisible(ActorLocation);
 
-    const auto& position2D = InCanvasContext.ProjectLocation(location);
+    const auto& Position2D = InCanvasContext.ProjectLocation(ActorLocation);
 
-    return FVector{position2D.X, position2D.Y, isActorLocationVisible ? visible : notVisible};
+    return FVector{Position2D.X, Position2D.Y, IsActorLocationVisible ? visible : notVisible};
 #else
     return {};
 #endif

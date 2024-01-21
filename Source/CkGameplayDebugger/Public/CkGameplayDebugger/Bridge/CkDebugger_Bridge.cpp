@@ -180,49 +180,9 @@ auto
     if (ck::Is_NOT_Valid(OwnerPC))
     { return; }
 
-    if (UCk_Utils_GameplayDebugger_Settings_UE::Get_DisplayTranslucentBackground())
-    {
-        FVector2D OutViewportSize;
-        GEngine->GameViewport->GetViewportSize(OutViewportSize);
+    const auto& DisplaySettings = _CurrentlyLoadedDebugProfile->Get_DisplaySettings();
 
-        constexpr auto BackgroundPadding = 5.0f;
-
-        const auto& BackgroundWidth = [&]()
-        {
-            switch (const auto& SelectedWidth = UCk_Utils_GameplayDebugger_Settings_UE::Get_BackgroundWidth())
-            {
-                case ECk_GameplayDebugger_BackgroundWidth::OneThird:
-                {
-                    return OutViewportSize.X / 3.0f;
-                }
-                case ECk_GameplayDebugger_BackgroundWidth::Half:
-                {
-                    return OutViewportSize.X / 2.0f;
-                }
-                case ECk_GameplayDebugger_BackgroundWidth::ThreeFourth:
-                {
-                    return OutViewportSize.X * 0.75f;
-                }
-                case ECk_GameplayDebugger_BackgroundWidth::Full:
-                {
-                    return OutViewportSize.X;
-                }
-                default:
-                {
-                    CK_INVALID_ENUM(SelectedWidth);
-                    return OutViewportSize.X;
-                }
-            }
-        }();
-
-        const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), OutViewportSize.Y);
-        const auto BackgroundColor = UCk_Utils_GameplayDebugger_Settings_UE::Get_BackgroundColor();
-
-        FCanvasTileItem Background(FVector2D::ZeroVector, GWhiteTexture, BackgroundSize, BackgroundColor);
-        Background.BlendMode = SE_BLEND_Translucent;
-
-        CanvasContext->DrawItem(Background, CanvasContext->DefaultX - BackgroundPadding, CanvasContext->DefaultY - BackgroundPadding);
-    }
+    DoApplyDisplaySettings(CanvasContext, DisplaySettings);
 
     FString MainMenu;
 
@@ -363,29 +323,35 @@ auto
     const auto CurrentWorldToUse = InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex];
     {
         // followed GameplayDebuggerLocalController:307
-        const auto NetModeText = [&]()
+        const auto NetModeText = [&]() -> FString
         {
-            if (CurrentWorldToUse->IsNetMode(NM_DedicatedServer))
+            switch (CurrentWorldToUse->GetNetMode())
             {
-                return TEXT("== Dedicated Server ==");
+                case NM_Client:
+                {
+                    return FString{TEXT("== CLIENT == ")};
+                }
+                case NM_DedicatedServer:
+                {
+                    return FString{TEXT("== DEDICATED SERVER == ")};
+                }
+                case NM_ListenServer:
+                {
+                    return FString{TEXT("== LISTEN SERVER == ")};
+                }
+                case NM_Standalone:
+                {
+                    return FString{TEXT("== STANDALONE == ")};
+                }
+                default:
+                {
+                    return FString{TEXT("== NO NETMODE ==")};
+                }
             }
-            if (CurrentWorldToUse->IsNetMode(NM_Client))
-            {
-                return TEXT("== Client == ");
-            }
-            if (CurrentWorldToUse->IsNetMode(NM_ListenServer))
-            {
-                return TEXT("== Listen Server ==");
-            }
-            if (CurrentWorldToUse->IsNetMode(NM_Standalone))
-            {
-                return TEXT("== Standalone ==");
-            }
-
-            return TEXT("NO NETMODE");
         }();
 
-        float TimestampSizeX = 0.0f, TimestampSizeY = 0.0f;
+        auto TimestampSizeX = 0.0f;
+        auto TimestampSizeY = 0.0f;
         InDrawData.Get_CanvasContext()->MeasureString(NetModeText, TimestampSizeX, TimestampSizeY);
 
         const auto SettingsCDO = UGameplayDebuggerConfig::StaticClass()->GetDefaultObject<UGameplayDebuggerConfig>();
@@ -395,11 +361,11 @@ auto
 
         const auto SimulateMode = FGameplayDebuggerAddonBase::IsSimulateInEditor() || InDrawData.Get_Replicator()->IsEditorWorldReplicator();
 
-        const float DPIScale = InDrawData.Get_CanvasContext()->Canvas->GetDPIScale();
-        const float CanvasSizeX = (InDrawData.Get_CanvasContext()->Canvas->SizeX / DPIScale) - PaddingLeft - PaddingRight;
-        const float UsePaddingTop = PaddingTop + (SimulateMode ? 30.0f : 0) + 30.0f;
+        const auto DPIScale = InDrawData.Get_CanvasContext()->Canvas->GetDPIScale();
+        const auto CanvasSizeX = (InDrawData.Get_CanvasContext()->Canvas->SizeX / DPIScale) - PaddingLeft - PaddingRight;
+        const auto UsePaddingTop = PaddingTop + (SimulateMode ? 30.0f : 0) + 30.0f;
 
-        InDrawData.Get_CanvasContext()->PrintAt((CanvasSizeX - TimestampSizeX) * 0.5f, UsePaddingTop, FColor::Cyan, FString{NetModeText}.ToUpper());
+        InDrawData.Get_CanvasContext()->PrintAt((CanvasSizeX - TimestampSizeX) * 0.5f, UsePaddingTop, FColor::Cyan, NetModeText);
     }
 
     const auto& SortedFilteredActorList = CurrentlySelectedFilter->Get_SortedFilteredActors
@@ -479,6 +445,64 @@ auto
         }
     }
 #endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoApplyDisplaySettings(
+        FGameplayDebuggerCanvasContext* InCanvasContext,
+        const FCk_GameplayDebugger_DisplaySettings& InDisplaySettings) const
+    -> void
+{
+    if (ck::Is_NOT_Valid(InCanvasContext, ck::IsValid_Policy_NullptrOnly{}))
+    { return; }
+
+    InCanvasContext->FontRenderInfo.bEnableShadow = InDisplaySettings.Get_EnableTextDropShadow();
+    InCanvasContext->Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(InDisplaySettings.Get_FontSize());
+
+    if (InDisplaySettings.Get_DisplayTranslucentBackground())
+    {
+        FVector2D OutViewportSize;
+        GEngine->GameViewport->GetViewportSize(OutViewportSize);
+
+        constexpr auto BackgroundPadding = 5.0f;
+
+        const auto& BackgroundWidth = [&]()
+        {
+            switch (const auto& SelectedWidth = InDisplaySettings.Get_BackgroundWidth())
+            {
+                case ECk_GameplayDebugger_BackgroundWidth::OneThird:
+                {
+                    return OutViewportSize.X / 3.0f;
+                }
+                case ECk_GameplayDebugger_BackgroundWidth::Half:
+                {
+                    return OutViewportSize.X / 2.0f;
+                }
+                case ECk_GameplayDebugger_BackgroundWidth::ThreeFourth:
+                {
+                    return OutViewportSize.X * 0.75f;
+                }
+                case ECk_GameplayDebugger_BackgroundWidth::Full:
+                {
+                    return OutViewportSize.X;
+                }
+                default:
+                {
+                    CK_INVALID_ENUM(SelectedWidth);
+                    return OutViewportSize.X;
+                }
+            }
+        }();
+
+        const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), OutViewportSize.Y);
+        const auto BackgroundColor = InDisplaySettings.Get_BackgroundColor();
+
+        FCanvasTileItem Background(FVector2D::ZeroVector, GWhiteTexture, BackgroundSize, BackgroundColor);
+        Background.BlendMode = SE_BLEND_Translucent;
+
+        InCanvasContext->DrawItem(Background, InCanvasContext->DefaultX - BackgroundPadding, InCanvasContext->DefaultY - BackgroundPadding);
+    }
 }
 
 auto
@@ -665,8 +689,6 @@ auto
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
 
-    const auto CurrentSelectedFilterIndexCopy = _CurrentlySelectedFilterIndex;
-
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextWorldKey()))
     {
         _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Increment_WithWrap(_CurrentWorldToUseIndex, FCk_IntRange{0, InAvailableWorlds.Num()});
@@ -775,7 +797,7 @@ auto
         _CurrentlySelectedActorIndex = InSortedFilteredActors.Num() - 1;
     }
 
-    // Enforce Selected Actor stability if user did not request any selection change
+    // Enforce Selected Actor stability if user did not request any actor selection change
     if (PreviouslySelectedActorIndex == _CurrentlySelectedActorIndex && ck::IsValid(_PreviouslySelectedActor))
     {
         const auto& IndexOfPreviouslySelectedActor = InSortedFilteredActors.IndexOfByPredicate([&](const TObjectPtr<AActor> InSortedFilteredActor)

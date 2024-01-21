@@ -65,13 +65,13 @@ auto
         const FCk_GameplayDebugger_DebugWidget_Params& InParams)
     -> ThisType*
 {
-    auto* createdWidget = Cast<ThisType>(CreateWidget(InWidgetOwner, InDebugWidgetClass));
+    auto* CreatedWidget = Cast<ThisType>(CreateWidget(InWidgetOwner, InDebugWidgetClass));
 
-    CK_ENSURE_IF_NOT(ck::IsValid(createdWidget), TEXT("Failed to create the Gameplay Debugger Debug Widget!"))
+    CK_ENSURE_IF_NOT(ck::IsValid(CreatedWidget), TEXT("Failed to create the Gameplay Debugger Debug Widget!"))
     { return {}; }
 
-    createdWidget->_Params = InParams;
-    return createdWidget;
+    CreatedWidget->_Params = InParams;
+    return CreatedWidget;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

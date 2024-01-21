@@ -23,38 +23,8 @@ private:
               meta = (AllowPrivateAccess = true))
     TSoftObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA> _UserOverride_DebugProfile;
 
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true, InlineEditConditionToggle))
-    bool _Has_UserOverride_FontSize = false;
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true, EditCondition = "_Has_UserOverride_FontSize"))
-    ECk_Engine_TextFontSize _UserOverride_FontSize = ECk_Engine_TextFontSize::Tiny;
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true))
-    bool _DisplayTranslucentBackground = true;
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true, EditCondition = "_DisplayTranslucentBackground"))
-    FLinearColor _BackgroundColor = FLinearColor{0.0f, 0.0f, 0.0f, 0.3f};
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true, EditCondition = "_DisplayTranslucentBackground"))
-    ECk_GameplayDebugger_BackgroundWidth _BackgroundWidth = ECk_GameplayDebugger_BackgroundWidth::Half;
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true))
-    bool _EnableTextDropShadow = false;
-
 public:
     CK_PROPERTY_GET(_UserOverride_DebugProfile);
-    CK_PROPERTY_GET(_Has_UserOverride_FontSize);
-    CK_PROPERTY_GET(_UserOverride_FontSize);
-    CK_PROPERTY_GET(_DisplayTranslucentBackground);
-    CK_PROPERTY_GET(_BackgroundColor);
-    CK_PROPERTY_GET(_BackgroundWidth);
-    CK_PROPERTY_GET(_EnableTextDropShadow);
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -70,13 +40,8 @@ private:
               meta = (AllowPrivateAccess = true))
     TSoftObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA> _ProjectDefault_DebugProfile;
 
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true))
-    ECk_Engine_TextFontSize _ProjectDefault_FontSize = ECk_Engine_TextFontSize::Tiny;
-
 public:
     CK_PROPERTY_GET(_ProjectDefault_DebugProfile);
-    CK_PROPERTY_GET(_ProjectDefault_FontSize);
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -84,16 +49,8 @@ public:
 class CKGAMEPLAYDEBUGGER_API UCk_Utils_GameplayDebugger_Settings_UE
 {
 public:
-    static auto Get_DisplayTranslucentBackground() -> bool;
-    static auto Get_BackgroundColor() -> FLinearColor;
-    static auto Get_BackgroundWidth() -> ECk_GameplayDebugger_BackgroundWidth;
-    static auto Get_EnableTextDropShadow() -> bool;
-
     static auto Get_UserOverride_DebugProfile() -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>;
-    static auto Get_UserOverride_FontSize() -> TOptional<ECk_Engine_TextFontSize>;
-
     static auto Get_ProjectDefault_DebugProfile() -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>;
-    static auto Get_ProjectDefault_FontSize() -> ECk_Engine_TextFontSize;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

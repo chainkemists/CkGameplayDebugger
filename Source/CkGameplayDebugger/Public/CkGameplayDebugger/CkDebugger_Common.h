@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkCore/Format/CkFormat.h"
+#include "CkCore/IO/CkIO_Utils.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include <InputCoreTypes.h>
@@ -92,6 +93,45 @@ public:
     CK_PROPERTY_GET(_NextWorldKey);
     CK_PROPERTY_GET(_PrevWorldKey);
     CK_PROPERTY_GET(_ServerClientWorldToggleKey);
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+USTRUCT(BlueprintType)
+struct CKGAMEPLAYDEBUGGER_API FCk_GameplayDebugger_DisplaySettings
+{
+    GENERATED_BODY()
+
+public:
+    CK_GENERATED_BODY(FCk_GameplayDebugger_DisplaySettings);
+
+private:
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
+              meta = (AllowPrivateAccess = true, EditCondition = "_Has_UserOverride_FontSize"))
+    ECk_Engine_TextFontSize _FontSize = ECk_Engine_TextFontSize::Tiny;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
+              meta = (AllowPrivateAccess = true))
+    bool _DisplayTranslucentBackground = true;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
+              meta = (AllowPrivateAccess = true, EditCondition = "_DisplayTranslucentBackground"))
+    FLinearColor _BackgroundColor = FLinearColor{0.0f, 0.0f, 0.0f, 0.3f};
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
+              meta = (AllowPrivateAccess = true, EditCondition = "_DisplayTranslucentBackground"))
+    ECk_GameplayDebugger_BackgroundWidth _BackgroundWidth = ECk_GameplayDebugger_BackgroundWidth::Half;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
+              meta = (AllowPrivateAccess = true))
+    bool _EnableTextDropShadow = false;
+
+public:
+    CK_PROPERTY_GET(_FontSize);
+    CK_PROPERTY_GET(_DisplayTranslucentBackground);
+    CK_PROPERTY_GET(_BackgroundColor);
+    CK_PROPERTY_GET(_BackgroundWidth);
+    CK_PROPERTY_GET(_EnableTextDropShadow);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

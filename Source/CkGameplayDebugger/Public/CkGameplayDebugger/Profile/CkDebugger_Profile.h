@@ -47,13 +47,18 @@ private:
     TArray<TObjectPtr<class UCk_GameplayDebugger_DebugAction_UE>> _GlobalActions;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|Config",
+              Category = "Ck|Config|Controls",
               meta = (AllowPrivateAccess = true))
     FCk_GameplayDebugger_DebugNavControls _DebugNavControls;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              Category = "Ck|Config|Display",
+              meta = (AllowPrivateAccess = true))
+    FCk_GameplayDebugger_DisplaySettings _DisplaySettings;
+
     // Optional widget to display while the GameplayDebugger is active
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
-              Category = "Ck|Config",
+              Category = "Ck|Config|Display",
               meta = (AllowPrivateAccess = true))
     TSubclassOf<class UCk_GameplayDebugger_DebugWidget_UE> _HUD_DebugWidget;
 
@@ -63,6 +68,7 @@ public:
     CK_PROPERTY_GET(_Filters);
     CK_PROPERTY_GET(_GlobalActions);
     CK_PROPERTY_GET(_DebugNavControls);
+    CK_PROPERTY_GET(_DisplaySettings);
     CK_PROPERTY_GET(_HUD_DebugWidget);
 };
 

@@ -47,6 +47,10 @@ private:
     auto DoActivateCurrentlySelectedFilter() const -> void;
     auto DoDeactivateCurrentlySelectedFilter() const -> void;
 
+    auto DoApplyDisplaySettings(
+        FGameplayDebuggerCanvasContext* InCanvasContext,
+        const FCk_GameplayDebugger_DisplaySettings& InDisplaySettings) const -> void;
+
     auto DoChangeFilter(
         int32 InPreviousFilterIndex,
         int32 InNewFilterIndex) -> void;

@@ -79,16 +79,16 @@ auto
 
     _LastUpdated = CurrentWorldTime;
 
-    InCanvasContext.FontRenderInfo.bEnableShadow = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_EnableTextDropShadow();
+    InCanvasContext.FontRenderInfo.bEnableShadow = UCk_Utils_GameplayDebugger_Settings_UE::Get_EnableTextDropShadow();
 
     const auto& FontSizeToUse = [&]() -> ECk_Engine_TextFontSize
     {
-        const auto& UserOverrideFont = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_FontSize();
+        const auto& UserOverrideFont = UCk_Utils_GameplayDebugger_Settings_UE::Get_UserOverride_FontSize();
 
         if (ck::IsValid(UserOverrideFont))
         { return *UserOverrideFont; }
 
-        return UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_FontSize();
+        return UCk_Utils_GameplayDebugger_Settings_UE::Get_ProjectDefault_FontSize();
     }();
 
     InCanvasContext.Font = UCk_Utils_IO_UE::Get_Engine_DefaultTextFont(FontSizeToUse);

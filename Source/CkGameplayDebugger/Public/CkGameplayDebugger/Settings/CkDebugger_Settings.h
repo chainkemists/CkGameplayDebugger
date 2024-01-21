@@ -14,7 +14,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS(meta = (DisplayName = "Gameplay Debugger"))
-class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_UserSettings_UE : public UCk_EditorPerProject_UserSettings_UE
+class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_UserSettings_UE : public UCk_Plugin_UserSettings_UE
 {
     GENERATED_BODY()
 
@@ -60,7 +60,7 @@ public:
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS(defaultconfig, meta = (DisplayName = "Gameplay Debugger"))
-class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_ProjectSettings_UE : public UCk_Engine_ProjectSettings_UE
+class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_ProjectSettings_UE : public UCk_Plugin_ProjectSettings_UE
 {
     GENERATED_BODY()
 
@@ -81,22 +81,17 @@ public:
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class CKGAMEPLAYDEBUGGER_API UCk_Utils_GameplayDebugger_UserSettings_UE
+class CKGAMEPLAYDEBUGGER_API UCk_Utils_GameplayDebugger_Settings_UE
 {
 public:
-    static auto Get_UserOverride_DebugProfile() -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>;
-    static auto Get_UserOverride_FontSize() -> TOptional<ECk_Engine_TextFontSize>;
     static auto Get_DisplayTranslucentBackground() -> bool;
     static auto Get_BackgroundColor() -> FLinearColor;
     static auto Get_BackgroundWidth() -> ECk_GameplayDebugger_BackgroundWidth;
     static auto Get_EnableTextDropShadow() -> bool;
-};
 
-// --------------------------------------------------------------------------------------------------------------------
+    static auto Get_UserOverride_DebugProfile() -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>;
+    static auto Get_UserOverride_FontSize() -> TOptional<ECk_Engine_TextFontSize>;
 
-class CKGAMEPLAYDEBUGGER_API UCk_Utils_GameplayDebugger_ProjectSettings_UE
-{
-public:
     static auto Get_ProjectDefault_DebugProfile() -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>;
     static auto Get_ProjectDefault_FontSize() -> ECk_Engine_TextFontSize;
 };

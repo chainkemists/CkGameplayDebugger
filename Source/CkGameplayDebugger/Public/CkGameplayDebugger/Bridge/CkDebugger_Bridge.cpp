@@ -180,7 +180,7 @@ auto
     if (ck::Is_NOT_Valid(OwnerPC))
     { return; }
 
-    if (UCk_Utils_GameplayDebugger_UserSettings_UE::Get_DisplayTranslucentBackground())
+    if (UCk_Utils_GameplayDebugger_Settings_UE::Get_DisplayTranslucentBackground())
     {
         FVector2D OutViewportSize;
         GEngine->GameViewport->GetViewportSize(OutViewportSize);
@@ -189,7 +189,7 @@ auto
 
         const auto& BackgroundWidth = [&]()
         {
-            switch (const auto& SelectedWidth = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_BackgroundWidth())
+            switch (const auto& SelectedWidth = UCk_Utils_GameplayDebugger_Settings_UE::Get_BackgroundWidth())
             {
                 case ECk_GameplayDebugger_BackgroundWidth::OneThird:
                 {
@@ -216,7 +216,7 @@ auto
         }();
 
         const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), OutViewportSize.Y);
-        const auto BackgroundColor = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_BackgroundColor();
+        const auto BackgroundColor = UCk_Utils_GameplayDebugger_Settings_UE::Get_BackgroundColor();
 
         FCanvasTileItem Background(FVector2D::ZeroVector, GWhiteTexture, BackgroundSize, BackgroundColor);
         Background.BlendMode = SE_BLEND_Translucent;

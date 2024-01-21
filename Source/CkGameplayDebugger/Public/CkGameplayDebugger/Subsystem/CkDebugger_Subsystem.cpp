@@ -95,14 +95,14 @@ auto
     CK_ENSURE_IF_NOT(ck::IsValid(_DebugBridgeActor), TEXT("Failed to spawn Gameplay Debugger DebugBridge Actor!"))
     { return; }
 
-    if (const auto& UserOverrideDebugProfile = UCk_Utils_GameplayDebugger_UserSettings_UE::Get_UserOverride_DebugProfile();
+    if (const auto& UserOverrideDebugProfile = UCk_Utils_GameplayDebugger_Settings_UE::Get_UserOverride_DebugProfile();
         ck::IsValid(UserOverrideDebugProfile))
     {
         _DebugBridgeActor->LoadNewDebugProfile(UserOverrideDebugProfile);
         return;
     }
 
-    const auto& ProjectDefaultDebugProfile = UCk_Utils_GameplayDebugger_ProjectSettings_UE::Get_ProjectDefault_DebugProfile();
+    const auto& ProjectDefaultDebugProfile = UCk_Utils_GameplayDebugger_Settings_UE::Get_ProjectDefault_DebugProfile();
 
     CK_LOG_ERROR_NOTIFY_IF_NOT(ck::gameplay_debugger, ck::IsValid(ProjectDefaultDebugProfile),
         TEXT("Invalid Gameplay Debugger Debug Profile set in the Project Settings! and NO profile override set in the Editor Preferences"))

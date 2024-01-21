@@ -5,7 +5,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_UserOverride_DebugProfile()
     -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>
 {
@@ -13,7 +13,7 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_UserOverride_FontSize()
     -> TOptional<ECk_Engine_TextFontSize>
 {
@@ -26,7 +26,7 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_DisplayTranslucentBackground()
     -> bool
 {
@@ -34,7 +34,7 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_BackgroundColor()
     -> FLinearColor
 {
@@ -42,7 +42,7 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_BackgroundWidth()
     -> ECk_GameplayDebugger_BackgroundWidth
 {
@@ -50,17 +50,15 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_UserSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_EnableTextDropShadow()
     -> bool
 {
     return UCk_Utils_Object_UE::Get_ClassDefaultObject<UCk_GameplayDebugger_UserSettings_UE>()->Get_EnableTextDropShadow();
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
 auto
-    UCk_Utils_GameplayDebugger_ProjectSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_ProjectDefault_DebugProfile()
     -> TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA>
 {
@@ -68,7 +66,7 @@ auto
 }
 
 auto
-    UCk_Utils_GameplayDebugger_ProjectSettings_UE::
+    UCk_Utils_GameplayDebugger_Settings_UE::
     Get_ProjectDefault_FontSize()
     -> ECk_Engine_TextFontSize
 {

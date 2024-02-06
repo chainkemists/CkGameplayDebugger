@@ -19,3 +19,17 @@ enum class ECk_GameplayDebugger_Filter_ActorVisibility_Policy : uint8
 CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECk_GameplayDebugger_Filter_ActorVisibility_Policy);
 
 // --------------------------------------------------------------------------------------------------------------------
+
+UENUM(BlueprintType)
+enum class ECk_GameplayDebugger_Filter_PreviousSelection_Policy : uint8
+{
+    Default,
+
+    // If the previously selected actor is amongst the list of gathered actors
+    // do not filter it out to ensure debug actor stability
+    DontFilterOutPreviousSelection,
+};
+
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECk_GameplayDebugger_Filter_PreviousSelection_Policy);
+
+// --------------------------------------------------------------------------------------------------------------------

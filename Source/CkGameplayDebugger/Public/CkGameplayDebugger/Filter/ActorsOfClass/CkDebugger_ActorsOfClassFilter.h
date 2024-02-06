@@ -39,12 +39,17 @@ private:
     ECk_GameplayDebugger_Filter_ActorVisibility_Policy _ActorVisibilityPolicy = ECk_GameplayDebugger_Filter_ActorVisibility_Policy::Default;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    ECk_GameplayDebugger_Filter_PreviousSelection_Policy _CurrentSelectionPolicy = ECk_GameplayDebugger_Filter_PreviousSelection_Policy::DontFilterOutPreviousSelection;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly,
               meta = (AllowPrivateAccess = true, ClampMin = "0.0", UIMin = "0.0", Units = "cm"))
     float _SortingMaxDistance = 9000000.0f;
 
 public:
     CK_PROPERTY_GET(_ValidActorClass);
     CK_PROPERTY_GET(_ActorVisibilityPolicy);
+    CK_PROPERTY_GET(_CurrentSelectionPolicy);
     CK_PROPERTY_GET(_SortingMaxDistance);
 };
 

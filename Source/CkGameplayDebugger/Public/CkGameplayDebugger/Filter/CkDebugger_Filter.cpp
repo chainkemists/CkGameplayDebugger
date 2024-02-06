@@ -63,8 +63,11 @@ auto
     _TimeSinceLastUpdate = _TimeSinceLastUpdate - _UpdateFrequency;
 
     const auto& DrawData = InParams.Get_DrawData();
+    const auto& PreviouslySelectedActor = InParams.Get_PreviouslySelectedActor();
 
-    const auto& FilteredActors = GatherAndFilterActors(FCk_GameplayDebugger_GatherAndFilterActors_Params{DrawData});
+    const auto& FilteredActors = GatherAndFilterActors(
+        FCk_GameplayDebugger_GatherAndFilterActors_Params{DrawData}.Set_PreviouslySelectedActor(PreviouslySelectedActor));
+
     const auto& SortedFilteredActors = SortFilteredActors
     (
         FCk_GameplayDebugger_SortFilteredActors_Params

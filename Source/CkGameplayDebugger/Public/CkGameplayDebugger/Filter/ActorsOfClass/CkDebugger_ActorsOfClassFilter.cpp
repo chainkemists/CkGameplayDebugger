@@ -37,6 +37,8 @@ auto
         TArray<AActor*> FoundActors;
         UGameplayStatics::GetAllActorsOfClass(Cast<UObject>(DrawData.Get_CurrentWorld().Get()), _ValidActorClass, FoundActors);
 
+        const auto& PreviouslySelectedActor = InParams.Get_PreviouslySelectedActor();
+
         switch (_ActorVisibilityPolicy)
         {
             case ECk_GameplayDebugger_Filter_ActorVisibility_Policy::Default:
@@ -47,6 +49,13 @@ auto
             {
                 const auto& Get_IsOnScreen = [&](const AActor* InActor) -> bool
                 {
+                    if (ck::Is_NOT_Valid(InActor))
+                    { return false; }
+
+                    if (PreviouslySelectedActor == InActor &&
+                        _CurrentSelectionPolicy == ECk_GameplayDebugger_Filter_PreviousSelection_Policy::DontFilterOutPreviousSelection)
+                    { return true; }
+
                     return DoGet_ActorScreenPosition(*InActor, *CanvasContext).Z > 0;
                 };
 
@@ -101,11 +110,11 @@ auto
 
     const auto& SortingPredicate = [&](const AActor& lhs, const AActor& rhs) -> bool
     {
-        const auto& isLhsNear = Get_IsNear(lhs);
-        const auto& isRhsNear = Get_IsNear(rhs);
+        const auto& IsLhsNear = Get_IsNear(lhs);
+        const auto& IsRhsNear = Get_IsNear(rhs);
 
-        if (isLhsNear != isRhsNear)
-        { return isLhsNear; }
+        if (IsLhsNear != IsRhsNear)
+        { return IsLhsNear; }
 
         return DoGet_ActorScreenPosition(lhs, *CanvasContext).X < DoGet_ActorScreenPosition(rhs, *CanvasContext).X;
     };
@@ -130,15 +139,15 @@ auto
     -> FVector
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    static constexpr double notVisible = -1.0;
-    static constexpr double visible = 1.0;
+    static constexpr double NotVisible = -1.0;
+    static constexpr double Visible = 1.0;
 
     const auto& ActorLocation = InActor.GetActorLocation();
     const auto& IsActorLocationVisible = InCanvasContext.IsLocationVisible(ActorLocation);
 
     const auto& Position2D = InCanvasContext.ProjectLocation(ActorLocation);
 
-    return FVector{Position2D.X, Position2D.Y, IsActorLocationVisible ? visible : notVisible};
+    return FVector{Position2D.X, Position2D.Y, IsActorLocationVisible ? Visible : NotVisible};
 #else
     return {};
 #endif

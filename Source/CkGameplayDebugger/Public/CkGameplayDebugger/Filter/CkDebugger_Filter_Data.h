@@ -22,8 +22,13 @@ private:
               meta = (AllowPrivateAccess = true))
     FCk_Payload_GameplayDebugger_OnDrawData _DrawData;
 
+    UPROPERTY(BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    TWeakObjectPtr<AActor> _PreviouslySelectedActor;
+
 public:
     CK_PROPERTY_GET(_DrawData);
+    CK_PROPERTY(_PreviouslySelectedActor);
 
 public:
     CK_DEFINE_CONSTRUCTORS(FCk_GameplayDebugger_GetSortedFilteredActors_Params, _DrawData);
@@ -44,8 +49,13 @@ private:
               meta = (AllowPrivateAccess = true))
     FCk_Payload_GameplayDebugger_OnDrawData _DrawData;
 
+    UPROPERTY(BlueprintReadOnly,
+              meta = (AllowPrivateAccess = true))
+    TWeakObjectPtr<AActor> _PreviouslySelectedActor;
+
 public:
     CK_PROPERTY_GET(_DrawData);
+    CK_PROPERTY(_PreviouslySelectedActor);
 
 public:
     CK_DEFINE_CONSTRUCTORS(FCk_GameplayDebugger_GatherAndFilterActors_Params, _DrawData);

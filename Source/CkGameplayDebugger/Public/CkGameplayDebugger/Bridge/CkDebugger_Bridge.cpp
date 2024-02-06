@@ -84,7 +84,8 @@ auto
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))
     { return; }
 
-    if (const auto& DebugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget(); ck::IsValid(DebugWidgetToCreate))
+    if (const auto& DebugWidgetToCreate = _CurrentlyLoadedDebugProfile->Get_HUD_DebugWidget();
+        ck::IsValid(DebugWidgetToCreate))
     {
         _DebugWidget = UCk_GameplayDebugger_DebugWidget_UE::Create
         (
@@ -131,7 +132,7 @@ auto
     if (ck::IsValid(_DebugWidget))
     {
         _DebugWidget->RemoveFromParent();
-        _DebugWidget= nullptr;
+        _DebugWidget = nullptr;
     }
 
     // Deactivate all debug submenus
@@ -381,6 +382,7 @@ auto
                 InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex]
             }
         }
+        .Set_PreviouslySelectedActor(_PreviouslySelectedActor)
     );
 
     const auto& SortedFilteredActors = SortedFilteredActorList.Get_DebugActors();
@@ -413,9 +415,9 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    if (DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
+    if (const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+        DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
     {
         const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
@@ -433,9 +435,9 @@ auto
     -> void
 {
 #if WITH_GAMEPLAY_DEBUGGER
-    const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
-    if (DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
+    if (const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
+        DebugFilters.IsValidIndex(_CurrentlySelectedFilterIndex))
     {
         const auto& CurrentlySelectedFilter = DebugFilters[_CurrentlySelectedFilterIndex];
 
@@ -776,8 +778,6 @@ auto
 #if WITH_GAMEPLAY_DEBUGGER
     if (ck::Is_NOT_Valid(InOwnerPC))
     { return; }
-
-    const auto& StickyModifierKey = InDebugNavControls.Get_StickyModiferKey();
 
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextActorKey()))
     {

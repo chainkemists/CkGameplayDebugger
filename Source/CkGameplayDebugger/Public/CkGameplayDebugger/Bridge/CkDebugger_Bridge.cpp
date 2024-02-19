@@ -7,6 +7,8 @@
 #include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 #include "CkCore/Object/CkObject_Utils.h"
 
+#include "CkGameplayDebugger/CkGameplayDebugger_Log.h"
+
 #include "CkInput/CkInput_Utils.h"
 
 #include "CkGameplayDebugger/Action/CkDebugger_Action.h"
@@ -225,14 +227,17 @@ auto
         if (InSubmenu->Get_ShowState() == ECk_GameplayDebugger_DebugSubmenu_ShowState::Hidden)
         { return; }
 
-        InSubmenu->DrawData
-        (
-            FCk_GameplayDebugger_DrawSubmenuData_Params
-            {
-                InPayload.Get_Replicator()->GetDebugActor(),
-                InPayload
-            }
-        );
+        if (ck::IsValid(_PreviouslySelectedActor))
+        {
+            InSubmenu->DrawData
+            (
+                FCk_GameplayDebugger_DrawSubmenuData_Params
+                {
+                    _PreviouslySelectedActor.Get(),
+                    InPayload
+                }
+            );
+        }
     });
 #endif
 }
@@ -251,6 +256,12 @@ auto
     const auto& DebugFilters = _CurrentlyLoadedDebugProfile->Get_Filters();
 
     const auto& PreviousFilter = DebugFilters[InPreviousFilterIndex];
+
+    CK_ENSURE_IF_NOT(ck::IsValid(PreviousFilter), TEXT("Attemping to change the filter but encountered a null filter. "
+        "It's possible the filter asset did not load (deleted/corrupted). Please check project settings for the default filter(s).{}"),
+        ck::Context(this))
+    { return; }
+
     PreviousFilter->DeactivateFilter();
 
     _CurrentlySelectedFilterIndex = InNewFilterIndex;
@@ -293,9 +304,7 @@ auto
         if (ck::Is_NOT_Valid(Replicator))
         { return; }
 
-        static constexpr auto SelectActorInEditor = true;
         _PreviouslySelectedActor = InSelectedDebugActor;
-        Replicator->SetDebugActor(InSelectedDebugActor, SelectActorInEditor);
     };
 
     if (ck::Is_NOT_Valid(_CurrentlyLoadedDebugProfile))

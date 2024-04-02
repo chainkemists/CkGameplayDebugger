@@ -87,6 +87,14 @@ private:
         const TArray<TObjectPtr<AActor>>& InSortedFilteredActors) -> void;
 
 private:
+    auto
+    DoDrawTextOnCanvas(
+        FGameplayDebuggerCanvasContext* InCanvasContext,
+        const FString& InText,
+        float InYOffset,
+        const FColor& InColor) -> void;
+
+private:
     UPROPERTY(Transient)
     TObjectPtr<class UCk_GameplayDebugger_DebugProfile_PDA> _CurrentlyLoadedDebugProfile;
 

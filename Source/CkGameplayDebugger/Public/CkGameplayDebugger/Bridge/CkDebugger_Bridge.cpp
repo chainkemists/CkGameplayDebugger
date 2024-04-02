@@ -98,8 +98,8 @@ auto
 
         if (ck::IsValid(_DebugWidget))
         {
-            static constexpr auto zOrder = 9999;
-            _DebugWidget->AddToViewport(zOrder);
+            static constexpr auto ZOrder = 9999;
+            _DebugWidget->AddToViewport(ZOrder);
         }
     }
 
@@ -257,7 +257,7 @@ auto
 
     const auto& PreviousFilter = DebugFilters[InPreviousFilterIndex];
 
-    CK_ENSURE_IF_NOT(ck::IsValid(PreviousFilter), TEXT("Attemping to change the filter but encountered a null filter. "
+    CK_ENSURE_IF_NOT(ck::IsValid(PreviousFilter), TEXT("Attempting to change the filter but encountered a null filter. "
         "It's possible the filter asset did not load (deleted/corrupted). Please check project settings for the default filter(s).{}"),
         ck::Context(this))
     { return; }
@@ -274,6 +274,12 @@ auto
     }
 
     const auto& NewFilter = DebugFilters[_CurrentlySelectedFilterIndex];
+
+    CK_ENSURE_IF_NOT(ck::IsValid(NewFilter), TEXT("Attempting to change the filter but encountered a null filter. "
+        "It's possible the filter asset did not load (deleted/corrupted). Please check project settings for the default filter(s).{}"),
+        ck::Context(this))
+    { return; }
+
     NewFilter->ActivateFilter();
 #endif
 }
@@ -360,22 +366,8 @@ auto
             }
         }();
 
-        auto TimestampSizeX = 0.0f;
-        auto TimestampSizeY = 0.0f;
-        InDrawData.Get_CanvasContext()->MeasureString(NetModeText, TimestampSizeX, TimestampSizeY);
-
-        const auto SettingsCDO = UGameplayDebuggerConfig::StaticClass()->GetDefaultObject<UGameplayDebuggerConfig>();
-        const auto PaddingLeft = SettingsCDO->DebugCanvasPaddingLeft;
-        const auto PaddingRight = SettingsCDO->DebugCanvasPaddingRight;
-        const auto PaddingTop = SettingsCDO->DebugCanvasPaddingTop;
-
         const auto SimulateMode = FGameplayDebuggerAddonBase::IsSimulateInEditor() || InDrawData.Get_Replicator()->IsEditorWorldReplicator();
-
-        const auto DPIScale = InDrawData.Get_CanvasContext()->Canvas->GetDPIScale();
-        const auto CanvasSizeX = (InDrawData.Get_CanvasContext()->Canvas->SizeX / DPIScale) - PaddingLeft - PaddingRight;
-        const auto UsePaddingTop = PaddingTop + (SimulateMode ? 30.0f : 0) + 30.0f;
-
-        InDrawData.Get_CanvasContext()->PrintAt((CanvasSizeX - TimestampSizeX) * 0.5f, UsePaddingTop, FColor::Cyan, NetModeText);
+        DoDrawTextOnCanvas(InDrawData.Get_CanvasContext(), NetModeText, (SimulateMode ? 30.0f : 0) + 30.0f, FColor::Cyan);
     }
 
     const auto& SortedFilteredActorList = CurrentlySelectedFilter->Get_SortedFilteredActors
@@ -410,7 +402,10 @@ auto
 
     DoHandleSelectedActorChange(OwnerPC, DebugNavControls, SortedFilteredActors);
 
-    UpdateSelectedDebugActor(SortedFilteredActors[_CurrentlySelectedActorIndex]);
+    const auto CurrentlySelectedActor = SortedFilteredActors[_CurrentlySelectedActorIndex];
+    UpdateSelectedDebugActor(CurrentlySelectedActor);
+    DoDrawTextOnCanvas(InDrawData.Get_CanvasContext(),
+        UCk_Utils_Debug_UE::Get_DebugName_AsString(CurrentlySelectedActor, ECk_DebugNameVerbosity_Policy::Compact), 15.0f, FColor::Green);
 
     DoPerformActionsOnFilteredActors(CurrentlySelectedFilter, SortedFilteredActorList, CanvasContext);
 
@@ -473,8 +468,8 @@ auto
 
     if (InDisplaySettings.Get_DisplayTranslucentBackground())
     {
-        FVector2D OutViewportSize;
-        GEngine->GameViewport->GetViewportSize(OutViewportSize);
+        auto ViewportSize = FVector2D{};
+        GEngine->GameViewport->GetViewportSize(ViewportSize);
 
         constexpr auto BackgroundPadding = 5.0f;
 
@@ -484,29 +479,29 @@ auto
             {
                 case ECk_GameplayDebugger_BackgroundWidth::OneThird:
                 {
-                    return OutViewportSize.X / 3.0f;
+                    return ViewportSize.X / 3.0f;
                 }
                 case ECk_GameplayDebugger_BackgroundWidth::Half:
                 {
-                    return OutViewportSize.X / 2.0f;
+                    return ViewportSize.X / 2.0f;
                 }
                 case ECk_GameplayDebugger_BackgroundWidth::ThreeFourth:
                 {
-                    return OutViewportSize.X * 0.75f;
+                    return ViewportSize.X * 0.75f;
                 }
                 case ECk_GameplayDebugger_BackgroundWidth::Full:
                 {
-                    return OutViewportSize.X;
+                    return ViewportSize.X;
                 }
                 default:
                 {
                     CK_INVALID_ENUM(SelectedWidth);
-                    return OutViewportSize.X;
+                    return ViewportSize.X;
                 }
             }
         }();
 
-        const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), OutViewportSize.Y);
+        const auto BackgroundSize = FVector2D(BackgroundWidth - (2.0f * BackgroundPadding), ViewportSize.Y);
         const auto BackgroundColor = InDisplaySettings.Get_BackgroundColor();
 
         FCanvasTileItem Background(FVector2D::ZeroVector, GWhiteTexture, BackgroundSize, BackgroundColor);
@@ -827,6 +822,31 @@ auto
         _CurrentlySelectedActorIndex += InSortedFilteredActors.Num();
     }
 #endif
+}
+
+auto
+    ACk_GameplayDebugger_DebugBridge_UE::
+    DoDrawTextOnCanvas(
+        FGameplayDebuggerCanvasContext* InCanvasContext,
+        const FString& InText,
+        float InYOffset,
+        const FColor& InColor)
+    -> void
+{
+    auto StringSizeX = 0.0f;
+    auto StringSizeY = 0.0f;
+    InCanvasContext->MeasureString(InText, StringSizeX, StringSizeY);
+
+    const auto SettingsCDO = UGameplayDebuggerConfig::StaticClass()->GetDefaultObject<UGameplayDebuggerConfig>();
+    const auto PaddingLeft = SettingsCDO->DebugCanvasPaddingLeft;
+    const auto PaddingRight = SettingsCDO->DebugCanvasPaddingRight;
+    const auto PaddingTop = SettingsCDO->DebugCanvasPaddingTop;
+
+    const auto DPIScale = InCanvasContext->Canvas->GetDPIScale();
+    const auto CanvasSizeX = (InCanvasContext->Canvas->SizeX / DPIScale) - PaddingLeft - PaddingRight;
+    const auto UsePaddingTop = PaddingTop + InYOffset;
+
+    InCanvasContext->PrintAt((CanvasSizeX - StringSizeX) * 0.5f, UsePaddingTop, InColor, InText);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -41,6 +41,10 @@
 		{
 			"Name": "CkFoundation",
 			"Enabled": true
+		},
+		{
+			"Name": "Cog",
+			"Enabled": true
 		}
 	]
 }

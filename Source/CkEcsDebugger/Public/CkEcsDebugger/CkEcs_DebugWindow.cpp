@@ -1,0 +1,24 @@
+#include "CkEcs_DebugWindow.h"
+
+#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_Ecs_DebugWindow::
+    Get_SelectionEntity()
+    -> FCk_Handle
+{
+    const auto& SelectionActor = GetSelection();
+
+    if (ck::Is_NOT_Valid(SelectionActor))
+    { return {}; }
+
+    if (NOT UCk_Utils_OwningActor_UE::Get_IsActorEcsReady(SelectionActor))
+    { return {}; }
+
+    return UCk_Utils_OwningActor_UE::Get_ActorEntityHandle(SelectionActor);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+

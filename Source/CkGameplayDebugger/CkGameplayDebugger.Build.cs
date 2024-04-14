@@ -26,11 +26,6 @@ public class CkGameplayDebugger : CkModuleRules
             "CkInput",
             "CkLog",
             "CkSettings",
-
-            "CogCommon",
-            "CogImgui",
-            "CogWindow",
-            "CogEngine"
         });
 
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)

@@ -14,6 +14,18 @@ public class CkEcsDebugger : CkModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+
+            "CkAbility",
+            "CkAttribute",
+            "CkCore",
+            "CkEcs",
+            "CkLabel",
+            "CkLog",
+            "CkSettings",
+
+            "CogImgui",
+            "CogWindow",
+            "CogEngine"
         });
     }
 }

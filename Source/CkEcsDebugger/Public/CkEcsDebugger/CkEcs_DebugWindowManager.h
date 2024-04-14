@@ -1,0 +1,34 @@
+#pragma once
+
+#include "CogCommon.h"
+#include "CogWindowManager.h"
+
+#include "CkEcs_DebugWindowManager.generated.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+// TODO: Turn into AInfo and spawn via subsystem
+
+UCLASS(BlueprintType, Blueprintable)
+class CKECSDEBUGGER_API ACk_Ecs_DebugWindowManager : public AActor
+{
+    GENERATED_BODY()
+
+protected:
+    auto
+    BeginPlay() -> void override;
+
+public:
+    auto
+    Tick(
+        float DeltaSeconds) -> void override;
+
+private:
+    UPROPERTY(Transient)
+    TObjectPtr<UObject> _CogWindowManagerRef;
+
+#if ENABLE_COG
+    TObjectPtr<UCogWindowManager> _CogWindowManager;
+#endif
+};
+
+// --------------------------------------------------------------------------------------------------------------------

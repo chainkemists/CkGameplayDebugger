@@ -1,7 +1,7 @@
 using System.IO;
 using UnrealBuildTool;
 
-public class CkGameplayDebugger : ModuleRules
+public class CkGameplayDebugger : CkModuleRules
 {
     public CkGameplayDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
@@ -22,6 +22,7 @@ public class CkGameplayDebugger : ModuleRules
             "UMG",
 
             "CkCore",
+            "CkEcs",
             "CkInput",
             "CkLog",
             "CkSettings",

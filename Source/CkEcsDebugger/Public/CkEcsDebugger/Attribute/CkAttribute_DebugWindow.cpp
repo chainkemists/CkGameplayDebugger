@@ -171,7 +171,7 @@ auto
 
             ImGui::PopStyleColor(1);
 
-            Index++;
+            ++Index;
         };
 
         UCk_Utils_FloatAttribute_UE::ForEach(SelectionEntity, RenderRow);

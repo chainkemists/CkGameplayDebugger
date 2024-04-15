@@ -22,6 +22,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkLabel",
             "CkLog",
             "CkSettings",
+            "CkTimer",
 
             "CogImgui",
             "CogWindow",

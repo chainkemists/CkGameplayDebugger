@@ -2,6 +2,7 @@
 
 #include "CkEcsDebugger/Attribute/CkAttribute_DebugWindow.h"
 #include "CkEcsDebugger/Entity/CkEntity_DebugWindow.h"
+#include "CkEcsDebugger/Timer/CkTimer_DebugWindow.h"
 
 #include "CogEngineWindow_CollisionTester.h"
 #include "CogEngineWindow_CollisionViewer.h"
@@ -30,6 +31,7 @@ auto
     // Add a custom window
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
     _CogWindowManager->AddWindow<FCk_FloatAttribute_DebugWindow>("Ck.Attribute");
+    _CogWindowManager->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
 
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");

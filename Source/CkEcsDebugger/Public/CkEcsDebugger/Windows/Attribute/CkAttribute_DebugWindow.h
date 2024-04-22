@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CkEcsDebugger/CkEcs_DebugWindow.h"
-#include "CkEcsDebugger/Attribute/CkAttribute_DebugConfig.h"
+#include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugConfig.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // TODO: Templatize the base window so we can use it for all types of attributes

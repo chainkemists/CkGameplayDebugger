@@ -35,36 +35,6 @@ auto
 
 auto
     UCk_GameplayDebugger_Subsystem_UE::
-    ShouldCreateSubsystem(
-        UObject* InOuter) const
-    -> bool
-{
-    if (const auto& ShouldCreateSubsystem = Super::ShouldCreateSubsystem(InOuter);
-        NOT ShouldCreateSubsystem)
-    { return false; }
-
-    if (ck::Is_NOT_Valid(InOuter))
-    { return true; }
-
-    const auto& World = InOuter->GetWorld();
-
-    if (ck::Is_NOT_Valid(World))
-    { return true; }
-
-    return DoesSupportWorldType(World->WorldType);
-}
-
-auto
-    UCk_GameplayDebugger_Subsystem_UE::
-    DoesSupportWorldType(
-        const EWorldType::Type InWorldType) const
-    -> bool
-{
-    return InWorldType == EWorldType::Game || InWorldType == EWorldType::PIE;
-}
-
-auto
-    UCk_GameplayDebugger_Subsystem_UE::
     DoSpawnDebugBridge()
     -> void
 {

@@ -29,9 +29,7 @@ auto
 {
     Super::RenderContent();
 
-    const auto& SelectionEntity = Get_SelectionEntity();
-
-    if (ck::IsValid(SelectionEntity))
+    if (const auto& SelectionEntity = Get_SelectionEntity(); ck::IsValid(SelectionEntity))
     {
         ImGui::Text(TCHAR_TO_ANSI(ck::Format(TEXT("Entity: {}"), SelectionEntity).c_str()));
     }

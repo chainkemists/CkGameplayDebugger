@@ -8,10 +8,13 @@
 // --------------------------------------------------------------------------------------------------------------------
 // TODO: Turn into AInfo and spawn via subsystem
 
-UCLASS(BlueprintType, Blueprintable)
-class CKECSDEBUGGER_API ACk_Ecs_DebugWindowManager : public AActor
+UCLASS(NotBlueprintType, NotBlueprintable, NotPlaceable)
+class CKECSDEBUGGER_API ACk_Ecs_DebugWindowManager_UE : public AInfo
 {
     GENERATED_BODY()
+
+public:
+    ACk_Ecs_DebugWindowManager_UE();
 
 protected:
     auto

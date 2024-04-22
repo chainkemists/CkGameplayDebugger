@@ -1,11 +1,10 @@
 #pragma once
 
-#include "CkEcsDebugger/CkEcs_DebugWindow.h"
-#include "CkEcsDebugger/Timer/CkTimer_DebugConfig.h"
+#include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FCk_Timer_DebugWindow : public FCk_Ecs_DebugWindow
+class FCk_EntityBasics_DebugWindow : public FCk_Ecs_DebugWindow
 {
     using Super = FCk_Ecs_DebugWindow;
 
@@ -19,11 +18,6 @@ protected:
 
     auto
     RenderContent() -> void override;
-
-private:
-    ImGuiTextFilter _Filter;
-    TObjectPtr<UCk_Timer_DebugWindowConfig> _Config;
-    TObjectPtr<UCk_Timer_DebugWindowConfigDisplay> _DisplayConfig;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

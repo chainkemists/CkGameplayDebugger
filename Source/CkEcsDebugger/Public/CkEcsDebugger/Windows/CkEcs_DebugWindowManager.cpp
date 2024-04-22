@@ -1,8 +1,8 @@
 #include "CkEcs_DebugWindowManager.h"
 
-#include "CkEcsDebugger/Attribute/CkAttribute_DebugWindow.h"
-#include "CkEcsDebugger/Entity/CkEntity_DebugWindow.h"
-#include "CkEcsDebugger/Timer/CkTimer_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
 
 #include "CogEngineWindow_CollisionTester.h"
 #include "CogEngineWindow_CollisionViewer.h"
@@ -17,8 +17,15 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+ACk_Ecs_DebugWindowManager_UE::
+    ACk_Ecs_DebugWindowManager_UE()
+{
+    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bTickEvenWhenPaused = false;
+}
+
 auto
-    ACk_Ecs_DebugWindowManager::
+    ACk_Ecs_DebugWindowManager_UE::
     BeginPlay()
     -> void
 {
@@ -27,6 +34,9 @@ auto
 #if ENABLE_COG
     _CogWindowManager = NewObject<UCogWindowManager>(this);
     _CogWindowManagerRef = _CogWindowManager;
+
+    CK_ENSURE_IF_NOT(ck::IsValid(_CogWindowManager), TEXT("[{}] failed to create Cog Windowe Manager!"))
+    { return; }
 
     // Add a custom window
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
@@ -46,7 +56,7 @@ auto
 }
 
 auto
-    ACk_Ecs_DebugWindowManager::
+    ACk_Ecs_DebugWindowManager_UE::
     Tick(
         float DeltaSeconds)
     -> void
@@ -54,7 +64,10 @@ auto
     Super::Tick(DeltaSeconds);
 
 #if ENABLE_COG
-    _CogWindowManager->Tick(DeltaSeconds);
+    if (ck::IsValid(_CogWindowManager))
+    {
+        _CogWindowManager->Tick(DeltaSeconds);
+    }
 #endif //ENABLE_COG
 }
 

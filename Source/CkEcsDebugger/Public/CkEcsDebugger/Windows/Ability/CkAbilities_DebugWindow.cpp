@@ -2,10 +2,16 @@
 
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
+
+#include "CkAbility/Ability/CkAbility_Script.h"
 #include "CkAbility/Ability/CkAbility_Utils.h"
 #include "CkAbility/AbilityOwner/CkAbilityOwner_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
+#if WITH_EDITOR
+#include <Editor.h>
+#include <Subsystems/AssetEditorSubsystem.h>
+#endif
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -163,7 +169,7 @@ auto
 
         bool Open = true;
 
-        if (const auto& AbilityName = UCk_Utils_GameplayLabel_UE::Get_Label(AbilityOpened);
+        if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(AbilityOpened);
             ImGui::Begin(TCHAR_TO_ANSI(*AbilityName.ToString()), &Open))
         {
             RenderAbilityInfo(AbilityOpened);
@@ -203,7 +209,7 @@ auto
         if (NOT _Config->ShowInactive && IsJustInactive)
         { return; }
 
-        if (const auto& AbilityName = UCk_Utils_GameplayLabel_UE::Get_Label(InAbility);
+        if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
             NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
         { return; }
 
@@ -214,10 +220,10 @@ auto
     {
         FilteredAbilities.Sort([](const FCk_Handle_Ability& InAbility1, const FCk_Handle_Ability& InAbility2)
         {
-            const auto& AbilityName1 = UCk_Utils_GameplayLabel_UE::Get_Label(InAbility1);
-            const auto& AbilityName2 = UCk_Utils_GameplayLabel_UE::Get_Label(InAbility2);
+            const auto& AbilityName1 = UCk_Utils_Ability_UE::Get_DisplayName(InAbility1);
+            const auto& AbilityName2 = UCk_Utils_Ability_UE::Get_DisplayName(InAbility2);
 
-            return AbilityName1.GetTagName().Compare(AbilityName2.GetTagName()) < 0;
+            return AbilityName1.Compare(AbilityName2) < 0;
         });
     }
 
@@ -269,7 +275,7 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            if (const auto& AbilityName = UCk_Utils_GameplayLabel_UE::Get_Label(Ability);
+            if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(Ability);
                 ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName.ToString()), SelectedIndex == Index, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
             {
                 SelectedIndex = Index;
@@ -333,7 +339,7 @@ auto
         //------------------------
         // Name
         //------------------------
-        const auto& AbilityName = UCk_Utils_GameplayLabel_UE::Get_Label(InAbility);
+        const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
 
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -342,6 +348,21 @@ auto
         ImGui::PushStyleColor(ImGuiCol_Text, AbilityColor);
         ImGui::Text("%s", TCHAR_TO_ANSI(*AbilityName.ToString()));
         ImGui::PopStyleColor(1);
+
+        //------------------------
+        // Script Asset
+        //------------------------
+#if WITH_EDITOR
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Script Asset");
+        ImGui::TableNextColumn();
+        if (ImGui::Button("Open Asset"))
+        {
+            const auto& AbilityScriptClass = UCk_Utils_Ability_UE::Get_ScriptClass(InAbility);
+            GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(AbilityScriptClass->ClassGeneratedBy);
+        }
+#endif
 
         //------------------------
         // Activation
@@ -376,6 +397,22 @@ auto
         ImGui::TableNextColumn();
         const auto& CanActivate = UCk_Utils_Ability_UE::Get_CanActivate(InAbility);
         ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), CanActivate)));
+
+        //------------------------
+        // NetworkSettings
+        //------------------------
+        const auto& NetworkSettings = UCk_Utils_Ability_UE::Get_NetworkSettings(InAbility);
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Replication");
+        ImGui::TableNextColumn();
+        ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), NetworkSettings.Get_ReplicationType())));
+
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Execution");
+        ImGui::TableNextColumn();
+        ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), NetworkSettings.Get_ExecutionPolicy())));
 
         ImGui::EndTable();
     }

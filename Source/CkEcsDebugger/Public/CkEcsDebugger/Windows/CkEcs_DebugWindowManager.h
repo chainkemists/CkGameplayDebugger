@@ -3,6 +3,8 @@
 #include "CogCommon.h"
 #include "CogWindowManager.h"
 
+#include <GameFramework/Info.h>
+
 #include "CkEcs_DebugWindowManager.generated.h"
 
 // --------------------------------------------------------------------------------------------------------------------

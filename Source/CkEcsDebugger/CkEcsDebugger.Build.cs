@@ -6,7 +6,7 @@ public class CkEcsDebugger : CkModuleRules
     public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
         PrivateIncludePaths.AddRange(new string[] {
-            // ... add other private include paths required here ...
+            "UnrealEd"
         });
 
         PublicDependencyModuleNames.AddRange(new string[]
@@ -26,7 +26,15 @@ public class CkEcsDebugger : CkModuleRules
 
             "CogImgui",
             "CogWindow",
-            "CogEngine"
+            "CogEngine",
         });
+
+        if (Target.bBuildDeveloperTools || (Target.Configuration != UnrealTargetConfiguration.Shipping))
+        {
+            if (Target.Type == TargetRules.TargetType.Editor)
+            {
+                PublicDependencyModuleNames.Add("UnrealEd");
+            }
+        }
     }
 }

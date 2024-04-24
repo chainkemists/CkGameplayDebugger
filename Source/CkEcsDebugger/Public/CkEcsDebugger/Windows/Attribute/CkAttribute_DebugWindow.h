@@ -25,13 +25,19 @@ protected:
     RenderContent() -> void override;
 
     auto
+    RenderMenu() -> void;
+
+    auto
+    RenderTable(
+        FCk_Handle& InSelectionEntity) -> void;
+
+    auto
     DrawAttributeInfo(
         const FCk_Handle_FloatAttribute& InAttribute) const -> void;
 
 private:
     ImGuiTextFilter _Filter;
     TObjectPtr<UCk_Attribute_DebugWindowConfig> _Config;
-    TObjectPtr<UCk_Attribute_DebugWindowConfigDisplay> _DisplayConfig;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

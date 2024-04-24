@@ -17,10 +17,16 @@ auto
     bNoPadding = true;
 
     _Config = GetConfig<UCk_Timer_DebugWindowConfig>();
-    _DisplayConfig = GetConfig<UCk_Timer_DebugWindowConfigDisplay>();
 }
 
-//--------------------------------------------------------------------------------------------------------------------------
+auto
+    FCk_Timer_DebugWindow::
+    ResetConfig() -> void
+{
+    Super::ResetConfig();
+
+    _Config->Reset();
+}
 
 auto
     FCk_Timer_DebugWindow::
@@ -30,14 +36,14 @@ auto
     ImGui::Text("This window displays the timers of the selected actor");
 }
 
-//--------------------------------------------------------------------------------------------------------------------------
-
 auto
     FCk_Timer_DebugWindow::
     RenderContent()
     -> void
 {
     Super::RenderContent();
+
+    RenderMenu();
 
     auto SelectionEntity = Get_SelectionEntity();
 
@@ -54,6 +60,14 @@ auto
         return;
     }
 
+    RenderTable(SelectionEntity);
+}
+
+auto
+    FCk_Timer_DebugWindow::
+    RenderMenu()
+    -> void
+{
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("Options"))
@@ -61,8 +75,8 @@ auto
             ImGui::Checkbox("Sort by Name", &_Config->SortByName);
 
             ImGui::Separator();
-            ImGui::ColorEdit4("Running Color", reinterpret_cast<float*>(&_DisplayConfig->RunningColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
-            ImGui::ColorEdit4("Paused Color", reinterpret_cast<float*>(&_DisplayConfig->PausedColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
+            ImGui::ColorEdit4("Running Color", reinterpret_cast<float*>(&_Config->RunningColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
+            ImGui::ColorEdit4("Paused Color", reinterpret_cast<float*>(&_Config->PausedColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
 
             ImGui::Separator();
             if (ImGui::MenuItem("Reset"))
@@ -76,15 +90,22 @@ auto
 
         ImGui::EndMenuBar();
     }
+}
 
+auto
+    FCk_Timer_DebugWindow::
+    RenderTable(
+        FCk_Handle& InSelectionEntity)
+    -> void
+{
     if (ImGui::BeginTable("Timers", 2, ImGuiTableFlags_SizingFixedFit
-                                        | ImGuiTableFlags_Resizable
-                                        | ImGuiTableFlags_NoBordersInBodyUntilResize
-                                        | ImGuiTableFlags_ScrollY
-                                        | ImGuiTableFlags_RowBg
-                                        | ImGuiTableFlags_BordersV
-                                        | ImGuiTableFlags_Reorderable
-                                        | ImGuiTableFlags_Hideable))
+                                     | ImGuiTableFlags_Resizable
+                                     | ImGuiTableFlags_NoBordersInBodyUntilResize
+                                     | ImGuiTableFlags_ScrollY
+                                     | ImGuiTableFlags_RowBg
+                                     | ImGuiTableFlags_BordersV
+                                     | ImGuiTableFlags_Reorderable
+                                     | ImGuiTableFlags_Hideable))
     {
 
         ImGui::TableSetupScrollFreeze(0, 1);
@@ -92,8 +113,8 @@ auto
         ImGui::TableSetupColumn("Elapsed Time");
         ImGui::TableHeadersRow();
 
-        static int Selected = -1;
-        int Index = 0;
+        static int32 Selected = -1;
+        int32 Index = 0;
 
         const auto& RenderRow = [&](const FCk_Handle_Timer& InTimer)
         {
@@ -101,7 +122,7 @@ auto
             { return; }
 
             const auto& TimerLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InTimer);
-            const auto& TimerName = StringCast<ANSICHAR>(*TimerLabel.GetTagName().ToString()).Get();
+            const auto& TimerName = StringCast<ANSICHAR>(*TimerLabel.ToString()).Get();
 
             if (NOT _Filter.PassFilter(TimerName))
             { return; }
@@ -111,7 +132,7 @@ auto
 
             ImGui::TableNextRow();
 
-            const ImVec4 Color = FCogImguiHelper::ToImVec4(_DisplayConfig->Get_TimerColor(InTimer));
+            const ImVec4 Color = FCogImguiHelper::ToImVec4(_Config->Get_TimerColor(InTimer));
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
 
             //------------------------
@@ -164,7 +185,7 @@ auto
             ++Index;
         };
 
-        UCk_Utils_Timer_UE::ForEach_Timer(SelectionEntity, RenderRow);
+        UCk_Utils_Timer_UE::ForEach_Timer(InSelectionEntity, RenderRow);
 
         ImGui::EndTable();
     }

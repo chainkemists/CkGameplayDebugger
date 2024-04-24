@@ -20,7 +20,6 @@ auto
     bNoPadding = true;
 
     _Config = GetConfig<UCk_Attribute_DebugWindowConfig>();
-    _DisplayConfig = GetConfig<UCk_Attribute_DebugWindowConfigDisplay>();
 }
 
 auto
@@ -55,6 +54,8 @@ auto
 {
     Super::RenderContent();
 
+    RenderMenu();
+
     auto SelectionEntity = Get_SelectionEntity();
 
     if (ck::Is_NOT_Valid(SelectionEntity))
@@ -70,6 +71,14 @@ auto
         return;
     }
 
+    RenderTable(SelectionEntity);
+}
+
+auto
+    FCk_FloatAttribute_DebugWindow::
+    RenderMenu()
+    -> void
+{
     if (ImGui::BeginMenuBar())
     {
         if (ImGui::BeginMenu("Options"))
@@ -77,9 +86,9 @@ auto
             ImGui::Checkbox("Sort by Name", &_Config->SortByName);
             ImGui::Checkbox("Show Only Modified", &_Config->ShowOnlyModified);
             ImGui::Separator();
-            ImGui::ColorEdit4("Positive Color", reinterpret_cast<float*>(&_DisplayConfig->PositiveColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
-            ImGui::ColorEdit4("Negative Color", reinterpret_cast<float*>(&_DisplayConfig->NegativeColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
-            ImGui::ColorEdit4("Neutral Color", reinterpret_cast<float*>(&_DisplayConfig->NeutralColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
+            ImGui::ColorEdit4("Positive Color", reinterpret_cast<float*>(&_Config->PositiveColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
+            ImGui::ColorEdit4("Negative Color", reinterpret_cast<float*>(&_Config->NegativeColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
+            ImGui::ColorEdit4("Neutral Color", reinterpret_cast<float*>(&_Config->NeutralColor), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaPreviewHalf);
             ImGui::Separator();
             if (ImGui::MenuItem("Reset"))
             {
@@ -92,15 +101,22 @@ auto
 
         ImGui::EndMenuBar();
     }
+}
 
+auto
+    FCk_FloatAttribute_DebugWindow::
+    RenderTable(
+        FCk_Handle& InSelectionEntity)
+    -> void
+{
     if (ImGui::BeginTable("Attributes", 3, ImGuiTableFlags_SizingFixedFit
-                                     | ImGuiTableFlags_Resizable
-                                     | ImGuiTableFlags_NoBordersInBodyUntilResize
-                                     | ImGuiTableFlags_ScrollY
-                                     | ImGuiTableFlags_RowBg
-                                     | ImGuiTableFlags_BordersV
-                                     | ImGuiTableFlags_Reorderable
-                                     | ImGuiTableFlags_Hideable))
+                                         | ImGuiTableFlags_Resizable
+                                         | ImGuiTableFlags_NoBordersInBodyUntilResize
+                                         | ImGuiTableFlags_ScrollY
+                                         | ImGuiTableFlags_RowBg
+                                         | ImGuiTableFlags_BordersV
+                                         | ImGuiTableFlags_Reorderable
+                                         | ImGuiTableFlags_Hideable))
     {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Attribute");
@@ -108,8 +124,8 @@ auto
         ImGui::TableSetupColumn("Current");
         ImGui::TableHeadersRow();
 
-        static int Selected = -1;
-        int Index = 0;
+        static int32 Selected = -1;
+        int32 Index = 0;
 
         const auto& RenderRow = [&](const FCk_Handle_FloatAttribute& InAttribute)
         {
@@ -117,7 +133,7 @@ auto
             { return; }
 
             const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-            const auto& AttributeName = StringCast<ANSICHAR>(*AttributeLabel.GetTagName().ToString()).Get();
+            const auto& AttributeName = StringCast<ANSICHAR>(*AttributeLabel.ToString()).Get();
 
             if (NOT _Filter.PassFilter(AttributeName))
             { return; }
@@ -130,7 +146,7 @@ auto
 
             ImGui::TableNextRow();
 
-            const ImVec4 Color = FCogImguiHelper::ToImVec4(_DisplayConfig->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current));
+            const ImVec4 Color = FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current));
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
 
             //------------------------
@@ -174,7 +190,7 @@ auto
             ++Index;
         };
 
-        UCk_Utils_FloatAttribute_UE::ForEach(SelectionEntity, RenderRow);
+        UCk_Utils_FloatAttribute_UE::ForEach(InSelectionEntity, RenderRow);
 
         ImGui::EndTable();
     }
@@ -198,7 +214,7 @@ auto
         const auto& HasMinValue    = UCk_Utils_FloatAttribute_UE::Has_Component(InAttribute, ECk_MinMaxCurrent::Min);
         const auto& HasMaxValue    = UCk_Utils_FloatAttribute_UE::Has_Component(InAttribute, ECk_MinMaxCurrent::Max);
         const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-        const auto& AttributeName  = StringCast<ANSICHAR>(*AttributeLabel.GetTagName().ToString()).Get();
+        const auto& AttributeName  = StringCast<ANSICHAR>(*AttributeLabel.ToString()).Get();
 
         //------------------------
         // Name
@@ -252,7 +268,7 @@ auto
 
         if (HasMinValue)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_DisplayConfig->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Min)));
+            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Min)));
             ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min));
             ImGui::PopStyleColor(1);
         }
@@ -261,7 +277,7 @@ auto
         // Current Value
         //------------------------
         ImGui::TableNextColumn();
-        ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_DisplayConfig->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current)));
+        ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current)));
         ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute));
         ImGui::PopStyleColor(1);
 
@@ -272,7 +288,7 @@ auto
 
         if (HasMaxValue)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_DisplayConfig->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Max)));
+            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Max)));
             ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max));
             ImGui::PopStyleColor(1);
         }

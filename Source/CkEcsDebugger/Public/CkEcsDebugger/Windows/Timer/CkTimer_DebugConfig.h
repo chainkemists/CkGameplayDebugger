@@ -19,7 +19,12 @@ public:
     CK_GENERATED_BODY(UCk_Timer_DebugWindowConfig);
 
 public:
-    auto Reset() -> void override;
+    auto
+    Reset() -> void override;
+
+    auto
+    Get_TimerColor(
+        const FCk_Handle_Timer& InTimer) const -> const FVector4f&;
 
 public:
     UPROPERTY(Config)
@@ -28,33 +33,13 @@ public:
     UPROPERTY(Config)
     bool ShowOnlyRunningTimers = false;
 
-    // TODO: GroupBySource (EntityExtensions)
-};
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-UCLASS(Config = CkEcsDebugger)
-class UCk_Timer_DebugWindowConfigDisplay : public UCogWindowConfig
-{
-    GENERATED_BODY()
-
-public:
-    CK_GENERATED_BODY(UCk_Timer_DebugWindowConfigDisplay);
-
-public:
-    auto
-    Reset() -> void override;
-
-    auto
-    Get_TimerColor(
-        const FCk_Handle_Timer& InTimer) const -> FVector4f;
-
-public:
     UPROPERTY(Config)
     FVector4f RunningColor = FVector4f{1.0f, 1.0f, 1.0f, 1.0f};
 
     UPROPERTY(Config)
     FVector4f PausedColor = FVector4f{0.5f, 0.5f, 0.5f, 1.0f};
+
+    // TODO: GroupBySource (EntityExtensions)
 };
 
 //--------------------------------------------------------------------------------------------------------------------------

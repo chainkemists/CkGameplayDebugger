@@ -1,11 +1,13 @@
 #pragma once
 
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
-#include "CkEcsDebugger/Windows/Timer/CkTimer_DebugConfig.h"
+#include "CkEcsDebugger/Windows/Ability/CkAbilityOwnerTags_DebugConfig.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FCk_Timer_DebugWindow : public FCk_Ecs_DebugWindow
+struct FCk_Handle_AbilityOwner;
+
+class FCk_AbilityOwnerTags_DebugWindow : public FCk_Ecs_DebugWindow
 {
     using Super = FCk_Ecs_DebugWindow;
 
@@ -28,11 +30,11 @@ protected:
 
     auto
     RenderTable(
-        FCk_Handle& InSelectionEntity) -> void;
+        FCk_Handle_AbilityOwner& InSelectionEntity) -> void;
 
 private:
     ImGuiTextFilter _Filter;
-    TObjectPtr<UCk_Timer_DebugWindowConfig> _Config;
+    TObjectPtr<UCk_AbilityOwnerTags_DebugWindowConfig> _Config;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

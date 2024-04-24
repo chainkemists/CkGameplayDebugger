@@ -3,6 +3,8 @@
 #include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Ability/CkAbilityOwnerTags_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Ability/CkAbilities_DebugWindow.h"
 
 #include "CogEngineWindow_CollisionTester.h"
 #include "CogEngineWindow_CollisionViewer.h"
@@ -42,6 +44,8 @@ auto
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
     _CogWindowManager->AddWindow<FCk_FloatAttribute_DebugWindow>("Ck.Attribute");
     _CogWindowManager->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
+    _CogWindowManager->AddWindow<FCk_AbilityOwnerTags_DebugWindow>("Ck.AbilityOwnerTags");
+    _CogWindowManager->AddWindow<FCk_Abilities_DebugWindow>("Ck.Abilities");
 
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");

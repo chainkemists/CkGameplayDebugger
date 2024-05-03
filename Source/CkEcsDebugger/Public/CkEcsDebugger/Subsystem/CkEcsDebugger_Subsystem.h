@@ -23,6 +23,10 @@ protected:
     /** Called when world is ready to start gameplay before the game mode transitions to the correct state and call BeginPlay on all actors */
     auto OnWorldBeginPlay(UWorld& InWorld) -> void override;
 
+public:
+    UPROPERTY(Transient)
+    UWorld* _SelectedWorld;
+
 private:
     UPROPERTY(Transient)
     TObjectPtr<class ACk_Ecs_DebugWindowManager_UE> _DebugWindowManager;

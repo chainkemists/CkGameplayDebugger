@@ -1,5 +1,8 @@
 #include "CkEcs_DebugWindowManager.h"
 
+#include "CkOverlapBody_DebugWindow.h"
+#include "CkWorld_DebugWindow.h"
+
 #include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
@@ -41,11 +44,19 @@ auto
     { return; }
 
     // Add a custom window
+    _CogWindowManager->AddWindow<FCk_World_DebugWindow>("Ck.World");
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
-    _CogWindowManager->AddWindow<FCk_FloatAttribute_DebugWindow>("Ck.Attribute");
     _CogWindowManager->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
+
+    _CogWindowManager->AddWindow<FCk_ByteAttribute_DebugWindow>("Ck.Attribute.Byte");
+    _CogWindowManager->AddWindow<FCk_FloatAttribute_DebugWindow>("Ck.Attribute.Float");
+    _CogWindowManager->AddWindow<FCk_VectorAttribute_DebugWindow>("Ck.Attribute.Vector");
+
     _CogWindowManager->AddWindow<FCk_AbilityOwnerTags_DebugWindow>("Ck.AbilityOwnerTags");
     _CogWindowManager->AddWindow<FCk_Abilities_DebugWindow>("Ck.Abilities");
+
+    _CogWindowManager->AddWindow<FCk_Marker_DebugWindow>("Ck.OverlapBody.Marker");
+    _CogWindowManager->AddWindow<FCk_Sensor_DebugWindow>("Ck.OverlapBody.Sensor");
 
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogWindowManager->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");

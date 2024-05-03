@@ -14,6 +14,7 @@ public class CkEcsDebugger : CkModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "UnrealEd",
 
             "CkAbility",
             "CkAttribute",
@@ -21,6 +22,9 @@ public class CkEcsDebugger : CkModuleRules
             "CkEcs",
             "CkLabel",
             "CkLog",
+            "CkNet",
+            "CkOverlapBody",
+            "CkPhysics",
             "CkSettings",
             "CkTimer",
 
@@ -28,13 +32,5 @@ public class CkEcsDebugger : CkModuleRules
             "CogWindow",
             "CogEngine",
         });
-
-        if (Target.bBuildDeveloperTools || (Target.Configuration != UnrealTargetConfiguration.Shipping))
-        {
-            if (Target.Type == TargetRules.TargetType.Editor)
-            {
-                PublicDependencyModuleNames.Add("UnrealEd");
-            }
-        }
     }
 }

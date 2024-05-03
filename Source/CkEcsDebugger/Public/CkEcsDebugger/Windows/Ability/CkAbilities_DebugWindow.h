@@ -66,6 +66,12 @@ protected:
         FCk_Handle_Ability& InAbility) -> void;
 
 private:
+    auto
+    DoGet_AbilityName(
+        const FCk_Handle_Ability& InAbility) const
+        -> FName;
+
+private:
     ImGuiTextFilter _Filter;
     TObjectPtr<UCk_Abilities_DebugWindowConfig> _Config;
 

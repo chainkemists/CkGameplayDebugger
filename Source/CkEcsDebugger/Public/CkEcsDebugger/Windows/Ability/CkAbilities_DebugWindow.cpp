@@ -1,5 +1,6 @@
 #include "CkAbilities_DebugWindow.h"
 
+#include "CkString_Utils.h"
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
 
@@ -122,9 +123,11 @@ auto
             ImGui::Separator();
 
             ImGui::Checkbox("Sort by Name", &_Config->SortByName);
+            ImGui::Checkbox("Blueprint Name Only", &_Config->BlueprintNameOnly);
             ImGui::Checkbox("Show Active", &_Config->ShowActive);
             ImGui::Checkbox("Show Inactive", &_Config->ShowInactive);
             ImGui::Checkbox("Show Blocked", &_Config->ShowBlocked);
+            ImGui::Checkbox("Show SubAbilities", &_Config->ShowSubAbilities);
 
             ImGui::Separator();
 
@@ -163,13 +166,13 @@ auto
     { return; }
 
 
-    for (int32 i = _OpenedAbilities.Num() - 1; i >= 0; --i)
+    for (int32 Index = _OpenedAbilities.Num() - 1; Index >= 0; --Index)
     {
-        const auto& AbilityOpened = _OpenedAbilities[i];
+        const auto& AbilityOpened = _OpenedAbilities[Index];
 
         bool Open = true;
 
-        if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(AbilityOpened);
+        if (const auto& AbilityName = DoGet_AbilityName(AbilityOpened);
             ImGui::Begin(TCHAR_TO_ANSI(*AbilityName.ToString()), &Open))
         {
             RenderAbilityInfo(AbilityOpened);
@@ -178,7 +181,7 @@ auto
 
         if (NOT Open)
         {
-            _OpenedAbilities.RemoveAt(i);
+            _OpenedAbilities.RemoveAt(Index);
         }
     }
 }
@@ -189,43 +192,53 @@ auto
         FCk_Handle_AbilityOwner& InSelectionEntity)
     -> void
 {
-    TArray<FCk_Handle_Ability> FilteredAbilities;
+    auto FilteredAbilities = TMap<FCk_Handle_AbilityOwner, TArray<FCk_Handle_Ability>>{};
 
-    UCk_Utils_AbilityOwner_UE::ForEach_Ability(InSelectionEntity, [&](const FCk_Handle_Ability& InAbility)
+    const auto AddToFilteredAbilities = [&](FCk_Handle_AbilityOwner InAbilityOwner, auto& Recurse) -> void
     {
-        const auto& CanActivateResult = UCk_Utils_Ability_UE::Get_CanActivate(InAbility);
-        const auto& ActivationStatus = UCk_Utils_Ability_UE::Get_Status(InAbility);
+        auto& Abilities = FilteredAbilities.FindOrAdd(InAbilityOwner);
 
-        const auto& IsJustBlocked  = CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet && CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive;
-        const auto& IsJustActive   = ActivationStatus == ECk_Ability_Status::Active && NOT IsJustBlocked ;
-        const auto& IsJustInactive = ActivationStatus == ECk_Ability_Status::NotActive && NOT IsJustBlocked;
-
-        if (NOT _Config->ShowBlocked && IsJustBlocked)
-        { return; }
-
-        if (NOT _Config->ShowActive && IsJustActive)
-        { return; }
-
-        if (NOT _Config->ShowInactive && IsJustInactive)
-        { return; }
-
-        if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
-            NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
-        { return; }
-
-        FilteredAbilities.Add(InAbility);
-    });
-
-    if (_Config->SortByName)
-    {
-        FilteredAbilities.Sort([](const FCk_Handle_Ability& InAbility1, const FCk_Handle_Ability& InAbility2)
+        UCk_Utils_AbilityOwner_UE::ForEach_Ability(InAbilityOwner, [&](const FCk_Handle_Ability& InAbility)
         {
-            const auto& AbilityName1 = UCk_Utils_Ability_UE::Get_DisplayName(InAbility1);
-            const auto& AbilityName2 = UCk_Utils_Ability_UE::Get_DisplayName(InAbility2);
+            if (UCk_Utils_AbilityOwner_UE::Has(InAbility))
+            {
+                Recurse(UCk_Utils_AbilityOwner_UE::CastChecked(InAbility), Recurse);
+            }
 
-            return AbilityName1.Compare(AbilityName2) < 0;
+            const auto& CanActivateResult = UCk_Utils_Ability_UE::Get_CanActivate(InAbility);
+            const auto& ActivationStatus = UCk_Utils_Ability_UE::Get_Status(InAbility);
+
+            const auto& IsJustBlocked  = CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet && CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive;
+            const auto& IsJustActive   = ActivationStatus == ECk_Ability_Status::Active && NOT IsJustBlocked ;
+            const auto& IsJustInactive = ActivationStatus == ECk_Ability_Status::NotActive && NOT IsJustBlocked;
+
+            if (NOT _Config->ShowBlocked && IsJustBlocked)
+            { return; }
+
+            if (NOT _Config->ShowActive && IsJustActive)
+            { return; }
+
+            if (NOT _Config->ShowInactive && IsJustInactive)
+            { return; }
+
+            if (const auto& AbilityName = DoGet_AbilityName(InAbility);
+                NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
+            { return; }
+
+            Abilities.Add(InAbility);
         });
-    }
+
+        if (_Config->SortByName)
+        {
+            Abilities.Sort([&](const FCk_Handle_Ability& InAbility1, const FCk_Handle_Ability& InAbility2)
+            {
+                const auto& AbilityName1 = DoGet_AbilityName(InAbility1);
+                const auto& AbilityName2 = DoGet_AbilityName(InAbility2);
+
+                return AbilityName1.Compare(AbilityName2) < 0;
+            });
+        }
+    }; AddToFilteredAbilities(InSelectionEntity, AddToFilteredAbilities);
 
     if (ImGui::BeginTable("Abilities", 3, ImGuiTableFlags_SizingFixedFit
                                         | ImGuiTableFlags_Resizable
@@ -245,13 +258,14 @@ auto
         // TODO: Display Conditions/Cost/Cooldown
 
         static int32 SelectedIndex = -1;
-        int32 Index = 0;
 
-        for (const auto& Ability : FilteredAbilities)
+        const auto AddAbilityToTable = [&](const FCk_Handle_Ability& Ability, int32 InLevel)
         {
             ImGui::TableNextRow();
 
-            ImGui::PushID(Index);
+            const auto Index = GetTypeHash(Ability);
+
+            ImGui::PushID(GetTypeHash(Ability));
 
             const auto& Color = FCogImguiHelper::ToImVec4(_Config->Get_AbilityColor(Ability));
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
@@ -275,8 +289,9 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            if (const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(Ability);
-                ImGui::Selectable(TCHAR_TO_ANSI(*AbilityName.ToString()), SelectedIndex == Index, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
+            if (const auto& AbilityName = DoGet_AbilityName(Ability);
+                ImGui::Selectable(ck::Format_ANSI(TEXT("{} {}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), AbilityName).c_str(),
+                    SelectedIndex == Index, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
             {
                 SelectedIndex = Index;
 
@@ -314,8 +329,32 @@ auto
             }
 
             ImGui::PopID();
-            ++Index;
-        }
+        };
+
+        const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void { };
+        const auto AddAllAbilities = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void
+        {
+            auto Found = FilteredAbilities.Find(InAbilityOwner);
+            if (NOT Found)
+            { return; }
+
+            auto& Abilities = *Found;
+            for (auto Ability : Abilities)
+            {
+                AddAbilityToTable(Ability, InLevel);
+
+                if (FilteredAbilities.Find(InAbilityOwner))
+                {
+                    Recurse(UCk_Utils_AbilityOwner_UE::Cast(Ability), ++InLevel, Recurse);
+                    --InLevel;
+                }
+            }
+        };
+
+        if (_Config->ShowSubAbilities)
+        { AddAllAbilities(InSelectionEntity, 0, AddAllAbilities); }
+        else
+        { AddAllAbilities(InSelectionEntity, 0, AddAllAbilities_StopRecursing); }
 
         ImGui::EndTable();
     }
@@ -339,7 +378,7 @@ auto
         //------------------------
         // Name
         //------------------------
-        const auto& AbilityName = UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
+        const auto& AbilityName = DoGet_AbilityName(InAbility);
 
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
@@ -492,6 +531,20 @@ auto
             break;
         }
     }
+}
+
+auto
+    FCk_Abilities_DebugWindow::
+    DoGet_AbilityName(
+        const FCk_Handle_Ability& InAbility) const
+        -> FName
+{
+    if (_Config->BlueprintNameOnly)
+    {
+        return UCk_Utils_Debug_UE::Get_DebugName(UCk_Utils_Ability_UE::Get_ScriptClass(InAbility), ECk_DebugNameVerbosity_Policy::Compact);
+    }
+
+    return UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

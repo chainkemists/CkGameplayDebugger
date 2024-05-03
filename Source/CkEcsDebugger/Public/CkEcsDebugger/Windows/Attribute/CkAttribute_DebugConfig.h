@@ -22,9 +22,10 @@ public:
     auto
     Reset() -> void override;
 
+    template <typename T_UtilsType, typename T_HandleType>
     auto
     Get_AttributeColor(
-        const FCk_Handle_FloatAttribute& InAttribute,
+        const T_HandleType& InAttribute,
         ECk_MinMaxCurrent InAttributeComponent) const -> const FVector4f&;
 
 public:

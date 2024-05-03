@@ -1,5 +1,7 @@
 #include "CkEntity_DebugWindow.h"
 
+#include "CkNet_Utils.h"
+
 //--------------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -31,7 +33,9 @@ auto
 
     if (const auto& SelectionEntity = Get_SelectionEntity(); ck::IsValid(SelectionEntity))
     {
-        ImGui::Text(TCHAR_TO_ANSI(ck::Format(TEXT("Entity: {}"), SelectionEntity).c_str()));
+        ImGui::Text(ck::Format_ANSI(TEXT("Entity: {}"), SelectionEntity).c_str());
+        ImGui::Text(ck::Format_ANSI(TEXT("NetMode: {}"), UCk_Utils_Net_UE::Get_EntityNetMode(SelectionEntity)).c_str());
+        ImGui::Text(ck::Format_ANSI(TEXT("NetRole: {}"), UCk_Utils_Net_UE::Get_EntityNetRole(SelectionEntity)).c_str());
     }
     else
     {

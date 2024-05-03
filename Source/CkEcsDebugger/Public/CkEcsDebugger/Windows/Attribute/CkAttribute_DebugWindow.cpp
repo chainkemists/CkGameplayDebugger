@@ -1,5 +1,7 @@
 #include "CkAttribute_DebugWindow.h"
 
+#include "CkArithmetic_Utils.h"
+
 #include "CkAttribute/FloatAttribute/CkFloatAttribute_Utils.h"
 #include "CkLabel/CkLabel_Utils.h"
 
@@ -9,8 +11,9 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     Initialize()
     -> void
 {
@@ -22,8 +25,9 @@ auto
     _Config = GetConfig<UCk_Attribute_DebugWindowConfig>();
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     ResetConfig()
     -> void
 {
@@ -32,8 +36,9 @@ auto
     _Config->Reset();
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     RenderHelp()
     -> void
 {
@@ -47,8 +52,9 @@ auto
     );
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     RenderContent()
     -> void
 {
@@ -64,18 +70,19 @@ auto
         return;
     }
 
-    if (const auto& HasFloatAttributes = UCk_Utils_FloatAttribute_UE::Has_Any(SelectionEntity);
-        NOT HasFloatAttributes)
+    if (const auto& HasAttribute = T_UtilsType::Has_Any(SelectionEntity);
+        NOT HasAttribute)
     {
-        ImGui::Text("Selection Actor has no Float Attributes");
+        ImGui::Text(ck::Format_ANSI(TEXT("Selection Actor has no {} Attributes"), ck::Get_RuntimeTypeToString<T_Type>()).c_str());
         return;
     }
 
     RenderTable(SelectionEntity);
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     RenderMenu()
     -> void
 {
@@ -103,8 +110,9 @@ auto
     }
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     RenderTable(
         FCk_Handle& InSelectionEntity)
     -> void
@@ -127,7 +135,7 @@ auto
         static int32 Selected = -1;
         int32 Index = 0;
 
-        const auto& RenderRow = [&](const FCk_Handle_FloatAttribute& InAttribute)
+        const auto& RenderRow = [&](const T_HandleType& InAttribute)
         {
             if (ck::Is_NOT_Valid(InAttribute))
             { return; }
@@ -138,15 +146,15 @@ auto
             if (NOT _Filter.PassFilter(AttributeName))
             { return; }
 
-            const auto& BaseValue = UCk_Utils_FloatAttribute_UE::Get_BaseValue(InAttribute);
-            const auto& CurrentValue = UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute);
+            const auto& BaseValue = T_UtilsType::Get_BaseValue(InAttribute);
+            const auto& CurrentValue = T_UtilsType::Get_FinalValue(InAttribute);
 
-            if (_Config->ShowOnlyModified && FMath::IsNearlyEqual(CurrentValue, BaseValue))
+            if (_Config->ShowOnlyModified && UCk_Utils_Arithmetic_UE::Get_IsNearlyEqual(CurrentValue, BaseValue))
             { return; }
 
             ImGui::TableNextRow();
 
-            const ImVec4 Color = FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current));
+            const ImVec4 Color = FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor<T_UtilsType>(InAttribute, ECk_MinMaxCurrent::Current));
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
 
             //------------------------
@@ -177,29 +185,30 @@ auto
             // Base Value
             //------------------------
             ImGui::TableNextColumn();
-            ImGui::Text("%.2f", BaseValue);
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
 
             //------------------------
             // Current Value
             //------------------------
             ImGui::TableNextColumn();
-            ImGui::Text("%.2f", CurrentValue);
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), CurrentValue).c_str());
 
             ImGui::PopStyleColor(1);
 
             ++Index;
         };
 
-        UCk_Utils_FloatAttribute_UE::ForEach(InSelectionEntity, RenderRow);
+        T_UtilsType::ForEach(InSelectionEntity, RenderRow);
 
         ImGui::EndTable();
     }
 }
 
+template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
-    FCk_FloatAttribute_DebugWindow::
+    FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
     DrawAttributeInfo(
-        const FCk_Handle_FloatAttribute& InAttribute) const
+        const T_HandleType& InAttribute) const
     -> void
 {
     if (ImGui::BeginTable("Attribute", 4, ImGuiTableFlags_Borders))
@@ -211,8 +220,8 @@ auto
         ImGui::TableSetupColumn("Value_Current", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Value_Final", ImGuiTableColumnFlags_WidthStretch);
 
-        const auto& HasMinValue    = UCk_Utils_FloatAttribute_UE::Has_Component(InAttribute, ECk_MinMaxCurrent::Min);
-        const auto& HasMaxValue    = UCk_Utils_FloatAttribute_UE::Has_Component(InAttribute, ECk_MinMaxCurrent::Max);
+        const auto& HasMinValue    = T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Min);
+        const auto& HasMaxValue    = T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Max);
         const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
         const auto& AttributeName  = StringCast<ANSICHAR>(*AttributeLabel.ToString()).Get();
 
@@ -239,14 +248,14 @@ auto
 
         if (HasMinValue)
         {
-            ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_BaseValue(InAttribute, ECk_MinMaxCurrent::Min));
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_BaseValue(InAttribute, ECk_MinMaxCurrent::Min)).c_str());
         }
 
         //------------------------
         // Base Value
         //------------------------
         ImGui::TableNextColumn();
-        ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_BaseValue(InAttribute));
+        ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_BaseValue(InAttribute)).c_str());
 
         //------------------------
         // Base Value (Max)
@@ -255,7 +264,7 @@ auto
 
         if (HasMaxValue)
         {
-            ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_BaseValue(InAttribute, ECk_MinMaxCurrent::Max));
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_BaseValue(InAttribute, ECk_MinMaxCurrent::Max)).c_str());
         }
 
         //------------------------
@@ -268,8 +277,8 @@ auto
 
         if (HasMinValue)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Min)));
-            ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min));
+            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor<T_UtilsType>(InAttribute, ECk_MinMaxCurrent::Min)));
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min)).c_str());
             ImGui::PopStyleColor(1);
         }
 
@@ -277,8 +286,8 @@ auto
         // Current Value
         //------------------------
         ImGui::TableNextColumn();
-        ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Current)));
-        ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute));
+        ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor<T_UtilsType>(InAttribute, ECk_MinMaxCurrent::Current)));
+        ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_FinalValue(InAttribute)).c_str());
         ImGui::PopStyleColor(1);
 
         //------------------------
@@ -288,8 +297,8 @@ auto
 
         if (HasMaxValue)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor(InAttribute, ECk_MinMaxCurrent::Max)));
-            ImGui::Text("%0.2f", UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max));
+            ImGui::PushStyleColor(ImGuiCol_Text, FCogImguiHelper::ToImVec4(_Config->Get_AttributeColor<T_UtilsType>(InAttribute, ECk_MinMaxCurrent::Max)));
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max)).c_str());
             ImGui::PopStyleColor(1);
         }
 

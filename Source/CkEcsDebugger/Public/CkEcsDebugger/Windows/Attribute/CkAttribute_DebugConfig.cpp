@@ -19,24 +19,40 @@ auto
     NeutralColor  = FVector4f{1.0f, 1.0f, 1.0f, 1.0f};
 }
 
+template <typename T_UtilsType, typename T_HandleType>
 auto
     UCk_Attribute_DebugWindowConfig::
     Get_AttributeColor(
-        const FCk_Handle_FloatAttribute& InAttribute,
+        const T_HandleType& InAttribute,
         ECk_MinMaxCurrent InAttributeComponent) const
     -> const FVector4f&
 {
-    const auto& BaseValue = UCk_Utils_FloatAttribute_UE::Get_BaseValue(InAttribute, InAttributeComponent);
-    const auto& CurrentValue = UCk_Utils_FloatAttribute_UE::Get_FinalValue(InAttribute, InAttributeComponent);
+    const auto& BaseValue = T_UtilsType::Get_BaseValue(InAttribute, InAttributeComponent);
+    const auto& CurrentValue = T_UtilsType::Get_FinalValue(InAttribute, InAttributeComponent);
 
-    if (CurrentValue > BaseValue)
+    if constexpr(std::is_same_v< std::_Remove_cvref_t<decltype(BaseValue)>, FVector>)
     {
-        return PositiveColor;
+        if (CurrentValue.SquaredLength() > BaseValue.SquaredLength())
+        {
+            return PositiveColor;
+        }
+
+        if (CurrentValue.SquaredLength() < BaseValue.SquaredLength())
+        {
+            return NegativeColor;
+        }
     }
-
-    if (CurrentValue < BaseValue)
+    else
     {
-        return NegativeColor;
+        if (CurrentValue > BaseValue)
+        {
+            return PositiveColor;
+        }
+
+        if (CurrentValue < BaseValue)
+        {
+            return NegativeColor;
+        }
     }
 
     return NeutralColor;

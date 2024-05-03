@@ -31,6 +31,9 @@ public:
     bool SortByName = false;
 
     UPROPERTY(Config)
+    bool BlueprintNameOnly = false;
+
+    UPROPERTY(Config)
     bool ShowActive = true;
 
     UPROPERTY(Config)
@@ -38,6 +41,9 @@ public:
 
     UPROPERTY(Config)
     bool ShowBlocked = true;
+
+    UPROPERTY(Config)
+    bool ShowSubAbilities = true;
 
     UPROPERTY(Config)
     FVector4f ActiveColor = FVector4f(0.0f, 1.0f, 0.5f, 1.0f);

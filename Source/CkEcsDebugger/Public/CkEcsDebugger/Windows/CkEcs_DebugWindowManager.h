@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CkMacros.h"
 #include "CogCommon.h"
 #include "CogWindowManager.h"
 
@@ -8,12 +9,14 @@
 #include "CkEcs_DebugWindowManager.generated.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// TODO: Turn into AInfo and spawn via subsystem
 
 UCLASS(NotBlueprintType, NotBlueprintable, NotPlaceable)
 class CKECSDEBUGGER_API ACk_Ecs_DebugWindowManager_UE : public AInfo
 {
     GENERATED_BODY()
+
+public:
+    CK_GENERATED_BODY(ACk_Ecs_DebugWindowManager_UE);
 
 public:
     ACk_Ecs_DebugWindowManager_UE();
@@ -26,6 +29,11 @@ public:
     auto
     Tick(
         float DeltaSeconds) -> void override;
+
+
+public:
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> _SelectedActor;
 
 private:
     UPROPERTY(Transient)

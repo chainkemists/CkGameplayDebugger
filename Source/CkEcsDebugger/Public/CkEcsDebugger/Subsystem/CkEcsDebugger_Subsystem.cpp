@@ -36,9 +36,6 @@ auto
 {
     Super::OnWorldBeginPlay(InWorld);
 
-    //if (InWorld.IsServer())
-    //{ return; }
-
     _DebugWindowManager = Cast<ACk_Ecs_DebugWindowManager_UE>
     (
         UCk_Utils_Actor_UE::Request_SpawnActor

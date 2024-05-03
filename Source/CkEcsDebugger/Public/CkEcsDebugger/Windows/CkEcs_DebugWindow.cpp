@@ -1,5 +1,8 @@
 #include "CkEcs_DebugWindow.h"
 
+#include "CkEcsDebugger_Subsystem.h"
+#include "EngineUtils.h"
+
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -9,10 +12,25 @@ auto
     Get_SelectionEntity()
     -> FCk_Handle
 {
-    const auto& SelectionActor = GetSelection();
+    auto SelectionActor = GetSelection();
 
     if (ck::Is_NOT_Valid(SelectionActor))
     { return {}; }
+
+    const auto SelectedWorld = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->_SelectedWorld;
+    if (ck::IsValid(SelectedWorld))
+    {
+        for (TActorIterator<AActor> ActorItr(SelectedWorld); ActorItr; ++ActorItr)
+        {
+            auto* FoundActor = *ActorItr;
+
+            if (FoundActor && FoundActor->GetName() == SelectionActor->GetName())
+            {
+                SelectionActor = FoundActor;
+                break;
+            }
+        }
+    }
 
     if (NOT UCk_Utils_OwningActor_UE::Get_IsActorEcsReady(SelectionActor))
     { return {}; }

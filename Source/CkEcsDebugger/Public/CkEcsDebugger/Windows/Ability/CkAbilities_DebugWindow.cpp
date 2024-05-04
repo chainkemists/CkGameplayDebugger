@@ -192,41 +192,13 @@ auto
         FCk_Handle_AbilityOwner& InSelectionEntity)
     -> void
 {
-    auto FilteredAbilities = TMap<FCk_Handle_AbilityOwner, TArray<FCk_Handle_Ability>>{};
+    _FilteredAbilities.Reset();
 
-    const auto AddToFilteredAbilities = [&](FCk_Handle_AbilityOwner InAbilityOwner, auto& Recurse) -> void
+    AddToFilteredAbilities(InSelectionEntity);
+
+    for (auto& KeyVal : _FilteredAbilities)
     {
-        auto& Abilities = FilteredAbilities.FindOrAdd(InAbilityOwner);
-
-        UCk_Utils_AbilityOwner_UE::ForEach_Ability(InAbilityOwner, [&](const FCk_Handle_Ability& InAbility)
-        {
-            if (UCk_Utils_AbilityOwner_UE::Has(InAbility))
-            {
-                Recurse(UCk_Utils_AbilityOwner_UE::CastChecked(InAbility), Recurse);
-            }
-
-            const auto& CanActivateResult = UCk_Utils_Ability_UE::Get_CanActivate(InAbility);
-            const auto& ActivationStatus = UCk_Utils_Ability_UE::Get_Status(InAbility);
-
-            const auto& IsJustBlocked  = CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet && CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive;
-            const auto& IsJustActive   = ActivationStatus == ECk_Ability_Status::Active && NOT IsJustBlocked ;
-            const auto& IsJustInactive = ActivationStatus == ECk_Ability_Status::NotActive && NOT IsJustBlocked;
-
-            if (NOT _Config->ShowBlocked && IsJustBlocked)
-            { return; }
-
-            if (NOT _Config->ShowActive && IsJustActive)
-            { return; }
-
-            if (NOT _Config->ShowInactive && IsJustInactive)
-            { return; }
-
-            if (const auto& AbilityName = DoGet_AbilityName(InAbility);
-                NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
-            { return; }
-
-            Abilities.Add(InAbility);
-        });
+        auto& Abilities = KeyVal.Value;
 
         if (_Config->SortByName)
         {
@@ -238,7 +210,7 @@ auto
                 return AbilityName1.Compare(AbilityName2) < 0;
             });
         }
-    }; AddToFilteredAbilities(InSelectionEntity, AddToFilteredAbilities);
+    }
 
     if (ImGui::BeginTable("Abilities", 3, ImGuiTableFlags_SizingFixedFit
                                         | ImGuiTableFlags_Resizable
@@ -334,7 +306,7 @@ auto
         const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void { };
         const auto AddAllAbilities = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void
         {
-            auto Found = FilteredAbilities.Find(InAbilityOwner);
+            auto Found = _FilteredAbilities.Find(InAbilityOwner);
             if (NOT Found)
             { return; }
 
@@ -343,7 +315,7 @@ auto
             {
                 AddAbilityToTable(Ability, InLevel);
 
-                if (FilteredAbilities.Find(InAbilityOwner))
+                if (_FilteredAbilities.Find(InAbilityOwner))
                 {
                     Recurse(UCk_Utils_AbilityOwner_UE::Cast(Ability), ++InLevel, Recurse);
                     --InLevel;
@@ -545,6 +517,44 @@ auto
     }
 
     return UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
+}
+
+auto
+    FCk_Abilities_DebugWindow::
+    AddToFilteredAbilities(
+        FCk_Handle_AbilityOwner InAbilityOwner)
+    -> void
+{
+    UCk_Utils_AbilityOwner_UE::ForEach_Ability(InAbilityOwner, [this, InAbilityOwner](const FCk_Handle_Ability& InAbility)
+    {
+        if (UCk_Utils_AbilityOwner_UE::Has(InAbility))
+        {
+            AddToFilteredAbilities(UCk_Utils_AbilityOwner_UE::CastChecked(InAbility));
+        }
+
+        const auto& CanActivateResult = UCk_Utils_Ability_UE::Get_CanActivate(InAbility);
+        const auto& ActivationStatus = UCk_Utils_Ability_UE::Get_Status(InAbility);
+
+        const auto& IsJustBlocked  = CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet && CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive;
+        const auto& IsJustActive   = ActivationStatus == ECk_Ability_Status::Active && NOT IsJustBlocked ;
+        const auto& IsJustInactive = ActivationStatus == ECk_Ability_Status::NotActive && NOT IsJustBlocked;
+
+        if (NOT _Config->ShowBlocked && IsJustBlocked)
+        { return; }
+
+        if (NOT _Config->ShowActive && IsJustActive)
+        { return; }
+
+        if (NOT _Config->ShowInactive && IsJustInactive)
+        { return; }
+
+        if (const auto& AbilityName = DoGet_AbilityName(InAbility);
+            NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
+        { return; }
+
+        auto& Abilities = _FilteredAbilities.FindOrAdd(InAbilityOwner);
+        Abilities.AddUnique(InAbility);
+    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -72,11 +72,18 @@ private:
         -> FName;
 
 private:
+    auto
+    AddToFilteredAbilities(
+        FCk_Handle_AbilityOwner InAbilityOwner) -> void;
+
+private:
     ImGuiTextFilter _Filter;
     TObjectPtr<UCk_Abilities_DebugWindowConfig> _Config;
 
     FCk_Handle_Ability _AbilityHandleToActivate;
     TArray<FCk_Handle_Ability> _OpenedAbilities;
+
+    TMap<FCk_Handle_AbilityOwner, TArray<FCk_Handle_Ability>> _FilteredAbilities;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

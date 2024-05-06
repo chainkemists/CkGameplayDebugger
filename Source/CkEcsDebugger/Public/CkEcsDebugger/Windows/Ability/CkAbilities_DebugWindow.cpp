@@ -1,12 +1,14 @@
 #include "CkAbilities_DebugWindow.h"
 
-#include "CkString_Utils.h"
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
 
 #include "CkAbility/Ability/CkAbility_Script.h"
 #include "CkAbility/Ability/CkAbility_Utils.h"
 #include "CkAbility/AbilityOwner/CkAbilityOwner_Utils.h"
+
+#include "CkCore/String/CkString_Utils.h"
+
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #if WITH_EDITOR

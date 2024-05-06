@@ -2,8 +2,6 @@
 
 #include "CkOverlapBody/Marker/CkMarker_Utils.h"
 
-#include "CkNet_Utils.h"
-#include "CkSensor_Utils.h"
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
 
@@ -136,6 +134,7 @@ auto
             {
                 case ECk_EnableDisable::Enable: if (NOT _Config->ShowActive) { return; } break;
                 case ECk_EnableDisable::Disable: if (NOT _Config->ShowInactive) { return; } break;
+                default: break;
             }
 
             const auto& Color = FCogImguiHelper::ToImVec4(_Config->Get_Color<T_UtilsType>(InOverlap));
@@ -166,6 +165,7 @@ auto
                     { return ck::Format(TEXT("Sphere:{}"), ShapeInfo.Get_SphereRadius().Get_Radius()); }
                     case ECk_ShapeType::Capsule:
                     { return ck::Format(TEXT("Capsule:{}|{}"), ShapeInfo.Get_CapsuleSize().Get_Radius(), ShapeInfo.Get_CapsuleSize().Get_HalfHeight()); }
+                    default: break;
                 }
 
                 return std::wstring{};

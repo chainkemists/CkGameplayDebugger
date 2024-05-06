@@ -1,5 +1,6 @@
 #pragma once
-#include "CkEcs_DebugWindow.h"
+
+#include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 

@@ -4,6 +4,9 @@
 
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 
+#include "CkOverlapBody/Sensor/CkSensor_Fragment_Data.h"
+#include "CkOverlapBody/Sensor/CkSensor_Utils.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 struct FCk_Handle_Marker;

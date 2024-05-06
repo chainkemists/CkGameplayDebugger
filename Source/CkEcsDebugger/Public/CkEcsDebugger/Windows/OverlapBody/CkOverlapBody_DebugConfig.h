@@ -1,10 +1,9 @@
 #pragma once
 
-#include "CkMarker_Utils.h"
-
-#include "CkCore/Macros/CkMacros.h"
-
 #include "CogWindowConfig.h"
+
+#include "CkCore/Enums/CkEnums.h"
+#include "CkCore/Macros/CkMacros.h"
 
 #include "CkOverlapBody_DebugConfig.generated.h"
 

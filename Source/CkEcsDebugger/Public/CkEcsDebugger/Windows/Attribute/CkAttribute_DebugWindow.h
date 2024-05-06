@@ -1,9 +1,10 @@
 #pragma once
 
-#include "CkByteAttribute_Fragment_Data.h"
-#include "CkByteAttribute_Utils.h"
-#include "CkFloatAttribute_Utils.h"
-#include "CkVectorAttribute_Utils.h"
+#include "CkAttribute/ByteAttribute/CkByteAttribute_Fragment_Data.h"
+#include "CkAttribute/ByteAttribute/CkByteAttribute_Utils.h"
+#include "CkAttribute/FloatAttribute/CkFloatAttribute_Utils.h"
+#include "CkAttribute/VectorAttribute/CkVectorAttribute_Fragment_Data.h"
+#include "CkAttribute/VectorAttribute/CkVectorAttribute_Utils.h"
 
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugConfig.h"

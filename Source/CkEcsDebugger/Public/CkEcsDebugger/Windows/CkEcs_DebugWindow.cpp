@@ -1,9 +1,10 @@
 #include "CkEcs_DebugWindow.h"
 
-#include "CkEcsDebugger_Subsystem.h"
-#include "EngineUtils.h"
-
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+
+#include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
+
+#include <EngineUtils.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 

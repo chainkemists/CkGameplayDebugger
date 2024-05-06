@@ -1,13 +1,13 @@
 #include "CkAttribute_DebugWindow.h"
 
-#include "CkArithmetic_Utils.h"
-
 #include "CkAttribute/FloatAttribute/CkFloatAttribute_Utils.h"
 #include "CkLabel/CkLabel_Utils.h"
 
 #include "CogImguiHelper.h"
 
 #include "CogWindowWidgets.h"
+
+#include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 

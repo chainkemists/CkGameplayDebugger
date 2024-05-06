@@ -1,8 +1,9 @@
 #pragma once
 
-#include "CkMacros.h"
 #include "CogCommon.h"
 #include "CogWindowManager.h"
+
+#include "CkCore/Macros/CkMacros.h"
 
 #include <GameFramework/Info.h>
 

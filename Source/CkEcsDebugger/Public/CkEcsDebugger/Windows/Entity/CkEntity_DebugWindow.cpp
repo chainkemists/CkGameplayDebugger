@@ -1,6 +1,6 @@
 #include "CkEntity_DebugWindow.h"
 
-#include "CkNet_Utils.h"
+#include "CkNet/CkNet_Utils.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
 

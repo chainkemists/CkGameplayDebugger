@@ -1,7 +1,11 @@
 #include "CkWorld_DebugWindow.h"
 
-#include "CkEcsDebugger_Subsystem.h"
 #include "CogWindowWidgets.h"
+
+#include "CkCore/Format/CkFormat.h"
+#include "CkCore/Validation/CkIsValid.h"
+
+#include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
 

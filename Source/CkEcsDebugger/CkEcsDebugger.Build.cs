@@ -14,7 +14,6 @@ public class CkEcsDebugger : CkModuleRules
             "Core",
             "CoreUObject",
             "Engine",
-            "UnrealEd",
 
             "CkAbility",
             "CkAttribute",
@@ -32,5 +31,13 @@ public class CkEcsDebugger : CkModuleRules
             "CogWindow",
             "CogEngine",
         });
+
+        if (Target.bBuildEditor)
+        {
+            PublicDependencyModuleNames.AddRange(new string[]
+            {
+                "UnrealEd",
+            });
+        }
     }
 }

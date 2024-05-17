@@ -66,6 +66,14 @@ auto
 {
     Super::RenderContent();
 
+    auto EcsDebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+
+    if (ck::Is_NOT_Valid(EcsDebuggerSubsystem))
+    { return; }
+
+    ImGui::Text(ck::Format_ANSI(TEXT("{}"),
+        EcsDebuggerSubsystem->_SelectedWorld->GetNetMode() == NM_DedicatedServer ? TEXT("Server") : TEXT("Client")).c_str());
+
     if (ImGui::BeginTable("Worlds", 2, ImGuiTableFlags_SizingFixedFit
                                    | ImGuiTableFlags_Resizable
                                    | ImGuiTableFlags_NoBordersInBodyUntilResize
@@ -103,7 +111,7 @@ auto
             ImGui::TableNextColumn();
             if (ImGui::Selectable(ck::Format_ANSI(TEXT("{}"), ContextWorld).c_str()))
             {
-                GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->_SelectedWorld = ContextWorld;
+                EcsDebuggerSubsystem->_SelectedWorld = ContextWorld;
             }
 
             ImGui::PopID();

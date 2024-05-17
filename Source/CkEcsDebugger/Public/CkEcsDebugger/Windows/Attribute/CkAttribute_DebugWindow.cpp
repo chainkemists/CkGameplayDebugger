@@ -190,7 +190,7 @@ auto
             if (T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Min))
             {
                 const auto& Value = T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min);
-                ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
+                ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
             }
             else
             {
@@ -216,7 +216,7 @@ auto
             if (T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Max))
             {
                 const auto& Value = T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max);
-                ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
+                ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
             }
             else
             {

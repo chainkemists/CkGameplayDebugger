@@ -36,6 +36,24 @@ auto
 {
     Super::OnWorldBeginPlay(InWorld);
 
+    for (auto& Context : GEngine->GetWorldContexts())
+    {
+        const auto& ContextWorld = Context.World();
+
+        if (ck::Is_NOT_Valid(ContextWorld))
+        { continue; }
+
+        auto GameInstance = ContextWorld->GetGameInstance();
+
+        if (ck::Is_NOT_Valid(GameInstance))
+        { continue; }
+
+        if (ContextWorld->GetNetMode() == NM_DedicatedServer)
+        {
+            _SelectedWorld = ContextWorld;
+        }
+    }
+
     _DebugWindowManager = Cast<ACk_Ecs_DebugWindowManager_UE>
     (
         UCk_Utils_Actor_UE::Request_SpawnActor

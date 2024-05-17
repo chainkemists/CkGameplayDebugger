@@ -117,7 +117,7 @@ auto
         FCk_Handle& InSelectionEntity)
     -> void
 {
-    if (ImGui::BeginTable("Attributes", 3, ImGuiTableFlags_SizingFixedFit
+    if (ImGui::BeginTable("Attributes", 5, ImGuiTableFlags_SizingFixedFit
                                          | ImGuiTableFlags_Resizable
                                          | ImGuiTableFlags_NoBordersInBodyUntilResize
                                          | ImGuiTableFlags_ScrollY
@@ -128,8 +128,10 @@ auto
     {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Attribute");
+        ImGui::TableSetupColumn("Min (Final)");
         ImGui::TableSetupColumn("Base");
         ImGui::TableSetupColumn("Current");
+        ImGui::TableSetupColumn("Max (Final)");
         ImGui::TableHeadersRow();
 
         static int32 Selected = -1;
@@ -182,6 +184,20 @@ auto
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
 
             //------------------------
+            // Min Value
+            //------------------------
+            ImGui::TableNextColumn();
+            if (T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Min))
+            {
+                const auto& Value = T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min);
+                ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
+            }
+            else
+            {
+                ImGui::Text(ck::Format_ANSI(TEXT("-")).c_str());
+            }
+
+            //------------------------
             // Base Value
             //------------------------
             ImGui::TableNextColumn();
@@ -192,6 +208,20 @@ auto
             //------------------------
             ImGui::TableNextColumn();
             ImGui::Text(ck::Format_ANSI(TEXT("{}"), CurrentValue).c_str());
+
+            //------------------------
+            // Max Value
+            //------------------------
+            ImGui::TableNextColumn();
+            if (T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Max))
+            {
+                const auto& Value = T_UtilsType::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max);
+                ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
+            }
+            else
+            {
+                ImGui::Text(ck::Format_ANSI(TEXT("-")).c_str());
+            }
 
             ImGui::PopStyleColor(1);
 

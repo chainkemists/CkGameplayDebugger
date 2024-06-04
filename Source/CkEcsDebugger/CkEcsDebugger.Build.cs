@@ -6,7 +6,6 @@ public class CkEcsDebugger : CkModuleRules
     public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
         PrivateIncludePaths.AddRange(new string[] {
-            "UnrealEd"
         });
 
         PublicDependencyModuleNames.AddRange(new string[]

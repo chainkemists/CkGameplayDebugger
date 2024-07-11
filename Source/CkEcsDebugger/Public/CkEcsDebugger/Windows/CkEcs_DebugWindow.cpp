@@ -5,6 +5,7 @@
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
 #include <EngineUtils.h>
+#include <Engine/PackageMapClient.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -19,16 +20,19 @@ auto
     { return {}; }
 
     const auto SelectedWorld = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->_SelectedWorld;
-    if (ck::IsValid(SelectedWorld))
+    if (ck::IsValid(GetWorld()->GetNetDriver()) &&
+        ck::IsValid(GetWorld()->GetNetDriver()->GuidCache) &&
+        ck::IsValid(SelectedWorld) &&
+        ck::IsValid(SelectedWorld->GetNetDriver()) &&
+        ck::IsValid(SelectedWorld->GetNetDriver()->GuidCache))
     {
-        for (TActorIterator<AActor> ActorItr(SelectedWorld); ActorItr; ++ActorItr)
+        const auto SelectedNetGuid = GetWorld()->GetNetDriver()->GuidCache->GetOrAssignNetGUID(SelectionActor);
+        if (SelectedNetGuid.IsValid() && NOT SelectedNetGuid.IsDefault())
         {
-            auto* FoundActor = *ActorItr;
-
-            if (FoundActor && FoundActor->GetName() == SelectionActor->GetName())
+            auto* FoundActor = Cast<AActor>(SelectedWorld->GetNetDriver()->GuidCache->GetObjectFromNetGUID(SelectedNetGuid, true));
+            if (ck::IsValid(FoundActor))
             {
                 SelectionActor = FoundActor;
-                break;
             }
         }
     }

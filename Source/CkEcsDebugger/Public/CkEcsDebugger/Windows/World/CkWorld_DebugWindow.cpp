@@ -72,7 +72,7 @@ auto
     { return; }
 
     ImGui::Text(ck::Format_ANSI(TEXT("{}"),
-        EcsDebuggerSubsystem->_SelectedWorld->GetNetMode() == NM_DedicatedServer ? TEXT("Server") : TEXT("Client")).c_str());
+        EcsDebuggerSubsystem->Get_SelectedWorld()->GetNetMode() == NM_DedicatedServer ? TEXT("Server") : TEXT("Client")).c_str());
 
     if (ImGui::BeginTable("Worlds", 2, ImGuiTableFlags_SizingFixedFit
                                    | ImGuiTableFlags_Resizable
@@ -111,7 +111,7 @@ auto
             ImGui::TableNextColumn();
             if (ImGui::Selectable(ck::Format_ANSI(TEXT("{}"), ContextWorld).c_str()))
             {
-                EcsDebuggerSubsystem->_SelectedWorld = ContextWorld;
+                EcsDebuggerSubsystem->Set_SelectedWorld(ContextWorld);
             }
 
             ImGui::PopID();

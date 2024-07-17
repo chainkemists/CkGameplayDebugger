@@ -19,23 +19,43 @@ auto
     if (ck::Is_NOT_Valid(SelectionActor))
     { return {}; }
 
-    const auto SelectedWorld = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->_SelectedWorld;
-    if (ck::IsValid(GetWorld()->GetNetDriver()) &&
-        ck::IsValid(GetWorld()->GetNetDriver()->GuidCache) &&
-        ck::IsValid(SelectedWorld) &&
-        ck::IsValid(SelectedWorld->GetNetDriver()) &&
-        ck::IsValid(SelectedWorld->GetNetDriver()->GuidCache))
+    const auto World = SelectionActor->GetWorld();
+    const auto SelectedWorld = World->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->Get_SelectedWorld();
+
+    [&]
     {
-        const auto SelectedNetGuid = GetWorld()->GetNetDriver()->GuidCache->GetOrAssignNetGUID(SelectionActor);
-        if (SelectedNetGuid.IsValid() && NOT SelectedNetGuid.IsDefault())
+        if (ck::Is_NOT_Valid(SelectionActor->GetWorld()))
+        { return; }
+
+        if (ck::Is_NOT_Valid(World->GetNetDriver()))
+        { return; }
+
+        if (ck::Is_NOT_Valid(World->GetNetDriver()->GuidCache))
+        { return; }
+
+        if (ck::Is_NOT_Valid(SelectedWorld))
+        { return; }
+
+        if (ck::Is_NOT_Valid(SelectedWorld->GetNetDriver()))
+        { return; }
+
+        if (ck::Is_NOT_Valid(SelectedWorld->GetNetDriver()->GuidCache))
+        { return; }
+
+        const auto& SelectedNetGuid = World->GetNetDriver()->GuidCache->GetOrAssignNetGUID(SelectionActor);
+
+        if (ck::Is_NOT_Valid(SelectedNetGuid))
+        { return; }
+
+        if (SelectedNetGuid.IsDefault())
+        { return; }
+
+        auto* FoundActor = Cast<AActor>(SelectedWorld->GetNetDriver()->GuidCache->GetObjectFromNetGUID(SelectedNetGuid, true));
+        if (ck::IsValid(FoundActor))
         {
-            auto* FoundActor = Cast<AActor>(SelectedWorld->GetNetDriver()->GuidCache->GetObjectFromNetGUID(SelectedNetGuid, true));
-            if (ck::IsValid(FoundActor))
-            {
-                SelectionActor = FoundActor;
-            }
+            SelectionActor = FoundActor;
         }
-    }
+    }();
 
     if (NOT UCk_Utils_OwningActor_UE::Get_IsActorEcsReady(SelectionActor))
     { return {}; }

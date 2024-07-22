@@ -1,5 +1,7 @@
 #include "CkEntity_DebugWindow.h"
 
+#include "CkRelationship/Team/CkTeam_Utils.h"
+
 #include "CkNet/CkNet_Utils.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -36,6 +38,15 @@ auto
         ImGui::Text(ck::Format_ANSI(TEXT("Entity: {}"), SelectionEntity).c_str());
         ImGui::Text(ck::Format_ANSI(TEXT("NetMode: {}"), UCk_Utils_Net_UE::Get_EntityNetMode(SelectionEntity)).c_str());
         ImGui::Text(ck::Format_ANSI(TEXT("NetRole: {}"), UCk_Utils_Net_UE::Get_EntityNetRole(SelectionEntity)).c_str());
+
+        if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity); ck::IsValid(TeamEntity))
+        {
+            ImGui::Text(ck::Format_ANSI(TEXT("Team: {}"), UCk_Utils_Team_UE::Get_ID(TeamEntity)).c_str());
+        }
+        else
+        {
+            ImGui::Text(ck::Format_ANSI(TEXT("Team: Unknown")).c_str());
+        }
     }
     else
     {

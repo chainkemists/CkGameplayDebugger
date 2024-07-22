@@ -23,12 +23,13 @@ public class CkEcsDebugger : CkModuleRules
             "CkNet",
             "CkOverlapBody",
             "CkPhysics",
+            "CkRelationship",
             "CkSettings",
             "CkTimer",
 
             "CogImgui",
             "CogWindow",
-            "CogEngine",
+            "CogEngine"
         });
 
         if (Target.bBuildEditor)

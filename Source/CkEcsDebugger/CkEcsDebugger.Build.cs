@@ -13,6 +13,7 @@ public class CkEcsDebugger : CkModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "GameplayTags",
 
             "CkAbility",
             "CkAttribute",

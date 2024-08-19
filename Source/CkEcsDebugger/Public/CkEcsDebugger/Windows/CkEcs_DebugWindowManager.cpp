@@ -5,6 +5,9 @@
 #include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
+#include "CkEcsDebugger/Windows/EntityCollection/CkEntityCollection_DebugWindow.h"
+#include "CkEcsDebugger/Windows/OverlapBody/CkOverlapBody_DebugWindow.h"
+#include "CkEcsDebugger/Windows/World/CkWorld_DebugWindow.h"
 
 #include "CogEngineWindow_CollisionTester.h"
 #include "CogEngineWindow_CollisionViewer.h"
@@ -12,9 +15,6 @@
 #include "CogEngineWindow_DebugSettings.h"
 #include "CogEngineWindow_ImGui.h"
 #include "CogEngineWindow_Selection.h"
-
-#include "CkEcsDebugger/Windows/OverlapBody/CkOverlapBody_DebugWindow.h"
-#include "CkEcsDebugger/Windows/World/CkWorld_DebugWindow.h"
 
 #include <GameFramework/Character.h>
 #include <GameFramework/GameModeBase.h>
@@ -46,6 +46,7 @@ auto
     // Add a custom window
     _CogWindowManager->AddWindow<FCk_World_DebugWindow>("Ck.World");
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
+    _CogWindowManager->AddWindow<FCk_EntityCollection_DebugWindow>("Ck.EntityCollection");
     _CogWindowManager->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
 
     _CogWindowManager->AddWindow<FCk_ByteAttribute_DebugWindow>("Ck.Attribute.Byte");

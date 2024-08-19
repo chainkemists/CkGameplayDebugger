@@ -97,8 +97,6 @@ auto
         FCk_Handle_AbilityOwner& InSelectionEntity)
     -> void
 {
-
-
     const auto& ActiveTagsWithCount = UCk_Utils_AbilityOwner_UE::Get_ActiveTagsWithCount(InSelectionEntity);
 
     if (ImGui::BeginTable("Tags", 2, ImGuiTableFlags_SizingFixedFit

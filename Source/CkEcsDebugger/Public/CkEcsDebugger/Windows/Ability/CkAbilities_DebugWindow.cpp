@@ -308,13 +308,15 @@ auto
         const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void { };
         const auto AddAllAbilities = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void
         {
-            auto Found = _FilteredAbilities.Find(InAbilityOwner);
-            if (NOT Found)
+            const auto* Found = _FilteredAbilities.Find(InAbilityOwner);
+            if (ck::Is_NOT_Valid(Found, ck::IsValid_Policy_NullptrOnly{}))
             { return; }
 
-            auto& Abilities = *Found;
-            for (auto Ability : Abilities)
+            for (auto& Abilities = *Found; auto Ability : Abilities)
             {
+                if (UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Ability) != InAbilityOwner)
+                { continue; }
+
                 AddAbilityToTable(Ability, InLevel);
 
                 if (_FilteredAbilities.Find(InAbilityOwner))

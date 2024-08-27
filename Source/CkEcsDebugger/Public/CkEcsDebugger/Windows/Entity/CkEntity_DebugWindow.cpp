@@ -41,7 +41,7 @@ auto
 
         if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity); ck::IsValid(TeamEntity))
         {
-            ImGui::Text(ck::Format_ANSI(TEXT("Team: {}"), UCk_Utils_Team_UE::Get_ID(TeamEntity)).c_str());
+            ImGui::Text(ck::Format_ANSI(TEXT("Team: {} (Starts from ZERO)"), UCk_Utils_Team_UE::Get_ID(TeamEntity)).c_str());
         }
         else
         {

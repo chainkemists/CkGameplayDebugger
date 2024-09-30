@@ -4,8 +4,8 @@
 
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
-#include <EngineUtils.h>
-#include <Engine/PackageMapClient.h>
+#include <Net/Iris/ReplicationSystem/ActorReplicationBridge.h>
+#include <Iris/ReplicationSystem/ReplicationSystem.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -24,37 +24,46 @@ auto
 
     [&]
     {
-        if (ck::Is_NOT_Valid(SelectionActor->GetWorld()))
+        if (ck::Is_NOT_Valid(World))
         { return; }
 
-        if (ck::Is_NOT_Valid(World->GetNetDriver()))
-        { return; }
+        const auto NetDriver = World->GetNetDriver();
 
-        if (ck::Is_NOT_Valid(World->GetNetDriver()->GuidCache))
+        if (ck::Is_NOT_Valid(NetDriver))
         { return; }
 
         if (ck::Is_NOT_Valid(SelectedWorld))
         { return; }
 
-        if (ck::Is_NOT_Valid(SelectedWorld->GetNetDriver()))
+        const auto SelectedNetDriver = SelectedWorld->GetNetDriver();
+
+        if (ck::Is_NOT_Valid(SelectedNetDriver))
         { return; }
 
-        if (ck::Is_NOT_Valid(SelectedWorld->GetNetDriver()->GuidCache))
+        const auto ReplicationSystem = NetDriver->GetReplicationSystem();
+
+        if (ck::Is_NOT_Valid(ReplicationSystem))
         { return; }
 
-        const auto& SelectedNetGuid = World->GetNetDriver()->GuidCache->GetOrAssignNetGUID(SelectionActor);
+        const auto SelectedReplicationSystem = SelectedNetDriver->GetReplicationSystem();
 
-        if (ck::Is_NOT_Valid(SelectedNetGuid))
+        if (ck::Is_NOT_Valid(SelectedReplicationSystem))
         { return; }
 
-        if (SelectedNetGuid.IsDefault())
+        const auto WorldRepBridge = Cast<UActorReplicationBridge>(ReplicationSystem->GetReplicationBridge());
+
+        if (ck::Is_NOT_Valid(WorldRepBridge))
         { return; }
 
-        auto* FoundActor = Cast<AActor>(SelectedWorld->GetNetDriver()->GuidCache->GetObjectFromNetGUID(SelectedNetGuid, true));
-        if (ck::IsValid(FoundActor))
-        {
-            SelectionActor = FoundActor;
-        }
+        const auto SelectedWorldRepBridge = Cast<UActorReplicationBridge>(SelectedReplicationSystem->GetReplicationBridge());
+
+        if (ck::Is_NOT_Valid(SelectedWorldRepBridge))
+        { return; }
+
+        const auto RefHandle = WorldRepBridge->GetReplicatedRefHandle(SelectionActor);
+        const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
+
+        SelectionActor = Cast<AActor>(SelectedWorldActor);
     }();
 
     if (NOT UCk_Utils_OwningActor_UE::Get_IsActorEcsReady(SelectionActor))

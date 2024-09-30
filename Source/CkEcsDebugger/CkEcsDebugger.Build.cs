@@ -15,6 +15,9 @@ public class CkEcsDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
 
+            "Iris",
+            "IrisCore",
+
             "CkAbility",
             "CkAttribute",
             "CkCore",

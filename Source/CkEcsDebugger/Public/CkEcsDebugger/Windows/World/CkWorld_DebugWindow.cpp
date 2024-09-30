@@ -71,21 +71,7 @@ auto
     if (ck::Is_NOT_Valid(EcsDebuggerSubsystem))
     { return; }
 
-
-        const auto Get_NetMode  = [](ENetMode InNetMode)
-        {
-            switch(InNetMode)
-            {
-                case NM_Standalone: return TEXT("Standalone");
-                case NM_DedicatedServer: return TEXT("Dedicated Server");
-                case NM_ListenServer: return TEXT("ListenServer");
-                case NM_Client: return TEXT("Client");
-                case NM_MAX: return TEXT("Max (INVALID)");
-                default: return TEXT("Default (INVALID)");
-            }
-        };
-
-    ImGui::Text(ck::Format_ANSI(TEXT("{}"), Get_NetMode(EcsDebuggerSubsystem->Get_SelectedWorld()->GetNetMode())).c_str());
+    ImGui::Text(ck::Format_ANSI(TEXT("{}"), EcsDebuggerSubsystem->Get_SelectedWorld()->GetNetMode()).c_str());
 
     if (ImGui::BeginTable("Worlds", 2, ImGuiTableFlags_SizingFixedFit
                                    | ImGuiTableFlags_Resizable
@@ -118,7 +104,7 @@ auto
             ImGui::PushID(Index);
 
             ImGui::TableNextColumn();
-            ImGui::Text(ck::Format_ANSI(TEXT("{}"), Get_NetMode(ContextWorld->GetNetMode())).c_str());
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), ContextWorld->GetNetMode()).c_str());
 
             ImGui::TableNextColumn();
             if (ImGui::Selectable(ck::Format_ANSI(TEXT("{}"), ContextWorld).c_str()))

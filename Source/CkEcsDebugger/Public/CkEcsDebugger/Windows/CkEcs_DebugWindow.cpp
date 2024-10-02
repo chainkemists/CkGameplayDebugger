@@ -63,6 +63,9 @@ auto
         const auto RefHandle = WorldRepBridge->GetReplicatedRefHandle(SelectionActor);
         const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
 
+        if (ck::Is_NOT_Valid(SelectedWorldActor))
+        { return; }
+
         SelectionActor = Cast<AActor>(SelectedWorldActor);
     }();
 
@@ -73,4 +76,3 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-

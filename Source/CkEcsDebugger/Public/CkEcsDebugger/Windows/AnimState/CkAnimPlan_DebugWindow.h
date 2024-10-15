@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkAnimation/AnimPlan/CkAnimPlan_Fragment_Data.h"
+
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -18,6 +20,9 @@ protected:
 
     auto
     RenderContent() -> void override;
+
+    auto
+    RenderTable() -> void;
 
 private:
     FCk_Entity _HistoryOfEntity;

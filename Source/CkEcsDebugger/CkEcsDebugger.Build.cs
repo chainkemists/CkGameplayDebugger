@@ -19,6 +19,7 @@ public class CkEcsDebugger : CkModuleRules
             "IrisCore",
 
             "CkAbility",
+            "CkAnimation",
             "CkAttribute",
             "CkCore",
             "CkEcs",

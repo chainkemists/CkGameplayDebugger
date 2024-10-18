@@ -121,7 +121,7 @@ auto
 
         const auto& ShouldRenderRow = [&](const FCk_Handle_EntityCollection& InEntityCollectionEntity)
         {
-            if (NOT _Config->RenderCollectionsWithNoContent && UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity).IsEmpty())
+            if (NOT _Config->RenderCollectionsWithNoContent && UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity).Get_EntitiesInCollection().IsEmpty())
             { return false; }
 
             const auto& CollectionLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InEntityCollectionEntity);
@@ -136,7 +136,7 @@ auto
 
             ImGui::PushID(Index);
 
-            const auto& ContentEntities = UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity);
+            const auto& ContentEntities = UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity).Get_EntitiesInCollection();
 
             //------------------------
             // Count

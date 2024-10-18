@@ -76,25 +76,33 @@ auto
 
             ImGui::TableNextRow();
 
+            const auto TagAsString = [](FGameplayTag InTag, FGameplayTag InToFilter)
+            {
+                auto String = ck::Format_UE(TEXT("{}"), InTag);
+                const auto& ToFilter = ck::Format_UE(TEXT("{}"), InToFilter);
+                String.RemoveFromStart(ToFilter);
+                return String;
+            };
+
             //------------------------
             // Anim Goal
             //------------------------
             ImGui::TableNextColumn();
-            ImGui::Text(CK_ANSI_TEXT("{}", AnimState.Get_AnimGoal()));
+            ImGui::Text(CK_ANSI_TEXT("{}", TagAsString(AnimState.Get_AnimGoal(), TAG_Label_AnimPlan_Goal)));
             ImGui::SameLine();
 
             //------------------------
             // Anim Cluster
             //------------------------
             ImGui::TableNextColumn();
-            ImGui::Text(CK_ANSI_TEXT("{}", AnimState.Get_AnimCluster()));
+            ImGui::Text(CK_ANSI_TEXT("{}", TagAsString(AnimState.Get_AnimCluster(), Tag_Label_AnimPlan_Cluster)));
             ImGui::SameLine();
 
             //------------------------
             // Anim State
             //------------------------
             ImGui::TableNextColumn();
-            ImGui::Text(CK_ANSI_TEXT("{}", AnimState.Get_AnimState()));
+            ImGui::Text(CK_ANSI_TEXT("{}", TagAsString(AnimState.Get_AnimState(), TAG_Label_AnimPlan_State)));
             ImGui::SameLine();
         };
 

@@ -70,7 +70,7 @@ auto
     _CogWindowManager->AddWindow<FCogEngineWindow_ImGui>("Engine.ImGui");
 
     auto* SelectionWindow = _CogWindowManager->AddWindow<FCogEngineWindow_Selection>("Engine.Selection");
-    SelectionWindow->SetActorClasses({ ACharacter::StaticClass(), AActor::StaticClass(), AGameModeBase::StaticClass(), AGameStateBase::StaticClass() });
+    SelectionWindow->SetActorClasses({ AActor::StaticClass(), ACharacter::StaticClass(), AGameModeBase::StaticClass(), AGameStateBase::StaticClass() });
     SelectionWindow->SetTraceType(UEngineTypes::ConvertToTraceType(ECC_Pawn));
 #endif
 }

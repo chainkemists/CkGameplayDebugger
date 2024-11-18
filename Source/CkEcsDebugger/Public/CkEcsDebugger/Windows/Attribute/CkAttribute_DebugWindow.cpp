@@ -128,9 +128,9 @@ auto
     {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Attribute");
-        ImGui::TableSetupColumn("Min (Final)");
-        ImGui::TableSetupColumn("Base");
         ImGui::TableSetupColumn("Current");
+        ImGui::TableSetupColumn("Base");
+        ImGui::TableSetupColumn("Min (Final)");
         ImGui::TableSetupColumn("Max (Final)");
         ImGui::TableHeadersRow();
 
@@ -142,10 +142,29 @@ auto
             if (ck::Is_NOT_Valid(InAttribute))
             { return; }
 
-            const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-            const auto& AttributeName = StringCast<ANSICHAR>(*AttributeLabel.ToString()).Get();
+            const auto TagAsString = [](FGameplayTag InTag, TArray<FGameplayTag> InToFilter)
+            {
+                auto String = ck::Format_UE(TEXT("{}"), InTag);
 
-            if (NOT _Filter.PassFilter(AttributeName))
+                for (const auto& Filter : InToFilter)
+                {
+                    const auto& ToFilter = ck::Format_UE(TEXT("{}."), Filter);
+                    String.RemoveFromStart(ToFilter);
+                }
+
+                return String;
+            };
+
+            const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
+            const auto& AttributeName = ck::Format_UE(TEXT("{}"), TagAsString(AttributeLabel,
+                TArray{TAG_Label_FloatAttribute.GetTag(), TAG_Label_ByteAttribute.GetTag(), TAG_Label_VectorAttribute.GetTag()}));
+
+            if (AttributeName == TAG_Label_FloatAttribute.GetTag().ToString() ||
+                AttributeName == TAG_Label_ByteAttribute.GetTag().ToString() ||
+                AttributeName == TAG_Label_VectorAttribute.GetTag().ToString())
+            { return; }
+
+            if (NOT _Filter.PassFilter(CK_ANSI_TEXT("{}", AttributeName)))
             { return; }
 
             const auto& BaseValue = T_UtilsType::Get_BaseValue(InAttribute);
@@ -165,7 +184,7 @@ auto
             ImGui::TableNextColumn();
             ImGui::Text("");
             ImGui::SameLine();
-            if (ImGui::Selectable(AttributeName, Selected == Index, ImGuiSelectableFlags_SpanAllColumns))
+            if (ImGui::Selectable(CK_ANSI_TEXT("{}", AttributeName), Selected == Index, ImGuiSelectableFlags_SpanAllColumns))
             {
                 Selected = Index;
             }
@@ -182,6 +201,12 @@ auto
             }
 
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
+
+            //------------------------
+            // Current Value
+            //------------------------
+            ImGui::TableNextColumn();
+            ImGui::Text(ck::Format_ANSI(TEXT("{}"), CurrentValue).c_str());
 
             //------------------------
             // Min Value
@@ -202,12 +227,6 @@ auto
             //------------------------
             ImGui::TableNextColumn();
             ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
-
-            //------------------------
-            // Current Value
-            //------------------------
-            ImGui::TableNextColumn();
-            ImGui::Text(ck::Format_ANSI(TEXT("{}"), CurrentValue).c_str());
 
             //------------------------
             // Max Value

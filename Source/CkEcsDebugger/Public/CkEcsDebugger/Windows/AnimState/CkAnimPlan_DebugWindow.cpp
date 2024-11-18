@@ -79,7 +79,7 @@ auto
             const auto TagAsString = [](FGameplayTag InTag, FGameplayTag InToFilter)
             {
                 auto String = ck::Format_UE(TEXT("{}"), InTag);
-                const auto& ToFilter = ck::Format_UE(TEXT("{}"), InToFilter);
+                const auto& ToFilter = ck::Format_UE(TEXT("{}."), InToFilter);
                 String.RemoveFromStart(ToFilter);
                 return String;
             };

@@ -414,6 +414,27 @@ auto
         ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), CanActivate)));
 
         //------------------------
+        // Tags on Owner
+        //------------------------
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Tags on Owner");
+        ImGui::TableNextColumn();
+        const auto MaybeOwner = UCk_Utils_Ability_UE::TryGet_Owner(InAbility);
+
+        if (ck::Is_NOT_Valid(MaybeOwner))
+        { ImGui::Text("There is no Owner"); }
+        else
+        {
+            const auto& OwnerTags = UCk_Utils_AbilityOwner_UE::Get_ActiveTags(MaybeOwner);
+
+            for (const auto& Tag : OwnerTags)
+            {
+                ImGui::Text(CK_ANSI_TEXT("{}", *Tag.ToString()));
+            }
+        }
+
+        //------------------------
         // NetworkSettings
         //------------------------
         const auto& NetworkSettings = UCk_Utils_Ability_UE::Get_NetworkSettings(InAbility);

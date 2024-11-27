@@ -136,7 +136,8 @@ auto
 
             ImGui::PushID(Index);
 
-            const auto& ContentEntities = UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity).Get_EntitiesInCollection();
+            const auto& EntitiesInCollection = UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(InEntityCollectionEntity);
+            const auto& ContentEntities = EntitiesInCollection.Get_EntitiesInCollection();
 
             //------------------------
             // Count

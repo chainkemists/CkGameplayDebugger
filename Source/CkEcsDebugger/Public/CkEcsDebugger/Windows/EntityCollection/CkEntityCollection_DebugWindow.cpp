@@ -101,6 +101,7 @@ auto
         FCk_Handle& InSelectionEntity)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_EntityCollection_DebugWindow_RenderTable)
     if (ImGui::BeginTable("Entity Collections", 3, ImGuiTableFlags_SizingFixedFit
                                                  | ImGuiTableFlags_Resizable
                                                  | ImGuiTableFlags_NoBordersInBodyUntilResize

@@ -104,6 +104,7 @@ auto
     RenderTable(
         const FCk_Handle& InOwner) -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_OverlapBody_DebugWindow_RenderTable)
     if (ImGui::BeginTable(ck::Format_ANSI(TEXT("{}"), Get_Title()).c_str(), 6,
         ImGuiTableFlags_SizingFixedFit |
         ImGuiTableFlags_Resizable |

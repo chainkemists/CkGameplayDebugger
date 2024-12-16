@@ -194,6 +194,7 @@ auto
         FCk_Handle_AbilityOwner& InSelectionEntity)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_Abilities_DebugWindow_RenderTable)
     _FilteredAbilities.Reset();
 
     AddToFilteredAbilities(InSelectionEntity);

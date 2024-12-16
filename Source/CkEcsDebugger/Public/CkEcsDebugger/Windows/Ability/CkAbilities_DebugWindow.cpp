@@ -236,6 +236,7 @@ auto
 
         const auto AddAbilityToTable = [&](const FCk_Handle_Ability& Ability, int32 InLevel)
         {
+            QUICK_SCOPE_CYCLE_COUNTER(AddAbilityToTable)
             ImGui::TableNextRow();
 
             const auto Index = GetTypeHash(Ability);
@@ -309,6 +310,7 @@ auto
         const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void { };
         const auto AddAllAbilities = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void
         {
+            QUICK_SCOPE_CYCLE_COUNTER(AddAllAbilities)
             const auto* Found = _FilteredAbilities.Find(InAbilityOwner);
             if (ck::Is_NOT_Valid(Found, ck::IsValid_Policy_NullptrOnly{}))
             { return; }
@@ -343,6 +345,7 @@ auto
         const FCk_Handle_Ability& InAbility)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(RenderAbilityInfo)
     if (ImGui::BeginTable("Ability", 2, ImGuiTableFlags_Borders))
     {
         const auto& TextColor = ImVec4{1.0f, 1.0f, 1.0f, 0.5f};
@@ -551,8 +554,18 @@ auto
         FCk_Handle_AbilityOwner InAbilityOwner)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(AddToFilteredAbilities)
+
     UCk_Utils_AbilityOwner_UE::ForEach_Ability(InAbilityOwner, [this, InAbilityOwner](const FCk_Handle_Ability& InAbility)
     {
+        const auto& AbilityLifetimeOwner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InAbility);
+
+        // ForEach_Ability will recursively go through all extensions even if they aren't directly a child of InAbilityOwner.
+        // We only care about direct children of the ability owner, and will recurse to find deeper children,
+        // We need to recurse manually instead of relying on extensions since we want to find non-extension abilities as well
+        if (AbilityLifetimeOwner != InAbilityOwner)
+        { return; }
+
         if (UCk_Utils_AbilityOwner_UE::Has(InAbility))
         {
             AddToFilteredAbilities(UCk_Utils_AbilityOwner_UE::CastChecked(InAbility));

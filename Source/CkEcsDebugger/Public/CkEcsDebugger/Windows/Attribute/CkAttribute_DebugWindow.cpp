@@ -117,6 +117,7 @@ auto
         FCk_Handle& InSelectionEntity)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_Attribute_DebugWindow_RenderTable)
     if (ImGui::BeginTable("Attributes", 5, ImGuiTableFlags_SizingFixedFit
                                          | ImGuiTableFlags_Resizable
                                          | ImGuiTableFlags_NoBordersInBodyUntilResize

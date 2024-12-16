@@ -98,6 +98,7 @@ auto
         FCk_Handle& InSelectionEntity)
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_Timer_DebugWindow_RenderTable)
     if (ImGui::BeginTable("Timers", 2, ImGuiTableFlags_SizingFixedFit
                                      | ImGuiTableFlags_Resizable
                                      | ImGuiTableFlags_NoBordersInBodyUntilResize

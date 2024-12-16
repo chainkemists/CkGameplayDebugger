@@ -49,6 +49,7 @@ auto
     RenderTable()
     -> void
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_AnimPlan_DebugWindow_RenderTable)
     auto SelectionEntity = Get_SelectionEntity();
 
     if (ImGui::BeginTable("AnimPlans", 3, ImGuiTableFlags_SizingFixedFit

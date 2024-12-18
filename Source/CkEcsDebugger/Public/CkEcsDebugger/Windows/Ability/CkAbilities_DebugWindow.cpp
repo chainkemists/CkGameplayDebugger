@@ -15,6 +15,14 @@
 #include <Editor.h>
 #include <Subsystems/AssetEditorSubsystem.h>
 #endif
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_abilities_debug_window
+{
+    static ImGuiTextFilter Filter;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -147,7 +155,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWindowWidgets::SearchBar(ck_abilities_debug_window::Filter);
 
         ImGui::EndMenuBar();
     }
@@ -191,7 +199,7 @@ auto
 auto
     FCk_Abilities_DebugWindow::
     RenderTable(
-        FCk_Handle_AbilityOwner& InSelectionEntity)
+        const FCk_Handle_AbilityOwner& InSelectionEntity)
     -> void
 {
     QUICK_SCOPE_CYCLE_COUNTER(FCk_Abilities_DebugWindow_RenderTable)

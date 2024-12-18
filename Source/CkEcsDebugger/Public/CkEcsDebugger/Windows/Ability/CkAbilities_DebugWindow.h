@@ -42,7 +42,7 @@ protected:
 
     auto
     RenderTable(
-        FCk_Handle_AbilityOwner& InSelectionEntity) -> void;
+        const FCk_Handle_AbilityOwner& InSelectionEntity) -> void;
 
     auto
     RenderAbilityInfo(
@@ -77,7 +77,6 @@ private:
         FCk_Handle_AbilityOwner InAbilityOwner) -> void;
 
 private:
-    ImGuiTextFilter _Filter;
     TObjectPtr<UCk_Abilities_DebugWindowConfig> _Config;
 
     FCk_Handle_Ability _AbilityHandleToActivate;

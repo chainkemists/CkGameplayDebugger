@@ -42,7 +42,6 @@ protected:
         const T_HandleType& InAttribute) const -> void;
 
 private:
-    ImGuiTextFilter _Filter;
     TObjectPtr<UCk_Attribute_DebugWindowConfig> _Config;
 };
 

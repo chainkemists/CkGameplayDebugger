@@ -11,6 +11,33 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+namespace ck_attributes_debug_window
+{
+    static ImGuiTextFilter ByteFilter;
+    static ImGuiTextFilter FloatFilter;
+    static ImGuiTextFilter VectorFilter;
+
+    template <typename T_HandleType>
+    auto
+    Get_Filter() -> ImGuiTextFilter&
+    {
+        if constexpr (std::is_same_v<T_HandleType, FCk_Handle_FloatAttribute>)
+        {
+            return FloatFilter;
+        }
+        else if constexpr (std::is_same_v<T_HandleType, FCk_Handle_ByteAttribute>)
+        {
+            return ByteFilter;
+        }
+        else
+        {
+            return VectorFilter;
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 template <typename T_HandleType, typename T_UtilsType, typename T_Type>
 auto
     FCk_Attribute_DebugWindow<T_HandleType, T_UtilsType, T_Type>::
@@ -104,7 +131,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWindowWidgets::SearchBar(ck_attributes_debug_window::Get_Filter<T_HandleType>());
 
         ImGui::EndMenuBar();
     }
@@ -157,15 +184,21 @@ auto
             };
 
             const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-            const auto& AttributeName = ck::Format_UE(TEXT("{}"), TagAsString(AttributeLabel,
-                TArray{TAG_Label_FloatAttribute.GetTag(), TAG_Label_ByteAttribute.GetTag(), TAG_Label_VectorAttribute.GetTag()}));
+
+            const auto& TagAsStr = TagAsString(AttributeLabel,
+                TArray{TAG_Label_FloatAttribute.GetTag(), TAG_Label_ByteAttribute.GetTag(), TAG_Label_VectorAttribute.GetTag()});
+
+            if (TagAsStr.Contains(TEXT("DUMMY")))
+            { return; }
+
+            const auto& AttributeName = ck::Format_UE(TEXT("{}"), TagAsStr);
 
             if (AttributeName == TAG_Label_FloatAttribute.GetTag().ToString() ||
                 AttributeName == TAG_Label_ByteAttribute.GetTag().ToString() ||
                 AttributeName == TAG_Label_VectorAttribute.GetTag().ToString())
             { return; }
 
-            if (NOT _Filter.PassFilter(CK_ANSI_TEXT("{}", AttributeName)))
+            if (NOT ck_attributes_debug_window::Get_Filter<T_HandleType>().PassFilter(CK_ANSI_TEXT("{}", AttributeName)))
             { return; }
 
             const auto& BaseValue = T_UtilsType::Get_BaseValue(InAttribute);

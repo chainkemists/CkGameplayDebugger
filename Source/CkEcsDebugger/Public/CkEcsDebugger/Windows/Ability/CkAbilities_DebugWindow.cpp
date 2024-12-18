@@ -588,8 +588,15 @@ auto
         { return; }
 
         if (const auto& AbilityName = DoGet_AbilityName(InAbility);
-            NOT _Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
+            NOT ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
         { return; }
+
+        auto OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(InAbility));
+        while(ck::IsValid(OwnerMaybeAbility))
+        {
+            _FilteredAbilities.FindOrAdd(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility)).AddUnique(OwnerMaybeAbility);
+            OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility));
+        }
 
         auto& Abilities = _FilteredAbilities.FindOrAdd(InAbilityOwner);
         Abilities.AddUnique(InAbility);

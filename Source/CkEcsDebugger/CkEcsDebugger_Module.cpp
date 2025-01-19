@@ -1,4 +1,4 @@
-#include "CkEcsDebugger.h"
+#include "CkEcsDebugger_Module.h"
 
 #define LOCTEXT_NAMESPACE "FCkEcsDebuggerModule"
 

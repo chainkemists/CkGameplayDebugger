@@ -1,4 +1,4 @@
-#include "CkGameplayDebugger.h"
+#include "CkGameplayDebugger_Module.h"
 
 #include "CkGameplayDebugger/Category/CkDebugger_Category.h"
 

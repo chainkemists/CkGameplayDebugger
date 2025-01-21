@@ -273,9 +273,23 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            if (const auto& AbilityName = DoGet_AbilityName(Ability);
-                ImGui::Selectable(ck::Format_ANSI(TEXT("{} {}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), AbilityName).c_str(),
-                    SelectedIndex == Index, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
+            const auto& AbilityName = DoGet_AbilityName(Ability);
+            const auto SearchSymbol = [&]() -> FString
+            {
+                if (ck_abilities_debug_window::Filter.IsActive() &&
+                    ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
+                {
+                    return TEXT(">> ");
+                }
+
+                return TEXT("");
+            }();
+
+            if (ImGui::Selectable(ck::Format_ANSI(TEXT("{} {}{}"),
+                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), SearchSymbol, AbilityName).c_str(),
+                SelectedIndex == Index,
+                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
+                ImGuiSelectableFlags_AllowDoubleClick))
             {
                 SelectedIndex = Index;
 

@@ -597,13 +597,31 @@ auto
 
         if (const auto& AbilityName = DoGet_AbilityName(InAbility);
             NOT ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
-        { return; }
-
-        auto OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(InAbility));
-        while(ck::IsValid(OwnerMaybeAbility))
         {
-            _FilteredAbilities.FindOrAdd(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility)).AddUnique(OwnerMaybeAbility);
-            OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility));
+            auto OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(InAbility));
+            auto Found = false;
+            while(ck::IsValid(OwnerMaybeAbility))
+            {
+                const auto& AbilityOwnerName = DoGet_AbilityName(OwnerMaybeAbility);
+                if (ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityOwnerName.ToString())))
+                {
+                    Found = true;
+                    break;
+                }
+                OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility));
+            }
+
+            if (NOT Found)
+            { return; }
+        }
+        else
+        {
+            auto OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(InAbility));
+            while(ck::IsValid(OwnerMaybeAbility))
+            {
+                _FilteredAbilities.FindOrAdd(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility)).AddUnique(OwnerMaybeAbility);
+                OwnerMaybeAbility = UCk_Utils_Ability_UE::Cast(UCk_Utils_Ability_UE::TryGet_Owner(OwnerMaybeAbility));
+            }
         }
 
         auto& Abilities = _FilteredAbilities.FindOrAdd(InAbilityOwner);

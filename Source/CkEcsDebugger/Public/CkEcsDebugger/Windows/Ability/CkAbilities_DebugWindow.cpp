@@ -238,18 +238,55 @@ auto
         ImGui::TableSetupColumn("Blocked");
         ImGui::TableHeadersRow();
 
-        // TODO: Display Conditions/Cost/Cooldown
-
         static int32 SelectedIndex = -1;
+
+        // TODO: Move to common util
+        const auto& HighlightSearchMatch = [](const std::string& InText, const std::string& InQuery, ImVec4 InHighlightColor)
+        {
+            const auto Pos = InText.find(InQuery);
+
+            if (Pos == std::string::npos)
+            {
+                // Render the full text if no match is found
+                ImGui::TextUnformatted(InText.c_str());
+                return;
+            }
+
+            const auto& Before = InText.substr(0, Pos);
+            const auto& Match = InText.substr(Pos, InQuery.length());
+            const auto& After = InText.substr(Pos + InQuery.length());
+
+            // Render the text before the match
+            ImGui::TextUnformatted(Before.c_str());
+            ImGui::SameLine(0.0f, 0.0f);
+
+            // Get the current cursor position for the match
+            const auto& MatchStartPos = ImGui::GetCursorScreenPos();
+
+            // Calculate the size of the match text
+            const auto& MatchSize = ImGui::CalcTextSize(Match.c_str());
+
+            // Draw the background for the match
+            auto* DrawList = ImGui::GetWindowDrawList();
+            DrawList->AddRectFilled(
+                MatchStartPos,
+                ImVec2(MatchStartPos.x + MatchSize.x, MatchStartPos.y + MatchSize.y),
+                ImGui::ColorConvertFloat4ToU32(InHighlightColor));
+
+            // Render the matched text over the background
+            ImGui::TextUnformatted(Match.c_str());
+            ImGui::SameLine(0.0f, 0.0f);
+
+            // Render the text after the match
+            ImGui::TextUnformatted(After.c_str());
+        };
 
         const auto AddAbilityToTable = [&](const FCk_Handle_Ability& Ability, int32 InLevel)
         {
             QUICK_SCOPE_CYCLE_COUNTER(AddAbilityToTable)
             ImGui::TableNextRow();
-
             const auto Index = GetTypeHash(Ability);
-
-            ImGui::PushID(GetTypeHash(Ability));
+            ImGui::PushID(Index);
 
             const auto& Color = FCogImguiHelper::ToImVec4(_Config->Get_AbilityColor(Ability));
             ImGui::PushStyleColor(ImGuiCol_Text, Color);
@@ -259,9 +296,7 @@ auto
             //------------------------
             ImGui::TableNextColumn();
             FCogWindowWidgets::PushStyleCompact();
-
             auto IsActive = UCk_Utils_Ability_UE::Get_Status(Ability) == ECk_Ability_Status::Active;
-
             if (ImGui::Checkbox("##Activation", &IsActive))
             {
                 _AbilityHandleToActivate = Ability;
@@ -273,21 +308,15 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            // Highlight the row if it's selected
-            if (const auto& AbilityName = DoGet_AbilityName(Ability);
-                ck_abilities_debug_window::Filter.IsActive() &&
-                ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
-            {
-                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(73, 75, 77, 192));
-            }
+            const std::string& AbilityName = ck::Format_ANSI(TEXT("{} {}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), DoGet_AbilityName(Ability)).c_str();
 
-            if (ImGui::Selectable(
-                    ck::Format_ANSI(TEXT("{} {}"),
-                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel),
-                    DoGet_AbilityName(Ability)).c_str(),
-                    SelectedIndex == Index,
-                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
-                    ImGuiSelectableFlags_AllowDoubleClick))
+            if (ck_abilities_debug_window::Filter.PassFilter(AbilityName.c_str()))
+            {
+                HighlightSearchMatch(AbilityName, ck_abilities_debug_window::Filter.InputBuf, ImVec4(0.31f, 0.31f, 0.33f, 1.f));
+            }
+            else if (ImGui::Selectable(AbilityName.c_str(),
+                                      SelectedIndex == Index,
+                                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
             {
                 SelectedIndex = Index;
 
@@ -328,18 +357,16 @@ auto
             ImGui::PopID();
         };
 
-        const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void { };
+        const auto AddAllAbilities_StopRecursing = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void {};
         const auto AddAllAbilities = [&](const FCk_Handle_AbilityOwner& InAbilityOwner, int32 InLevel, auto& Recurse) -> void
         {
             QUICK_SCOPE_CYCLE_COUNTER(AddAllAbilities)
             const auto* Found = _FilteredAbilities.Find(InAbilityOwner);
-            if (ck::Is_NOT_Valid(Found, ck::IsValid_Policy_NullptrOnly{}))
-            { return; }
+            if (!Found) { return; }
 
             for (auto& Abilities = *Found; auto Ability : Abilities)
             {
-                if (UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Ability) != InAbilityOwner)
-                { continue; }
+                if (UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Ability) != InAbilityOwner) { continue; }
 
                 AddAbilityToTable(Ability, InLevel);
 
@@ -352,9 +379,13 @@ auto
         };
 
         if (_Config->ShowSubAbilities)
-        { AddAllAbilities(InSelectionEntity, 0, AddAllAbilities); }
+        {
+            AddAllAbilities(InSelectionEntity, 0, AddAllAbilities);
+        }
         else
-        { AddAllAbilities(InSelectionEntity, 0, AddAllAbilities_StopRecursing); }
+        {
+            AddAllAbilities(InSelectionEntity, 0, AddAllAbilities_StopRecursing);
+        }
 
         ImGui::EndTable();
     }
@@ -445,15 +476,16 @@ auto
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Tags on Owner");
         ImGui::TableNextColumn();
-        const auto MaybeOwner = UCk_Utils_Ability_UE::TryGet_Owner(InAbility);
 
-        if (ck::Is_NOT_Valid(MaybeOwner))
-        { ImGui::Text("There is no Owner"); }
+        if (const auto MaybeOwner = UCk_Utils_Ability_UE::TryGet_Owner(InAbility);
+            ck::Is_NOT_Valid(MaybeOwner))
+        {
+            ImGui::Text("There is no Owner");
+        }
         else
         {
-            const auto& OwnerTags = UCk_Utils_AbilityOwner_UE::Get_ActiveTags(MaybeOwner);
-
-            for (const auto& Tag : OwnerTags)
+            for (const auto& OwnerTags = UCk_Utils_AbilityOwner_UE::Get_ActiveTags(MaybeOwner);
+                const auto& Tag : OwnerTags)
             {
                 ImGui::Text(CK_ANSI_TEXT("{}", *Tag.ToString()));
             }

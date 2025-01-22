@@ -273,23 +273,21 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            const auto& AbilityName = DoGet_AbilityName(Ability);
-            const auto SearchSymbol = [&]() -> FString
+            // Highlight the row if it's selected
+            if (const auto& AbilityName = DoGet_AbilityName(Ability);
+                ck_abilities_debug_window::Filter.IsActive() &&
+                ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
             {
-                if (ck_abilities_debug_window::Filter.IsActive() &&
-                    ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityName.ToString())))
-                {
-                    return TEXT(">> ");
-                }
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(73, 75, 77, 192));
+            }
 
-                return TEXT("");
-            }();
-
-            if (ImGui::Selectable(ck::Format_ANSI(TEXT("{} {}{}"),
-                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), SearchSymbol, AbilityName).c_str(),
-                SelectedIndex == Index,
-                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
-                ImGuiSelectableFlags_AllowDoubleClick))
+            if (ImGui::Selectable(
+                    ck::Format_ANSI(TEXT("{} {}"),
+                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel),
+                    DoGet_AbilityName(Ability)).c_str(),
+                    SelectedIndex == Index,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap |
+                    ImGuiSelectableFlags_AllowDoubleClick))
             {
                 SelectedIndex = Index;
 
@@ -321,7 +319,8 @@ auto
             //------------------------
             ImGui::TableNextColumn();
             if (const auto& CanActivateResult = UCk_Utils_Ability_UE::Get_CanActivate(Ability);
-                CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet && CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive)
+                CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet &&
+                CanActivateResult != ECk_Ability_ActivationRequirementsResult::RequirementsMet_ButAlreadyActive)
             {
                 ImGui::Text("Blocked");
             }

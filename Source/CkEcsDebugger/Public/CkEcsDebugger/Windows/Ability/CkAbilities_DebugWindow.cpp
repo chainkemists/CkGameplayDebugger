@@ -1,4 +1,4 @@
-#include "CkAbilities_DebugWindow.h"
+﻿#include "CkAbilities_DebugWindow.h"
 
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
@@ -183,7 +183,7 @@ auto
         bool Open = true;
 
         if (const auto& AbilityName = DoGet_AbilityName(AbilityOpened);
-            ImGui::Begin(TCHAR_TO_ANSI(*AbilityName.ToString()), &Open))
+            ImGui::Begin(ck::Format_ANSI(TEXT("{}"), AbilityName).c_str(), &Open))
         {
             RenderAbilityInfo(AbilityOpened);
             ImGui::End();
@@ -240,45 +240,92 @@ auto
 
         static int32 SelectedIndex = -1;
 
-        // TODO: Move to common util
+        // TODO: Move to common util AND clean up this mess... (╯°□°)╯︵ ┻━┻
         const auto& HighlightSearchMatch = [](const std::string& InText, const std::string& InQuery, ImVec4 InHighlightColor)
         {
-            const auto Pos = InText.find(InQuery);
-
-            if (Pos == std::string::npos)
+            // Helper lambda to split a string by delimiters
+            const auto SplitString = [](const std::string& Input, const std::string& Delimiters) -> std::vector<std::string>
             {
-                // Render the full text if no match is found
-                ImGui::TextUnformatted(InText.c_str());
-                return;
+                std::vector<std::string> Tokens;
+                size_t Start = 0;
+                size_t End = 0;
+
+                while ((End = Input.find_first_of(Delimiters, Start)) != std::string::npos)
+                {
+                    if (End > Start)
+                        Tokens.emplace_back(Input.substr(Start, End - Start));
+                    Start = End + 1;
+                }
+
+                if (Start < Input.size())
+                    Tokens.emplace_back(Input.substr(Start));
+
+                return Tokens;
+            };
+
+            // Split the query into individual search terms
+            const auto QueryParts = SplitString(InQuery, ", ");
+
+            // Lowercase the input text for case-insensitive comparison
+            auto LowerText = InText;
+            std::ranges::transform(LowerText, LowerText.begin(), ::tolower);
+
+            // Track the remaining part of the text to render
+            auto RemainingText = InText;
+
+            while (NOT RemainingText.empty())
+            {
+                size_t MatchPos = std::string::npos;
+                size_t MatchLength = 0;
+
+                // Find the earliest match across all query parts
+                for (const auto& QueryPart : QueryParts)
+                {
+                    auto LowerQuery = QueryPart;
+                    std::ranges::transform(LowerQuery, LowerQuery.begin(), ::tolower);
+
+                    if (const auto Pos = LowerText.find(LowerQuery);
+                        Pos != std::string::npos && (MatchPos == std::string::npos || Pos < MatchPos))
+                    {
+                        MatchPos = Pos;
+                        MatchLength = QueryPart.length();
+                    }
+                }
+
+                if (MatchPos == std::string::npos)
+                {
+                    // Render the remaining text if no matches are found
+                    ImGui::TextUnformatted(RemainingText.c_str());
+                    break;
+                }
+
+                // Render text before the match
+                const auto BeforeMatch = RemainingText.substr(0, MatchPos);
+                if (NOT BeforeMatch.empty())
+                {
+                    ImGui::TextUnformatted(BeforeMatch.c_str());
+                    ImGui::SameLine(0.0f, 0.0f);
+                }
+
+                // Render the matched text with highlight
+                const auto MatchText = RemainingText.substr(MatchPos, MatchLength);
+                const auto MatchStartPos = ImGui::GetCursorScreenPos();
+                const auto MatchSize = ImGui::CalcTextSize(MatchText.c_str());
+
+                auto* DrawList = ImGui::GetWindowDrawList();
+                DrawList->AddRectFilled(
+                    MatchStartPos,
+                    ImVec2(MatchStartPos.x + MatchSize.x, MatchStartPos.y + MatchSize.y),
+                    ImGui::ColorConvertFloat4ToU32(InHighlightColor)
+                );
+
+                ImGui::TextUnformatted(MatchText.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+
+                // Adjust remaining text and lowercase text
+                RemainingText = RemainingText.substr(MatchPos + MatchLength);
+                LowerText = LowerText.substr(MatchPos + MatchLength);
             }
-
-            const auto& Before = InText.substr(0, Pos);
-            const auto& Match = InText.substr(Pos, InQuery.length());
-            const auto& After = InText.substr(Pos + InQuery.length());
-
-            // Render the text before the match
-            ImGui::TextUnformatted(Before.c_str());
-            ImGui::SameLine(0.0f, 0.0f);
-
-            // Get the current cursor position for the match
-            const auto& MatchStartPos = ImGui::GetCursorScreenPos();
-
-            // Calculate the size of the match text
-            const auto& MatchSize = ImGui::CalcTextSize(Match.c_str());
-
-            // Draw the background for the match
-            auto* DrawList = ImGui::GetWindowDrawList();
-            DrawList->AddRectFilled(
-                MatchStartPos,
-                ImVec2(MatchStartPos.x + MatchSize.x, MatchStartPos.y + MatchSize.y),
-                ImGui::ColorConvertFloat4ToU32(InHighlightColor));
-
-            // Render the matched text over the background
-            ImGui::TextUnformatted(Match.c_str());
-            ImGui::SameLine(0.0f, 0.0f);
-
-            // Render the text after the match
-            ImGui::TextUnformatted(After.c_str());
         };
 
         const auto AddAbilityToTable = [&](const FCk_Handle_Ability& Ability, int32 InLevel)
@@ -308,9 +355,9 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            const std::string& AbilityName = ck::Format_ANSI(TEXT("{} {}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), DoGet_AbilityName(Ability)).c_str();
+            const std::string& AbilityName = ck::Format_ANSI(TEXT("{}{}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), DoGet_AbilityName(Ability)).c_str();
 
-            if (ck_abilities_debug_window::Filter.PassFilter(AbilityName.c_str()))
+            if (ck_abilities_debug_window::Filter.IsActive() && ck_abilities_debug_window::Filter.PassFilter(AbilityName.c_str()))
             {
                 HighlightSearchMatch(AbilityName, ck_abilities_debug_window::Filter.InputBuf, ImVec4(0.31f, 0.31f, 0.33f, 1.f));
             }
@@ -417,7 +464,7 @@ auto
         ImGui::TextColored(TextColor, "Name");
         ImGui::TableNextColumn();
         ImGui::PushStyleColor(ImGuiCol_Text, AbilityColor);
-        ImGui::Text("%s", TCHAR_TO_ANSI(*AbilityName.ToString()));
+        ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), AbilityName).c_str());
         ImGui::PopStyleColor(1);
 
         //------------------------
@@ -457,7 +504,7 @@ auto
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Handle");
         ImGui::TableNextColumn();
-        ImGui::Text("%s", TCHAR_TO_ANSI(*UCk_Utils_Handle_UE::Conv_HandleToString(InAbility)));
+        ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), UCk_Utils_Handle_UE::Conv_HandleToString(InAbility)).c_str());
 
         //------------------------
         // AbilityTags
@@ -487,7 +534,7 @@ auto
             for (const auto& OwnerTags = UCk_Utils_AbilityOwner_UE::Get_ActiveTags(MaybeOwner);
                 const auto& Tag : OwnerTags)
             {
-                ImGui::Text(CK_ANSI_TEXT("{}", *Tag.ToString()));
+                ImGui::Text(ck::Format_ANSI(TEXT("{}"), Tag.GetTagName()).c_str());
             }
         }
 
@@ -499,13 +546,13 @@ auto
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Replication");
         ImGui::TableNextColumn();
-        ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), NetworkSettings.Get_ReplicationType())));
+        ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), NetworkSettings.Get_ReplicationType()).c_str());
 
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Execution");
         ImGui::TableNextColumn();
-        ImGui::Text("%s", TCHAR_TO_ANSI(*ck::Format_UE(TEXT("{}"), NetworkSettings.Get_ExecutionPolicy())));
+        ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), NetworkSettings.Get_ExecutionPolicy()).c_str());
 
         ImGui::EndTable();
     }
@@ -518,7 +565,7 @@ auto
         int32 InIndex)
     -> void
 {
-    if (ImGui::BeginPopupContextItem())
+    if (ImGui::BeginPopupContextItem(ck::Format_ANSI(TEXT("{}"), DoGet_AbilityName(InAbility)).c_str()))
     {
         auto Open = _OpenedAbilities.Contains(InAbility);
         if (ImGui::Checkbox("Open", &Open))
@@ -647,8 +694,8 @@ auto
             auto Found = false;
             while(ck::IsValid(OwnerMaybeAbility))
             {
-                const auto& AbilityOwnerName = DoGet_AbilityName(OwnerMaybeAbility);
-                if (ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityOwnerName.ToString())))
+                if (const auto& AbilityOwnerName = DoGet_AbilityName(OwnerMaybeAbility);
+                    ck_abilities_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*AbilityOwnerName.ToString())))
                 {
                     Found = true;
                     break;

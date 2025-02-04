@@ -5,6 +5,11 @@
 #include "CogImguiHelper.h"
 #include "CogWindowWidgets.h"
 
+// --------------------------------------------------------------------------------------------------------------------
+
+template class FCk_OverlapBody_DebugWindow<FCk_Handle_Marker, UCk_Utils_Marker_UE>;
+template class FCk_OverlapBody_DebugWindow<FCk_Handle_Sensor, UCk_Utils_Sensor_UE>;
+
 //--------------------------------------------------------------------------------------------------------------------------
 
 template <typename T_HandleType, typename T_UtilsType>
@@ -242,3 +247,4 @@ FName
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+

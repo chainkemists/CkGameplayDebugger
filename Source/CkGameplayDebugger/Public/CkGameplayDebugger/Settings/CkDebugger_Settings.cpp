@@ -1,6 +1,7 @@
 #include "CkDebugger_Settings.h"
 
 #include "CkCore/Object/CkObject_Utils.h"
+#include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 

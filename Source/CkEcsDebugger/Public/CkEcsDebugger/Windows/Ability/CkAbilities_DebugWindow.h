@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkAbility/AbilityOwner/CkAbilityOwner_Fragment_Data.h"
+
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Ability/CkAbilities_DebugConfig.h"
 

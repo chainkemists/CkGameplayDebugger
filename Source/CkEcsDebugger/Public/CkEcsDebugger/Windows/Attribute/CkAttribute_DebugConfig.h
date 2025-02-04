@@ -47,4 +47,43 @@ public:
     // TODO: GroupBySource (EntityExtensions)
 };
 
+// --------------------------------------------------------------------------------------------------------------------
+
+template <typename T_UtilsType, typename T_HandleType>
+auto
+    UCk_Attribute_DebugWindowConfig::Get_AttributeColor(
+        const T_HandleType& InAttribute,
+        ECk_MinMaxCurrent InAttributeComponent) const
+        -> const FVector4f& {
+    const auto& BaseValue = T_UtilsType::Get_BaseValue(InAttribute, InAttributeComponent);
+    const auto& CurrentValue = T_UtilsType::Get_FinalValue(InAttribute, InAttributeComponent);
+
+    if constexpr(std::is_same_v< std::_Remove_cvref_t<decltype(BaseValue)>, FVector>)
+    {
+        if (CurrentValue.SquaredLength() > BaseValue.SquaredLength())
+        {
+            return PositiveColor;
+        }
+
+        if (CurrentValue.SquaredLength() < BaseValue.SquaredLength())
+        {
+            return NegativeColor;
+        }
+    }
+    else
+    {
+        if (CurrentValue > BaseValue)
+        {
+            return PositiveColor;
+        }
+
+        if (CurrentValue < BaseValue)
+        {
+            return NegativeColor;
+        }
+    }
+
+    return NeutralColor;
+}
+
 //--------------------------------------------------------------------------------------------------------------------------

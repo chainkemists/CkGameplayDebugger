@@ -11,6 +11,12 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+template class FCk_Attribute_DebugWindow<FCk_Handle_ByteAttribute, UCk_Utils_ByteAttribute_UE, uint8>;
+template class FCk_Attribute_DebugWindow<FCk_Handle_FloatAttribute, UCk_Utils_FloatAttribute_UE, float>;
+template class FCk_Attribute_DebugWindow<FCk_Handle_VectorAttribute, UCk_Utils_VectorAttribute_UE, FVector>;
+
+// --------------------------------------------------------------------------------------------------------------------
+
 namespace ck_attributes_debug_window
 {
     static ImGuiTextFilter ByteFilter;

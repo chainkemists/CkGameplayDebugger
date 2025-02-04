@@ -1,5 +1,7 @@
 #include "CkDebugger_Category_Data.h"
 
+#include "GameplayDebuggerCategoryReplicator.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 FCk_Payload_GameplayDebugger_OnCollectData::

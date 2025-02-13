@@ -181,10 +181,17 @@ auto
             ImGui::Text(ck::Format_ANSI(TEXT("{}"), Get_ShapeInfo(InOverlap)).c_str());
 
             ImGui::TableNextColumn();
-            ImGui::Text(ck::Format_ANSI(TEXT("{}\n{}\n{}\n"),
-                T_UtilsType::Get_ShapeComponent(InOverlap)->GetRelativeLocation(),
-                T_UtilsType::Get_ShapeComponent(InOverlap)->GetRelativeRotation(),
-                T_UtilsType::Get_ShapeComponent(InOverlap)->GetRelativeScale3D()).c_str());
+            if (auto ShapeComponent = T_UtilsType::Get_ShapeComponent(InOverlap); ck::IsValid(ShapeComponent))
+            {
+                ImGui::Text(ck::Format_ANSI(TEXT("{}\n{}\n{}\n"),
+                    ShapeComponent->GetRelativeLocation(),
+                    ShapeComponent->GetRelativeRotation(),
+                    ShapeComponent->GetRelativeScale3D()).c_str());
+            }
+            else
+            {
+                ImGui::Text(ck::Format_ANSI(TEXT("NO VALID SHAPE COMPONENT")).c_str());
+            }
         };
 
         auto AllOverlaps = T_UtilsType::Get_All(InOwner);

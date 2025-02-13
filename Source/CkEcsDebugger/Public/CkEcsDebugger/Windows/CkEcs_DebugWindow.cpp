@@ -7,9 +7,9 @@
 #if UE_WITH_IRIS
 #include <Net/Iris/ReplicationSystem/ActorReplicationBridge.h>
 #include <Iris/ReplicationSystem/ReplicationSystem.h>
-#else
-#include <Engine/PackageMapClient.h>
 #endif
+
+#include <Engine/PackageMapClient.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -26,81 +26,80 @@ auto
     const auto World = SelectionActor->GetWorld();
     const auto SelectedWorld = World->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>()->Get_SelectedWorld();
 
+    if (ck::Is_NOT_Valid(World))
+    { return {}; }
+
+    if (ck::Is_NOT_Valid(SelectedWorld))
+    { return {}; }
+
+    const auto NetDriver = World->GetNetDriver();
+    if (ck::Is_NOT_Valid(NetDriver))
+    { return {}; }
+
 #if UE_WITH_IRIS
-    [&]
+    if (NetDriver->IsUsingIrisReplication())
     {
-        if (ck::Is_NOT_Valid(World))
-        { return; }
-
-        const auto NetDriver = World->GetNetDriver();
-        if (ck::Is_NOT_Valid(NetDriver))
-        { return; }
-
-        if (ck::Is_NOT_Valid(SelectedWorld))
-        { return; }
-
         const auto SelectedNetDriver = SelectedWorld->GetNetDriver();
         if (ck::Is_NOT_Valid(SelectedNetDriver))
-        { return; }
+        { return {}; }
 
         const auto ReplicationSystem = NetDriver->GetReplicationSystem();
         if (ck::Is_NOT_Valid(ReplicationSystem))
-        { return; }
+        { return {}; }
 
         const auto SelectedReplicationSystem = SelectedNetDriver->GetReplicationSystem();
         if (ck::Is_NOT_Valid(SelectedReplicationSystem))
-        { return; }
+        { return {}; }
 
         const auto WorldRepBridge = Cast<UActorReplicationBridge>(ReplicationSystem->GetReplicationBridge());
         if (ck::Is_NOT_Valid(WorldRepBridge))
-        { return; }
+        { return {}; }
 
         const auto SelectedWorldRepBridge = Cast<UActorReplicationBridge>(SelectedReplicationSystem->GetReplicationBridge());
         if (ck::Is_NOT_Valid(SelectedWorldRepBridge))
-        { return; }
+        { return {}; }
 
         const auto RefHandle = WorldRepBridge->GetReplicatedRefHandle(SelectionActor);
         const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
 
         if (ck::Is_NOT_Valid(SelectedWorldActor))
-        { return; }
+        { return {}; }
 
         SelectionActor = Cast<AActor>(SelectedWorldActor);
-    }();
-#else
-    [&]
+    }
+#endif
+    if (NOT NetDriver->IsUsingIrisReplication())
     {
         if (ck::Is_NOT_Valid(World))
-        { return; }
+        { return {}; }
 
         const auto& WorldNetDriver = World->GetNetDriver();
         if (ck::Is_NOT_Valid(WorldNetDriver))
-        { return; }
+        { return {}; }
 
         const auto& WorldGuidCache = WorldNetDriver->GuidCache;
         if (ck::Is_NOT_Valid(WorldGuidCache))
-        { return; }
+        { return {}; }
 
         const auto WorldNetGuid = WorldGuidCache->GetNetGUID(SelectionActor);
         if (ck::Is_NOT_Valid(WorldNetGuid))
-        { return; }
+        { return {}; }
 
         const auto SelectedWorldNetDriver = SelectedWorld->GetNetDriver();
         if (ck::Is_NOT_Valid(SelectedWorldNetDriver))
-        { return; }
+        { return {}; }
 
         const auto& SelectedWorldGuidCache = SelectedWorldNetDriver->GuidCache;
         if (ck::Is_NOT_Valid(SelectedWorldGuidCache))
-        { return; }
+        { return {}; }
 
         constexpr auto IgnoreMustBeMapped = true;
         const auto SelectedActor = Cast<AActor>(SelectedWorldGuidCache->GetObjectFromNetGUID(WorldNetGuid, IgnoreMustBeMapped));
         if (ck::Is_NOT_Valid(SelectedActor))
-        { return; }
+        { return {}; }
 
         SelectionActor = SelectedActor;
-    }();
-#endif
+    }
 
     if (NOT UCk_Utils_OwningActor_UE::Get_IsActorEcsReady(SelectionActor))
     { return {}; }

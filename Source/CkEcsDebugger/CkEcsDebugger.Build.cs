@@ -14,6 +14,7 @@ public class CkEcsDebugger : CkModuleRules
             "CoreUObject",
             "Engine",
             "GameplayTags",
+            "InputCore",
 
             "Iris",
             "IrisCore",

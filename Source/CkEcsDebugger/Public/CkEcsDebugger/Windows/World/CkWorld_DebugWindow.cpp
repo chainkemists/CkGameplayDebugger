@@ -1,13 +1,18 @@
 #include "CkWorld_DebugWindow.h"
 
-#include "CogWindowWidgets.h"
+#include "CogWindowManager.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
+#include <CogImguiInputHelper.h>
+#include <CogWindowWidgets.h>
+
 //--------------------------------------------------------------------------------------------------------------------------
+
+FString ToggleInputCommand   = TEXT("Cog.ToggleInput");
 
 auto
     FCk_World_DebugWindow::
@@ -17,6 +22,71 @@ auto
     Super::Initialize();
     bHasMenu = true;
     bHasWidget = true;
+
+    const auto SelectCorrectWorld = [](const UWorld* InWorld, bool InPrevious = false)
+    {
+        auto EcsDebuggerSubsystem = InWorld->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+
+        const auto SelectedWorld = EcsDebuggerSubsystem->Get_SelectedWorld();
+
+        auto Worlds = TArray<UWorld*>();
+        auto WorldContexts = GEngine->GetWorldContexts();
+
+        for (auto Index = 0; Index < WorldContexts.Num(); ++Index)
+        {
+            const auto& ContextWorld = WorldContexts[Index].World();
+
+            if (ck::Is_NOT_Valid(ContextWorld))
+            { continue; }
+
+            auto GameInstance = ContextWorld->GetGameInstance();
+
+            if (ck::Is_NOT_Valid(GameInstance))
+            { continue; }
+
+            Worlds.Emplace(ContextWorld);
+        }
+
+        for (auto Index = 0; Index < Worlds.Num(); ++Index)
+        {
+            const auto& ContextWorld = Worlds[Index];
+
+            if (ContextWorld == SelectedWorld)
+            {
+                const auto NewIndex = ((InPrevious ? Index - 1 : Index + 1) + Worlds.Num()) % Worlds.Num();;
+                EcsDebuggerSubsystem->Set_SelectedWorld(Worlds[NewIndex]);
+                break;
+            }
+        }
+    };
+
+    _ConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+        TEXT("Cog.CycleWorlds_Previous"),
+        TEXT("Cycle to the previous available world"),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([this, SelectCorrectWorld](const TArray<FString>& Args, const UWorld* InWorld)
+        {
+            SelectCorrectWorld(InWorld, true);
+        }),
+        ECVF_Cheat));
+
+    _ConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+        TEXT("Cog..CycleWorlds_Next"),
+        TEXT("Cycle to the next available world"),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([this, SelectCorrectWorld](const TArray<FString>& Args, const UWorld* InWorld)
+        {
+            SelectCorrectWorld(InWorld, false);
+        }),
+        ECVF_Cheat));
+
+    {
+        const auto PlayerInput = FCogImguiInputHelper::GetPlayerInput(*GetWorld());
+        UCogWindowManager::AddCommand(PlayerInput, "Cog.CycleWorlds_Previous", EKeys::PageDown);
+    }
+
+    {
+        const auto PlayerInput = FCogImguiInputHelper::GetPlayerInput(*GetWorld());
+        UCogWindowManager::AddCommand(PlayerInput, "Cog.CycleWorlds_Next", EKeys::PageUp);
+    }
 }
 
 auto
@@ -45,6 +115,19 @@ auto
     {
         ImGui::Button("X", ImVec2(Width, 0));
     }
+}
+
+auto
+    FCk_World_DebugWindow::
+    Shutdown()
+    -> void
+{
+    for (IConsoleObject* ConsoleCommand : _ConsoleCommands)
+    {
+        IConsoleManager::Get().UnregisterConsoleObject(ConsoleCommand);
+    }
+
+    FCk_Ecs_DebugWindow::Shutdown();
 }
 
 //--------------------------------------------------------------------------------------------------------------------------

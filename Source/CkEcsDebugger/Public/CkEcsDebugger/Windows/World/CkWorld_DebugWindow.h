@@ -22,12 +22,18 @@ public:
         int32 SubWidgetIndex,
         float Width) -> void;
 
+    auto
+    Shutdown() -> void override;
+
 protected:
     auto
     RenderHelp() -> void override;
 
     auto
     RenderContent() -> void override;
+
+private:
+    TArray<IConsoleObject*> _ConsoleCommands;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

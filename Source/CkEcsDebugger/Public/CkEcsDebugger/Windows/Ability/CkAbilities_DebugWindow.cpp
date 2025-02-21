@@ -11,6 +11,8 @@
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
+#include "CkTimer/CkTimer_Utils.h"
+
 #if WITH_EDITOR
 #include <Editor.h>
 #include <Subsystems/AssetEditorSubsystem.h>
@@ -355,7 +357,10 @@ auto
             //------------------------
             ImGui::TableNextColumn();
 
-            const std::string& AbilityName = ck::Format_ANSI(TEXT("{}{}"), UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), DoGet_AbilityName(Ability)).c_str();
+            const std::string AbilityName = ck::Format_ANSI(TEXT("{}{}"),
+                UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), InLevel), DoGet_AbilityName(Ability)).c_str();
+
+            DoGet_AbilityTimer(Ability);
 
             if (ck_abilities_debug_window::Filter.IsActive() && ck_abilities_debug_window::Filter.PassFilter(AbilityName.c_str()))
             {
@@ -646,6 +651,61 @@ auto
     }
 
     return UCk_Utils_Ability_UE::Get_DisplayName(InAbility);
+}
+
+auto
+    FCk_Abilities_DebugWindow::
+    DoGet_AbilityTimer(
+        const FCk_Handle_Ability& InAbility)
+        -> FString
+{
+    if (NOT UCk_Utils_Timer_UE::Has_Any(InAbility))
+    { return {}; }
+
+    auto AllTimers = FString{};
+    UCk_Utils_Timer_UE::ForEach_Timer(InAbility, [&](const FCk_Handle_Timer& InTimer)
+    {
+        if (UCk_Utils_Timer_UE::Get_Name(InTimer) == Tag_Timer_CategoryName)
+        { return; }
+
+        const auto& Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(InTimer);
+        const auto TimerName = UCk_Utils_Timer_UE::Get_Name(InTimer);
+        const auto ElapsedTime = Chrono.Get_TimeElapsed().Get_Seconds();
+        const auto Duration = Chrono.Get_GoalValue().Get_Seconds();
+
+        ImGui::PushStyleColor(ImGuiCol_PlotHistogram, IM_COL32(100, 100, 100, 255));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(0, 0, 0, 100));
+
+        ImGui::ProgressBar(ElapsedTime / Duration, ImVec2(-1, ImGui::GetTextLineHeightWithSpacing() * 0.8f), "");
+        ImGui::SameLine();
+        const auto& GroupSize = ImGui::GetItemRectSize();
+
+        // Centered text
+        const auto FormattedString = [&]()
+        {
+            if (UCk_Utils_GameplayLabel_UE::Get_IsUnnamedLabel(InTimer))
+            {
+                return ck::Format_ANSI(TEXT("[{:.2f}/{:.2f}]"), ElapsedTime, Duration);
+            }
+            else
+            {
+                return ck::Format_ANSI(TEXT("{}[{:.2f}/{:.2f}]"), TimerName, ElapsedTime, Duration);
+            }
+        }();
+        const char* Text = FormattedString.c_str();
+        const auto& TextSize = ImGui::CalcTextSize(Text);
+        const auto& ProgressBarPos = ImGui::GetCursorPos();
+
+        const auto TextPosX = ProgressBarPos.x - (GroupSize.x * 0.5) - (0.6 * TextSize.x);
+        const auto TextPos = ImVec2(TextPosX, ProgressBarPos.y);
+        ImGui::SetCursorPos(TextPos);
+        ImGui::Text(Text);
+
+        ImGui::PopStyleColor();
+        ImGui::PopStyleColor();
+    });
+
+    return AllTimers;
 }
 
 auto

@@ -73,6 +73,11 @@ private:
         const FCk_Handle_Ability& InAbility) const
         -> FName;
 
+    static auto
+    DoGet_AbilityTimer(
+        const FCk_Handle_Ability& InAbility)
+	    -> FString;
+
 private:
     auto
     AddToFilteredAbilities(

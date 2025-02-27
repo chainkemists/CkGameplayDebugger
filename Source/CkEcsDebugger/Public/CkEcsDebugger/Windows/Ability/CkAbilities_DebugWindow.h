@@ -76,7 +76,7 @@ private:
     static auto
     DoGet_AbilityTimer(
         const FCk_Handle_Ability& InAbility)
-	    -> FString;
+        -> FString;
 
 private:
     auto

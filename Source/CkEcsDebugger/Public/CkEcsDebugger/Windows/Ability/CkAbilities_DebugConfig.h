@@ -24,7 +24,13 @@ public:
 
     auto
     Get_AbilityColor(
-        const FCk_Handle_Ability& InAbility) const -> const FVector4f&;
+        const FCk_Handle_Ability& InAbility) const -> FVector4f;
+
+private:
+    inline static FVector4f _ActiveColor{0.0f, 1.0f, 0.5f, 1.0f};
+    inline static FVector4f _ActiveConditionColor{1.0f, 0.95f, 0.0f, 1.0f};
+    inline static FVector4f _InactiveColor{0.8f, 0.8f, 0.8f, 1.0f};
+    inline static FVector4f _BlockedColor{1.0f, 0.5f, 0.5f, 1.0f};
 
 public:
     UPROPERTY(Config)
@@ -46,13 +52,16 @@ public:
     bool ShowSubAbilities = true;
 
     UPROPERTY(Config)
-    FVector4f ActiveColor = FVector4f(0.0f, 1.0f, 0.5f, 1.0f);
+    FVector4f ActiveColor = _ActiveColor;
 
     UPROPERTY(Config)
-    FVector4f InactiveColor = FVector4f(1.0f, 1.0f, 1.0f, 1.0f);
+    FVector4f ActiveConditionColor = _ActiveConditionColor;
 
     UPROPERTY(Config)
-    FVector4f BlockedColor = FVector4f(1.0f, 0.5f, 0.5f, 1.0f);
+    FVector4f InactiveColor = _InactiveColor;
+
+    UPROPERTY(Config)
+    FVector4f BlockedColor = _BlockedColor;
 
     // TODO: GroupBySource (EntityExtensions)
 };

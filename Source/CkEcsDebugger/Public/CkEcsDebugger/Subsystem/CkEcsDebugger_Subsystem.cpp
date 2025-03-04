@@ -1,6 +1,7 @@
 #include "CkEcsDebugger_Subsystem.h"
 
 #include "CkCore/Actor/CkActor_Utils.h"
+#include "CkCore/Game/CkGame_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindowManager.h"
 
@@ -48,7 +49,8 @@ auto
         if (ck::Is_NOT_Valid(GameInstance))
         { continue; }
 
-        if (ContextWorld->GetNetMode() == NM_DedicatedServer)
+        if (ContextWorld->GetNetMode() == NM_DedicatedServer ||
+            NOT UCk_Utils_Game_UE::Get_IsPIE_UnderOneProcess(this))
         {
             _SelectedWorld = ContextWorld;
         }

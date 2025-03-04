@@ -154,6 +154,10 @@ auto
     if (ck::Is_NOT_Valid(EcsDebuggerSubsystem))
     { return; }
 
+    CK_ENSURE_IF_NOT(ck::IsValid(EcsDebuggerSubsystem->Get_SelectedWorld()),
+        TEXT("ECS Debugger Subsystem [{}] has NO valid selected world!"), EcsDebuggerSubsystem)
+    { return; }
+
     ImGui::Text(ck::Format_ANSI(TEXT("{}"), EcsDebuggerSubsystem->Get_SelectedWorld()->GetNetMode()).c_str());
 
     if (ImGui::BeginTable("Worlds", 2, ImGuiTableFlags_SizingFixedFit

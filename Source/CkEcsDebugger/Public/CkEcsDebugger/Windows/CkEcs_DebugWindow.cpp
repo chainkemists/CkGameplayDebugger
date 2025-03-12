@@ -5,8 +5,8 @@
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
 #if UE_WITH_IRIS
-#include <Net/Iris/ReplicationSystem/ActorReplicationBridge.h>
 #include <Iris/ReplicationSystem/ReplicationSystem.h>
+#include <Iris/ReplicationSystem/ReplicationBridge.h>
 #endif
 
 #include <Engine/PackageMapClient.h>
@@ -51,21 +51,22 @@ auto
         if (ck::Is_NOT_Valid(SelectedReplicationSystem))
         { return {}; }
 
-        const auto WorldRepBridge = Cast<UActorReplicationBridge>(ReplicationSystem->GetReplicationBridge());
+        const UReplicationBridge* WorldRepBridge = ReplicationSystem->GetReplicationBridge();
         if (ck::Is_NOT_Valid(WorldRepBridge))
         { return {}; }
 
-        const auto SelectedWorldRepBridge = Cast<UActorReplicationBridge>(SelectedReplicationSystem->GetReplicationBridge());
+        const UReplicationBridge* SelectedWorldRepBridge = SelectedReplicationSystem->GetReplicationBridge();
         if (ck::Is_NOT_Valid(SelectedWorldRepBridge))
         { return {}; }
 
-        const auto RefHandle = WorldRepBridge->GetReplicatedRefHandle(SelectionActor);
-        const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
+        return {};
+        //const auto RefHandle = WorldRepBridge->GetReplicationHandle(SelectionActor);
+        //const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
 
-        if (ck::Is_NOT_Valid(SelectedWorldActor))
-        { return {}; }
+       //if (ck::Is_NOT_Valid(SelectedWorldActor))
+        //{ return {}; }
 
-        SelectionActor = Cast<AActor>(SelectedWorldActor);
+        //SelectionActor = Cast<AActor>(SelectedWorldActor);
     }
 #endif
     if (NOT NetDriver->IsUsingIrisReplication())

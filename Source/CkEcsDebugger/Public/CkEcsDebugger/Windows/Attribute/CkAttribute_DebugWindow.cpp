@@ -163,9 +163,8 @@ auto
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Attribute");
         ImGui::TableSetupColumn("Current");
-        ImGui::TableSetupColumn("Base");
-        ImGui::TableSetupColumn("Min (Final)");
-        ImGui::TableSetupColumn("Max (Final)");
+        ImGui::TableSetupColumn("Min");
+        ImGui::TableSetupColumn("Max");
         ImGui::TableHeadersRow();
 
         static int32 Selected = -1;
@@ -261,12 +260,6 @@ auto
             {
                 ImGui::Text(ck::Format_ANSI(TEXT("-")).c_str());
             }
-
-            //------------------------
-            // Base Value
-            //------------------------
-            ImGui::TableNextColumn();
-            ImGui::Text(ck::Format_ANSI(TEXT("{}"), BaseValue).c_str());
 
             //------------------------
             // Max Value

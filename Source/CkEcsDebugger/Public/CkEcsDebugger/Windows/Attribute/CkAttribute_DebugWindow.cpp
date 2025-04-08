@@ -293,6 +293,19 @@ auto
         const T_HandleType& InAttribute) const
     -> void
 {
+    const auto TagAsString = [](FGameplayTag InTag, TArray<FGameplayTag> InToFilter)
+    {
+        auto String = ck::Format_UE(TEXT("{}"), InTag);
+
+        for (const auto& Filter : InToFilter)
+        {
+            const auto& ToFilter = ck::Format_UE(TEXT("{}."), Filter);
+            String.RemoveFromStart(ToFilter);
+        }
+
+        return String;
+    };
+
     if (ImGui::BeginTable("Attribute", 4, ImGuiTableFlags_Borders))
     {
         constexpr ImVec4 TextColor{1.0f, 1.0f, 1.0f, 0.5f};
@@ -305,7 +318,9 @@ auto
         const auto& HasMinValue    = T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Min);
         const auto& HasMaxValue    = T_UtilsType::Has_Component(InAttribute, ECk_MinMaxCurrent::Max);
         const auto& AttributeLabel = UCk_Utils_GameplayLabel_UE::Get_Label(InAttribute);
-        const auto& AttributeName  = StringCast<ANSICHAR>(*AttributeLabel.ToString()).Get();
+
+        const auto& TagAsStr = TagAsString(AttributeLabel,
+            TArray{TAG_Label_FloatAttribute.GetTag(), TAG_Label_ByteAttribute.GetTag(), TAG_Label_VectorAttribute.GetTag()});
 
         //------------------------
         // Name
@@ -314,11 +329,11 @@ auto
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Name");
         ImGui::TableNextColumn();
-        ImGui::Text("%s (Min)", AttributeName);
+        ImGui::Text("%s (Min)", CK_ANSI_TEXT("{}", TagAsStr));
         ImGui::TableNextColumn();
-        ImGui::Text("%s", AttributeName);
+        ImGui::Text("%s", CK_ANSI_TEXT("{}", TagAsStr));
         ImGui::TableNextColumn();
-        ImGui::Text("%s (Max)", AttributeName);
+        ImGui::Text("%s (Max)", CK_ANSI_TEXT("{}", TagAsStr));
 
         //------------------------
         // Base Value (Min)

@@ -28,7 +28,7 @@ ACk_Ecs_DebugWindowManager_UE::
     ACk_Ecs_DebugWindowManager_UE()
 {
     PrimaryActorTick.bCanEverTick = true;
-    PrimaryActorTick.bTickEvenWhenPaused = false;
+    PrimaryActorTick.bTickEvenWhenPaused = true;
 }
 
 auto

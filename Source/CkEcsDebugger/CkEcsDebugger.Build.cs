@@ -27,7 +27,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEntityCollection",
             "CkLabel",
             "CkLog",
-            "CkNet",
+
             "CkOverlapBody",
             "CkPhysics",
             "CkRelationship",

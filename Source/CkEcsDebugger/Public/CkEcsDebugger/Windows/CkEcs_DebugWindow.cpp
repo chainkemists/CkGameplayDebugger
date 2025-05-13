@@ -5,11 +5,15 @@
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
 #if UE_WITH_IRIS
-#include <Net/Iris/ReplicationSystem/ActorReplicationBridge.h>
 #include <Iris/ReplicationSystem/ReplicationSystem.h>
+#include <Iris/ReplicationSystem/ReplicationBridge.h>
 #endif
 
+#include "Net/Iris/ReplicationSystem/EngineReplicationBridge.h"
+
 #include <Engine/PackageMapClient.h>
+#include <GameFramework/Actor.h>
+#include <Engine/World.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -51,11 +55,11 @@ auto
         if (ck::Is_NOT_Valid(SelectedReplicationSystem))
         { return {}; }
 
-        const auto WorldRepBridge = Cast<UActorReplicationBridge>(ReplicationSystem->GetReplicationBridge());
+        const auto WorldRepBridge = ReplicationSystem->GetReplicationBridgeAs<UEngineReplicationBridge>();
         if (ck::Is_NOT_Valid(WorldRepBridge))
         { return {}; }
 
-        const auto SelectedWorldRepBridge = Cast<UActorReplicationBridge>(SelectedReplicationSystem->GetReplicationBridge());
+        const auto SelectedWorldRepBridge = SelectedReplicationSystem->GetReplicationBridgeAs<UEngineReplicationBridge>();
         if (ck::Is_NOT_Valid(SelectedWorldRepBridge))
         { return {}; }
 

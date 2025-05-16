@@ -26,6 +26,10 @@ protected:
     auto
     BeginPlay() -> void override;
 
+    auto
+    EndPlay(
+        const EEndPlayReason::Type EndPlayReason) -> void override;
+
 public:
     auto
     Tick(

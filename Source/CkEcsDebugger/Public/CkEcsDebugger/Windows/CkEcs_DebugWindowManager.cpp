@@ -77,6 +77,18 @@ auto
 
 auto
     ACk_Ecs_DebugWindowManager_UE::
+    EndPlay(
+        const EEndPlayReason::Type EndPlayReason)
+    -> void
+{
+    if (ck::IsValid(_CogWindowManager))
+    { _CogWindowManager->Shutdown(); }
+
+    Super::EndPlay(EndPlayReason);
+}
+
+auto
+    ACk_Ecs_DebugWindowManager_UE::
     Tick(
         float DeltaSeconds)
     -> void

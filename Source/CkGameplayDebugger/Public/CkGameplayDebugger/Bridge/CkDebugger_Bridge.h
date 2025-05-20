@@ -30,13 +30,16 @@ public:
 
 private:
     UFUNCTION()
-    void OnGameplayDebugger_Activated();
+    void
+    OnGameplayDebugger_Activated();
 
     UFUNCTION()
-    void OnGameplayDebugger_Deactivated();
+    void
+    OnGameplayDebugger_Deactivated();
 
     UFUNCTION()
-    void OnGameplayDebugger_CollectData(
+    void
+    OnGameplayDebugger_CollectData(
         const FCk_Payload_GameplayDebugger_OnCollectData& InPayload);
 
     UFUNCTION()

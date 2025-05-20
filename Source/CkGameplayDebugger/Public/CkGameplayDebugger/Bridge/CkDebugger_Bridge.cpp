@@ -7,17 +7,14 @@
 #include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 #include "CkCore/Object/CkObject_Utils.h"
 
-#include "CkGameplayDebugger/CkGameplayDebugger_Log.h"
-
-#include "CkInput/CkInput_Utils.h"
-
 #include "CkGameplayDebugger/Action/CkDebugger_Action.h"
+#include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
 #include "CkGameplayDebugger/Filter/CkDebugger_Filter.h"
 #include "CkGameplayDebugger/Profile/CkDebugger_Profile.h"
 #include "CkGameplayDebugger/Submenu/CkDebugger_Submenu.h"
-#include "CkGameplayDebugger/Engine/CkDebugger_GameplayDebuggerCategoryReplicator.h"
-#include "CkGameplayDebugger/Settings/CkDebugger_Settings.h"
 #include "CkGameplayDebugger/Widget/CkDebugger_Widget.h"
+
+#include "CkInput/CkInput_Utils.h"
 
 #include <GameFramework/PlayerController.h>
 
@@ -105,14 +102,14 @@ auto
 
     // Activate all debug submenus
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
-    [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
+    [](const TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE>& InSubmenu) -> void
     {
         InSubmenu->ActivateSubmenu();
     });
 
     // Activate all global debug actions
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(),
-    [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+    [](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> void
     {
         InAction->ActivateAction();
     });
@@ -139,7 +136,7 @@ auto
 
     // Deactivate all debug submenus
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_Submenus(),
-    [](TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE> InSubmenu) -> void
+    [](const TObjectPtr<UCk_GameplayDebugger_DebugSubmenu_UE>& InSubmenu) -> void
     {
         InSubmenu->DeactivateSubmenu();
     });
@@ -149,7 +146,7 @@ auto
 
     // Deactivate all global debug actions
     ck::algo::ForEachIsValid(_CurrentlyLoadedDebugProfile->Get_GlobalActions(),
-    [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InGlobalAction) -> void
+    [](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InGlobalAction) -> void
     {
         InGlobalAction->DeactivateAction();
     });
@@ -545,7 +542,7 @@ auto
         }
     }
 
-    const auto& DoGet_ActionMessage = [](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> FString
+    const auto& DoGet_ActionMessage = [](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> FString
     {
         const auto& IsActionActive = InAction->Get_IsActive();
 
@@ -576,7 +573,7 @@ auto
         else
         {
             ck::algo::ForEachIsValid(FilterDebugActions,
-            [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+            [&](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> void
             {
                 Message += DoGet_ActionMessage(InAction);
             });
@@ -598,7 +595,7 @@ auto
             else
             {
                 ck::algo::ForEachIsValid(GlobalDebugActions,
-                [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+                [&](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> void
             {
                 Message += DoGet_ActionMessage(InAction);
             });
@@ -631,7 +628,7 @@ auto
         const auto& FilterDebugActions = InSelectedFilter->Get_FilterDebugActions();
 
         ck::algo::ForEachIsValid(FilterDebugActions,
-        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+        [&](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> void
         {
             InAction->PerformDebugAction(PerformDebugActionParams);
         });
@@ -642,7 +639,7 @@ auto
         const auto& GlobalDebugActions = _CurrentlyLoadedDebugProfile->Get_GlobalActions();
 
         ck::algo::ForEachIsValid(GlobalDebugActions,
-        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InAction) -> void
+        [&](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InAction) -> void
         {
             InAction->PerformDebugAction(PerformDebugActionParams);
         });
@@ -697,11 +694,13 @@ auto
 
     if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_NextWorldKey()))
     {
-        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Increment_WithWrap(_CurrentWorldToUseIndex, FCk_IntRange{0, InAvailableWorlds.Num()});
+        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Increment_WithWrap(_CurrentWorldToUseIndex,
+            FCk_IntRange{0, InAvailableWorlds.Num()}, ECk_Inclusiveness::Exclusive);
     }
     else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_PrevWorldKey()))
     {
-        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Decrement_WithWrap(_CurrentWorldToUseIndex, FCk_IntRange{0, InAvailableWorlds.Num()});
+        _CurrentWorldToUseIndex = UCk_Utils_Arithmetic_UE::Get_Decrement_WithWrap(_CurrentWorldToUseIndex,
+            FCk_IntRange{0, InAvailableWorlds.Num()}, ECk_Inclusiveness::Exclusive);
     }
     else if (UCk_Utils_Input_UE::WasInputKeyJustPressed(InOwnerPC, InDebugNavControls.Get_ServerClientWorldToggleKey()))
     {
@@ -711,7 +710,8 @@ auto
 
             if (CurrentWorldNetMode == NM_Client)
             {
-                if (InWorld->IsNetMode(NM_DedicatedServer) || InWorld->IsNetMode(NM_ListenServer) || InWorld->IsNetMode(NM_Standalone))
+                if (InWorld->IsNetMode(NM_DedicatedServer) || InWorld->IsNetMode(NM_ListenServer) ||
+                    InWorld->IsNetMode(NM_Standalone))
                 { return true; }
             }
             else
@@ -744,9 +744,10 @@ auto
     const auto& DoTryToggleAllValidActions = [&](TArray<TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>> InActions) -> void
     {
         ck::algo::ForEachIsValid(InActions,
-        [&](TObjectPtr<UCk_GameplayDebugger_DebugAction_UE> InValidAction) -> void
+        [&](const TObjectPtr<UCk_GameplayDebugger_DebugAction_UE>& InValidAction) -> void
         {
-            if (NOT UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC, InValidAction->Get_ToggleActivateKey(), InDebugNavControls.Get_StickyModiferKey()))
+            if (NOT UCk_Utils_Input_UE::WasInputKeyJustPressed_WithCustomModifier(InOwnerPC,
+                InValidAction->Get_ToggleActivateKey(), InDebugNavControls.Get_StickyModiferKey()))
             { return; }
 
             InValidAction->ToggleAction();
@@ -804,7 +805,8 @@ auto
     // Enforce Selected Actor stability if user did not request any actor selection change
     if (PreviouslySelectedActorIndex == _CurrentlySelectedActorIndex && ck::IsValid(_PreviouslySelectedActor))
     {
-        const auto& IndexOfPreviouslySelectedActor = InSortedFilteredActors.IndexOfByPredicate([&](const TObjectPtr<AActor> InSortedFilteredActor)
+        const auto& IndexOfPreviouslySelectedActor = InSortedFilteredActors.IndexOfByPredicate(
+        [&](const TObjectPtr<AActor>& InSortedFilteredActor)
         {
             return InSortedFilteredActor == _PreviouslySelectedActor.Get();
         });

@@ -4,6 +4,7 @@
 #include "CkEcsDebugger/Windows/Ability/CkAbilityOwnerTags_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
+#include "CkEcsDebugger/Windows/EntitySelection/CkEntitySelection_DebugWindow.h"
 #include "CkEcsDebugger/Windows/EntityCollection/CkEntityCollection_DebugWindow.h"
 #include "CkEcsDebugger/Windows/OverlapBody/CkOverlapBody_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
@@ -48,6 +49,7 @@ auto
     // Add a custom window
     _CogWindowManager->AddWindow<FCk_World_DebugWindow>("Ck.World");
     _CogWindowManager->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
+    _CogWindowManager->AddWindow<FCk_EntitySelection_DebugWindow>("Ck.EntitySelection");
     _CogWindowManager->AddWindow<FCk_EntityCollection_DebugWindow>("Ck.EntityCollection");
     _CogWindowManager->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
 

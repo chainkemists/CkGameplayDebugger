@@ -36,7 +36,8 @@ public class CkEcsDebugger : CkModuleRules
 
             "CogImgui",
             "CogWindow",
-            "CogEngine"
+            "CogEngine",
+            "CogDebug"
         });
 
         if (Target.bBuildEditor)

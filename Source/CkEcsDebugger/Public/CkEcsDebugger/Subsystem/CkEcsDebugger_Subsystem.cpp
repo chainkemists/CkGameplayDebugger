@@ -3,7 +3,18 @@
 #include "CkCore/Actor/CkActor_Utils.h"
 #include "CkCore/Game/CkGame_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
+
+#include "CkEcs/Net/EntityReplicationDriver/CkEntityReplicationDriver_Utils.h"
+
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindowManager.h"
+
+#if UE_WITH_IRIS
+#include <Iris/ReplicationSystem/ReplicationSystem.h>
+#include <Net/Iris/ReplicationSystem/EngineReplicationBridge.h>
+#endif
+
+#include <Engine/PackageMapClient.h>
+#include <Engine/NetDriver.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -69,6 +80,123 @@ auto
     CK_ENSURE_IF_NOT(ck::IsValid(_DebugWindowManager),
         TEXT("Failed to spawn EcsDebugger WindowManager. EcsDebugger will NOT work!"))
     { return; }
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Set_SelectedWorld(
+        UWorld* InSelectedWorld)
+    -> void
+{
+    if (_SelectedWorld == InSelectedWorld)
+    { return; }
+
+    const auto PreviousWorld = _SelectedWorld;
+
+    _SelectedWorld = InSelectedWorld;
+
+    if (ck::IsValid(_SelectionEntity))
+    {
+        Set_SelectionEntity(_SelectionEntity, PreviousWorld);
+    }
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Set_SelectionEntity(
+        const FCk_Handle& InSelectionEntity,
+        UWorld* InSelectionEntityOwningWorld)
+    -> void
+{
+    _SelectionEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(InSelectionEntity, InSelectionEntityOwningWorld, _SelectedWorld);
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Get_ActorOnSelectedWorld(AActor* InActor)
+    -> AActor*
+{
+    if (ck::Is_NOT_Valid(InActor))
+    { return {}; }
+
+    const auto ActorWorld = InActor->GetWorld();
+
+    if (ck::Is_NOT_Valid(ActorWorld))
+    { return {}; }
+
+    if (ck::Is_NOT_Valid(Get_SelectedWorld()))
+    { return {}; }
+
+    if (ActorWorld == Get_SelectedWorld())
+    { return InActor; }
+
+    const auto NetDriver = ActorWorld->GetNetDriver();
+    if (ck::Is_NOT_Valid(NetDriver))
+    { return {}; }
+
+    if (NetDriver->IsUsingIrisReplication())
+    {
+#if UE_WITH_IRIS
+        const auto SelectedNetDriver = Get_SelectedWorld()->GetNetDriver();
+        if (ck::Is_NOT_Valid(SelectedNetDriver))
+        { return {}; }
+
+        const auto ReplicationSystem = NetDriver->GetReplicationSystem();
+        if (ck::Is_NOT_Valid(ReplicationSystem))
+        { return {}; }
+
+        const auto SelectedReplicationSystem = SelectedNetDriver->GetReplicationSystem();
+        if (ck::Is_NOT_Valid(SelectedReplicationSystem))
+        { return {}; }
+
+        const auto WorldRepBridge = ReplicationSystem->GetReplicationBridgeAs<UEngineReplicationBridge>();
+        if (ck::Is_NOT_Valid(WorldRepBridge))
+        { return {}; }
+
+        const auto SelectedWorldRepBridge = SelectedReplicationSystem->GetReplicationBridgeAs<UEngineReplicationBridge>();
+        if (ck::Is_NOT_Valid(SelectedWorldRepBridge))
+        { return {}; }
+
+        const auto RefHandle = WorldRepBridge->GetReplicatedRefHandle(InActor);
+        const auto SelectedWorldActor = SelectedWorldRepBridge->GetReplicatedObject(RefHandle);
+
+        if (ck::Is_NOT_Valid(SelectedWorldActor))
+        { return {}; }
+
+        return Cast<AActor>(SelectedWorldActor);
+#else
+        CK_ENSURE_IF_NOT(false, TEXT("Net Driver has Iris enabled without UE_WITH_IRIS enabled, this should NOT be possible!"))
+        { return {}; }
+#endif
+    }
+    else
+    {
+        if (ck::Is_NOT_Valid(ActorWorld))
+        { return {}; }
+
+        const auto& WorldNetDriver = ActorWorld->GetNetDriver();
+        if (ck::Is_NOT_Valid(WorldNetDriver))
+        { return {}; }
+
+        const auto& WorldGuidCache = WorldNetDriver->GuidCache;
+        if (ck::Is_NOT_Valid(WorldGuidCache))
+        { return {}; }
+
+        const auto WorldNetGuid = WorldGuidCache->GetNetGUID(InActor);
+        if (ck::Is_NOT_Valid(WorldNetGuid))
+        { return {}; }
+
+        const auto SelectedWorldNetDriver = Get_SelectedWorld()->GetNetDriver();
+        if (ck::Is_NOT_Valid(SelectedWorldNetDriver))
+        { return {}; }
+
+        const auto& SelectedWorldGuidCache = SelectedWorldNetDriver->GuidCache;
+        if (ck::Is_NOT_Valid(SelectedWorldGuidCache))
+        { return {}; }
+
+        constexpr auto IgnoreMustBeMapped = true;
+        return Cast<AActor>(SelectedWorldGuidCache->GetObjectFromNetGUID(WorldNetGuid, IgnoreMustBeMapped));
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

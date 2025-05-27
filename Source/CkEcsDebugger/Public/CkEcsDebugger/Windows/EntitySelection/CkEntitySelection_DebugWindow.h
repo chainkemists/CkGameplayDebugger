@@ -8,7 +8,31 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class UCk_DebugWindowConfig_EntitySelection;
+class UCk_DebugWindowConfig_EntitySelection;struct ImGuiTextFilter;
+
+using FCogWindowEntityContextMenuFunction = TFunction<void(const FCk_Handle& InEntity)>;
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+UENUM()
+enum class ECkDebugger_EntitiesListDisplayPolicy : uint8
+{
+    OnlyRootEntities,
+    EntityList,
+    EntityHierarchy,
+};
+
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListDisplayPolicy);
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+UENUM()
+enum class ECkDebugger_EntitiesListSortingPolicy : uint8
+{
+    ID,
+    EnitityNumber,
+    Alphabetical
+};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -31,6 +55,13 @@ protected:
     RenderTick(
         float InDeltaT) -> void override;
 
+private:
+    auto
+    EntitiesList() -> bool;
+
+    auto
+    EntitiesListWithFilters() -> bool;
+
 protected:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 
@@ -46,13 +77,15 @@ class UCk_DebugWindowConfig_EntitySelection : public UCogWindowConfig
 
 public:
     UPROPERTY(Config)
-    bool OnlyRootEntities = true;
+    ECkDebugger_EntitiesListDisplayPolicy EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
+    ECkDebugger_EntitiesListSortingPolicy EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
 
     virtual void Reset() override
     {
         Super::Reset();
 
-        OnlyRootEntities = true;
+        EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
+        EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
     }
 };
 //---------------------------------------------------------------------------------------------------------------------

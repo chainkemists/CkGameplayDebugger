@@ -34,6 +34,26 @@ enum class ECkDebugger_EntitiesListSortingPolicy : uint8
     Alphabetical
 };
 
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListSortingPolicy);
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+UENUM(Flags)
+enum class ECkDebugger_EntitiesListFragmentFilteringTypes : uint32
+{
+    None,
+    Attribute = 1<<0,
+    Ability = 1<<1,
+    AbilityOwner = 1<<2,
+    Replicated = 1<<3,
+    EntityScript = 1<<4,
+    EntityCollection = 1<<5,
+    Timer = 1<<6,
+};
+
+ENUM_CLASS_FLAGS(ECkDebugger_EntitiesListFragmentFilteringTypes)
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListFragmentFilteringTypes);
+
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCk_EntitySelection_DebugWindow : public FCk_Ecs_DebugWindow
@@ -78,7 +98,12 @@ class UCk_DebugWindowConfig_EntitySelection : public UCogWindowConfig
 public:
     UPROPERTY(Config)
     ECkDebugger_EntitiesListDisplayPolicy EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
+
+    UPROPERTY(Config)
     ECkDebugger_EntitiesListSortingPolicy EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
+
+    UPROPERTY(Config)
+    ECkDebugger_EntitiesListFragmentFilteringTypes EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
 
     virtual void Reset() override
     {
@@ -86,6 +111,7 @@ public:
 
         EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
         EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
+        EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
     }
 };
 //---------------------------------------------------------------------------------------------------------------------

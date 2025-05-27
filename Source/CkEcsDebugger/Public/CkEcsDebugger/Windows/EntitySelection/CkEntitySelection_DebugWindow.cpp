@@ -3,12 +3,25 @@
 #include "CogDebug.h"
 #include "CogWindowWidgets.h"
 
+#include "CkAbility/Ability/CkAbility_Fragment.h"
+#include "CkAbility/AbilityOwner/CkAbilityOwner_Fragment.h"
+
+#include "CkAttribute/CkAttribute_Fragment.h"
+#include "CkAttribute/ByteAttribute/CkByteAttribute_Fragment.h"
+#include "CkAttribute/FloatAttribute/CkFloatAttribute_Fragment.h"
+#include "CkAttribute/VectorAttribute/CkVectorAttribute_Fragment.h"
+
 #include "CkCore/String/CkString_Utils.h"
 
+#include "CkEcs/EntityScript/CkEntityScript_Fragment.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
+
+#include "CkEntityCollection/CkEntityCollection_Fragment.h"
+
+#include "CkTimer/CkTimer_Fragment.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
 
@@ -53,26 +66,43 @@ auto
 
         if (ImGui::BeginMenu("Display"))
         {
-            auto EntityListDisplayPolicyAsInt = static_cast<int32>(Config->EntitiesListDisplayPolicy);
+            auto EnumAsInt = static_cast<int32>(Config->EntitiesListDisplayPolicy);
 
-            ImGui::RadioButton("All Entities List",      &EntityListDisplayPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityList));
-            ImGui::RadioButton("All Entities Hierarchy", &EntityListDisplayPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy));
-            ImGui::RadioButton("Only Root Entities",     &EntityListDisplayPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::OnlyRootEntities));
+            ImGui::RadioButton("All Entities List",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityList));
+            ImGui::RadioButton("All Entities Hierarchy", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy));
+            ImGui::RadioButton("Only Root Entities",     &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::OnlyRootEntities));
 
-            Config->EntitiesListDisplayPolicy = static_cast<ECkDebugger_EntitiesListDisplayPolicy>(EntityListDisplayPolicyAsInt);
+            Config->EntitiesListDisplayPolicy = static_cast<ECkDebugger_EntitiesListDisplayPolicy>(EnumAsInt);
 
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Sorting"))
         {
-            auto EntityListSortingPolicyAsInt = static_cast<int32>(Config->EntitiesListSortingPolicy);
+            auto EnumAsInt = static_cast<int32>(Config->EntitiesListSortingPolicy);
 
-            ImGui::RadioButton("Alphabetical",     &EntityListSortingPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::Alphabetical));
-            ImGui::RadioButton("By Entity Number", &EntityListSortingPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::EnitityNumber));
-            ImGui::RadioButton("By ID",            &EntityListSortingPolicyAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::ID));
+            ImGui::RadioButton("Alphabetical",     &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::Alphabetical));
+            ImGui::RadioButton("By Entity Number", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::EnitityNumber));
+            ImGui::RadioButton("By ID",            &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::ID));
 
-            Config->EntitiesListSortingPolicy = static_cast<ECkDebugger_EntitiesListSortingPolicy>(EntityListSortingPolicyAsInt);
+            Config->EntitiesListSortingPolicy = static_cast<ECkDebugger_EntitiesListSortingPolicy>(EnumAsInt);
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Filtering"))
+        {
+            auto EnumAsInt = static_cast<int32>(Config->EntitiesListFragmentFilteringTypes);
+
+            ImGui::CheckboxFlags("Attribute",         &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Attribute));
+            ImGui::CheckboxFlags("Ability",           &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Ability));
+            ImGui::CheckboxFlags("AbilityOwner",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::AbilityOwner));
+            ImGui::CheckboxFlags("Replicated",        &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Replicated));
+            ImGui::CheckboxFlags("EntityScript",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::EntityScript));
+            ImGui::CheckboxFlags("EntityCollection",  &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::EntityCollection));
+            ImGui::CheckboxFlags("Timer",             &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Timer));
+
+            Config->EntitiesListFragmentFilteringTypes = static_cast<ECkDebugger_EntitiesListFragmentFilteringTypes>(EnumAsInt);
 
             ImGui::EndMenu();
         }
@@ -95,7 +125,7 @@ auto
     FCk_EntitySelection_DebugWindow::EntitiesList() -> bool
 {
     QUICK_SCOPE_CYCLE_COUNTER(EntitySelection_DebugWindow_EntitiesList)
-    TArray<FCk_Handle> Entities;
+    TSet<FCk_Handle> EntitiesSet;
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -173,6 +203,9 @@ auto
     {
         const auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
+        if (EntitiesSet.Contains(Handle))
+        { return; }
+
         if (Handle == TransientEntity)
         { return; }
 
@@ -189,21 +222,53 @@ auto
             { return; }
         }
 
-        Entities.Add(Handle);
+        EntitiesSet.Add(Handle);
     };
 
     {
         QUICK_SCOPE_CYCLE_COUNTER(EntitySelection_DebugWindow_EntitiesList_BuildList)
-        // Hack searching through IsHost and IsClient since view needs at least one valid fragment as a template
-        TransientEntity.View<ck::FTag_NetMode_IsHost, CK_IGNORE_PENDING_KILL>().ForEach(AddEntityToListFunc);
-        TransientEntity.View<ck::FTag_NetMode_IsClient, CK_IGNORE_PENDING_KILL>().ForEach(AddEntityToListFunc);
+
+        if (Config->EntitiesListFragmentFilteringTypes == ECkDebugger_EntitiesListFragmentFilteringTypes::None)
+        {
+            // Hack: View requires at least one fragment to search for, LifetimeOwner is used since it should exist on all entities
+            TransientEntity.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
+                [&](FCk_Entity InEntity,
+                const ck::FFragment_LifetimeOwner& InFragment)
+                {
+                    AddEntityToListFunc(InEntity);
+                });
+        }
+        else
+        {
+            #define ADD_FILTERED_ENTITIES_FOR_FRAGMENT(_EnumName_, _Fragment_)\
+            if (EnumHasAnyFlags(Config->EntitiesListFragmentFilteringTypes, ECkDebugger_EntitiesListFragmentFilteringTypes::_EnumName_))\
+            {\
+                TransientEntity.View<_Fragment_, CK_IGNORE_PENDING_KILL>().ForEach(\
+                    [&](FCk_Entity InEntity, const _Fragment_& InFragment)\
+                    {\
+                        AddEntityToListFunc(InEntity);\
+                    });\
+            }
+
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Attribute, ck::TFragment_ByteAttribute<ECk_MinMaxCurrent::Current>)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Attribute, ck::TFragment_FloatAttribute<ECk_MinMaxCurrent::Current>)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Attribute, ck::TFragment_VectorAttribute<ECk_MinMaxCurrent::Current>)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Ability, ck::FFragment_Ability_Current)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(AbilityOwner, ck::FFragment_AbilityOwner_Current)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Replicated, TObjectPtr<UCk_Fragment_EntityReplicationDriver_Rep>)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(EntityScript, ck::FFragment_EntityScript_Current)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(EntityCollection, ck::FFragment_EntityCollection_Params)
+            ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Timer, ck::FFragment_Timer_Current)
+
+            #undef ADD_FILTERED_ENTITIES_FOR_FRAGMENT
+        }
     }
 
     // If displaying as hierarchy, show all parents of entities shown, otherwise their context in the hierarchy won't make sense
     if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
     {
-        auto EntitiesSet = TSet(Entities);
-        for (const auto& Entity : Entities)
+        auto EntitiesTempArray = EntitiesSet.Array();
+        for (const auto& Entity : EntitiesTempArray)
         {
             auto CurrentEntity = Entity;
             while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
@@ -213,9 +278,9 @@ auto
             }
         }
         EntitiesSet.Remove(TransientEntity);
-
-        Entities = EntitiesSet.Array();
     }
+
+    auto Entities = EntitiesSet.Array();
 
     SortEntities(Entities);
 

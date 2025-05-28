@@ -38,6 +38,19 @@ CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListSortingPolicy);
 
 //--------------------------------------------------------------------------------------------------------------------------
 
+UENUM()
+enum class ECkDebugger_EntitiesListUpdatePolicy : uint8
+{
+    PerFrame,
+    OnButton,
+    PerSecond,
+    PerTenSeconds
+};
+
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListUpdatePolicy);
+
+//--------------------------------------------------------------------------------------------------------------------------
+
 UENUM(Flags)
 enum class ECkDebugger_EntitiesListFragmentFilteringTypes : uint32
 {
@@ -77,15 +90,24 @@ protected:
 
 private:
     auto
-    EntitiesList() -> bool;
+    Get_CurrentTime() const -> FCk_Time;
 
     auto
-    EntitiesListWithFilters() -> bool;
+    Get_EntitiesForList(bool InRequiresUpdate) const -> TArray<FCk_Handle>;
 
-protected:
+    auto
+    DisplayEntitiesList(bool InRequiresUpdate) -> bool;
+
+    auto
+    DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> bool;
+
+private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 
     ImGuiTextFilter Filter;
+
+    mutable FCk_Time LastUpdateTime;
+    mutable TArray<FCk_Handle> CachedSelectedEntities;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -103,6 +125,9 @@ public:
     ECkDebugger_EntitiesListSortingPolicy EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
 
     UPROPERTY(Config)
+    ECkDebugger_EntitiesListUpdatePolicy EntitiesListUpdatePolicy = ECkDebugger_EntitiesListUpdatePolicy::PerFrame;
+
+    UPROPERTY(Config)
     ECkDebugger_EntitiesListFragmentFilteringTypes EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
 
     virtual void Reset() override
@@ -111,6 +136,7 @@ public:
 
         EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
         EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
+        EntitiesListUpdatePolicy = ECkDebugger_EntitiesListUpdatePolicy::PerFrame;
         EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
     }
 };

@@ -56,17 +56,14 @@ auto
 {
     Super::RenderContent();
 
+    auto RequiresUpdate = false;
+
     if (ImGui::BeginMenuBar())
     {
-        if (ImGui::BeginMenu("Options"))
-        {
-            // ImGui::Checkbox("Only Root Entities", &Config->OnlyRootEntities);
-            ImGui::EndMenu();
-        }
-
         if (ImGui::BeginMenu("Display"))
         {
             auto EnumAsInt = static_cast<int32>(Config->EntitiesListDisplayPolicy);
+            const auto OldEnum = EnumAsInt;
 
             ImGui::RadioButton("All Entities List",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityList));
             ImGui::RadioButton("All Entities Hierarchy", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy));
@@ -74,12 +71,14 @@ auto
 
             Config->EntitiesListDisplayPolicy = static_cast<ECkDebugger_EntitiesListDisplayPolicy>(EnumAsInt);
 
+            RequiresUpdate |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Sorting"))
         {
             auto EnumAsInt = static_cast<int32>(Config->EntitiesListSortingPolicy);
+            const auto OldEnum = EnumAsInt;
 
             ImGui::RadioButton("Alphabetical",     &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::Alphabetical));
             ImGui::RadioButton("By Entity Number", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListSortingPolicy::EnitityNumber));
@@ -87,12 +86,14 @@ auto
 
             Config->EntitiesListSortingPolicy = static_cast<ECkDebugger_EntitiesListSortingPolicy>(EnumAsInt);
 
+            RequiresUpdate |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Filtering"))
         {
             auto EnumAsInt = static_cast<int32>(Config->EntitiesListFragmentFilteringTypes);
+            const auto OldEnum = EnumAsInt;
 
             ImGui::CheckboxFlags("Attribute",         &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Attribute));
             ImGui::CheckboxFlags("Ability",           &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListFragmentFilteringTypes::Ability));
@@ -104,12 +105,57 @@ auto
 
             Config->EntitiesListFragmentFilteringTypes = static_cast<ECkDebugger_EntitiesListFragmentFilteringTypes>(EnumAsInt);
 
+            RequiresUpdate |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
+
+        if (ImGui::BeginMenu("Update"))
+        {
+            auto EnumAsInt = static_cast<int32>(Config->EntitiesListUpdatePolicy);
+            const auto OldEnum = EnumAsInt;
+
+            ImGui::RadioButton("On Button",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListUpdatePolicy::OnButton));
+            ImGui::RadioButton("Per Frame",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListUpdatePolicy::PerFrame));
+            ImGui::RadioButton("Per Second",     &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListUpdatePolicy::PerSecond));
+            ImGui::RadioButton("Per 10 Seconds", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds));
+
+            Config->EntitiesListUpdatePolicy = static_cast<ECkDebugger_EntitiesListUpdatePolicy>(EnumAsInt);
+
+            RequiresUpdate |= OldEnum != EnumAsInt;
+
+            if (Config->EntitiesListUpdatePolicy == ECkDebugger_EntitiesListUpdatePolicy::OnButton)
+            {
+                RequiresUpdate |= ImGui::Button("Do Update");
+            }
+
+            ImGui::EndMenu();
+        }
+
         ImGui::EndMenuBar();
     }
 
-    EntitiesListWithFilters();
+    switch (Config->EntitiesListUpdatePolicy)
+    {
+    case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:
+        {
+            RequiresUpdate = true;
+            break;
+        }
+    case ECkDebugger_EntitiesListUpdatePolicy::OnButton: break;
+    case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
+        {
+            RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(1);
+            break;
+        }
+    case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
+        {
+            RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(10);
+            break;
+        }
+    default: ;
+    }
+
+    DisplayEntitiesListWithFilters(RequiresUpdate);
 }
 
 auto
@@ -122,9 +168,25 @@ auto
 }
 
 auto
-    FCk_EntitySelection_DebugWindow::EntitiesList() -> bool
+    FCk_EntitySelection_DebugWindow::
+    Get_CurrentTime() const
+    -> FCk_Time
 {
-    QUICK_SCOPE_CYCLE_COUNTER(EntitySelection_DebugWindow_EntitiesList)
+    return UCk_Utils_Time_UE::Get_WorldTime
+    (
+        FCk_Utils_Time_GetWorldTime_Params{GetWorld()}.Set_TimeType(ECk_Time_WorldTimeType::RealTime)
+    ).Get_WorldTime().Get_Time();
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    Get_EntitiesForList(bool InRequiresUpdate) const
+    -> TArray<FCk_Handle>
+{
+    QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
+    if (NOT InRequiresUpdate)
+    { return CachedSelectedEntities; }
+
     TSet<FCk_Handle> EntitiesSet;
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
@@ -137,6 +199,8 @@ auto
 
     const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
     {
+        // Intentionally disabled for perf, can be disabled if needed for testing
+        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
         switch (Config->EntitiesListSortingPolicy)
         {
         case ECkDebugger_EntitiesListSortingPolicy::ID:
@@ -154,8 +218,10 @@ auto
         }
     };
 
-    const auto& HeirarchicalSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
+    const auto& HierarchicalSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
     {
+        // Intentionally disabled for perf, can be disabled if needed for testing
+        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_HierarchicalSortingFunction)
         const auto& Get_ParentsArray = [](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
         {
             TArray<FCk_Handle> ParentsArray;
@@ -187,11 +253,11 @@ auto
 
     const auto& SortEntities = [&](TArray<FCk_Handle>& InEntities)
     {
-        QUICK_SCOPE_CYCLE_COUNTER(EntitySelection_DebugWindow_EntitiesList_SortList)
+        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_SortList)
 
         if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
         {
-            ck::algo::Sort(InEntities, HeirarchicalSortingFunction);
+            ck::algo::Sort(InEntities, HierarchicalSortingFunction);
         }
         else
         {
@@ -226,7 +292,7 @@ auto
     };
 
     {
-        QUICK_SCOPE_CYCLE_COUNTER(EntitySelection_DebugWindow_EntitiesList_BuildList)
+        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BuildList)
 
         if (Config->EntitiesListFragmentFilteringTypes == ECkDebugger_EntitiesListFragmentFilteringTypes::None)
         {
@@ -284,6 +350,24 @@ auto
 
     SortEntities(Entities);
 
+    CachedSelectedEntities = Entities;
+    LastUpdateTime = Get_CurrentTime();
+
+    return Entities;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    DisplayEntitiesList(bool InRequiresUpdate)
+    -> bool
+{
+    QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList)
+    const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+
     const auto& OldSelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
     auto NewSelectionEntity = OldSelectionEntity;
 
@@ -323,6 +407,8 @@ auto
         {
             for (int32 i = Clipper.DisplayStart; i < Clipper.DisplayEnd; i++)
             {
+                QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList_TableRow)
+
                 const auto& Entity = Entities[i];
 
                 if (ck::Is_NOT_Valid(Entity))
@@ -407,7 +493,9 @@ auto
 }
 
 auto
-    FCk_EntitySelection_DebugWindow::EntitiesListWithFilters() -> bool
+    FCk_EntitySelection_DebugWindow::
+    DisplayEntitiesListWithFilters(bool InRequiresUpdate)
+    -> bool
 {
     FCogWindowWidgets::SearchBar(Filter);
 
@@ -417,7 +505,7 @@ auto
     // Entities List
     //------------------------
     ImGui::BeginChild("EntitiesList", ImVec2(-1, -1), false);
-    const bool SelectionChanged = EntitiesList();
+    const bool SelectionChanged = DisplayEntitiesList(InRequiresUpdate);
     ImGui::EndChild();
 
     return SelectionChanged;

@@ -659,9 +659,6 @@ auto
         const FCk_Handle_Ability& InAbility)
         -> FString
 {
-    if (NOT UCk_Utils_Timer_UE::Has_Any(InAbility))
-    { return {}; }
-
     auto AllTimers = FString{};
     UCk_Utils_Timer_UE::ForEach_Timer(InAbility, [&](const FCk_Handle_Timer& InTimer)
     {

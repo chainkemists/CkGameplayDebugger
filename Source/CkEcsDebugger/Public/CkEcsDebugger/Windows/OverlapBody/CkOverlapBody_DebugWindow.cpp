@@ -3,7 +3,7 @@
 #include "CkOverlapBody/Marker/CkMarker_Utils.h"
 
 #include "CogImguiHelper.h"
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -21,7 +21,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_OverlapBody_DebugWindowConfig>();
 }
@@ -97,7 +96,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWidgets::SearchBar("##Filter", _Filter);
 
         ImGui::EndMenuBar();
     }

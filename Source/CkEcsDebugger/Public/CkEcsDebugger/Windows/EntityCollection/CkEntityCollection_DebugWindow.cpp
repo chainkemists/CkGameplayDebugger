@@ -2,7 +2,7 @@
 
 #include "CkEntityCollection/CkEntityCollection_Utils.h"
 
-#include <CogWindowWidgets.h>
+#include <CogWidgets.h>
 
 //--------------------------------------------------------------------------------------------------------------------------
 
@@ -14,7 +14,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_EntityCollection_DebugWindowConfig>();
 }
@@ -89,7 +88,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWidgets::SearchBar("##Filter", _Filter);
 
         ImGui::EndMenuBar();
     }

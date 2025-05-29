@@ -2,14 +2,14 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
-#include "CogWindowConfig.h"
+#include "CogCommonConfig.h"
 
 #include "CkAbilityOwnerTags_DebugConfig.generated.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
 
 UCLASS(Config = CkEcsDebugger)
-class UCk_AbilityOwnerTags_DebugWindowConfig : public UCogWindowConfig
+class UCk_AbilityOwnerTags_DebugWindowConfig : public UCogCommonConfig
 {
     GENERATED_BODY()
 

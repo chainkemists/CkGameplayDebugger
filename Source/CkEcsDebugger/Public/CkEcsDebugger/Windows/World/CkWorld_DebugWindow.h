@@ -33,7 +33,7 @@ protected:
     RenderContent() -> void override;
 
 private:
-    TArray<IConsoleObject*> _ConsoleCommands;
+    TArray<FString> _ConsoleCommandNames;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

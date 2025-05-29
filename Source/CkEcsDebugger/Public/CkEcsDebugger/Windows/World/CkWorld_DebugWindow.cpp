@@ -60,23 +60,27 @@ auto
         }
     };
 
-    _ConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
+    // We store the console command name instead of the IConsoleCommand pointer is so multiple instances don't crash when unregistering the same command multiple times
+    // This window exists once per world, but IConsoleManager is a singleton that is shared. There's also no way to check if the IConsoleCommand pointer is still valid.
+    IConsoleManager::Get().RegisterConsoleCommand(
         TEXT("Cog.CycleWorlds_Previous"),
         TEXT("Cycle to the previous available world"),
         FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([this, SelectCorrectWorld](const TArray<FString>& Args, const UWorld* InWorld)
         {
             SelectCorrectWorld(InWorld, true);
         }),
-        ECVF_Cheat));
+        ECVF_Cheat);
+    _ConsoleCommandNames.Add("Cog.CycleWorlds_Previous");
 
-    _ConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
-        TEXT("Cog..CycleWorlds_Next"),
+    IConsoleManager::Get().RegisterConsoleCommand(
+        TEXT("Cog.CycleWorlds_Next"),
         TEXT("Cycle to the next available world"),
         FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([this, SelectCorrectWorld](const TArray<FString>& Args, const UWorld* InWorld)
         {
             SelectCorrectWorld(InWorld, false);
         }),
-        ECVF_Cheat));
+        ECVF_Cheat);
+    _ConsoleCommandNames.Add("Cog.CycleWorlds_Next");
 
     {
         const auto PlayerInput = FCogImguiInputHelper::GetPlayerInput(*GetWorld());
@@ -122,9 +126,9 @@ auto
     Shutdown()
     -> void
 {
-    for (IConsoleObject* ConsoleCommand : _ConsoleCommands)
+    for (const auto& ConsoleCommandName : _ConsoleCommandNames)
     {
-        IConsoleManager::Get().UnregisterConsoleObject(ConsoleCommand);
+        IConsoleManager::Get().UnregisterConsoleObject(*ConsoleCommandName);
     }
 
     FCk_Ecs_DebugWindow::Shutdown();

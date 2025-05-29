@@ -78,11 +78,14 @@ auto
         { continue; }
 
         if (ContextWorld->GetNetMode() == NM_DedicatedServer ||
+            ContextWorld->GetNetMode() == NM_ListenServer ||
             NOT UCk_Utils_Game_UE::Get_IsPIE_UnderOneProcess(this))
         {
             _SelectedWorld = ContextWorld;
         }
     }
+    if (ck::Is_NOT_Valid(_SelectedWorld))
+    { _SelectedWorld = GetWorld(); }
 
 #if ENABLE_COG
     // Add a custom window

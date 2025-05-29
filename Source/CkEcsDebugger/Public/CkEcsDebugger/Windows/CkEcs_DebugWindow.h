@@ -2,7 +2,7 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 
-#include "CogWindow.h"
+#include "Cog/Public/CogWindow.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 

@@ -1,6 +1,6 @@
 #include "CkWorld_DebugWindow.h"
 
-#include "CogWindowManager.h"
+#include "Cog/Public/CogSubsystem.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -8,7 +8,7 @@
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 
 #include <CogImguiInputHelper.h>
-#include <CogWindowWidgets.h>
+#include <Cog/Public/CogWidgets.h>
 
 //--------------------------------------------------------------------------------------------------------------------------
 
@@ -80,12 +80,12 @@ auto
 
     {
         const auto PlayerInput = FCogImguiInputHelper::GetPlayerInput(*GetWorld());
-        UCogWindowManager::AddCommand(PlayerInput, "Cog.CycleWorlds_Previous", EKeys::PageDown);
+        UCogSubsystem::AddCommand(PlayerInput, "Cog.CycleWorlds_Previous", EKeys::PageDown);
     }
 
     {
         const auto PlayerInput = FCogImguiInputHelper::GetPlayerInput(*GetWorld());
-        UCogWindowManager::AddCommand(PlayerInput, "Cog.CycleWorlds_Next", EKeys::PageUp);
+        UCogSubsystem::AddCommand(PlayerInput, "Cog.CycleWorlds_Next", EKeys::PageUp);
     }
 }
 
@@ -98,7 +98,7 @@ auto
 {
     switch (SubWidgetIndex)
     {
-        case 0: return FCogWindowWidgets::GetFontWidth() * 3;
+        case 0: return FCogWidgets::GetFontWidth() * 3;
     }
 
     return -1.0f;

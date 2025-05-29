@@ -1,7 +1,7 @@
 ﻿#include "CkAbilities_DebugWindow.h"
 
 #include "CogImguiHelper.h"
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 
 #include "CkAbility/Ability/CkAbility_Script.h"
 #include "CkAbility/Ability/CkAbility_Utils.h"
@@ -34,7 +34,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_Abilities_DebugWindowConfig>();
 }
@@ -157,7 +156,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(ck_abilities_debug_window::Filter);
+        FCogWidgets::SearchBar("##Filter", ck_abilities_debug_window::Filter);
 
         ImGui::EndMenuBar();
     }
@@ -344,13 +343,13 @@ auto
             // Activation
             //------------------------
             ImGui::TableNextColumn();
-            FCogWindowWidgets::PushStyleCompact();
+            FCogWidgets::PushStyleCompact();
             auto IsActive = UCk_Utils_Ability_UE::Get_Status(Ability) == ECk_Ability_Status::Active;
             if (ImGui::Checkbox("##Activation", &IsActive))
             {
                 _AbilityHandleToActivate = Ability;
             }
-            FCogWindowWidgets::PopStyleCompact();
+            FCogWidgets::PopStyleCompact();
 
             //------------------------
             // Name
@@ -385,9 +384,9 @@ auto
             //------------------------
             if (ImGui::IsItemHovered())
             {
-                FCogWindowWidgets::BeginTableTooltip();
+                FCogWidgets::BeginTableTooltip();
                 RenderAbilityInfo(Ability);
-                FCogWindowWidgets::EndTableTooltip();
+                FCogWidgets::EndTableTooltip();
             }
 
             //------------------------
@@ -494,13 +493,13 @@ auto
         ImGui::TableNextColumn();
         ImGui::TextColored(TextColor, "Activation");
         ImGui::TableNextColumn();
-        FCogWindowWidgets::PushStyleCompact();
+        FCogWidgets::PushStyleCompact();
         auto IsActive = UCk_Utils_Ability_UE::Get_Status(InAbility) == ECk_Ability_Status::Active;
         if (ImGui::Checkbox("##Activation", &IsActive))
         {
             _AbilityHandleToActivate = InAbility;
         }
-        FCogWindowWidgets::PopStyleCompact();
+        FCogWidgets::PopStyleCompact();
 
         //------------------------
         // Handle

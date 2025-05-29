@@ -1,7 +1,7 @@
 #include "CkTimer_DebugWindow.h"
 
 #include "CogImguiHelper.h"
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 #include "CkTimer/CkTimer_Utils.h"
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -14,7 +14,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_Timer_DebugWindowConfig>();
 }
@@ -86,7 +85,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWidgets::SearchBar("##Filter", _Filter);
 
         ImGui::EndMenuBar();
     }

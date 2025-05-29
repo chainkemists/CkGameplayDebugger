@@ -1,6 +1,6 @@
 #include "CkAbilityOwnerTags_DebugWindow.h"
 
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 #include "CkAbility/AbilityOwner/CkAbilityOwner_Utils.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -13,7 +13,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_AbilityOwnerTags_DebugWindowConfig>();
 }
@@ -85,7 +84,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(_Filter);
+        FCogWidgets::SearchBar("##Filter", _Filter);
 
         ImGui::EndMenuBar();
     }
@@ -160,9 +159,9 @@ auto
             //------------------------
             if (ImGui::IsItemHovered())
             {
-                FCogWindowWidgets::BeginTableTooltip();
+                FCogWidgets::BeginTableTooltip();
                 //RenderTag(AbilitySystemComponent, Tag);
-                FCogWindowWidgets::EndTableTooltip();
+                FCogWidgets::EndTableTooltip();
             }
 
             ImGui::PopID();

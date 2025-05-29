@@ -3,6 +3,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Subsystems/GameWorldSubsytem/CkGameWorldSubsystem.h"
 
+#include "CogCommon/Public/CogCommon.h"
+
 #include "CkEcsDebugger_Subsystem.generated.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -41,8 +43,9 @@ private:
     FCk_Handle _SelectionEntity;
 
 private:
-    UPROPERTY(Transient)
-    TObjectPtr<class ACk_Ecs_DebugWindowManager_UE> _DebugWindowManager;
+#if ENABLE_COG
+    TObjectPtr<class UCogSubsystem> _CogSubsystem;
+#endif
 
 public:
     CK_PROPERTY_GET(_SelectedWorld);

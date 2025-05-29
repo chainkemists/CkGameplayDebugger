@@ -1,7 +1,7 @@
 #include "CkEntitySelection_DebugWindow.h"
 
 #include "CogDebug.h"
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 
 #include "CkAbility/Ability/CkAbility_Fragment.h"
 #include "CkAbility/AbilityOwner/CkAbilityOwner_Fragment.h"
@@ -280,11 +280,11 @@ auto
             Handle.Get<ck::FFragment_LifetimeOwner>().Get_Entity() != TransientEntity)
         { return; }
 
-        if (Filter.IsActive())
+        if (_Filter.IsActive())
         {
             const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
             const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
-            if (NOT Filter.PassFilter(DebugNameANSI.Get()))
+            if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
             { return; }
         }
 
@@ -461,7 +461,7 @@ auto
                 if (ImGui::Selectable(EntityDisplayName.c_str(), bIsSelected))
                 {
                     DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
-                    FCogDebug::SetSelection(GetWorld(), EntityActor);
+                    FCogDebug::SetSelection(EntityActor);
                     NewSelectionEntity = Entity;
                 }
 
@@ -473,7 +473,7 @@ auto
                 if (ImGui::IsItemHovered() &&
                     ck::IsValid(EntityActor))
                 {
-                    FCogWindowWidgets::ActorFrame(*EntityActor);
+                    FCogWidgets::ActorFrame(*EntityActor);
                 }
 
                 if (bIsSelected)
@@ -497,7 +497,7 @@ auto
     DisplayEntitiesListWithFilters(bool InRequiresUpdate)
     -> bool
 {
-    FCogWindowWidgets::SearchBar(Filter);
+    FCogWidgets::SearchBar("##Filter", _Filter);
 
     ImGui::Separator();
 

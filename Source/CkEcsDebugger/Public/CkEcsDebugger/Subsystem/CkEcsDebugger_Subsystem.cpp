@@ -6,12 +6,30 @@
 
 #include "CkEcs/Net/EntityReplicationDriver/CkEntityReplicationDriver_Utils.h"
 
-#include "CkEcsDebugger/Windows/CkEcs_DebugWindowManager.h"
+#include "CkEcsDebugger/Windows/Ability/CkAbilities_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Ability/CkAbilityOwnerTags_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Attribute/CkAttribute_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Entity/CkEntity_DebugWindow.h"
+#include "CkEcsDebugger/Windows/EntitySelection/CkEntitySelection_DebugWindow.h"
+#include "CkEcsDebugger/Windows/EntityCollection/CkEntityCollection_DebugWindow.h"
+#include "CkEcsDebugger/Windows/OverlapBody/CkOverlapBody_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Timer/CkTimer_DebugWindow.h"
+#include "CkEcsDebugger/Windows/World/CkWorld_DebugWindow.h"
 
 #if UE_WITH_IRIS
 #include <Iris/ReplicationSystem/ReplicationSystem.h>
 #include <Net/Iris/ReplicationSystem/EngineReplicationBridge.h>
 #endif
+
+#include "CogEngineWindow_CollisionTester.h"
+#include "CogEngineWindow_CollisionViewer.h"
+#include "CogEngineWindow_CommandBindings.h"
+#include "CogEngineWindow_DebugSettings.h"
+#include "CogEngineWindow_ImGui.h"
+#include "CogEngineWindow_Selection.h"
+#include "CogSubsystem.h"
+
+#include "CkEcsDebugger/Windows/AnimState/CkAnimPlan_DebugWindow.h"
 
 #include <Engine/PackageMapClient.h>
 #include <Engine/NetDriver.h>
@@ -25,6 +43,10 @@ auto
     -> void
 {
     Super::Initialize(InCollection);
+
+#if ENABLE_COG
+    _CogSubsystem = InCollection.InitializeDependency<UCogSubsystem>();
+#endif
 }
 
 auto
@@ -32,11 +54,6 @@ auto
     Deinitialize()
     -> void
 {
-    if (ck::IsValid(_DebugWindowManager))
-    {
-        _DebugWindowManager = nullptr;
-    }
-
     Super::Deinitialize();
 }
 
@@ -67,19 +84,33 @@ auto
         }
     }
 
-    _DebugWindowManager = Cast<ACk_Ecs_DebugWindowManager_UE>
-    (
-        UCk_Utils_Actor_UE::Request_SpawnActor
-        (
-            FCk_Utils_Actor_SpawnActor_Params{&InWorld, ACk_Ecs_DebugWindowManager_UE::StaticClass()}
-            .Set_Label(TEXT("ACk_Ecs_DebugWindowManager"))
-            .Set_SpawnPolicy(ECk_Utils_Actor_SpawnActorPolicy::CannotSpawnInPersistentLevel)
-        )
-    );
+#if ENABLE_COG
+    // Add a custom window
+    _CogSubsystem->AddWindow<FCk_World_DebugWindow>("Ck.World");
+    _CogSubsystem->AddWindow<FCk_EntityBasics_DebugWindow>("Ck.Entity");
+    _CogSubsystem->AddWindow<FCk_EntitySelection_DebugWindow>("Ck.EntitySelection");
+    _CogSubsystem->AddWindow<FCk_EntityCollection_DebugWindow>("Ck.EntityCollection");
+    _CogSubsystem->AddWindow<FCk_Timer_DebugWindow>("Ck.Timer");
 
-    CK_ENSURE_IF_NOT(ck::IsValid(_DebugWindowManager),
-        TEXT("Failed to spawn EcsDebugger WindowManager. EcsDebugger will NOT work!"))
-    { return; }
+    _CogSubsystem->AddWindow<FCk_AnimPlan_DebugWindow>("Ck.AnimPlan");
+
+    _CogSubsystem->AddWindow<FCk_ByteAttribute_DebugWindow>("Ck.Attribute.Byte");
+    _CogSubsystem->AddWindow<FCk_FloatAttribute_DebugWindow>("Ck.Attribute.Float");
+    _CogSubsystem->AddWindow<FCk_VectorAttribute_DebugWindow>("Ck.Attribute.Vector");
+
+    _CogSubsystem->AddWindow<FCk_AbilityOwnerTags_DebugWindow>("Ck.AbilityOwnerTags");
+    _CogSubsystem->AddWindow<FCk_Abilities_DebugWindow>("Ck.Abilities");
+
+    _CogSubsystem->AddWindow<FCk_Marker_DebugWindow>("Ck.OverlapBody.Marker");
+    _CogSubsystem->AddWindow<FCk_Sensor_DebugWindow>("Ck.OverlapBody.Sensor");
+
+    _CogSubsystem->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
+    _CogSubsystem->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");
+    _CogSubsystem->AddWindow<FCogEngineWindow_CommandBindings>("Engine.Command Bindings");
+    _CogSubsystem->AddWindow<FCogEngineWindow_DebugSettings>("Engine.Debug Settings");
+    _CogSubsystem->AddWindow<FCogEngineWindow_ImGui>("Engine.ImGui");
+    _CogSubsystem->AddWindow<FCogEngineWindow_Selection>("Engine.Selection");
+#endif
 }
 
 auto

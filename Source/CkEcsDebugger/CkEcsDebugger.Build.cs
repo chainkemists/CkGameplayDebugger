@@ -34,8 +34,9 @@ public class CkEcsDebugger : CkModuleRules
             "CkSettings",
             "CkTimer",
 
+            "Cog",
+            "CogCommon",
             "CogImgui",
-            "CogWindow",
             "CogEngine",
             "CogDebug"
         });

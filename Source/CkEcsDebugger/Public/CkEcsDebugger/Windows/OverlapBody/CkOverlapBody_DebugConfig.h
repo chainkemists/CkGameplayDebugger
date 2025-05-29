@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CogWindowConfig.h"
+#include "CogCommonConfig.h"
 
 #include "CkCore/Enums/CkEnums.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -10,7 +10,7 @@
 //--------------------------------------------------------------------------------------------------------------------------
 
 UCLASS(Config = CkEcsDebugger)
-class UCk_OverlapBody_DebugWindowConfig : public UCogWindowConfig
+class UCk_OverlapBody_DebugWindowConfig : public UCogCommonConfig
 {
     GENERATED_BODY()
 

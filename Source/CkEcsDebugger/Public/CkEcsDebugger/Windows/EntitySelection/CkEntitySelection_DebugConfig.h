@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CogWindowConfig.h"
+#include "CogCommonConfig.h"
 
 #include "CkEntitySelection_DebugConfig.generated.h"
 
@@ -62,7 +62,7 @@ CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListFragmentFilteringTypes);
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS(Config = Cog)
-class UCk_DebugWindowConfig_EntitySelection : public UCogWindowConfig
+class UCk_DebugWindowConfig_EntitySelection : public UCogCommonConfig
 {
     GENERATED_BODY()
 

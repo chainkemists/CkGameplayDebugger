@@ -5,7 +5,7 @@
 
 #include "CogImguiHelper.h"
 
-#include "CogWindowWidgets.h"
+#include <Cog/Public/CogWidgets.h>
 
 #include "CkCore/Math/Arithmetic/CkArithmetic_Utils.h"
 
@@ -53,7 +53,6 @@ auto
     Super::Initialize();
 
     bHasMenu = true;
-    bNoPadding = true;
 
     _Config = GetConfig<UCk_Attribute_DebugWindowConfig>();
 }
@@ -137,7 +136,7 @@ auto
             ImGui::EndMenu();
         }
 
-        FCogWindowWidgets::SearchBar(ck_attributes_debug_window::Get_Filter<T_HandleType>());
+        FCogWidgets::SearchBar("##Filter", ck_attributes_debug_window::Get_Filter<T_HandleType>());
 
         ImGui::EndMenuBar();
     }
@@ -234,9 +233,9 @@ auto
             //------------------------
             if (ImGui::IsItemHovered())
             {
-                FCogWindowWidgets::BeginTableTooltip();
+                FCogWidgets::BeginTableTooltip();
                 DrawAttributeInfo(InAttribute);
-                FCogWindowWidgets::EndTableTooltip();
+                FCogWidgets::EndTableTooltip();
             }
 
             ImGui::PushStyleColor(ImGuiCol_Text, Color);

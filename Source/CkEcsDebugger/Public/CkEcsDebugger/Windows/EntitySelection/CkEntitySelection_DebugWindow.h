@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CogWindowConfig.h"
+#include "CogCommonConfig.h"
 
 #include "CkEcsDebugger/Windows/CkEcs_DebugWindow.h"
 #include "CkEntitySelection_DebugConfig.h"
@@ -47,7 +47,7 @@ private:
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 
-    ImGuiTextFilter Filter;
+    ImGuiTextFilter _Filter;
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;

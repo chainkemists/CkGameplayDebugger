@@ -47,7 +47,7 @@ private:
 
 private:
 #if ENABLE_COG
-    TObjectPtr<class UCogSubsystem> _CogSubsystem;
+    TWeakObjectPtr<class UCogSubsystem> _CogSubsystem;
 #endif
 
 public:

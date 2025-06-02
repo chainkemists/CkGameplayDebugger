@@ -30,6 +30,7 @@
 #include "CogSubsystem.h"
 
 #include "CkEcsDebugger/Windows/AnimState/CkAnimPlan_DebugWindow.h"
+#include "CkEcsDebugger/Windows/Probe/CkProbes_DebugWindow.h"
 
 #include <Engine/PackageMapClient.h>
 #include <Engine/NetDriver.h>
@@ -106,6 +107,7 @@ auto
 
     _CogSubsystem->AddWindow<FCk_Marker_DebugWindow>("Ck.OverlapBody.Marker");
     _CogSubsystem->AddWindow<FCk_Sensor_DebugWindow>("Ck.OverlapBody.Sensor");
+    _CogSubsystem->AddWindow<FCk_Probes_DebugWindow>("Ck.Probes");
 
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");

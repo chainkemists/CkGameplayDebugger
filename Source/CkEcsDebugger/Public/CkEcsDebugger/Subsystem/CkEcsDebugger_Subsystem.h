@@ -40,6 +40,9 @@ private:
     UWorld* _SelectedWorld;
 
     UPROPERTY(Transient)
+    FCk_Handle _PreviousSelectionEntity;
+
+    UPROPERTY(Transient)
     FCk_Handle _SelectionEntity;
 
 private:
@@ -49,7 +52,8 @@ private:
 
 public:
     CK_PROPERTY_GET(_SelectedWorld);
-    CK_PROPERTY_GET(_SelectionEntity)
+    CK_PROPERTY_GET(_SelectionEntity);
+    CK_PROPERTY_GET(_PreviousSelectionEntity);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

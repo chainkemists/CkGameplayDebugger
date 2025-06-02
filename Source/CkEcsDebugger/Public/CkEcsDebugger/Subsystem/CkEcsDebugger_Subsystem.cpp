@@ -142,6 +142,7 @@ auto
         UWorld* InSelectionEntityOwningWorld)
     -> void
 {
+    _PreviousSelectionEntity = _SelectionEntity;
     _SelectionEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(InSelectionEntity, InSelectionEntityOwningWorld, _SelectedWorld);
 }
 

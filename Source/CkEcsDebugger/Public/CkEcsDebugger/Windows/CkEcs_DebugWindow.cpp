@@ -28,6 +28,7 @@ auto
     { return {}; }
 
     auto SelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
+    _PreviousEntity = DebuggerSubsystem->Get_PreviousSelectionEntity();
 
     // If selected actor and entity don't align but selected actor is an entity, use the selected actor's entity and set that as the selection entity
     // This is done since when the actor is selected, it is in COG code that can't set the selected entity when it happens

@@ -522,6 +522,76 @@ auto
             ImGui::Text("(None)");
         }
 
+        //------------------------
+        // Current Overlaps
+        //------------------------
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Current Overlaps");
+        ImGui::TableNextColumn();
+
+        const auto& CurrentOverlaps = InProbe.Get<ck::FFragment_Probe_Current>().Get_CurrentOverlaps();
+        if (CurrentOverlaps.IsEmpty())
+        {
+            ImGui::Text("(None)");
+        }
+        else
+        {
+            ImGui::Text("Count: %d", CurrentOverlaps.Num());
+
+            // Show overlapping entities
+            for (const auto& OverlapInfo : CurrentOverlaps)
+            {
+                const auto& OtherEntity = OverlapInfo.Get_OtherEntity();
+
+                // Try to get a meaningful name for the overlapping entity
+                FString EntityDisplayName = TEXT("Unknown");
+                if (const auto OtherProbe = UCk_Utils_Probe_UE::Cast(OtherEntity); ck::IsValid(OtherProbe))
+                {
+                    EntityDisplayName = UCk_Utils_Probe_UE::Get_Name(OtherProbe).GetTagName().ToString();
+                }
+                else
+                {
+                    // Fallback to handle string
+                    EntityDisplayName = UCk_Utils_Handle_UE::Conv_HandleToString(OtherEntity);
+                }
+
+                // Display the overlapping entity with contact info
+                const auto& ContactPoints = OverlapInfo.Get_ContactPoints();
+                ImGui::Text("%s (%d contacts)", TCHAR_TO_ANSI(*EntityDisplayName), ContactPoints.Num());
+
+                for (int32 i = 0; i < ContactPoints.Num() && i < 5; ++i) // Limit to first 5 contact points
+                {
+                    const auto& ContactPoint = ContactPoints[i];
+                    DrawDebugPoint(GetWorld(), ContactPoint, 10.0f, FColor::Green);
+
+                    const auto& ContactNormal = OverlapInfo.Get_ContactNormal();
+                    DrawDebugDirectionalArrow(GetWorld(), ContactPoint, ContactPoint + ContactNormal * 10.0f, 5.0f, FColor::Red);
+                }
+
+                if (ImGui::IsItemHovered() && ContactPoints.Num() > 0)
+                {
+                    ImGui::BeginTooltip();
+                    ImGui::Text("Contact Points:");
+                    for (int32 i = 0; i < ContactPoints.Num() && i < 5; ++i) // Limit to first 5 contact points
+                    {
+                        const auto& ContactPoint = ContactPoints[i];
+                        ImGui::Text("  [%d] (%.2f, %.2f, %.2f)", i, ContactPoint.X, ContactPoint.Y, ContactPoint.Z);
+                    }
+                    if (ContactPoints.Num() > 5)
+                    {
+                        ImGui::Text("  ... and %d more", ContactPoints.Num() - 5);
+                    }
+
+                    const auto& ContactNormal = OverlapInfo.Get_ContactNormal();
+                    ImGui::Text("Normal: (%.2f, %.2f, %.2f)", ContactNormal.X, ContactNormal.Y, ContactNormal.Z);
+                    ImGui::EndTooltip();
+                }
+            }
+        }
+
+
+
         ImGui::EndTable();
     }
 }

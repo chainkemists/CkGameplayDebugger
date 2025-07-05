@@ -24,6 +24,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkAttribute",
             "CkCore",
             "CkEcs",
+            "CkEcsExt",
             "CkEntityCollection",
             "CkLabel",
             "CkLog",

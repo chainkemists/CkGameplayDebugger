@@ -13,16 +13,6 @@ public:
     Initialize() -> void override;
 
     auto
-    GetMainMenuWidgetWidth(
-        int32 SubWidgetIndex,
-        float MaxWidth) -> float;
-
-    auto
-    RenderMainMenuWidget(
-        int32 SubWidgetIndex,
-        float Width) -> void;
-
-    auto
     Shutdown() -> void override;
 
 protected:

@@ -95,34 +95,6 @@ auto
 
 auto
     FCk_World_DebugWindow::
-    GetMainMenuWidgetWidth(
-        int32 SubWidgetIndex,
-        float MaxWidth)
-    -> float
-{
-    switch (SubWidgetIndex)
-    {
-        case 0: return FCogWidgets::GetFontWidth() * 3;
-    }
-
-    return -1.0f;
-}
-
-auto
-    FCk_World_DebugWindow::
-    RenderMainMenuWidget(
-        int32 SubWidgetIndex,
-        float Width)
-    -> void
-{
-    if (SubWidgetIndex == 0)
-    {
-        ImGui::Button("X", ImVec2(Width, 0));
-    }
-}
-
-auto
-    FCk_World_DebugWindow::
     Shutdown()
     -> void
 {

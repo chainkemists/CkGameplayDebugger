@@ -66,12 +66,13 @@ auto
 
     const auto SelectionEntities = Get_SelectionEntities();
 
-    if (SelectionEntities.Num() == 0)
+    if (SelectionEntities.IsEmpty())
     {
         ImGui::Text("No entities selected");
         return;
     }
 
+    // Step 1: ALWAYS disable debug drawing for previous entities (cleanup)
     for (const auto& PreviousEntity : Get_PreviousEntities())
     {
         if (auto MaybePreviousProbe = UCk_Utils_Probe_UE::Cast(PreviousEntity);
@@ -84,6 +85,11 @@ auto
     auto EntitiesWithProbes = ck::algo::Filter(SelectionEntities, [](const FCk_Handle& InEntity)
     {
         return UCk_Utils_Probe_UE::Has(InEntity);
+    });
+
+    auto EntitiesAsProbes = ck::algo::Transform<TArray<FCk_Handle_Probe>>(SelectionEntities, [](const FCk_Handle& InEntity)
+    {
+        return UCk_Utils_Probe_UE::Cast(InEntity);
     });
 
     if (EntitiesWithProbes.IsEmpty())
@@ -99,19 +105,36 @@ auto
         return;
     }
 
+    // Step 2: Enable debug drawing based on configuration
+    if (_Config->_AlwaysDrawDebug)
+    {
+        // Always draw debug for all selected entities with probes
+        for (auto Probe : EntitiesAsProbes)
+        {
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable);
+        }
+    }
+
+    // Step 3: Render UI sections
     if (EntitiesWithProbes.Num() > 1)
     {
         ImGui::Text("Multiple entities with probes selected (%d)", EntitiesWithProbes.Num());
         ImGui::Separator();
     }
 
+    // Track which entities have their sections expanded so we can handle debug drawing for non-always mode
+    TSet<FCk_Handle> ExpandedEntities;
+
     for (int32 EntityIndex = 0; EntityIndex < EntitiesWithProbes.Num(); ++EntityIndex)
     {
         const auto& Entity = EntitiesWithProbes[EntityIndex];
 
-        if (const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), Entity);
-            ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+        const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), Entity);
+
+        if ([[maybe_unused]] const auto& IsExpanded = ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
         {
+            ExpandedEntities.Add(Entity);
+
             ImGui::Indent();
             RenderEntityProbesSection(Entity);
             ImGui::Unindent();
@@ -123,15 +146,18 @@ auto
             ImGui::Spacing();
         }
     }
-}
 
-auto
-    FCk_Probes_DebugWindow::
-    RenderTick(
-        float InDeltaT)
-    -> void
-{
-    Super::RenderTick(InDeltaT);
+    // Step 4: Handle debug drawing for non-always mode
+    if (NOT _Config->_AlwaysDrawDebug)
+    {
+        // Only enable debug drawing for expanded sections
+        for (auto Probe : EntitiesAsProbes)
+        {
+            const auto& ShouldDrawDebug = ExpandedEntities.Contains(Probe);
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe,
+                ShouldDrawDebug ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable);
+        }
+    }
 }
 
 auto
@@ -161,6 +187,7 @@ auto
             ImGui::Separator();
 
             ImGui::Checkbox("Sort by Name", &_Config->_SortByName);
+            ImGui::Checkbox("Always Draw Debug", &_Config->_AlwaysDrawDebug);
 
             ImGui::Separator();
 
@@ -206,8 +233,6 @@ auto
     if (auto Probe = UCk_Utils_Probe_UE::Cast(InEntity);
         ck::IsValid(Probe))
     {
-        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable);
-
         const auto& IsEnabled = UCk_Utils_Probe_UE::Get_IsEnabledDisabled(Probe) == ECk_EnableDisable::Enable;
         const auto& IsOverlapping = UCk_Utils_Probe_UE::Get_IsOverlapping(Probe);
         const auto& ResponsePolicy = UCk_Utils_Probe_UE::Get_ResponsePolicy(Probe);

@@ -28,10 +28,6 @@ protected:
     RenderContent() -> void override;
 
     auto
-    RenderTick(
-        float InDeltaT) -> void override;
-
-    auto
     GameTick(
         float InDeltaT) -> void override;
 
@@ -64,7 +60,7 @@ private:
         const FCk_Handle_Probe& InProbe) -> FString;
 
 private:
-    UCk_Probes_DebugWindowConfig* _Config = nullptr;
+    TObjectPtr<UCk_Probes_DebugWindowConfig> _Config;
 
     FCk_Handle_Probe _ProbeHandleToToggle;
 };

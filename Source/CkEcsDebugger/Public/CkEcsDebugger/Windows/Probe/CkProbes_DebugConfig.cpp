@@ -19,6 +19,7 @@ auto
     _ShowNotOverlapping = true;
     _ShowNotifyPolicy = true;
     _ShowSilentPolicy = true;
+    _AlwaysDrawDebug = true;
 
     EnabledColor = _EnabledColor;
     DisabledColor = _DisabledColor;

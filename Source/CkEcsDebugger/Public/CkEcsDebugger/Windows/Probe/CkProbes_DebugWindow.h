@@ -39,28 +39,8 @@ protected:
     RenderMenu() -> void;
 
     auto
-    RenderOpenedProbes() -> void;
-
-    auto
-    RenderTable(
-        const TArray<FCk_Handle>& InSelectionEntities) -> void;
-
-    auto
-    RenderProbeInfo(
-        const FCk_Handle_Probe& InProbe) -> void;
-
-    auto
-    RenderProbeContextMenu(
-        const FCk_Handle_Probe& InProbe,
-        int32 InIndex) -> void;
-
-    auto
-    OpenProbe(
-        const FCk_Handle_Probe& InProbe) -> void;
-
-    auto
-    CloseProbe(
-        const FCk_Handle_Probe& InProbe) -> void;
+    RenderEntityProbesSection(
+        const FCk_Handle& InEntity) -> void;
 
     auto
     ProcessProbeEnableDisable(
@@ -83,17 +63,9 @@ private:
         -> FString;
 
 private:
-    auto
-    AddToFilteredProbes(
-        const FCk_Handle& InEntity) -> void;
-
-private:
     UCk_Probes_DebugWindowConfig* _Config = nullptr;
 
     FCk_Handle_Probe _ProbeHandleToToggle;
-    TArray<FCk_Handle_Probe> _OpenedProbes;
-
-    TArray<FCk_Handle_Probe> _FilteredProbes;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

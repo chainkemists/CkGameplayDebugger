@@ -114,6 +114,7 @@ auto
     -> void
 {
     ImGui::Text("This window allows selection of all the available worlds");
+    ImGui::Text("The currently selected world is highlighted in yellow");
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -134,7 +135,9 @@ auto
         TEXT("ECS Debugger Subsystem [{}] has NO valid selected world!"), EcsDebuggerSubsystem)
     { return; }
 
-    ImGui::Text(ck::Format_ANSI(TEXT("{}"), EcsDebuggerSubsystem->Get_SelectedWorld()->GetNetMode()).c_str());
+    const auto SelectedWorld = EcsDebuggerSubsystem->Get_SelectedWorld();
+
+    ImGui::Text("Currently Selected: %s", ck::Format_ANSI(TEXT("{}"), SelectedWorld->GetNetMode()).c_str());
 
     if (ImGui::BeginTable("Worlds", 2, ImGuiTableFlags_SizingFixedFit
                                    | ImGuiTableFlags_Resizable
@@ -166,13 +169,26 @@ auto
             ImGui::TableNextRow();
             ImGui::PushID(Index);
 
+            const auto IsSelectedWorld = ContextWorld == SelectedWorld;
+
+            // Highlight selected world
+            if (IsSelectedWorld)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 204, 2, 255));
+            }
+
             ImGui::TableNextColumn();
             ImGui::Text(ck::Format_ANSI(TEXT("{}"), ContextWorld->GetNetMode()).c_str());
 
             ImGui::TableNextColumn();
-            if (ImGui::Selectable(ck::Format_ANSI(TEXT("{}"), ContextWorld).c_str()))
+            if (ImGui::Selectable(ck::Format_ANSI(TEXT("{}"), ContextWorld).c_str(), IsSelectedWorld))
             {
                 EcsDebuggerSubsystem->Set_SelectedWorld(ContextWorld);
+            }
+
+            if (IsSelectedWorld)
+            {
+                ImGui::PopStyleColor();
             }
 
             ImGui::PopID();
@@ -184,4 +200,3 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-

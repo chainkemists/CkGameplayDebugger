@@ -21,8 +21,25 @@ protected:
     auto
     RenderContent() -> void override;
 
-    auto
-    RenderTable() -> void;
+private:
+    static auto
+    RenderEntityAnimPlansSection(
+        const FCk_Handle& InEntity) -> void;
+
+    static auto
+    RenderAnimPlansTable(
+        const FCk_Handle& InEntity) -> void;
+
+    static auto
+    Request_RenderTableRow_AnimPlanValue(
+        const char* InLabel,
+        const FString& InValue,
+        bool InIsValid) -> void;
+
+    static auto
+    Request_RenderTableRow_AnimPlanGoal(
+        const char* InLabel,
+        const FString& InValue) -> void;
 
 private:
     FCk_Entity _HistoryOfEntity;
@@ -32,4 +49,3 @@ private:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
-

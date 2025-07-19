@@ -49,9 +49,10 @@ auto
 {
     ImGui::Text
     (
-        "This window displays the probes of the selected actor. "
+        "This window displays the probes of the selected entities. "
         "Click the enable/disable checkbox to toggle probe state. "
         "Right click a probe to open or close the probe separate window. "
+        "When multiple entities are selected, probes from all entities are shown."
     );
 }
 
@@ -64,21 +65,25 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntities = Get_SelectionEntities();
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (SelectionEntities.Num() == 0)
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
-    if (auto MaybePreviousProbe = UCk_Utils_Probe_UE::Cast(Get_PreviousEntity());
-        ck::IsValid(MaybePreviousProbe))
+    // Handle previous entities cleanup
+    for (const auto& PreviousEntity : Get_PreviousEntities())
     {
-        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(MaybePreviousProbe, ECk_EnableDisable::Disable);
+        if (auto MaybePreviousProbe = UCk_Utils_Probe_UE::Cast(PreviousEntity);
+            ck::IsValid(MaybePreviousProbe))
+        {
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(MaybePreviousProbe, ECk_EnableDisable::Disable);
+        }
     }
 
-    RenderTable(SelectionEntity);
+    RenderTable(SelectionEntities);
 }
 
 auto
@@ -158,9 +163,9 @@ auto
     RenderOpenedProbes()
     -> void
 {
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntities = Get_SelectionEntities();
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (SelectionEntities.Num() == 0)
     { return; }
 
     for (int32 Index = _OpenedProbes.Num() - 1; Index >= 0; --Index)
@@ -186,13 +191,17 @@ auto
 auto
     FCk_Probes_DebugWindow::
     RenderTable(
-        const FCk_Handle& InSelectionEntity)
+        const TArray<FCk_Handle>& InSelectionEntities)
     -> void
 {
     QUICK_SCOPE_CYCLE_COUNTER(FCk_Probes_DebugWindow_RenderTable)
     _FilteredProbes.Reset();
 
-    AddToFilteredProbes(InSelectionEntity);
+    // Collect probes from all selected entities
+    for (const auto& Entity : InSelectionEntities)
+    {
+        AddToFilteredProbes(Entity);
+    }
 
     if (_Config->_SortByName)
     {
@@ -205,7 +214,7 @@ auto
         });
     }
 
-    if (ImGui::BeginTable("Probes", 4, ImGuiTableFlags_SizingFixedFit
+    if (ImGui::BeginTable("Probes", 5, ImGuiTableFlags_SizingFixedFit
                                         | ImGuiTableFlags_Resizable
                                         | ImGuiTableFlags_NoBordersInBodyUntilResize
                                         | ImGuiTableFlags_ScrollY
@@ -217,6 +226,7 @@ auto
         ImGui::TableSetupColumn("Enable", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Probe");
+        ImGui::TableSetupColumn("Owner Entity");
         ImGui::TableSetupColumn("Status");
         ImGui::TableSetupColumn("Policy");
         ImGui::TableHeadersRow();
@@ -359,6 +369,14 @@ auto
             ImGui::PopStyleColor(1);
 
             //------------------------
+            // Owner Entity
+            //------------------------
+            ImGui::TableNextColumn();
+            const auto& OwnerEntity = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Probe);
+            const auto& OwnerName = UCk_Utils_Handle_UE::Get_DebugName(OwnerEntity);
+            ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), OwnerName).c_str());
+
+            //------------------------
             // Popup
             //------------------------
             if (ImGui::IsItemHovered())
@@ -391,6 +409,22 @@ auto
         }
 
         ImGui::EndTable();
+    }
+
+    if (_FilteredProbes.Num() == 0)
+    {
+        if (InSelectionEntities.Num() == 1)
+        {
+            ImGui::Text("Selected entity has no probes");
+        }
+        else
+        {
+            ImGui::Text("Selected entities have no probes");
+        }
+    }
+    else
+    {
+        ImGui::Text("Found %d probes across %d entities", _FilteredProbes.Num(), InSelectionEntities.Num());
     }
 }
 
@@ -431,6 +465,17 @@ auto
         ImGui::TextColored(TextColor, "Handle");
         ImGui::TableNextColumn();
         ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), UCk_Utils_Handle_UE::Conv_HandleToString(InProbe)).c_str());
+
+        //------------------------
+        // Owner Entity
+        //------------------------
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Owner Entity");
+        ImGui::TableNextColumn();
+        const auto& OwnerEntity = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InProbe);
+        const auto& OwnerName = UCk_Utils_Handle_UE::Get_DebugName(OwnerEntity);
+        ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), OwnerName).c_str());
 
         //------------------------
         // Enabled/Disabled
@@ -590,8 +635,6 @@ auto
             }
         }
 
-
-
         ImGui::EndTable();
     }
 }
@@ -647,9 +690,9 @@ auto
         FCk_Handle_Probe& InProbe)
     -> void
 {
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntities = Get_SelectionEntities();
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (SelectionEntities.Num() == 0)
     { return; }
 
     switch (UCk_Utils_Probe_UE::Get_IsEnabledDisabled(InProbe))

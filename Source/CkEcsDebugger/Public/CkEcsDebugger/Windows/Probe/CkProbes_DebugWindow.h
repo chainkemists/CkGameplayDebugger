@@ -43,7 +43,7 @@ protected:
 
     auto
     RenderTable(
-        const FCk_Handle& InSelectionEntity) -> void;
+        const TArray<FCk_Handle>& InSelectionEntities) -> void;
 
     auto
     RenderProbeInfo(

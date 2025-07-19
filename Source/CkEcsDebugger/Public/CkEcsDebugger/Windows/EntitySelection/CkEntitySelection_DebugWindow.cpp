@@ -46,7 +46,9 @@ auto
     RenderHelp()
     -> void
 {
-    ImGui::Text("This window allows picking an Entity for other windows to inspect");
+    ImGui::Text("This window allows picking Entities for other windows to inspect");
+    ImGui::Text("Hold Ctrl+Click to multi-select entities");
+    ImGui::Text("Use 'Clear Selection' to deselect all entities");
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -128,6 +130,21 @@ auto
             if (Config->EntitiesListUpdatePolicy == ECkDebugger_EntitiesListUpdatePolicy::OnButton)
             {
                 RequiresUpdate |= ImGui::Button("Do Update");
+            }
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Selection"))
+        {
+            const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+            const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
+
+            ImGui::Text("Selected: %d entities", SelectedEntities.Num());
+            
+            if (ImGui::MenuItem("Clear Selection"))
+            {
+                DebuggerSubsystem->Clear_SelectionEntities();
             }
 
             ImGui::EndMenu();
@@ -407,8 +424,8 @@ auto
     const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
     const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
 
-    const auto& OldSelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
-    auto NewSelectionEntity = OldSelectionEntity;
+    const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
+    bool SelectionChanged = false;
 
     // Only render root entities (entities without lifetime owners, or whose lifetime owner is TransientEntity)
     TArray<FCk_Handle> RootEntities;
@@ -449,14 +466,13 @@ auto
         if (ck::Is_NOT_Valid(RootEntity))
         { continue; }
 
-        const auto Result = RenderEntityNode(RootEntity, OldSelectionEntity, TransientEntity, false);
-        if (ck::IsValid(Result))
+        if (RenderEntityNode(RootEntity, SelectedEntities, TransientEntity, false))
         {
-            NewSelectionEntity = Result;
+            SelectionChanged = true;
         }
     }
 
-    CachedShouldRenderEntityTree =  NewSelectionEntity != OldSelectionEntity;
+    CachedShouldRenderEntityTree = SelectionChanged;
 
     return CachedShouldRenderEntityTree;
 }
@@ -465,15 +481,15 @@ auto
     FCk_EntitySelection_DebugWindow::
     RenderEntityNode(
         const FCk_Handle& Entity,
-        const FCk_Handle& SelectedEntity,
+        const TArray<FCk_Handle>& SelectedEntities,
         const FCk_Handle& TransientEntity,
         bool OpenAllChildren)
-    -> FCk_Handle
+    -> bool
 {
     QUICK_SCOPE_CYCLE_COUNTER(RenderEntityNode)
 
     if (ck::Is_NOT_Valid(Entity))
-    { return {}; }
+    { return false; }
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -490,7 +506,7 @@ auto
     const auto Children = GetEntityChildren(Entity, AllEntities);
     const bool HasChildren = Children.Num() > 0;
 
-    FCk_Handle NewSelectionEntity;
+    bool SelectionChanged = false;
 
     if (ShowNode)
     {
@@ -512,7 +528,7 @@ auto
             NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         }
 
-        if (Entity == SelectedEntity)
+        if (SelectedEntities.Contains(Entity))
         {
             NodeFlags |= ImGuiTreeNodeFlags_Selected;
         }
@@ -556,9 +572,22 @@ auto
         // Handle selection
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
-            DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
+            const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+            
+            if (IsControlDown)
+            {
+                // Multi-select mode: toggle entity in selection
+                DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+                SelectionChanged = true;
+            }
+            else
+            {
+                // Single select mode: replace selection with this entity
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                SelectionChanged = true;
+            }
+            
             FCogDebug::SetSelection(EntityActor);
-            NewSelectionEntity = Entity;
         }
 
         // Handle Ctrl+Click to expand all children
@@ -573,10 +602,23 @@ auto
         {
             if (ImGui::MenuItem("Focus on Entity"))
             {
-                DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
                 FCogDebug::SetSelection(EntityActor);
-                NewSelectionEntity = Entity;
+                SelectionChanged = true;
             }
+            
+            if (ImGui::MenuItem("Add to Selection"))
+            {
+                DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+                SelectionChanged = true;
+            }
+            
+            if (ImGui::MenuItem("Remove from Selection"))
+            {
+                DebuggerSubsystem->Remove_SelectionEntity(Entity);
+                SelectionChanged = true;
+            }
+            
             ImGui::EndPopup();
         }
 
@@ -594,6 +636,7 @@ auto
             {
                 ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
             }
+            ImGui::Text("Hold Ctrl+Click for multi-select");
             ImGui::EndTooltip();
         }
 
@@ -630,10 +673,9 @@ auto
 
             for (const auto& Child : SortedChildren)
             {
-                if (const auto& Result = RenderEntityNode(Child, SelectedEntity, TransientEntity, OpenAllChildren);
-                    ck::IsValid(Result))
+                if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
                 {
-                    NewSelectionEntity = Result;
+                    SelectionChanged = true;
                 }
             }
         }
@@ -651,15 +693,14 @@ auto
         // in case they match the filter
         for (const auto& Child : Children)
         {
-            if (const auto& Result = RenderEntityNode(Child, SelectedEntity, TransientEntity, OpenAllChildren);
-                ck::IsValid(Result))
+            if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
             {
-                NewSelectionEntity = Result;
+                SelectionChanged = true;
             }
         }
     }
 
-    return NewSelectionEntity;
+    return SelectionChanged;
 }
 
 auto
@@ -690,4 +731,3 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-

@@ -49,17 +49,17 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntity = Get_PrimarySelectionEntity();
 
     if (ck::Is_NOT_Valid(SelectionEntity))
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
     if (NOT UCk_Utils_EntityCollection_UE::Has_Any(SelectionEntity))
     {
-        ImGui::Text(ck::Format_ANSI(TEXT("Selection Actor has no Entity Collections")).c_str());
+        ImGui::Text(ck::Format_ANSI(TEXT("Primary selected entity has no Entity Collections")).c_str());
         return;
     }
 

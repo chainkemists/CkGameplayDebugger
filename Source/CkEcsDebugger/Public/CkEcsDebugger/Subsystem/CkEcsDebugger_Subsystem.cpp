@@ -131,21 +131,91 @@ auto
 
     _SelectedWorld = InSelectedWorld;
 
-    if (ck::IsValid(_SelectionEntity))
+    if (_SelectionEntities.Num() > 0)
     {
-        Set_SelectionEntity(_SelectionEntity, PreviousWorld);
+        Set_SelectionEntities(_SelectionEntities, PreviousWorld);
     }
 }
 
 auto
     UCk_EcsDebugger_Subsystem_UE::
-    Set_SelectionEntity(
+    Set_SelectionEntities(
+        const TArray<FCk_Handle>& InSelectionEntities,
+        UWorld* InSelectionEntitiesOwningWorld)
+    -> void
+{
+    _PreviousSelectionEntities = _SelectionEntities;
+    _SelectionEntities.Empty();
+
+    for (const auto& Entity : InSelectionEntities)
+    {
+        const auto ReplicatedEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(Entity, InSelectionEntitiesOwningWorld, _SelectedWorld);
+        if (ck::IsValid(ReplicatedEntity))
+        {
+            _SelectionEntities.AddUnique(ReplicatedEntity);
+        }
+    }
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Add_SelectionEntity(
         const FCk_Handle& InSelectionEntity,
         UWorld* InSelectionEntityOwningWorld)
     -> void
 {
-    _PreviousSelectionEntity = _SelectionEntity;
-    _SelectionEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(InSelectionEntity, InSelectionEntityOwningWorld, _SelectedWorld);
+    const auto ReplicatedEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(InSelectionEntity, InSelectionEntityOwningWorld, _SelectedWorld);
+    if (ck::IsValid(ReplicatedEntity))
+    {
+        _SelectionEntities.AddUnique(ReplicatedEntity);
+    }
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Remove_SelectionEntity(
+        const FCk_Handle& InSelectionEntity)
+    -> void
+{
+    _SelectionEntities.Remove(InSelectionEntity);
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Clear_SelectionEntities()
+    -> void
+{
+    _PreviousSelectionEntities = _SelectionEntities;
+    _SelectionEntities.Empty();
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Toggle_SelectionEntity(
+        const FCk_Handle& InSelectionEntity,
+        UWorld* InSelectionEntityOwningWorld)
+    -> void
+{
+    const auto ReplicatedEntity = UCk_Utils_EntityReplicationDriver_UE::Get_ReplicatedHandleForWorld(InSelectionEntity, InSelectionEntityOwningWorld, _SelectedWorld);
+    if (ck::IsValid(ReplicatedEntity))
+    {
+        if (_SelectionEntities.Contains(ReplicatedEntity))
+        {
+            _SelectionEntities.Remove(ReplicatedEntity);
+        }
+        else
+        {
+            _SelectionEntities.AddUnique(ReplicatedEntity);
+        }
+    }
+}
+
+auto
+    UCk_EcsDebugger_Subsystem_UE::
+    Get_PrimarySelectionEntity()
+    -> FCk_Handle
+{
+    return _SelectionEntities.Num() > 0 ? _SelectionEntities[0] : FCk_Handle{};
 }
 
 auto

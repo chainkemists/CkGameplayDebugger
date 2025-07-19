@@ -318,13 +318,24 @@ auto
                 ImGui::PopStyleColor();
             };
 
-            const auto RenderTableRow_ProbeDefault = [&](const char* Label, const FString& Value)
+            const auto RenderTableRow_ProbeFilter = [&](const char* Label, const FString& Value, bool IsEmpty)
             {
                 ImGui::TableNextRow();
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Text(Label);
                 ImGui::TableSetColumnIndex(1);
+
+                if (IsEmpty)
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(102, 102, 102, 255)); // Gray
+                }
+
                 ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), Value).c_str());
+
+                if (IsEmpty)
+                {
+                    ImGui::PopStyleColor();
+                }
             };
 
             // === BASIC INFORMATION ===
@@ -346,11 +357,11 @@ auto
             if (const auto& Filter = UCk_Utils_Probe_UE::Get_Filter(Probe);
                 Filter.IsEmpty())
             {
-                RenderTableRow_ProbeDefault("Filter:", TEXT("(Empty)"));
+                RenderTableRow_ProbeFilter("Filter:", TEXT("(Empty)"), true);
             }
             else
             {
-                RenderTableRow_ProbeDefault("Filter:", ck::Format_UE(TEXT("{}"), Filter));
+                RenderTableRow_ProbeFilter("Filter:", ck::Format_UE(TEXT("{}"), Filter), false);
             }
 
             ImGui::EndTable();

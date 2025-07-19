@@ -141,7 +141,7 @@ auto
             const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
 
             ImGui::Text("Selected: %d entities", SelectedEntities.Num());
-            
+
             if (ImGui::MenuItem("Clear Selection"))
             {
                 DebuggerSubsystem->Clear_SelectionEntities();
@@ -386,7 +386,7 @@ auto
     QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList)
     const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
 
-    return RenderEntityTree(Entities, InRequiresUpdate);
+    return RenderEntityTree(Entities);
 }
 
 auto
@@ -411,14 +411,10 @@ auto
 auto
     FCk_EntitySelection_DebugWindow::
     RenderEntityTree(
-        const TArray<FCk_Handle>& Entities,
-        bool InRequiresUpdate)
+        const TArray<FCk_Handle>& Entities)
     -> bool
 {
     QUICK_SCOPE_CYCLE_COUNTER(RenderEntityTree)
-
-    if (NOT InRequiresUpdate)
-    { return CachedShouldRenderEntityTree; }
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -472,9 +468,7 @@ auto
         }
     }
 
-    CachedShouldRenderEntityTree = SelectionChanged;
-
-    return CachedShouldRenderEntityTree;
+    return SelectionChanged;
 }
 
 auto
@@ -557,23 +551,23 @@ auto
         }
 
         // Create the tree node
-        const auto NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
+        const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
         bool OpenChildren = false;
 
         if (HasChildren && !_Filter.IsActive())
         {
-            OpenChildren = ImGui::TreeNodeEx(NodeLabel, NodeFlags);
+            OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
         }
         else
         {
-            ImGui::TreeNodeEx(NodeLabel, NodeFlags);
+            ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
         }
 
         // Handle selection
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
             const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-            
+
             if (IsControlDown)
             {
                 // Multi-select mode: toggle entity in selection
@@ -586,7 +580,7 @@ auto
                 DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
                 SelectionChanged = true;
             }
-            
+
             FCogDebug::SetSelection(EntityActor);
         }
 
@@ -606,19 +600,19 @@ auto
                 FCogDebug::SetSelection(EntityActor);
                 SelectionChanged = true;
             }
-            
+
             if (ImGui::MenuItem("Add to Selection"))
             {
                 DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
                 SelectionChanged = true;
             }
-            
+
             if (ImGui::MenuItem("Remove from Selection"))
             {
                 DebuggerSubsystem->Remove_SelectionEntity(Entity);
                 SelectionChanged = true;
             }
-            
+
             ImGui::EndPopup();
         }
 

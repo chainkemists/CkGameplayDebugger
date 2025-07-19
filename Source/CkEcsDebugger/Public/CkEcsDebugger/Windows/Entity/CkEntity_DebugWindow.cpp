@@ -221,8 +221,7 @@ auto
     if (UCk_Utils_ContextOwner_UE::Has(SelectionEntity))
     {
         const auto ContextOwner = UCk_Utils_ContextOwner_UE::Get_ContextOwner(SelectionEntity);
-        const auto OwnerName = UCk_Utils_Handle_UE::Get_DebugName(ContextOwner);
-        Request_RenderTableRow_Entity("Context Owner:", ck::Format_UE(TEXT("{} | {}"), OwnerName, ContextOwner));
+        Request_RenderTableRow_Entity("Context Owner:", ck::Format_UE(TEXT("{}"), ContextOwner));
     }
     else
     {
@@ -233,8 +232,7 @@ auto
     if (SelectionEntity.Has<ck::FFragment_LifetimeOwner>())
     {
         const auto& LifetimeOwner = SelectionEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-        const auto OwnerName = UCk_Utils_Handle_UE::Get_DebugName(LifetimeOwner);
-        Request_RenderTableRow_Entity("Lifetime Owner:", ck::Format_UE(TEXT("{} | {}"), OwnerName, LifetimeOwner));
+        Request_RenderTableRow_Entity("Lifetime Owner:", ck::Format_UE(TEXT("{}"), LifetimeOwner));
     }
     else
     {
@@ -308,15 +306,8 @@ auto
         {
             const auto& SelectionEntity = SelectionEntities[EntityIndex];
 
-            if (ck::Is_NOT_Valid(SelectionEntity))
-            {
-                ImGui::Text("Entity %d: NOT Ecs Ready", EntityIndex + 1);
-                continue;
-            }
-
-            // Entity section header
-            const auto& EntityName = UCk_Utils_Handle_UE::Get_DebugName(SelectionEntity);
-            const auto& SectionTitle = ck::Format_UE(TEXT("Entity %d: %s"), EntityIndex + 1, EntityName);
+            // Entity section header with proper formatting
+            const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), SelectionEntity);
 
             if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {

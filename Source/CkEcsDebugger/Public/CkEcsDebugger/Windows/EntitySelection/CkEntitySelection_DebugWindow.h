@@ -45,7 +45,7 @@ private:
     DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> bool;
 
     auto
-    RenderEntityTree(const TArray<FCk_Handle>& Entities, bool InRequiresUpdate) -> bool;
+    RenderEntityTree(const TArray<FCk_Handle>& Entities) -> bool;
 
     auto
     RenderEntityNode(const FCk_Handle& Entity, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> bool;
@@ -60,7 +60,6 @@ private:
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;
-    mutable bool CachedShouldRenderEntityTree = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

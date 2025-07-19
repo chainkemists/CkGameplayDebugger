@@ -1,6 +1,8 @@
 #include "CkEntitySelection_DebugWindow.h"
 
 #include "CogDebug.h"
+#include "imgui_internal.h"
+
 #include <Cog/Public/CogWidgets.h>
 
 #include "CkAbility/Ability/CkAbility_Fragment.h"
@@ -136,23 +138,24 @@ auto
 
     switch (Config->EntitiesListUpdatePolicy)
     {
-    case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:
+        case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:
         {
             RequiresUpdate = true;
             break;
         }
-    case ECkDebugger_EntitiesListUpdatePolicy::OnButton: break;
-    case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
+        case ECkDebugger_EntitiesListUpdatePolicy::OnButton: break;
+        case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(1);
             break;
         }
-    case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
+        case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(10);
             break;
         }
-    default: ;
+        default:
+            break;
     }
 
     DisplayEntitiesListWithFilters(RequiresUpdate);
@@ -180,10 +183,12 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    Get_EntitiesForList(bool InRequiresUpdate) const
+    Get_EntitiesForList(
+        const bool InRequiresUpdate) const
     -> TArray<FCk_Handle>
 {
     QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
+
     if (NOT InRequiresUpdate)
     { return CachedSelectedEntities; }
 
@@ -199,8 +204,7 @@ auto
 
     const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
     {
-        // Intentionally disabled for perf, can be disabled if needed for testing
-        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
+        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
         switch (Config->EntitiesListSortingPolicy)
         {
         case ECkDebugger_EntitiesListSortingPolicy::ID:
@@ -333,8 +337,8 @@ auto
     // If displaying as hierarchy, show all parents of entities shown, otherwise their context in the hierarchy won't make sense
     if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
     {
-        auto EntitiesTempArray = EntitiesSet.Array();
-        for (const auto& Entity : EntitiesTempArray)
+        for (auto EntitiesTempArray = EntitiesSet.Array();
+             const auto& Entity : EntitiesTempArray)
         {
             auto CurrentEntity = Entity;
             while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
@@ -358,138 +362,14 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    DisplayEntitiesList(bool InRequiresUpdate)
+    DisplayEntitiesList(
+        bool InRequiresUpdate)
     -> bool
 {
     QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList)
     const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
 
-    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
-    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
-    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
-
-    const auto& OldSelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
-    auto NewSelectionEntity = OldSelectionEntity;
-
-    const auto LocalPlayerPawn = [&]() -> const AActor*
-    {
-        const auto& LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-        if (LocalPlayer == nullptr)
-        { return nullptr; }
-
-        const auto& LocalPlayerController = LocalPlayer->PlayerController;
-
-        if (LocalPlayerController == nullptr)
-        { return nullptr; }
-
-        const auto& ClientWorldLocalPlayerPawn = LocalPlayerController->GetPawn();
-
-        return DebuggerSubsystem->Get_ActorOnSelectedWorld(ClientWorldLocalPlayerPawn);
-    }();
-
-    if (ImGui::BeginTable("Entities", 2, ImGuiTableFlags_SizingFixedFit
-                                       | ImGuiTableFlags_Resizable
-                                       | ImGuiTableFlags_NoBordersInBodyUntilResize
-                                       | ImGuiTableFlags_ScrollY
-                                       | ImGuiTableFlags_RowBg
-                                       | ImGuiTableFlags_BordersV
-                                       | ImGuiTableFlags_Reorderable
-                                       | ImGuiTableFlags_Hideable))
-    {
-        ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableHeadersRow();
-
-        ImGuiListClipper Clipper;
-        Clipper.Begin(Entities.Num());
-        while (Clipper.Step())
-        {
-            for (int32 i = Clipper.DisplayStart; i < Clipper.DisplayEnd; i++)
-            {
-                QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList_TableRow)
-
-                const auto& Entity = Entities[i];
-
-                if (ck::Is_NOT_Valid(Entity))
-                { continue; }
-
-                ImGui::TableNextRow();
-                ImGui::PushID(i);
-
-                const auto& EntityActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(Entity);
-
-                ImGui::PushStyleColor(ImGuiCol_Text,
-                    EntityActor != nullptr && EntityActor == LocalPlayerPawn ?
-                    IM_COL32(255, 255, 0, 255) :
-                    IM_COL32(255, 255, 255, 255));
-
-                const bool bIsSelected = Entity == NewSelectionEntity;
-
-                //------------------------
-                // ID
-                //------------------------
-                ImGui::TableNextColumn();
-                ImGui::Text(ck::Format_ANSI(TEXT("{}"), Entity.Get_Entity()).c_str());
-
-                //------------------------
-                // Name
-                //------------------------
-
-                // Number of lifetime owning parents, not counting Transient Entity
-                const auto& Get_EntityDepth = [&TransientEntity](const FCk_Handle& InHandle) -> int32
-                {
-                    auto Depth = 0;
-                    auto CurrentEntity = InHandle;
-                    while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-                    {
-                        CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                        if (CurrentEntity == TransientEntity)
-                        { break; }
-
-                        Depth++;
-                    }
-                    return Depth;
-                };
-
-                const auto& Depth = Config->EntitiesListDisplayPolicy != ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy ? 0 : Get_EntityDepth(Entity);
-
-                const std::string EntityDisplayName = ck::Format_ANSI(TEXT("{}{}"),
-                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), Depth), UCk_Utils_Handle_UE::Get_DebugName(Entity)).c_str();
-
-                ImGui::TableNextColumn();
-                if (ImGui::Selectable(EntityDisplayName.c_str(), bIsSelected))
-                {
-                    DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
-                    FCogDebug::SetSelection(EntityActor);
-                    NewSelectionEntity = Entity;
-                }
-
-                ImGui::PopStyleColor(1);
-
-                //------------------------
-                // Draw Frame
-                //------------------------
-                if (ImGui::IsItemHovered() &&
-                    ck::IsValid(EntityActor))
-                {
-                    FCogWidgets::ActorFrame(*EntityActor);
-                }
-
-                if (bIsSelected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-
-
-                ImGui::PopID();
-            }
-        }
-        Clipper.End();
-        ImGui::EndTable();
-    }
-
-    return NewSelectionEntity != OldSelectionEntity;
+    return RenderEntityTree(Entities, InRequiresUpdate);
 }
 
 auto
@@ -509,6 +389,304 @@ auto
     ImGui::EndChild();
 
     return SelectionChanged;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    RenderEntityTree(
+        const TArray<FCk_Handle>& Entities,
+        bool InRequiresUpdate)
+    -> bool
+{
+    QUICK_SCOPE_CYCLE_COUNTER(RenderEntityTree)
+
+    if (NOT InRequiresUpdate)
+    { return CachedShouldRenderEntityTree; }
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+    const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+
+    const auto& OldSelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
+    auto NewSelectionEntity = OldSelectionEntity;
+
+    // Only render root entities (entities without lifetime owners, or whose lifetime owner is TransientEntity)
+    TArray<FCk_Handle> RootEntities;
+    for (const auto& Entity : Entities)
+    {
+        if (!Entity.Has<ck::FFragment_LifetimeOwner>() ||
+            Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
+        {
+            RootEntities.Add(Entity);
+        }
+    }
+
+    // Sort root entities using the base sorting function
+    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
+    {
+        switch (Config->EntitiesListSortingPolicy)
+        {
+        case ECkDebugger_EntitiesListSortingPolicy::ID:
+            return InA < InB;
+        case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+            if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+            {
+                return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+            }
+            return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+        case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+            return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+        default:
+            return InA < InB;
+        }
+    };
+
+    ck::algo::Sort(RootEntities, BaseSortingFunction);
+
+    // Render each root entity and its children
+    for (const auto& RootEntity : RootEntities)
+    {
+        if (ck::Is_NOT_Valid(RootEntity))
+        { continue; }
+
+        const auto Result = RenderEntityNode(RootEntity, OldSelectionEntity, TransientEntity, false);
+        if (ck::IsValid(Result))
+        {
+            NewSelectionEntity = Result;
+        }
+    }
+
+    CachedShouldRenderEntityTree =  NewSelectionEntity != OldSelectionEntity;
+
+    return CachedShouldRenderEntityTree;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    RenderEntityNode(
+        const FCk_Handle& Entity,
+        const FCk_Handle& SelectedEntity,
+        const FCk_Handle& TransientEntity,
+        bool OpenAllChildren)
+    -> FCk_Handle
+{
+    QUICK_SCOPE_CYCLE_COUNTER(RenderEntityNode)
+
+    if (ck::Is_NOT_Valid(Entity))
+    { return {}; }
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+
+    // Get entity debug name for filtering
+    const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+    const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+
+    // Check if this node should be shown based on filter
+    const bool ShowNode = !_Filter.IsActive() || _Filter.PassFilter(DebugNameANSI.Get());
+
+    // Get children of this entity
+    const auto& AllEntities = Get_EntitiesForList(false);
+    const auto Children = GetEntityChildren(Entity, AllEntities);
+    const bool HasChildren = Children.Num() > 0;
+
+    FCk_Handle NewSelectionEntity;
+
+    if (ShowNode)
+    {
+        ImGui::PushID(static_cast<int32>(Entity.Get_Entity().Get_ID()));
+
+        if (OpenAllChildren)
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        }
+        else
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        }
+
+        // Determine tree node flags
+        ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
+        if (!HasChildren || _Filter.IsActive())
+        {
+            NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+        }
+
+        if (Entity == SelectedEntity)
+        {
+            NodeFlags |= ImGuiTreeNodeFlags_Selected;
+        }
+
+        // Get the actor for this entity for highlighting local player
+        const auto& EntityActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(Entity);
+        const auto LocalPlayerPawn = [&]() -> const AActor*
+        {
+            const auto& LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+            if (LocalPlayer == nullptr)
+            { return nullptr; }
+
+            const auto& LocalPlayerController = LocalPlayer->PlayerController;
+            if (LocalPlayerController == nullptr)
+            { return nullptr; }
+
+            const auto& ClientWorldLocalPlayerPawn = LocalPlayerController->GetPawn();
+            return DebuggerSubsystem->Get_ActorOnSelectedWorld(ClientWorldLocalPlayerPawn);
+        }();
+
+        // Set color for local player pawn
+        const bool IsLocalPlayer = EntityActor != nullptr && EntityActor == LocalPlayerPawn;
+        if (IsLocalPlayer)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
+        }
+
+        // Create the tree node
+        const auto NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
+        bool OpenChildren = false;
+
+        if (HasChildren && !_Filter.IsActive())
+        {
+            OpenChildren = ImGui::TreeNodeEx(NodeLabel, NodeFlags);
+        }
+        else
+        {
+            ImGui::TreeNodeEx(NodeLabel, NodeFlags);
+        }
+
+        // Handle selection
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+        {
+            DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
+            FCogDebug::SetSelection(EntityActor);
+            NewSelectionEntity = Entity;
+        }
+
+        // Handle Ctrl+Click to expand all children
+        if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+            ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
+        {
+            OpenAllChildren = true;
+        }
+
+        // Context menu
+        if (ImGui::BeginPopupContextItem())
+        {
+            if (ImGui::MenuItem("Focus on Entity"))
+            {
+                DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
+                FCogDebug::SetSelection(EntityActor);
+                NewSelectionEntity = Entity;
+            }
+            ImGui::EndPopup();
+        }
+
+        // Tooltip with entity information
+        if (ImGui::IsItemHovered())
+        {
+            if (ck::IsValid(EntityActor))
+            {
+                FCogWidgets::ActorFrame(*EntityActor);
+            }
+
+            ImGui::BeginTooltip();
+            ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+            if (EntityActor)
+            {
+                ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+            }
+            ImGui::EndTooltip();
+        }
+
+        if (IsLocalPlayer)
+        {
+            ImGui::PopStyleColor();
+        }
+
+        // Render children
+        if (OpenChildren || _Filter.IsActive())
+        {
+            // Sort children using the same sorting function
+            const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
+            {
+                switch (Config->EntitiesListSortingPolicy)
+                {
+                    case ECkDebugger_EntitiesListSortingPolicy::ID:
+                        return InA < InB;
+                    case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+                        if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+                        {
+                            return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                        }
+                        return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+                    case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+                        return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+                    default:
+                        return InA < InB;
+                }
+            };
+
+            auto SortedChildren = Children;
+            ck::algo::Sort(SortedChildren, BaseSortingFunction);
+
+            for (const auto& Child : SortedChildren)
+            {
+                if (const auto& Result = RenderEntityNode(Child, SelectedEntity, TransientEntity, OpenAllChildren);
+                    ck::IsValid(Result))
+                {
+                    NewSelectionEntity = Result;
+                }
+            }
+        }
+
+        if (OpenChildren)
+        {
+            ImGui::TreePop();
+        }
+
+        ImGui::PopID();
+    }
+    else if (_Filter.IsActive())
+    {
+        // If this node is filtered out but filter is active, still check children
+        // in case they match the filter
+        for (const auto& Child : Children)
+        {
+            if (const auto& Result = RenderEntityNode(Child, SelectedEntity, TransientEntity, OpenAllChildren);
+                ck::IsValid(Result))
+            {
+                NewSelectionEntity = Result;
+            }
+        }
+    }
+
+    return NewSelectionEntity;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    GetEntityChildren(
+        const FCk_Handle& Entity,
+        const TArray<FCk_Handle>& AllEntities)
+    -> TArray<FCk_Handle>
+{
+    TArray<FCk_Handle> Children;
+
+    for (const auto& PotentialChild : AllEntities)
+    {
+        if (ck::Is_NOT_Valid(PotentialChild))
+        { continue; }
+
+        if (PotentialChild.Has<ck::FFragment_LifetimeOwner>())
+        {
+            if (const auto& LifetimeOwner = PotentialChild.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+                LifetimeOwner == Entity)
+            {
+                Children.Add(PotentialChild);
+            }
+        }
+    }
+
+    return Children;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -44,6 +44,15 @@ private:
     auto
     DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> bool;
 
+    auto
+    RenderEntityTree(const TArray<FCk_Handle>& Entities, bool InRequiresUpdate) -> bool;
+
+    auto
+    RenderEntityNode(const FCk_Handle& Entity, const FCk_Handle& SelectedEntity, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> FCk_Handle;
+
+    auto
+    GetEntityChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;
+
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 
@@ -51,6 +60,7 @@ private:
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;
+    mutable bool CachedShouldRenderEntityTree = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

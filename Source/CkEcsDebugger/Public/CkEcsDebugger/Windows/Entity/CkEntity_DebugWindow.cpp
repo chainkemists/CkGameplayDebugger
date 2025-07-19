@@ -267,14 +267,10 @@ auto
     -> void
 {
     if (NOT UCk_Utils_Transform_UE::Has(SelectionEntity))
-    {
-        return;
-    }
+    { return; }
 
     if (NOT ImGui::BeginTable("Transform", 2, ImGuiTableFlags_SizingFixedFit))
-    {
-        return;
-    }
+    { return; }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -298,9 +294,7 @@ auto
     -> void
 {
     if (NOT ImGui::BeginTable("Network", 2, ImGuiTableFlags_SizingFixedFit))
-    {
-        return;
-    }
+    {  return; }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -319,16 +313,14 @@ auto
     -> void
 {
     if (NOT ImGui::BeginTable("Relationships", 2, ImGuiTableFlags_SizingFixedFit))
-    {
-        return;
-    }
+    { return; }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
     // Team Information
-    const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity);
-    if (ck::IsValid(TeamEntity))
+    if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity);
+        ck::IsValid(TeamEntity))
     {
         const auto TeamID = UCk_Utils_Team_UE::Get_ID(TeamEntity);
         Request_RenderTableRow_Number("Team:", ck::Format_UE(TEXT("{} (Starts from ZERO)"), TeamID));
@@ -343,7 +335,7 @@ auto
     {
         const auto ContextOwner = UCk_Utils_ContextOwner_UE::Get_ContextOwner(SelectionEntity);
         const auto OwnerName = UCk_Utils_Handle_UE::Get_DebugName(ContextOwner);
-        Request_RenderTableRow_Entity("Context Owner:", ck::Format_UE(TEXT("{}"), OwnerName));
+        Request_RenderTableRow_Entity("Context Owner:", ck::Format_UE(TEXT("{} | {}"), OwnerName, ContextOwner));
     }
     else
     {
@@ -355,7 +347,7 @@ auto
     {
         const auto& LifetimeOwner = SelectionEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
         const auto OwnerName = UCk_Utils_Handle_UE::Get_DebugName(LifetimeOwner);
-        Request_RenderTableRow_Entity("Lifetime Owner:", ck::Format_UE(TEXT("{}"), OwnerName));
+        Request_RenderTableRow_Entity("Lifetime Owner:", ck::Format_UE(TEXT("{} | {}"), OwnerName, LifetimeOwner));
     }
     else
     {

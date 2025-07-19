@@ -315,7 +315,6 @@ auto
         {
             const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
             const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
-
             if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
             { return; }
         }
@@ -512,7 +511,7 @@ auto
     const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
 
     // Check if this node should be shown based on filter
-    const bool ShowNode = !_Filter.IsActive() || _Filter.PassFilter(DebugNameANSI.Get());
+    const bool ShowNode = NOT _Filter.IsActive() || _Filter.PassFilter(DebugNameANSI.Get());
 
     // Get children of this entity
     const auto& AllEntities = Get_EntitiesForList(false);
@@ -536,7 +535,11 @@ auto
 
         // Determine tree node flags
         ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
-        if (!HasChildren || _Filter.IsActive())
+        if (HasChildren && NOT _Filter.IsActive())
+        {
+            NodeFlags |= ImGuiTreeNodeFlags_OpenOnArrow;
+        }
+        else
         {
             NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
         }
@@ -573,7 +576,7 @@ auto
         const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
         bool OpenChildren = false;
 
-        if (HasChildren && !_Filter.IsActive())
+        if (HasChildren && NOT _Filter.IsActive())
         {
             OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
         }

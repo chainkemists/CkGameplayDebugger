@@ -44,11 +44,11 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntity = Get_PrimarySelectionEntity();
 
     if (ck::Is_NOT_Valid(SelectionEntity))
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
@@ -56,7 +56,7 @@ auto
 
     if (ck::Is_NOT_Valid(SelectionEntityAsAbilityOwner))
     {
-        ImGui::Text("Selection Actor is not an Ability Owner");
+        ImGui::Text("Primary selected entity is not an Ability Owner");
         return;
     }
 

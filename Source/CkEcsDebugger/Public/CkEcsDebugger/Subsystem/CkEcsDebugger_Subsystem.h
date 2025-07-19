@@ -29,21 +29,36 @@ public:
     auto Set_SelectedWorld(
         UWorld* InSelectedWorld) -> void;
 
-    auto Set_SelectionEntity(
+    auto Set_SelectionEntities(
+        const TArray<FCk_Handle>& InSelectionEntities,
+        UWorld* InSelectionEntitiesOwningWorld) -> void;
+
+    auto Add_SelectionEntity(
+        const FCk_Handle& InSelectionEntity,
+        UWorld* InSelectionEntityOwningWorld) -> void;
+
+    auto Remove_SelectionEntity(
+        const FCk_Handle& InSelectionEntity) -> void;
+
+    auto Clear_SelectionEntities() -> void;
+
+    auto Toggle_SelectionEntity(
         const FCk_Handle& InSelectionEntity,
         UWorld* InSelectionEntityOwningWorld) -> void;
 
     auto Get_ActorOnSelectedWorld(AActor* InActor) -> AActor*;
+
+    auto Get_PrimarySelectionEntity() -> FCk_Handle;
 
 private:
     UPROPERTY(Transient)
     UWorld* _SelectedWorld;
 
     UPROPERTY(Transient)
-    FCk_Handle _PreviousSelectionEntity;
+    TArray<FCk_Handle> _PreviousSelectionEntities;
 
     UPROPERTY(Transient)
-    FCk_Handle _SelectionEntity;
+    TArray<FCk_Handle> _SelectionEntities;
 
 private:
 #if ENABLE_COG
@@ -52,8 +67,8 @@ private:
 
 public:
     CK_PROPERTY_GET(_SelectedWorld);
-    CK_PROPERTY_GET(_SelectionEntity);
-    CK_PROPERTY_GET(_PreviousSelectionEntity);
+    CK_PROPERTY_GET(_SelectionEntities);
+    CK_PROPERTY_GET(_PreviousSelectionEntities);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

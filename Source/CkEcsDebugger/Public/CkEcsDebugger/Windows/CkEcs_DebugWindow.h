@@ -14,13 +14,14 @@ public:
     CK_GENERATED_BODY(FCk_Ecs_DebugWindow);
 
 public:
-    auto Get_SelectionEntity() -> FCk_Handle;
+    auto Get_SelectionEntities() -> TArray<FCk_Handle>;
+    auto Get_PrimarySelectionEntity() -> FCk_Handle;
 
 private:
-    FCk_Handle _PreviousEntity;
+    TArray<FCk_Handle> _PreviousEntities;
 
 public:
-    CK_PROPERTY_GET(_PreviousEntity);
+    CK_PROPERTY_GET(_PreviousEntities);
 };
 
 // --------------------------------------------------------------------------------------------------------------------

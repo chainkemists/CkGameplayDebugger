@@ -44,18 +44,18 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntity = Get_PrimarySelectionEntity();
 
     if (ck::Is_NOT_Valid(SelectionEntity))
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
     if (const auto& HasTimers = UCk_Utils_Timer_UE::Has_Any(SelectionEntity);
         NOT HasTimers)
     {
-        ImGui::Text("Selection Actor has no Timers");
+        ImGui::Text("Primary selected entity has no Timers");
         return;
     }
 

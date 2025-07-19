@@ -1,5 +1,3 @@
-#pragma once
-
 #include "CkEntity_DebugWindow.h"
 
 #include "CkCore/Debug/CkDebugDraw_Utils.h"
@@ -18,121 +16,10 @@
 
 auto
     FCk_EntityBasics_DebugWindow::
-    Initialize()
-    -> void
-{
-    Super::Initialize();
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    RenderHelp()
-    -> void
-{
-    ImGui::Text("This window displays Entity basic info of the selected actor");
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    RenderContent()
-    -> void
-{
-    Super::RenderContent();
-
-    const auto& SelectionEntity = Get_SelectionEntity();
-    if (ck::Is_NOT_Valid(SelectionEntity))
-    {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
-        return;
-    }
-
-    Request_RenderEntityInformation(SelectionEntity);
-    ImGui::Separator();
-    Request_RenderTransformSection(SelectionEntity);
-    ImGui::Separator();
-    Request_RenderNetworkSection(SelectionEntity);
-    ImGui::Separator();
-    Request_RenderRelationshipsSection(SelectionEntity);
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_Entity()
+    Get_SectionHeaderColor()
     -> ImU32
 {
-    return IM_COL32(130, 177, 255, 255); // Blue #82b1ff
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_Vector()
-    -> ImU32
-{
-    return IM_COL32(195, 232, 141, 255); // Green #c3e88d
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_Number()
-    -> ImU32
-{
-    return IM_COL32(248, 187, 217, 255); // Pink #f8bbd9
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_Enum()
-    -> ImU32
-{
-    return IM_COL32(255, 204, 2, 255); // Yellow #ffcc02
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_Unknown()
-    -> ImU32
-{
-    return IM_COL32(255, 87, 34, 255); // Red #ff5722
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Get_ValueColor_None()
-    -> ImU32
-{
-    return IM_COL32(102, 102, 102, 255); // Gray #666666
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Request_RenderTableRow_Entity(const char* Label, const FString& Value)
-    -> void
-{
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text(Label);
-    ImGui::TableSetColumnIndex(1);
-    ImGui::PushStyleColor(ImGuiCol_Text, Get_ValueColor_Entity());
-    ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
-    ImGui::PopStyleColor();
+    return IM_COL32(100, 149, 237, 255); // Cornflower Blue #6495ED
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -358,3 +245,177 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+auto
+    FCk_EntityBasics_DebugWindow::
+    Initialize()
+    -> void
+{
+    Super::Initialize();
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    RenderHelp()
+    -> void
+{
+    ImGui::Text("This window displays Entity basic info of the selected entities");
+    ImGui::Text("When multiple entities are selected, information for each entity is shown in separate sections");
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    RenderContent()
+    -> void
+{
+    Super::RenderContent();
+
+    const auto& SelectionEntities = Get_SelectionEntities();
+    if (SelectionEntities.Num() == 0)
+    {
+        ImGui::Text("No entities selected");
+        return;
+    }
+
+    // Single entity display
+    if (SelectionEntities.Num() == 1)
+    {
+        const auto& SelectionEntity = SelectionEntities[0];
+        if (ck::Is_NOT_Valid(SelectionEntity))
+        {
+            ImGui::Text("Selection Actor is NOT Ecs Ready");
+            return;
+        }
+
+        Request_RenderEntityInformation(SelectionEntity);
+        ImGui::Separator();
+        Request_RenderTransformSection(SelectionEntity);
+        ImGui::Separator();
+        Request_RenderNetworkSection(SelectionEntity);
+        ImGui::Separator();
+        Request_RenderRelationshipsSection(SelectionEntity);
+    }
+    // Multiple entities display
+    else
+    {
+        ImGui::Text("Multiple entities selected (%d)", SelectionEntities.Num());
+        ImGui::Separator();
+
+        for (int32 EntityIndex = 0; EntityIndex < SelectionEntities.Num(); ++EntityIndex)
+        {
+            const auto& SelectionEntity = SelectionEntities[EntityIndex];
+
+            if (ck::Is_NOT_Valid(SelectionEntity))
+            {
+                ImGui::Text("Entity %d: NOT Ecs Ready", EntityIndex + 1);
+                continue;
+            }
+
+            // Entity section header
+            const auto& EntityName = UCk_Utils_Handle_UE::Get_DebugName(SelectionEntity);
+            const auto& SectionTitle = ck::Format_UE(TEXT("Entity %d: %s"), EntityIndex + 1, EntityName);
+
+            if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent();
+
+                Request_RenderEntityInformation(SelectionEntity);
+                ImGui::Separator();
+                Request_RenderTransformSection(SelectionEntity);
+                ImGui::Separator();
+                Request_RenderNetworkSection(SelectionEntity);
+                ImGui::Separator();
+                Request_RenderRelationshipsSection(SelectionEntity);
+
+                ImGui::Unindent();
+            }
+
+            if (EntityIndex < SelectionEntities.Num() - 1)
+            {
+                ImGui::Separator();
+                ImGui::Spacing();
+            }
+        }
+    }
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_Entity()
+    -> ImU32
+{
+    return IM_COL32(130, 177, 255, 255); // Blue #82b1ff
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_Vector()
+    -> ImU32
+{
+    return IM_COL32(195, 232, 141, 255); // Green #c3e88d
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_Number()
+    -> ImU32
+{
+    return IM_COL32(248, 187, 217, 255); // Pink #f8bbd9
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_Enum()
+    -> ImU32
+{
+    return IM_COL32(255, 204, 2, 255); // Yellow #ffcc02
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_Unknown()
+    -> ImU32
+{
+    return IM_COL32(255, 87, 34, 255); // Red #ff5722
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Get_ValueColor_None()
+    -> ImU32
+{
+    return IM_COL32(102, 102, 102, 255); // Gray #666666
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Request_RenderTableRow_Entity(const char* Label, const FString& Value)
+    -> void
+{
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text(Label);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::PushStyleColor(ImGuiCol_Text, Get_ValueColor_Entity());
+    ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
+    ImGui::PopStyleColor();
+}
+
+//--------------------------------------------------------------------------------------------------------------------------

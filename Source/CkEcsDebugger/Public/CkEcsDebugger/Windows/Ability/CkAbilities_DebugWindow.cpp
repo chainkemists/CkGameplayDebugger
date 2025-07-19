@@ -55,9 +55,10 @@ auto
 {
     ImGui::Text
     (
-        "This window displays the abilities of the selected actor. "
+        "This window displays the abilities of the selected entities. "
         "Click the ability check box to force its activation or deactivation. "
         "Right click an ability to open or close the ability separate window. "
+        "When multiple entities are selected, abilities from all entities are shown."
     );
 }
 
@@ -70,30 +71,45 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntities = Get_SelectionEntities();
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (SelectionEntities.Num() == 0)
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
-    auto SelectedEntityAsAbilityOwner = UCk_Utils_AbilityOwner_UE::Cast(SelectionEntity);
+    // Check if any selected entity has abilities
+    bool HasAnyAbilities = false;
+    TArray<FCk_Handle_AbilityOwner> AbilityOwners;
 
-    if (ck::Is_NOT_Valid(SelectedEntityAsAbilityOwner))
+    for (const auto& Entity : SelectionEntities)
     {
-        ImGui::Text("Selection Actor has no abilities");
+        if (ck::Is_NOT_Valid(Entity))
+        { continue; }
+
+        auto EntityAsAbilityOwner = UCk_Utils_AbilityOwner_UE::Cast(Entity);
+        if (ck::IsValid(EntityAsAbilityOwner) && UCk_Utils_AbilityOwner_UE::Has_Any(EntityAsAbilityOwner))
+        {
+            AbilityOwners.Add(EntityAsAbilityOwner);
+            HasAnyAbilities = true;
+        }
+    }
+
+    if (!HasAnyAbilities)
+    {
+        if (SelectionEntities.Num() == 1)
+        {
+            ImGui::Text("Selection Actor has no abilities");
+        }
+        else
+        {
+            ImGui::Text("Selected entities have no abilities");
+        }
         return;
     }
 
-    if (const auto& HasAbilities = UCk_Utils_AbilityOwner_UE::Has_Any(SelectedEntityAsAbilityOwner);
-        NOT HasAbilities)
-    {
-        ImGui::Text("Selection Actor has no abilities");
-        return;
-    }
-
-    RenderTable(SelectedEntityAsAbilityOwner);
+    RenderTable(AbilityOwners);
 }
 
 auto
@@ -167,15 +183,10 @@ auto
     RenderOpenedAbilities()
     -> void
 {
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntities = Get_SelectionEntities();
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (SelectionEntities.Num() == 0)
     { return; }
-
-    if (auto SelectedEntityAsAbilityOwner = UCk_Utils_AbilityOwner_UE::Cast(SelectionEntity);
-        ck::Is_NOT_Valid(SelectedEntityAsAbilityOwner))
-    { return; }
-
 
     for (int32 Index = _OpenedAbilities.Num() - 1; Index >= 0; --Index)
     {
@@ -200,13 +211,17 @@ auto
 auto
     FCk_Abilities_DebugWindow::
     RenderTable(
-        const FCk_Handle_AbilityOwner& InSelectionEntity)
+        const TArray<FCk_Handle_AbilityOwner>& InAbilityOwners)
     -> void
 {
     QUICK_SCOPE_CYCLE_COUNTER(FCk_Abilities_DebugWindow_RenderTable)
     _FilteredAbilities.Reset();
 
-    AddToFilteredAbilities(InSelectionEntity);
+    // Collect abilities from all ability owners
+    for (const auto& AbilityOwner : InAbilityOwners)
+    {
+        AddToFilteredAbilities(AbilityOwner);
+    }
 
     for (auto& KeyVal : _FilteredAbilities)
     {
@@ -224,7 +239,7 @@ auto
         }
     }
 
-    if (ImGui::BeginTable("Abilities", 3, ImGuiTableFlags_SizingFixedFit
+    if (ImGui::BeginTable("Abilities", 4, ImGuiTableFlags_SizingFixedFit
                                         | ImGuiTableFlags_Resizable
                                         | ImGuiTableFlags_NoBordersInBodyUntilResize
                                         | ImGuiTableFlags_ScrollY
@@ -236,6 +251,7 @@ auto
         ImGui::TableSetupColumn("Activation", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Ability");
+        ImGui::TableSetupColumn("Owner Entity");
         ImGui::TableSetupColumn("Blocked");
         ImGui::TableHeadersRow();
 
@@ -380,6 +396,21 @@ auto
             ImGui::PopStyleColor(1);
 
             //------------------------
+            // Owner Entity
+            //------------------------
+            ImGui::TableNextColumn();
+            const auto& OwnerEntity = UCk_Utils_Ability_UE::TryGet_Owner(Ability);
+            if (ck::IsValid(OwnerEntity))
+            {
+                const auto& OwnerName = UCk_Utils_Handle_UE::Get_DebugName(OwnerEntity);
+                ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), OwnerName).c_str());
+            }
+            else
+            {
+                ImGui::Text("No Owner");
+            }
+
+            //------------------------
             // Popup
             //------------------------
             if (ImGui::IsItemHovered())
@@ -429,16 +460,43 @@ auto
             }
         };
 
-        if (_Config->ShowSubAbilities)
+        // Render abilities for each ability owner
+        for (const auto& AbilityOwner : InAbilityOwners)
         {
-            AddAllAbilities(InSelectionEntity, 0, AddAllAbilities);
-        }
-        else
-        {
-            AddAllAbilities(InSelectionEntity, 0, AddAllAbilities_StopRecursing);
+            if (_Config->ShowSubAbilities)
+            {
+                AddAllAbilities(AbilityOwner, 0, AddAllAbilities);
+            }
+            else
+            {
+                AddAllAbilities(AbilityOwner, 0, AddAllAbilities_StopRecursing);
+            }
         }
 
         ImGui::EndTable();
+    }
+
+    // Show summary
+    int32 TotalAbilities = 0;
+    for (const auto& KeyVal : _FilteredAbilities)
+    {
+        TotalAbilities += KeyVal.Value.Num();
+    }
+
+    if (TotalAbilities == 0)
+    {
+        if (InAbilityOwners.Num() == 1)
+        {
+            ImGui::Text("Selected entity has no abilities matching filters");
+        }
+        else
+        {
+            ImGui::Text("Selected entities have no abilities matching filters");
+        }
+    }
+    else
+    {
+        ImGui::Text("Found %d abilities across %d entities", TotalAbilities, InAbilityOwners.Num());
     }
 }
 
@@ -509,6 +567,24 @@ auto
         ImGui::TextColored(TextColor, "Handle");
         ImGui::TableNextColumn();
         ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), UCk_Utils_Handle_UE::Conv_HandleToString(InAbility)).c_str());
+
+        //------------------------
+        // Owner Entity
+        //------------------------
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextColored(TextColor, "Owner Entity");
+        ImGui::TableNextColumn();
+        const auto& OwnerEntity = UCk_Utils_Ability_UE::TryGet_Owner(InAbility);
+        if (ck::IsValid(OwnerEntity))
+        {
+            const auto& OwnerName = UCk_Utils_Handle_UE::Get_DebugName(OwnerEntity);
+            ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), OwnerName).c_str());
+        }
+        else
+        {
+            ImGui::Text("No Owner");
+        }
 
         //------------------------
         // AbilityTags
@@ -613,26 +689,26 @@ auto
         FCk_Handle_Ability& InAbility)
     -> void
 {
-    auto SelectionEntity = Get_SelectionEntity();
+    const auto& OwnerEntity = UCk_Utils_Ability_UE::TryGet_Owner(InAbility);
 
-    if (ck::Is_NOT_Valid(SelectionEntity))
+    if (ck::Is_NOT_Valid(OwnerEntity))
     { return; }
 
-    auto SelectedEntityAsAbilityOwner = UCk_Utils_AbilityOwner_UE::Cast(SelectionEntity);
+    auto OwnerEntityAsAbilityOwner = UCk_Utils_AbilityOwner_UE::Cast(OwnerEntity);
 
-    if (ck::Is_NOT_Valid(SelectedEntityAsAbilityOwner))
+    if (ck::Is_NOT_Valid(OwnerEntityAsAbilityOwner))
     { return; }
 
     switch (UCk_Utils_Ability_UE::Get_Status(InAbility))
     {
         case ECk_Ability_Status::NotActive:
         {
-            UCk_Utils_AbilityOwner_UE::Request_TryActivateAbility(SelectedEntityAsAbilityOwner, FCk_Request_AbilityOwner_ActivateAbility{InAbility}, {});
+            UCk_Utils_AbilityOwner_UE::Request_TryActivateAbility(OwnerEntityAsAbilityOwner, FCk_Request_AbilityOwner_ActivateAbility{InAbility}, {});
             break;
         }
         case ECk_Ability_Status::Active:
         {
-            UCk_Utils_AbilityOwner_UE::Request_DeactivateAbility(SelectedEntityAsAbilityOwner, FCk_Request_AbilityOwner_DeactivateAbility{InAbility}, {});
+            UCk_Utils_AbilityOwner_UE::Request_DeactivateAbility(OwnerEntityAsAbilityOwner, FCk_Request_AbilityOwner_DeactivateAbility{InAbility}, {});
             break;
         }
     }

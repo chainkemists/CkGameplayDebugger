@@ -44,7 +44,7 @@ protected:
 
     auto
     RenderTable(
-        const FCk_Handle_AbilityOwner& InSelectionEntity) -> void;
+        const TArray<FCk_Handle_AbilityOwner>& InAbilityOwners) -> void;
 
     auto
     RenderAbilityInfo(
@@ -93,4 +93,3 @@ private:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
-

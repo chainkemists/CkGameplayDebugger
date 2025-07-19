@@ -1,4 +1,4 @@
-#include "CkEcs_DebugWindow.h"
+﻿#include "CkEcs_DebugWindow.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
@@ -12,10 +12,10 @@
 
 auto
     FCk_Ecs_DebugWindow::
-    Get_SelectionEntity()
-    -> FCk_Handle
+    Get_SelectionEntities()
+    -> TArray<FCk_Handle>
 {
-    QUICK_SCOPE_CYCLE_COUNTER(Get_SelectionEntity)
+    QUICK_SCOPE_CYCLE_COUNTER(Get_SelectionEntities)
     const auto World = GetWorld();
 
     if (ck::Is_NOT_Valid(World))
@@ -27,8 +27,8 @@ auto
         TEXT("No valid ecs debugger subsystem found on world [{}]"), World)
     { return {}; }
 
-    auto SelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
-    _PreviousEntity = DebuggerSubsystem->Get_PreviousSelectionEntity();
+    auto SelectionEntities = DebuggerSubsystem->Get_SelectionEntities();
+    _PreviousEntities = DebuggerSubsystem->Get_PreviousSelectionEntities();
 
     // If selected actor and entity don't align but selected actor is an entity, use the selected actor's entity and set that as the selection entity
     // This is done since when the actor is selected, it is in COG code that can't set the selected entity when it happens
@@ -54,14 +54,24 @@ auto
         if (ck::Is_NOT_Valid(SelectionEntityFromActor))
         { return; }
 
-        if (SelectionEntityFromActor != SelectionEntity)
+        // Check if this entity is already in selection, if not add it as primary
+        if (!SelectionEntities.Contains(SelectionEntityFromActor))
         {
-            DebuggerSubsystem->Set_SelectionEntity(SelectionEntityFromActor, SelectedWorld);
-            SelectionEntity = SelectionEntityFromActor;
+            DebuggerSubsystem->Set_SelectionEntities({SelectionEntityFromActor}, SelectedWorld);
+            SelectionEntities = {SelectionEntityFromActor};
         }
     }();
 
-    return SelectionEntity;
+    return SelectionEntities;
+}
+
+auto
+    FCk_Ecs_DebugWindow::
+    Get_PrimarySelectionEntity()
+    -> FCk_Handle
+{
+    const auto SelectionEntities = Get_SelectionEntities();
+    return SelectionEntities.Num() > 0 ? SelectionEntities[0] : FCk_Handle{};
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -38,6 +38,7 @@ auto
 
 //--------------------------------------------------------------------------------------------------------------------------
 
+
 template <typename T_HandleType, typename T_UtilsType>
 auto
     FCk_OverlapBody_DebugWindow<T_HandleType, T_UtilsType>::
@@ -48,7 +49,7 @@ auto
 
     RenderMenu();
 
-    if (const auto& SelectionEntity = Get_SelectionEntity(); ck::IsValid(SelectionEntity))
+    if (const auto& SelectionEntity = Get_PrimarySelectionEntity(); ck::IsValid(SelectionEntity))
     {
         if (T_UtilsType::Has_Any(SelectionEntity))
         {
@@ -56,12 +57,12 @@ auto
         }
         else
         {
-            ImGui::Text(ck::Format_ANSI(TEXT("Selection Actor does NOT have any {}"), Get_Title()).c_str());
+            ImGui::Text(ck::Format_ANSI(TEXT("Primary selected entity does NOT have any {}"), Get_Title()).c_str());
         }
     }
     else
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
     }
 }
 

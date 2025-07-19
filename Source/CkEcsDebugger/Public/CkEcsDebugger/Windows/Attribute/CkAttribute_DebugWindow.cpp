@@ -94,18 +94,18 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntity = Get_PrimarySelectionEntity();
 
     if (ck::Is_NOT_Valid(SelectionEntity))
     {
-        ImGui::Text("Selection Actor is NOT Ecs Ready");
+        ImGui::Text("No entities selected");
         return;
     }
 
     if (const auto& HasAttribute = T_UtilsType::Has_Any(SelectionEntity);
         NOT HasAttribute)
     {
-        ImGui::Text(ck::Format_ANSI(TEXT("Selection Actor has no {} Attributes"), ck::Get_RuntimeTypeToString<T_Type>()).c_str());
+        ImGui::Text(ck::Format_ANSI(TEXT("Primary selected entity has no {} Attributes"), ck::Get_RuntimeTypeToString<T_Type>()).c_str());
         return;
     }
 

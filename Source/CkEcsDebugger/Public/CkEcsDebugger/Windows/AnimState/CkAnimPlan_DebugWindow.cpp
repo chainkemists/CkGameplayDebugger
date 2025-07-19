@@ -31,13 +31,16 @@ auto
 {
     Super::RenderContent();
 
-    if (ck::Is_NOT_Valid(Get_SelectionEntity()))
-    { return; }
+    if (ck::Is_NOT_Valid(Get_PrimarySelectionEntity()))
+    {
+        ImGui::Text("No entities selected");
+        return;
+    }
 
-    if (const auto& HasAnimPlans = UCk_Utils_AnimPlan_UE::Has_Any(Get_SelectionEntity());
+    if (const auto& HasAnimPlans = UCk_Utils_AnimPlan_UE::Has_Any(Get_PrimarySelectionEntity());
         NOT HasAnimPlans)
     {
-        ImGui::Text("Selection Actor has no AnimPlans");
+        ImGui::Text("Primary selected entity has no AnimPlans");
         return;
     }
 
@@ -50,7 +53,7 @@ auto
     -> void
 {
     QUICK_SCOPE_CYCLE_COUNTER(FCk_AnimPlan_DebugWindow_RenderTable)
-    auto SelectionEntity = Get_SelectionEntity();
+    auto SelectionEntity = Get_PrimarySelectionEntity();
 
     if (ImGui::BeginTable("AnimPlans", 3, ImGuiTableFlags_SizingFixedFit
                                      | ImGuiTableFlags_Resizable

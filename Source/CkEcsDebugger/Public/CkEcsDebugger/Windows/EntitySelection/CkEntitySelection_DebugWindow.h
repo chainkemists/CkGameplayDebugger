@@ -48,7 +48,7 @@ private:
     RenderEntityTree(const TArray<FCk_Handle>& Entities, bool InRequiresUpdate) -> bool;
 
     auto
-    RenderEntityNode(const FCk_Handle& Entity, const FCk_Handle& SelectedEntity, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> FCk_Handle;
+    RenderEntityNode(const FCk_Handle& Entity, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> bool;
 
     auto
     GetEntityChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;

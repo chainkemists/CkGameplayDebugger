@@ -47,20 +47,21 @@ protected:
         FCk_Handle_Probe& InProbe) -> void;
 
 private:
-    auto
-    DoGet_ProbeName(
-        const FCk_Handle_Probe& InProbe) const
-        -> FName;
+    static auto
+    Get_ProbeName(
+        const FCk_Handle_Probe& InProbe) -> FString;
 
-    auto
-    DoGet_ProbeMotionType(
-        const FCk_Handle_Probe& InProbe) const
-        -> FString;
+    static auto
+    Get_ProbeMotionType(
+        const FCk_Handle_Probe& InProbe) -> FString;
 
-    auto
-    DoGet_ProbeMotionQuality(
-        const FCk_Handle_Probe& InProbe) const
-        -> FString;
+    static auto
+    Get_ProbeMotionQuality(
+        const FCk_Handle_Probe& InProbe) -> FString;
+
+    static auto
+    Get_ProbeResponsePolicy(
+        const FCk_Handle_Probe& InProbe) -> FString;
 
 private:
     UCk_Probes_DebugWindowConfig* _Config = nullptr;

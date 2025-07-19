@@ -64,7 +64,7 @@ auto
 
     RenderMenu();
 
-    auto SelectionEntities = Get_SelectionEntities();
+    const auto SelectionEntities = Get_SelectionEntities();
 
     if (SelectionEntities.Num() == 0)
     {
@@ -72,7 +72,6 @@ auto
         return;
     }
 
-    // Handle previous entities cleanup
     for (const auto& PreviousEntity : Get_PreviousEntities())
     {
         if (auto MaybePreviousProbe = UCk_Utils_Probe_UE::Cast(PreviousEntity);
@@ -82,24 +81,12 @@ auto
         }
     }
 
-    // Check if any selected entity has probes
-    bool HasAnyProbes = false;
-    TArray<FCk_Handle> EntitiesWithProbes;
-
-    for (const auto& Entity : SelectionEntities)
+    auto EntitiesWithProbes = ck::algo::Filter(SelectionEntities, [](const FCk_Handle& InEntity)
     {
-        if (ck::Is_NOT_Valid(Entity))
-        { continue; }
+        return UCk_Utils_Probe_UE::Has(InEntity);
+    });
 
-        if (auto EntityAsProbe = UCk_Utils_Probe_UE::Cast(Entity);
-            ck::IsValid(EntityAsProbe))
-        {
-            EntitiesWithProbes.Add(Entity);
-            HasAnyProbes = true;
-        }
-    }
-
-    if (!HasAnyProbes)
+    if (EntitiesWithProbes.IsEmpty())
     {
         if (SelectionEntities.Num() == 1)
         {
@@ -112,34 +99,28 @@ auto
         return;
     }
 
-    // Always show sections for consistency
-    if (EntitiesWithProbes.Num() >= 1)
+    if (EntitiesWithProbes.Num() > 1)
     {
-        if (EntitiesWithProbes.Num() > 1)
+        ImGui::Text("Multiple entities with probes selected (%d)", EntitiesWithProbes.Num());
+        ImGui::Separator();
+    }
+
+    for (int32 EntityIndex = 0; EntityIndex < EntitiesWithProbes.Num(); ++EntityIndex)
+    {
+        const auto& Entity = EntitiesWithProbes[EntityIndex];
+
+        if (const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), Entity);
+            ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
         {
-            ImGui::Text("Multiple entities with probes selected (%d)", EntitiesWithProbes.Num());
-            ImGui::Separator();
+            ImGui::Indent();
+            RenderEntityProbesSection(Entity);
+            ImGui::Unindent();
         }
 
-        for (int32 EntityIndex = 0; EntityIndex < EntitiesWithProbes.Num(); ++EntityIndex)
+        if (EntityIndex < EntitiesWithProbes.Num() - 1)
         {
-            const auto& Entity = EntitiesWithProbes[EntityIndex];
-
-            // Entity section header with proper formatting
-            const auto& SectionTitle = ck::Format_UE(TEXT("Entity {} Probes"), Entity);
-
-            if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::Indent();
-                RenderEntityProbesSection(Entity);
-                ImGui::Unindent();
-            }
-
-            if (EntityIndex < EntitiesWithProbes.Num() - 1)
-            {
-                ImGui::Separator();
-                ImGui::Spacing();
-            }
+            ImGui::Separator();
+            ImGui::Spacing();
         }
     }
 }
@@ -222,7 +203,6 @@ auto
 {
     QUICK_SCOPE_CYCLE_COUNTER(FCk_Probes_DebugWindow_RenderEntityProbesSection)
 
-    // Check if the entity itself is a probe
     if (auto Probe = UCk_Utils_Probe_UE::Cast(InEntity);
         ck::IsValid(Probe))
     {
@@ -233,7 +213,7 @@ auto
         const auto& ResponsePolicy = UCk_Utils_Probe_UE::Get_ResponsePolicy(Probe);
 
         // Apply filters - if filtered out, show message
-        bool IsFilteredOut = false;
+        auto IsFilteredOut = false;
 
         if ((NOT _Config->_ShowEnabled && IsEnabled) ||
             (NOT _Config->_ShowDisabled && NOT IsEnabled) ||
@@ -246,8 +226,8 @@ auto
         }
 
         // Apply search filter
-        if (const auto& ProbeName = DoGet_ProbeName(Probe);
-            NOT ck_probes_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*ProbeName.ToString())))
+        if (const auto& ProbeName = Get_ProbeName(Probe);
+            NOT ck_probes_debug_window::Filter.PassFilter(TCHAR_TO_ANSI(*ProbeName)))
         {
             IsFilteredOut = true;
         }
@@ -258,13 +238,11 @@ auto
             return;
         }
 
-        // Render probe information in EntityBasics style
         if (ImGui::BeginTable("ProbeInfo", 2, ImGuiTableFlags_SizingFixedFit))
         {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-            // Helper functions for consistent styling
             const auto RenderTableRow_ProbeState = [&](const char* Label, bool InState)
             {
                 ImGui::TableNextRow();
@@ -272,11 +250,13 @@ auto
                 ImGui::Text(Label);
                 ImGui::TableSetColumnIndex(1);
                 FCogWidgets::PushStyleCompact();
-                bool State = InState;
+                auto State = InState;
+
                 if (ImGui::Checkbox("##ProbeState", &State))
                 {
                     _ProbeHandleToToggle = Probe;
                 }
+
                 FCogWidgets::PopStyleCompact();
             };
 
@@ -286,7 +266,7 @@ auto
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Text(Label);
                 ImGui::TableSetColumnIndex(1);
-                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 177, 255, 255)); // Blue like EntityBasics
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 177, 255, 255));
                 ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), Value).c_str());
                 ImGui::PopStyleColor();
             };
@@ -297,7 +277,7 @@ auto
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Text(Label);
                 ImGui::TableSetColumnIndex(1);
-                ImGui::PushStyleColor(ImGuiCol_Text, IsPositive ? IM_COL32(195, 232, 141, 255) : IM_COL32(255, 87, 34, 255)); // Green/Red
+                ImGui::PushStyleColor(ImGuiCol_Text, IsPositive ? IM_COL32(195, 232, 141, 255) : IM_COL32(255, 87, 34, 255));
                 ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), Value).c_str());
                 ImGui::PopStyleColor();
             };
@@ -308,7 +288,7 @@ auto
                 ImGui::TableSetColumnIndex(0);
                 ImGui::Text(Label);
                 ImGui::TableSetColumnIndex(1);
-                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 204, 2, 255)); // Yellow like EntityBasics enums
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 204, 2, 255));
                 ImGui::Text("%s", ck::Format_ANSI(TEXT("{}"), Value).c_str());
                 ImGui::PopStyleColor();
             };
@@ -323,11 +303,8 @@ auto
             };
 
             // === BASIC INFORMATION ===
-            // Name
-            const auto& ProbeName = DoGet_ProbeName(Probe);
-            RenderTableRow_ProbeName("Name:", ProbeName.ToString());
+            RenderTableRow_ProbeName("Name:", Get_ProbeName(Probe));
 
-            // Enabled (State)
             RenderTableRow_ProbeState("Enabled:", IsEnabled);
 
             // === STATUS INFORMATION ===
@@ -336,36 +313,19 @@ auto
             RenderTableRow_ProbeStatus("Status:", StatusText, IsOverlapping);
 
             // === CONFIGURATION ===
-            // Response Policy
-            const auto& PolicyText = ResponsePolicy == ECk_ProbeResponse_Policy::Notify ? TEXT("Notify") : TEXT("Silent");
-            RenderTableRow_ProbeConfig("Policy:", PolicyText);
-
-            // Motion Type
-            const auto& MotionType = DoGet_ProbeMotionType(Probe);
-            RenderTableRow_ProbeConfig("Motion Type:", MotionType);
-
-            // Motion Quality
-            const auto& MotionQuality = DoGet_ProbeMotionQuality(Probe);
-            RenderTableRow_ProbeConfig("Motion Quality:", MotionQuality);
+            RenderTableRow_ProbeConfig("Response Policy:", Get_ProbeResponsePolicy(Probe));
+            RenderTableRow_ProbeConfig("Motion Type:", Get_ProbeMotionType(Probe));
+            RenderTableRow_ProbeConfig("Motion Quality:", Get_ProbeMotionQuality(Probe));
 
             // === FILTER INFORMATION ===
-            // Filter
-            const auto& Filter = UCk_Utils_Probe_UE::Get_Filter(Probe);
-            FString FilterText;
-            if (Filter.IsEmpty())
+            if (const auto& Filter = UCk_Utils_Probe_UE::Get_Filter(Probe);
+                Filter.IsEmpty())
             {
-                FilterText = TEXT("(Empty)");
-                RenderTableRow_ProbeDefault("Filter:", FilterText);
+                RenderTableRow_ProbeDefault("Filter:", TEXT("(Empty)"));
             }
             else
             {
-                TArray<FString> TagNames;
-                for (const auto& Tag : Filter)
-                {
-                    TagNames.Add(Tag.GetTagName().ToString());
-                }
-                FilterText = FString::Join(TagNames, TEXT(", "));
-                RenderTableRow_ProbeDefault("Filter:", FilterText);
+                RenderTableRow_ProbeDefault("Filter:", ck::Format_UE(TEXT("{}"), Filter));
             }
 
             ImGui::EndTable();
@@ -383,9 +343,8 @@ auto
         FCk_Handle_Probe& InProbe)
     -> void
 {
-    auto SelectionEntities = Get_SelectionEntities();
-
-    if (SelectionEntities.Num() == 0)
+    if (const auto& SelectionEntities = Get_SelectionEntities();
+        SelectionEntities.IsEmpty())
     { return; }
 
     switch (UCk_Utils_Probe_UE::Get_IsEnabledDisabled(InProbe))
@@ -405,39 +364,38 @@ auto
 
 auto
     FCk_Probes_DebugWindow::
-    DoGet_ProbeName(
-        const FCk_Handle_Probe& InProbe) const
-        -> FName
+    Get_ProbeName(
+        const FCk_Handle_Probe& InProbe)
+    -> FString
 {
-    return UCk_Utils_Probe_UE::Get_Name(InProbe).GetTagName();
+    return UCk_Utils_Probe_UE::Get_Name(InProbe).GetTagName().ToString();
 }
 
 auto
     FCk_Probes_DebugWindow::
-    DoGet_ProbeMotionType(
-        const FCk_Handle_Probe& InProbe) const
-        -> FString
+    Get_ProbeMotionType(
+        const FCk_Handle_Probe& InProbe)
+    -> FString
 {
-    // Since we can't directly access the motion type from the probe, we'll check for tags
-    if (InProbe.Has<ck::FTag_Probe_MotionType_Static>())
-    {
-        return TEXT("Static");
-    }
-    // Default assumption for non-static probes
-    return TEXT("Kinematic");
+    return ck::Format_UE(TEXT("{}"), UCk_Utils_Probe_UE::Get_MotionType(InProbe));
 }
 
 auto
     FCk_Probes_DebugWindow::
-    DoGet_ProbeMotionQuality(
-        const FCk_Handle_Probe& InProbe) const
-        -> FString
+    Get_ProbeMotionQuality(
+        const FCk_Handle_Probe& InProbe)
+    -> FString
 {
-    if (InProbe.Has<ck::FTag_Probe_LinearCast>())
-    {
-        return TEXT("LinearCast");
-    }
-    return TEXT("Discrete");
+    return ck::Format_UE(TEXT("{}"), UCk_Utils_Probe_UE::Get_MotionQuality(InProbe));
+}
+
+auto
+    FCk_Probes_DebugWindow::
+    Get_ProbeResponsePolicy(
+        const FCk_Handle_Probe& InProbe)
+    -> FString
+{
+    return ck::Format_UE(TEXT("{}"), UCk_Utils_Probe_UE::Get_ResponsePolicy(InProbe));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -50,8 +50,8 @@ private:
     auto
     RenderEntityNode(const FCk_Handle& Entity, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> bool;
 
-    auto
-    GetEntityChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;
+    static auto
+    Get_EntityDirectChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;
 
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;

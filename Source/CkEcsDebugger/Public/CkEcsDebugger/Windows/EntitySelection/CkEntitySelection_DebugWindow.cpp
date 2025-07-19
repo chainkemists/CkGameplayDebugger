@@ -172,7 +172,9 @@ auto
             break;
         }
         default:
+        {
             break;
+        }
     }
 
     DisplayEntitiesListWithFilters(RequiresUpdate);
@@ -224,18 +226,26 @@ auto
         QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
         switch (Config->EntitiesListSortingPolicy)
         {
-        case ECkDebugger_EntitiesListSortingPolicy::ID:
-            return InA < InB;
-        case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+            case ECkDebugger_EntitiesListSortingPolicy::ID:
             {
-                return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                return InA < InB;
             }
-            return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-        case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
-        default:
-            return InA < InB;
+            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+            {
+                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+                {
+                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                }
+                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+            }
+            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+            {
+                return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+            }
+            default:
+            {
+                return InA < InB;
+            }
         }
     };
 
@@ -305,6 +315,7 @@ auto
         {
             const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
             const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+
             if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
             { return; }
         }
@@ -427,7 +438,7 @@ auto
     TArray<FCk_Handle> RootEntities;
     for (const auto& Entity : Entities)
     {
-        if (!Entity.Has<ck::FFragment_LifetimeOwner>() ||
+        if (NOT Entity.Has<ck::FFragment_LifetimeOwner>() ||
             Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
         {
             RootEntities.Add(Entity);
@@ -439,18 +450,26 @@ auto
     {
         switch (Config->EntitiesListSortingPolicy)
         {
-        case ECkDebugger_EntitiesListSortingPolicy::ID:
-            return InA < InB;
-        case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+            case ECkDebugger_EntitiesListSortingPolicy::ID:
             {
-                return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                return InA < InB;
             }
-            return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-        case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
-        default:
-            return InA < InB;
+            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+            {
+                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+                {
+                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                }
+                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+            }
+            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+            {
+                return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+            }
+            default:
+            {
+                return InA < InB;
+            }
         }
     };
 
@@ -497,7 +516,7 @@ auto
 
     // Get children of this entity
     const auto& AllEntities = Get_EntitiesForList(false);
-    const auto Children = GetEntityChildren(Entity, AllEntities);
+    const auto Children = Get_EntityDirectChildren(Entity, AllEntities);
     const bool HasChildren = Children.Num() > 0;
 
     bool SelectionChanged = false;
@@ -566,9 +585,7 @@ auto
         // Handle selection
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
-            const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-
-            if (IsControlDown)
+            if (ImGui::GetCurrentContext()->IO.KeyCtrl)
             {
                 // Multi-select mode: toggle entity in selection
                 DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
@@ -699,29 +716,24 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    GetEntityChildren(
+    Get_EntityDirectChildren(
         const FCk_Handle& Entity,
         const TArray<FCk_Handle>& AllEntities)
     -> TArray<FCk_Handle>
 {
-    TArray<FCk_Handle> Children;
-
-    for (const auto& PotentialChild : AllEntities)
+    return ck::algo::Filter(AllEntities, [&](const FCk_Handle& PotentialChild) -> bool
     {
         if (ck::Is_NOT_Valid(PotentialChild))
-        { continue; }
+        { return false; }
 
         if (PotentialChild.Has<ck::FFragment_LifetimeOwner>())
         {
-            if (const auto& LifetimeOwner = PotentialChild.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                LifetimeOwner == Entity)
-            {
-                Children.Add(PotentialChild);
-            }
+            const auto& LifetimeOwner = PotentialChild.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+            return LifetimeOwner == Entity;
         }
-    }
 
-    return Children;
+        return false;
+    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------

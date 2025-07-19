@@ -12,14 +12,95 @@
 
 #include "CkRelationship/Team/CkTeam_Utils.h"
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    Initialize()
+    -> void
+{
+    Super::Initialize();
+}
+
 //--------------------------------------------------------------------------------------------------------------------------
 
 auto
     FCk_EntityBasics_DebugWindow::
-    Get_SectionHeaderColor()
-    -> ImU32
+    RenderHelp()
+    -> void
 {
-    return IM_COL32(100, 149, 237, 255); // Cornflower Blue #6495ED
+    ImGui::Text("This window displays Entity basic info of the selected entities");
+    ImGui::Text("When multiple entities are selected, information for each entity is shown in separate sections");
+}
+
+//--------------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCk_EntityBasics_DebugWindow::
+    RenderContent()
+    -> void
+{
+    Super::RenderContent();
+
+    const auto& SelectionEntities = Get_SelectionEntities();
+    if (SelectionEntities.IsEmpty())
+    {
+        ImGui::Text("No entities selected");
+        return;
+    }
+
+    // Show summary for multiple entities
+    if (SelectionEntities.Num() > 1)
+    {
+        ImGui::Text("Multiple entities selected (%d)", SelectionEntities.Num());
+        ImGui::Separator();
+    }
+
+    for (int32 EntityIndex = 0; EntityIndex < SelectionEntities.Num(); ++EntityIndex)
+    {
+        if (const auto& SelectionEntity = SelectionEntities[EntityIndex];
+            ck::Is_NOT_Valid(SelectionEntity))
+        {
+            const auto& SectionTitle = ck::Format_UE(TEXT("Entity {} (INVALID)"), SelectionEntity);
+            if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent();
+                ImGui::Text("Selection Actor is NOT Ecs Ready");
+                ImGui::Unindent();
+            }
+        }
+        else
+        {
+            const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), SelectionEntity);
+
+            if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Indent();
+
+                Request_RenderEntityInformation(SelectionEntity);
+
+                if (UCk_Utils_Transform_UE::Has(SelectionEntity))
+                {
+                    ImGui::Separator();
+                    Request_RenderTransformSection(SelectionEntity);
+                }
+
+                ImGui::Separator();
+                Request_RenderNetworkSection(SelectionEntity);
+
+                ImGui::Separator();
+                Request_RenderRelationshipsSection(SelectionEntity);
+
+                ImGui::Unindent();
+            }
+        }
+
+        if (EntityIndex < SelectionEntities.Num() - 1)
+        {
+            ImGui::Separator();
+            ImGui::Spacing();
+        }
+    }
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -131,7 +212,6 @@ auto
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-    Request_RenderTableRow_Entity("Entity:", ck::Format_UE(TEXT("{}"), SelectionEntity));
     // Actor Information
     if (UCk_Utils_OwningActor_UE::Has(SelectionEntity))
     {
@@ -242,95 +322,30 @@ auto
     ImGui::EndTable();
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------------------
+
 auto
     FCk_EntityBasics_DebugWindow::
-    Initialize()
+    Request_RenderTableRow_Entity(const char* Label, const FString& Value)
     -> void
 {
-    Super::Initialize();
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::Text(Label);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::PushStyleColor(ImGuiCol_Text, Get_ValueColor_Entity());
+    ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
+    ImGui::PopStyleColor();
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
 
 auto
     FCk_EntityBasics_DebugWindow::
-    RenderHelp()
-    -> void
+    Get_SectionHeaderColor()
+    -> ImU32
 {
-    ImGui::Text("This window displays Entity basic info of the selected entities");
-    ImGui::Text("When multiple entities are selected, information for each entity is shown in separate sections");
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    RenderContent()
-    -> void
-{
-    Super::RenderContent();
-
-    const auto& SelectionEntities = Get_SelectionEntities();
-    if (SelectionEntities.Num() == 0)
-    {
-        ImGui::Text("No entities selected");
-        return;
-    }
-
-    // Single entity display
-    if (SelectionEntities.Num() == 1)
-    {
-        const auto& SelectionEntity = SelectionEntities[0];
-        if (ck::Is_NOT_Valid(SelectionEntity))
-        {
-            ImGui::Text("Selection Actor is NOT Ecs Ready");
-            return;
-        }
-
-        Request_RenderEntityInformation(SelectionEntity);
-        ImGui::Separator();
-        Request_RenderTransformSection(SelectionEntity);
-        ImGui::Separator();
-        Request_RenderNetworkSection(SelectionEntity);
-        ImGui::Separator();
-        Request_RenderRelationshipsSection(SelectionEntity);
-    }
-    // Multiple entities display
-    else
-    {
-        ImGui::Text("Multiple entities selected (%d)", SelectionEntities.Num());
-        ImGui::Separator();
-
-        for (int32 EntityIndex = 0; EntityIndex < SelectionEntities.Num(); ++EntityIndex)
-        {
-            const auto& SelectionEntity = SelectionEntities[EntityIndex];
-
-            // Entity section header with proper formatting
-            const auto& SectionTitle = ck::Format_UE(TEXT("Entity {}"), SelectionEntity);
-
-            if (ImGui::CollapsingHeader(ck::Format_ANSI(TEXT("{}"), SectionTitle).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-            {
-                ImGui::Indent();
-
-                Request_RenderEntityInformation(SelectionEntity);
-                ImGui::Separator();
-                Request_RenderTransformSection(SelectionEntity);
-                ImGui::Separator();
-                Request_RenderNetworkSection(SelectionEntity);
-                ImGui::Separator();
-                Request_RenderRelationshipsSection(SelectionEntity);
-
-                ImGui::Unindent();
-            }
-
-            if (EntityIndex < SelectionEntities.Num() - 1)
-            {
-                ImGui::Separator();
-                ImGui::Spacing();
-            }
-        }
-    }
+    return IM_COL32(100, 149, 237, 255); // Cornflower Blue #6495ED
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -391,22 +406,6 @@ auto
     -> ImU32
 {
     return IM_COL32(102, 102, 102, 255); // Gray #666666
-}
-
-//--------------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCk_EntityBasics_DebugWindow::
-    Request_RenderTableRow_Entity(const char* Label, const FString& Value)
-    -> void
-{
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::Text(Label);
-    ImGui::TableSetColumnIndex(1);
-    ImGui::PushStyleColor(ImGuiCol_Text, Get_ValueColor_Entity());
-    ImGui::Text(ck::Format_ANSI(TEXT("{}"), Value).c_str());
-    ImGui::PopStyleColor();
 }
 
 //--------------------------------------------------------------------------------------------------------------------------

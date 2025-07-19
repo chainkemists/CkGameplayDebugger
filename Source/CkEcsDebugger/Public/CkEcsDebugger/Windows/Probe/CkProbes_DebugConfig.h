@@ -58,6 +58,9 @@ public:
     bool _ShowSilentPolicy = true;
 
     UPROPERTY(Config)
+    bool _AlwaysDrawDebug = true;
+
+    UPROPERTY(Config)
     FVector4f EnabledColor = _EnabledColor;
 
     UPROPERTY(Config)

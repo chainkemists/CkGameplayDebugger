@@ -250,6 +250,18 @@ auto
 
     UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(SelectionEntity), Transform);
 
+    const auto& EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(SelectionEntity);
+    const auto& TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
+
+    constexpr AActor* TestActor = nullptr;
+    UCk_Utils_DebugDraw_UE::DrawDebugString(
+        EntityWorld,
+        TextLocation,
+        SelectionEntity.ToString(),
+        TestActor,
+        FLinearColor::White,
+        0.0f);
+
     ImGui::EndTable();
 }
 

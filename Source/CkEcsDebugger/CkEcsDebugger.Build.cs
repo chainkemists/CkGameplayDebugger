@@ -32,6 +32,7 @@ public class CkEcsDebugger : CkModuleRules
 
             "CkOverlapBody",
             "CkPhysics",
+            "CkShapes",
             "CkSpatialQuery",
             "CkRecord",
             "CkRelationship",

@@ -70,7 +70,7 @@ private:
     auto DoOnSearchTextChanged(const FText& InText) -> void;
     auto DoOnRefreshClicked() -> FReply;
 
-    auto DoTick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
+    auto Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
 protected:
     TSharedPtr<SSearchBox> _SearchBox;

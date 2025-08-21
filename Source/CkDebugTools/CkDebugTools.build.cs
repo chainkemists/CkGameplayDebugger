@@ -23,7 +23,10 @@ public class CkDebugTools : ModuleRules
             "WorkspaceMenuStructure",
             "LevelEditor",
             "Projects",
-            
+            "InputCore",
+
+            "AngelscriptCode",
+
             // CK Framework Dependencies
             "CkCore",
             "CkEcs",

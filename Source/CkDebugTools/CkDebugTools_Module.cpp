@@ -1,7 +1,7 @@
-#include "CkDebugTools/CkDebugTools_Module.h"
-
-#include "CkDebugTools/CkDebugTools_Commands.h"
+﻿#include "CkDebugTools_Module.h"
 #include "CkDebugTools/CkDebugTools_Style.h"
+#include "CkDebugTools/CkDebugTools_Commands.h"
+#include "CkDebugTools/CkDebugTools_Base_Widget.h"
 #include "CkDebugTools/CkEntity_Debugtool.h"
 
 #include <Framework/Docking/LayoutExtender.h>
@@ -73,7 +73,7 @@ auto FCkDebugToolsModule::DoUnregisterAllTabSpawners() -> void
 auto FCkDebugToolsModule::DoCreateToolbarExtension() -> void
 {
     auto& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-    auto ToolbarExtender = MakeShareable(new FExtender);
+    auto ToolbarExtender = MakeShared<FExtender>();
 
     ToolbarExtender->AddToolBarExtension(
         "Settings",
@@ -95,7 +95,7 @@ auto FCkDebugToolsModule::DoCreateToolbarExtension() -> void
                             FSlateIcon("CkDebugToolsStyle", "CkDebugTools.Entity.Icon"),
                             FUIAction(FExecuteAction::CreateLambda([]()
                             {
-                                FGlobalTabmanager::Get()->TryInvokeTab(TEXT("CkEntityDebugTool"));
+                                FGlobalTabmanager::Get()->TryInvokeTab(FTabId(TEXT("CkEntityDebugTool")));
                             }))
                         );
 

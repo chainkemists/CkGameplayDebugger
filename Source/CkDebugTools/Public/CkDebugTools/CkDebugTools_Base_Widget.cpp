@@ -174,17 +174,17 @@ auto SCkDebugTool_Base::DoCreateActionPanel() -> TSharedRef<SWidget>
 auto SCkDebugTool_Base::DoUpdateFromEntitySelection() -> void
 {
     const auto SelectedEntities = Get_SelectedEntities();
-    
+
     // Only refresh if selection actually changed
     if (_CachedSelectedEntities != SelectedEntities)
     {
         _CachedSelectedEntities = SelectedEntities;
-        
+
         if (_DataDiscovery.IsValid())
         {
             _DataDiscovery->Request_RefreshFromEntities(SelectedEntities);
         }
-        
+
         DoRefreshToolData();
         DoUpdateValidationDisplay();
     }
@@ -215,7 +215,7 @@ auto SCkDebugTool_Base::Get_SelectedEntities() const -> TArray<FCk_Handle>
             break;
         }
     }
-    
+
     if (NOT IsValid(CurrentWorld))
     {
         return {};
@@ -284,19 +284,19 @@ auto SCkDebugTool_Base::DoUpdateValidationDisplay() -> void
     if (_DataDiscovery.IsValid())
     {
         const auto [Total, Errors, Warnings] = _DataDiscovery->Get_ValidationStats();
-        
+
         FString ValidationMessage = FString::Printf(TEXT("✓ %d items processed"), Total);
-        
+
         if (Warnings > 0)
         {
             ValidationMessage += FString::Printf(TEXT("\n⚠ %d warnings"), Warnings);
         }
-        
+
         if (Errors > 0)
         {
             ValidationMessage += FString::Printf(TEXT("\n❌ %d errors"), Errors);
         }
-        
+
         _ValidationText->SetText(FText::FromString(ValidationMessage));
     }
     else
@@ -310,7 +310,7 @@ auto SCkDebugTool_Base::DoUpdateValidationDisplay() -> void
 auto SCkDebugTool_Base::DoOnSearchTextChanged(const FText& InText) -> void
 {
     _CurrentSearchText = InText.ToString();
-    
+
     if (_DataDiscovery.IsValid())
     {
         _DataDiscovery->Request_ApplySearchFilter(_CurrentSearchText);
@@ -323,14 +323,14 @@ auto SCkDebugTool_Base::DoOnRefreshClicked() -> FReply
     return FReply::Handled();
 }
 
-auto SCkDebugTool_Base::DoTick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void
+auto SCkDebugTool_Base::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void
 {
     SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-    
+
     // Update from entity selection periodically
     static float LastUpdateTime = 0.0f;
     const float CurrentTime = static_cast<float>(InCurrentTime);
-    
+
     if (CurrentTime - LastUpdateTime > 0.1f) // Update 10 times per second
     {
         LastUpdateTime = CurrentTime;

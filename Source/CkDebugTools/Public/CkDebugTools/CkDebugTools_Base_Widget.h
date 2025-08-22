@@ -67,7 +67,7 @@ protected:
     // Validation display
     auto DoUpdateValidationDisplay() -> void;
 
-private:
+protected:
     auto DoOnSearchTextChanged(const FText& InText) -> void;
     auto DoOnRefreshClicked() -> FReply;
     auto DoRefreshEntitySelector() -> void;

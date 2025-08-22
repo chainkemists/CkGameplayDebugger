@@ -61,61 +61,36 @@ public:
                 .Padding(1.0f)
                 .Content()
                 [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0, 0, 4, 0)
-                    [
-                        SNew(STextBlock)
-                        .Text_Lambda([this]() -> FText
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        if (_TreeItem.IsValid())
                         {
-                            if (_TreeItem.IsValid())
-                            {
-                                return FText::FromString(FString::Printf(TEXT("[%d]"), _TreeItem->Children.Num()));
-                            }
-                            return FText::FromString(TEXT("[?]"));
-                        })
-                        .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
-                        .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                        .Text_Lambda([this]() -> FText
+                            const auto DisplayName = _TreeItem->Get_DisplayName();
+                            return FText::FromString(DisplayName);
+                        }
+                        return FText::FromString(TEXT("Invalid"));
+                    })
+                    .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
+                    .ColorAndOpacity_Lambda([this]() -> FLinearColor
+                    {
+                        if (_TreeItem.IsValid() && ck::IsValid(_TreeItem->Entity))
                         {
-                            if (_TreeItem.IsValid())
-                            {
-                                const auto DisplayName = _TreeItem->Get_DisplayName();
-                                return FText::FromString(DisplayName);
-                            }
-                            return FText::FromString(TEXT("Invalid"));
-                        })
-                        .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
-                        .ColorAndOpacity_Lambda([this]() -> FLinearColor
+                            return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Entity");
+                        }
+                        return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Unknown");
+                    })
+                    .ToolTipText_Lambda([this]() -> FText
+                    {
+                        if (_TreeItem.IsValid())
                         {
-                            if (_TreeItem.IsValid() && ck::IsValid(_TreeItem->Entity))
-                            {
-                                return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Entity");
-                            }
-                            return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Unknown");
-                        })
-                        .ToolTipText_Lambda([this]() -> FText
-                        {
-                            if (_TreeItem.IsValid())
-                            {
-                                return FText::FromString(FString::Printf(TEXT("Entity: %s\nValid: %s\nChildren: %d"),
-                                    *_TreeItem->Entity.ToString(),
-                                    ck::IsValid(_TreeItem->Entity) ? TEXT("Yes") : TEXT("No"),
-                                    _TreeItem->Children.Num()));
-                            }
-                            return FText::FromString(TEXT("Invalid TreeItem"));
-                        })
-                    ]
+                            return FText::FromString(FString::Printf(TEXT("Entity: %s\nValid: %s\nChildren: %d"),
+                                *_TreeItem->Entity.ToString(),
+                                ck::IsValid(_TreeItem->Entity) ? TEXT("Yes") : TEXT("No"),
+                                _TreeItem->Children.Num()));
+                        }
+                        return FText::FromString(TEXT("Invalid TreeItem"));
+                    })
                 ],
             InOwnerTableView
         );
@@ -141,6 +116,9 @@ public:
 
     // Force refresh of the entity tree
     auto Request_RefreshEntityTree() -> void;
+
+    // Override Tick to auto-refresh
+    auto Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
 private:
     // UI Creation

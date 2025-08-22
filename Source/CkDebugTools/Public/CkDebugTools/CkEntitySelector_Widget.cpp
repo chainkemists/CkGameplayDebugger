@@ -17,7 +17,7 @@ auto SCkTreeEntitySelector::Construct(const FArguments& InArgs) -> void
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(&FCkDebugToolsStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugTools.TableRow.Normal").EvenRowBackgroundBrush)
+        .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
         .Padding(4.0f)
         [
             SNew(SVerticalBox)
@@ -51,20 +51,6 @@ auto SCkTreeEntitySelector::Construct(const FArguments& InArgs) -> void
             [
                 DoCreateRefreshButton()
             ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0, 4, 0, 0)
-            [
-                SNew(STextBlock)
-                .Text_Lambda([this]() -> FText
-                {
-                    return FText::FromString(FString::Printf(TEXT("Debug: %d root items, %d total items"),
-                        _TreeItems.Num(), _EntityToItemMap.Num()));
-                })
-                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
-                .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
-            ]
         ]
     ];
 
@@ -88,7 +74,7 @@ auto SCkTreeEntitySelector::DoCreateEntityTree() -> TSharedRef<SWidget>
         .OnSelectionChanged(this, &SCkTreeEntitySelector::DoOnTreeSelectionChanged)
         .OnMouseButtonDoubleClick(this, &SCkTreeEntitySelector::DoOnTreeDoubleClick)
         .SelectionMode(ESelectionMode::Multi)
-        .ItemHeight(20.0f)  // Set explicit item height
+        .ItemHeight(20.0f)
         .HeaderRow
         (
             SNew(SHeaderRow)
@@ -126,12 +112,8 @@ auto SCkTreeEntitySelector::DoRefreshEntityList() -> void
     // Get all entities from world
     auto AllEntities = DoGetAllEntitiesFromWorld();
 
-    UE_LOG(LogTemp, Warning, TEXT("DoRefreshEntityList: Found %d entities"), AllEntities.Num());
-
     // Build tree structure
     _TreeItems = DoBuildTreeHierarchy(AllEntities);
-
-    UE_LOG(LogTemp, Warning, TEXT("DoRefreshEntityList: Built %d root items"), _TreeItems.Num());
 
     // Refresh tree view
     if (_EntityTreeView.IsValid())
@@ -289,31 +271,23 @@ auto SCkTreeEntitySelector::DoBuildTreeHierarchy(const TArray<FCk_Handle>& InEnt
                 {
                     // Add child to parent
                     (*ParentItemPtr)->Children.AddUnique(*EntityItem);
-                    UE_LOG(LogTemp, Warning, TEXT("Added child %s to parent %s"),
-                        *Entity.ToString(), *LifetimeOwner.ToString());
                 }
                 else
                 {
                     // Parent not in our list, treat as root
                     RootItems.AddUnique(*EntityItem);
-                    UE_LOG(LogTemp, Warning, TEXT("Parent not found for %s, adding as root"),
-                        *Entity.ToString());
                 }
             }
             else
             {
                 // This is a root entity (lifetime owner is transient)
                 RootItems.AddUnique(*EntityItem);
-                UE_LOG(LogTemp, Warning, TEXT("Entity %s is root (transient owner)"),
-                    *Entity.ToString());
             }
         }
         else
         {
             // This entity has no lifetime owner, so it's a root entity
             RootItems.AddUnique(*EntityItem);
-            UE_LOG(LogTemp, Warning, TEXT("Entity %s is root (no lifetime owner)"),
-                *Entity.ToString());
         }
     }
 
@@ -350,16 +324,6 @@ auto SCkTreeEntitySelector::DoBuildTreeHierarchy(const TArray<FCk_Handle>& InEnt
         SortChildren(RootItem);
     }
 
-    // Debug output
-    for (const auto& RootItem : RootItems)
-    {
-        if (RootItem.IsValid())
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Root: %s has %d children"),
-                *RootItem->Entity.ToString(), RootItem->Children.Num());
-        }
-    }
-
     return RootItems;
 }
 
@@ -375,8 +339,6 @@ auto SCkTreeEntitySelector::DoGetTreeChildren(TSharedPtr<FCkEntityTreeItem> InIt
     if (InItem.IsValid())
     {
         OutChildren = InItem->Children;
-        UE_LOG(LogTemp, VeryVerbose, TEXT("GetTreeChildren for %s: %d children"),
-            *InItem->Entity.ToString(), OutChildren.Num());
     }
 }
 
@@ -481,4 +443,48 @@ auto SCkTreeEntitySelector::Get_TransientEntity() const -> FCk_Handle
     }
 
     return UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+
+}
+
+auto SCkTreeEntitySelector::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void
+{
+    SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Auto-refresh the tree periodically, but preserve selection
+    static float LastRefreshTime = 0.0f;
+    const float CurrentTime = static_cast<float>(InCurrentTime);
+
+    if (CurrentTime - LastRefreshTime > 1.0f) // Refresh once per second (less frequent)
+    {
+        LastRefreshTime = CurrentTime;
+
+        // Store current selection before refresh
+        TArray<FCk_Handle> CurrentSelection;
+        if (_EntityTreeView.IsValid())
+        {
+            auto SelectedItems = _EntityTreeView->GetSelectedItems();
+            for (const auto& Item : SelectedItems)
+            {
+                if (Item.IsValid())
+                {
+                    CurrentSelection.Add(Item->Entity);
+                }
+            }
+        }
+
+        Request_RefreshEntityTree();
+
+        // Restore selection after refresh
+        if (CurrentSelection.Num() > 0 && _EntityTreeView.IsValid())
+        {
+            _EntityTreeView->ClearSelection();
+            for (const auto& Entity : CurrentSelection)
+            {
+                if (auto* ItemPtr = _EntityToItemMap.Find(Entity))
+                {
+                    _EntityTreeView->SetItemSelection(*ItemPtr, true);
+                }
+            }
+        }
+    }
 }

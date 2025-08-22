@@ -74,6 +74,12 @@ private:
     auto DoAddTransformInfo(const FCk_Handle& InEntity) -> void;
     auto DoAddNetworkInfo(const FCk_Handle& InEntity) -> void;
     auto DoAddRelationshipInfo(const FCk_Handle& InEntity) -> void;
+    auto
+        Tick(
+            const FGeometry& AllottedGeometry,
+            double InCurrentTime,
+            float InDeltaTime)
+            -> void override;
 
 private:
     TSharedPtr<STreeView<TSharedPtr<FCkEntityDebugInfo>>> _EntityInfoTreeView;

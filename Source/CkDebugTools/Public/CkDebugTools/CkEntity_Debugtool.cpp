@@ -76,16 +76,12 @@ auto SCkEntityDebugTool::Construct(const FArguments& InArgs) -> void
 
     // Call parent construct which will create the entity selector tree
     SCkDebugTool_Base::Construct(SCkDebugTool_Base::FArguments());
-
-    // Debug: Let's verify we're using the tree selector
-    UE_LOG(LogTemp, Warning, TEXT("SCkEntityDebugTool::Construct - EntitySelector valid: %s"),
-        _EntitySelector.IsValid() ? TEXT("Yes") : TEXT("No"));
 }
 
 auto SCkEntityDebugTool::DoCreateContentPanel() -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
-        .BorderImage(&FCkDebugToolsStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugTools.TableRow.Normal").EvenRowBackgroundBrush)
+        .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
         .Padding(CkDebugToolsConstants::PanelPadding)
         [
             SNew(SVerticalBox)
@@ -281,20 +277,6 @@ auto SCkEntityDebugTool::DoAddTransformInfo(const FCk_Handle& InEntity) -> void
 
     auto ScaleInfo = MakeShareable(new FCkEntityDebugInfo(TEXT("Scale"), Transform.GetScale3D().ToString(), Get_VectorColor()));
     TransformSection->Children.Add(ScaleInfo);
-
-    // Draw debug visualization
-    UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity), Transform);
-
-    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity);
-    const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
-
-    UCk_Utils_DebugDraw_UE::DrawDebugString(
-        EntityWorld,
-        TextLocation,
-        InEntity.ToString(),
-        nullptr,
-        FLinearColor::White,
-        0.0f);
 }
 
 auto SCkEntityDebugTool::DoAddNetworkInfo(const FCk_Handle& InEntity) -> void
@@ -355,6 +337,35 @@ auto SCkEntityDebugTool::DoAddRelationshipInfo(const FCk_Handle& InEntity) -> vo
     {
         auto NoLifetimeOwnerInfo = MakeShareable(new FCkEntityDebugInfo(TEXT("Lifetime Owner"), TEXT("None"), Get_NoneColor()));
         RelationshipSection->Children.Add(NoLifetimeOwnerInfo);
+    }
+}
+
+auto SCkEntityDebugTool::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void
+{
+    SCkDebugTool_Base::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Draw transform gizmos for selected entities every frame
+    const auto SelectedEntities = Get_SelectedEntities();
+    for (const auto& Entity : SelectedEntities)
+    {
+        if (ck::IsValid(Entity) && UCk_Utils_Transform_UE::Has(Entity))
+        {
+            const auto Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
+
+            // Draw debug visualization every frame
+            UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity), Transform);
+
+            const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
+            const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
+
+            UCk_Utils_DebugDraw_UE::DrawDebugString(
+                EntityWorld,
+                TextLocation,
+                Entity.ToString(),
+                nullptr,
+                FLinearColor::White,
+                0.0f);
+        }
     }
 }
 

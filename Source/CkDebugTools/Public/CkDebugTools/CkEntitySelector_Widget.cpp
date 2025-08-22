@@ -51,6 +51,20 @@ auto SCkTreeEntitySelector::Construct(const FArguments& InArgs) -> void
             [
                 DoCreateRefreshButton()
             ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0, 4, 0, 0)
+            [
+                SNew(STextBlock)
+                .Text_Lambda([this]() -> FText
+                {
+                    return FText::FromString(FString::Printf(TEXT("Debug: %d root items, %d total items"),
+                        _TreeItems.Num(), _EntityToItemMap.Num()));
+                })
+                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
+                .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
+            ]
         ]
     ];
 
@@ -74,6 +88,7 @@ auto SCkTreeEntitySelector::DoCreateEntityTree() -> TSharedRef<SWidget>
         .OnSelectionChanged(this, &SCkTreeEntitySelector::DoOnTreeSelectionChanged)
         .OnMouseButtonDoubleClick(this, &SCkTreeEntitySelector::DoOnTreeDoubleClick)
         .SelectionMode(ESelectionMode::Multi)
+        .ItemHeight(20.0f)  // Set explicit item height
         .HeaderRow
         (
             SNew(SHeaderRow)
@@ -104,21 +119,40 @@ auto SCkTreeEntitySelector::Request_RefreshEntityTree() -> void
 
 auto SCkTreeEntitySelector::DoRefreshEntityList() -> void
 {
-    // Get all entities from world (this now includes search filtering)
+    // Clear existing data
+    _TreeItems.Empty();
+    _EntityToItemMap.Empty();
+
+    // Get all entities from world
     auto AllEntities = DoGetAllEntitiesFromWorld();
+
+    UE_LOG(LogTemp, Warning, TEXT("DoRefreshEntityList: Found %d entities"), AllEntities.Num());
 
     // Build tree structure
     _TreeItems = DoBuildTreeHierarchy(AllEntities);
+
+    UE_LOG(LogTemp, Warning, TEXT("DoRefreshEntityList: Built %d root items"), _TreeItems.Num());
 
     // Refresh tree view
     if (_EntityTreeView.IsValid())
     {
         _EntityTreeView->RequestTreeRefresh();
 
-        // Auto-expand root items (matching ImGui behavior)
+        // Auto-expand all items to see the hierarchy
         for (const auto& Item : _TreeItems)
         {
-            _EntityTreeView->SetItemExpansion(Item, true);
+            if (Item.IsValid())
+            {
+                _EntityTreeView->SetItemExpansion(Item, true);
+                // Also expand first level children for testing
+                for (const auto& Child : Item->Children)
+                {
+                    if (Child.IsValid())
+                    {
+                        _EntityTreeView->SetItemExpansion(Child, true);
+                    }
+                }
+            }
         }
     }
 }
@@ -206,6 +240,10 @@ auto SCkTreeEntitySelector::DoGetAllEntitiesFromWorld() -> TArray<FCk_Handle>
             {
                 EntitiesSet.Add(CurrentEntity);
             }
+            else
+            {
+                break;
+            }
         }
     }
 
@@ -215,50 +253,67 @@ auto SCkTreeEntitySelector::DoGetAllEntitiesFromWorld() -> TArray<FCk_Handle>
     return EntitiesSet.Array();
 }
 
-// Remove the DoApplySearchFilter method since filtering is now done in DoGetAllEntitiesFromWorld
-
 auto SCkTreeEntitySelector::DoBuildTreeHierarchy(const TArray<FCk_Handle>& InEntities) -> TArray<TSharedPtr<FCkEntityTreeItem>>
 {
     TArray<TSharedPtr<FCkEntityTreeItem>> RootItems;
-    TMap<FCk_Handle, TSharedPtr<FCkEntityTreeItem>> EntityToItemMap;
+
+    // Clear and rebuild the entity map
+    _EntityToItemMap.Empty();
 
     // Create tree items for all entities
     for (const auto& Entity : InEntities)
     {
         auto TreeItem = MakeShared<FCkEntityTreeItem>(Entity);
-        EntityToItemMap.Add(Entity, TreeItem);
+        _EntityToItemMap.Add(Entity, TreeItem);
     }
 
     const auto TransientEntity = Get_TransientEntity();
 
-    // Only render root entities (entities without lifetime owners, or whose lifetime owner is TransientEntity)
-    // This matches the RenderEntityTree logic from the ImGui version
+    // Build parent-child relationships and identify roots
     for (const auto& Entity : InEntities)
     {
-        auto TreeItem = EntityToItemMap[Entity];
+        auto* EntityItem = _EntityToItemMap.Find(Entity);
+        if (NOT EntityItem)
+            continue;
 
-        if (NOT Entity.Has<ck::FFragment_LifetimeOwner>() ||
-            Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
-        {
-            RootItems.Add(TreeItem);
-        }
-    }
-
-    // Build parent-child relationships for all items
-    for (const auto& Entity : InEntities)
-    {
+        // Check if this entity has a lifetime owner
         if (Entity.Has<ck::FFragment_LifetimeOwner>())
         {
             const auto LifetimeOwner = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
 
+            // If the lifetime owner is not the transient entity
             if (LifetimeOwner != TransientEntity)
             {
-                if (auto OwnerItem = EntityToItemMap.Find(LifetimeOwner))
+                // Find the parent item
+                if (auto* ParentItemPtr = _EntityToItemMap.Find(LifetimeOwner))
                 {
-                    auto ChildItem = EntityToItemMap[Entity];
-                    (*OwnerItem)->Children.Add(ChildItem);
+                    // Add child to parent
+                    (*ParentItemPtr)->Children.AddUnique(*EntityItem);
+                    UE_LOG(LogTemp, Warning, TEXT("Added child %s to parent %s"),
+                        *Entity.ToString(), *LifetimeOwner.ToString());
+                }
+                else
+                {
+                    // Parent not in our list, treat as root
+                    RootItems.AddUnique(*EntityItem);
+                    UE_LOG(LogTemp, Warning, TEXT("Parent not found for %s, adding as root"),
+                        *Entity.ToString());
                 }
             }
+            else
+            {
+                // This is a root entity (lifetime owner is transient)
+                RootItems.AddUnique(*EntityItem);
+                UE_LOG(LogTemp, Warning, TEXT("Entity %s is root (transient owner)"),
+                    *Entity.ToString());
+            }
+        }
+        else
+        {
+            // This entity has no lifetime owner, so it's a root entity
+            RootItems.AddUnique(*EntityItem);
+            UE_LOG(LogTemp, Warning, TEXT("Entity %s is root (no lifetime owner)"),
+                *Entity.ToString());
         }
     }
 
@@ -268,10 +323,11 @@ auto SCkTreeEntitySelector::DoBuildTreeHierarchy(const TArray<FCk_Handle>& InEnt
         if (NOT InA.IsValid() || NOT InB.IsValid())
             return false;
 
-        // For now, sort alphabetically by entity string (can be enhanced later with other sorting modes)
+        // Sort alphabetically by entity string
         return InA->Entity.ToString() < InB->Entity.ToString();
     };
 
+    // Sort root items
     ck::algo::Sort(RootItems, BaseSortingFunction);
 
     // Sort children recursively
@@ -294,6 +350,16 @@ auto SCkTreeEntitySelector::DoBuildTreeHierarchy(const TArray<FCk_Handle>& InEnt
         SortChildren(RootItem);
     }
 
+    // Debug output
+    for (const auto& RootItem : RootItems)
+    {
+        if (RootItem.IsValid())
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Root: %s has %d children"),
+                *RootItem->Entity.ToString(), RootItem->Children.Num());
+        }
+    }
+
     return RootItems;
 }
 
@@ -305,9 +371,12 @@ auto SCkTreeEntitySelector::DoGenerateTreeRow(TSharedPtr<FCkEntityTreeItem> InIt
 
 auto SCkTreeEntitySelector::DoGetTreeChildren(TSharedPtr<FCkEntityTreeItem> InItem, TArray<TSharedPtr<FCkEntityTreeItem>>& OutChildren) -> void
 {
+    OutChildren.Empty();
     if (InItem.IsValid())
     {
         OutChildren = InItem->Children;
+        UE_LOG(LogTemp, VeryVerbose, TEXT("GetTreeChildren for %s: %d children"),
+            *InItem->Entity.ToString(), OutChildren.Num());
     }
 }
 

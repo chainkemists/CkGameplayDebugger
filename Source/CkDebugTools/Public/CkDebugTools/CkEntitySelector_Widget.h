@@ -45,7 +45,7 @@ struct CKDEBUGTOOLS_API FCkEntityTreeItem
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkEntityTreeRow : public SMultiColumnTableRow<TSharedPtr<FCkEntityTreeItem>>
+class SCkEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeItem>>
 {
 public:
     SLATE_BEGIN_ARGS(SCkEntityTreeRow) {}
@@ -56,43 +56,69 @@ public:
     {
         _TreeItem = InArgs._TreeItem;
 
-        SMultiColumnTableRow<TSharedPtr<FCkEntityTreeItem>>::Construct(
-            FSuperRowType::FArguments()
-                .Padding(1.0f),
+        STableRow<TSharedPtr<FCkEntityTreeItem>>::Construct(
+            STableRow<TSharedPtr<FCkEntityTreeItem>>::FArguments()
+                .Padding(1.0f)
+                .Content()
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0, 0, 4, 0)
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]() -> FText
+                        {
+                            if (_TreeItem.IsValid())
+                            {
+                                return FText::FromString(FString::Printf(TEXT("[%d]"), _TreeItem->Children.Num()));
+                            }
+                            return FText::FromString(TEXT("[?]"));
+                        })
+                        .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
+                        .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text_Lambda([this]() -> FText
+                        {
+                            if (_TreeItem.IsValid())
+                            {
+                                const auto DisplayName = _TreeItem->Get_DisplayName();
+                                return FText::FromString(DisplayName);
+                            }
+                            return FText::FromString(TEXT("Invalid"));
+                        })
+                        .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
+                        .ColorAndOpacity_Lambda([this]() -> FLinearColor
+                        {
+                            if (_TreeItem.IsValid() && ck::IsValid(_TreeItem->Entity))
+                            {
+                                return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Entity");
+                            }
+                            return FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Unknown");
+                        })
+                        .ToolTipText_Lambda([this]() -> FText
+                        {
+                            if (_TreeItem.IsValid())
+                            {
+                                return FText::FromString(FString::Printf(TEXT("Entity: %s\nValid: %s\nChildren: %d"),
+                                    *_TreeItem->Entity.ToString(),
+                                    ck::IsValid(_TreeItem->Entity) ? TEXT("Yes") : TEXT("No"),
+                                    _TreeItem->Children.Num()));
+                            }
+                            return FText::FromString(TEXT("Invalid TreeItem"));
+                        })
+                    ]
+                ],
             InOwnerTableView
         );
-    }
-
-    auto GenerateWidgetForColumn(const FName& ColumnName) -> TSharedRef<SWidget> override
-    {
-        if (NOT _TreeItem.IsValid())
-        {
-            return SNew(STextBlock).Text(FText::FromString(TEXT("Invalid")));
-        }
-
-        if (ColumnName == TEXT("Entity"))
-        {
-            const auto Entity = _TreeItem->Entity;
-            const auto DisplayName = _TreeItem->Get_DisplayName();
-
-            // Determine text color based on entity validity and type
-            FLinearColor TextColor = FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Entity");
-
-            if (NOT ck::IsValid(Entity))
-            {
-                TextColor = FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Unknown");
-            }
-
-            return SNew(STextBlock)
-                .Text(FText::FromString(DisplayName))
-                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
-                .ColorAndOpacity(TextColor)
-                .ToolTipText(FText::FromString(FString::Printf(TEXT("Entity: %s\nValid: %s"),
-                    *Entity.ToString(),
-                    ck::IsValid(Entity) ? TEXT("Yes") : TEXT("No"))));
-        }
-
-        return SNew(STextBlock).Text(FText::FromString(TEXT("Unknown Column")));
     }
 
 private:
@@ -148,6 +174,7 @@ private:
 
     // Data
     TArray<TSharedPtr<FCkEntityTreeItem>> _TreeItems;
+    TMap<FCk_Handle, TSharedPtr<FCkEntityTreeItem>> _EntityToItemMap;
     FString _SearchFilter;
 
     // Events

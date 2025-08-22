@@ -1,6 +1,7 @@
 #include "CkDebugTools/CkDebugTools_Base_Widget.h"
 
 #include "CkDebugTools/CkDebugTools_Style.h"
+#include "CkDebugTools/CkEntitySelector_Widget.h"
 
 #include "CkEcsDebugger/Subsystem/CkEcsDebugger_Subsystem.h"
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
@@ -22,17 +23,17 @@ auto SCkDebugTool_Base::Construct(const FArguments& InArgs) -> void
         [
             SNew(SHorizontalBox)
 
-            // Left side: Entity Selection Panel (now takes up significant space)
+            // Left side: Entity Selection Panel (40% width)
             + SHorizontalBox::Slot()
-            .FillWidth(0.4f) // 40% of width for entity selection
+            .FillWidth(0.4f)
             .Padding(0, 0, CkDebugToolsConstants::SectionSpacing, 0)
             [
                 DoCreateEntitySelectionPanel()
             ]
 
-            // Right side: Tool Content
+            // Right side: Tool Content (60% width)
             + SHorizontalBox::Slot()
-            .FillWidth(0.6f) // 60% of width for tool content
+            .FillWidth(0.6f)
             [
                 SNew(SScrollBox)
                 .Orientation(Orient_Vertical)
@@ -85,25 +86,18 @@ auto SCkDebugTool_Base::DoCreateEntitySelectionPanel() -> TSharedRef<SWidget>
             SNew(SVerticalBox)
 
             + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(0, 0, 0, 4)
+            .FillHeight(1.0f)
             [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Entity Selection")))
-                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Bold"))
-                .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Primary"))
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                // FIXED: Use SCkSimpleEntitySelector instead of SCkEntitySelector
-                SAssignNew(_EntitySelector, SCkSimpleEntitySelector)
-                .OnSelectionChanged_Lambda([this]()
-                {
-                    // When entity selection changes, refresh our tool data
-                    DoUpdateFromEntitySelection();
-                })
+                SNew(SBox)
+                .MinDesiredHeight(400.0f) // Use SBox for MinDesiredHeight
+                [
+                    SAssignNew(_EntitySelector, SCkTreeEntitySelector)
+                    .OnSelectionChanged_Lambda([this]()
+                    {
+                        // When entity selection changes, refresh our tool data
+                        DoUpdateFromEntitySelection();
+                    })
+                ]
             ]
 
             + SVerticalBox::Slot()
@@ -116,16 +110,15 @@ auto SCkDebugTool_Base::DoCreateEntitySelectionPanel() -> TSharedRef<SWidget>
                     const auto SelectedEntities = Get_SelectedEntities();
                     if (SelectedEntities.Num() == 0)
                     {
-                        return FText::FromString(TEXT("No entities selected - select an entity above to inspect"));
+                        return FText::FromString(TEXT("No entities selected"));
                     }
                     else if (SelectedEntities.Num() == 1)
                     {
-                        const auto DebugName = SelectedEntities[0].ToString();
-                        return FText::FromString(FString::Printf(TEXT("Inspecting: %s"), *DebugName));
+                        return FText::FromString(FString::Printf(TEXT("Selected: %s"), *SelectedEntities[0].ToString()));
                     }
                     else
                     {
-                        return FText::FromString(FString::Printf(TEXT("Inspecting %d entities"), SelectedEntities.Num()));
+                        return FText::FromString(FString::Printf(TEXT("%d entities selected"), SelectedEntities.Num()));
                     }
                 })
                 .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
@@ -200,7 +193,7 @@ auto SCkDebugTool_Base::DoRefreshEntitySelector() -> void
 {
     if (_EntitySelector.IsValid())
     {
-        _EntitySelector->Request_RefreshEntityList();
+        _EntitySelector->Request_RefreshEntityTree();
     }
 }
 

@@ -1,8 +1,6 @@
 #pragma once
 
 #include "CkDebugTools/CkDebugTools_Base_Discovery.h"
-#include "CkDebugTools/CkSimpleEntitySelector_Widget.h"
-
 #include "CkEcs/Handle/CkHandle.h"
 
 #include <Widgets/SCompoundWidget.h>
@@ -22,6 +20,9 @@ namespace CkDebugToolsConstants
     constexpr float ButtonWidth = 70.0f;
     constexpr float SearchBoxHeight = 24.0f;
 }
+
+// Forward declare the tree entity selector
+class SCkTreeEntitySelector;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -45,9 +46,6 @@ protected:
     auto DoCreateValidationPanel() -> TSharedRef<SWidget>;
     auto DoCreateSearchPanel() -> TSharedRef<SWidget>;
     auto DoCreateActionPanel() -> TSharedRef<SWidget>;
-    auto
-        DoRefreshEntitySelector()
-            -> void;
 
     // Integration with existing ECS subsystem
     auto DoUpdateFromEntitySelection() -> void;
@@ -65,7 +63,6 @@ protected:
 
     // Common UI elements
     auto CreateColoredText(const FString& InText, const FLinearColor& InColor) -> TSharedRef<STextBlock>;
-    auto CreateTableRow(const char* InLabel, const FString& InValue, const FLinearColor& InColor) -> void;
 
     // Validation display
     auto DoUpdateValidationDisplay() -> void;
@@ -73,6 +70,7 @@ protected:
 private:
     auto DoOnSearchTextChanged(const FText& InText) -> void;
     auto DoOnRefreshClicked() -> FReply;
+    auto DoRefreshEntitySelector() -> void;
 
     auto Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
@@ -81,14 +79,13 @@ protected:
     TSharedPtr<STextBlock> _ValidationText;
     TSharedPtr<SVerticalBox> _ContentContainer;
 
-    TSharedPtr<SCkSimpleEntitySelector> _EntitySelector;
-
     TArray<FCk_Handle> _CachedSelectedEntities;
     FString _CurrentSearchText;
     float _LastRefreshTime = 0.0f;
 
+    // Tree entity selector
+    TSharedPtr<SCkTreeEntitySelector> _EntitySelector;
+
     // Data discovery - can be overridden by derived classes
     TSharedPtr<FCkDebugToolsDiscovery_Base> _DataDiscovery;
 };
-
-// --------------------------------------------------------------------------------------------------------------------

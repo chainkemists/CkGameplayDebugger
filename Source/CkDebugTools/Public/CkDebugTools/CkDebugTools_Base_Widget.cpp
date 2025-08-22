@@ -20,45 +20,53 @@ auto SCkDebugTool_Base::Construct(const FArguments& InArgs) -> void
         .BorderImage(&FCkDebugToolsStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugTools.TableRow.Normal").EvenRowBackgroundBrush)
         .Padding(CkDebugToolsConstants::PanelPadding)
         [
-            SNew(SScrollBox)
-            .Orientation(Orient_Vertical)
+            SNew(SHorizontalBox)
 
-            + SScrollBox::Slot()
+            // Left side: Entity Selection Panel (now takes up significant space)
+            + SHorizontalBox::Slot()
+            .FillWidth(0.4f) // 40% of width for entity selection
+            .Padding(0, 0, CkDebugToolsConstants::SectionSpacing, 0)
             [
-                SAssignNew(_ContentContainer, SVerticalBox)
+                DoCreateEntitySelectionPanel()
+            ]
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0, 0, 0, CkDebugToolsConstants::SectionSpacing)
-                [
-                    DoCreateEntitySelectionPanel()
-                ]
+            // Right side: Tool Content
+            + SHorizontalBox::Slot()
+            .FillWidth(0.6f) // 60% of width for tool content
+            [
+                SNew(SScrollBox)
+                .Orientation(Orient_Vertical)
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0, 0, 0, CkDebugToolsConstants::SectionSpacing)
+                + SScrollBox::Slot()
                 [
-                    DoCreateSearchPanel()
-                ]
+                    SAssignNew(_ContentContainer, SVerticalBox)
 
-                + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                [
-                    DoCreateContentPanel()
-                ]
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0, 0, 0, CkDebugToolsConstants::SectionSpacing)
+                    [
+                        DoCreateSearchPanel()
+                    ]
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0, CkDebugToolsConstants::SectionSpacing, 0, 0)
-                [
-                    DoCreateValidationPanel()
-                ]
+                    + SVerticalBox::Slot()
+                    .FillHeight(1.0f)
+                    [
+                        DoCreateContentPanel()
+                    ]
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0, CkDebugToolsConstants::SectionSpacing, 0, 0)
-                [
-                    DoCreateActionPanel()
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0, CkDebugToolsConstants::SectionSpacing, 0, 0)
+                    [
+                        DoCreateValidationPanel()
+                    ]
+
+                    + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0, CkDebugToolsConstants::SectionSpacing, 0, 0)
+                    [
+                        DoCreateActionPanel()
+                    ]
                 ]
             ]
         ]
@@ -70,42 +78,59 @@ auto SCkDebugTool_Base::Construct(const FArguments& InArgs) -> void
 
 auto SCkDebugTool_Base::DoCreateEntitySelectionPanel() -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
-
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        .Padding(0, 0, 8, 0)
+    return SNew(SBorder)
+        .BorderImage(&FCkDebugToolsStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugTools.TableRow.Normal").EvenRowBackgroundBrush)
+        .Padding(CkDebugToolsConstants::PanelPadding)
         [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Entity Selection:")))
-            .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Bold"))
-            .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Primary"))
-        ]
+            SNew(SVerticalBox)
 
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
-        .VAlign(VAlign_Center)
-        [
-            SNew(STextBlock)
-            .Text_Lambda([this]() -> FText
-            {
-                const auto SelectedEntities = Get_SelectedEntities();
-                if (SelectedEntities.Num() == 0)
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0, 0, 0, 4)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Entity Selection")))
+                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Bold"))
+                .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Primary"))
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                // FIXED: Use SCkSimpleEntitySelector instead of SCkEntitySelector
+                SAssignNew(_EntitySelector, SCkSimpleEntitySelector)
+                .OnSelectionChanged_Lambda([this]()
                 {
-                    return FText::FromString(TEXT("No entities selected"));
-                }
-                else if (SelectedEntities.Num() == 1)
+                    // When entity selection changes, refresh our tool data
+                    DoUpdateFromEntitySelection();
+                })
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0, 4, 0, 0)
+            [
+                SNew(STextBlock)
+                .Text_Lambda([this]() -> FText
                 {
-                    return FText::FromString(FString::Printf(TEXT("1 entity selected: %s"), *SelectedEntities[0].ToString()));
-                }
-                else
-                {
-                    return FText::FromString(FString::Printf(TEXT("%d entities selected"), SelectedEntities.Num()));
-                }
-            })
-            .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
-            .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
+                    const auto SelectedEntities = Get_SelectedEntities();
+                    if (SelectedEntities.Num() == 0)
+                    {
+                        return FText::FromString(TEXT("No entities selected - select an entity above to inspect"));
+                    }
+                    else if (SelectedEntities.Num() == 1)
+                    {
+                        const auto DebugName = SelectedEntities[0].ToString();
+                        return FText::FromString(FString::Printf(TEXT("Inspecting: %s"), *DebugName));
+                    }
+                    else
+                    {
+                        return FText::FromString(FString::Printf(TEXT("Inspecting %d entities"), SelectedEntities.Num()));
+                    }
+                })
+                .Font(FCkDebugToolsStyle::Get().GetFontStyle("CkDebugTools.Font.Regular"))
+                .ColorAndOpacity(FCkDebugToolsStyle::Get().GetColor("CkDebugTools.Color.Secondary"))
+            ]
         ];
 }
 
@@ -171,6 +196,14 @@ auto SCkDebugTool_Base::DoCreateActionPanel() -> TSharedRef<SWidget>
         ];
 }
 
+auto SCkDebugTool_Base::DoRefreshEntitySelector() -> void
+{
+    if (_EntitySelector.IsValid())
+    {
+        _EntitySelector->Request_RefreshEntityList();
+    }
+}
+
 auto SCkDebugTool_Base::DoUpdateFromEntitySelection() -> void
 {
     const auto SelectedEntities = Get_SelectedEntities();
@@ -192,20 +225,18 @@ auto SCkDebugTool_Base::DoUpdateFromEntitySelection() -> void
 
 auto SCkDebugTool_Base::DoRefreshData() -> void
 {
+    DoRefreshEntitySelector();
     DoUpdateFromEntitySelection();
 }
 
 auto SCkDebugTool_Base::Get_SelectedEntities() const -> TArray<FCk_Handle>
 {
-    // Try to get world context from slate application
-    TSharedPtr<SWindow> ActiveWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
-    if (NOT ActiveWindow.IsValid())
+    if (_EntitySelector.IsValid())
     {
-        return {};
+        return _EntitySelector->Get_SelectedEntities();
     }
 
-    // Get the current world - this is a simplified approach
-    // In practice, you might need more sophisticated world detection
+    // Fallback to subsystem method
     UWorld* CurrentWorld = nullptr;
     for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
     {

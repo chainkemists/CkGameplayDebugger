@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkDebugTools/CkDebugTools_Base_Discovery.h"
+#include "CkDebugTools/CkSimpleEntitySelector_Widget.h"
 
 #include "CkEcs/Handle/CkHandle.h"
 
@@ -44,6 +45,9 @@ protected:
     auto DoCreateValidationPanel() -> TSharedRef<SWidget>;
     auto DoCreateSearchPanel() -> TSharedRef<SWidget>;
     auto DoCreateActionPanel() -> TSharedRef<SWidget>;
+    auto
+        DoRefreshEntitySelector()
+            -> void;
 
     // Integration with existing ECS subsystem
     auto DoUpdateFromEntitySelection() -> void;
@@ -76,6 +80,8 @@ protected:
     TSharedPtr<SSearchBox> _SearchBox;
     TSharedPtr<STextBlock> _ValidationText;
     TSharedPtr<SVerticalBox> _ContentContainer;
+
+    TSharedPtr<SCkSimpleEntitySelector> _EntitySelector;
 
     TArray<FCk_Handle> _CachedSelectedEntities;
     FString _CurrentSearchText;

@@ -56,14 +56,14 @@ auto FCkDebugToolsStyle::Create() -> TSharedRef<FSlateStyleSet>
         Style->SetContentRoot(FPaths::EngineContentDir() / TEXT("Slate"));
     }
 
-    const auto NormalGray = FLinearColor(0.016f, 0.016f, 0.016f);
-    const auto LightGray = FLinearColor(0.035f, 0.035f, 0.035f);
-    const auto DarkGray = FLinearColor(0.008f, 0.008f, 0.008f);
-    const auto AccentBlue = FLinearColor(0.25f, 0.82f, 0.79f);
-    const auto WarningOrange = FLinearColor(0.88f, 0.37f, 0.37f);
-    const auto DebugPurple = FLinearColor(0.61f, 0.37f, 0.88f);
-    const auto TextWhite = FLinearColor(0.9f, 0.9f, 0.9f);
-    const auto TextGray = FLinearColor(0.6f, 0.6f, 0.6f);
+    constexpr auto NormalGray = FLinearColor(0.016f, 0.016f, 0.016f);
+    constexpr auto LightGray = FLinearColor(0.035f, 0.035f, 0.035f);
+    constexpr auto DarkGray = FLinearColor(0.008f, 0.008f, 0.008f);
+    constexpr auto AccentBlue = FLinearColor(0.25f, 0.82f, 0.79f);
+    constexpr auto WarningOrange = FLinearColor(0.88f, 0.37f, 0.37f);
+    constexpr auto DebugPurple = FLinearColor(0.61f, 0.37f, 0.88f);
+    constexpr auto TextWhite = FLinearColor(0.9f, 0.9f, 0.9f);
+    constexpr auto TextGray = FLinearColor(0.6f, 0.6f, 0.6f);
 
     // Color scheme
     Style->Set("CkDebugTools.Color.Primary", TextWhite);

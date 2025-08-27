@@ -234,10 +234,14 @@ auto
     -> void
 {
     if (NOT UCk_Utils_Transform_UE::Has(SelectionEntity))
-    { return; }
+    {
+        return;
+    }
 
     if (NOT ImGui::BeginTable("Transform", 2, ImGuiTableFlags_SizingFixedFit))
-    { return; }
+    {
+        return;
+    }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -273,7 +277,9 @@ auto
     -> void
 {
     if (NOT ImGui::BeginTable("Network", 2, ImGuiTableFlags_SizingFixedFit))
-    {  return; }
+    {
+        return;
+    }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -292,14 +298,16 @@ auto
     -> void
 {
     if (NOT ImGui::BeginTable("Relationships", 2, ImGuiTableFlags_SizingFixedFit))
-    { return; }
+    {
+        return;
+    }
 
     ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 120.0f);
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
     // Team Information
-    if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity);
-        ck::IsValid(TeamEntity))
+    const auto TeamEntity = UCk_Utils_Team_UE::Cast(SelectionEntity);
+    if (ck::IsValid(TeamEntity))
     {
         const auto TeamID = UCk_Utils_Team_UE::Get_ID(TeamEntity);
         Request_RenderTableRow_Number("Team:", ck::Format_UE(TEXT("{} (Starts from ZERO)"), TeamID));

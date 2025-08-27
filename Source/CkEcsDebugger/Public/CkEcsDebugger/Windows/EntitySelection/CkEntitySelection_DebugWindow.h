@@ -44,15 +44,6 @@ private:
     auto
     DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> bool;
 
-    auto
-    RenderEntityTree(const TArray<FCk_Handle>& Entities) -> bool;
-
-    auto
-    RenderEntityNode(const FCk_Handle& Entity, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> bool;
-
-    static auto
-    Get_EntityDirectChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;
-
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 

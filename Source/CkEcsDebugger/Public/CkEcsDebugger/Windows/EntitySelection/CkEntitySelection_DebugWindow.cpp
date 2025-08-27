@@ -37,6 +37,12 @@ auto
     bHasMenu = true;
 
     Config = GetConfig<UCk_DebugWindowConfig_EntitySelection>();
+
+    // Pre-allocate caches for better performance
+    CachedSelectedEntities.Reserve(2000);
+    CachedSortKeys.Reserve(2000);
+    CachedDebugNames.Reserve(2000);
+    CachedParentToChildren.Reserve(500);
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -221,14 +227,149 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
+    CompareEntitiesDirect(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        const FHierarchicalSortKey* OptionalKeyA,
+        const FHierarchicalSortKey* OptionalKeyB) const
+    -> bool
+{
+    switch (Config->EntitiesListSortingPolicy)
+    {
+        case ECkDebugger_EntitiesListSortingPolicy::ID:
+            return InA < InB;
+
+        case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+        {
+            // Use cached values if available
+            if (OptionalKeyA && OptionalKeyB)
+            {
+                if (OptionalKeyA->EntityNumber != OptionalKeyB->EntityNumber)
+                {
+                    return OptionalKeyA->EntityNumber < OptionalKeyB->EntityNumber;
+                }
+                return OptionalKeyA->VersionNumber < OptionalKeyB->VersionNumber;
+            }
+
+            // Fall back to direct access
+            const auto& EntityA = InA.Get_Entity();
+            const auto& EntityB = InB.Get_Entity();
+
+            if (EntityA.Get_EntityNumber() != EntityB.Get_EntityNumber())
+            {
+                return EntityA.Get_EntityNumber() < EntityB.Get_EntityNumber();
+            }
+            return EntityA.Get_VersionNumber() < EntityB.Get_VersionNumber();
+        }
+
+        case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+        {
+            // Try to use provided keys first
+            if (OptionalKeyA && OptionalKeyB)
+            {
+                return OptionalKeyA->CachedName < OptionalKeyB->CachedName;
+            }
+
+            // Fall back to cache lookup
+            const FString* NameA = CachedDebugNames.Find(InA);
+            const FString* NameB = CachedDebugNames.Find(InB);
+
+            if (NameA && NameB)
+            {
+                return *NameA < *NameB;
+            }
+
+            return InA < InB;
+        }
+
+        default:
+            return InA < InB;
+    }
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    CompareEntities(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        bool bUseHierarchicalSort) const
+    -> bool
+{
+    if (bUseHierarchicalSort)
+    {
+        const FHierarchicalSortKey* KeyA = CachedSortKeys.Find(InA);
+        const FHierarchicalSortKey* KeyB = CachedSortKeys.Find(InB);
+
+        if (!KeyA || !KeyB)
+        {
+            return InA < InB;
+        }
+
+        // Compare parent chains without allocation
+        const int32 MinDepth = FMath::Min(KeyA->ParentChain.Num(), KeyB->ParentChain.Num());
+        for (int32 i = 0; i < MinDepth; i++)
+        {
+            const FCk_Handle& ParentA = KeyA->ParentChain[i];
+            const FCk_Handle& ParentB = KeyB->ParentChain[i];
+
+            if (ParentA != ParentB)
+            {
+                // Get sort keys for parents if available
+                const FHierarchicalSortKey* ParentKeyA = CachedSortKeys.Find(ParentA);
+                const FHierarchicalSortKey* ParentKeyB = CachedSortKeys.Find(ParentB);
+                return CompareEntitiesDirect(ParentA, ParentB, ParentKeyA, ParentKeyB);
+            }
+        }
+
+        // One is parent of the other - parent comes first
+        return KeyA->Depth < KeyB->Depth;
+    }
+
+    // For non-hierarchical sorting, try to use cached sort keys
+    const FHierarchicalSortKey* KeyA = CachedSortKeys.Find(InA);
+    const FHierarchicalSortKey* KeyB = CachedSortKeys.Find(InB);
+
+    return CompareEntitiesDirect(InA, InB, KeyA, KeyB);
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    SortEntitiesArray(
+        TArray<FCk_Handle>& InOutEntities,
+        bool bUseHierarchicalSort) const
+    -> void
+{
+    QUICK_SCOPE_CYCLE_COUNTER(SortEntitiesArray)
+
+    InOutEntities.Sort([this, bUseHierarchicalSort](const FCk_Handle& A, const FCk_Handle& B)
+    {
+        return CompareEntities(A, B, bUseHierarchicalSort);
+    });
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
     Get_EntitiesForList(
         const bool InRequiresUpdate) const
     -> TArray<FCk_Handle>
 {
     QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
 
-    if (NOT InRequiresUpdate)
-    { return CachedSelectedEntities; }
+    // Check if we need to invalidate caches due to config changes
+    const bool bConfigChanged =
+        LastFragmentFilter != Config->EntitiesListFragmentFilteringTypes ||
+        LastDisplayPolicy != Config->EntitiesListDisplayPolicy ||
+        LastSortingPolicy != Config->EntitiesListSortingPolicy;
+
+    if (NOT InRequiresUpdate && NOT bConfigChanged)
+    {
+        return CachedSelectedEntities;
+    }
+
+    // Update last config values
+    LastFragmentFilter = Config->EntitiesListFragmentFilteringTypes;
+    LastDisplayPolicy = Config->EntitiesListDisplayPolicy;
+    LastSortingPolicy = Config->EntitiesListSortingPolicy;
 
     TSet<FCk_Handle> EntitiesSet;
 
@@ -239,90 +380,6 @@ auto
     { return {}; }
 
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
-
-    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
-        switch (Config->EntitiesListSortingPolicy)
-        {
-            case ECkDebugger_EntitiesListSortingPolicy::ID:
-            {
-                return InA < InB;
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            {
-                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
-                {
-                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
-                }
-                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            {
-                // Use cached names if available, otherwise fall back to direct comparison
-                const FString* NameA = CachedDebugNames.Find(InA);
-                const FString* NameB = CachedDebugNames.Find(InB);
-
-                if (NameA && NameB)
-                {
-                    return *NameA < *NameB;
-                }
-
-                return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
-            }
-            default:
-            {
-                return InA < InB;
-            }
-        }
-    };
-
-    const auto& HierarchicalSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        // Intentionally disabled for perf, can be disabled if needed for testing
-        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_HierarchicalSortingFunction)
-        const auto& Get_ParentsArray = [](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
-        {
-            TArray<FCk_Handle> ParentsArray;
-            auto CurrentEntity = InHandle;
-            ParentsArray.Add(CurrentEntity);
-            while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-            {
-                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                ParentsArray.Add(CurrentEntity);
-            }
-            Algo::Reverse(ParentsArray);
-            return ParentsArray;
-        };
-
-        const auto& ParentsArrayA = Get_ParentsArray(InA);
-        const auto& ParentsArrayB = Get_ParentsArray(InB);
-
-        for (int32 i = 0; i < ParentsArrayA.Num() && i < ParentsArrayB.Num(); i++)
-        {
-            if (ParentsArrayA[i] == ParentsArrayB[i])
-            { continue; }
-
-            return BaseSortingFunction(ParentsArrayA[i], ParentsArrayB[i]);
-        }
-
-        // if one is the child of another, sort so the parent is first
-        return ParentsArrayA.Num() < ParentsArrayB.Num();
-    };
-
-    const auto& SortEntities = [&](TArray<FCk_Handle>& InEntities)
-    {
-        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_SortList)
-
-        if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
-        {
-            ck::algo::Sort(InEntities, HierarchicalSortingFunction);
-        }
-        else
-        {
-            ck::algo::Sort(InEntities, BaseSortingFunction);
-        }
-    };
 
     const auto& AddEntityToListFunc = [&](FCk_Entity InEntity)
     {
@@ -399,13 +456,21 @@ auto
 
     auto Entities = EntitiesSet.Array();
 
-    SortEntities(Entities);
+    // Build caches BEFORE sorting so we have the data for efficient sorting
+    BuildCaches(Entities);
+
+    // Sort using cached data
+    {
+        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_SortList)
+
+        const bool bUseHierarchicalSort =
+            (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy);
+
+        SortEntitiesArray(Entities, bUseHierarchicalSort);
+    }
 
     CachedSelectedEntities = Entities;
     LastUpdateTime = Get_CurrentTime();
-
-    // Build all caches after we have the final entity list
-    BuildCaches(Entities);
 
     return Entities;
 }
@@ -426,78 +491,79 @@ auto
     CachedParentToChildren.Reset();
     CachedDebugNames.Reset();
     CachedRootEntities.Reset();
+    CachedSortKeys.Reset();
 
     // Reserve space for better performance
     CachedDebugNames.Reserve(Entities.Num());
+    CachedSortKeys.Reserve(Entities.Num());
     CachedParentToChildren.Reserve(Entities.Num() / 4); // Estimate: not all entities are parents
 
-    // Build debug names cache and parent-child relationships
+    // Build all caches in a single pass
     for (const auto& Entity : Entities)
     {
         // Cache debug name
-        CachedDebugNames.Add(Entity, UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString());
+        FString DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString();
+        CachedDebugNames.Add(Entity, DebugName);
+
+        // Build hierarchical sort key
+        FHierarchicalSortKey& SortKey = CachedSortKeys.Add(Entity);
+        SortKey.CachedName = DebugName;
+        SortKey.EntityNumber = Entity.Get_Entity().Get_EntityNumber();
+        SortKey.VersionNumber = Entity.Get_Entity().Get_VersionNumber();
+
+        // Build parent chain once (this is the expensive operation we're caching)
+        TArray<FCk_Handle> ParentChain;
+        auto CurrentEntity = Entity;
+        ParentChain.Add(CurrentEntity);
+
+        while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
+        {
+            CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+            if (CurrentEntity != TransientEntity && ck::IsValid(CurrentEntity))
+            {
+                ParentChain.Add(CurrentEntity);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        Algo::Reverse(ParentChain);
+        SortKey.ParentChain = MoveTemp(ParentChain);
+        SortKey.Depth = SortKey.ParentChain.Num();
 
         // Build parent-child relationships
         if (Entity.Has<ck::FFragment_LifetimeOwner>())
         {
             const auto Parent = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-            CachedParentToChildren.FindOrAdd(Parent).Add(Entity);
+            if (Parent != TransientEntity && ck::IsValid(Parent))
+            {
+                CachedParentToChildren.FindOrAdd(Parent).Add(Entity);
+            }
+            else
+            {
+                // Entity with TransientEntity as parent is considered root
+                CachedRootEntities.Add(Entity);
+            }
         }
         else
         {
             // This is a root entity
             CachedRootEntities.Add(Entity);
         }
-
-        // Also consider entities whose parent is TransientEntity as root entities
-        if (Entity.Has<ck::FFragment_LifetimeOwner>() &&
-            Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
-        {
-            CachedRootEntities.Add(Entity);
-        }
     }
 
-    // Sort children arrays once using cached names
-    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        switch (Config->EntitiesListSortingPolicy)
-        {
-            case ECkDebugger_EntitiesListSortingPolicy::ID:
-            {
-                return InA < InB;
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            {
-                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
-                {
-                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
-                }
-                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            {
-                const FString* NameA = CachedDebugNames.Find(InA);
-                const FString* NameB = CachedDebugNames.Find(InB);
-
-                if (NameA && NameB)
-                {
-                    return *NameA < *NameB;
-                }
-
-                return InA < InB;
-            }
-            default:
-            {
-                return InA < InB;
-            }
-        }
-    };
-
-    // Sort all children arrays
+    // Sort children arrays once using cached data
     for (auto& [Parent, Children] : CachedParentToChildren)
     {
-        ck::algo::Sort(Children, BaseSortingFunction);
+        SortEntitiesArray(Children, false);  // Children use direct sorting, not hierarchical
     }
+
+    // Also sort root entities
+    TArray<FCk_Handle> RootEntitiesArray = CachedRootEntities.Array();
+    SortEntitiesArray(RootEntitiesArray, false);
+    CachedRootEntities = TSet<FCk_Handle>(RootEntitiesArray);
 }
 
 auto
@@ -579,49 +645,8 @@ auto
     const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
     bool SelectionChanged = false;
 
-    // Get root entities from cache
-    TArray<FCk_Handle> RootEntities = CachedRootEntities.Array();
-
-    // Sort root entities using cached names
-    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        switch (Config->EntitiesListSortingPolicy)
-        {
-            case ECkDebugger_EntitiesListSortingPolicy::ID:
-            {
-                return InA < InB;
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            {
-                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
-                {
-                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
-                }
-                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            {
-                const FString* NameA = CachedDebugNames.Find(InA);
-                const FString* NameB = CachedDebugNames.Find(InB);
-
-                if (NameA && NameB)
-                {
-                    return *NameA < *NameB;
-                }
-
-                return InA < InB;
-            }
-            default:
-            {
-                return InA < InB;
-            }
-        }
-    };
-
-    ck::algo::Sort(RootEntities, BaseSortingFunction);
-
-    // Render each root entity and its children
-    for (const auto& RootEntity : RootEntities)
+    // Use pre-sorted root entities from cache
+    for (const auto& RootEntity : CachedRootEntities)
     {
         if (ck::Is_NOT_Valid(RootEntity))
         { continue; }

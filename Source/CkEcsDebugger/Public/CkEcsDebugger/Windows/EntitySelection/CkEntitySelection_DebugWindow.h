@@ -32,6 +32,16 @@ protected:
         float InDeltaT) -> void override;
 
 private:
+    // Hierarchical sorting cache structure
+    struct FHierarchicalSortKey
+    {
+        TArray<FCk_Handle> ParentChain;  // Root to entity path
+        FString CachedName;               // For alphabetical sorting
+        int32 Depth;                      // Hierarchy depth
+        uint32 EntityNumber;              // Cached for number sorting
+        uint32 VersionNumber;             // Cached for number sorting
+    };
+
     auto
     Get_CurrentTime() const -> FCk_Time;
 
@@ -60,6 +70,25 @@ private:
         const FCk_Handle& TransientEntity,
         bool OpenAllChildren) -> bool;
 
+    // Unified sorting functions
+    auto
+    CompareEntities(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        bool bUseHierarchicalSort) const -> bool;
+
+    auto
+    CompareEntitiesDirect(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        const FHierarchicalSortKey* OptionalKeyA = nullptr,
+        const FHierarchicalSortKey* OptionalKeyB = nullptr) const -> bool;
+
+    auto
+    SortEntitiesArray(
+        TArray<FCk_Handle>& InOutEntities,
+        bool bUseHierarchicalSort) const -> void;
+
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
 
@@ -73,6 +102,14 @@ private:
     mutable TMap<FCk_Handle, FString> CachedDebugNames;
     mutable TMap<FCk_Handle, bool> CachedFilterResults;
     mutable TSet<FCk_Handle> CachedRootEntities;
+
+    // Hierarchical sorting cache
+    mutable TMap<FCk_Handle, FHierarchicalSortKey> CachedSortKeys;
+
+    // Track if caches need rebuild
+    mutable ECkDebugger_EntitiesListFragmentFilteringTypes LastFragmentFilter = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
+    mutable ECkDebugger_EntitiesListDisplayPolicy LastDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
+    mutable ECkDebugger_EntitiesListSortingPolicy LastSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

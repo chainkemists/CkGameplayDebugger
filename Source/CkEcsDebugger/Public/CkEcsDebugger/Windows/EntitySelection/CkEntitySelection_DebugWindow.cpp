@@ -60,6 +60,8 @@ auto
 {
     Super::RenderContent();
 
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_EntitySelection_DebugWindow_RenderContent)
+
     auto RequiresUpdate = false;
 
     if (ImGui::BeginMenuBar())
@@ -150,6 +152,23 @@ auto
             ImGui::EndMenu();
         }
 
+        // Display entity count and update mode in the menu bar
+        ImGui::Separator();
+
+        const auto UpdateModeStr = [&]() -> const char*
+        {
+            switch (Config->EntitiesListUpdatePolicy)
+            {
+                case ECkDebugger_EntitiesListUpdatePolicy::OnButton:    return "Manual";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:    return "Per Frame";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:   return "Per Second";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds: return "Per 10s";
+                default: return "Unknown";
+            }
+        }();
+
+        ImGui::Text(" | Entities: %d | Update: %s", CachedSelectedEntities.Num(), UpdateModeStr);
+
         ImGui::EndMenuBar();
     }
 
@@ -223,7 +242,7 @@ auto
 
     const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
     {
-        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
+        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
         switch (Config->EntitiesListSortingPolicy)
         {
             case ECkDebugger_EntitiesListSortingPolicy::ID:
@@ -240,6 +259,15 @@ auto
             }
             case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
             {
+                // Use cached names if available, otherwise fall back to direct comparison
+                const FString* NameA = CachedDebugNames.Find(InA);
+                const FString* NameB = CachedDebugNames.Find(InB);
+
+                if (NameA && NameB)
+                {
+                    return *NameA < *NameB;
+                }
+
                 return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
             }
             default:
@@ -311,14 +339,6 @@ auto
             Handle.Get<ck::FFragment_LifetimeOwner>().Get_Entity() != TransientEntity)
         { return; }
 
-        if (_Filter.IsActive())
-        {
-            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
-            const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
-            if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
-            { return; }
-        }
-
         EntitiesSet.Add(Handle);
     };
 
@@ -384,7 +404,100 @@ auto
     CachedSelectedEntities = Entities;
     LastUpdateTime = Get_CurrentTime();
 
+    // Build all caches after we have the final entity list
+    BuildCaches(Entities);
+
     return Entities;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    BuildCaches(
+        const TArray<FCk_Handle>& Entities) const
+    -> void
+{
+    QUICK_SCOPE_CYCLE_COUNTER(BuildCaches)
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+    const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+
+    // Clear all caches
+    CachedParentToChildren.Reset();
+    CachedDebugNames.Reset();
+    CachedRootEntities.Reset();
+
+    // Reserve space for better performance
+    CachedDebugNames.Reserve(Entities.Num());
+    CachedParentToChildren.Reserve(Entities.Num() / 4); // Estimate: not all entities are parents
+
+    // Build debug names cache and parent-child relationships
+    for (const auto& Entity : Entities)
+    {
+        // Cache debug name
+        CachedDebugNames.Add(Entity, UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString());
+
+        // Build parent-child relationships
+        if (Entity.Has<ck::FFragment_LifetimeOwner>())
+        {
+            const auto Parent = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+            CachedParentToChildren.FindOrAdd(Parent).Add(Entity);
+        }
+        else
+        {
+            // This is a root entity
+            CachedRootEntities.Add(Entity);
+        }
+
+        // Also consider entities whose parent is TransientEntity as root entities
+        if (Entity.Has<ck::FFragment_LifetimeOwner>() &&
+            Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
+        {
+            CachedRootEntities.Add(Entity);
+        }
+    }
+
+    // Sort children arrays once using cached names
+    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
+    {
+        switch (Config->EntitiesListSortingPolicy)
+        {
+            case ECkDebugger_EntitiesListSortingPolicy::ID:
+            {
+                return InA < InB;
+            }
+            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+            {
+                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+                {
+                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+                }
+                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+            }
+            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+            {
+                const FString* NameA = CachedDebugNames.Find(InA);
+                const FString* NameB = CachedDebugNames.Find(InB);
+
+                if (NameA && NameB)
+                {
+                    return *NameA < *NameB;
+                }
+
+                return InA < InB;
+            }
+            default:
+            {
+                return InA < InB;
+            }
+        }
+    };
+
+    // Sort all children arrays
+    for (auto& [Parent, Children] : CachedParentToChildren)
+    {
+        ck::algo::Sort(Children, BaseSortingFunction);
+    }
 }
 
 auto
@@ -401,10 +514,43 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
+    UpdateFilterCache() const
+    -> void
+{
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_EntitySelection_DebugWindow_UpdateFilterCache)
+
+    CachedFilterResults.Reset();
+
+    if (_Filter.IsActive())
+    {
+        CachedFilterResults.Reserve(CachedDebugNames.Num());
+
+        for (const auto& [Entity, CachedName] : CachedDebugNames)
+        {
+            const auto NameANSI = StringCast<ANSICHAR>(*CachedName);
+            CachedFilterResults.Add(Entity, _Filter.PassFilter(NameANSI.Get()));
+        }
+    }
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
     DisplayEntitiesListWithFilters(bool InRequiresUpdate)
     -> bool
 {
+    QUICK_SCOPE_CYCLE_COUNTER(FCk_EntitySelection_DebugWindow_DisplayEntitiesListWithFilters)
+
+    // Track if filter changed
+    const auto OldFilterInputBuf = FString(ANSI_TO_TCHAR(_Filter.InputBuf));
+
     FCogWidgets::SearchBar("##Filter", _Filter);
+
+    // Check if filter text changed and update cache
+    const auto NewFilterInputBuf = FString(ANSI_TO_TCHAR(_Filter.InputBuf));
+    if (OldFilterInputBuf != NewFilterInputBuf)
+    {
+        UpdateFilterCache();
+    }
 
     ImGui::Separator();
 
@@ -433,18 +579,10 @@ auto
     const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
     bool SelectionChanged = false;
 
-    // Only render root entities (entities without lifetime owners, or whose lifetime owner is TransientEntity)
-    TArray<FCk_Handle> RootEntities;
-    for (const auto& Entity : Entities)
-    {
-        if (NOT Entity.Has<ck::FFragment_LifetimeOwner>() ||
-            Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity() == TransientEntity)
-        {
-            RootEntities.Add(Entity);
-        }
-    }
+    // Get root entities from cache
+    TArray<FCk_Handle> RootEntities = CachedRootEntities.Array();
 
-    // Sort root entities using the base sorting function
+    // Sort root entities using cached names
     const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
     {
         switch (Config->EntitiesListSortingPolicy)
@@ -463,7 +601,15 @@ auto
             }
             case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
             {
-                return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+                const FString* NameA = CachedDebugNames.Find(InA);
+                const FString* NameB = CachedDebugNames.Find(InB);
+
+                if (NameA && NameB)
+                {
+                    return *NameA < *NameB;
+                }
+
+                return InA < InB;
             }
             default:
             {
@@ -506,17 +652,22 @@ auto
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
 
-    // Get entity debug name for filtering
-    const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
-    const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+    // Get cached debug name
+    const FString* CachedDebugName = CachedDebugNames.Find(Entity);
+    if (!CachedDebugName)
+    { return false; }
 
-    // Check if this node should be shown based on filter
-    const bool ShowNode = NOT _Filter.IsActive() || _Filter.PassFilter(DebugNameANSI.Get());
+    // Check filter result from cache
+    bool ShowNode = true;
+    if (_Filter.IsActive())
+    {
+        const bool* FilterResult = CachedFilterResults.Find(Entity);
+        ShowNode = FilterResult && *FilterResult;
+    }
 
-    // Get children of this entity
-    const auto& AllEntities = Get_EntitiesForList(false);
-    const auto Children = Get_EntityDirectChildren(Entity, AllEntities);
-    const bool HasChildren = Children.Num() > 0;
+    // Get children from cache
+    const TArray<FCk_Handle>* ChildrenPtr = CachedParentToChildren.Find(Entity);
+    const bool HasChildren = ChildrenPtr && ChildrenPtr->Num() > 0;
 
     bool SelectionChanged = false;
 
@@ -572,8 +723,8 @@ auto
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
         }
 
-        // Create the tree node
-        const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
+        // Create the tree node using cached name
+        const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), *CachedDebugName, Entity.Get_Entity()).c_str();
         bool OpenChildren = false;
 
         if (HasChildren && NOT _Filter.IsActive())
@@ -659,37 +810,17 @@ auto
             ImGui::PopStyleColor();
         }
 
-        // Render children
+        // Render children (use cached sorted children)
         if (OpenChildren || _Filter.IsActive())
         {
-            // Sort children using the same sorting function
-            const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
+            if (ChildrenPtr)
             {
-                switch (Config->EntitiesListSortingPolicy)
+                for (const auto& Child : *ChildrenPtr)
                 {
-                    case ECkDebugger_EntitiesListSortingPolicy::ID:
-                        return InA < InB;
-                    case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-                        if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
-                        {
-                            return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
-                        }
-                        return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-                    case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-                        return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
-                    default:
-                        return InA < InB;
-                }
-            };
-
-            auto SortedChildren = Children;
-            ck::algo::Sort(SortedChildren, BaseSortingFunction);
-
-            for (const auto& Child : SortedChildren)
-            {
-                if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
-                {
-                    SelectionChanged = true;
+                    if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
+                    {
+                        SelectionChanged = true;
+                    }
                 }
             }
         }
@@ -705,38 +836,19 @@ auto
     {
         // If this node is filtered out but filter is active, still check children
         // in case they match the filter
-        for (const auto& Child : Children)
+        if (ChildrenPtr)
         {
-            if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
+            for (const auto& Child : *ChildrenPtr)
             {
-                SelectionChanged = true;
+                if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
+                {
+                    SelectionChanged = true;
+                }
             }
         }
     }
 
     return SelectionChanged;
-}
-
-auto
-    FCk_EntitySelection_DebugWindow::
-    Get_EntityDirectChildren(
-        const FCk_Handle& Entity,
-        const TArray<FCk_Handle>& AllEntities)
-    -> TArray<FCk_Handle>
-{
-    return ck::algo::Filter(AllEntities, [&](const FCk_Handle& PotentialChild) -> bool
-    {
-        if (ck::Is_NOT_Valid(PotentialChild))
-        { return false; }
-
-        if (PotentialChild.Has<ck::FFragment_LifetimeOwner>())
-        {
-            const auto& LifetimeOwner = PotentialChild.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-            return LifetimeOwner == Entity;
-        }
-
-        return false;
-    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------

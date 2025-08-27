@@ -39,6 +39,12 @@ private:
     Get_EntitiesForList(bool InRequiresUpdate) const -> TArray<FCk_Handle>;
 
     auto
+    BuildCaches(const TArray<FCk_Handle>& Entities) const -> void;
+
+    auto
+    UpdateFilterCache() const -> void;
+
+    auto
     DisplayEntitiesList(bool InRequiresUpdate) -> bool;
 
     auto
@@ -48,10 +54,11 @@ private:
     RenderEntityTree(const TArray<FCk_Handle>& Entities) -> bool;
 
     auto
-    RenderEntityNode(const FCk_Handle& Entity, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> bool;
-
-    static auto
-    Get_EntityDirectChildren(const FCk_Handle& Entity, const TArray<FCk_Handle>& AllEntities) -> TArray<FCk_Handle>;
+    RenderEntityNode(
+        const FCk_Handle& Entity,
+        const TArray<FCk_Handle>& SelectedEntities,
+        const FCk_Handle& TransientEntity,
+        bool OpenAllChildren) -> bool;
 
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;
@@ -60,6 +67,12 @@ private:
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;
+
+    // Performance optimization caches
+    mutable TMap<FCk_Handle, TArray<FCk_Handle>> CachedParentToChildren;
+    mutable TMap<FCk_Handle, FString> CachedDebugNames;
+    mutable TMap<FCk_Handle, bool> CachedFilterResults;
+    mutable TSet<FCk_Handle> CachedRootEntities;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

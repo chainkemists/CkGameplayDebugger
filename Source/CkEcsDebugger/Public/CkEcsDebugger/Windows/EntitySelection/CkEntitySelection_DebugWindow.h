@@ -101,11 +101,12 @@ private:
     mutable TMap<FCk_Handle, TArray<FCk_Handle>> CachedParentToChildren;
     mutable TMap<FCk_Handle, FString> CachedDebugNames;
     mutable TMap<FCk_Handle, bool> CachedFilterResults;
+    mutable TSet<FCk_Handle> CachedFilterDirectMatches;  // Entities that directly match the filter
     mutable TSet<FCk_Handle> CachedRootEntities;
-
+    
     // Hierarchical sorting cache
     mutable TMap<FCk_Handle, FHierarchicalSortKey> CachedSortKeys;
-
+    
     // Track if caches need rebuild
     mutable ECkDebugger_EntitiesListFragmentFilteringTypes LastFragmentFilter = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
     mutable ECkDebugger_EntitiesListDisplayPolicy LastDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;

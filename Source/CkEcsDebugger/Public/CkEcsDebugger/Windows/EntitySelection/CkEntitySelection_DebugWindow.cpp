@@ -341,10 +341,18 @@ auto
 {
     QUICK_SCOPE_CYCLE_COUNTER(SortEntitiesArray)
 
+    // For now, use standard sort. Could potentially use Algo::Sort which might have better performance
+    // characteristics for certain data patterns
     InOutEntities.Sort([this, bUseHierarchicalSort](const FCk_Handle& A, const FCk_Handle& B)
     {
         return CompareEntities(A, B, bUseHierarchicalSort);
     });
+
+    // Alternative: Algo::Sort might have better performance for some cases
+    // Algo::Sort(InOutEntities, [this, bUseHierarchicalSort](const FCk_Handle& A, const FCk_Handle& B)
+    // {
+    //     return CompareEntities(A, B, bUseHierarchicalSort);
+    // });
 }
 
 auto
@@ -586,15 +594,44 @@ auto
     QUICK_SCOPE_CYCLE_COUNTER(FCk_EntitySelection_DebugWindow_UpdateFilterCache)
 
     CachedFilterResults.Reset();
+    CachedFilterDirectMatches.Reset();
 
     if (_Filter.IsActive())
     {
         CachedFilterResults.Reserve(CachedDebugNames.Num());
 
+        // First pass: Check which entities directly match the filter
         for (const auto& [Entity, CachedName] : CachedDebugNames)
         {
             const auto NameANSI = StringCast<ANSICHAR>(*CachedName);
-            CachedFilterResults.Add(Entity, _Filter.PassFilter(NameANSI.Get()));
+            const bool bMatches = _Filter.PassFilter(NameANSI.Get());
+
+            if (bMatches)
+            {
+                CachedFilterDirectMatches.Add(Entity);
+                CachedFilterResults.Add(Entity, true);
+            }
+        }
+
+        // Second pass: Mark all parents of matching entities as needing to be shown
+        // This ensures the tree structure is preserved when filtering
+        for (const auto& MatchingEntity : CachedFilterDirectMatches)
+        {
+            // Get the parent chain from cached sort keys
+            const FHierarchicalSortKey* SortKey = CachedSortKeys.Find(MatchingEntity);
+            if (SortKey)
+            {
+                // Add all parents in the chain (except the entity itself)
+                for (int32 i = 0; i < SortKey->ParentChain.Num() - 1; ++i)
+                {
+                    const FCk_Handle& Parent = SortKey->ParentChain[i];
+                    // Mark parent as visible (but not as a direct match)
+                    if (!CachedFilterResults.Contains(Parent))
+                    {
+                        CachedFilterResults.Add(Parent, true);
+                    }
+                }
+            }
         }
     }
 }
@@ -684,15 +721,32 @@ auto
 
     // Check filter result from cache
     bool ShowNode = true;
+    bool IsDirectFilterMatch = false;
     if (_Filter.IsActive())
     {
         const bool* FilterResult = CachedFilterResults.Find(Entity);
         ShowNode = FilterResult && *FilterResult;
+        IsDirectFilterMatch = CachedFilterDirectMatches.Contains(Entity);
     }
 
     // Get children from cache
     const TArray<FCk_Handle>* ChildrenPtr = CachedParentToChildren.Find(Entity);
     const bool HasChildren = ChildrenPtr && ChildrenPtr->Num() > 0;
+
+    // Check if any children need to be shown (for proper tree rendering during filtering)
+    bool HasVisibleChildren = false;
+    if (_Filter.IsActive() && HasChildren)
+    {
+        for (const auto& Child : *ChildrenPtr)
+        {
+            const bool* ChildFilterResult = CachedFilterResults.Find(Child);
+            if (ChildFilterResult && *ChildFilterResult)
+            {
+                HasVisibleChildren = true;
+                break;
+            }
+        }
+    }
 
     bool SelectionChanged = false;
 
@@ -700,7 +754,12 @@ auto
     {
         ImGui::PushID(static_cast<int32>(Entity.Get_Entity().Get_ID()));
 
-        if (OpenAllChildren)
+        // When filter is active, auto-expand nodes that have matching children
+        if (_Filter.IsActive() && HasVisibleChildren)
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        }
+        else if (OpenAllChildren)
         {
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         }
@@ -711,7 +770,9 @@ auto
 
         // Determine tree node flags
         ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
-        if (HasChildren && NOT _Filter.IsActive())
+
+        // Show proper tree structure even when filtering
+        if (HasChildren && (HasVisibleChildren || !_Filter.IsActive()))
         {
             NodeFlags |= ImGuiTreeNodeFlags_OpenOnArrow;
         }
@@ -741,24 +802,113 @@ auto
             return DebuggerSubsystem->Get_ActorOnSelectedWorld(ClientWorldLocalPlayerPawn);
         }();
 
-        // Set color for local player pawn
+        // Set color for local player pawn or filter matches
         const bool IsLocalPlayer = EntityActor != nullptr && EntityActor == LocalPlayerPawn;
+
+        // Apply different styling based on filter state for non-matching parents
+        bool PushedColor = false;
         if (IsLocalPlayer)
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255)); // Yellow for local player
+            PushedColor = true;
+        }
+        else if (_Filter.IsActive() && ShowNode && !IsDirectFilterMatch)
+        {
+            // Dim parents that are only shown for context
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255)); // Gray for context parents
+            PushedColor = true;
         }
 
-        // Create the tree node using cached name
-        const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), *CachedDebugName, Entity.Get_Entity()).c_str();
+        // Create the tree node
         bool OpenChildren = false;
 
-        if (HasChildren && NOT _Filter.IsActive())
+        // For direct filter matches, we need to render the label with highlighted matching text
+        if (_Filter.IsActive() && IsDirectFilterMatch && !IsLocalPlayer)
         {
-            OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+            // Create a unique ID for the tree node without displaying text
+            const std::string NodeId = ck::Format_ANSI(TEXT("##Entity_{}"), Entity.Get_Entity().Get_ID()).c_str();
+
+            if (HasChildren && (HasVisibleChildren || !_Filter.IsActive()))
+            {
+                OpenChildren = ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
+            }
+            else
+            {
+                ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
+            }
+
+            // Now render the text with highlighting on the same line
+            ImGui::SameLine(0, 0);
+
+            // Convert to std::string for easier manipulation
+            const std::string FullText = ck::Format_ANSI(TEXT("{} [{}]"), *CachedDebugName, Entity.Get_Entity()).c_str();
+            const std::string FilterText = _Filter.InputBuf;
+
+            // Case-insensitive search
+            std::string LowerFullText = FullText;
+            std::string LowerFilterText = FilterText;
+            std::ranges::transform(LowerFullText, LowerFullText.begin(), ::tolower);
+            std::ranges::transform(LowerFilterText, LowerFilterText.begin(), ::tolower);
+
+            const auto Pos = LowerFullText.find(LowerFilterText);
+
+            if (Pos != std::string::npos)
+            {
+                const auto& Before = FullText.substr(0, Pos);
+                const auto& Match = FullText.substr(Pos, FilterText.length());
+                const auto& After = FullText.substr(Pos + FilterText.length());
+
+                // Render the text before the match
+                if (!Before.empty())
+                {
+                    ImGui::TextUnformatted(Before.c_str());
+                    ImGui::SameLine(0.0f, 0.0f);
+                }
+
+                // Get the current cursor position for the match
+                const auto& MatchStartPos = ImGui::GetCursorScreenPos();
+
+                // Calculate the size of the match text
+                const auto& MatchSize = ImGui::CalcTextSize(Match.c_str());
+
+                const auto& HighlightColor = ImVec4(0.31f, 0.31f, 0.33f, 1.f);
+
+                auto* DrawList = ImGui::GetWindowDrawList();
+                DrawList->AddRectFilled(
+                    MatchStartPos,
+                    ImVec2(MatchStartPos.x + MatchSize.x, MatchStartPos.y + MatchSize.y),
+                    ImGui::ColorConvertFloat4ToU32(HighlightColor));
+
+                // Render the matched text over the background (in bright green)
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 0, 255));
+                ImGui::TextUnformatted(Match.c_str());
+                ImGui::PopStyleColor();
+
+                if (!After.empty())
+                {
+                    ImGui::SameLine(0.0f, 0.0f);
+                    ImGui::TextUnformatted(After.c_str());
+                }
+            }
+            else
+            {
+                // Fallback if we can't find the match (shouldn't happen)
+                ImGui::TextUnformatted(FullText.c_str());
+            }
         }
         else
         {
-            ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+            // Normal rendering for non-filtered or non-matching entities
+            const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), *CachedDebugName, Entity.Get_Entity()).c_str();
+
+            if (HasChildren && (HasVisibleChildren || !_Filter.IsActive()))
+            {
+                OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+            }
+            else
+            {
+                ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+            }
         }
 
         // Handle selection
@@ -826,17 +976,29 @@ auto
             {
                 ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
             }
+            if (_Filter.IsActive())
+            {
+                if (IsDirectFilterMatch)
+                {
+                    ImGui::Text("(Matches filter)");
+                }
+                else
+                {
+                    ImGui::Text("(Parent of filtered entity)");
+                }
+            }
             ImGui::Text("Hold Ctrl+Click for multi-select");
             ImGui::EndTooltip();
         }
 
-        if (IsLocalPlayer)
+        // Pop style color based on what was pushed
+        if (PushedColor)
         {
             ImGui::PopStyleColor();
         }
 
-        // Render children (use cached sorted children)
-        if (OpenChildren || _Filter.IsActive())
+        // Render children
+        if (OpenChildren || (_Filter.IsActive() && HasVisibleChildren))
         {
             if (ChildrenPtr)
             {
@@ -856,21 +1018,6 @@ auto
         }
 
         ImGui::PopID();
-    }
-    else if (_Filter.IsActive())
-    {
-        // If this node is filtered out but filter is active, still check children
-        // in case they match the filter
-        if (ChildrenPtr)
-        {
-            for (const auto& Child : *ChildrenPtr)
-            {
-                if (RenderEntityNode(Child, SelectedEntities, TransientEntity, OpenAllChildren))
-                {
-                    SelectionChanged = true;
-                }
-            }
-        }
     }
 
     return SelectionChanged;

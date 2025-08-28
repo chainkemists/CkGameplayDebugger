@@ -39,10 +39,10 @@ private:
     Get_EntitiesForList(bool InRequiresUpdate) const -> TArray<FCk_Handle>;
 
     auto
-    DisplayEntitiesList(bool InRequiresUpdate) -> bool;
+    DisplayEntitiesList(bool InRequiresUpdate) -> void;
 
     auto
-    DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> bool;
+    DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> void;
 
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;

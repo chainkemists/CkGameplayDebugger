@@ -37,6 +37,8 @@ auto
     bHasMenu = true;
 
     Config = GetConfig<UCk_DebugWindowConfig_EntitySelection>();
+
+    CachedSelectedEntitiesSet = std::set<FCk_Handle, FCk_EntitySelectionComparisonFunc>(FCk_EntitySelectionComparisonFunc{Config});
 }
 
 //--------------------------------------------------------------------------------------------------------------------------
@@ -61,6 +63,14 @@ auto
     Super::RenderContent();
 
     auto RequiresUpdate = false;
+    auto RequiresRefreshCaches = false;
+
+    if (IsFirstUpdate)
+    {
+        RequiresUpdate = true;
+        RequiresRefreshCaches = true;
+        IsFirstUpdate = false;
+    }
 
     if (ImGui::BeginMenuBar())
     {
@@ -75,6 +85,7 @@ auto
             Config->EntitiesListDisplayPolicy = static_cast<ECkDebugger_EntitiesListDisplayPolicy>(EnumAsInt);
 
             RequiresUpdate |= OldEnum != EnumAsInt;
+            RequiresRefreshCaches |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
 
@@ -90,6 +101,7 @@ auto
             Config->EntitiesListSortingPolicy = static_cast<ECkDebugger_EntitiesListSortingPolicy>(EnumAsInt);
 
             RequiresUpdate |= OldEnum != EnumAsInt;
+            RequiresRefreshCaches |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
 
@@ -109,6 +121,7 @@ auto
             Config->EntitiesListFragmentFilteringTypes = static_cast<ECkDebugger_EntitiesListFragmentFilteringTypes>(EnumAsInt);
 
             RequiresUpdate |= OldEnum != EnumAsInt;
+            RequiresRefreshCaches |= OldEnum != EnumAsInt;
             ImGui::EndMenu();
         }
 
@@ -125,10 +138,13 @@ auto
             Config->EntitiesListUpdatePolicy = static_cast<ECkDebugger_EntitiesListUpdatePolicy>(EnumAsInt);
 
             RequiresUpdate |= OldEnum != EnumAsInt;
+            RequiresRefreshCaches |= OldEnum != EnumAsInt;
 
             if (Config->EntitiesListUpdatePolicy == ECkDebugger_EntitiesListUpdatePolicy::OnButton)
             {
-                RequiresUpdate |= ImGui::Button("Do Update");
+                const auto& UpdateButton = ImGui::Button("Do Update");
+                RequiresUpdate |= UpdateButton;
+                RequiresRefreshCaches |= UpdateButton;
             }
 
             ImGui::EndMenu();
@@ -181,18 +197,20 @@ auto
         case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(1);
+            RequiresRefreshCaches |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(1);
             break;
         }
         case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(10);
+            RequiresRefreshCaches |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(10);
             break;
         }
         default:
             break;
     }
 
-    RenderEntitiesWithFilters(RequiresUpdate);
+    RenderEntitiesWithFilters(RequiresUpdate, RequiresRefreshCaches);
 }
 
 auto
@@ -218,7 +236,8 @@ auto
 auto
     FCk_EntitySelection_DebugWindow::
     Get_EntitiesForList(
-        const bool InRequiresUpdate) const
+        const bool InRequiresUpdate,
+        bool InRefreshCache) const
     -> TArray<FCk_Handle>
 {
     QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
@@ -226,7 +245,10 @@ auto
     if (NOT InRequiresUpdate)
     { return CachedSelectedEntities; }
 
-    TSet<FCk_Handle> EntitiesSet;
+    if (InRefreshCache)
+    {
+        CachedSelectedEntitiesSet.clear();
+    }
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -236,87 +258,11 @@ auto
 
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
 
-    const auto& BaseSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        // Intentionally disabled for perf, can be disabled if needed for testing
-        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_BaseSortingFunction)
-        switch (Config->EntitiesListSortingPolicy)
-        {
-            case ECkDebugger_EntitiesListSortingPolicy::ID:
-            {
-                return InA < InB;
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
-            {
-                if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
-                {
-                    return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
-                }
-                return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
-            }
-            case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
-            {
-                return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
-            }
-            default:
-            {
-                return InA < InB;
-            }
-        }
-    };
-
-    const auto& HierarchicalSortingFunction = [&](const FCk_Handle& InA, const FCk_Handle& InB)
-    {
-        // Intentionally disabled for perf, can be disabled if needed for testing
-        // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_HierarchicalSortingFunction)
-        const auto& Get_ParentsArray = [](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
-        {
-            TArray<FCk_Handle> ParentsArray;
-            auto CurrentEntity = InHandle;
-            ParentsArray.Add(CurrentEntity);
-            while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-            {
-                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                ParentsArray.Add(CurrentEntity);
-            }
-            Algo::Reverse(ParentsArray);
-            return ParentsArray;
-        };
-
-        const auto& ParentsArrayA = Get_ParentsArray(InA);
-        const auto& ParentsArrayB = Get_ParentsArray(InB);
-
-        for (int32 i = 0; i < ParentsArrayA.Num() && i < ParentsArrayB.Num(); i++)
-        {
-            if (ParentsArrayA[i] == ParentsArrayB[i])
-            { continue; }
-
-            return BaseSortingFunction(ParentsArrayA[i], ParentsArrayB[i]);
-        }
-
-        // if one is the child of another, sort so the parent is first
-        return ParentsArrayA.Num() < ParentsArrayB.Num();
-    };
-
-    const auto& SortEntities = [&](TArray<FCk_Handle>& InEntities)
-    {
-        QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_SortList)
-
-        if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
-        {
-            ck::algo::Sort(InEntities, HierarchicalSortingFunction);
-        }
-        else
-        {
-            ck::algo::Sort(InEntities, BaseSortingFunction);
-        }
-    };
-
     const auto& AddEntityToListFunc = [&](FCk_Entity InEntity)
     {
         const auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 
-        if (EntitiesSet.Contains(Handle))
+        if (CachedSelectedEntitiesSet.contains(Handle))
         { return; }
 
         if (Handle == TransientEntity)
@@ -327,7 +273,21 @@ auto
             Handle.Get<ck::FFragment_LifetimeOwner>().Get_Entity() != TransientEntity)
         { return; }
 
-        EntitiesSet.Add(Handle);
+        CachedSelectedEntitiesSet.emplace(Handle);
+
+        // If displaying as hierarchy, show all parents of entities shown, otherwise their context in the hierarchy won't make sense
+        if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
+        {
+            auto CurrentEntity = Handle;
+            while (ck::IsValid(CurrentEntity) &&
+                CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
+            {
+                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+                if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(CurrentEntity))
+                { break; }
+                CachedSelectedEntitiesSet.emplace(CurrentEntity);
+            }
+        }
     };
 
     {
@@ -336,23 +296,49 @@ auto
         if (Config->EntitiesListFragmentFilteringTypes == ECkDebugger_EntitiesListFragmentFilteringTypes::None)
         {
             // Hack: View requires at least one fragment to search for, LifetimeOwner is used since it should exist on all entities
-            TransientEntity.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
-                [&](FCk_Entity InEntity,
-                const ck::FFragment_LifetimeOwner& InFragment)
-                {
-                    AddEntityToListFunc(InEntity);
-                });
+            if (InRefreshCache)
+            {
+                TransientEntity.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
+                    [&](FCk_Entity InEntity,
+                    const ck::FFragment_LifetimeOwner& InFragment)
+                    {
+                        AddEntityToListFunc(InEntity);
+                    });
+            }
+            else
+            {
+                TransientEntity.View<ck::FFragment_LifetimeOwner, ck::FTag_EntityJustCreated, CK_IGNORE_PENDING_KILL>().ForEach(
+                    [&](FCk_Entity InEntity,
+                    const ck::FFragment_LifetimeOwner& InFragment)
+                    {
+                        AddEntityToListFunc(InEntity);
+                    });
+            }
         }
         else
         {
             #define ADD_FILTERED_ENTITIES_FOR_FRAGMENT(_EnumName_, _Fragment_)\
-            if (EnumHasAnyFlags(Config->EntitiesListFragmentFilteringTypes, ECkDebugger_EntitiesListFragmentFilteringTypes::_EnumName_))\
+            if (InRefreshCache)\
             {\
-                TransientEntity.View<_Fragment_, CK_IGNORE_PENDING_KILL>().ForEach(\
-                    [&](FCk_Entity InEntity, const _Fragment_& InFragment)\
-                    {\
-                        AddEntityToListFunc(InEntity);\
-                    });\
+                if (EnumHasAnyFlags(Config->EntitiesListFragmentFilteringTypes, ECkDebugger_EntitiesListFragmentFilteringTypes::_EnumName_))\
+                {\
+                    TransientEntity.View<_Fragment_, CK_IGNORE_PENDING_KILL>().ForEach(\
+                        [&](FCk_Entity InEntity, const _Fragment_& InFragment)\
+                        {\
+                            AddEntityToListFunc(InEntity);\
+                        });\
+                }\
+            }\
+            else\
+            {\
+                if (EnumHasAnyFlags(Config->EntitiesListFragmentFilteringTypes, ECkDebugger_EntitiesListFragmentFilteringTypes::_EnumName_))\
+                {\
+                    TransientEntity.View<_Fragment_, ck::FTag_EntityJustCreated, CK_IGNORE_PENDING_KILL>().ForEach(\
+                        [&](FCk_Entity InEntity, const _Fragment_& InFragment)\
+                        {\
+                            AddEntityToListFunc(InEntity);\
+                        });\
+                }\
             }
 
             ADD_FILTERED_ENTITIES_FOR_FRAGMENT(Attribute, ck::TFragment_ByteAttribute<ECk_MinMaxCurrent::Current>)
@@ -369,25 +355,17 @@ auto
         }
     }
 
-    // If displaying as hierarchy, show all parents of entities shown, otherwise their context in the hierarchy won't make sense
-    if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
+    std::erase_if(CachedSelectedEntitiesSet, [](const FCk_Handle& InHandle)
     {
-        for (auto EntitiesTempArray = EntitiesSet.Array();
-             const auto& Entity : EntitiesTempArray)
-        {
-            auto CurrentEntity = Entity;
-            while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-            {
-                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                EntitiesSet.Add(CurrentEntity);
-            }
-        }
-        EntitiesSet.Remove(TransientEntity);
-    }
+        return ck::Is_NOT_Valid(InHandle);
+    });
 
-    auto Entities = EntitiesSet.Array();
-
-    SortEntities(Entities);
+    auto Entities = TArray<FCk_Handle>{};
+    Entities.Reserve(CachedSelectedEntitiesSet.size());
+    for (const auto& Handle : CachedSelectedEntitiesSet)
+    {
+        Entities.Add(Handle);
+    };
 
     CachedSelectedEntities = Entities;
     LastUpdateTime = Get_CurrentTime();
@@ -448,12 +426,12 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    RenderEntitiesWithFilters(bool InRequiresUpdate)
+    RenderEntitiesWithFilters(bool InRequiresUpdate, bool InRefreshCache)
     -> void
 {
     const auto& SearchChanged = FCogWidgets::SearchBar("##Filter", _Filter);
 
-    auto Entities = Get_EntitiesForList(InRequiresUpdate);
+    auto Entities = Get_EntitiesForList(InRequiresUpdate, InRefreshCache);
 
     if (SearchChanged || InRequiresUpdate)
     {
@@ -872,7 +850,7 @@ auto
         };
 
         while (CurrentIndex < Entities.Num() &&
-            HasEntityInParents(Entities[CurrentIndex]))
+            (HasEntityInParents(Entities[CurrentIndex]) || ck::Is_NOT_Valid(Entities[CurrentIndex])))
         {
             CurrentIndex++;
         }
@@ -886,6 +864,82 @@ auto
     ImGui::PopID();
 
     return CurrentIndex;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    BaseSortingFunction(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        TObjectPtr<const UCk_DebugWindowConfig_EntitySelection> InConfig)
+    -> bool
+{
+    // Intentionally disabled for perf, can be disabled if needed for testing
+    // QUICK_SCOPE_CYCLE_COUNTER(BaseSortingFunction)
+
+    switch (InConfig->EntitiesListSortingPolicy)
+    {
+        case ECkDebugger_EntitiesListSortingPolicy::ID:
+        {
+            return InA < InB;
+        }
+        case ECkDebugger_EntitiesListSortingPolicy::EnitityNumber:
+        {
+            if (InA.Get_Entity().Get_EntityNumber() == InB.Get_Entity().Get_EntityNumber())
+            {
+                return InA.Get_Entity().Get_VersionNumber() < InB.Get_Entity().Get_VersionNumber();
+            }
+            return InA.Get_Entity().Get_EntityNumber() < InB.Get_Entity().Get_EntityNumber();
+        }
+        case ECkDebugger_EntitiesListSortingPolicy::Alphabetical:
+        {
+            return UCk_Utils_Handle_UE::Get_DebugName(InA).ToString() < UCk_Utils_Handle_UE::Get_DebugName(InB).ToString();
+        }
+        default:
+        {
+            return InA < InB;
+        }
+    }
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    HierarchicalSortingFunction(
+        const FCk_Handle& InA,
+        const FCk_Handle& InB,
+        TObjectPtr<const UCk_DebugWindowConfig_EntitySelection> InConfig)
+    -> bool
+{
+    // Intentionally disabled for perf, can be disabled if needed for testing
+    // QUICK_SCOPE_CYCLE_COUNTER(HierarchicalSortingFunction)
+    const auto& Get_ParentsArray = [](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
+    {
+        TArray<FCk_Handle> ParentsArray;
+        auto CurrentEntity = InHandle;
+        ParentsArray.Add(CurrentEntity);
+        while (ck::IsValid(CurrentEntity) &&
+            CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
+        {
+            CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+            ParentsArray.Add(CurrentEntity);
+        }
+        Algo::Reverse(ParentsArray);
+        return ParentsArray;
+    };
+
+    const auto& ParentsArrayA = Get_ParentsArray(InA);
+    const auto& ParentsArrayB = Get_ParentsArray(InB);
+
+    for (int32 i = 0; i < ParentsArrayA.Num() && i < ParentsArrayB.Num(); i++)
+    {
+        if (ParentsArrayA[i] == ParentsArrayB[i])
+        { continue; }
+
+        return BaseSortingFunction(ParentsArrayA[i], ParentsArrayB[i], InConfig);
+    }
+
+    // if one is the child of another, sort so the parent is first
+    return ParentsArrayA.Num() < ParentsArrayB.Num();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

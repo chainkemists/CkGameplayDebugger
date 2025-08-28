@@ -300,7 +300,7 @@ auto
         const FHierarchicalSortKey* KeyA = CachedSortKeys.Find(InA);
         const FHierarchicalSortKey* KeyB = CachedSortKeys.Find(InB);
 
-        if (!KeyA || !KeyB)
+        if (NOT KeyA || NOT KeyB)
         {
             return InA < InB;
         }
@@ -341,18 +341,10 @@ auto
 {
     QUICK_SCOPE_CYCLE_COUNTER(SortEntitiesArray)
 
-    // For now, use standard sort. Could potentially use Algo::Sort which might have better performance
-    // characteristics for certain data patterns
     InOutEntities.Sort([this, bUseHierarchicalSort](const FCk_Handle& A, const FCk_Handle& B)
     {
         return CompareEntities(A, B, bUseHierarchicalSort);
     });
-
-    // Alternative: Algo::Sort might have better performance for some cases
-    // Algo::Sort(InOutEntities, [this, bUseHierarchicalSort](const FCk_Handle& A, const FCk_Handle& B)
-    // {
-    //     return CompareEntities(A, B, bUseHierarchicalSort);
-    // });
 }
 
 auto
@@ -364,12 +356,12 @@ auto
     QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
 
     // Check if we need to invalidate caches due to config changes
-    const bool bConfigChanged =
+    const bool ConfigChanged =
         LastFragmentFilter != Config->EntitiesListFragmentFilteringTypes ||
         LastDisplayPolicy != Config->EntitiesListDisplayPolicy ||
         LastSortingPolicy != Config->EntitiesListSortingPolicy;
 
-    if (NOT InRequiresUpdate && NOT bConfigChanged)
+    if (NOT InRequiresUpdate && NOT ConfigChanged)
     {
         return CachedSelectedEntities;
     }
@@ -544,8 +536,8 @@ auto
         // Build parent-child relationships
         if (Entity.Has<ck::FFragment_LifetimeOwner>())
         {
-            const auto Parent = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-            if (Parent != TransientEntity && ck::IsValid(Parent))
+            if (const auto Parent = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+                Parent != TransientEntity && ck::IsValid(Parent))
             {
                 CachedParentToChildren.FindOrAdd(Parent).Add(Entity);
             }
@@ -603,10 +595,8 @@ auto
         // First pass: Check which entities directly match the filter
         for (const auto& [Entity, CachedName] : CachedDebugNames)
         {
-            const auto NameANSI = StringCast<ANSICHAR>(*CachedName);
-            const bool bMatches = _Filter.PassFilter(NameANSI.Get());
-
-            if (bMatches)
+            if (const auto NameANSI = StringCast<ANSICHAR>(*CachedName);
+                _Filter.PassFilter(NameANSI.Get()))
             {
                 CachedFilterDirectMatches.Add(Entity);
                 CachedFilterResults.Add(Entity, true);
@@ -618,15 +608,14 @@ auto
         for (const auto& MatchingEntity : CachedFilterDirectMatches)
         {
             // Get the parent chain from cached sort keys
-            const FHierarchicalSortKey* SortKey = CachedSortKeys.Find(MatchingEntity);
-            if (SortKey)
+            if (const FHierarchicalSortKey* SortKey = CachedSortKeys.Find(MatchingEntity))
             {
                 // Add all parents in the chain (except the entity itself)
                 for (int32 i = 0; i < SortKey->ParentChain.Num() - 1; ++i)
                 {
                     const FCk_Handle& Parent = SortKey->ParentChain[i];
                     // Mark parent as visible (but not as a direct match)
-                    if (!CachedFilterResults.Contains(Parent))
+                    if (NOT CachedFilterResults.Contains(Parent))
                     {
                         CachedFilterResults.Add(Parent, true);
                     }
@@ -716,7 +705,7 @@ auto
 
     // Get cached debug name
     const FString* CachedDebugName = CachedDebugNames.Find(Entity);
-    if (!CachedDebugName)
+    if (NOT CachedDebugName)
     { return false; }
 
     // Check filter result from cache
@@ -812,7 +801,7 @@ auto
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255)); // Yellow for local player
             PushedColor = true;
         }
-        else if (_Filter.IsActive() && ShowNode && !IsDirectFilterMatch)
+        else if (_Filter.IsActive() && ShowNode && NOT IsDirectFilterMatch)
         {
             // Dim parents that are only shown for context
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255)); // Gray for context parents
@@ -823,12 +812,12 @@ auto
         bool OpenChildren = false;
 
         // For direct filter matches, we need to render the label with highlighted matching text
-        if (_Filter.IsActive() && IsDirectFilterMatch && !IsLocalPlayer)
+        if (_Filter.IsActive() && IsDirectFilterMatch && NOT IsLocalPlayer)
         {
             // Create a unique ID for the tree node without displaying text
             const std::string NodeId = ck::Format_ANSI(TEXT("##Entity_{}"), Entity.Get_Entity().Get_ID()).c_str();
 
-            if (HasChildren && (HasVisibleChildren || !_Filter.IsActive()))
+            if (HasChildren && (HasVisibleChildren || NOT _Filter.IsActive()))
             {
                 OpenChildren = ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
             }
@@ -836,6 +825,11 @@ auto
             {
                 ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
             }
+
+            // Store if the tree node was clicked or hovered for interaction handling
+            const bool TreeNodeClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+            const bool TreeNodeHovered = ImGui::IsItemHovered();
+            const bool TreeNodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
 
             // Now render the text with highlighting on the same line
             ImGui::SameLine(0, 0);
@@ -850,16 +844,15 @@ auto
             std::ranges::transform(LowerFullText, LowerFullText.begin(), ::tolower);
             std::ranges::transform(LowerFilterText, LowerFilterText.begin(), ::tolower);
 
-            const auto Pos = LowerFullText.find(LowerFilterText);
-
-            if (Pos != std::string::npos)
+            if (const auto Pos = LowerFullText.find(LowerFilterText);
+                Pos != std::string::npos)
             {
                 const auto& Before = FullText.substr(0, Pos);
                 const auto& Match = FullText.substr(Pos, FilterText.length());
                 const auto& After = FullText.substr(Pos + FilterText.length());
 
                 // Render the text before the match
-                if (!Before.empty())
+                if (NOT Before.empty())
                 {
                     ImGui::TextUnformatted(Before.c_str());
                     ImGui::SameLine(0.0f, 0.0f);
@@ -884,7 +877,7 @@ auto
                 ImGui::TextUnformatted(Match.c_str());
                 ImGui::PopStyleColor();
 
-                if (!After.empty())
+                if (NOT After.empty())
                 {
                     ImGui::SameLine(0.0f, 0.0f);
                     ImGui::TextUnformatted(After.c_str());
@@ -895,13 +888,98 @@ auto
                 // Fallback if we can't find the match (shouldn't happen)
                 ImGui::TextUnformatted(FullText.c_str());
             }
+
+            // Handle selection based on the tree node interaction we captured earlier
+            if (TreeNodeClicked)
+            {
+                if (ImGui::GetCurrentContext()->IO.KeyCtrl)
+                {
+                    // Multi-select mode: toggle entity in selection
+                    DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+                    SelectionChanged = true;
+                }
+                else
+                {
+                    // Single select mode: replace selection with this entity
+                    DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                    SelectionChanged = true;
+                }
+
+                FCogDebug::SetSelection(EntityActor);
+            }
+
+            // Handle Ctrl+Click to expand all children
+            if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+                TreeNodeClicked && IsControlDown)
+            {
+                OpenAllChildren = true;
+            }
+
+            // Context menu - use explicit ID since we have custom rendering
+            if (TreeNodeRightClicked)
+            {
+                ImGui::OpenPopup(ck::Format_ANSI(TEXT("EntityContextMenu_{}"), Entity.Get_Entity().Get_ID()).c_str());
+            }
+
+            if (ImGui::BeginPopup(ck::Format_ANSI(TEXT("EntityContextMenu_{}"), Entity.Get_Entity().Get_ID()).c_str()))
+            {
+                if (ImGui::MenuItem("Focus on Entity"))
+                {
+                    DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                    FCogDebug::SetSelection(EntityActor);
+                    SelectionChanged = true;
+                }
+
+                if (ImGui::MenuItem("Add to Selection"))
+                {
+                    DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+                    SelectionChanged = true;
+                }
+
+                if (ImGui::MenuItem("Remove from Selection"))
+                {
+                    DebuggerSubsystem->Remove_SelectionEntity(Entity);
+                    SelectionChanged = true;
+                }
+
+                ImGui::EndPopup();
+            }
+
+            // Tooltip
+            if (TreeNodeHovered)
+            {
+                if (ck::IsValid(EntityActor))
+                {
+                    FCogWidgets::ActorFrame(*EntityActor);
+                }
+
+                ImGui::BeginTooltip();
+                ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+                if (EntityActor)
+                {
+                    ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+                }
+                if (_Filter.IsActive())
+                {
+                    if (IsDirectFilterMatch)
+                    {
+                        ImGui::Text("(Matches filter)");
+                    }
+                    else
+                    {
+                        ImGui::Text("(Parent of filtered entity)");
+                    }
+                }
+                ImGui::Text("Hold Ctrl+Click for multi-select");
+                ImGui::EndTooltip();
+            }
         }
         else
         {
             // Normal rendering for non-filtered or non-matching entities
             const std::basic_string NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), *CachedDebugName, Entity.Get_Entity()).c_str();
 
-            if (HasChildren && (HasVisibleChildren || !_Filter.IsActive()))
+            if (HasChildren && (HasVisibleChildren || NOT _Filter.IsActive()))
             {
                 OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
             }
@@ -909,86 +987,86 @@ auto
             {
                 ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
             }
-        }
 
-        // Handle selection
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-        {
-            if (ImGui::GetCurrentContext()->IO.KeyCtrl)
+            // Handle selection
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
             {
-                // Multi-select mode: toggle entity in selection
-                DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
-                SelectionChanged = true;
-            }
-            else
-            {
-                // Single select mode: replace selection with this entity
-                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
-                SelectionChanged = true;
-            }
-
-            FCogDebug::SetSelection(EntityActor);
-        }
-
-        // Handle Ctrl+Click to expand all children
-        if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-            ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
-        {
-            OpenAllChildren = true;
-        }
-
-        // Context menu
-        if (ImGui::BeginPopupContextItem())
-        {
-            if (ImGui::MenuItem("Focus on Entity"))
-            {
-                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
-                FCogDebug::SetSelection(EntityActor);
-                SelectionChanged = true;
-            }
-
-            if (ImGui::MenuItem("Add to Selection"))
-            {
-                DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
-                SelectionChanged = true;
-            }
-
-            if (ImGui::MenuItem("Remove from Selection"))
-            {
-                DebuggerSubsystem->Remove_SelectionEntity(Entity);
-                SelectionChanged = true;
-            }
-
-            ImGui::EndPopup();
-        }
-
-        // Tooltip with entity information
-        if (ImGui::IsItemHovered())
-        {
-            if (ck::IsValid(EntityActor))
-            {
-                FCogWidgets::ActorFrame(*EntityActor);
-            }
-
-            ImGui::BeginTooltip();
-            ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
-            if (EntityActor)
-            {
-                ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
-            }
-            if (_Filter.IsActive())
-            {
-                if (IsDirectFilterMatch)
+                if (ImGui::GetCurrentContext()->IO.KeyCtrl)
                 {
-                    ImGui::Text("(Matches filter)");
+                    // Multi-select mode: toggle entity in selection
+                    DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+                    SelectionChanged = true;
                 }
                 else
                 {
-                    ImGui::Text("(Parent of filtered entity)");
+                    // Single select mode: replace selection with this entity
+                    DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                    SelectionChanged = true;
                 }
+
+                FCogDebug::SetSelection(EntityActor);
             }
-            ImGui::Text("Hold Ctrl+Click for multi-select");
-            ImGui::EndTooltip();
+
+            // Handle Ctrl+Click to expand all children
+            if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+                ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
+            {
+                OpenAllChildren = true;
+            }
+
+            // Context menu
+            if (ImGui::BeginPopupContextItem())
+            {
+                if (ImGui::MenuItem("Focus on Entity"))
+                {
+                    DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                    FCogDebug::SetSelection(EntityActor);
+                    SelectionChanged = true;
+                }
+
+                if (ImGui::MenuItem("Add to Selection"))
+                {
+                    DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+                    SelectionChanged = true;
+                }
+
+                if (ImGui::MenuItem("Remove from Selection"))
+                {
+                    DebuggerSubsystem->Remove_SelectionEntity(Entity);
+                    SelectionChanged = true;
+                }
+
+                ImGui::EndPopup();
+            }
+
+            // Tooltip with entity information
+            if (ImGui::IsItemHovered())
+            {
+                if (ck::IsValid(EntityActor))
+                {
+                    FCogWidgets::ActorFrame(*EntityActor);
+                }
+
+                ImGui::BeginTooltip();
+                ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+                if (EntityActor)
+                {
+                    ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+                }
+                if (_Filter.IsActive())
+                {
+                    if (IsDirectFilterMatch)
+                    {
+                        ImGui::Text("(Matches filter)");
+                    }
+                    else
+                    {
+                        ImGui::Text("(Parent of filtered entity)");
+                    }
+                }
+                ImGui::Text("Hold Ctrl+Click for multi-select");
+                ImGui::EndTooltip();
+            }
         }
 
         // Pop style color based on what was pushed

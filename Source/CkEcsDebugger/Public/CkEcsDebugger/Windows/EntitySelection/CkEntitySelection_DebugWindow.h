@@ -39,6 +39,9 @@ private:
     Get_EntitiesForList(bool InRequiresUpdate) const -> TArray<FCk_Handle>;
 
     auto
+    ApplyFilterToEntitiesAndCache(const TArray<FCk_Handle>& Entities) const -> const TArray<FCk_Handle>&;
+
+    auto
     RenderEntitiesWithFilters(bool InRequiresUpdate) -> void;
 
     auto
@@ -58,6 +61,7 @@ private:
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;
+    mutable TArray<FCk_Handle> CachedFilteredSelectedEntities;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

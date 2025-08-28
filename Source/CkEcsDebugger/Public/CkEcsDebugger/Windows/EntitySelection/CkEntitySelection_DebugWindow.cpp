@@ -1,6 +1,8 @@
 #include "CkEntitySelection_DebugWindow.h"
 
 #include "CogDebug.h"
+#include "imgui_internal.h"
+
 #include <Cog/Public/CogWidgets.h>
 
 #include "CkAbility/Ability/CkAbility_Fragment.h"
@@ -153,26 +155,24 @@ auto
 
     switch (Config->EntitiesListUpdatePolicy)
     {
-    case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:
+        case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:
         {
             RequiresUpdate = true;
             break;
         }
-    case ECkDebugger_EntitiesListUpdatePolicy::OnButton: break;
-    case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
+        case ECkDebugger_EntitiesListUpdatePolicy::OnButton: break;
+        case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(1);
             break;
         }
-    case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
+        case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds:
         {
             RequiresUpdate |= (Get_CurrentTime() - LastUpdateTime) > FCk_Time(10);
             break;
         }
         default:
-        {
             break;
-        }
     }
 
     DisplayEntitiesListWithFilters(RequiresUpdate);
@@ -200,10 +200,12 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    Get_EntitiesForList(bool InRequiresUpdate) const
+    Get_EntitiesForList(
+        const bool InRequiresUpdate) const
     -> TArray<FCk_Handle>
 {
     QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList)
+
     if (NOT InRequiresUpdate)
     { return CachedSelectedEntities; }
 
@@ -361,8 +363,8 @@ auto
     // If displaying as hierarchy, show all parents of entities shown, otherwise their context in the hierarchy won't make sense
     if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
     {
-        auto EntitiesTempArray = EntitiesSet.Array();
-        for (const auto& Entity : EntitiesTempArray)
+        for (auto EntitiesTempArray = EntitiesSet.Array();
+             const auto& Entity : EntitiesTempArray)
         {
             auto CurrentEntity = Entity;
             while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
@@ -386,18 +388,18 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    DisplayEntitiesList(bool InRequiresUpdate)
-    -> bool
+    DisplayEntitiesList(
+        bool InRequiresUpdate)
+    -> void
 {
     QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList)
     const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
-    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
-    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+    const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+    const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
 
-    const auto& OldSelectionEntity = DebuggerSubsystem->Get_SelectionEntity();
-    auto NewSelectionEntity = OldSelectionEntity;
+    const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
 
     const auto LocalPlayerPawn = [&]() -> const AActor*
     {
@@ -452,7 +454,7 @@ auto
                     IM_COL32(255, 255, 0, 255) :
                     IM_COL32(255, 255, 255, 255));
 
-                const bool bIsSelected = Entity == NewSelectionEntity;
+                const bool bIsSelected = SelectedEntities.Contains(Entity);
 
                 //------------------------
                 // ID
@@ -488,9 +490,19 @@ auto
                 ImGui::TableNextColumn();
                 if (ImGui::Selectable(EntityDisplayName.c_str(), bIsSelected))
                 {
-                    DebuggerSubsystem->Set_SelectionEntity(Entity, SelectedWorld);
+                    const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+
+                    if (IsControlDown)
+                    {
+                        // Multi-select mode: toggle entity in selection
+                        DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+                    }
+                    else
+                    {
+                        // Single select mode: replace selection with this entity
+                        DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                    }
                     FCogDebug::SetSelection(EntityActor);
-                    NewSelectionEntity = Entity;
                 }
 
                 ImGui::PopStyleColor(1);
@@ -516,14 +528,12 @@ auto
         Clipper.End();
         ImGui::EndTable();
     }
-
-    return NewSelectionEntity != OldSelectionEntity;
 }
 
 auto
     FCk_EntitySelection_DebugWindow::
     DisplayEntitiesListWithFilters(bool InRequiresUpdate)
-    -> bool
+    -> void
 {
     FCogWidgets::SearchBar("##Filter", _Filter);
 
@@ -533,10 +543,8 @@ auto
     // Entities List
     //------------------------
     ImGui::BeginChild("EntitiesList", ImVec2(-1, -1), false);
-    const bool SelectionChanged = DisplayEntitiesList(InRequiresUpdate);
+    DisplayEntitiesList(InRequiresUpdate);
     ImGui::EndChild();
-
-    return SelectionChanged;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

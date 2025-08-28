@@ -10,7 +10,6 @@ UENUM()
 enum class ECkDebugger_EntitiesListDisplayPolicy : uint8
 {
     OnlyRootEntities,
-    EntityList,
     EntityHierarchy,
 };
 

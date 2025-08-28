@@ -45,9 +45,6 @@ private:
     RenderEntitiesWithFilters(bool InRequiresUpdate) -> void;
 
     auto
-    RenderEntitiesList(const TArray<FCk_Handle>& Entities) -> void;
-
-    auto
     RenderEntityTree(const TArray<FCk_Handle>& Entities) -> void;
 
     // Returns next index

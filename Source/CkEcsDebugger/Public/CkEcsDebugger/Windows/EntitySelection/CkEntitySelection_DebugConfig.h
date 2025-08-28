@@ -42,6 +42,17 @@ CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListUpdatePolicy);
 
 //--------------------------------------------------------------------------------------------------------------------------
 
+UENUM()
+enum class ECkDebugger_EntitiesListTreeExpandPolicy : uint8
+{
+    NotExpanded,
+    StartsExpanded,
+};
+
+CK_DEFINE_CUSTOM_FORMATTER_ENUM(ECkDebugger_EntitiesListTreeExpandPolicy);
+
+// --------------------------------------------------------------------------------------------------------------------
+
 UENUM(Flags)
 enum class ECkDebugger_EntitiesListFragmentFilteringTypes : uint32
 {
@@ -76,6 +87,9 @@ public:
     ECkDebugger_EntitiesListUpdatePolicy EntitiesListUpdatePolicy = ECkDebugger_EntitiesListUpdatePolicy::PerFrame;
 
     UPROPERTY(Config)
+    ECkDebugger_EntitiesListTreeExpandPolicy EntitiesListTreeExpandPolicy = ECkDebugger_EntitiesListTreeExpandPolicy::NotExpanded;
+
+    UPROPERTY(Config)
     ECkDebugger_EntitiesListFragmentFilteringTypes EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
 
     virtual void Reset() override
@@ -85,6 +99,7 @@ public:
         EntitiesListDisplayPolicy = ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy;
         EntitiesListSortingPolicy = ECkDebugger_EntitiesListSortingPolicy::Alphabetical;
         EntitiesListUpdatePolicy = ECkDebugger_EntitiesListUpdatePolicy::PerFrame;
+        EntitiesListTreeExpandPolicy = ECkDebugger_EntitiesListTreeExpandPolicy::NotExpanded;
         EntitiesListFragmentFilteringTypes = ECkDebugger_EntitiesListFragmentFilteringTypes::None;
     }
 };

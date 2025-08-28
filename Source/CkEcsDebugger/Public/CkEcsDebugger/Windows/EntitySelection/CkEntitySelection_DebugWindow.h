@@ -64,6 +64,7 @@ private:
     ImGuiTextFilter _Filter;
 
     bool IsFirstUpdate = true;
+    bool TreeExpandTypeJustChanged = false;
 
     mutable FCk_Time LastUpdateTime;
     mutable TArray<FCk_Handle> CachedSelectedEntities;

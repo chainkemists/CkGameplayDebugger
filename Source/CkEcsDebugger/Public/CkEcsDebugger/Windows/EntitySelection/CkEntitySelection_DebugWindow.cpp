@@ -150,6 +150,24 @@ auto
             ImGui::EndMenu();
         }
 
+        // Display entity count and update mode in the menu bar
+        ImGui::Separator();
+
+        const auto UpdateModeStr = [&]() -> const char*
+        {
+            switch (Config->EntitiesListUpdatePolicy)
+            {
+                case ECkDebugger_EntitiesListUpdatePolicy::OnButton:    return "Manual";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerFrame:    return "Per Frame";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerSecond:   return "Per Second";
+                case ECkDebugger_EntitiesListUpdatePolicy::PerTenSeconds: return "Per 10s";
+                default: return "Unknown";
+            }
+        }();
+
+        ImGui::Text(" | Entities: %d | Update: %s", CachedSelectedEntities.Num(), UpdateModeStr);
+
+
         ImGui::EndMenuBar();
     }
 
@@ -668,6 +686,8 @@ auto
 
     // Get entity debug name for filtering
     const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+    const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+    const auto& IsDirectFilterMatch = _Filter.PassFilter(DebugNameANSI.Get());
 
     const bool HasChildren = CurrentIndex + 1 < Entities.Num() &&
         ck::IsValid(Entities[CurrentIndex + 1]) &&
@@ -676,7 +696,12 @@ auto
 
     ImGui::PushID(static_cast<int32>(Entity.Get_Entity().Get_ID()));
 
-    if (OpenAllChildren)
+    // When filter is active, auto-expand nodes that have matching children
+    if (_Filter.IsActive() && HasChildren)
+    {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    }
+    else if (OpenAllChildren)
     {
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     }
@@ -715,91 +740,273 @@ auto
 
     // Set color for local player pawn
     const bool IsLocalPlayer = EntityActor != nullptr && EntityActor == LocalPlayerPawn;
+    bool PushedColor = false;
     if (IsLocalPlayer)
     {
         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
+        PushedColor = true;
+    }
+    else if (_Filter.IsActive() && NOT IsDirectFilterMatch)
+    {
+        // Dim parents that are only shown for context
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(150, 150, 150, 255)); // Gray for context parents
+        PushedColor = true;
     }
 
     // Create the tree node
-    const auto NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity());
     bool OpenChildren = false;
 
-    if (HasChildren)
+    if (_Filter.IsActive() && IsDirectFilterMatch && NOT IsLocalPlayer)
     {
-        OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
-    }
-    else
-    {
-        ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
-    }
+        // Create a unique ID for the tree node without displaying text
+        const auto& NodeId = ck::Format_ANSI(TEXT("##Entity_{}"), Entity.Get_Entity().Get_ID());
 
-    // Handle selection
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-    {
-        const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-
-        if (IsControlDown)
+        if (HasChildren)
         {
-            // Multi-select mode: toggle entity in selection
-            DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+            OpenChildren = ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
         }
         else
         {
-            // Single select mode: replace selection with this entity
-            DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+            ImGui::TreeNodeEx(NodeId.c_str(), NodeFlags);
         }
 
-        FCogDebug::SetSelection(EntityActor);
-    }
+        // Store if the tree node was clicked or hovered for interaction handling
+        const bool TreeNodeClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+        const bool TreeNodeHovered = ImGui::IsItemHovered();
+        const bool TreeNodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
 
-    // Handle Ctrl+Click to expand all children
-    if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-        ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
-    {
-        OpenAllChildren = true;
-    }
+        // Now render the text with highlighting on the same line
+        ImGui::SameLine(0, 0);
 
-    // Context menu
-    if (ImGui::BeginPopupContextItem())
-    {
-        if (ImGui::MenuItem("Focus on Entity"))
+        // Convert to std::string for easier manipulation
+        const std::string FullText = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity()).c_str();
+        const std::string FilterText = _Filter.InputBuf;
+
+        // Case-insensitive search
+        std::string LowerFullText = FullText;
+        std::string LowerFilterText = FilterText;
+        std::ranges::transform(LowerFullText, LowerFullText.begin(), ::tolower);
+        std::ranges::transform(LowerFilterText, LowerFilterText.begin(), ::tolower);
+
+        if (const auto Pos = LowerFullText.find(LowerFilterText);
+            Pos != std::string::npos)
         {
-            DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+            const auto& Before = FullText.substr(0, Pos);
+            const auto& Match = FullText.substr(Pos, FilterText.length());
+            const auto& After = FullText.substr(Pos + FilterText.length());
+
+            // Render the text before the match
+            if (NOT Before.empty())
+            {
+                ImGui::TextUnformatted(Before.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+            }
+
+            // Get the current cursor position for the match
+            const auto& MatchStartPos = ImGui::GetCursorScreenPos();
+
+            // Calculate the size of the match text
+            const auto& MatchSize = ImGui::CalcTextSize(Match.c_str());
+
+            const auto& HighlightColor = ImVec4(0.31f, 0.31f, 0.33f, 1.f);
+
+            auto* DrawList = ImGui::GetWindowDrawList();
+            DrawList->AddRectFilled(
+                MatchStartPos,
+                ImVec2(MatchStartPos.x + MatchSize.x, MatchStartPos.y + MatchSize.y),
+                ImGui::ColorConvertFloat4ToU32(HighlightColor));
+
+            // Render the matched text over the background (in bright green)
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 255, 0, 255));
+            ImGui::TextUnformatted(Match.c_str());
+            ImGui::PopStyleColor();
+
+            if (NOT After.empty())
+            {
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextUnformatted(After.c_str());
+            }
+        }
+        else
+        {
+            // Fallback if we can't find the match (shouldn't happen)
+            ImGui::TextUnformatted(FullText.c_str());
+        }
+
+        // Handle selection based on the tree node interaction we captured earlier
+        if (TreeNodeClicked)
+        {
+            if (ImGui::GetCurrentContext()->IO.KeyCtrl)
+            {
+                // Multi-select mode: toggle entity in selection
+                DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+            }
+            else
+            {
+                // Single select mode: replace selection with this entity
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+            }
+
             FCogDebug::SetSelection(EntityActor);
         }
 
-        if (ImGui::MenuItem("Add to Selection"))
+        // Handle Ctrl+Click to expand all children
+        if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+            TreeNodeClicked && IsControlDown)
         {
-            DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+            OpenAllChildren = true;
         }
 
-        if (ImGui::MenuItem("Remove from Selection"))
+        // Context menu - use explicit ID since we have custom rendering
+        if (TreeNodeRightClicked)
         {
-            DebuggerSubsystem->Remove_SelectionEntity(Entity);
+            ImGui::OpenPopup(ck::Format_ANSI(TEXT("EntityContextMenu_{}"), Entity.Get_Entity().Get_ID()).c_str());
         }
 
-        ImGui::EndPopup();
+        if (ImGui::BeginPopup(ck::Format_ANSI(TEXT("EntityContextMenu_{}"), Entity.Get_Entity().Get_ID()).c_str()))
+        {
+            if (ImGui::MenuItem("Focus on Entity"))
+            {
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                FCogDebug::SetSelection(EntityActor);
+            }
+
+            if (ImGui::MenuItem("Add to Selection"))
+            {
+                DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+            }
+
+            if (ImGui::MenuItem("Remove from Selection"))
+            {
+                DebuggerSubsystem->Remove_SelectionEntity(Entity);
+            }
+
+            ImGui::EndPopup();
+        }
+
+        // Tooltip
+        if (TreeNodeHovered)
+        {
+            if (ck::IsValid(EntityActor))
+            {
+                FCogWidgets::ActorFrame(*EntityActor);
+            }
+
+            ImGui::BeginTooltip();
+            ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+            if (EntityActor)
+            {
+                ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+            }
+            if (_Filter.IsActive())
+            {
+                if (IsDirectFilterMatch)
+                {
+                    ImGui::Text("(Matches filter)");
+                }
+                else
+                {
+                    ImGui::Text("(Parent of filtered entity)");
+                }
+            }
+            ImGui::Text("Hold Ctrl+Click for multi-select");
+            ImGui::EndTooltip();
+        }
     }
-
-    // Tooltip with entity information
-    if (ImGui::IsItemHovered())
+    else
     {
-        if (ck::IsValid(EntityActor))
+        // Normal rendering for non-filtered or non-matching entities
+        const auto& NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity());
+
+        if (HasChildren)
         {
-            FCogWidgets::ActorFrame(*EntityActor);
+            OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+        }
+        else
+        {
+            ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
         }
 
-        ImGui::BeginTooltip();
-        ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
-        if (EntityActor)
+        // Handle selection
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
         {
-            ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+            const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+
+            if (IsControlDown)
+            {
+                // Multi-select mode: toggle entity in selection
+                DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+            }
+            else
+            {
+                // Single select mode: replace selection with this entity
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+            }
+
+            FCogDebug::SetSelection(EntityActor);
         }
-        ImGui::Text("Hold Ctrl+Click for multi-select");
-        ImGui::EndTooltip();
+
+        // Handle Ctrl+Click to expand all children
+        if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+            ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
+        {
+            OpenAllChildren = true;
+        }
+
+        // Context menu
+        if (ImGui::BeginPopupContextItem())
+        {
+            if (ImGui::MenuItem("Focus on Entity"))
+            {
+                DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+                FCogDebug::SetSelection(EntityActor);
+            }
+
+            if (ImGui::MenuItem("Add to Selection"))
+            {
+                DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+            }
+
+            if (ImGui::MenuItem("Remove from Selection"))
+            {
+                DebuggerSubsystem->Remove_SelectionEntity(Entity);
+            }
+
+            ImGui::EndPopup();
+        }
+
+        // Tooltip with entity information
+        if (ImGui::IsItemHovered())
+        {
+            if (ck::IsValid(EntityActor))
+            {
+                FCogWidgets::ActorFrame(*EntityActor);
+            }
+
+            ImGui::BeginTooltip();
+            ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+            if (EntityActor)
+            {
+                ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+            }
+            if (_Filter.IsActive())
+            {
+                if (IsDirectFilterMatch)
+                {
+                    ImGui::Text("(Matches filter)");
+                }
+                else
+                {
+                    ImGui::Text("(Parent of filtered entity)");
+                }
+            }
+            ImGui::Text("Hold Ctrl+Click for multi-select");
+            ImGui::EndTooltip();
+        }
     }
 
-    if (IsLocalPlayer)
+    // Pop style color based on what was pushed
+    if (PushedColor)
     {
         ImGui::PopStyleColor();
     }
@@ -851,4 +1058,3 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-

@@ -69,7 +69,6 @@ auto
             auto EnumAsInt = static_cast<int32>(Config->EntitiesListDisplayPolicy);
             const auto OldEnum = EnumAsInt;
 
-            ImGui::RadioButton("All Entities List",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityList));
             ImGui::RadioButton("All Entities Hierarchy", &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy));
             ImGui::RadioButton("Only Root Entities",     &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListDisplayPolicy::OnlyRootEntities));
 
@@ -462,149 +461,6 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    RenderEntitiesList(
-        const TArray<FCk_Handle>& Entities)
-    -> void
-{
-    QUICK_SCOPE_CYCLE_COUNTER(RenderEntitiesList)
-
-    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
-    const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
-    const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
-
-    const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
-
-    const auto LocalPlayerPawn = [&]() -> const AActor*
-    {
-        const auto& LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
-        if (LocalPlayer == nullptr)
-        { return nullptr; }
-
-        const auto& LocalPlayerController = LocalPlayer->PlayerController;
-
-        if (LocalPlayerController == nullptr)
-        { return nullptr; }
-
-        const auto& ClientWorldLocalPlayerPawn = LocalPlayerController->GetPawn();
-
-        return DebuggerSubsystem->Get_ActorOnSelectedWorld(ClientWorldLocalPlayerPawn);
-    }();
-
-    if (ImGui::BeginTable("Entities", 2, ImGuiTableFlags_SizingFixedFit
-                                       | ImGuiTableFlags_Resizable
-                                       | ImGuiTableFlags_NoBordersInBodyUntilResize
-                                       | ImGuiTableFlags_ScrollY
-                                       | ImGuiTableFlags_RowBg
-                                       | ImGuiTableFlags_BordersV
-                                       | ImGuiTableFlags_Reorderable
-                                       | ImGuiTableFlags_Hideable))
-    {
-        ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed);
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Name");
-        ImGui::TableHeadersRow();
-
-        ImGuiListClipper Clipper;
-        Clipper.Begin(Entities.Num());
-        while (Clipper.Step())
-        {
-            for (int32 i = Clipper.DisplayStart; i < Clipper.DisplayEnd; i++)
-            {
-                QUICK_SCOPE_CYCLE_COUNTER(RenderEntitiesList_TableRow)
-
-                const auto& Entity = Entities[i];
-
-                if (ck::Is_NOT_Valid(Entity))
-                { continue; }
-
-                ImGui::TableNextRow();
-                ImGui::PushID(i);
-
-                const auto& EntityActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(Entity);
-
-                ImGui::PushStyleColor(ImGuiCol_Text,
-                    EntityActor != nullptr && EntityActor == LocalPlayerPawn ?
-                    IM_COL32(255, 255, 0, 255) :
-                    IM_COL32(255, 255, 255, 255));
-
-                const bool bIsSelected = SelectedEntities.Contains(Entity);
-
-                //------------------------
-                // ID
-                //------------------------
-                ImGui::TableNextColumn();
-                ImGui::Text(ck::Format_ANSI(TEXT("{}"), Entity.Get_Entity()).c_str());
-
-                //------------------------
-                // Name
-                //------------------------
-
-                // Number of lifetime owning parents, not counting Transient Entity
-                const auto& Get_EntityDepth = [&TransientEntity](const FCk_Handle& InHandle) -> int32
-                {
-                    auto Depth = 0;
-                    auto CurrentEntity = InHandle;
-                    while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-                    {
-                        CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                        if (CurrentEntity == TransientEntity)
-                        { break; }
-
-                        Depth++;
-                    }
-                    return Depth;
-                };
-
-                const auto& Depth = Config->EntitiesListDisplayPolicy != ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy ? 0 : Get_EntityDepth(Entity);
-
-                const std::string EntityDisplayName = ck::Format_ANSI(TEXT("{}{}"),
-                    UCk_Utils_String_UE::Get_SymbolNTimes(TEXT("  "), Depth), UCk_Utils_Handle_UE::Get_DebugName(Entity)).c_str();
-
-                ImGui::TableNextColumn();
-                if (ImGui::Selectable(EntityDisplayName.c_str(), bIsSelected))
-                {
-                    const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
-
-                    if (IsControlDown)
-                    {
-                        // Multi-select mode: toggle entity in selection
-                        DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
-                    }
-                    else
-                    {
-                        // Single select mode: replace selection with this entity
-                        DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
-                    }
-                    FCogDebug::SetSelection(EntityActor);
-                }
-
-                ImGui::PopStyleColor(1);
-
-                //------------------------
-                // Draw Frame
-                //------------------------
-                if (ImGui::IsItemHovered() &&
-                    ck::IsValid(EntityActor))
-                {
-                    FCogWidgets::ActorFrame(*EntityActor);
-                }
-
-                if (bIsSelected)
-                {
-                    ImGui::SetItemDefaultFocus();
-                }
-
-
-                ImGui::PopID();
-            }
-        }
-        Clipper.End();
-        ImGui::EndTable();
-    }
-}
-
-auto
-    FCk_EntitySelection_DebugWindow::
     RenderEntitiesWithFilters(bool InRequiresUpdate)
     -> void
 {
@@ -623,24 +479,12 @@ auto
 
     ImGui::Separator();
 
-    if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
-    {
-        //------------------------
-        // Entities Tree
-        //------------------------
-        ImGui::BeginChild("EntitiesTree", ImVec2(-1, -1), false);
-        RenderEntityTree(Entities);
-        ImGui::EndChild();
-    }
-    else
-    {
-        //------------------------
-        // Entities List
-        //------------------------
-        ImGui::BeginChild("EntitiesList", ImVec2(-1, -1), false);
-        RenderEntitiesList(Entities);
-        ImGui::EndChild();
-    }
+    //------------------------
+    // Entities Tree
+    //------------------------
+    ImGui::BeginChild("EntitiesTree", ImVec2(-1, -1), false);
+    RenderEntityTree(Entities);
+    ImGui::EndChild();
 }
 
 auto

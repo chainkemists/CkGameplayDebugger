@@ -39,10 +39,17 @@ private:
     Get_EntitiesForList(bool InRequiresUpdate) const -> TArray<FCk_Handle>;
 
     auto
-    DisplayEntitiesList(bool InRequiresUpdate) -> void;
+    RenderEntitiesWithFilters(bool InRequiresUpdate) -> void;
 
     auto
-    DisplayEntitiesListWithFilters(bool InRequiresUpdate) -> void;
+    RenderEntitiesList(const TArray<FCk_Handle>& Entities) -> void;
+
+    auto
+    RenderEntityTree(const TArray<FCk_Handle>& Entities) -> void;
+
+    // Returns next index
+    auto
+    RenderEntityNode(const TArray<FCk_Handle>& Entities, int32 CurrentIndex, const TArray<FCk_Handle>& SelectedEntities, const FCk_Handle& TransientEntity, bool OpenAllChildren) -> int32;
 
 private:
     TObjectPtr<UCk_DebugWindowConfig_EntitySelection> Config;

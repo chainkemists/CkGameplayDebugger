@@ -175,7 +175,7 @@ auto
             break;
     }
 
-    DisplayEntitiesListWithFilters(RequiresUpdate);
+    RenderEntitiesWithFilters(RequiresUpdate);
 }
 
 auto
@@ -388,12 +388,11 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    DisplayEntitiesList(
-        bool InRequiresUpdate)
+    RenderEntitiesList(
+        const TArray<FCk_Handle>& Entities)
     -> void
 {
-    QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList)
-    const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
+    QUICK_SCOPE_CYCLE_COUNTER(RenderEntitiesList)
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -437,7 +436,7 @@ auto
         {
             for (int32 i = Clipper.DisplayStart; i < Clipper.DisplayEnd; i++)
             {
-                QUICK_SCOPE_CYCLE_COUNTER(DisplayEntitiesList_TableRow)
+                QUICK_SCOPE_CYCLE_COUNTER(RenderEntitiesList_TableRow)
 
                 const auto& Entity = Entities[i];
 
@@ -532,19 +531,258 @@ auto
 
 auto
     FCk_EntitySelection_DebugWindow::
-    DisplayEntitiesListWithFilters(bool InRequiresUpdate)
+    RenderEntitiesWithFilters(bool InRequiresUpdate)
     -> void
 {
     FCogWidgets::SearchBar("##Filter", _Filter);
 
+    const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
+
     ImGui::Separator();
 
-    //------------------------
-    // Entities List
-    //------------------------
-    ImGui::BeginChild("EntitiesList", ImVec2(-1, -1), false);
-    DisplayEntitiesList(InRequiresUpdate);
-    ImGui::EndChild();
+    if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
+    {
+        //------------------------
+        // Entities Tree
+        //------------------------
+        ImGui::BeginChild("EntitiesTree", ImVec2(-1, -1), false);
+        RenderEntityTree(Entities);
+        ImGui::EndChild();
+    }
+    else
+    {
+        //------------------------
+        // Entities List
+        //------------------------
+        ImGui::BeginChild("EntitiesList", ImVec2(-1, -1), false);
+        RenderEntitiesList(Entities);
+        ImGui::EndChild();
+    }
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    RenderEntityTree(
+        const TArray<FCk_Handle>& Entities)
+    -> void
+{
+    QUICK_SCOPE_CYCLE_COUNTER(RenderEntityTree)
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto& SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+    const auto& TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(SelectedWorld);
+
+    const auto& SelectedEntities = DebuggerSubsystem->Get_SelectionEntities();
+
+    int32 CurrentIndex = 0;
+    while (CurrentIndex < Entities.Num())
+    {
+        CurrentIndex = RenderEntityNode(Entities, CurrentIndex, SelectedEntities, TransientEntity, false);
+    }
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    RenderEntityNode(
+        const TArray<FCk_Handle>& Entities,
+        int32 CurrentIndex,
+        const TArray<FCk_Handle>& SelectedEntities,
+        const FCk_Handle& TransientEntity,
+        bool OpenAllChildren)
+    -> int32
+{
+    QUICK_SCOPE_CYCLE_COUNTER(RenderEntityNode)
+
+    const FCk_Handle& Entity = Entities[CurrentIndex];
+
+    if (ck::Is_NOT_Valid(Entity))
+    { return CurrentIndex + 1; }
+
+    const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
+    const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
+
+    // Get entity debug name for filtering
+    const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+
+    const bool HasChildren = CurrentIndex + 1 < Entities.Num() &&
+        ck::IsValid(Entities[CurrentIndex + 1]) &&
+        NOT UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Entities[CurrentIndex + 1]) &&
+        UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Entities[CurrentIndex + 1]) == Entity;
+
+    ImGui::PushID(static_cast<int32>(Entity.Get_Entity().Get_ID()));
+
+    if (OpenAllChildren)
+    {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    }
+    else
+    {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+    }
+
+    // Determine tree node flags
+    ImGuiTreeNodeFlags NodeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
+    if (!HasChildren)
+    {
+        NodeFlags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    }
+
+    if (SelectedEntities.Contains(Entity))
+    {
+        NodeFlags |= ImGuiTreeNodeFlags_Selected;
+    }
+
+    // Get the actor for this entity for highlighting local player
+    const auto& EntityActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(Entity);
+    const auto LocalPlayerPawn = [&]() -> const AActor*
+    {
+        const auto& LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
+        if (LocalPlayer == nullptr)
+        { return nullptr; }
+
+        const auto& LocalPlayerController = LocalPlayer->PlayerController;
+        if (LocalPlayerController == nullptr)
+        { return nullptr; }
+
+        const auto& ClientWorldLocalPlayerPawn = LocalPlayerController->GetPawn();
+        return DebuggerSubsystem->Get_ActorOnSelectedWorld(ClientWorldLocalPlayerPawn);
+    }();
+
+    // Set color for local player pawn
+    const bool IsLocalPlayer = EntityActor != nullptr && EntityActor == LocalPlayerPawn;
+    if (IsLocalPlayer)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 255, 0, 255));
+    }
+
+    // Create the tree node
+    const auto NodeLabel = ck::Format_ANSI(TEXT("{} [{}]"), DebugName, Entity.Get_Entity());
+    bool OpenChildren = false;
+
+    if (HasChildren)
+    {
+        OpenChildren = ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+    }
+    else
+    {
+        ImGui::TreeNodeEx(NodeLabel.c_str(), NodeFlags);
+    }
+
+    // Handle selection
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+    {
+        const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+
+        if (IsControlDown)
+        {
+            // Multi-select mode: toggle entity in selection
+            DebuggerSubsystem->Toggle_SelectionEntity(Entity, SelectedWorld);
+        }
+        else
+        {
+            // Single select mode: replace selection with this entity
+            DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+        }
+
+        FCogDebug::SetSelection(EntityActor);
+    }
+
+    // Handle Ctrl+Click to expand all children
+    if (const auto& IsControlDown = ImGui::GetCurrentContext()->IO.KeyCtrl;
+        ImGui::IsItemClicked(ImGuiMouseButton_Left) && IsControlDown)
+    {
+        OpenAllChildren = true;
+    }
+
+    // Context menu
+    if (ImGui::BeginPopupContextItem())
+    {
+        if (ImGui::MenuItem("Focus on Entity"))
+        {
+            DebuggerSubsystem->Set_SelectionEntities({Entity}, SelectedWorld);
+            FCogDebug::SetSelection(EntityActor);
+        }
+
+        if (ImGui::MenuItem("Add to Selection"))
+        {
+            DebuggerSubsystem->Add_SelectionEntity(Entity, SelectedWorld);
+        }
+
+        if (ImGui::MenuItem("Remove from Selection"))
+        {
+            DebuggerSubsystem->Remove_SelectionEntity(Entity);
+        }
+
+        ImGui::EndPopup();
+    }
+
+    // Tooltip with entity information
+    if (ImGui::IsItemHovered())
+    {
+        if (ck::IsValid(EntityActor))
+        {
+            FCogWidgets::ActorFrame(*EntityActor);
+        }
+
+        ImGui::BeginTooltip();
+        ImGui::Text("Entity: %s", ck::Format_ANSI(TEXT("{}"), Entity).c_str());
+        if (EntityActor)
+        {
+            ImGui::Text("Actor: %s", ck::Format_ANSI(TEXT("{}"), EntityActor).c_str());
+        }
+        ImGui::Text("Hold Ctrl+Click for multi-select");
+        ImGui::EndTooltip();
+    }
+
+    if (IsLocalPlayer)
+    {
+        ImGui::PopStyleColor();
+    }
+
+    CurrentIndex++;
+    if (OpenChildren)
+    {
+        while (CurrentIndex < Entities.Num() &&
+            ck::IsValid(Entities[CurrentIndex]) &&
+            NOT UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Entities[CurrentIndex]) &&
+            UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Entities[CurrentIndex]) == Entity)
+        {
+            CurrentIndex = RenderEntityNode(Entities, CurrentIndex, SelectedEntities, TransientEntity, OpenAllChildren);
+        }
+    }
+    else
+    {
+        const auto& HasEntityInParents = [&](const FCk_Handle& InEntity)
+        {
+            auto CurrentEntity = InEntity;
+            while (ck::IsValid(CurrentEntity))
+            {
+                if (Entity == CurrentEntity)
+                {
+                    return true;
+                }
+                if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(CurrentEntity))
+                { return false; }
+                CurrentEntity = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(CurrentEntity);
+            }
+            return false;
+        };
+
+        while (CurrentIndex < Entities.Num() &&
+            HasEntityInParents(Entities[CurrentIndex]))
+        {
+            CurrentIndex++;
+        }
+    }
+
+    if (OpenChildren)
+    {
+        ImGui::TreePop();
+    }
+
+    ImGui::PopID();
+
+    return CurrentIndex;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

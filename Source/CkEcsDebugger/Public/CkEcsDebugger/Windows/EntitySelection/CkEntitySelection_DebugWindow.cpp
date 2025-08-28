@@ -150,6 +150,26 @@ auto
             ImGui::EndMenu();
         }
 
+        TreeExpandTypeJustChanged = false;
+        if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
+        {
+            if (ImGui::BeginMenu("TreeType"))
+            {
+                auto EnumAsInt = static_cast<int32>(Config->EntitiesListTreeExpandPolicy);
+                const auto OldEnum = EnumAsInt;
+
+                ImGui::RadioButton("NotExpanded",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListTreeExpandPolicy::NotExpanded));
+                ImGui::RadioButton("StartsExpanded",      &EnumAsInt, static_cast<int32>(ECkDebugger_EntitiesListTreeExpandPolicy::StartsExpanded));
+
+                Config->EntitiesListTreeExpandPolicy = static_cast<ECkDebugger_EntitiesListTreeExpandPolicy>(EnumAsInt);
+
+                RequiresUpdate |= OldEnum != EnumAsInt;
+                TreeExpandTypeJustChanged = OldEnum != EnumAsInt;
+
+                ImGui::EndMenu();
+            }
+        }
+
         if (ImGui::BeginMenu("Selection"))
         {
             const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
@@ -514,9 +534,16 @@ auto
     {
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     }
-    else
+    else if (Config->EntitiesListTreeExpandPolicy == ECkDebugger_EntitiesListTreeExpandPolicy::StartsExpanded)
     {
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        if (TreeExpandTypeJustChanged)
+        { ImGui::SetNextItemOpen(true, ImGuiCond_Always); }
+        else
+        { ImGui::SetNextItemOpen(true, ImGuiCond_Once); }
+    }
+    else if (TreeExpandTypeJustChanged)
+    {
+        ImGui::SetNextItemOpen(false, ImGuiCond_Always);
     }
 
     // Determine tree node flags

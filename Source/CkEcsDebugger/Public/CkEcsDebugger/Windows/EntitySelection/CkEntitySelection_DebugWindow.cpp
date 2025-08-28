@@ -310,14 +310,6 @@ auto
             Handle.Get<ck::FFragment_LifetimeOwner>().Get_Entity() != TransientEntity)
         { return; }
 
-        if (_Filter.IsActive())
-        {
-            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle);
-            const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
-            if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
-            { return; }
-        }
-
         EntitiesSet.Add(Handle);
     };
 
@@ -384,6 +376,57 @@ auto
     LastUpdateTime = Get_CurrentTime();
 
     return Entities;
+}
+
+auto
+    FCk_EntitySelection_DebugWindow::
+    ApplyFilterToEntitiesAndCache(
+        const TArray<FCk_Handle>& Entities) const
+    -> const TArray<FCk_Handle>&
+{
+    QUICK_SCOPE_CYCLE_COUNTER(ApplyFilterToEntitiesAndCache)
+
+    CachedFilteredSelectedEntities.Empty();
+    if (NOT _Filter.IsActive())
+    {
+        CachedFilteredSelectedEntities = Entities;
+        return CachedFilteredSelectedEntities;
+    }
+
+    if (Config->EntitiesListDisplayPolicy == ECkDebugger_EntitiesListDisplayPolicy::EntityHierarchy)
+    {
+        TSet<FCk_Handle> EntitiesSet;
+        for (const auto& Entity : Entities)
+        {
+            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+            const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+            if (NOT _Filter.PassFilter(DebugNameANSI.Get()))
+            { continue; }
+
+            auto CurrentEntity = Entity;
+            EntitiesSet.Add(CurrentEntity);
+            while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
+            {
+                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+                EntitiesSet.Add(CurrentEntity);
+            }
+        }
+
+        CachedFilteredSelectedEntities = ck::algo::Filter(Entities, [&](const FCk_Handle Entity)
+        {
+            return EntitiesSet.Contains(Entity);
+        });
+    }
+    else
+    {
+        CachedFilteredSelectedEntities = ck::algo::Filter(Entities, [&](const FCk_Handle Entity)
+        {
+            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+            const auto& DebugNameANSI = StringCast<ANSICHAR>(*DebugName.ToString());
+            return _Filter.PassFilter(DebugNameANSI.Get());
+        });
+    }
+    return CachedFilteredSelectedEntities;
 }
 
 auto
@@ -534,9 +577,18 @@ auto
     RenderEntitiesWithFilters(bool InRequiresUpdate)
     -> void
 {
-    FCogWidgets::SearchBar("##Filter", _Filter);
+    const auto& SearchChanged = FCogWidgets::SearchBar("##Filter", _Filter);
 
-    const auto& Entities = Get_EntitiesForList(InRequiresUpdate);
+    auto Entities = Get_EntitiesForList(InRequiresUpdate);
+
+    if (SearchChanged || InRequiresUpdate)
+    {
+        Entities = ApplyFilterToEntitiesAndCache(Entities);
+    }
+    else
+    {
+        Entities = CachedFilteredSelectedEntities;
+    }
 
     ImGui::Separator();
 

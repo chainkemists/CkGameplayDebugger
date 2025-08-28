@@ -210,6 +210,7 @@ auto
     { return CachedSelectedEntities; }
 
     TSet<FCk_Handle> EntitiesSet;
+    TMap<FCk_Handle, TArray<FCk_Handle>> EntityParentsCache;
 
     const auto& DebuggerSubsystem = GetWorld()->GetSubsystem<UCk_EcsDebugger_Subsystem_UE>();
     const auto SelectedWorld = DebuggerSubsystem->Get_SelectedWorld();
@@ -252,22 +253,9 @@ auto
     {
         // Intentionally disabled for perf, can be disabled if needed for testing
         // QUICK_SCOPE_CYCLE_COUNTER(Get_EntitiesForList_HierarchicalSortingFunction)
-        const auto& Get_ParentsArray = [](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
-        {
-            TArray<FCk_Handle> ParentsArray;
-            auto CurrentEntity = InHandle;
-            ParentsArray.Add(CurrentEntity);
-            while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
-            {
-                CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                ParentsArray.Add(CurrentEntity);
-            }
-            Algo::Reverse(ParentsArray);
-            return ParentsArray;
-        };
 
-        const auto& ParentsArrayA = Get_ParentsArray(InA);
-        const auto& ParentsArrayB = Get_ParentsArray(InB);
+        const auto& ParentsArrayA = EntityParentsCache[InA];
+        const auto& ParentsArrayB = EntityParentsCache[InB];
 
         for (int32 i = 0; i < ParentsArrayA.Num() && i < ParentsArrayB.Num(); i++)
         {
@@ -292,6 +280,30 @@ auto
         else
         {
             ck::algo::Sort(InEntities, BaseSortingFunction);
+        }
+    };
+
+    const auto& Generate_EntityParentsCache = [&EntityParentsCache](const TArray<FCk_Handle>& InEntities)
+    {
+        QUICK_SCOPE_CYCLE_COUNTER(Generate_EntityParentsCache)
+        for (const auto& Entity : InEntities)
+        {
+            const auto& Get_ParentsArray = [&EntityParentsCache](const FCk_Handle& InHandle) -> TArray<FCk_Handle>
+            {
+                TArray<FCk_Handle> ParentsArray;
+                auto CurrentEntity = InHandle;
+                ParentsArray.Add(CurrentEntity);
+                while (CurrentEntity.Has<ck::FFragment_LifetimeOwner>())
+                {
+                    CurrentEntity = CurrentEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+                    ParentsArray.Add(CurrentEntity);
+                }
+                Algo::Reverse(ParentsArray);
+                EntityParentsCache.Add(InHandle, ParentsArray);
+                return ParentsArray;
+            };
+
+            EntityParentsCache.Add(Entity, Get_ParentsArray(Entity));
         }
     };
 
@@ -369,6 +381,7 @@ auto
     }
 
     auto Entities = EntitiesSet.Array();
+    Generate_EntityParentsCache(Entities);
 
     SortEntities(Entities);
 

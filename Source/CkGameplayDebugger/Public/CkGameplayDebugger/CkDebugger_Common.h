@@ -107,7 +107,7 @@ public:
 
 private:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
-              meta = (AllowPrivateAccess = true, EditCondition = "_Has_UserOverride_FontSize"))
+              meta = (AllowPrivateAccess = true))
     ECk_Engine_TextFontSize _FontSize = ECk_Engine_TextFontSize::Tiny;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Display",
@@ -140,6 +140,8 @@ USTRUCT(BlueprintType)
 struct CKGAMEPLAYDEBUGGER_API FCk_GameplayDebugger_DebugActorList
 {
     GENERATED_BODY()
+
+    CK_GENERATED_BODY(FCk_GameplayDebugger_DebugActorList);
 
 public:
     FCk_GameplayDebugger_DebugActorList() = default;

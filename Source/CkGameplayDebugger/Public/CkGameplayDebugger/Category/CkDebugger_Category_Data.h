@@ -21,6 +21,8 @@ struct CKGAMEPLAYDEBUGGER_API FCk_Payload_GameplayDebugger_OnCollectData
 {
     GENERATED_BODY();
 
+    CK_GENERATED_BODY(FCk_Payload_GameplayDebugger_OnCollectData);
+
 public:
     FCk_Payload_GameplayDebugger_OnCollectData() = default;
     FCk_Payload_GameplayDebugger_OnCollectData(
@@ -57,6 +59,8 @@ USTRUCT(BlueprintType)
 struct CKGAMEPLAYDEBUGGER_API FCk_Payload_GameplayDebugger_OnDrawData
 {
     GENERATED_BODY();
+
+    CK_GENERATED_BODY(FCk_Payload_GameplayDebugger_OnDrawData);
 
 public:
     FCk_Payload_GameplayDebugger_OnDrawData() = default;

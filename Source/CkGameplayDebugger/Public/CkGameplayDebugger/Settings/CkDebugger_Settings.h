@@ -16,6 +16,8 @@ class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_UserSettings_UE : public UCk_P
 {
     GENERATED_BODY()
 
+    CK_GENERATED_BODY(UCk_GameplayDebugger_UserSettings_UE);
+
 private:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Profile",
               meta = (AllowPrivateAccess = true))
@@ -31,6 +33,8 @@ UCLASS(defaultconfig, meta = (DisplayName = "Gameplay Debugger"))
 class CKGAMEPLAYDEBUGGER_API UCk_GameplayDebugger_ProjectSettings_UE : public UCk_Plugin_ProjectSettings_UE
 {
     GENERATED_BODY()
+
+    CK_GENERATED_BODY(UCk_GameplayDebugger_ProjectSettings_UE);
 
 private:
     // Default Gameplay Debugger Debug Profile to use if there is no override in the Editor Preferences

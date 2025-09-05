@@ -64,14 +64,6 @@ auto
 
     RenderMenu();
 
-    const auto SelectionEntities = Get_SelectionEntities();
-
-    if (SelectionEntities.IsEmpty())
-    {
-        ImGui::Text("No entities selected");
-        return;
-    }
-
     // Step 1: ALWAYS disable debug drawing for previous entities (cleanup)
     for (const auto& PreviousEntity : Get_PreviousEntities())
     {
@@ -80,6 +72,14 @@ auto
         {
             UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(MaybePreviousProbe, ECk_EnableDisable::Disable);
         }
+    }
+
+    const auto SelectionEntities = Get_SelectionEntities();
+
+    if (SelectionEntities.IsEmpty())
+    {
+        ImGui::Text("No entities selected");
+        return;
     }
 
     auto EntitiesWithProbes = ck::algo::Filter(SelectionEntities, [](const FCk_Handle& InEntity)

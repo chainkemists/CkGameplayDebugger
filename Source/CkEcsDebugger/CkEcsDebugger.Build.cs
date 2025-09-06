@@ -38,6 +38,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkRelationship",
             "CkSettings",
             "CkTimer",
+            "CkObjective",
 
             "Cog",
             "CogCommon",

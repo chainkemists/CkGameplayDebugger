@@ -338,6 +338,80 @@ auto
                 }
             };
 
+            const auto RenderTableRow_OverlapDetails = [&](const char* Label, const TSet<FCk_Probe_OverlapInfo>& Overlaps)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::Text(Label);
+                ImGui::TableSetColumnIndex(1);
+
+                if (Overlaps.IsEmpty())
+                {
+                    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(102, 102, 102, 255)); // Gray
+                    ImGui::Text("None");
+                    ImGui::PopStyleColor();
+                }
+                else
+                {
+                    // Show overlap count and entities
+                    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(195, 232, 141, 255)); // Green for overlaps
+                    ImGui::Text("(%d entities)", Overlaps.Num());
+                    ImGui::PopStyleColor();
+
+                    // Create a collapsing header for overlap details
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(1);
+
+                    if (ImGui::TreeNode("OverlapDetails", "Overlap Details"))
+                    {
+                        ImGui::Indent();
+
+                        int32 OverlapIndex = 0;
+                        for (const auto& OverlapInfo : Overlaps)
+                        {
+                            const auto& OtherEntity = OverlapInfo.Get_OtherEntity();
+
+                            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(130, 177, 255, 255)); // Blue for entity handles
+                            ImGui::Text("[%d] Entity: %s", OverlapIndex + 1, ck::Format_ANSI(TEXT("{}"), OtherEntity).c_str());
+                            ImGui::PopStyleColor();
+
+                            // Show contact points if available
+                            const auto& ContactPoints = OverlapInfo.Get_ContactPoints();
+                            if (ContactPoints.Num() > 0)
+                            {
+                                ImGui::Indent();
+                                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 204, 2, 255)); // Yellow for details
+                                ImGui::Text("Contact Points: %d", ContactPoints.Num());
+
+                                // Show first contact point as example
+                                if (ContactPoints.Num() > 0)
+                                {
+                                    const FVector& FirstContact = ContactPoints[0];
+                                    ImGui::Text("  First: (%.2f, %.2f, %.2f)", FirstContact.X, FirstContact.Y, FirstContact.Z);
+                                }
+
+                                // Show contact normal
+                                const FVector& Normal = OverlapInfo.Get_ContactNormal();
+                                ImGui::Text("Normal: (%.2f, %.2f, %.2f)", Normal.X, Normal.Y, Normal.Z);
+                                ImGui::PopStyleColor();
+                                ImGui::Unindent();
+                            }
+
+                            OverlapIndex++;
+
+                            // Add spacing between overlap entries
+                            if (OverlapIndex < Overlaps.Num())
+                            {
+                                ImGui::Spacing();
+                            }
+                        }
+
+                        ImGui::Unindent();
+                        ImGui::TreePop();
+                    }
+                }
+            };
+
             // === BASIC INFORMATION ===
             RenderTableRow_ProbeName("Name:", Get_ProbeName(Probe));
 
@@ -347,6 +421,13 @@ auto
             // Status (Overlapping/Not Overlapping) - Green for overlapping, Red for not overlapping
             const auto& StatusText = IsOverlapping ? TEXT("Overlapping") : TEXT("Not Overlapping");
             RenderTableRow_ProbeStatus("Status:", StatusText, IsOverlapping);
+
+            // === OVERLAP DETAILS ===
+            if (IsOverlapping)
+            {
+                const auto& CurrentOverlaps = UCk_Utils_Probe_UE::Get_CurrentOverlaps(Probe);
+                RenderTableRow_OverlapDetails("Overlapping With:", CurrentOverlaps);
+            }
 
             // === CONFIGURATION ===
             RenderTableRow_ProbeConfig("Response Policy:", Get_ProbeResponsePolicy(Probe));

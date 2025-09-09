@@ -30,6 +30,8 @@
 #include "CogSubsystem.h"
 
 #include "CkEcsDebugger/Windows/AnimState/CkAnimPlan_DebugWindow.h"
+#include "CkEcsDebugger/Windows/InteractTarget/CkInteractTarget_DebugWindow.h"
+#include "CkEcsDebugger/Windows/InteractionResolver/CkInteractionResolver_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Objective/CkObjective_DebugWindow.h"
 #include "CkEcsDebugger/Windows/Probe/CkProbes_DebugWindow.h"
 
@@ -111,7 +113,9 @@ auto
     _CogSubsystem->AddWindow<FCk_Probes_DebugWindow>("Ck.Probes");
     _CogSubsystem->AddWindow<FCk_Objective_DebugWindow>("Ck.Objectives");
 
+    _CogSubsystem->AddWindow<FCk_InteractTarget_DebugWindow>("Ck.Interaction.InteractTarget");
     _CogSubsystem->AddWindow<FCk_InteractionResolver_DebugWindow>("Ck.Interaction.InteractionResolver");
+
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");
     _CogSubsystem->AddWindow<FCogEngineWindow_CommandBindings>("Engine.Command Bindings");

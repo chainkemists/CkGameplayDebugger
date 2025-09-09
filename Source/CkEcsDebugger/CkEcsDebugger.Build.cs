@@ -5,9 +5,6 @@ public class CkEcsDebugger : CkModuleRules
 {
     public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
-        PrivateIncludePaths.AddRange(new string[] {
-        });
-
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",
@@ -15,43 +12,43 @@ public class CkEcsDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
             "InputCore",
-
             "Iris",
             "IrisCore",
 
             "CkAbility",
             "CkAnimation",
             "CkAttribute",
+            "CkAudio",
             "CkCore",
             "CkEcs",
             "CkEcsExt",
-            "CkEntityExtension",
             "CkEntityCollection",
+            "CkEntityExtension",
+            "CkInteraction",
             "CkLabel",
             "CkLog",
-
+            "CkObjective",
             "CkOverlapBody",
             "CkPhysics",
-            "CkShapes",
-            "CkSpatialQuery",
             "CkRecord",
             "CkRelationship",
             "CkSettings",
+            "CkShapes",
+            "CkSpatialQuery",
             "CkTimer",
-            "CkObjective",
 
             "Cog",
             "CogCommon",
-            "CogImgui",
+            "CogDebug",
             "CogEngine",
-            "CogDebug"
+            "CogImgui"
         });
 
         if (Target.bBuildEditor)
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd",
+                "UnrealEd"
             });
         }
     }

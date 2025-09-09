@@ -111,6 +111,7 @@ auto
     _CogSubsystem->AddWindow<FCk_Probes_DebugWindow>("Ck.Probes");
     _CogSubsystem->AddWindow<FCk_Objective_DebugWindow>("Ck.Objectives");
 
+    _CogSubsystem->AddWindow<FCk_InteractionResolver_DebugWindow>("Ck.Interaction.InteractionResolver");
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionTester>("Engine.Collision Tester");
     _CogSubsystem->AddWindow<FCogEngineWindow_CollisionViewer>("Engine.Collision Viewer");
     _CogSubsystem->AddWindow<FCogEngineWindow_CommandBindings>("Engine.Command Bindings");

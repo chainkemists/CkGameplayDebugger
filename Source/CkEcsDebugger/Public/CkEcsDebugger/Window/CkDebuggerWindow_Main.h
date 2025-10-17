@@ -3,6 +3,8 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
+#include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
+#include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
 
 #include "SlateIM/Public/SlateIMWidgetBase.h"
 
@@ -32,13 +34,20 @@ private:
     auto Draw_EntityList() -> void;
     auto Draw_ContentArea() -> void;
     auto Draw_InspectorPanel() -> void;
+    auto Draw_Toolbar() -> void;
+    auto Draw_StatusBar() -> void;
 
     auto InitializePages() -> void;
+    auto OnSearchChanged(const FString& InSearchText) -> void;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
     int32 ActivePageIndex = 0;
+
+    // UI Widgets
+    FCkDebuggerWidget_SearchBar SearchBar;
+    FCkDebuggerWidget_EntityTree EntityTree;
 
     // UI State
     float LeftPanelWidth = 300.0f;

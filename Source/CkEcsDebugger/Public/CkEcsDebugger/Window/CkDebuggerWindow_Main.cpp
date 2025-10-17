@@ -20,6 +20,12 @@ FCkDebuggerWindow_Main::FCkDebuggerWindow_Main(UWorld* InWorld)
         WorldModel->Set_SelectedWorld(InWorld);
     }
 
+    // Initialize widgets
+    EntityTree.Initialize(SelectionModel, WorldModel);
+
+    // Bind search callback
+    SearchBar.OnSearchChanged.BindRaw(this, &FCkDebuggerWindow_Main::OnSearchChanged);
+
     InitializePages();
 }
 
@@ -66,11 +72,26 @@ auto FCkDebuggerWindow_Main::Draw_LeftSidebar() -> void
 {
     SlateIM::BeginVerticalStack();
     {
+        // Page buttons at the top
         Draw_PageButtons();
 
         SlateIM::Spacer(FVector2D(0.0f, 8.0f));
 
-        Draw_EntityList();
+        // Toolbar with actions
+        Draw_Toolbar();
+
+        SlateIM::Spacer(FVector2D(0.0f, 4.0f));
+
+        // Search bar
+        SearchBar.Draw();
+
+        SlateIM::Spacer(FVector2D(0.0f, 4.0f));
+
+        // Entity tree (fills remaining space)
+        EntityTree.Draw();
+
+        // Status bar at bottom
+        Draw_StatusBar();
     }
     SlateIM::EndVerticalStack();
 }
@@ -101,14 +122,68 @@ auto FCkDebuggerWindow_Main::Draw_PageButtons() -> void
     SlateIM::EndVerticalStack();
 }
 
+auto FCkDebuggerWindow_Main::Draw_Toolbar() -> void
+{
+    SlateIM::BeginHorizontalStack();
+    {
+        // Refresh button
+        SlateIM::AutoSize();
+        SlateIM::Padding(FMargin(2.0f));
+        if (SlateIM::Button(TEXT("Refresh")))
+        {
+            EntityTree.RefreshTree();
+        }
+
+        SlateIM::Spacer(FVector2D(4.0f, 0.0f));
+
+        // Expand All button
+        SlateIM::AutoSize();
+        SlateIM::Padding(FMargin(2.0f));
+        if (SlateIM::Button(TEXT("Expand All")))
+        {
+            EntityTree.ExpandAll();
+        }
+
+        SlateIM::Spacer(FVector2D(4.0f, 0.0f));
+
+        // Collapse All button
+        SlateIM::AutoSize();
+        SlateIM::Padding(FMargin(2.0f));
+        if (SlateIM::Button(TEXT("Collapse All")))
+        {
+            EntityTree.CollapseAll();
+        }
+
+        // Spacer to push remaining buttons to the right
+        SlateIM::Fill();
+    }
+    SlateIM::EndHorizontalStack();
+}
+
+auto FCkDebuggerWindow_Main::Draw_StatusBar() -> void
+{
+    SlateIM::Padding(FMargin(4.0f, 2.0f));
+
+    const auto VisibleCount = EntityTree.Get_VisibleEntityCount();
+    const auto TotalCount = EntityTree.Get_TotalEntityCount();
+
+    FString StatusText;
+    if (SearchBar.IsActive())
+    {
+        StatusText = FString::Printf(TEXT("%d entities (%d visible)"), TotalCount, VisibleCount);
+    }
+    else
+    {
+        StatusText = FString::Printf(TEXT("%d entities"), TotalCount);
+    }
+
+    SlateIM::Text(StatusText, FLinearColor(0.7f, 0.7f, 0.7f));
+}
+
 auto FCkDebuggerWindow_Main::Draw_EntityList() -> void
 {
-    SlateIM::Fill();
-    SlateIM::BeginScrollBox(Orient_Vertical);
-    {
-        SlateIM::Text(TEXT("Entity List Coming Soon"));
-    }
-    SlateIM::EndScrollBox();
+    // This method is now integrated into Draw_LeftSidebar
+    EntityTree.Draw();
 }
 
 auto FCkDebuggerWindow_Main::Draw_ContentArea() -> void
@@ -147,4 +222,9 @@ auto FCkDebuggerWindow_Main::InitializePages() -> void
     Pages.Add(OverviewPage);
 
     ActivePageIndex = 0;
+}
+
+auto FCkDebuggerWindow_Main::OnSearchChanged(const FString& InSearchText) -> void
+{
+    EntityTree.SetFilterText(InSearchText);
 }

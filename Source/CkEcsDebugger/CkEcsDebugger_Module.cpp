@@ -1,18 +1,19 @@
 #include "CkEcsDebugger_Module.h"
 
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
 #define LOCTEXT_NAMESPACE "FCkEcsDebuggerModule"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-void FCkEcsDebuggerModule::StartupModule()
+auto FCkEcsDebuggerModule::StartupModule() -> void
 {
+    FCkDebuggerStyle::Initialize();
 }
 
-auto
-    FCkEcsDebuggerModule::
-    ShutdownModule()
-    -> void
+auto FCkEcsDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerStyle::Shutdown();
 }
 
 #undef LOCTEXT_NAMESPACE

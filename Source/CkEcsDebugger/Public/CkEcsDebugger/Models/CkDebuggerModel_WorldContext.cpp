@@ -26,12 +26,19 @@ auto FCkDebuggerModel_WorldContext::Get_AvailableWorlds() const -> TArray<UWorld
     if (ck::Is_NOT_Valid(GEngine))
     { return Worlds; }
 
-    for (const auto& Context : GEngine->GetWorldContexts())
+    auto WorldContexts = GEngine->GetWorldContexts();
+
+    for (auto Index = 0; Index < WorldContexts.Num(); ++Index)
     {
-        if (const auto& World = Context.World();
-            ck::IsValid(World))
+        const auto& ContextWorld = WorldContexts[Index].World();
+
+        if (ck::Is_NOT_Valid(ContextWorld))
+        { continue; }
+
+        if (auto GameInstance = ContextWorld->GetGameInstance();
+            ck::IsValid(GameInstance))
         {
-            Worlds.Add(World);
+            Worlds.Emplace(ContextWorld);
         }
     }
 

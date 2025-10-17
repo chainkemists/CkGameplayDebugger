@@ -1,0 +1,101 @@
+#include "CkInspector_Transform.h"
+
+#include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcsExt/Transform/CkTransform_Utils.h"
+
+#include "Widgets/Layout/SGridPanel.h"
+#include "Widgets/Text/STextBlock.h"
+
+auto FCkInspector_Transform::Get_ComponentName() const -> FText
+{
+    return FText::FromString(TEXT("Transform"));
+}
+
+auto FCkInspector_Transform::CanInspect(const FCk_Handle& Entity) const -> bool
+{
+    return ck::IsValid(Entity) && UCk_Utils_Transform_UE::Has(Entity);
+}
+
+auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
+{
+    if (NOT UCk_Utils_Transform_UE::Has(Entity))
+    {
+        return SNew(STextBlock)
+            .Text(FText::FromString(TEXT("No Transform")));
+    }
+
+    const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
+    const auto Location = Transform.GetLocation();
+    const auto Rotation = Transform.GetRotation().Rotator();
+    const auto Scale = Transform.GetScale3D();
+
+    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
+    if (ck::IsValid(EntityWorld))
+    {
+        UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, Transform);
+
+        const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
+        constexpr AActor* TestActor = nullptr;
+        UCk_Utils_DebugDraw_UE::DrawDebugString(
+            EntityWorld,
+            TextLocation,
+            Entity.ToString(),
+            TestActor,
+            FLinearColor::White,
+            0.0f);
+    }
+
+    auto Grid = SNew(SGridPanel)
+        .FillColumn(1, 1.0f);
+
+    int32 Row = 0;
+
+    Grid->AddSlot(0, Row)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Location:")))
+        ];
+
+    Grid->AddSlot(1, Row++)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("{}"), Location)))
+            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
+        ];
+
+    Grid->AddSlot(0, Row)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Rotation:")))
+        ];
+
+    Grid->AddSlot(1, Row++)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("{}"), Rotation)))
+            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
+        ];
+
+    Grid->AddSlot(0, Row)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Scale:")))
+        ];
+
+    Grid->AddSlot(1, Row++)
+        .Padding(4.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(ck::Format_UE(TEXT("{}"), Scale)))
+            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
+        ];
+
+    return Grid;
+}

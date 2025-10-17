@@ -6,6 +6,8 @@
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 class ICkDebuggerPage_Base;
+class SCkDebuggerPanel_Inspector;
+class SCkDebuggerPanel_EntityList;
 
 class SCkDebuggerWindow_Main : public SCompoundWidget
 {
@@ -33,6 +35,6 @@ private:
     int32 ActivePageIndex = 0;
 
     TSharedPtr<SWidget> ContentAreaWidget;
-    TSharedPtr<SWidget> LeftSidebarWidget;
-    TSharedPtr<SWidget> InspectorWidget;
+    TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
+    TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
 };

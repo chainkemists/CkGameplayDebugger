@@ -35,16 +35,6 @@
 				"Mac",
 				"Linux"
 			]
-		},
-		{
-			"Name": "CkSlateDebugger",
-			"Type": "UncookedOnly",
-			"LoadingPhase": "Default",
-			"WhitelistPlatforms": [
-				"Win64",
-				"Mac",
-				"Linux"
-			]
 		}
 	],
 	"Plugins": [

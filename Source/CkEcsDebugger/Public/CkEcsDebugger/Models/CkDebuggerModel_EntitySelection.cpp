@@ -4,19 +4,19 @@
 
 auto FCkDebuggerModel_EntitySelection::Set_SelectedEntities(const TArray<FCk_Handle>& InEntities) -> void
 {
-    SelectedEntities.Empty(InEntities.Num());
-    SelectedEntitiesSet.Empty(InEntities.Num());
+    SelectedEntities.Empty();
+    SelectedEntitiesSet.Empty();
 
     for (const auto& Entity : InEntities)
     {
         if (ck::Is_NOT_Valid(Entity))
         { continue; }
 
-        SelectedEntities.Add(Entity);
+        SelectedEntities.AddUnique(Entity);
         SelectedEntitiesSet.Add(Entity);
     }
 
-    BroadcastChange();
+    BroadcastSelectionChanged();
 }
 
 auto FCkDebuggerModel_EntitySelection::Add_SelectedEntity(const FCk_Handle& InEntity) -> void
@@ -30,7 +30,7 @@ auto FCkDebuggerModel_EntitySelection::Add_SelectedEntity(const FCk_Handle& InEn
     SelectedEntities.Add(InEntity);
     SelectedEntitiesSet.Add(InEntity);
 
-    BroadcastChange();
+    BroadcastSelectionChanged();
 }
 
 auto FCkDebuggerModel_EntitySelection::Remove_SelectedEntity(const FCk_Handle& InEntity) -> void
@@ -41,7 +41,7 @@ auto FCkDebuggerModel_EntitySelection::Remove_SelectedEntity(const FCk_Handle& I
     SelectedEntities.Remove(InEntity);
     SelectedEntitiesSet.Remove(InEntity);
 
-    BroadcastChange();
+    BroadcastSelectionChanged();
 }
 
 auto FCkDebuggerModel_EntitySelection::Toggle_SelectedEntity(const FCk_Handle& InEntity) -> void
@@ -61,16 +61,39 @@ auto FCkDebuggerModel_EntitySelection::Toggle_SelectedEntity(const FCk_Handle& I
 
 auto FCkDebuggerModel_EntitySelection::Clear_Selection() -> void
 {
-    if (SelectedEntities.Num() == 0)
+    if (SelectedEntities.IsEmpty())
     { return; }
 
     SelectedEntities.Empty();
     SelectedEntitiesSet.Empty();
 
-    BroadcastChange();
+    BroadcastSelectionChanged();
 }
 
-auto FCkDebuggerModel_EntitySelection::BroadcastChange() -> void
+auto FCkDebuggerModel_EntitySelection::Get_SelectedEntities() const -> const TArray<FCk_Handle>&
+{
+    return SelectedEntities;
+}
+
+auto FCkDebuggerModel_EntitySelection::Get_PrimarySelection() const -> FCk_Handle
+{
+    if (SelectedEntities.IsEmpty())
+    { return FCk_Handle{}; }
+
+    return SelectedEntities[0];
+}
+
+auto FCkDebuggerModel_EntitySelection::IsSelected(const FCk_Handle& InEntity) const -> bool
+{
+    return SelectedEntitiesSet.Contains(InEntity);
+}
+
+auto FCkDebuggerModel_EntitySelection::Get_SelectionCount() const -> int32
+{
+    return SelectedEntities.Num();
+}
+
+auto FCkDebuggerModel_EntitySelection::BroadcastSelectionChanged() -> void
 {
     OnSelectionChanged.Broadcast(SelectedEntities);
 }

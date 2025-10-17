@@ -1,230 +1,181 @@
 #include "CkDebuggerWindow_Main.h"
 
-#include "CkCore/Validation/CkIsValid.h"
+#include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Styling/AppStyle.h"
+
+#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 
-#include "SlateIM/Public/SlateIM.h"
-
-FCkDebuggerWindow_Main::FCkDebuggerWindow_Main(UWorld* InWorld)
-    : FSlateIMWindowBase(
-        TEXT("CkFoundation ECS Debugger"),
-        FVector2f(1600.0f, 900.0f),
-        TEXT("ck.EcsDebugger.Toggle"),
-        TEXT("Toggle the CkFoundation ECS Debugger"))
+auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
     SelectionModel = MakeShared<FCkDebuggerModel_EntitySelection>();
     WorldModel = MakeShared<FCkDebuggerModel_WorldContext>();
 
-    if (ck::IsValid(InWorld))
-    {
-        WorldModel->Set_SelectedWorld(InWorld);
-    }
+    Pages.Add(MakeShared<FCkDebuggerPage_Overview>());
+    Pages[0]->Set_IsActive(true);
 
-    // Initialize widgets
-    EntityTree.Initialize(SelectionModel, WorldModel);
+    LeftSidebarWidget = Build_LeftSidebar();
+    ContentAreaWidget = Build_ContentArea();
+    InspectorWidget = Build_InspectorPanel();
 
-    // Bind search callback
-    SearchBar.OnSearchChanged.BindRaw(this, &FCkDebuggerWindow_Main::OnSearchChanged);
+    ChildSlot
+    [
+        SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .Padding(0.0f)
+        [
+            SNew(SSplitter)
+            .Orientation(Orient_Horizontal)
+            .PhysicalSplitterHandleSize(2.0f)
 
-    InitializePages();
+            + SSplitter::Slot()
+            .Value(0.2f)
+            .MinSize(200.0f)
+            [
+                SNew(SBox)
+                .MaxDesiredWidth(500.0f)
+                [
+                    LeftSidebarWidget.ToSharedRef()
+                ]
+            ]
+
+            + SSplitter::Slot()
+            .Value(0.5f)
+            .MinSize(400.0f)
+            [
+                ContentAreaWidget.ToSharedRef()
+            ]
+
+            + SSplitter::Slot()
+            .Value(0.3f)
+            .MinSize(250.0f)
+            [
+                SNew(SBox)
+                .MaxDesiredWidth(600.0f)
+                [
+                    InspectorWidget.ToSharedRef()
+                ]
+            ]
+        ]
+    ];
 }
 
-auto FCkDebuggerWindow_Main::DrawWindow(const float InDeltaTime) -> void
+auto SCkDebuggerWindow_Main::Tick(
+    const FGeometry& InAllottedGeometry,
+    const double InCurrentTime,
+    const float InDeltaTime) -> void
 {
-    if (Pages.IsValidIndex(ActivePageIndex))
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    for (const auto& Page : Pages)
     {
-        Pages[ActivePageIndex]->Tick(InDeltaTime);
-    }
-
-    // Main horizontal layout: Left | Center | Right
-    SlateIM::BeginHorizontalStack();
-    {
-        // Left Sidebar
-        SlateIM::MinWidth(LeftPanelWidth);
-        SlateIM::MaxWidth(LeftPanelWidth);
-        SlateIM::BeginBorder(TEXT("ToolPanel.GroupBorder"), Orient_Vertical, true, FMargin(4.0f));
+        if (Page.IsValid() && Page->IsActive())
         {
-            Draw_LeftSidebar();
-        }
-        SlateIM::EndBorder();
-
-        // Center Content Area
-        SlateIM::Fill();
-        SlateIM::BeginBorder(TEXT("ToolPanel.GroupBorder"), Orient_Vertical, true, FMargin(4.0f));
-        {
-            Draw_ContentArea();
-        }
-        SlateIM::EndBorder();
-
-        // Right Inspector Panel
-        SlateIM::MinWidth(RightPanelWidth);
-        SlateIM::MaxWidth(RightPanelWidth);
-        SlateIM::BeginBorder(TEXT("ToolPanel.GroupBorder"), Orient_Vertical, true, FMargin(4.0f));
-        {
-            Draw_InspectorPanel();
-        }
-        SlateIM::EndBorder();
-    }
-    SlateIM::EndHorizontalStack();
-}
-
-auto FCkDebuggerWindow_Main::Draw_LeftSidebar() -> void
-{
-    SlateIM::BeginVerticalStack();
-    {
-        // Page buttons at the top
-        Draw_PageButtons();
-
-        SlateIM::Spacer(FVector2D(0.0f, 8.0f));
-
-        // Toolbar with actions
-        Draw_Toolbar();
-
-        SlateIM::Spacer(FVector2D(0.0f, 4.0f));
-
-        // Search bar
-        SearchBar.Draw();
-
-        SlateIM::Spacer(FVector2D(0.0f, 4.0f));
-
-        // Entity tree (fills remaining space)
-        EntityTree.Draw();
-
-        // Status bar at bottom
-        Draw_StatusBar();
-    }
-    SlateIM::EndVerticalStack();
-}
-
-auto FCkDebuggerWindow_Main::Draw_PageButtons() -> void
-{
-    SlateIM::BeginVerticalStack();
-    {
-        for (int32 i = 0; i < Pages.Num(); ++i)
-        {
-            const auto& Page = Pages[i];
-            const auto IsActive = i == ActivePageIndex;
-
-            SlateIM::Padding(FMargin(4.0f));
-
-            if (SlateIM::Button(Page->Get_PageName().ToString()))
-            {
-                if (Pages.IsValidIndex(ActivePageIndex))
-                {
-                    Pages[ActivePageIndex]->SetActive(false);
-                }
-
-                ActivePageIndex = i;
-                Pages[ActivePageIndex]->SetActive(true);
-            }
+            Page->Tick(InDeltaTime);
         }
     }
-    SlateIM::EndVerticalStack();
 }
 
-auto FCkDebuggerWindow_Main::Draw_Toolbar() -> void
+auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
 {
-    SlateIM::BeginHorizontalStack();
+    return SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .Padding(4.0f)
+        [
+            SNew(SBox)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Entity List - Coming Soon")))
+            ]
+        ];
+}
+
+auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
+{
+    if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())
     {
-        // Refresh button
-        SlateIM::AutoSize();
-        SlateIM::Padding(FMargin(2.0f));
-        if (SlateIM::Button(TEXT("Refresh")))
+        const auto Context = FCkDebuggerPageContext
         {
-            EntityTree.RefreshTree();
-        }
+            SelectionModel,
+            WorldModel
+        };
 
-        SlateIM::Spacer(FVector2D(4.0f, 0.0f));
-
-        // Expand All button
-        SlateIM::AutoSize();
-        SlateIM::Padding(FMargin(2.0f));
-        if (SlateIM::Button(TEXT("Expand All")))
-        {
-            EntityTree.ExpandAll();
-        }
-
-        SlateIM::Spacer(FVector2D(4.0f, 0.0f));
-
-        // Collapse All button
-        SlateIM::AutoSize();
-        SlateIM::Padding(FMargin(2.0f));
-        if (SlateIM::Button(TEXT("Collapse All")))
-        {
-            EntityTree.CollapseAll();
-        }
-
-        // Spacer to push remaining buttons to the right
-        SlateIM::Fill();
-    }
-    SlateIM::EndHorizontalStack();
-}
-
-auto FCkDebuggerWindow_Main::Draw_StatusBar() -> void
-{
-    SlateIM::Padding(FMargin(4.0f, 2.0f));
-
-    const auto VisibleCount = EntityTree.Get_VisibleEntityCount();
-    const auto TotalCount = EntityTree.Get_TotalEntityCount();
-
-    FString StatusText;
-    if (SearchBar.IsActive())
-    {
-        StatusText = FString::Printf(TEXT("%d entities (%d visible)"), TotalCount, VisibleCount);
-    }
-    else
-    {
-        StatusText = FString::Printf(TEXT("%d entities"), TotalCount);
+        return SNew(SBorder)
+            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+            .Padding(4.0f)
+            [
+                Pages[ActivePageIndex]->Build_Content(Context)
+            ];
     }
 
-    SlateIM::Text(StatusText, FLinearColor(0.7f, 0.7f, 0.7f));
+    return SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .Padding(4.0f)
+        [
+            SNew(SBox)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("No Page Selected")))
+            ]
+        ];
 }
 
-auto FCkDebuggerWindow_Main::Draw_EntityList() -> void
+auto SCkDebuggerWindow_Main::Build_InspectorPanel() -> TSharedRef<SWidget>
 {
-    // This method is now integrated into Draw_LeftSidebar
-    EntityTree.Draw();
+    return SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .Padding(4.0f)
+        [
+            SNew(SBox)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Inspector - Coming Soon")))
+            ]
+        ];
 }
 
-auto FCkDebuggerWindow_Main::Draw_ContentArea() -> void
+auto SCkDebuggerWindow_Main::OnPageSelected(int32 InPageIndex) -> void
 {
-    if (NOT Pages.IsValidIndex(ActivePageIndex))
+    if (NOT Pages.IsValidIndex(InPageIndex))
+    { return; }
+
+    if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())
     {
-        SlateIM::Text(TEXT("No Page Selected"));
-        return;
+        Pages[ActivePageIndex]->Set_IsActive(false);
     }
 
-    const FCkDebuggerPageContext Context
-    {
-        SelectionModel,
-        WorldModel
-    };
+    ActivePageIndex = InPageIndex;
 
-    Pages[ActivePageIndex]->Draw(Context);
-}
-
-auto FCkDebuggerWindow_Main::Draw_InspectorPanel() -> void
-{
-    SlateIM::Fill();
-    SlateIM::BeginScrollBox(Orient_Vertical);
+    if (Pages[ActivePageIndex].IsValid())
     {
-        SlateIM::Text(TEXT("Inspector Panel Coming Soon"));
+        Pages[ActivePageIndex]->Set_IsActive(true);
     }
-    SlateIM::EndScrollBox();
+
+    RebuildContentArea();
 }
 
-auto FCkDebuggerWindow_Main::InitializePages() -> void
+auto SCkDebuggerWindow_Main::RebuildContentArea() -> void
 {
-    Pages.Empty();
-
-    auto OverviewPage = MakeShared<FCkDebuggerPage_Overview>();
-    OverviewPage->SetActive(true);
-    Pages.Add(OverviewPage);
-
-    ActivePageIndex = 0;
+    ContentAreaWidget = Build_ContentArea();
 }
 
-auto FCkDebuggerWindow_Main::OnSearchChanged(const FString& InSearchText) -> void
+auto SCkDebuggerWindow_Main::Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>
 {
-    EntityTree.SetFilterText(InSearchText);
+    return SelectionModel;
+}
+
+auto SCkDebuggerWindow_Main::Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>
+{
+    return WorldModel;
 }

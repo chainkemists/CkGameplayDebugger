@@ -12,6 +12,7 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
@@ -30,12 +31,14 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
         .Padding(0.0f)
         [
             SNew(SSplitter)
             .Orientation(Orient_Horizontal)
-            .PhysicalSplitterHandleSize(2.0f)
+            .PhysicalSplitterHandleSize(3.0f)
+            .HitDetectionSplitterHandleSize(5.0f)
+            .Style(FAppStyle::Get(), "Splitter")
 
             + SSplitter::Slot()
             .Value(0.2f)
@@ -52,7 +55,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
             .Value(0.5f)
             .MinSize(400.0f)
             [
-                Build_ContentArea()
+                SNew(SBorder)
+                .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Border))
+                .BorderBackgroundColor(FCkDebuggerStyle::Color_Border)
+                .Padding(FMargin(1.0f, 0.0f))
+                [
+                    Build_ContentArea()
+                ]
             ]
 
             + SSplitter::Slot()
@@ -87,12 +96,7 @@ auto SCkDebuggerWindow_Main::Tick(
 
 auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
 {
-    return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-        .Padding(0.0f)
-        [
-            SAssignNew(EntityListPanel, SCkDebuggerPanel_EntityList, SelectionModel, WorldModel)
-        ];
+    return SAssignNew(EntityListPanel, SCkDebuggerPanel_EntityList, SelectionModel, WorldModel);
 }
 
 auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
@@ -106,8 +110,8 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
         };
 
         ContentAreaWidget = SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-            .Padding(4.0f)
+            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+            .Padding(FCkDebuggerStyle::Padding_Small)
             [
                 Pages[ActivePageIndex]->Build_Content(Context)
             ];
@@ -116,27 +120,24 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
     }
 
     return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-        .Padding(4.0f)
+        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        .Padding(FCkDebuggerStyle::Padding_Small)
         [
             SNew(SBox)
             .HAlign(HAlign_Center)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
                 .Text(FText::FromString(TEXT("No Page Selected")))
+                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Muted)
             ]
         ];
 }
 
 auto SCkDebuggerWindow_Main::Build_InspectorPanel() -> TSharedRef<SWidget>
 {
-    return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-        .Padding(0.0f)
-        [
-            SAssignNew(InspectorPanel, SCkDebuggerPanel_Inspector, SelectionModel)
-        ];
+    return SAssignNew(InspectorPanel, SCkDebuggerPanel_Inspector, SelectionModel);
 }
 
 auto SCkDebuggerWindow_Main::OnPageSelected(int32 InPageIndex) -> void

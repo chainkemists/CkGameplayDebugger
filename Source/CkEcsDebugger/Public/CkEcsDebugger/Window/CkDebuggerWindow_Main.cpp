@@ -11,6 +11,7 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
+#include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
 
 auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
@@ -25,10 +26,6 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 
     Pages.Add(MakeShared<FCkDebuggerPage_Overview>());
     Pages[0]->Set_IsActive(true);
-
-    LeftSidebarWidget = Build_LeftSidebar();
-    ContentAreaWidget = Build_ContentArea();
-    InspectorWidget = Build_InspectorPanel();
 
     ChildSlot
     [
@@ -47,7 +44,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 SNew(SBox)
                 .MaxDesiredWidth(500.0f)
                 [
-                    LeftSidebarWidget.ToSharedRef()
+                    Build_LeftSidebar()
                 ]
             ]
 
@@ -55,7 +52,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
             .Value(0.5f)
             .MinSize(400.0f)
             [
-                ContentAreaWidget.ToSharedRef()
+                Build_ContentArea()
             ]
 
             + SSplitter::Slot()
@@ -65,7 +62,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 SNew(SBox)
                 .MaxDesiredWidth(600.0f)
                 [
-                    InspectorWidget.ToSharedRef()
+                    Build_InspectorPanel()
                 ]
             ]
         ]
@@ -94,7 +91,7 @@ auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
         .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
         .Padding(0.0f)
         [
-            SNew(SCkDebuggerPanel_EntityList, SelectionModel, WorldModel)
+            SAssignNew(EntityListPanel, SCkDebuggerPanel_EntityList, SelectionModel, WorldModel)
         ];
 }
 
@@ -108,12 +105,14 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
             WorldModel
         };
 
-        return SNew(SBorder)
+        ContentAreaWidget = SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
             .Padding(4.0f)
             [
                 Pages[ActivePageIndex]->Build_Content(Context)
             ];
+
+        return ContentAreaWidget.ToSharedRef();
     }
 
     return SNew(SBorder)
@@ -134,15 +133,9 @@ auto SCkDebuggerWindow_Main::Build_InspectorPanel() -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-        .Padding(4.0f)
+        .Padding(0.0f)
         [
-            SNew(SBox)
-            .HAlign(HAlign_Center)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Inspector - Coming Soon")))
-            ]
+            SAssignNew(InspectorPanel, SCkDebuggerPanel_Inspector, SelectionModel)
         ];
 }
 

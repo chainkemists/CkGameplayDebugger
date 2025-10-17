@@ -10,11 +10,18 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
+#include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 
 auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
     SelectionModel = MakeShared<FCkDebuggerModel_EntitySelection>();
     WorldModel = MakeShared<FCkDebuggerModel_WorldContext>();
+
+    const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
+    if (AvailableWorlds.Num() > 0)
+    {
+        WorldModel->Set_SelectedWorld(AvailableWorlds[0]);
+    }
 
     Pages.Add(MakeShared<FCkDebuggerPage_Overview>());
     Pages[0]->Set_IsActive(true);
@@ -85,15 +92,9 @@ auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-        .Padding(4.0f)
+        .Padding(0.0f)
         [
-            SNew(SBox)
-            .HAlign(HAlign_Center)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Entity List - Coming Soon")))
-            ]
+            SNew(SCkDebuggerPanel_EntityList, SelectionModel, WorldModel)
         ];
 }
 

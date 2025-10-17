@@ -7,26 +7,26 @@
 
 TSharedPtr<FSlateStyleSet> FCkDebuggerStyle::StyleInstance = nullptr;
 
-const FLinearColor FCkDebuggerStyle::Color_Background_Dark = FLinearColor(0.02f, 0.02f, 0.02f);
-const FLinearColor FCkDebuggerStyle::Color_Background_Medium = FLinearColor(0.05f, 0.05f, 0.05f);
-const FLinearColor FCkDebuggerStyle::Color_Background_Light = FLinearColor(0.08f, 0.08f, 0.08f);
-const FLinearColor FCkDebuggerStyle::Color_Border = FLinearColor(0.15f, 0.15f, 0.15f);
-const FLinearColor FCkDebuggerStyle::Color_Selection = FLinearColor(0.3f, 0.6f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_SelectionInactive = FLinearColor(0.2f, 0.2f, 0.3f);
-const FLinearColor FCkDebuggerStyle::Color_Hover = FLinearColor(0.1f, 0.1f, 0.15f);
+const FLinearColor FCkDebuggerStyle::Color_Background_Dark = FLinearColor(0.01f, 0.01f, 0.01f);
+const FLinearColor FCkDebuggerStyle::Color_Background_Medium = FLinearColor(0.025f, 0.025f, 0.025f);
+const FLinearColor FCkDebuggerStyle::Color_Background_Light = FLinearColor(0.04f, 0.04f, 0.04f);
+const FLinearColor FCkDebuggerStyle::Color_Border = FLinearColor(0.08f, 0.08f, 0.08f);
+const FLinearColor FCkDebuggerStyle::Color_Selection = FLinearColor(0.2f, 0.4f, 0.8f);
+const FLinearColor FCkDebuggerStyle::Color_SelectionInactive = FLinearColor(0.15f, 0.15f, 0.2f);
+const FLinearColor FCkDebuggerStyle::Color_Hover = FLinearColor(0.06f, 0.06f, 0.08f);
 
-const FLinearColor FCkDebuggerStyle::Color_Text_Primary = FLinearColor(0.9f, 0.9f, 0.9f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Secondary = FLinearColor(0.7f, 0.7f, 0.7f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Muted = FLinearColor(0.4f, 0.4f, 0.4f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Highlight = FLinearColor(1.0f, 1.0f, 1.0f);
+const FLinearColor FCkDebuggerStyle::Color_Text_Primary = FLinearColor(0.85f, 0.85f, 0.85f);
+const FLinearColor FCkDebuggerStyle::Color_Text_Secondary = FLinearColor(0.6f, 0.6f, 0.6f);
+const FLinearColor FCkDebuggerStyle::Color_Text_Muted = FLinearColor(0.35f, 0.35f, 0.35f);
+const FLinearColor FCkDebuggerStyle::Color_Text_Highlight = FLinearColor(0.95f, 0.95f, 0.95f);
 
-const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.51f, 0.69f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.76f, 0.91f, 0.55f);
-const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(1.0f, 0.8f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.97f, 0.73f, 0.85f);
-const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(1.0f, 0.34f, 0.13f);
-const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.3f, 0.9f, 0.3f);
+const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.4f, 0.55f, 0.85f);
+const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.6f, 0.75f, 0.45f);
+const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(0.85f, 0.65f, 0.01f);
+const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.8f, 0.6f, 0.7f);
+const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(0.85f, 0.25f, 0.1f);
+const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(0.85f, 0.65f, 0.01f);
+const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.25f, 0.75f, 0.25f);
 
 auto FCkDebuggerStyle::Initialize() -> void
 {

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "CoreMinimal.h"
+#include "Widgets/SCompoundWidget.h"
+
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 
@@ -16,8 +19,8 @@ public:
 
     virtual auto Get_PageName() const -> FText = 0;
     virtual auto Get_PageIcon() const -> const FSlateBrush* = 0;
-    virtual auto Draw(const FCkDebuggerPageContext& InContext) -> void = 0;
+    virtual auto Build_Content(const FCkDebuggerPageContext& InContext) -> TSharedRef<SWidget> = 0;
     virtual auto Tick(float InDeltaTime) -> void = 0;
     virtual auto IsActive() const -> bool = 0;
-    virtual auto SetActive(bool bInActive) -> void = 0;
+    virtual auto Set_IsActive(bool InIsActive) -> void = 0;
 };

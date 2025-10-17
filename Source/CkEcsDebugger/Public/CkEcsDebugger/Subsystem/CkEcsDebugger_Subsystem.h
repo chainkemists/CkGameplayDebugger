@@ -1,35 +1,42 @@
 #pragma once
 
-#include "CkCore/Macros/CkMacros.h"
+#include "CoreMinimal.h"
 #include "CkCore/Subsystems/GameWorldSubsytem/CkGameWorldSubsystem.h"
-
 #include "CkEcsDebugger_Subsystem.generated.h"
 
-class FCkDebuggerWindow_Main;
+class SCkDebuggerWindow_Main;
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class SDockTab;
 
 UCLASS(DisplayName = "CkSubsystem_EcsDebuggerSlate")
-class CKECSDEBUGGER_API UCk_EcsDebugger_Subsystem_UE : public UCk_Game_WorldSubsystem_Base_UE
+class CKECSDEBUGGER_API UCkEcsDebugger_Subsystem : public UCk_Game_WorldSubsystem_Base_UE
 {
     GENERATED_BODY()
 
 public:
-    CK_GENERATED_BODY(UCk_EcsDebugger_Subsystem_UE);
-
-    auto Initialize(FSubsystemCollectionBase& Collection) -> void override;
+    auto Initialize(FSubsystemCollectionBase& InCollection) -> void override;
     auto Deinitialize() -> void override;
-
-protected:
     auto OnWorldBeginPlay(UWorld& InWorld) -> void override;
 
-public:
     auto OpenDebugger() -> void;
     auto CloseDebugger() -> void;
+    auto ToggleDebugger() -> void;
+    auto IsDebuggerOpen() const -> bool;
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
 
 private:
-    TSharedPtr<FCkDebuggerWindow_Main> DebuggerWindow;
+    auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto RegisterTabSpawner() -> void;
+    auto UnregisterTabSpawner() -> void;
+
+private:
+    static auto ConsoleCommand_EcsDebugger(const TArray<FString>& InArgs, UWorld* InWorld) -> void;
+
+    TSharedPtr<SCkDebuggerWindow_Main> DebuggerWindow;
+    TSharedPtr<SDockTab> DebuggerTab;
+
+    static const FName DebuggerTabName;
 };

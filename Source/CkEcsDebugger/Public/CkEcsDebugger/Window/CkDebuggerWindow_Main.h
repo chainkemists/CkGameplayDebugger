@@ -1,55 +1,38 @@
 #pragma once
 
-#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
-#include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
-#include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
-#include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
-#include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
+#include "CoreMinimal.h"
+#include "Widgets/SCompoundWidget.h"
 
-#include "SlateIM/Public/SlateIMWidgetBase.h"
+class FCkDebuggerModel_EntitySelection;
+class FCkDebuggerModel_WorldContext;
+class ICkDebuggerPage_Base;
 
-class FCkDebuggerPage_Overview;
-
-class FCkDebuggerWindow_Main : public FSlateIMWindowBase
+class SCkDebuggerWindow_Main : public SCompoundWidget
 {
 public:
-    FCkDebuggerWindow_Main(UWorld* InWorld);
+    SLATE_BEGIN_ARGS(SCkDebuggerWindow_Main) {}
+    SLATE_END_ARGS()
 
-    auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>
-    {
-        return SelectionModel;
-    }
+    auto Construct(const FArguments& InArgs) -> void;
+    auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
-    auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>
-    {
-        return WorldModel;
-    }
-
-protected:
-    auto DrawWindow(float InDeltaTime) -> void override;
+    auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
+    auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
 
 private:
-    auto Draw_LeftSidebar() -> void;
-    auto Draw_PageButtons() -> void;
-    auto Draw_EntityList() -> void;
-    auto Draw_ContentArea() -> void;
-    auto Draw_InspectorPanel() -> void;
-    auto Draw_Toolbar() -> void;
-    auto Draw_StatusBar() -> void;
+    auto Build_LeftSidebar() -> TSharedRef<SWidget>;
+    auto Build_ContentArea() -> TSharedRef<SWidget>;
+    auto Build_InspectorPanel() -> TSharedRef<SWidget>;
 
-    auto InitializePages() -> void;
-    auto OnSearchChanged(const FString& InSearchText) -> void;
+    auto OnPageSelected(int32 InPageIndex) -> void;
+    auto RebuildContentArea() -> void;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
     int32 ActivePageIndex = 0;
 
-    // UI Widgets
-    FCkDebuggerWidget_SearchBar SearchBar;
-    FCkDebuggerWidget_EntityTree EntityTree;
-
-    // UI State
-    float LeftPanelWidth = 300.0f;
-    float RightPanelWidth = 350.0f;
+    TSharedPtr<SWidget> ContentAreaWidget;
+    TSharedPtr<SWidget> LeftSidebarWidget;
+    TSharedPtr<SWidget> InspectorWidget;
 };

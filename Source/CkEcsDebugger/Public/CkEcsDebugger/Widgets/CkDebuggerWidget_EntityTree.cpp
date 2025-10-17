@@ -3,6 +3,8 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Images/SImage.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
@@ -12,6 +14,118 @@
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
+class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
+{
+public:
+    SLATE_BEGIN_ARGS(SCkDebuggerEntityTreeRow) {}
+        SLATE_ARGUMENT(TSharedPtr<FCkEntityTreeNode>, Node)
+        SLATE_ARGUMENT(TSharedPtr<FCkDebuggerModel_EntitySelection>, SelectionModel)
+    SLATE_END_ARGS()
+
+    auto Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTable) -> void
+    {
+        Node = InArgs._Node;
+        SelectionModel = InArgs._SelectionModel;
+
+        STableRow<TSharedPtr<FCkEntityTreeNode>>::Construct(
+            STableRow<TSharedPtr<FCkEntityTreeNode>>::FArguments()
+            .Style(&FAppStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
+            .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
+            .ShowSelection(true)
+            .Content()
+            [
+                SNew(SBox)
+                .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 2.0f))
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+                    [
+                        SNew(SImage)
+                        .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
+                        .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_EntityStatusColor)
+                        .DesiredSizeOverride(FVector2D(6.0f, 6.0f))
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text(this, &SCkDebuggerEntityTreeRow::Get_NodeDisplayText)
+                        .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_NodeTextColor)
+                        .HighlightText(this, &SCkDebuggerEntityTreeRow::Get_HighlightText)
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(STextBlock)
+                        .Text(this, &SCkDebuggerEntityTreeRow::Get_EntityIDText)
+                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Monospace"))
+                        .ColorAndOpacity(FCkDebuggerStyle::Color_Entity_ID)
+                    ]
+                ]
+            ],
+            InOwnerTable
+        );
+    }
+
+private:
+    auto Get_NodeDisplayText() const -> FText
+    {
+        if (NOT Node.IsValid())
+        { return FText::GetEmpty(); }
+
+        return FText::FromName(UCk_Utils_Handle_UE::Get_DebugName(Node->Entity));
+    }
+
+    auto Get_EntityIDText() const -> FText
+    {
+        if (NOT Node.IsValid())
+        { return FText::GetEmpty(); }
+
+        const auto EntityId = Node->Entity.Get_Entity().Get_ID();
+        return FText::FromString(ck::Format_UE(TEXT("[{}]"), EntityId));
+    }
+
+    auto Get_NodeTextColor() const -> FSlateColor
+    {
+        if (NOT Node.IsValid())
+        { return FCkDebuggerStyle::Color_Text_Primary; }
+
+        if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
+        { return FCkDebuggerStyle::Color_Text_Highlight; }
+
+        return FCkDebuggerStyle::Color_Text_Primary;
+    }
+
+    auto Get_EntityStatusColor() const -> FSlateColor
+    {
+        if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
+        { return FCkDebuggerStyle::Color_Error; }
+
+        if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
+        { return FCkDebuggerStyle::Color_Selection; }
+
+        return FCkDebuggerStyle::Color_Success;
+    }
+
+    auto Get_HighlightText() const -> FText
+    {
+        return FText::GetEmpty();
+    }
+
+    TSharedPtr<FCkEntityTreeNode> Node;
+    TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+};
 
 auto SCkDebuggerWidget_EntityTree::Construct(
     const FArguments& InArgs,
@@ -32,6 +146,7 @@ auto SCkDebuggerWidget_EntityTree::Construct(
         .OnContextMenuOpening(this, &SCkDebuggerWidget_EntityTree::OnContextMenuOpening)
         .SelectionMode(ESelectionMode::Multi)
         .ClearSelectionOnClick(false)
+        .HighlightParentNodesForSelection(true)
     ];
 
     RefreshTree();
@@ -233,12 +348,9 @@ auto SCkDebuggerWidget_EntityTree::OnGenerateRow(
     TSharedPtr<FCkEntityTreeNode> InNode,
     const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>
 {
-    return SNew(STableRow<TSharedPtr<FCkEntityTreeNode>>, InOwnerTable)
-        [
-            SNew(STextBlock)
-            .Text(this, &SCkDebuggerWidget_EntityTree::Get_NodeDisplayText, InNode)
-            .ColorAndOpacity(this, &SCkDebuggerWidget_EntityTree::Get_NodeColorAndOpacity, InNode)
-        ];
+    return SNew(SCkDebuggerEntityTreeRow, InOwnerTable)
+        .Node(InNode)
+        .SelectionModel(SelectionModel);
 }
 
 auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(
@@ -299,30 +411,6 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
     );
 
     return MenuBuilder.MakeWidget();
-}
-
-auto SCkDebuggerWidget_EntityTree::Get_NodeDisplayText(TSharedPtr<FCkEntityTreeNode> InNode) const -> FText
-{
-    if (NOT InNode.IsValid())
-    { return FText::GetEmpty(); }
-
-    const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(InNode->Entity);
-    const auto& EntityId = InNode->Entity.Get_Entity().Get_ID();
-
-    return FText::FromString(ck::Format_UE(TEXT("{} [{}]"), DebugName, EntityId));
-}
-
-auto SCkDebuggerWidget_EntityTree::Get_NodeColorAndOpacity(TSharedPtr<FCkEntityTreeNode> InNode) const -> FSlateColor
-{
-    if (NOT InNode.IsValid())
-    { return FSlateColor::UseForeground(); }
-
-    if (SelectionModel.IsValid() && SelectionModel->IsSelected(InNode->Entity))
-    {
-        return FSlateColor(FLinearColor(0.3f, 0.6f, 1.0f));
-    }
-
-    return FSlateColor::UseForeground();
 }
 
 auto SCkDebuggerWidget_EntityTree::DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeNode> InNode) const -> bool

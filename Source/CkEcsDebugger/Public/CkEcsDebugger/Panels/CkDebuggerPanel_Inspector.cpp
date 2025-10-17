@@ -28,7 +28,7 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Medium))
+        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
         .Padding(0.0f)
         [
             SAssignNew(ScrollBox, SScrollBox)
@@ -216,11 +216,11 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
             [
                 SNew(SExpandableArea)
                 .InitiallyCollapsed(false)
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Light)
+                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
                 .BorderImage(new FSlateRoundedBoxBrush(
                     FCkDebuggerStyle::Color_Border,
                     2.0f,
-                    FCkDebuggerStyle::Color_Background_Light,
+                    FCkDebuggerStyle::Color_Background_Dark,
                     1.0f
                 ))
                 .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))

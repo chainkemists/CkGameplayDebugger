@@ -11,6 +11,7 @@
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 auto SCkDebuggerPanel_EntityList::Construct(
     const FArguments& InArgs,
@@ -22,40 +23,50 @@ auto SCkDebuggerPanel_EntityList::Construct(
 
     ChildSlot
     [
-        SNew(SVerticalBox)
-
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(4.0f)
+        SNew(SBorder)
+        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Medium))
+        .Padding(0.0f)
         [
-            Build_Toolbar()
-        ]
+            SNew(SVerticalBox)
 
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(4.0f, 0.0f)
-        [
-            SAssignNew(SearchBar, SCkDebuggerWidget_SearchBar)
-            .OnSearchTextChanged(this, &SCkDebuggerPanel_EntityList::OnSearchTextChanged)
-        ]
-
-        + SVerticalBox::Slot()
-        .FillHeight(1.0f)
-        .Padding(4.0f, 4.0f, 4.0f, 0.0f)
-        [
-            SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-            .Padding(0.0f)
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel)
+                Build_Toolbar()
             ]
-        ]
 
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(4.0f)
-        [
-            Build_StatusBar()
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SAssignNew(SearchBar, SCkDebuggerWidget_SearchBar)
+                .OnSearchTextChanged(this, &SCkDebuggerPanel_EntityList::OnSearchTextChanged)
+            ]
+
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            .Padding(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SNew(SBorder)
+                .BorderImage(new FSlateRoundedBoxBrush(
+                    FCkDebuggerStyle::Color_Border,
+                    2.0f,
+                    FCkDebuggerStyle::Color_Background_Dark,
+                    1.0f
+                ))
+                .Padding(0.0f)
+                [
+                    SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel)
+                ]
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small)
+            [
+                Build_StatusBar()
+            ]
         ]
     ];
 }
@@ -70,76 +81,106 @@ auto SCkDebuggerPanel_EntityList::Tick(
 
 auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
-
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+    return SNew(SBorder)
+        .BorderImage(new FSlateRoundedBoxBrush(
+            FCkDebuggerStyle::Color_Border,
+            2.0f,
+            FCkDebuggerStyle::Color_Background_Light,
+            1.0f
+        ))
+        .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
         [
-            SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .OnClicked(this, &SCkDebuggerPanel_EntityList::OnRefreshClicked)
-            .ToolTipText(FText::FromString(TEXT("Refresh entity list")))
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush("Icons.Refresh"))
-                .ColorAndOpacity(FSlateColor::UseForeground())
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnRefreshClicked)
+                .ToolTipText(FText::FromString(TEXT("Refresh entity list")))
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small))
+                [
+                    SNew(SImage)
+                    .Image(FAppStyle::GetBrush("Icons.Refresh"))
+                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                    .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                ]
             ]
-        ]
 
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-        [
-            SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .OnClicked(this, &SCkDebuggerPanel_EntityList::OnExpandAllClicked)
-            .ToolTipText(FText::FromString(TEXT("Expand all nodes")))
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush("Icons.ChevronDown"))
-                .ColorAndOpacity(FSlateColor::UseForeground())
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnExpandAllClicked)
+                .ToolTipText(FText::FromString(TEXT("Expand all nodes")))
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small))
+                [
+                    SNew(SImage)
+                    .Image(FAppStyle::GetBrush("Icons.ChevronDown"))
+                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                    .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                ]
             ]
-        ]
 
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        [
-            SNew(SButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .OnClicked(this, &SCkDebuggerPanel_EntityList::OnCollapseAllClicked)
-            .ToolTipText(FText::FromString(TEXT("Collapse all nodes")))
+            + SHorizontalBox::Slot()
+            .AutoWidth()
             [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush("Icons.ChevronUp"))
-                .ColorAndOpacity(FSlateColor::UseForeground())
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnCollapseAllClicked)
+                .ToolTipText(FText::FromString(TEXT("Collapse all nodes")))
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small))
+                [
+                    SNew(SImage)
+                    .Image(FAppStyle::GetBrush("Icons.ChevronUp"))
+                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                    .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                ]
             ]
-        ]
 
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
-        [
-            SNew(SBox)
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [
+                SNew(SBox)
+            ]
         ];
 }
 
 auto SCkDebuggerPanel_EntityList::Build_StatusBar() -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
-
-        + SHorizontalBox::Slot()
-        .AutoWidth()
+    return SNew(SBorder)
+        .BorderImage(new FSlateRoundedBoxBrush(
+            FCkDebuggerStyle::Color_Border,
+            2.0f,
+            FCkDebuggerStyle::Color_Background_Light,
+            1.0f
+        ))
+        .Padding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
         [
-            SNew(STextBlock)
-            .Text(this, &SCkDebuggerPanel_EntityList::Get_EntityCountText)
-        ]
+            SNew(SHorizontalBox)
 
-        + SHorizontalBox::Slot()
-        .AutoWidth()
-        .Padding(16.0f, 0.0f, 0.0f, 0.0f)
-        [
-            SNew(STextBlock)
-            .Text(this, &SCkDebuggerPanel_EntityList::Get_SelectionCountText)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(this, &SCkDebuggerPanel_EntityList::Get_EntityCountText)
+                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(FCkDebuggerStyle::Padding_Large, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(this, &SCkDebuggerPanel_EntityList::Get_SelectionCountText)
+                .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+            ]
         ];
 }
 

@@ -91,27 +91,29 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
             .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
         ];
 
-    // Debug draw
-    if (ck::IsValid(Entity) && UCk_Utils_Transform_UE::Has(Entity))
-    {
-        const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-        const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
-        
-        if (ck::IsValid(EntityWorld))
-        {
-            UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, Transform);
-
-            const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
-            constexpr AActor* TestActor = nullptr;
-            UCk_Utils_DebugDraw_UE::DrawDebugString(
-                EntityWorld,
-                TextLocation,
-                Entity.ToString(),
-                TestActor,
-                FLinearColor::White,
-                0.0f);
-        }
-    }
-
     return Grid;
+}
+
+auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
+{
+    if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
+    { return; }
+
+    const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
+    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
+
+    if (ck::Is_NOT_Valid(EntityWorld))
+    { return; }
+
+    UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, Transform);
+
+    const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
+    constexpr AActor* TestActor = nullptr;
+    UCk_Utils_DebugDraw_UE::DrawDebugString(
+        EntityWorld,
+        TextLocation,
+        Entity.ToString(),
+        TestActor,
+        FLinearColor::White,
+        0.0f);
 }

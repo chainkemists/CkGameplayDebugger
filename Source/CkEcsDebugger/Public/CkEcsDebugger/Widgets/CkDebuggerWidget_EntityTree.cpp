@@ -145,7 +145,7 @@ auto SCkDebuggerWidget_EntityTree::Construct(
     ChildSlot
     [
         SAssignNew(TreeView, STreeView<TSharedPtr<FCkEntityTreeNode>>)
-        .TreeItemsSource(&RootNodes)
+        .TreeItemsSource(&FilteredRootNodes)
         .OnGenerateRow(this, &SCkDebuggerWidget_EntityTree::OnGenerateRow)
         .OnGetChildren(this, &SCkDebuggerWidget_EntityTree::OnGetChildren)
         .OnSelectionChanged(this, &SCkDebuggerWidget_EntityTree::OnSelectionChanged)
@@ -188,6 +188,7 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
 
     BuildEntityTree();
     ApplyFilterToNodes();
+    UpdateFilteredRootNodes();
 
     if (TreeView.IsValid())
     {
@@ -199,6 +200,7 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilter(const FString& InFilterText) -> v
 {
     CurrentFilter = InFilterText;
     ApplyFilterToNodes();
+    UpdateFilteredRootNodes();
 
     if (TreeView.IsValid())
     {
@@ -352,6 +354,19 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             {
                 TreeView->SetItemExpansion(Node, true);
             }
+        }
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::UpdateFilteredRootNodes() -> void
+{
+    FilteredRootNodes.Empty();
+
+    for (const auto& Node : RootNodes)
+    {
+        if (Node.IsValid() && Node->IsVisible)
+        {
+            FilteredRootNodes.Add(Node);
         }
     }
 }

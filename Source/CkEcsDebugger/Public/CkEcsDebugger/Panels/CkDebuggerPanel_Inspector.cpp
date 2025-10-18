@@ -44,12 +44,6 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 {
     SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-    if (NeedsRebuild)
-    {
-        RebuildInspectors();
-        NeedsRebuild = false;
-    }
-
     // Tick all inspectors that can inspect the current entity
     if (ck::IsValid(CurrentInspectedEntity))
     {
@@ -272,5 +266,5 @@ auto SCkDebuggerPanel_Inspector::RegisterDefaultInspectors() -> void
 
 auto SCkDebuggerPanel_Inspector::OnSelectionChanged(const TArray<FCk_Handle>& NewSelection) -> void
 {
-    NeedsRebuild = true;
+    RebuildInspectors();
 }

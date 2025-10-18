@@ -181,6 +181,13 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
     if (NOT WorldModel.IsValid())
     { return; }
 
+    // Store current selection before refresh
+    auto PreviouslySelectedEntities = TArray<FCk_Handle>{};
+    if (SelectionModel.IsValid())
+    {
+        PreviouslySelectedEntities = SelectionModel->Get_SelectedEntities();
+    }
+
     if (WorldModel->IsCacheDirty())
     {
         WorldModel->Refresh_EntityCache();
@@ -194,6 +201,9 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
     {
         TreeView->RequestTreeRefresh();
     }
+
+    // Restore selection for entities that still exist
+    RestoreSelection(PreviouslySelectedEntities);
 }
 
 auto SCkDebuggerWidget_EntityTree::ApplyFilter(const FString& InFilterText) -> void
@@ -388,6 +398,80 @@ auto SCkDebuggerWidget_EntityTree::MarkNodeVisibilityRecursive(
             CurrentNode->IsVisible = true;
             CurrentNode = CurrentNode->Parent.Pin();
         }
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& InPreviousSelection) -> void
+{
+    if (NOT SelectionModel.IsValid() || NOT TreeView.IsValid())
+    { return; }
+
+    if (InPreviousSelection.IsEmpty())
+    { return; }
+
+    // Build a set of all current entities for fast lookup
+    auto CurrentEntitySet = TSet<FCk_Handle>{};
+    for (const auto& Node : AllNodes)
+    {
+        if (Node.IsValid())
+        {
+            CurrentEntitySet.Add(Node->Entity);
+        }
+    }
+
+    // Find which previously selected entities still exist
+    auto EntitiesToReselect = TArray<FCk_Handle>{};
+    auto NodesToSelect = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+
+    for (const auto& PreviousEntity : InPreviousSelection)
+    {
+        if (NOT CurrentEntitySet.Contains(PreviousEntity))
+        { continue; }
+
+        EntitiesToReselect.Add(PreviousEntity);
+
+        // Find the node for this entity
+        for (const auto& Node : AllNodes)
+        {
+            if (Node.IsValid() && Node->Entity == PreviousEntity)
+            {
+                NodesToSelect.Add(Node);
+                break;
+            }
+        }
+    }
+
+    if (EntitiesToReselect.IsEmpty())
+    { return; }
+
+    // Expand all parent nodes for selected items so they're visible
+    for (const auto& Node : NodesToSelect)
+    {
+        if (NOT Node.IsValid())
+        { continue; }
+
+        auto CurrentParent = Node->Parent.Pin();
+        while (CurrentParent.IsValid())
+        {
+            TreeView->SetItemExpansion(CurrentParent, true);
+            CurrentParent = CurrentParent->Parent.Pin();
+        }
+    }
+
+    // Update the selection model
+    SelectionModel->Set_SelectedEntities(EntitiesToReselect);
+
+    // Update the tree view selection
+    TreeView->ClearSelection();
+    for (const auto& Node : NodesToSelect)
+    {
+        TreeView->SetItemSelection(Node, true);
+    }
+
+    // Scroll to the first selected item to make it visible
+    if (NodesToSelect.Num() > 0 && NodesToSelect[0].IsValid())
+    {
+        TreeView->RequestScrollIntoView(NodesToSelect[0]);
     }
 }
 

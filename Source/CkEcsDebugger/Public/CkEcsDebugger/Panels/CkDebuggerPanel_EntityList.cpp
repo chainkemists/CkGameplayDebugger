@@ -7,6 +7,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
+#include "CkCore/Validation/CkIsValid.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
@@ -33,12 +34,19 @@ auto SCkDebuggerPanel_EntityList::Construct(
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                Build_Toolbar()
+                Build_WorldSelector()
             ]
 
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                Build_Toolbar()
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
                 SAssignNew(SearchBar, SCkDebuggerWidget_SearchBar)
                 .OnSearchTextChanged(this, &SCkDebuggerPanel_EntityList::OnSearchTextChanged)
@@ -77,6 +85,64 @@ auto SCkDebuggerPanel_EntityList::Tick(
     const float InDeltaTime) -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+}
+
+auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
+{
+    auto WorldSelectorContent = SNew(SHorizontalBox);
+
+    if (WorldModel.IsValid())
+    {
+        const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
+
+        for (auto Index = 0; Index < AvailableWorlds.Num(); ++Index)
+        {
+            const auto& World = AvailableWorlds[Index];
+
+            WorldSelectorContent->AddSlot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "Button")
+                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
+                    .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
+                    .Justification(ETextJustify::Center)
+                ]
+            ];
+        }
+    }
+
+    return SNew(SBox)
+        .Padding(FMargin(0.0f))
+        [
+            SNew(SBorder)
+            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Medium))
+            .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
+            [
+                SNew(SVerticalBox)
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small)
+                [
+                    SNew(STextBlock)
+                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
+                    .Text(FText::FromString(TEXT("World Selection")))
+                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    WorldSelectorContent
+                ]
+            ]
+        ];
 }
 
 auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
@@ -225,6 +291,21 @@ auto SCkDebuggerPanel_EntityList::OnCollapseAllClicked() -> FReply
     return FReply::Handled();
 }
 
+auto SCkDebuggerPanel_EntityList::OnWorldButtonClicked(UWorld* InWorld) -> FReply
+{
+    if (WorldModel.IsValid() && ck::IsValid(InWorld))
+    {
+        WorldModel->Set_SelectedWorld(InWorld);
+
+        if (EntityTree.IsValid())
+        {
+            EntityTree->RefreshTree();
+        }
+    }
+
+    return FReply::Handled();
+}
+
 auto SCkDebuggerPanel_EntityList::Get_EntityCountText() const -> FText
 {
     if (NOT WorldModel.IsValid())
@@ -241,4 +322,17 @@ auto SCkDebuggerPanel_EntityList::Get_SelectionCountText() const -> FText
 
     const auto SelectionCount = SelectionModel->Get_SelectionCount();
     return FText::FromString(ck::Format_UE(TEXT("Selected: {}"), SelectionCount));
+}
+
+auto SCkDebuggerPanel_EntityList::Get_WorldButtonColor(UWorld* InWorld) const -> FSlateColor
+{
+    if (NOT WorldModel.IsValid())
+    { return FCkDebuggerStyle::Color_Text_Secondary; }
+
+    const auto SelectedWorld = WorldModel->Get_SelectedWorld();
+
+    if (SelectedWorld == InWorld)
+    { return FCkDebuggerStyle::Color_Selection; }
+
+    return FCkDebuggerStyle::Color_Text_Primary;
 }

@@ -16,6 +16,8 @@ public:
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel) -> void;
     auto Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
+    auto Get_CurrentInspectedEntity() const -> FCk_Handle { return CurrentInspectedEntity; }
+
 private:
     auto RebuildInspectors() -> void;
     auto Build_NoSelectionWidget() -> TSharedRef<SWidget>;
@@ -29,5 +31,6 @@ private:
     TArray<TSharedPtr<ICkDebuggerComponentInspector_Base>> Inspectors;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
 
+    FCk_Handle CurrentInspectedEntity;
     bool NeedsRebuild = true;
 };

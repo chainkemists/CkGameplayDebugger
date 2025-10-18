@@ -49,6 +49,18 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
         RebuildInspectors();
         NeedsRebuild = false;
     }
+
+    // Tick all inspectors that can inspect the current entity
+    if (ck::IsValid(CurrentInspectedEntity))
+    {
+        for (const auto& Inspector : Inspectors)
+        {
+            if (Inspector.IsValid() && Inspector->CanInspect(CurrentInspectedEntity))
+            {
+                Inspector->Tick(CurrentInspectedEntity, InDeltaTime);
+            }
+        }
+    }
 }
 
 auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void

@@ -69,3 +69,8 @@ auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
 
     return Grid;
 }
+
+auto FCkInspector_Network::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
+{
+    // No tick logic needed for network info
+}

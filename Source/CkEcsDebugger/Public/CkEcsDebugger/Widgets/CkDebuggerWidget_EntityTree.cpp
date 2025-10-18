@@ -9,6 +9,7 @@
 #include "Styling/AppStyle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Net/CkNet_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -406,9 +407,6 @@ auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& In
     if (NOT SelectionModel.IsValid() || NOT TreeView.IsValid())
     { return; }
 
-    if (InPreviousSelection.IsEmpty())
-    { return; }
-
     // Build a set of all current entities for fast lookup
     auto CurrentEntitySet = TSet<FCk_Handle>{};
     for (const auto& Node : AllNodes)
@@ -441,8 +439,12 @@ auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& In
         }
     }
 
+    // If no previous selection was restored, try to auto-select the locally controlled character
     if (EntitiesToReselect.IsEmpty())
-    { return; }
+    {
+        TrySelectLocallyControlledCharacter();
+        return;
+    }
 
     // Expand all parent nodes for selected items so they're visible
     for (const auto& Node : NodesToSelect)
@@ -473,6 +475,49 @@ auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& In
     {
         TreeView->RequestScrollIntoView(NodesToSelect[0]);
     }
+}
+
+auto SCkDebuggerWidget_EntityTree::TrySelectLocallyControlledCharacter() -> void
+{
+    if (NOT SelectionModel.IsValid() || NOT TreeView.IsValid())
+    { return; }
+
+    // Search for the locally controlled character
+    TSharedPtr<FCkEntityTreeNode> LocallyControlledNode = nullptr;
+
+    for (const auto& Node : AllNodes)
+    {
+        if (NOT Node.IsValid())
+        { continue; }
+
+        const auto ControlledResult = UCk_Utils_Net_UE::Get_IsEntityLocallyControlled_ByPlayer(Node->Entity);
+
+        if (ControlledResult == ECk_Utils_Net_IsLocallyControlled_Result::IsLocallyControlled)
+        {
+            LocallyControlledNode = Node;
+            break;
+        }
+    }
+
+    // If no locally controlled character found, don't select anything
+    if (NOT LocallyControlledNode.IsValid())
+    { return; }
+
+    // Expand all parent nodes so the character is visible
+    auto CurrentParent = LocallyControlledNode->Parent.Pin();
+    while (CurrentParent.IsValid())
+    {
+        TreeView->SetItemExpansion(CurrentParent, true);
+        CurrentParent = CurrentParent->Parent.Pin();
+    }
+
+    // Select the locally controlled character
+    const auto EntitiesToSelect = TArray<FCk_Handle>{ LocallyControlledNode->Entity };
+    SelectionModel->Set_SelectedEntities(EntitiesToSelect);
+
+    TreeView->ClearSelection();
+    TreeView->SetItemSelection(LocallyControlledNode, true);
+    TreeView->RequestScrollIntoView(LocallyControlledNode);
 }
 
 auto SCkDebuggerWidget_EntityTree::OnGetChildren(

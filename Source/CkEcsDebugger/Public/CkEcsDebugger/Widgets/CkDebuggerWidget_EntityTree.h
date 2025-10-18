@@ -44,6 +44,7 @@ private:
     auto UpdateFilteredRootNodes() -> void;
     auto MarkNodeVisibilityRecursive(TSharedPtr<FCkEntityTreeNode> InNode, bool InVisible) -> void;
     auto RestoreSelection(const TArray<FCk_Handle>& InPreviousSelection) -> void;
+    auto TrySelectLocallyControlledCharacter() -> void;
 
     auto OnGetChildren(TSharedPtr<FCkEntityTreeNode> InNode, TArray<TSharedPtr<FCkEntityTreeNode>>& OutChildren) -> void;
     auto OnGenerateRow(TSharedPtr<FCkEntityTreeNode> InNode, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;

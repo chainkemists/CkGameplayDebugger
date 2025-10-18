@@ -18,12 +18,6 @@ auto FCkInspector_Network::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    const auto NetMode = UCk_Utils_Net_UE::Get_EntityNetMode(Entity);
-    const auto NetRole = UCk_Utils_Net_UE::Get_EntityNetRole(Entity);
-
-    const auto NetModeStr = ck::Format_UE(TEXT("{}"), NetMode);
-    const auto NetRoleStr = ck::Format_UE(TEXT("{}"), NetRole);
-
     auto Grid = SNew(SGridPanel)
         .FillColumn(1, 1.0f);
 
@@ -40,7 +34,14 @@ auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         .Padding(4.0f)
         [
             SNew(STextBlock)
-            .Text(FText::FromString(NetModeStr))
+            .Text(TAttribute<FText>::Create([Entity]()
+            {
+                if (ck::Is_NOT_Valid(Entity))
+                { return FText::GetEmpty(); }
+
+                const auto NetMode = UCk_Utils_Net_UE::Get_EntityNetMode(Entity);
+                return FText::FromString(ck::Format_UE(TEXT("{}"), NetMode));
+            }))
             .ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.01f)))
         ];
 
@@ -55,7 +56,14 @@ auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         .Padding(4.0f)
         [
             SNew(STextBlock)
-            .Text(FText::FromString(NetRoleStr))
+            .Text(TAttribute<FText>::Create([Entity]()
+            {
+                if (ck::Is_NOT_Valid(Entity))
+                { return FText::GetEmpty(); }
+
+                const auto NetRole = UCk_Utils_Net_UE::Get_EntityNetRole(Entity);
+                return FText::FromString(ck::Format_UE(TEXT("{}"), NetRole));
+            }))
             .ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.01f)))
         ];
 

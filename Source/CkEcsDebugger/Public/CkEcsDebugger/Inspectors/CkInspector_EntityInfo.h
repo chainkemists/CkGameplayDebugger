@@ -9,7 +9,4 @@ public:
     auto CanInspect(const FCk_Handle& Entity) const -> bool override;
     auto Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget> override;
     auto Get_SortPriority() const -> int32 override { return 0; }
-
-private:
-    static auto Create_PropertyRow(const FText& Label, const FText& Value, const FSlateColor& ValueColor = FSlateColor::UseForeground()) -> TSharedRef<SWidget>;
 };

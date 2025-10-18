@@ -41,6 +41,7 @@ private:
     auto BuildEntityTree() -> void;
     auto BuildHierarchy(const TArray<FCk_Handle>& InEntities) -> void;
     auto ApplyFilterToNodes() -> void;
+    auto UpdateFilteredRootNodes() -> void;
     auto MarkNodeVisibilityRecursive(TSharedPtr<FCkEntityTreeNode> InNode, bool InVisible) -> void;
 
     auto OnGetChildren(TSharedPtr<FCkEntityTreeNode> InNode, TArray<TSharedPtr<FCkEntityTreeNode>>& OutChildren) -> void;
@@ -53,6 +54,7 @@ private:
 
     TSharedPtr<STreeView<TSharedPtr<FCkEntityTreeNode>>> TreeView;
     TArray<TSharedPtr<FCkEntityTreeNode>> RootNodes;
+    TArray<TSharedPtr<FCkEntityTreeNode>> FilteredRootNodes;
     TArray<TSharedPtr<FCkEntityTreeNode>> AllNodes;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;

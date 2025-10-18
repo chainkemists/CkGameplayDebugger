@@ -144,3 +144,8 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
 
     return Grid;
 }
+
+auto FCkInspector_Relationships::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
+{
+    // No tick logic needed for relationships
+}

@@ -105,3 +105,8 @@ auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TShar
 
     return Grid;
 }
+
+auto FCkInspector_EntityInfo::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
+{
+    // No tick logic needed for entity info
+}

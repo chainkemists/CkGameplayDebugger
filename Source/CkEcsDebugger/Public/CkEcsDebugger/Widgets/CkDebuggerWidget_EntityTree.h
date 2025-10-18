@@ -34,6 +34,8 @@ public:
     auto ApplyFilter(const FString& InFilterText) -> void;
     auto ExpandAll() -> void;
     auto CollapseAll() -> void;
+    auto Get_CurrentFilter() const -> FText { return FText::FromString(CurrentFilter); }
+    auto Get_CurrentFilterString() const -> const FString& { return CurrentFilter; }
 
 private:
     auto BuildEntityTree() -> void;
@@ -47,8 +49,6 @@ private:
     auto OnExpansionChanged(TSharedPtr<FCkEntityTreeNode> InNode, bool InIsExpanded) -> void;
     auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
 
-    auto Get_NodeDisplayText(TSharedPtr<FCkEntityTreeNode> InNode) const -> FText;
-    auto Get_NodeColorAndOpacity(TSharedPtr<FCkEntityTreeNode> InNode) const -> FSlateColor;
     auto DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeNode> InNode) const -> bool;
 
     TSharedPtr<STreeView<TSharedPtr<FCkEntityTreeNode>>> TreeView;

@@ -22,12 +22,14 @@ public:
     SLATE_BEGIN_ARGS(SCkDebuggerEntityTreeRow) {}
         SLATE_ARGUMENT(TSharedPtr<FCkEntityTreeNode>, Node)
         SLATE_ARGUMENT(TSharedPtr<FCkDebuggerModel_EntitySelection>, SelectionModel)
+        SLATE_ARGUMENT(TWeakPtr<SCkDebuggerWidget_EntityTree>, TreeWidget)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTable) -> void
     {
         Node = InArgs._Node;
         SelectionModel = InArgs._SelectionModel;
+        TreeWidget = InArgs._TreeWidget;
 
         STableRow<TSharedPtr<FCkEntityTreeNode>>::Construct(
             STableRow<TSharedPtr<FCkEntityTreeNode>>::FArguments()
@@ -120,11 +122,16 @@ private:
 
     auto Get_HighlightText() const -> FText
     {
-        return FText::GetEmpty();
+        const auto TreeWidgetPinned = TreeWidget.Pin();
+        if (NOT TreeWidgetPinned.IsValid())
+        { return FText::GetEmpty(); }
+
+        return TreeWidgetPinned->Get_CurrentFilter();
     }
 
     TSharedPtr<FCkEntityTreeNode> Node;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+    TWeakPtr<SCkDebuggerWidget_EntityTree> TreeWidget;
 };
 
 auto SCkDebuggerWidget_EntityTree::Construct(
@@ -288,6 +295,7 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
 {
     if (CurrentFilter.IsEmpty())
     {
+        // No filter - show everything
         for (const auto& Node : AllNodes)
         {
             if (Node.IsValid())
@@ -298,13 +306,53 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
         return;
     }
 
+    // First pass: Mark all nodes as invisible
+    for (const auto& Node : AllNodes)
+    {
+        if (Node.IsValid())
+        {
+            Node->IsVisible = false;
+        }
+    }
+
+    // Second pass: Find matching nodes and mark them + their ancestors as visible
     for (const auto& Node : AllNodes)
     {
         if (NOT Node.IsValid())
         { continue; }
 
         const auto Matches = DoesNodeMatchFilter(Node);
-        MarkNodeVisibilityRecursive(Node, Matches);
+        if (Matches)
+        {
+            MarkNodeVisibilityRecursive(Node, true);
+        }
+    }
+
+    // Third pass: Auto-expand parents of visible nodes when filtering
+    if (TreeView.IsValid())
+    {
+        for (const auto& Node : AllNodes)
+        {
+            if (NOT Node.IsValid() || NOT Node->IsVisible)
+            { continue; }
+
+            // Check if this node has visible children
+            auto HasVisibleChildren = false;
+            for (const auto& Child : Node->Children)
+            {
+                if (Child.IsValid() && Child->IsVisible)
+                {
+                    HasVisibleChildren = true;
+                    break;
+                }
+            }
+
+            // If node has visible children, expand it
+            if (HasVisibleChildren)
+            {
+                TreeView->SetItemExpansion(Node, true);
+            }
+        }
     }
 }
 
@@ -350,7 +398,8 @@ auto SCkDebuggerWidget_EntityTree::OnGenerateRow(
 {
     return SNew(SCkDebuggerEntityTreeRow, InOwnerTable)
         .Node(InNode)
-        .SelectionModel(SelectionModel);
+        .SelectionModel(SelectionModel)
+        .TreeWidget(SharedThis(this));
 }
 
 auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(

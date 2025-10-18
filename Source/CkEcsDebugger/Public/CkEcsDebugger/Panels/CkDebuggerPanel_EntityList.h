@@ -22,6 +22,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
 private:
+    auto Build_WorldSelector() -> TSharedRef<SWidget>;
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;
 
@@ -29,12 +30,15 @@ private:
     auto OnRefreshClicked() -> FReply;
     auto OnExpandAllClicked() -> FReply;
     auto OnCollapseAllClicked() -> FReply;
+    auto OnWorldButtonClicked(UWorld* InWorld) -> FReply;
 
     auto Get_EntityCountText() const -> FText;
     auto Get_SelectionCountText() const -> FText;
+    auto Get_WorldButtonColor(UWorld* InWorld) const -> FSlateColor;
 
     TSharedPtr<SCkDebuggerWidget_SearchBar> SearchBar;
     TSharedPtr<SCkDebuggerWidget_EntityTree> EntityTree;
+    TSharedPtr<SVerticalBox> WorldSelectorBox;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;

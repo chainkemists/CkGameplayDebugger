@@ -32,5 +32,4 @@ private:
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
 
     FCk_Handle CurrentInspectedEntity;
-    bool NeedsRebuild = true;
 };

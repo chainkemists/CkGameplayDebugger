@@ -1,4 +1,4 @@
-#include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
+#include "CkDebuggerPanel_Inspector.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcsDebugger/Inspectors/CkInspector_EntityInfo.h"
@@ -72,6 +72,7 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
 
     if (SelectedEntities.Num() == 0)
     {
+        CurrentInspectedEntity = FCk_Handle{};
         ScrollBox->AddSlot()
             .Padding(FCkDebuggerStyle::Padding_Medium)
             [
@@ -82,6 +83,7 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
 
     if (SelectedEntities.Num() > 1)
     {
+        CurrentInspectedEntity = FCk_Handle{};
         ScrollBox->AddSlot()
             .Padding(FCkDebuggerStyle::Padding_Medium)
             [
@@ -91,6 +93,7 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     }
 
     const auto& Entity = SelectedEntities[0];
+    CurrentInspectedEntity = Entity;
 
     if (ck::Is_NOT_Valid(Entity))
     {

@@ -108,12 +108,10 @@ auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -
     UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, Transform);
 
     const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
-    constexpr AActor* TestActor = nullptr;
     UCk_Utils_DebugDraw_UE::DrawDebugString(
         EntityWorld,
         TextLocation,
         Entity.ToString(),
-        TestActor,
         FLinearColor::White,
         0.0f);
 }

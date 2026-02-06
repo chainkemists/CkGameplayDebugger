@@ -35,6 +35,14 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "ArgusDebugServer",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
 		}
 	],
 	"Plugins": [

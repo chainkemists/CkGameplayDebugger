@@ -1,6 +1,6 @@
 #include "ArgusHandshakeBuilder.h"
-#include "ArgusFragmentTypeMap.h"
 
+#include "CkEcs/Reflection/CkFragmentReflectionRegistry.h"
 #include "CkEcs/Registry/CkRegistry.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
@@ -142,18 +142,19 @@ auto FHandshakeBuilder::BuildComponentTypes() -> TArray<FComponentTypeInfo>
 {
     TArray<FComponentTypeInfo> Types;
 
-    const auto& Entries = FFragmentTypeMap::Get().GetAllEntries();
+    const auto& Entries = ck::FCk_FragmentReflectionRegistry::Get().GetAllEntries();
 
-    for (const auto& [TypeId, Struct] : Entries)
+    for (const auto& [TypeId, FragmentInfo] : Entries)
     {
-        if (Struct == nullptr)
+        // Skip fragments without UE reflection (not yet converted to USTRUCT)
+        if (FragmentInfo.ScriptStruct == nullptr)
         {
             continue;
         }
 
         FComponentTypeInfo Info;
-        Info.TypeName   = Struct->GetName();
-        Info.Properties = BuildPropertyList(Struct);
+        Info.TypeName   = FragmentInfo.ScriptStruct->GetName();
+        Info.Properties = BuildPropertyList(FragmentInfo.ScriptStruct);
 
         UE_LOG(LogArgusHandshake, Verbose,
             TEXT("  ComponentType: '%s' (%d properties)"),

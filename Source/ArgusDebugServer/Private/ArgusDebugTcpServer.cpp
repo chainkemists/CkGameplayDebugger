@@ -181,19 +181,26 @@ auto FDebugTcpServer::StartListening(uint16 Port) -> bool
 
     const auto Endpoint = FIPv4Endpoint(FIPv4Address(127, 0, 0, 1), Port);
 
-    Listener = MakeUnique<FTcpListener>(
+    // FTcpListener auto-starts on construction (spawns thread -> Init -> Run).
+    constexpr auto Reusable = false;
+    auto PendingListener = MakeUnique<FTcpListener>(
         Endpoint,
         FTimespan::FromSeconds(1.0),
-        false /* bReusable */);
+        Reusable);
 
-    Listener->OnConnectionAccepted().BindRaw(this, &FDebugTcpServer::HandleConnectionAccepted);
+    PendingListener->OnConnectionAccepted().BindRaw(this, &FDebugTcpServer::HandleConnectionAccepted);
 
-    if (!Listener->Init())
+    // Give the background thread a moment to create the socket
+    FPlatformProcess::Sleep(0.1f);
+
+    if (!PendingListener->IsActive())
     {
         UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Failed to bind TCP listener on port %u"), Port);
-        Listener.Reset();
+        PendingListener.Reset();
         return false;
     }
+
+    Listener = MoveTemp(PendingListener);
 
     bListening = true;
     UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Listening on 127.0.0.1:%u"), Port);
@@ -227,7 +234,7 @@ auto FDebugTcpServer::IsClientConnected() const -> bool
 auto FDebugTcpServer::HandleConnectionAccepted(FSocket* InSocket, const FIPv4Endpoint& InEndpoint) -> bool
 {
     // Clean up stale worker from a previous disconnected client
-    if (Worker.IsValid() && Worker->bFinished)
+    if (Worker.IsValid() && Worker->IsFinished())
     {
         WorkerThread->WaitForCompletion();
         WorkerThread.Reset();

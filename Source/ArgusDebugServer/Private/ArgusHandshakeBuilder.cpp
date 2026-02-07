@@ -116,7 +116,11 @@ auto FHandshakeBuilder::EnumerateRegistries() -> TArray<FRegistryInfo>
         // Entity count
         if (RawRegistry != nullptr)
         {
-            Info.EntityCount = static_cast<uint32>(RawRegistry->alive());
+            // Returns alive and recycled entities
+            //Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->size());
+
+            // Alternative approach to get only alive entities
+            Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->free_list());
         }
         else
         {

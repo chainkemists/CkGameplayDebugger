@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "HAL/Runnable.h"
+#include "Interfaces/IPv4/IPv4Endpoint.h"
 #include "ArgusProtocolTypes.h"
 
 class FSocket;
@@ -64,6 +65,7 @@ private:
         auto Run() -> uint32 override;
         auto Stop() -> void override;
         auto Exit() -> void override;
+        auto IsFinished() const -> bool { return bFinished; }
 
     private:
         /** Read exactly NumBytes into Buffer. Returns false on error/disconnect. */

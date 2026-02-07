@@ -17,7 +17,7 @@ namespace Argus
 {
 
 // ====================================================================================================================
-// Frame helpers (shared by server — mirrors Argus frame.cpp)
+// Frame helpers
 // ====================================================================================================================
 
 static auto BuildFrame(const TArray<uint8>& Payload) -> TArray<uint8>
@@ -25,24 +25,20 @@ static auto BuildFrame(const TArray<uint8>& Payload) -> TArray<uint8>
     TArray<uint8> Frame;
     Frame.SetNumUninitialized(FRAME_HEADER_SIZE + Payload.Num());
 
-    // Magic (4 bytes, big-endian)
     Frame[0] = static_cast<uint8>((FRAME_MAGIC >> 24) & 0xFF);
     Frame[1] = static_cast<uint8>((FRAME_MAGIC >> 16) & 0xFF);
     Frame[2] = static_cast<uint8>((FRAME_MAGIC >> 8) & 0xFF);
     Frame[3] = static_cast<uint8>(FRAME_MAGIC & 0xFF);
 
-    // Version (2 bytes, big-endian)
     Frame[4] = static_cast<uint8>((FRAME_VERSION >> 8) & 0xFF);
     Frame[5] = static_cast<uint8>(FRAME_VERSION & 0xFF);
 
-    // Payload length (4 bytes, big-endian)
-    const uint32 Len = static_cast<uint32>(Payload.Num());
+    const auto Len = static_cast<uint32>(Payload.Num());
     Frame[6] = static_cast<uint8>((Len >> 24) & 0xFF);
     Frame[7] = static_cast<uint8>((Len >> 16) & 0xFF);
     Frame[8] = static_cast<uint8>((Len >> 8) & 0xFF);
     Frame[9] = static_cast<uint8>(Len & 0xFF);
 
-    // Copy payload
     if (Payload.Num() > 0)
     {
         FMemory::Memcpy(Frame.GetData() + FRAME_HEADER_SIZE, Payload.GetData(), Payload.Num());
@@ -80,32 +76,17 @@ static auto SerializeHandshakeResponse(const FHandshakeResponse& Resp) -> TArray
     FMsgPackWriter W;
     W.Reserve(512);
 
-    // HandshakeResponse = array[8]
     W.WriteArrayHeader(8);
-
-    // [0] accepted: bool
-    W.WriteBool(Resp.bAccepted);
-
-    // [1] server_version: uint32
+    W.WriteBool(Resp.Accepted);
     W.WriteUInt32(Resp.ServerVersion);
-
-    // [2] project_name: string
     W.WriteString(Resp.ProjectName);
-
-    // [3] engine_version: string
     W.WriteString(Resp.EngineVersion);
-
-    // [4] process_id: uint32
     W.WriteUInt32(Resp.ProcessId);
-
-    // [5] entt_version: uint32
     W.WriteUInt32(Resp.EnttVersion);
 
-    // [6] registries: array of RegistryInfo
     W.WriteArrayHeader(static_cast<uint32>(Resp.Registries.Num()));
     for (const auto& Reg : Resp.Registries)
     {
-        // RegistryInfo = array[5]
         W.WriteArrayHeader(5);
         W.WriteUInt32(Reg.WorldId);
         W.WriteString(Reg.WorldName);
@@ -114,19 +95,15 @@ static auto SerializeHandshakeResponse(const FHandshakeResponse& Resp) -> TArray
         W.WriteUInt8(Reg.NetMode);
     }
 
-    // [7] component_types: array of ComponentTypeInfo
     W.WriteArrayHeader(static_cast<uint32>(Resp.ComponentTypes.Num()));
     for (const auto& Comp : Resp.ComponentTypes)
     {
-        // ComponentTypeInfo = array[2]
         W.WriteArrayHeader(2);
         W.WriteString(Comp.TypeName);
 
-        // properties: array of PropertyInfo
         W.WriteArrayHeader(static_cast<uint32>(Comp.Properties.Num()));
         for (const auto& Prop : Comp.Properties)
         {
-            // PropertyInfo = array[4]
             W.WriteArrayHeader(4);
             W.WriteString(Prop.Name);
             W.WriteString(Prop.TypeName);
@@ -135,17 +112,24 @@ static auto SerializeHandshakeResponse(const FHandshakeResponse& Resp) -> TArray
         }
     }
 
-    return W.MoveBuffer();
+    return W.Move_Buffer();
 }
 
 static auto DeserializeHandshakeRequest(const uint8* Data, int32 Size) -> TOptional<FHandshakeRequest>
 {
     FMsgPackReader R(Data, Size);
 
-    const uint32 ArrayCount = R.ReadArrayHeader();
+    const auto ArrayCount = R.ReadArrayHeader();
     if (R.IsError() || ArrayCount < 3)
     {
         return {};
+    }
+
+    if (ArrayCount > 3)
+    {
+        UE_LOG(LogArgusServer, Warning,
+            TEXT("HandshakeRequest has %u fields (expected 3) — client may be newer than server"),
+            ArrayCount);
     }
 
     FHandshakeRequest Req;
@@ -174,14 +158,13 @@ FDebugTcpServer::~FDebugTcpServer()
 
 auto FDebugTcpServer::StartListening(uint16 Port) -> bool
 {
-    if (bListening)
+    if (Listening)
     {
         return true;
     }
 
     const auto Endpoint = FIPv4Endpoint(FIPv4Address(127, 0, 0, 1), Port);
 
-    // FTcpListener auto-starts on construction (spawns thread -> Init -> Run).
     constexpr auto Reusable = false;
     auto PendingListener = MakeUnique<FTcpListener>(
         Endpoint,
@@ -190,26 +173,34 @@ auto FDebugTcpServer::StartListening(uint16 Port) -> bool
 
     PendingListener->OnConnectionAccepted().BindRaw(this, &FDebugTcpServer::HandleConnectionAccepted);
 
-    // Give the background thread a moment to create the socket
-    FPlatformProcess::Sleep(0.1f);
-
-    if (!PendingListener->IsActive())
+    // Poll for listener readiness instead of a fixed sleep
+    constexpr int32 MaxAttempts = 20;
+    for (int32 Attempt = 0; Attempt < MaxAttempts; ++Attempt)
     {
-        UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Failed to bind TCP listener on port %u"), Port);
+        if (PendingListener->IsActive())
+        {
+            break;
+        }
+        FPlatformProcess::Sleep(0.05f);
+    }
+
+    if (NOT PendingListener->IsActive())
+    {
+        UE_LOG(LogArgusServer, Error, TEXT("Failed to bind TCP listener on port %u"), Port);
         PendingListener.Reset();
         return false;
     }
 
     Listener = MoveTemp(PendingListener);
+    Listening = true;
 
-    bListening = true;
-    UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Listening on 127.0.0.1:%u"), Port);
+    UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer listening on 127.0.0.1:%u"), Port);
     return true;
 }
 
 auto FDebugTcpServer::StopListening() -> void
 {
-    bListening = false;
+    Listening = false;
 
     DisconnectClient();
 
@@ -217,55 +208,60 @@ auto FDebugTcpServer::StopListening() -> void
     {
         Listener.Reset();
     }
-
-    UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Stopped listening"));
 }
 
 auto FDebugTcpServer::IsListening() const -> bool
 {
-    return bListening;
+    return Listening;
 }
 
 auto FDebugTcpServer::IsClientConnected() const -> bool
 {
+    FScopeLock Lock(&ClientMutex);
     return ClientSocket != nullptr;
+}
+
+auto FDebugTcpServer::CleanupStaleWorker() -> void
+{
+    // Caller must hold ClientMutex
+    if (NOT Worker.IsValid() || NOT Worker->IsFinished())
+    {
+        return;
+    }
+
+    WorkerThread->WaitForCompletion();
+    WorkerThread.Reset();
+    Worker.Reset();
+
+    if (ClientSocket != nullptr)
+    {
+        ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+        ClientSocket = nullptr;
+    }
+
+    UE_LOG(LogArgusServer, Verbose, TEXT("Cleaned up stale client connection"));
 }
 
 auto FDebugTcpServer::HandleConnectionAccepted(FSocket* InSocket, const FIPv4Endpoint& InEndpoint) -> bool
 {
-    // Clean up stale worker from a previous disconnected client
-    if (Worker.IsValid() && Worker->IsFinished())
-    {
-        WorkerThread->WaitForCompletion();
-        WorkerThread.Reset();
-        Worker.Reset();
+    FScopeLock Lock(&ClientMutex);
 
-        if (ClientSocket != nullptr)
-        {
-            ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
-            ClientSocket = nullptr;
-        }
+    CleanupStaleWorker();
 
-        UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Cleaned up stale client connection"));
-    }
-
-    if (IsClientConnected())
+    if (ClientSocket != nullptr)
     {
         UE_LOG(LogArgusServer, Warning,
-            TEXT("ArgusDebugServer: Rejecting connection from %s — another client is already connected"),
+            TEXT("Rejecting connection from %s — another client is already connected"),
             *InEndpoint.ToString());
 
         ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(InSocket);
         return false;
     }
 
-    UE_LOG(LogArgusServer, Log,
-        TEXT("ArgusDebugServer: Accepted connection from %s"),
-        *InEndpoint.ToString());
+    UE_LOG(LogArgusServer, Log, TEXT("Accepted connection from %s"), *InEndpoint.ToString());
 
     ClientSocket = InSocket;
 
-    // Spawn worker thread for I/O
     Worker = MakeUnique<FClientWorker>(ClientSocket, *this);
     WorkerThread = TUniquePtr<FRunnableThread>(
         FRunnableThread::Create(
@@ -279,6 +275,8 @@ auto FDebugTcpServer::HandleConnectionAccepted(FSocket* InSocket, const FIPv4End
 
 auto FDebugTcpServer::DisconnectClient() -> void
 {
+    FScopeLock Lock(&ClientMutex);
+
     if (Worker.IsValid())
     {
         Worker->Stop();
@@ -286,7 +284,11 @@ auto FDebugTcpServer::DisconnectClient() -> void
 
     if (WorkerThread.IsValid())
     {
+        // Must release lock before WaitForCompletion to avoid deadlock
+        // if worker thread tries to access server state
+        ClientMutex.Unlock();
         WorkerThread->WaitForCompletion();
+        ClientMutex.Lock();
         WorkerThread.Reset();
     }
 
@@ -319,46 +321,37 @@ auto FDebugTcpServer::FClientWorker::Init() -> bool
 
 auto FDebugTcpServer::FClientWorker::Run() -> uint32
 {
-    UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Worker thread started"));
-
-    // --- Read HandshakeRequest frame ---
     auto Payload = ReadFrame();
     if (Payload.Num() == 0)
     {
-        UE_LOG(LogArgusServer, Warning, TEXT("ArgusDebugServer: Failed to read handshake frame"));
+        UE_LOG(LogArgusServer, Warning, TEXT("Failed to read handshake frame"));
         return 1;
     }
 
-    if (!HandleHandshake(Payload))
+    if (NOT HandleHandshake(Payload))
     {
-        UE_LOG(LogArgusServer, Warning, TEXT("ArgusDebugServer: Handshake failed"));
         return 1;
     }
 
-    // --- Keep connection open, wait for future control commands ---
-    while (!bStopping)
+    while (NOT Stopping)
     {
         auto CmdPayload = ReadFrame();
         if (CmdPayload.Num() == 0)
         {
-            // Client disconnected or error
-            UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Client disconnected"));
             break;
         }
 
-        // Future: dispatch DrawGizmoRequest, etc.
-        UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Received command frame (%d bytes payload)"), CmdPayload.Num());
+        // Future: dispatch by message type
+        UE_LOG(LogArgusServer, Verbose, TEXT("Received command frame (%d bytes payload)"), CmdPayload.Num());
     }
 
-    UE_LOG(LogArgusServer, Log, TEXT("ArgusDebugServer: Worker thread exiting"));
     return 0;
 }
 
 auto FDebugTcpServer::FClientWorker::Stop() -> void
 {
-    bStopping = true;
+    Stopping = true;
 
-    // Close socket to unblock any pending recv
     if (ClientSocket != nullptr)
     {
         ClientSocket->Close();
@@ -367,18 +360,16 @@ auto FDebugTcpServer::FClientWorker::Stop() -> void
 
 auto FDebugTcpServer::FClientWorker::Exit() -> void
 {
-    bFinished = true;
+    Finished = true;
 }
-
-// --- Socket I/O ---
 
 auto FDebugTcpServer::FClientWorker::RecvExact(uint8* Buffer, int32 NumBytes) -> bool
 {
     int32 TotalRead = 0;
-    while (TotalRead < NumBytes && !bStopping)
+    while (TotalRead < NumBytes && NOT Stopping)
     {
         int32 BytesRead = 0;
-        if (!ClientSocket->Recv(Buffer + TotalRead, NumBytes - TotalRead, BytesRead))
+        if (NOT ClientSocket->Recv(Buffer + TotalRead, NumBytes - TotalRead, BytesRead))
         {
             return false;
         }
@@ -394,10 +385,10 @@ auto FDebugTcpServer::FClientWorker::RecvExact(uint8* Buffer, int32 NumBytes) ->
 auto FDebugTcpServer::FClientWorker::SendAll(const uint8* Buffer, int32 NumBytes) -> bool
 {
     int32 TotalSent = 0;
-    while (TotalSent < NumBytes && !bStopping)
+    while (TotalSent < NumBytes && NOT Stopping)
     {
         int32 BytesSent = 0;
-        if (!ClientSocket->Send(Buffer + TotalSent, NumBytes - TotalSent, BytesSent))
+        if (NOT ClientSocket->Send(Buffer + TotalSent, NumBytes - TotalSent, BytesSent))
         {
             return false;
         }
@@ -412,25 +403,23 @@ auto FDebugTcpServer::FClientWorker::SendAll(const uint8* Buffer, int32 NumBytes
 
 auto FDebugTcpServer::FClientWorker::ReadFrame() -> TArray<uint8>
 {
-    // 1. Read 10-byte header
     uint8 HeaderBuf[FRAME_HEADER_SIZE];
-    if (!RecvExact(HeaderBuf, FRAME_HEADER_SIZE))
+    if (NOT RecvExact(HeaderBuf, FRAME_HEADER_SIZE))
     {
         return {};
     }
 
-    // 2. Parse & validate header
     const auto Header = ParseFrameHeader(HeaderBuf);
 
     if (Header.Magic != FRAME_MAGIC)
     {
-        UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Invalid frame magic: 0x%08X"), Header.Magic);
+        UE_LOG(LogArgusServer, Error, TEXT("Invalid frame magic: 0x%08X"), Header.Magic);
         return {};
     }
 
     if (Header.Version != FRAME_VERSION)
     {
-        UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Invalid frame version: 0x%04X"), Header.Version);
+        UE_LOG(LogArgusServer, Error, TEXT("Invalid frame version: 0x%04X"), Header.Version);
         return {};
     }
 
@@ -439,23 +428,22 @@ auto FDebugTcpServer::FClientWorker::ReadFrame() -> TArray<uint8>
         return {};
     }
 
-    // Sanity limit: 16 MB
-    if (Header.PayloadLength > 16 * 1024 * 1024)
+    constexpr uint32 MaxPayloadSize = 16 * 1024 * 1024;
+    if (Header.PayloadLength > MaxPayloadSize)
     {
-        UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Frame payload too large: %u bytes"), Header.PayloadLength);
+        UE_LOG(LogArgusServer, Error, TEXT("Frame payload too large: %u bytes"), Header.PayloadLength);
         return {};
     }
 
-    // 3. Read payload
-    TArray<uint8> Payload;
-    Payload.SetNumUninitialized(Header.PayloadLength);
+    TArray<uint8> FramePayload;
+    FramePayload.SetNumUninitialized(Header.PayloadLength);
 
-    if (!RecvExact(Payload.GetData(), Header.PayloadLength))
+    if (NOT RecvExact(FramePayload.GetData(), Header.PayloadLength))
     {
         return {};
     }
 
-    return Payload;
+    return FramePayload;
 }
 
 auto FDebugTcpServer::FClientWorker::SendFrame(const TArray<uint8>& Payload) -> bool
@@ -466,27 +454,24 @@ auto FDebugTcpServer::FClientWorker::SendFrame(const TArray<uint8>& Payload) -> 
 
 auto FDebugTcpServer::FClientWorker::HandleHandshake(const TArray<uint8>& Payload) -> bool
 {
-    // Deserialize request
     const auto RequestOpt = DeserializeHandshakeRequest(Payload.GetData(), Payload.Num());
-    if (!RequestOpt.IsSet())
+    if (NOT RequestOpt.IsSet())
     {
-        UE_LOG(LogArgusServer, Error, TEXT("ArgusDebugServer: Failed to deserialize HandshakeRequest"));
+        UE_LOG(LogArgusServer, Error, TEXT("Failed to deserialize HandshakeRequest"));
         return false;
     }
 
     const auto& Request = RequestOpt.GetValue();
     UE_LOG(LogArgusServer, Log,
-        TEXT("ArgusDebugServer: HandshakeRequest from '%s' (version 0x%06X, entt 0x%06X)"),
+        TEXT("HandshakeRequest from '%s' (version 0x%06X, entt 0x%06X)"),
         *Request.ClientName,
         Request.ClientVersion,
         Request.ExpectedEnttVersion);
 
-    // Build response on the game thread
     FHandshakeResponse Response;
 
     if (Owner.OnBuildHandshakeResponse.IsBound())
     {
-        // Block worker thread until game thread produces the response
         FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(true);
 
         AsyncTask(ENamedThreads::GameThread, [&]()
@@ -495,13 +480,27 @@ auto FDebugTcpServer::FClientWorker::HandleHandshake(const TArray<uint8>& Payloa
             DoneEvent->Trigger();
         });
 
-        DoneEvent->Wait();
+        constexpr float HandshakeTimeoutSeconds = 5.0f;
+        if (NOT DoneEvent->Wait(FTimespan::FromSeconds(HandshakeTimeoutSeconds)))
+        {
+            FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+            UE_LOG(LogArgusServer, Error, TEXT("Game thread handshake timed out after %.0fs"), HandshakeTimeoutSeconds);
+
+            Response.Accepted     = false;
+            Response.ServerVersion = SERVER_VERSION;
+            Response.ProjectName   = TEXT("Timeout");
+            Response.ProcessId     = FPlatformProcess::GetCurrentProcessId();
+
+            const auto PayloadBytes = SerializeHandshakeResponse(Response);
+            SendFrame(PayloadBytes);
+            return false;
+        }
+
         FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
     }
     else
     {
-        // No delegate bound — send a minimal accepted response
-        Response.bAccepted     = true;
+        Response.Accepted      = true;
         Response.ServerVersion = SERVER_VERSION;
         Response.ProjectName   = TEXT("Unknown");
         Response.EngineVersion = TEXT("Unknown");
@@ -510,12 +509,11 @@ auto FDebugTcpServer::FClientWorker::HandleHandshake(const TArray<uint8>& Payloa
     }
 
     UE_LOG(LogArgusServer, Log,
-        TEXT("ArgusDebugServer: Sending HandshakeResponse (accepted=%s, registries=%d, types=%d)"),
-        Response.bAccepted ? TEXT("true") : TEXT("false"),
+        TEXT("Sending HandshakeResponse (accepted=%s, registries=%d, types=%d)"),
+        Response.Accepted ? TEXT("true") : TEXT("false"),
         Response.Registries.Num(),
         Response.ComponentTypes.Num());
 
-    // Serialize & send
     const auto PayloadBytes = SerializeHandshakeResponse(Response);
     return SendFrame(PayloadBytes);
 }

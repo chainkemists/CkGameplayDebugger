@@ -22,40 +22,33 @@ auto FHandshakeBuilder::Build(const FHandshakeRequest& InRequest) -> FHandshakeR
 {
     check(IsInGameThread());
 
-    FHandshakeResponse Response;
-
-    // --- ENTT version ---
-    const uint32 ServerEnttVersion =
+    const auto ServerEnttVersion = static_cast<uint32>(
         (ENTT_VERSION_MAJOR << 16) |
         (ENTT_VERSION_MINOR << 8) |
-        ENTT_VERSION_PATCH;
+        ENTT_VERSION_PATCH);
 
-    const bool bVersionMatch = (InRequest.ExpectedEnttVersion == ServerEnttVersion);
+    const auto VersionMatch = (InRequest.ExpectedEnttVersion == ServerEnttVersion);
 
-    // --- Populate response ---
-    Response.bAccepted     = bVersionMatch;
+    FHandshakeResponse Response;
+    Response.Accepted      = VersionMatch;
     Response.ServerVersion = SERVER_VERSION;
     Response.ProjectName   = FApp::GetProjectName();
     Response.EngineVersion = FEngineVersion::Current().ToString();
     Response.ProcessId     = FPlatformProcess::GetCurrentProcessId();
     Response.EnttVersion   = ServerEnttVersion;
-
-    // Always populate registries and types even if version mismatch,
-    // so the client can display diagnostic info
-    Response.Registries     = EnumerateRegistries();
+    Response.Registries    = EnumerateRegistries();
     Response.ComponentTypes = BuildComponentTypes();
 
     UE_LOG(LogArgusHandshake, Log,
-        TEXT("HandshakeResponse: accepted=%s, project=%s, engine=%s, pid=%u, entt=0x%06X, registries=%d, types=%d"),
-        Response.bAccepted ? TEXT("true") : TEXT("false"),
+        TEXT("HandshakeResponse: accepted=%s, project=%s, pid=%u, entt=0x%06X, registries=%d, types=%d"),
+        Response.Accepted ? TEXT("true") : TEXT("false"),
         *Response.ProjectName,
-        *Response.EngineVersion,
         Response.ProcessId,
         Response.EnttVersion,
         Response.Registries.Num(),
         Response.ComponentTypes.Num());
 
-    if (!bVersionMatch)
+    if (NOT VersionMatch)
     {
         UE_LOG(LogArgusHandshake, Warning,
             TEXT("ENTT version mismatch: client expects 0x%06X, server has 0x%06X"),
@@ -84,15 +77,17 @@ auto FHandshakeBuilder::EnumerateRegistries() -> TArray<FRegistryInfo>
     for (int32 i = 0; i < WorldContexts.Num(); ++i)
     {
         const auto& Context = WorldContexts[i];
-        UWorld* World = Context.World();
+        auto* World = Context.World();
 
-        if (!IsValid(World))
+        if (NOT IsValid(World))
         {
             continue;
         }
 
-        // Skip worlds without a game instance (editor preview, etc.)
-        if (World->GetGameInstance() == nullptr && World->WorldType != EWorldType::PIE && World->WorldType != EWorldType::Game)
+        // Only expose playable worlds — Game and PIE
+        const auto WorldType = World->WorldType;
+        const auto IsPlayableWorld = (WorldType == EWorldType::Game || WorldType == EWorldType::PIE);
+        if (NOT IsPlayableWorld)
         {
             continue;
         }
@@ -103,36 +98,23 @@ auto FHandshakeBuilder::EnumerateRegistries() -> TArray<FRegistryInfo>
             continue;
         }
 
-        const FCk_Registry& Registry = Subsystem->Get_Registry();
+        const auto& Registry = Subsystem->Get_Registry();
 
         FRegistryInfo Info;
         Info.WorldId   = WorldIndex++;
         Info.WorldName = World->GetName();
 
-        // Get the raw entt::registry* pointer for ReadProcessMemory
         const auto* RawRegistry = Registry.Get_InternalRegistryRawPtr();
         Info.RegistryAddress = reinterpret_cast<uint64>(RawRegistry);
 
-        // Entity count
-        if (RawRegistry != nullptr)
-        {
-            // Returns alive and recycled entities
-            //Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->size());
+        // Returns alive and recycled entities
+        //Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->size());
 
-            // Alternative approach to get only alive entities
-            Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->free_list());
-        }
-        else
-        {
-            Info.EntityCount = 0;
-        }
+        // Alternative approach to get only alive entities
+        Info.EntityCount = static_cast<uint32>(RawRegistry->storage<entt::entity>()->free_list());
 
-        // Net mode: NM_Standalone=0, NM_DedicatedServer=1, NM_ListenServer=2, NM_Client=3
+        // NM_Standalone=0, NM_DedicatedServer=1, NM_ListenServer=2, NM_Client=3
         Info.NetMode = static_cast<uint8>(World->GetNetMode());
-
-        UE_LOG(LogArgusHandshake, Verbose,
-            TEXT("  Registry[%u]: '%s' @ 0x%016llX (%u entities, netmode=%u)"),
-            Info.WorldId, *Info.WorldName, Info.RegistryAddress, Info.EntityCount, Info.NetMode);
 
         Registries.Add(MoveTemp(Info));
     }
@@ -150,7 +132,6 @@ auto FHandshakeBuilder::BuildComponentTypes() -> TArray<FComponentTypeInfo>
 
     for (const auto& [TypeId, FragmentInfo] : Entries)
     {
-        // Skip fragments without UE reflection (not yet converted to USTRUCT)
         if (FragmentInfo.ScriptStruct == nullptr)
         {
             continue;
@@ -159,10 +140,6 @@ auto FHandshakeBuilder::BuildComponentTypes() -> TArray<FComponentTypeInfo>
         FComponentTypeInfo Info;
         Info.TypeName   = FragmentInfo.ScriptStruct->GetName();
         Info.Properties = BuildPropertyList(FragmentInfo.ScriptStruct);
-
-        UE_LOG(LogArgusHandshake, Verbose,
-            TEXT("  ComponentType: '%s' (%d properties)"),
-            *Info.TypeName, Info.Properties.Num());
 
         Types.Add(MoveTemp(Info));
     }
@@ -183,7 +160,7 @@ auto FHandshakeBuilder::BuildPropertyList(const UScriptStruct* InStruct) -> TArr
 
     for (TFieldIterator<FProperty> It(InStruct); It; ++It)
     {
-        const FProperty* Prop = *It;
+        const auto* Prop = *It;
 
         FPropertyInfo Info;
         Info.Name     = Prop->GetName();

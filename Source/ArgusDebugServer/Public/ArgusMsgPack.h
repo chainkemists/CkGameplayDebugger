@@ -22,18 +22,13 @@ namespace Argus
 class FMsgPackWriter
 {
 public:
-    /** Reserve approximate capacity (optional). */
     auto Reserve(int32 InBytes) -> void;
-
-    /** Access the finished buffer. */
-    auto GetBuffer() const -> const TArray<uint8>&;
-
-    /** Move the finished buffer out. */
-    auto MoveBuffer() -> TArray<uint8>;
+    auto Get_Buffer() const -> const TArray<uint8>&;
+    auto Move_Buffer() -> TArray<uint8>;
 
     // --- Primitives -------------------------------------------------------------------------------------------------
 
-    auto WriteBool(bool bValue) -> void;
+    auto WriteBool(bool Value) -> void;
     auto WriteUInt8(uint8 Value) -> void;
     auto WriteUInt32(uint32 Value) -> void;
     auto WriteUInt64(uint64 Value) -> void;
@@ -41,7 +36,6 @@ public:
 
     // --- Containers -------------------------------------------------------------------------------------------------
 
-    /** Write array header (caller must then write exactly Count elements). */
     auto WriteArrayHeader(uint32 Count) -> void;
 
 private:
@@ -63,7 +57,6 @@ class FMsgPackReader
 public:
     explicit FMsgPackReader(const uint8* InData, int32 InSize);
 
-    /** True when all data has been consumed or an error occurred. */
     auto IsError() const -> bool;
 
     // --- Primitives -------------------------------------------------------------------------------------------------
@@ -76,7 +69,6 @@ public:
 
     // --- Containers -------------------------------------------------------------------------------------------------
 
-    /** Read array header and return element count. */
     auto ReadArrayHeader() -> uint32;
 
 private:
@@ -90,7 +82,7 @@ private:
     const uint8* Data  = nullptr;
     int32        Size  = 0;
     int32        Pos   = 0;
-    bool         bError = false;
+    bool         Error = false;
 };
 
 } // namespace Argus

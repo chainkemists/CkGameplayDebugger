@@ -1,9 +1,6 @@
 #include "ArgusMsgPack.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// Minimal MessagePack encoder / decoder
-// Spec: https://github.com/msgpack/msgpack/blob/master/spec.md
-// --------------------------------------------------------------------------------------------------------------------
 
 namespace Argus
 {
@@ -17,34 +14,31 @@ auto FMsgPackWriter::Reserve(int32 InBytes) -> void
     Buffer.Reserve(InBytes);
 }
 
-auto FMsgPackWriter::GetBuffer() const -> const TArray<uint8>&
+auto FMsgPackWriter::Get_Buffer() const -> const TArray<uint8>&
 {
     return Buffer;
 }
 
-auto FMsgPackWriter::MoveBuffer() -> TArray<uint8>
+auto FMsgPackWriter::Move_Buffer() -> TArray<uint8>
 {
     return MoveTemp(Buffer);
 }
 
 // --- Primitives -----------------------------------------------------------------------------------------------------
 
-auto FMsgPackWriter::WriteBool(bool bValue) -> void
+auto FMsgPackWriter::WriteBool(bool Value) -> void
 {
-    // true = 0xc3, false = 0xc2
-    WriteByte(bValue ? 0xc3 : 0xc2);
+    WriteByte(Value ? 0xc3 : 0xc2);
 }
 
 auto FMsgPackWriter::WriteUInt8(uint8 Value) -> void
 {
     if (Value < 128)
     {
-        // positive fixint: 0x00 - 0x7f
         WriteByte(Value);
     }
     else
     {
-        // uint 8: 0xcc + 1 byte
         WriteByte(0xcc);
         WriteByte(Value);
     }
@@ -54,24 +48,20 @@ auto FMsgPackWriter::WriteUInt32(uint32 Value) -> void
 {
     if (Value < 128)
     {
-        // positive fixint
         WriteByte(static_cast<uint8>(Value));
     }
     else if (Value <= 0xFF)
     {
-        // uint 8
         WriteByte(0xcc);
         WriteByte(static_cast<uint8>(Value));
     }
     else if (Value <= 0xFFFF)
     {
-        // uint 16
         WriteByte(0xcd);
         WriteBigEndian16(static_cast<uint16>(Value));
     }
     else
     {
-        // uint 32
         WriteByte(0xce);
         WriteBigEndian32(Value);
     }
@@ -81,12 +71,10 @@ auto FMsgPackWriter::WriteUInt64(uint64 Value) -> void
 {
     if (Value <= 0xFFFFFFFF)
     {
-        // Fits in uint32 — use smaller encoding
         WriteUInt32(static_cast<uint32>(Value));
     }
     else
     {
-        // uint 64
         WriteByte(0xcf);
         WriteBigEndian64(Value);
     }
@@ -95,28 +83,24 @@ auto FMsgPackWriter::WriteUInt64(uint64 Value) -> void
 auto FMsgPackWriter::WriteString(const FString& Value) -> void
 {
     const auto Utf8 = StringCast<UTF8CHAR>(*Value);
-    const int32 Len = Utf8.Length();
+    const auto Len = Utf8.Length();
 
     if (Len < 32)
     {
-        // fixstr: 0xa0 - 0xbf
         WriteByte(static_cast<uint8>(0xa0 | Len));
     }
     else if (Len <= 0xFF)
     {
-        // str 8
         WriteByte(0xd9);
         WriteByte(static_cast<uint8>(Len));
     }
     else if (Len <= 0xFFFF)
     {
-        // str 16
         WriteByte(0xda);
         WriteBigEndian16(static_cast<uint16>(Len));
     }
     else
     {
-        // str 32
         WriteByte(0xdb);
         WriteBigEndian32(static_cast<uint32>(Len));
     }
@@ -130,18 +114,15 @@ auto FMsgPackWriter::WriteArrayHeader(uint32 Count) -> void
 {
     if (Count < 16)
     {
-        // fixarray: 0x90 - 0x9f
         WriteByte(static_cast<uint8>(0x90 | Count));
     }
     else if (Count <= 0xFFFF)
     {
-        // array 16
         WriteByte(0xdc);
         WriteBigEndian16(static_cast<uint16>(Count));
     }
     else
     {
-        // array 32
         WriteByte(0xdd);
         WriteBigEndian32(Count);
     }
@@ -197,7 +178,7 @@ FMsgPackReader::FMsgPackReader(const uint8* InData, int32 InSize)
 
 auto FMsgPackReader::IsError() const -> bool
 {
-    return bError;
+    return Error;
 }
 
 auto FMsgPackReader::Remaining() const -> int32
@@ -218,7 +199,7 @@ auto FMsgPackReader::ReadByte() -> uint8
 {
     if (Pos >= Size)
     {
-        bError = true;
+        Error = true;
         return 0;
     }
     return Data[Pos++];
@@ -228,11 +209,12 @@ auto FMsgPackReader::ReadBigEndian16() -> uint16
 {
     if (Remaining() < 2)
     {
-        bError = true;
+        Error = true;
         return 0;
     }
-    const uint16 Value = (static_cast<uint16>(Data[Pos]) << 8) |
-                          static_cast<uint16>(Data[Pos + 1]);
+    const auto Value = static_cast<uint16>(
+        (static_cast<uint16>(Data[Pos]) << 8) |
+         static_cast<uint16>(Data[Pos + 1]));
     Pos += 2;
     return Value;
 }
@@ -241,13 +223,14 @@ auto FMsgPackReader::ReadBigEndian32() -> uint32
 {
     if (Remaining() < 4)
     {
-        bError = true;
+        Error = true;
         return 0;
     }
-    const uint32 Value = (static_cast<uint32>(Data[Pos]) << 24) |
-                         (static_cast<uint32>(Data[Pos + 1]) << 16) |
-                         (static_cast<uint32>(Data[Pos + 2]) << 8) |
-                          static_cast<uint32>(Data[Pos + 3]);
+    const auto Value =
+        (static_cast<uint32>(Data[Pos]) << 24) |
+        (static_cast<uint32>(Data[Pos + 1]) << 16) |
+        (static_cast<uint32>(Data[Pos + 2]) << 8) |
+         static_cast<uint32>(Data[Pos + 3]);
     Pos += 4;
     return Value;
 }
@@ -256,17 +239,18 @@ auto FMsgPackReader::ReadBigEndian64() -> uint64
 {
     if (Remaining() < 8)
     {
-        bError = true;
+        Error = true;
         return 0;
     }
-    const uint64 Value = (static_cast<uint64>(Data[Pos]) << 56) |
-                         (static_cast<uint64>(Data[Pos + 1]) << 48) |
-                         (static_cast<uint64>(Data[Pos + 2]) << 40) |
-                         (static_cast<uint64>(Data[Pos + 3]) << 32) |
-                         (static_cast<uint64>(Data[Pos + 4]) << 24) |
-                         (static_cast<uint64>(Data[Pos + 5]) << 16) |
-                         (static_cast<uint64>(Data[Pos + 6]) << 8) |
-                          static_cast<uint64>(Data[Pos + 7]);
+    const auto Value =
+        (static_cast<uint64>(Data[Pos]) << 56) |
+        (static_cast<uint64>(Data[Pos + 1]) << 48) |
+        (static_cast<uint64>(Data[Pos + 2]) << 40) |
+        (static_cast<uint64>(Data[Pos + 3]) << 32) |
+        (static_cast<uint64>(Data[Pos + 4]) << 24) |
+        (static_cast<uint64>(Data[Pos + 5]) << 16) |
+        (static_cast<uint64>(Data[Pos + 6]) << 8) |
+         static_cast<uint64>(Data[Pos + 7]);
     Pos += 8;
     return Value;
 }
@@ -275,127 +259,119 @@ auto FMsgPackReader::ReadBigEndian64() -> uint64
 
 auto FMsgPackReader::ReadBool() -> bool
 {
-    const uint8 Byte = ReadByte();
-    if (Byte == 0xc3) return true;
-    if (Byte == 0xc2) return false;
-    bError = true;
+    const auto Byte = ReadByte();
+    if (Byte == 0xc3) { return true; }
+    if (Byte == 0xc2) { return false; }
+    Error = true;
     return false;
 }
 
 auto FMsgPackReader::ReadUInt8() -> uint8
 {
-    const uint8 Byte = PeekByte();
+    const auto Byte = PeekByte();
 
     if (Byte < 0x80)
     {
-        // positive fixint
         Pos++;
         return Byte;
     }
     if (Byte == 0xcc)
     {
-        // uint 8
         Pos++;
         return ReadByte();
     }
 
-    bError = true;
+    Error = true;
     return 0;
 }
 
 auto FMsgPackReader::ReadUInt32() -> uint32
 {
-    const uint8 Byte = PeekByte();
+    const auto Byte = PeekByte();
 
     if (Byte < 0x80)
     {
-        // positive fixint
         Pos++;
         return Byte;
     }
 
     switch (Byte)
     {
-    case 0xcc: // uint 8
+    case 0xcc:
         Pos++;
         return ReadByte();
-    case 0xcd: // uint 16
+    case 0xcd:
         Pos++;
         return ReadBigEndian16();
-    case 0xce: // uint 32
+    case 0xce:
         Pos++;
         return ReadBigEndian32();
     default:
-        bError = true;
+        Error = true;
         return 0;
     }
 }
 
 auto FMsgPackReader::ReadUInt64() -> uint64
 {
-    const uint8 Byte = PeekByte();
+    const auto Byte = PeekByte();
 
     if (Byte < 0x80)
     {
-        // positive fixint
         Pos++;
         return Byte;
     }
 
     switch (Byte)
     {
-    case 0xcc: // uint 8
+    case 0xcc:
         Pos++;
         return ReadByte();
-    case 0xcd: // uint 16
+    case 0xcd:
         Pos++;
         return ReadBigEndian16();
-    case 0xce: // uint 32
+    case 0xce:
         Pos++;
         return ReadBigEndian32();
-    case 0xcf: // uint 64
+    case 0xcf:
         Pos++;
         return ReadBigEndian64();
     default:
-        bError = true;
+        Error = true;
         return 0;
     }
 }
 
 auto FMsgPackReader::ReadString() -> FString
 {
-    const uint8 Byte = ReadByte();
+    const auto Byte = ReadByte();
     int32 Len = 0;
 
     if ((Byte & 0xe0) == 0xa0)
     {
-        // fixstr (5-bit length)
         Len = Byte & 0x1f;
     }
     else if (Byte == 0xd9)
     {
-        // str 8
         Len = ReadByte();
     }
     else if (Byte == 0xda)
     {
-        // str 16
         Len = ReadBigEndian16();
     }
     else if (Byte == 0xdb)
     {
-        // str 32
         Len = static_cast<int32>(ReadBigEndian32());
     }
     else
     {
-        bError = true;
+        Error = true;
         return FString();
     }
 
-    if (bError || Remaining() < Len)
+    if (Error || Remaining() < Len)
     {
-        bError = true;
+        Error = true;
         return FString();
     }
 
@@ -409,25 +385,24 @@ auto FMsgPackReader::ReadString() -> FString
 
 auto FMsgPackReader::ReadArrayHeader() -> uint32
 {
-    const uint8 Byte = PeekByte();
+    const auto Byte = PeekByte();
 
     if ((Byte & 0xf0) == 0x90)
     {
-        // fixarray (4-bit count)
         Pos++;
         return Byte & 0x0f;
     }
 
     switch (Byte)
     {
-    case 0xdc: // array 16
+    case 0xdc:
         Pos++;
         return ReadBigEndian16();
-    case 0xdd: // array 32
+    case 0xdd:
         Pos++;
         return ReadBigEndian32();
     default:
-        bError = true;
+        Error = true;
         return 0;
     }
 }

@@ -3,7 +3,7 @@
 > **Goal:** Compile the ArgusDebugServer module in UE and fix all errors until it builds cleanly.
 > **Scope:** Compile + fix only. No runtime testing this session.
 > **Prereq:** All 12 source files + 2 modified files exist on disk from prior session.
-> **Last Updated:** 2026-02-06
+> **Last Updated:** 2026-02-06 (updated after DS-1.2 refactor)
 
 ---
 
@@ -11,7 +11,7 @@
 
 A new `ArgusDebugServer` UE module inside the `CkGameplayDebugger` plugin. It implements a TCP debug server that the Argus external debugger connects to for ECS inspection.
 
-### Files Created
+### Current Files (after DS-1.2 refactor)
 
 ```
 Source/ArgusDebugServer/
@@ -20,24 +20,30 @@ Source/ArgusDebugServer/
 │   ├── ArgusDebugServerModule.h       ← IModuleInterface (StartupModule/ShutdownModule)
 │   ├── ArgusDebugTcpServer.h          ← TCP server: FTcpListener + FRunnable worker
 │   ├── ArgusHandshakeBuilder.h        ← Builds HandshakeResponse from UE world state
-│   ├── ArgusFragmentTypeMap.h         ← EnTT type_id → UScriptStruct* mapping
 │   ├── ArgusProtocolTypes.h           ← Frame constants + message POD structs
 │   └── ArgusMsgPack.h                 ← Minimal MessagePack encoder/decoder
 └── Private/
     ├── ArgusDebugServerModule.cpp     ← Module lifecycle + TCP server init
     ├── ArgusDebugTcpServer.cpp        ← Full TCP server + frame encode/decode + serialization
-    ├── ArgusHandshakeBuilder.cpp      ← Registry enumeration + UE reflection
-    ├── ArgusFragmentTypeMap.cpp       ← Singleton implementation
-    ├── ArgusFragmentRegistration.cpp  ← Registers USTRUCT fragment data types
-    └── ArgusMsgPack.cpp               ← MessagePack codec (~280 lines)
+    ├── ArgusHandshakeBuilder.cpp      ← Registry enumeration + UE reflection (reads FCk_FragmentReflectionRegistry)
+    ├── ArgusMsgPack.cpp               ← MessagePack codec (~280 lines)
+    └── ArgusFragmentRegistration_Temp.cpp  ← TEMPORARY: registers 4 USTRUCTs with CK_REGISTER_ECS_FRAGMENT_REFLECTED
 ```
 
-### Files Modified
+**Deleted in DS-1.2** (no longer exist):
+- ~~`Public/ArgusFragmentTypeMap.h`~~ → replaced by `CkFoundation/CkEcs/Reflection/CkFragmentReflectionRegistry.h`
+- ~~`Private/ArgusFragmentTypeMap.cpp`~~ → replaced
+- ~~`Private/ArgusFragmentRegistration.cpp`~~ → replaced by `ArgusFragmentRegistration_Temp.cpp`
+
+### CkFoundation Dependencies (added in DS-1.1 + DS-1.2)
 
 | File | Change |
 |------|--------|
 | `CkDebugger.uplugin` | Added ArgusDebugServer module entry (UncookedOnly, Win64) |
-| `CkFoundation/.../CkRegistry.h` | Added `Get_InternalRegistryRawPtr()` public method |
+| `CkEcs/Registry/CkRegistry.h` | Added `Get_InternalRegistryRawPtr()` public method |
+| `CkEcs/Reflection/CkFragmentTypeInfo.h` | **NEW** — FCk_FragmentTypeInfo struct |
+| `CkEcs/Reflection/CkFragmentReflectionRegistry.h/cpp` | **NEW** — Registry singleton |
+| `CkEcs/Reflection/CkFragmentReflection_Macros.h` | **NEW** — Registration macros |
 
 ---
 

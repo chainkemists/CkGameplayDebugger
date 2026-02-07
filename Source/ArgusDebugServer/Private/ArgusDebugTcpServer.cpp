@@ -368,6 +368,12 @@ auto FDebugTcpServer::FClientWorker::RecvExact(uint8* Buffer, int32 NumBytes) ->
     int32 TotalRead = 0;
     while (TotalRead < NumBytes && NOT Stopping)
     {
+        // Block until data is available or timeout (1s intervals to check Stopping flag)
+        if (NOT ClientSocket->Wait(ESocketWaitConditions::WaitForRead, FTimespan::FromSeconds(1.0)))
+        {
+            continue;
+        }
+
         int32 BytesRead = 0;
         if (NOT ClientSocket->Recv(Buffer + TotalRead, NumBytes - TotalRead, BytesRead))
         {

@@ -57,7 +57,13 @@ auto
         AActor* InDebugActor)
     -> void
 {
-    _OnCollectDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnCollectData{InOwnerPC, InDebugActor, GetReplicator()});
+    _OnCollectDataDelegate.ExecuteIfBound(FCk_Payload_GameplayDebugger_OnCollectData{
+        InOwnerPC,
+        InDebugActor
+#if WITH_GAMEPLAY_DEBUGGER
+        , GetReplicator()
+#endif
+    });
 }
 
 auto
@@ -88,7 +94,9 @@ auto
         {
             InOwnerPC,
             &InCanvasContext,
+#if WITH_GAMEPLAY_DEBUGGER
             GetReplicator(),
+#endif
             _Worlds,
             _Worlds[_NextWorldToUse]
         }

@@ -6,7 +6,10 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+#if WITH_GAMEPLAY_DEBUGGER
 class AGameplayDebuggerCategoryReplicator;
+#endif
+
 class FGameplayDebuggerCanvasContext;
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -27,8 +30,11 @@ public:
     FCk_Payload_GameplayDebugger_OnCollectData() = default;
     FCk_Payload_GameplayDebugger_OnCollectData(
         APlayerController* InOwnerPC,
-        AActor* InDebugActor,
-        AGameplayDebuggerCategoryReplicator* InReplicator);
+        AActor* InDebugActor
+#if WITH_GAMEPLAY_DEBUGGER
+        , AGameplayDebuggerCategoryReplicator* InReplicator
+#endif
+    );
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
@@ -39,13 +45,16 @@ private:
               meta = (AllowPrivateAccess = true))
     TWeakObjectPtr<AActor> _DebugActor;
 
-    UPROPERTY(Transient)
+#if WITH_GAMEPLAY_DEBUGGER
     TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> _Replicator;
+#endif
 
 public:
     CK_PROPERTY_GET(_OwnerPC);
     CK_PROPERTY_GET(_DebugActor);
+#if WITH_GAMEPLAY_DEBUGGER
     CK_PROPERTY_GET(_Replicator);
+#endif
 };
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(
@@ -67,7 +76,9 @@ public:
     FCk_Payload_GameplayDebugger_OnDrawData(
         TWeakObjectPtr<APlayerController> InOwnerPC,
         FGameplayDebuggerCanvasContext* InCanvasContext,
+#if WITH_GAMEPLAY_DEBUGGER
         TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> InReplicator,
+#endif
         TArray<TWeakObjectPtr<UWorld>> InAvailableWorlds,
         TWeakObjectPtr<UWorld> InCurrentWorld);
 
@@ -76,8 +87,9 @@ protected:
               meta = (AllowPrivateAccess = true))
     TWeakObjectPtr<APlayerController> _OwnerPC;
 
-    UPROPERTY(Transient)
+#if WITH_GAMEPLAY_DEBUGGER
     TWeakObjectPtr<AGameplayDebuggerCategoryReplicator> _Replicator;
+#endif
 
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<UWorld>> _AvailableWorlds;
@@ -90,7 +102,9 @@ private:
 
 public:
     CK_PROPERTY_GET(_OwnerPC);
+#if WITH_GAMEPLAY_DEBUGGER
     CK_PROPERTY_GET(_Replicator);
+#endif
     CK_PROPERTY_GET(_CanvasContext);
     CK_PROPERTY_GET(_AvailableWorlds);
     CK_PROPERTY_GET(_CurrentWorld);

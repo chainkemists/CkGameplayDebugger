@@ -1,6 +1,8 @@
 #include "CkDebugger_Bridge.h"
 
+#if WITH_GAMEPLAY_DEBUGGER
 #include "GameplayDebuggerConfig.h"
+#endif
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Ensure/CkEnsure.h"
@@ -375,7 +377,9 @@ auto
             {
                 InDrawData.Get_OwnerPC(),
                 InDrawData.Get_CanvasContext(),
+#if WITH_GAMEPLAY_DEBUGGER
                 InDrawData.Get_Replicator(),
+#endif
                 InDrawData.Get_AvailableWorlds(),
                 InDrawData.Get_AvailableWorlds()[_CurrentWorldToUseIndex]
             }
@@ -450,6 +454,7 @@ auto
 #endif
 }
 
+#if WITH_GAMEPLAY_DEBUGGER
 auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoApplyDisplaySettings(
@@ -507,6 +512,7 @@ auto
         InCanvasContext->DrawItem(Background, InCanvasContext->DefaultX - BackgroundPadding, InCanvasContext->DefaultY - BackgroundPadding);
     }
 }
+#endif
 
 auto
     ACk_GameplayDebugger_DebugBridge_UE::
@@ -826,6 +832,7 @@ auto
 #endif
 }
 
+#if WITH_GAMEPLAY_DEBUGGER
 auto
     ACk_GameplayDebugger_DebugBridge_UE::
     DoDrawTextOnCanvas(
@@ -850,5 +857,6 @@ auto
 
     InCanvasContext->PrintAt((CanvasSizeX - StringSizeX) * 0.5f, UsePaddingTop, InColor, InText);
 }
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------

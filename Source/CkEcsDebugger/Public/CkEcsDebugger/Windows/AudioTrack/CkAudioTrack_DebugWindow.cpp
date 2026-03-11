@@ -530,7 +530,7 @@ auto
     -> FString
 {
     const auto& TrackName = UCk_Utils_AudioTrack_UE::Get_TrackName(InTrack);
-    return TrackName.GetTagName().ToString();
+    return TrackName.ToString();
 }
 
 auto

@@ -4,8 +4,14 @@
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityInfo)
 
 auto FCkInspector_EntityInfo::Get_ComponentName() const -> FText
 {
@@ -19,91 +25,27 @@ auto FCkInspector_EntityInfo::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    auto Grid = SNew(SGridPanel)
-        .FillColumn(1, 1.0f);
-
-    int32 Row = 0;
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Name:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
+    return FCkInspectorWidgetBuilder()
+        .AddRow(
+            FText::FromString(TEXT("Name:")),
+            [](const FCk_Handle& E) { return FText::FromString(UCk_Utils_Handle_UE::Get_DebugName(E).ToString()); })
+        .AddRow(
+            FText::FromString(TEXT("ID:")),
+            [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), E.Get_Entity())); },
+            FCkDebuggerStyle::Color_Entity_ID)
+        .AddConditionalRow(
+            FText::FromString(TEXT("Actor:")),
+            [](const FCk_Handle& E)
             {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto EntityName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
-                return FText::FromString(EntityName.ToString());
-            }))
-        ];
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("ID:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
-            {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto EntityID = ck::Format_UE(TEXT("{}"), Entity.Get_Entity());
-                return FText::FromString(EntityID);
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(0.51f, 0.69f, 1.0f)))
-        ];
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Actor:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
-            {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FText::GetEmpty(); }
-
-                if (UCk_Utils_OwningActor_UE::Has(Entity))
-                {
-                    const auto ActorName = ck::Format_UE(TEXT("{}"), UCk_Utils_OwningActor_UE::Get_EntityOwningActor(Entity));
-                    return FText::FromString(ActorName);
-                }
-
+                if (UCk_Utils_OwningActor_UE::Has(E))
+                { return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_OwningActor_UE::Get_EntityOwningActor(E))); }
                 return FText::FromString(TEXT("None"));
-            }))
-            .ColorAndOpacity(TAttribute<FSlateColor>::Create([Entity]()
+            },
+            [](const FCk_Handle& E)
             {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FSlateColor(FLinearColor(0.4f, 0.4f, 0.4f)); }
-
-                if (UCk_Utils_OwningActor_UE::Has(Entity))
-                { return FSlateColor::UseForeground(); }
-
-                return FSlateColor(FLinearColor(0.4f, 0.4f, 0.4f));
-            }))
-        ];
-
-    return Grid;
+                return UCk_Utils_OwningActor_UE::Has(E) ? FCkDebuggerStyle::Color_Text_Primary : FCkDebuggerStyle::Color_None;
+            })
+        .Build(Entity);
 }
 
 auto FCkInspector_EntityInfo::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void

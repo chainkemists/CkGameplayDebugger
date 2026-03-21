@@ -5,8 +5,14 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Transform)
 
 auto FCkInspector_Transform::Get_ComponentName() const -> FText
 {
@@ -20,78 +26,32 @@ auto FCkInspector_Transform::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    auto Grid = SNew(SGridPanel)
-        .FillColumn(1, 1.0f);
-
-    int32 Row = 0;
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Location:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
+    return FCkInspectorWidgetBuilder()
+        .AddRow(
+            FText::FromString(TEXT("Location:")),
+            [](const FCk_Handle& E)
             {
-                if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Transform.GetLocation()));
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
-        ];
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Rotation:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
+                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
+            },
+            FCkDebuggerStyle::Color_Transform)
+        .AddRow(
+            FText::FromString(TEXT("Rotation:")),
+            [](const FCk_Handle& E)
             {
-                if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Transform.GetRotation().Rotator()));
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
-        ];
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Scale:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
+                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
+            },
+            FCkDebuggerStyle::Color_Transform)
+        .AddRow(
+            FText::FromString(TEXT("Scale:")),
+            [](const FCk_Handle& E)
             {
-                if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Transform.GetScale3D()));
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(0.76f, 0.91f, 0.55f)))
-        ];
-
-    return Grid;
+                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
+            },
+            FCkDebuggerStyle::Color_Transform)
+        .Build(Entity);
 }
 
 auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void

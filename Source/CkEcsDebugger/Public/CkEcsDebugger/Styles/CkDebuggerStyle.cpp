@@ -20,12 +20,15 @@ const FLinearColor FCkDebuggerStyle::Color_Text_Secondary = FLinearColor(0.6f, 0
 const FLinearColor FCkDebuggerStyle::Color_Text_Muted = FLinearColor(0.35f, 0.35f, 0.35f);
 const FLinearColor FCkDebuggerStyle::Color_Text_Highlight = FLinearColor(0.95f, 0.95f, 0.95f);
 
-const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.4f, 0.55f, 0.85f);
-const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.6f, 0.75f, 0.45f);
-const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(0.85f, 0.65f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.8f, 0.6f, 0.7f);
-const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(0.85f, 0.25f, 0.1f);
-const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(0.85f, 0.65f, 0.01f);
+const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.51f, 0.69f, 1.0f);
+const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.76f, 0.91f, 0.55f);
+const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(1.0f, 0.8f, 0.01f);
+const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.97f, 0.73f, 0.85f);
+const FLinearColor FCkDebuggerStyle::Color_Attribute = FLinearColor(0.55f, 0.85f, 0.95f);
+const FLinearColor FCkDebuggerStyle::Color_Reference = FLinearColor(0.51f, 0.69f, 1.0f);
+const FLinearColor FCkDebuggerStyle::Color_None = FLinearColor(0.4f, 0.4f, 0.4f);
+const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(1.0f, 0.34f, 0.13f);
+const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
 const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.25f, 0.75f, 0.25f);
 
 auto FCkDebuggerStyle::Initialize() -> void
@@ -102,6 +105,9 @@ auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void
     InStyle->Set("CkDebugger.Color.Transform", Color_Transform);
     InStyle->Set("CkDebugger.Color.Network", Color_Network);
     InStyle->Set("CkDebugger.Color.Relationship", Color_Relationship);
+    InStyle->Set("CkDebugger.Color.Attribute", Color_Attribute);
+    InStyle->Set("CkDebugger.Color.Reference", Color_Reference);
+    InStyle->Set("CkDebugger.Color.None", Color_None);
 
     InStyle->Set("CkDebugger.Color.Error", Color_Error);
     InStyle->Set("CkDebugger.Color.Warning", Color_Warning);

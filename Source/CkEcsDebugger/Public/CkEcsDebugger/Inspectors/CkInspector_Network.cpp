@@ -3,8 +3,14 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Net/CkNet_Utils.h"
 
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Network)
 
 auto FCkInspector_Network::Get_ComponentName() const -> FText
 {
@@ -18,56 +24,16 @@ auto FCkInspector_Network::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    auto Grid = SNew(SGridPanel)
-        .FillColumn(1, 1.0f);
-
-    int32 Row = 0;
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("NetMode:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
-            {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto NetMode = UCk_Utils_Net_UE::Get_EntityNetMode(Entity);
-                return FText::FromString(ck::Format_UE(TEXT("{}"), NetMode));
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.01f)))
-        ];
-
-    Grid->AddSlot(0, Row)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("NetRole:")))
-        ];
-
-    Grid->AddSlot(1, Row++)
-        .Padding(4.0f)
-        [
-            SNew(STextBlock)
-            .Text(TAttribute<FText>::Create([Entity]()
-            {
-                if (ck::Is_NOT_Valid(Entity))
-                { return FText::GetEmpty(); }
-
-                const auto NetRole = UCk_Utils_Net_UE::Get_EntityNetRole(Entity);
-                return FText::FromString(ck::Format_UE(TEXT("{}"), NetRole));
-            }))
-            .ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.01f)))
-        ];
-
-    return Grid;
+    return FCkInspectorWidgetBuilder()
+        .AddRow(
+            FText::FromString(TEXT("NetMode:")),
+            [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Net_UE::Get_EntityNetMode(E))); },
+            FCkDebuggerStyle::Color_Network)
+        .AddRow(
+            FText::FromString(TEXT("NetRole:")),
+            [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Net_UE::Get_EntityNetRole(E))); },
+            FCkDebuggerStyle::Color_Network)
+        .Build(Entity);
 }
 
 auto FCkInspector_Network::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void

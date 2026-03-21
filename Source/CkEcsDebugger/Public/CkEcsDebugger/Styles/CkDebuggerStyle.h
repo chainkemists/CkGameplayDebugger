@@ -33,6 +33,9 @@ public:
     static const FLinearColor Color_Transform;
     static const FLinearColor Color_Network;
     static const FLinearColor Color_Relationship;
+    static const FLinearColor Color_Attribute;
+    static const FLinearColor Color_Reference;
+    static const FLinearColor Color_None;
     static const FLinearColor Color_Error;
     static const FLinearColor Color_Warning;
     static const FLinearColor Color_Success;

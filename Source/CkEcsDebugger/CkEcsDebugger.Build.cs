@@ -12,8 +12,6 @@ public class CkEcsDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
             "InputCore",
-            "Iris",
-            "IrisCore",
 
             "Slate",
             "SlateCore",
@@ -21,33 +19,14 @@ public class CkEcsDebugger : CkModuleRules
             "EditorStyle",
             "AppFramework",
 
-            "CkAbility",
             "CkAnimation",
             "CkAttribute",
-            "CkAudio",
             "CkCore",
             "CkEcs",
             "CkEcsExt",
             "CkEntityCollection",
-            "CkEntityExtension",
-            "CkInteraction",
             "CkLabel",
-            "CkLog",
-            "CkObjective",
-            "CkOverlapBody",
-            "CkPhysics",
-            "CkRecord",
             "CkRelationship",
-            "CkSettings",
-            "CkShapes",
-            "CkSpatialQuery",
-            "CkTimer",
-
-            "Cog",
-            "CogCommon",
-            "CogDebug",
-            "CogEngine",
-            "CogImgui"
         });
 
         if (Target.bBuildEditor)

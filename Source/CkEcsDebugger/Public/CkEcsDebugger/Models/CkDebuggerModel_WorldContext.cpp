@@ -80,7 +80,14 @@ auto FCkDebuggerModel_WorldContext::MarkCacheDirty() -> void
 
 auto FCkDebuggerModel_WorldContext::IsCacheDirty() const -> bool
 {
-    return CacheDirty;
+    if (CacheDirty)
+    { return true; }
+
+    // If the selected world was destroyed (PIE ended), the cache is stale
+    if (NOT CachedEntities.IsEmpty() && NOT SelectedWorld.IsValid())
+    { return true; }
+
+    return false;
 }
 
 auto FCkDebuggerModel_WorldContext::BroadcastWorldChanged() -> void

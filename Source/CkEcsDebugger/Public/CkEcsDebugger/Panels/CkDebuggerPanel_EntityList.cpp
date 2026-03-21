@@ -2,6 +2,7 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
@@ -25,7 +26,7 @@ auto SCkDebuggerPanel_EntityList::Construct(
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
             SNew(SVerticalBox)
@@ -34,7 +35,10 @@ auto SCkDebuggerPanel_EntityList::Construct(
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                Build_WorldSelector()
+                SAssignNew(WorldSelectorContainer, SBox)
+                [
+                    Build_WorldSelector()
+                ]
             ]
 
             + SVerticalBox::Slot()
@@ -57,12 +61,7 @@ auto SCkDebuggerPanel_EntityList::Construct(
             .Padding(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
                 SNew(SBorder)
-                .BorderImage(new FSlateRoundedBoxBrush(
-                    FCkDebuggerStyle::Color_Border,
-                    2.0f,
-                    FCkDebuggerStyle::Color_Background_Dark,
-                    1.0f
-                ))
+                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
                 .Padding(0.0f)
                 [
                     SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel)
@@ -85,11 +84,50 @@ auto SCkDebuggerPanel_EntityList::Tick(
     const float InDeltaTime) -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    TimeSinceWorldCheck += InDeltaTime;
+    if (TimeSinceWorldCheck >= WorldCheckInterval && WorldModel.IsValid())
+    {
+        TimeSinceWorldCheck = 0.0f;
+
+        const auto CurrentWorldCount = WorldModel->Get_AvailableWorlds().Num();
+        if (CurrentWorldCount != LastKnownWorldCount)
+        {
+            LastKnownWorldCount = CurrentWorldCount;
+
+            if (WorldSelectorContainer.IsValid())
+            {
+                WorldSelectorContainer->SetContent(Build_WorldSelector());
+            }
+
+            // Auto-select first world if none selected and worlds are available
+            if (CurrentWorldCount > 0 && NOT WorldModel->Get_SelectedWorld())
+            {
+                const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
+                if (AvailableWorlds.Num() > 0)
+                {
+                    WorldModel->Set_SelectedWorld(AvailableWorlds[0]);
+                    if (EntityTree.IsValid())
+                    {
+                        EntityTree->RefreshTree();
+                    }
+                }
+            }
+
+            // Clear selection when worlds disappear
+            if (CurrentWorldCount == 0 && SelectionModel.IsValid())
+            {
+                SelectionModel->Clear_Selection();
+                WorldModel->Set_SelectedWorld(nullptr);
+            }
+        }
+    }
 }
 
 auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
 {
-    auto WorldSelectorContent = SNew(SHorizontalBox);
+    auto WorldSelectorContent = SNew(SWrapBox)
+        .UseAllottedSize(true);
 
     if (WorldModel.IsValid())
     {
@@ -100,47 +138,48 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
             const auto& World = AvailableWorlds[Index];
 
             WorldSelectorContent->AddSlot()
-            .AutoWidth()
-            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
+            .FillEmptySpace(false)
             [
-                SNew(SButton)
-                .ButtonStyle(FAppStyle::Get(), "Button")
-                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
-                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+                SNew(SBox)
+                .Clipping(EWidgetClipping::ClipToBounds)
                 [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
-                    .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
-                    .Justification(ETextJustify::Center)
+                    SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "Button")
+                    .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
+                    .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
+                        .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
+                        .Justification(ETextJustify::Center)
+                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                    ]
                 ]
             ];
         }
     }
 
-    return SNew(SBox)
-        .Padding(FMargin(0.0f))
+    return SNew(SBorder)
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
+        .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
         [
-            SNew(SBorder)
-            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Medium))
-            .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
+            SNew(SVerticalBox)
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small)
             [
-                SNew(SVerticalBox)
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
+                .Text(FText::FromString(TEXT("World Selection")))
+                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+            ]
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small)
-                [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
-                    .Text(FText::FromString(TEXT("World Selection")))
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
-                ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    WorldSelectorContent
-                ]
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                WorldSelectorContent
             ]
         ];
 }
@@ -151,7 +190,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
         .Padding(FMargin(0.0f))
         [
             SNew(SBorder)
-            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
             .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SHorizontalBox)
@@ -221,7 +260,7 @@ auto SCkDebuggerPanel_EntityList::Build_StatusBar() -> TSharedRef<SWidget>
         .Padding(FMargin(0.0f))
         [
             SNew(SBorder)
-            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
             .Padding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SHorizontalBox)

@@ -31,7 +31,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
             SNew(SSplitter)
@@ -56,11 +56,14 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
             .MinSize(400.0f)
             [
                 SNew(SBorder)
-                .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Border))
+                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Border"))
                 .BorderBackgroundColor(FCkDebuggerStyle::Color_Border)
                 .Padding(FMargin(1.0f, 0.0f))
                 [
-                    Build_ContentArea()
+                    SAssignNew(ContentAreaContainer, SBox)
+                    [
+                        Build_ContentArea()
+                    ]
                 ]
             ]
 
@@ -109,18 +112,16 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
             WorldModel
         };
 
-        ContentAreaWidget = SNew(SBorder)
-            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        return SNew(SBorder)
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
                 Pages[ActivePageIndex]->Build_Content(Context)
             ];
-
-        return ContentAreaWidget.ToSharedRef();
     }
 
     return SNew(SBorder)
-        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(FCkDebuggerStyle::Padding_Small)
         [
             SNew(SBox)
@@ -162,7 +163,10 @@ auto SCkDebuggerWindow_Main::OnPageSelected(int32 InPageIndex) -> void
 
 auto SCkDebuggerWindow_Main::RebuildContentArea() -> void
 {
-    ContentAreaWidget = Build_ContentArea();
+    if (ContentAreaContainer.IsValid())
+    {
+        ContentAreaContainer->SetContent(Build_ContentArea());
+    }
 }
 
 auto SCkDebuggerWindow_Main::Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>

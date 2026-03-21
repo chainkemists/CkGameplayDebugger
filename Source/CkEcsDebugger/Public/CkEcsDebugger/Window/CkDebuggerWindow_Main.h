@@ -6,6 +6,7 @@
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 class ICkDebuggerPage_Base;
+class SBox;
 class SCkDebuggerPanel_Inspector;
 class SCkDebuggerPanel_EntityList;
 
@@ -34,7 +35,7 @@ private:
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
     int32 ActivePageIndex = 0;
 
-    TSharedPtr<SWidget> ContentAreaWidget;
+    TSharedPtr<SBox> ContentAreaContainer;
     TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
 };

@@ -1,11 +1,9 @@
 #include "CkDebuggerPanel_Inspector.h"
 
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkEcsDebugger/Inspectors/CkInspector_EntityInfo.h"
-#include "CkEcsDebugger/Inspectors/CkInspector_Transform.h"
-#include "CkEcsDebugger/Inspectors/CkInspector_Network.h"
-#include "CkEcsDebugger/Inspectors/CkInspector_Relationships.h"
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -28,12 +26,13 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
             SAssignNew(ScrollBox, SScrollBox)
             .Orientation(Orient_Vertical)
-            .ScrollBarAlwaysVisible(false)
+            .ScrollBarAlwaysVisible(true)
+            .ScrollBarVisibility(EVisibility::Visible)
         ]
     ];
 
@@ -44,7 +43,6 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 {
     SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-    // Tick all inspectors that can inspect the current entity
     if (ck::IsValid(CurrentInspectedEntity))
     {
         for (const auto& Inspector : Inspectors)
@@ -63,6 +61,7 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     { return; }
 
     ScrollBox->ClearChildren();
+    InspectorContentContainers.Empty();
 
     if (NOT SelectionModel.IsValid())
     {
@@ -189,15 +188,12 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
 {
     auto VerticalBox = SNew(SVerticalBox);
 
-    Inspectors.Sort([](const TSharedPtr<ICkDebuggerComponentInspector_Base>& A, const TSharedPtr<ICkDebuggerComponentInspector_Base>& B)
-    {
-        return A->Get_SortPriority() < B->Get_SortPriority();
-    });
-
     bool FirstInspector = true;
 
-    for (const auto& Inspector : Inspectors)
+    for (int32 Index = 0; Index < Inspectors.Num(); ++Index)
     {
+        const auto& Inspector = Inspectors[Index];
+
         if (NOT Inspector.IsValid())
         { continue; }
 
@@ -212,7 +208,7 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
                 [
                     SNew(SSeparator)
                     .Orientation(Orient_Horizontal)
-                    .SeparatorImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Border))
+                    .SeparatorImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Separator"))
                     .Thickness(1.0f)
                 ];
         }
@@ -223,48 +219,113 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                SNew(SExpandableArea)
-                .InitiallyCollapsed(false)
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
-                .BorderImage(new FSlateRoundedBoxBrush(
-                    FCkDebuggerStyle::Color_Border,
-                    2.0f,
-                    FCkDebuggerStyle::Color_Background_Dark,
-                    1.0f
-                ))
-                .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-                .HeaderContent()
-                [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-                    .Text(Inspector->Get_ComponentName())
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
-                ]
-                .BodyContent()
-                [
-                    SNew(SBox)
-                    .Padding(FMargin(FCkDebuggerStyle::Padding_Medium))
-                    [
-                        Inspector->Build_Inspector(Entity)
-                    ]
-                ]
+                Build_InspectorSection(Entity, Inspector, Index)
             ];
     }
 
     return VerticalBox;
 }
 
+auto SCkDebuggerPanel_Inspector::Build_InspectorSection(
+    const FCk_Handle& Entity,
+    const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector,
+    int32 InspectorIndex) -> TSharedRef<SWidget>
+{
+    const auto Filter = InspectorFilters.FindRef(InspectorIndex);
+
+    auto BodyContent = SNew(SVerticalBox);
+
+    if (Inspector->IsFilterable())
+    {
+        BodyContent->AddSlot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
+            [
+                SNew(SCkDebuggerWidget_SearchBar)
+                .OnSearchTextChanged_Lambda([this, InspectorIndex](const FString& InText)
+                {
+                    OnInspectorFilterChanged(InspectorIndex, InText);
+                })
+            ];
+    }
+
+    TSharedPtr<SBox> ContentContainer;
+
+    BodyContent->AddSlot()
+        .AutoHeight()
+        [
+            SAssignNew(ContentContainer, SBox)
+            .Padding(FMargin(FCkDebuggerStyle::Padding_Medium))
+            [
+                Inspector->IsFilterable()
+                    ? Inspector->Build_Inspector(Entity, Filter)
+                    : Inspector->Build_Inspector(Entity)
+            ]
+        ];
+
+    InspectorContentContainers.Add(InspectorIndex, ContentContainer);
+
+    return SNew(SExpandableArea)
+        .InitiallyCollapsed(false)
+        .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
+        .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+        .HeaderContent()
+        [
+            SNew(STextBlock)
+            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
+            .Text(Inspector->Get_ComponentName())
+            .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
+        ]
+        .BodyContent()
+        [
+            BodyContent
+        ];
+}
+
 auto SCkDebuggerPanel_Inspector::RegisterDefaultInspectors() -> void
 {
-    Inspectors.Empty();
+    Inspectors = FCkDebuggerInspectorRegistry::Get().CreateAll();
 
-    Inspectors.Add(MakeShared<FCkInspector_EntityInfo>());
-    Inspectors.Add(MakeShared<FCkInspector_Transform>());
-    Inspectors.Add(MakeShared<FCkInspector_Network>());
-    Inspectors.Add(MakeShared<FCkInspector_Relationships>());
+    for (const auto& Inspector : Inspectors)
+    {
+        if (Inspector.IsValid())
+        {
+            Inspector->Set_SelectionModel(SelectionModel);
+        }
+    }
 }
 
 auto SCkDebuggerPanel_Inspector::OnSelectionChanged(const TArray<FCk_Handle>& NewSelection) -> void
 {
     RebuildInspectors();
+}
+
+auto SCkDebuggerPanel_Inspector::OnInspectorFilterChanged(int32 InspectorIndex, const FString& InFilterText) -> void
+{
+    InspectorFilters.Add(InspectorIndex, InFilterText);
+
+    if (NOT ck::IsValid(CurrentInspectedEntity))
+    { return; }
+
+    if (NOT Inspectors.IsValidIndex(InspectorIndex))
+    { return; }
+
+    const auto& Inspector = Inspectors[InspectorIndex];
+    if (NOT Inspector.IsValid() || NOT Inspector->IsFilterable())
+    { return; }
+
+    if (const auto Container = InspectorContentContainers.Find(InspectorIndex))
+    {
+        if (Container->IsValid())
+        {
+            (*Container)->SetContent(
+                SNew(SBox)
+                .Padding(FMargin(FCkDebuggerStyle::Padding_Medium))
+                [
+                    Inspector->Build_Inspector(CurrentInspectedEntity, InFilterText)
+                ]
+            );
+        }
+    }
 }

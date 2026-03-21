@@ -5,6 +5,7 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class SBox;
 class SCkDebuggerWidget_SearchBar;
 class SCkDebuggerWidget_EntityTree;
 
@@ -38,8 +39,12 @@ private:
 
     TSharedPtr<SCkDebuggerWidget_SearchBar> SearchBar;
     TSharedPtr<SCkDebuggerWidget_EntityTree> EntityTree;
-    TSharedPtr<SVerticalBox> WorldSelectorBox;
+    TSharedPtr<SBox> WorldSelectorContainer;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
+
+    int32 LastKnownWorldCount = -1;
+    float TimeSinceWorldCheck = 0.0f;
+    static constexpr float WorldCheckInterval = 1.0f;
 };

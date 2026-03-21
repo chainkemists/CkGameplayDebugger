@@ -16,10 +16,11 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
     ChildSlot
     [
         SNew(SBox)
-        .Padding(FMargin(0.0f))
+        .HeightOverride(28.0f)
+        .Clipping(EWidgetClipping::ClipToBounds)
         [
             SNew(SBorder)
-            .BorderImage(new FSlateColorBrush(FCkDebuggerStyle::Color_Background_Dark))
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
             .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SHorizontalBox)
@@ -37,9 +38,10 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
 
                 + SHorizontalBox::Slot()
                 .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
                 [
                     SAssignNew(SearchTextBox, SEditableTextBox)
-                    .HintText(FText::FromString(TEXT("Search entities...")))
+                    .HintText(FText::FromString(TEXT("Search...")))
                     .OnTextChanged(this, &SCkDebuggerWidget_SearchBar::OnSearchTextChanged)
                     .OnTextCommitted(this, &SCkDebuggerWidget_SearchBar::OnSearchTextCommitted)
                     .Style(FAppStyle::Get(), "NormalEditableTextBox")
@@ -50,16 +52,21 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
                 .VAlign(VAlign_Center)
                 .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
                 [
-                    SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .OnClicked(this, &SCkDebuggerWidget_SearchBar::OnClearButtonClicked)
-                    .Visibility(this, &SCkDebuggerWidget_SearchBar::Get_ClearButtonVisibility)
-                    .ToolTipText(FText::FromString(TEXT("Clear search")))
+                    SNew(SBox)
+                    .WidthOverride(12.0f)
+                    .HeightOverride(12.0f)
                     [
-                        SNew(SImage)
-                        .Image(FAppStyle::GetBrush("Icons.X"))
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
-                        .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+                        SNew(SButton)
+                        .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                        .OnClicked(this, &SCkDebuggerWidget_SearchBar::OnClearButtonClicked)
+                        .Visibility(this, &SCkDebuggerWidget_SearchBar::Get_ClearButtonVisibility)
+                        .ToolTipText(FText::FromString(TEXT("Clear search")))
+                        [
+                            SNew(SImage)
+                            .Image(FAppStyle::GetBrush("Icons.X"))
+                            .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                            .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+                        ]
                     ]
                 ]
             ]

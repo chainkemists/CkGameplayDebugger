@@ -53,11 +53,15 @@ private:
     auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
 
     auto DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeNode> InNode) const -> bool;
+    auto OnExternalSelectionChanged(const TArray<FCk_Handle>& InNewSelection) -> void;
+
+    bool IsUpdatingSelection = false;
 
     TSharedPtr<STreeView<TSharedPtr<FCkEntityTreeNode>>> TreeView;
     TArray<TSharedPtr<FCkEntityTreeNode>> RootNodes;
     TArray<TSharedPtr<FCkEntityTreeNode>> FilteredRootNodes;
     TArray<TSharedPtr<FCkEntityTreeNode>> AllNodes;
+    TMap<FCk_Handle, TSharedPtr<FCkEntityTreeNode>> NodeMap;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;

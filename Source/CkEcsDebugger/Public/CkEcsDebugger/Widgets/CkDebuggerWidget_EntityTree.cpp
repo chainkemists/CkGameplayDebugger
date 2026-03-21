@@ -143,6 +143,11 @@ auto SCkDebuggerWidget_EntityTree::Construct(
     SelectionModel = InSelectionModel;
     WorldModel = InWorldModel;
 
+    if (SelectionModel.IsValid())
+    {
+        SelectionModel->OnSelectionChanged.AddSP(this, &SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged);
+    }
+
     ChildSlot
     [
         SAssignNew(TreeView, STreeView<TSharedPtr<FCkEntityTreeNode>>)
@@ -251,6 +256,7 @@ auto SCkDebuggerWidget_EntityTree::BuildEntityTree() -> void
 {
     RootNodes.Empty();
     AllNodes.Empty();
+    NodeMap.Empty();
 
     if (NOT WorldModel.IsValid())
     { return; }
@@ -261,8 +267,6 @@ auto SCkDebuggerWidget_EntityTree::BuildEntityTree() -> void
 
 auto SCkDebuggerWidget_EntityTree::BuildHierarchy(const TArray<FCk_Handle>& InEntities) -> void
 {
-    auto NodeMap = TMap<FCk_Handle, TSharedPtr<FCkEntityTreeNode>>{};
-
     for (const auto& Entity : InEntities)
     {
         if (ck::Is_NOT_Valid(Entity))
@@ -407,35 +411,16 @@ auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& In
     if (NOT SelectionModel.IsValid() || NOT TreeView.IsValid())
     { return; }
 
-    // Build a set of all current entities for fast lookup
-    auto CurrentEntitySet = TSet<FCk_Handle>{};
-    for (const auto& Node : AllNodes)
-    {
-        if (Node.IsValid())
-        {
-            CurrentEntitySet.Add(Node->Entity);
-        }
-    }
-
-    // Find which previously selected entities still exist
+    // Find which previously selected entities still exist using O(1) NodeMap lookup
     auto EntitiesToReselect = TArray<FCk_Handle>{};
     auto NodesToSelect = TArray<TSharedPtr<FCkEntityTreeNode>>{};
 
     for (const auto& PreviousEntity : InPreviousSelection)
     {
-        if (NOT CurrentEntitySet.Contains(PreviousEntity))
-        { continue; }
-
-        EntitiesToReselect.Add(PreviousEntity);
-
-        // Find the node for this entity
-        for (const auto& Node : AllNodes)
+        if (const auto FoundNode = NodeMap.Find(PreviousEntity))
         {
-            if (Node.IsValid() && Node->Entity == PreviousEntity)
-            {
-                NodesToSelect.Add(Node);
-                break;
-            }
+            EntitiesToReselect.Add(PreviousEntity);
+            NodesToSelect.Add(*FoundNode);
         }
     }
 
@@ -553,6 +538,11 @@ auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(
     if (NOT SelectionModel.IsValid() || NOT TreeView.IsValid())
     { return; }
 
+    if (IsUpdatingSelection)
+    { return; }
+
+    IsUpdatingSelection = true;
+
     const auto SelectedItems = TreeView->GetSelectedItems();
 
     auto SelectedEntities = TArray<FCk_Handle>{};
@@ -567,6 +557,8 @@ auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(
     }
 
     SelectionModel->Set_SelectedEntities(SelectedEntities);
+
+    IsUpdatingSelection = false;
 }
 
 auto SCkDebuggerWidget_EntityTree::OnExpansionChanged(
@@ -613,4 +605,41 @@ auto SCkDebuggerWidget_EntityTree::DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeN
 
     const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(InNode->Entity);
     return DebugName.ToString().Contains(CurrentFilter, ESearchCase::IgnoreCase);
+}
+
+auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_Handle>& InNewSelection) -> void
+{
+    if (IsUpdatingSelection || NOT TreeView.IsValid())
+    { return; }
+
+    IsUpdatingSelection = true;
+
+    TreeView->ClearSelection();
+
+    for (const auto& Entity : InNewSelection)
+    {
+        if (const auto FoundNode = NodeMap.Find(Entity))
+        {
+            TreeView->SetItemSelection(*FoundNode, true);
+
+            // Expand parents so the selected node is visible
+            auto CurrentParent = (*FoundNode)->Parent.Pin();
+            while (CurrentParent.IsValid())
+            {
+                TreeView->SetItemExpansion(CurrentParent, true);
+                CurrentParent = CurrentParent->Parent.Pin();
+            }
+        }
+    }
+
+    // Scroll to the first selected item
+    if (InNewSelection.Num() > 0)
+    {
+        if (const auto FoundNode = NodeMap.Find(InNewSelection[0]))
+        {
+            TreeView->RequestScrollIntoView(*FoundNode);
+        }
+    }
+
+    IsUpdatingSelection = false;
 }

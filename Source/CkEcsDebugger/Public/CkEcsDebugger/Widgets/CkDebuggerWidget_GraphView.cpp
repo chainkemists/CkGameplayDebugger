@@ -186,8 +186,17 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
     const auto EdgeLayerId = ChildLayerId + 1;
     const auto LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 9);
 
-    // Count edges per source-target pair for curve offset when multiple edges share endpoints
-    int32 EdgeIndex = 0;
+    // Count duplicate edges per source-target pair so only truly overlapping edges curve
+    TMap<uint64, int32> EdgePairCount;
+    for (const auto& Edge : EdgeEntries)
+    {
+        const uint64 PairKey = (static_cast<uint64>(FMath::Min(Edge.SourceIndex, Edge.TargetIndex)) << 32)
+            | static_cast<uint64>(FMath::Max(Edge.SourceIndex, Edge.TargetIndex));
+        EdgePairCount.FindOrAdd(PairKey, 0)++;
+    }
+
+    // Track how many edges we've drawn per pair for offset calculation
+    TMap<uint64, int32> EdgePairDrawn;
 
     for (const auto& Edge : EdgeEntries)
     {
@@ -197,7 +206,6 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             continue;
         }
 
-        // GraphToScreen now returns the node CENTER
         const auto SourceCenter = GraphToScreen(
             NodeEntries[Edge.SourceIndex].GraphPosition, ViewSize);
         const auto TargetCenter = GraphToScreen(
@@ -208,42 +216,39 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         const auto Direction = (TargetCenter - SourceCenter).GetSafeNormal();
         const auto Perp = FVector2D(-Direction.Y, Direction.X);
 
-        // Offset parallel edges so they don't overlap
-        const float CurveOffset = static_cast<float>(EdgeIndex) * 20.0f;
-        const auto ControlOffset = Perp * CurveOffset;
+        // Only curve if multiple edges connect the same two nodes
+        const uint64 PairKey = (static_cast<uint64>(FMath::Min(Edge.SourceIndex, Edge.TargetIndex)) << 32)
+            | static_cast<uint64>(FMath::Max(Edge.SourceIndex, Edge.TargetIndex));
+        const auto PairTotal = EdgePairCount.FindRef(PairKey);
+        auto& DrawnCount = EdgePairDrawn.FindOrAdd(PairKey, 0);
+        const auto PairIndex = DrawnCount++;
 
-        // For curved edges: compute a midpoint offset to create a quadratic bezier feel
-        // using 3 line segments through an offset control point
-        const auto MidPoint = (SourceCenter + TargetCenter) * 0.5f + ControlOffset;
-
-        if (FMath::IsNearlyZero(CurveOffset))
+        float CurveOffset = 0.0f;
+        if (PairTotal > 1)
         {
-            // Straight line for the first edge
-            TArray<FVector2D> LinePoints;
-            LinePoints.Add(SourceCenter);
-            LinePoints.Add(TargetCenter);
-
-            FSlateDrawElement::MakeLines(
-                OutDrawElements, EdgeLayerId,
-                AllottedGeometry.ToPaintGeometry(), LinePoints,
-                ESlateDrawEffect::None, EdgeColor, true, LineThickness);
+            // Spread edges symmetrically: -20, +20 for 2 edges; -20, 0, +20 for 3, etc.
+            CurveOffset = (static_cast<float>(PairIndex) - static_cast<float>(PairTotal - 1) * 0.5f) * 25.0f;
         }
-        else
+
+        const auto MidPoint = (SourceCenter + TargetCenter) * 0.5f + Perp * CurveOffset;
+
+        // Draw line (straight or curved through midpoint)
+        TArray<FVector2D> LinePoints;
+        LinePoints.Add(SourceCenter);
+        if (NOT FMath::IsNearlyZero(CurveOffset))
         {
-            // Curved path: source → control → target (two segments)
-            TArray<FVector2D> LinePoints;
-            LinePoints.Add(SourceCenter);
             LinePoints.Add(MidPoint);
-            LinePoints.Add(TargetCenter);
-
-            FSlateDrawElement::MakeLines(
-                OutDrawElements, EdgeLayerId,
-                AllottedGeometry.ToPaintGeometry(), LinePoints,
-                ESlateDrawEffect::None, EdgeColor, true, LineThickness);
         }
+        LinePoints.Add(TargetCenter);
+
+        FSlateDrawElement::MakeLines(
+            OutDrawElements, EdgeLayerId,
+            AllottedGeometry.ToPaintGeometry(), LinePoints,
+            ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
         // Directional arrow near target
-        const auto ArrowDir = (TargetCenter - MidPoint).GetSafeNormal();
+        const auto ArrowSource = FMath::IsNearlyZero(CurveOffset) ? SourceCenter : MidPoint;
+        const auto ArrowDir = (TargetCenter - ArrowSource).GetSafeNormal();
         const auto ArrowTip = TargetCenter - ArrowDir * (HalfNodeY + 4.0f);
         const auto ArrowPerp = FVector2D(-ArrowDir.Y, ArrowDir.X);
         constexpr float ArrowSize = 10.0f;
@@ -264,14 +269,13 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             AllottedGeometry.ToPaintGeometry(), ArrowRight,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        // Edge label at the (possibly offset) midpoint
+        // Edge label at midpoint
         if (NOT Edge.Label.IsEmpty())
         {
             const auto LabelText = Edge.Label.ToString();
             const auto TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()
                 ->Measure(LabelText, LabelFont);
 
-            // Offset label slightly to the right of the edge path
             const auto LabelCenter = MidPoint + Perp * 8.0f;
             const auto LabelPos = LabelCenter - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
 
@@ -284,8 +288,6 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
                 ESlateDrawEffect::None,
                 Edge.Color.CopyWithNewOpacity(0.8f));
         }
-
-        ++EdgeIndex;
     }
 
     return EdgeLayerId + 2;

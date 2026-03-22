@@ -19,6 +19,10 @@ FCkDebuggerPage_Overview::~FCkDebuggerPage_Overview()
     {
         SelectionModel->OnSelectionChanged.Remove(SelectionChangedHandle);
     }
+    if (WorldModel.IsValid() && WorldChangedHandle.IsValid())
+    {
+        WorldModel->OnWorldChanged.Remove(WorldChangedHandle);
+    }
 }
 
 auto FCkDebuggerPage_Overview::Get_PageName() const -> FText
@@ -47,17 +51,22 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
             .OnNodeClicked_Raw(this, &FCkDebuggerPage_Overview::OnNodeClicked)
         ];
 
-    // Bind selection changes
+    // Bind selection and world changes
     if (SelectionModel.IsValid())
     {
         SelectionChangedHandle = SelectionModel->OnSelectionChanged.AddRaw(
             this, &FCkDebuggerPage_Overview::OnSelectionChanged);
 
-        // Initial build if something is already selected
         if (SelectionModel->Get_SelectionCount() > 0)
         {
             RebuildGraph();
         }
+    }
+
+    if (WorldModel.IsValid())
+    {
+        WorldChangedHandle = WorldModel->OnWorldChanged.AddRaw(
+            this, &FCkDebuggerPage_Overview::OnWorldChanged);
     }
 
     return Result;
@@ -117,7 +126,25 @@ auto FCkDebuggerPage_Overview::Set_IsActive(bool InIsActive) -> void
 
 auto FCkDebuggerPage_Overview::OnSelectionChanged(const TArray<FCk_Handle>& InEntities) -> void
 {
+    // Force rebuild since entity handles from a previous world are now invalid
+    if (GraphModel.IsValid())
+    {
+        GraphModel->Invalidate();
+    }
     RebuildGraph();
+}
+
+auto FCkDebuggerPage_Overview::OnWorldChanged(UWorld* InWorld) -> void
+{
+    // World changed (PIE start/stop) — old entity handles are invalid
+    if (GraphView.IsValid())
+    {
+        GraphView->ClearGraph();
+    }
+    if (GraphModel.IsValid())
+    {
+        GraphModel->Invalidate();
+    }
 }
 
 auto FCkDebuggerPage_Overview::OnNodeClicked(const FCk_Handle& InEntity) -> void

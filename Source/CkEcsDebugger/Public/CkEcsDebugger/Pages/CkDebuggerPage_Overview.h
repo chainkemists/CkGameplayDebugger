@@ -24,6 +24,7 @@ public:
 
 private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& InEntities) -> void;
+    auto OnWorldChanged(UWorld* InWorld) -> void;
     auto OnNodeClicked(const FCk_Handle& InEntity) -> void;
     auto RebuildGraph() -> void;
 
@@ -36,4 +37,5 @@ private:
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     FDelegateHandle SelectionChangedHandle;
+    FDelegateHandle WorldChangedHandle;
 };

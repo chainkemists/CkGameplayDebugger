@@ -423,6 +423,21 @@ auto SCkDebuggerWidget_GraphView::OnMouseWheel(
     return FReply::Handled();
 }
 
+auto SCkDebuggerWidget_GraphView::GetCursor() const -> TOptional<EMouseCursor::Type>
+{
+    if (bIsPanning)
+    {
+        return EMouseCursor::GrabHandClosed;
+    }
+
+    if (DraggedNodeIndex != INDEX_NONE && bDragThresholdMet)
+    {
+        return EMouseCursor::GrabHandClosed;
+    }
+
+    return EMouseCursor::Default;
+}
+
 // =====================================================================================================================
 
 auto SCkDebuggerWidget_GraphView::GraphToScreen(

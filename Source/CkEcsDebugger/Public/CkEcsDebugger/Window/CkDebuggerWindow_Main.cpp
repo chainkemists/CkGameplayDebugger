@@ -169,6 +169,32 @@ auto SCkDebuggerWindow_Main::RebuildContentArea() -> void
     }
 }
 
+auto SCkDebuggerWindow_Main::OnMouseButtonDown(
+    const FGeometry& MyGeometry,
+    const FPointerEvent& MouseEvent) -> FReply
+{
+    if (SelectionModel.IsValid())
+    {
+        if (MouseEvent.GetEffectingButton() == EKeys::ThumbMouseButton)
+        {
+            if (SelectionModel->NavigateBack())
+            {
+                return FReply::Handled();
+            }
+        }
+
+        if (MouseEvent.GetEffectingButton() == EKeys::ThumbMouseButton2)
+        {
+            if (SelectionModel->NavigateForward())
+            {
+                return FReply::Handled();
+            }
+        }
+    }
+
+    return SCompoundWidget::OnMouseButtonDown(MyGeometry, MouseEvent);
+}
+
 auto SCkDebuggerWindow_Main::Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>
 {
     return SelectionModel;

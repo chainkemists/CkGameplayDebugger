@@ -18,6 +18,9 @@ auto SCkDebuggerWidget_GraphView::Construct(const FArguments& InArgs) -> void
 {
     OnNodeClickedDelegate = InArgs._OnNodeClicked;
 
+    // Clip all content (nodes, edges, labels) to the graph view bounds
+    SetClipping(EWidgetClipping::ClipToBounds);
+
     EmptyStateWidget =
         SNew(SBox)
         .HAlign(HAlign_Center)

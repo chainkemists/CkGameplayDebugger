@@ -139,22 +139,18 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
 
             WorldSelectorContent->AddSlot()
             .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
-            .FillEmptySpace(false)
+            .FillEmptySpace(true)
             [
-                SNew(SBox)
-                .Clipping(EWidgetClipping::ClipToBounds)
+                SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "Button")
+                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
                 [
-                    SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "Button")
-                    .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
-                    .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-                    [
-                        SNew(STextBlock)
-                        .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
-                        .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
-                        .Justification(ETextJustify::Center)
-                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    ]
+                    SNew(STextBlock)
+                    .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
+                    .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
+                    .Justification(ETextJustify::Center)
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ]
             ];
         }
@@ -163,6 +159,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
         .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
+        .Clipping(EWidgetClipping::ClipToBounds)
         [
             SNew(SVerticalBox)
 
@@ -174,6 +171,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
                 .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
                 .Text(FText::FromString(TEXT("World Selection")))
                 .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
             ]
 
             + SVerticalBox::Slot()

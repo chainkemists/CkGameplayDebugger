@@ -40,6 +40,16 @@ public:
     static const FLinearColor Color_Warning;
     static const FLinearColor Color_Success;
 
+    static const FLinearColor Color_Graph_Background;
+    static const FLinearColor Color_Graph_Edge;
+    static const FLinearColor Color_Graph_Node_Center;
+    static const FLinearColor Color_Graph_Node_Default;
+
+    static constexpr float GraphNode_Width = 140.0f;
+    static constexpr float GraphNode_Height = 36.0f;
+    static constexpr float GraphNode_AccentWidth = 4.0f;
+    static constexpr float GraphNode_CornerRadius = 4.0f;
+
 private:
     static TSharedPtr<FSlateStyleSet> StyleInstance;
     

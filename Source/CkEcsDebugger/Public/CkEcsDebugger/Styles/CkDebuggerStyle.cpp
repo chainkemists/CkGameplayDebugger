@@ -31,6 +31,11 @@ const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(1.0f, 0.34f, 0.1
 const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
 const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.25f, 0.75f, 0.25f);
 
+const FLinearColor FCkDebuggerStyle::Color_Graph_Background = FLinearColor(0.015f, 0.015f, 0.02f);
+const FLinearColor FCkDebuggerStyle::Color_Graph_Edge = FLinearColor(0.4f, 0.4f, 0.45f);
+const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Center = FLinearColor(0.06f, 0.06f, 0.08f);
+const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Default = FLinearColor(0.035f, 0.035f, 0.045f);
+
 auto FCkDebuggerStyle::Initialize() -> void
 {
     if (NOT StyleInstance.IsValid())
@@ -92,6 +97,14 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
     InStyle->Set("CkDebugger.Row.Odd", new FSlateColorBrush(Color_Background_Light));
 
     InStyle->Set("CkDebugger.Separator", new FSlateColorBrush(Color_Border));
+
+    InStyle->Set("CkDebugger.Graph.Background", new FSlateColorBrush(Color_Graph_Background));
+    InStyle->Set("CkDebugger.Graph.NodeBackground", new FSlateRoundedBoxBrush(
+        Color_Graph_Node_Default, GraphNode_CornerRadius));
+    InStyle->Set("CkDebugger.Graph.NodeBackground.Hover", new FSlateRoundedBoxBrush(
+        Color_Hover, GraphNode_CornerRadius));
+    InStyle->Set("CkDebugger.Graph.NodeBackground.Center", new FSlateRoundedBoxBrush(
+        Color_Graph_Node_Center, GraphNode_CornerRadius));
 }
 
 auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void

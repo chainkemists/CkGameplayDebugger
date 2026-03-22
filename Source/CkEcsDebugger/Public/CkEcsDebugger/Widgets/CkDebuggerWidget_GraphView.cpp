@@ -307,6 +307,7 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonDown(
         bIsPanning = true;
         PanStartMousePosition = MouseEvent.GetScreenSpacePosition();
         PanStartViewOffset = ViewOffset;
+        SetCursor(EMouseCursor::GrabHandClosed);
         return FReply::Handled().CaptureMouse(AsShared());
     }
 
@@ -336,6 +337,7 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonUp(
     if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && bIsPanning)
     {
         bIsPanning = false;
+        SetCursor(EMouseCursor::Default);
         return FReply::Handled().ReleaseMouseCapture();
     }
 
@@ -343,6 +345,7 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonUp(
     {
         const auto ClickedIndex = DraggedNodeIndex;
         DraggedNodeIndex = INDEX_NONE;
+        SetCursor(EMouseCursor::Default);
 
         // If we didn't drag past the threshold, treat as a click
         if (NOT bDragThresholdMet && NodeEntries.IsValidIndex(ClickedIndex))
@@ -380,6 +383,7 @@ auto SCkDebuggerWidget_GraphView::OnMouseMove(
             if (MouseDelta.Size() >= DragThreshold)
             {
                 bDragThresholdMet = true;
+                SetCursor(EMouseCursor::GrabHandClosed);
             }
             else
             {
@@ -421,21 +425,6 @@ auto SCkDebuggerWidget_GraphView::OnMouseWheel(
 
     bPositionsDirty = true;
     return FReply::Handled();
-}
-
-auto SCkDebuggerWidget_GraphView::GetCursor() const -> TOptional<EMouseCursor::Type>
-{
-    if (bIsPanning)
-    {
-        return EMouseCursor::GrabHandClosed;
-    }
-
-    if (DraggedNodeIndex != INDEX_NONE && bDragThresholdMet)
-    {
-        return EMouseCursor::GrabHandClosed;
-    }
-
-    return EMouseCursor::Default;
 }
 
 // =====================================================================================================================

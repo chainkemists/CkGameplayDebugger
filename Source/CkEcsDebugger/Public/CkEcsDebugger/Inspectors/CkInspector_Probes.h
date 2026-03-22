@@ -13,7 +13,11 @@ public:
     auto Get_SortPriority() const -> int32 override { return 70; }
     auto IsFilterable() const -> bool override { return true; }
     auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void override;
+    auto OnDeactivated() -> void override;
 
 private:
     auto BuildProbeGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>;
+    auto DisableDebugDraw() -> void;
+
+    FCk_Handle LastInspectedEntity;
 };

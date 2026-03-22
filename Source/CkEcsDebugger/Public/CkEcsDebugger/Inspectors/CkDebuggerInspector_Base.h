@@ -19,6 +19,17 @@ public:
     virtual auto IsFilterable() const -> bool { return false; }
     virtual auto Build_Inspector(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget> { return Build_Inspector(Entity); }
 
+    /**
+     * Called when the inspector stops being active for an entity. This happens when:
+     * - The selected entity changes (previous entity's inspectors are deactivated)
+     * - The selection is cleared
+     * - The inspector panel is destroyed
+     *
+     * Use this to clean up any per-entity state (debug draw, world markers, etc.).
+     * The entity may no longer be valid when this is called.
+     */
+    virtual auto OnDeactivated() -> void {}
+
     virtual auto Set_SelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> void { SelectionModel = MoveTemp(InModel); }
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection> { return SelectionModel; }
 

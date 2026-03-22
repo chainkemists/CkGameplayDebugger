@@ -12,6 +12,22 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SExpandableArea.h"
 
+SCkDebuggerPanel_Inspector::~SCkDebuggerPanel_Inspector()
+{
+    DeactivateAllInspectors();
+}
+
+auto SCkDebuggerPanel_Inspector::DeactivateAllInspectors() -> void
+{
+    for (const auto& Inspector : Inspectors)
+    {
+        if (Inspector.IsValid())
+        {
+            Inspector->OnDeactivated();
+        }
+    }
+}
+
 auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel) -> void
 {
     SelectionModel = InSelectionModel;
@@ -59,6 +75,10 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
 {
     if (NOT ScrollBox.IsValid())
     { return; }
+
+    // Notify all inspectors that they are being deactivated before rebuilding.
+    // This allows inspectors to clean up per-entity state (debug draw, etc.).
+    DeactivateAllInspectors();
 
     ScrollBox->ClearChildren();
     InspectorContentContainers.Empty();

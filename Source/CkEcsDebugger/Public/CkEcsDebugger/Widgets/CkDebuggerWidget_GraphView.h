@@ -58,6 +58,9 @@ private:
     /** Recalculate screen positions and update SConstraintCanvas slot offsets. */
     auto UpdateNodeScreenPositions(const FVector2D& InViewSize) -> void;
 
+    /** Find which node index is under the given screen position, or INDEX_NONE. */
+    auto HitTestNode(const FVector2D& InScreenPos, const FVector2D& InViewSize) const -> int32;
+
     // Layout entries
     struct FNodeLayoutEntry
     {
@@ -83,9 +86,18 @@ private:
     static constexpr float ZoomMin = 0.3f;
     static constexpr float ZoomMax = 3.0f;
     static constexpr float ZoomStep = 0.1f;
+
+    // Pan (right-click drag)
     bool bIsPanning = false;
     FVector2D PanStartMousePosition = FVector2D::ZeroVector;
     FVector2D PanStartViewOffset = FVector2D::ZeroVector;
+
+    // Node drag (left-click drag)
+    int32 DraggedNodeIndex = INDEX_NONE;
+    FVector2D DragStartMousePosition = FVector2D::ZeroVector;
+    FVector2D DragStartNodePosition = FVector2D::ZeroVector;
+    bool bDragThresholdMet = false;
+    static constexpr float DragThreshold = 4.0f;
 
     // The canvas that hosts node widgets
     TSharedPtr<SConstraintCanvas> NodeCanvas;

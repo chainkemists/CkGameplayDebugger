@@ -2,7 +2,7 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
@@ -128,8 +128,7 @@ auto SCkDebuggerPanel_EntityList::Tick(
 
 auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
 {
-    auto WorldSelectorContent = SNew(SWrapBox)
-        .UseAllottedSize(true);
+    auto ButtonRow = SNew(SHorizontalBox);
 
     if (WorldModel.IsValid())
     {
@@ -139,14 +138,24 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
         {
             const auto& World = AvailableWorlds[Index];
 
-            WorldSelectorContent->AddSlot()
-            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
-            .FillEmptySpace(true)
+            if (Index > 0)
+            {
+                ButtonRow->AddSlot()
+                .AutoWidth()
+                .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+                [
+                    SNullWidget::NullWidget
+                ];
+            }
+
+            ButtonRow->AddSlot()
+            .FillWidth(1.0f)
             [
                 SNew(SButton)
                 .ButtonStyle(FAppStyle::Get(), "Button")
                 .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
-                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
+                .HAlign(HAlign_Center)
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
@@ -161,7 +170,6 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
         .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
-        .Clipping(EWidgetClipping::ClipToBounds)
         [
             SNew(SVerticalBox)
 
@@ -179,7 +187,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
             + SVerticalBox::Slot()
             .AutoHeight()
             [
-                WorldSelectorContent
+                ButtonRow
             ]
         ];
 }

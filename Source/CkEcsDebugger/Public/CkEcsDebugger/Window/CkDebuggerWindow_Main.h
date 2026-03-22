@@ -18,6 +18,7 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
+    auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;

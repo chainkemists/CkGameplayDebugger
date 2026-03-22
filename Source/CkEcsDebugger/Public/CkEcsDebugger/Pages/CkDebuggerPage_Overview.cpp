@@ -37,7 +37,7 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
     WorldModel = InContext.WorldModel;
 
     GraphModel = MakeUnique<FCkEcsGraphModel>();
-    LayoutStrategy = MakeUnique<FCkRadialGraphLayout>();
+    LayoutStrategy = MakeUnique<FCkDirectionalGraphLayout>();
 
     auto Result = SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Graph.Background"))

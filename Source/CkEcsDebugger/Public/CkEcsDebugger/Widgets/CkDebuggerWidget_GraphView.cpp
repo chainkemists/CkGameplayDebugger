@@ -278,7 +278,7 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             FSlateDrawElement::MakeText(
                 OutDrawElements,
                 EdgeLayerId + 1,
-                AllottedGeometry.ToPaintGeometry(LabelPos, TextSize),
+                AllottedGeometry.ToPaintGeometry(FVector2f(TextSize), FSlateLayoutTransform(FVector2f(LabelPos))),
                 LabelText,
                 LabelFont,
                 ESlateDrawEffect::None,

@@ -27,6 +27,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEntityCollection",
             "CkLabel",
             "CkRelationship",
+            "CkSpatialQuery",
         });
 
         if (Target.bBuildEditor)

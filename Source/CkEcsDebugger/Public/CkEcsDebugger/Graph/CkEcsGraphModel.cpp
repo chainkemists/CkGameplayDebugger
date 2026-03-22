@@ -121,9 +121,7 @@ auto FCkEcsGraphModel::Gather_SceneNodeChildren(const FCk_Handle& InEntity) -> v
 auto FCkEcsGraphModel::MakeEntityLabel(const FCk_Handle& InEntity) const -> FText
 {
     const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity);
-    return FText::FromString(FString::Printf(TEXT("%s [%s]"),
-        *DebugName.ToString(),
-        *InEntity.ToString()));
+    return FText::FromString(DebugName.ToString());
 }
 
 auto FCkEcsGraphModel::FindOrAddNode(

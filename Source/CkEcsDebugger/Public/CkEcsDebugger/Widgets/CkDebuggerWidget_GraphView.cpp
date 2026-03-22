@@ -451,16 +451,21 @@ auto SCkDebuggerWidget_GraphView::HitTestNode(
     const FVector2D& InScreenPos,
     const FVector2D& InViewSize) const -> int32
 {
-    const auto HalfNode = FVector2D(
-        FCkDebuggerStyle::GraphNode_Width,
-        FCkDebuggerStyle::GraphNode_Height) * 0.5f;
+    const auto NodeW = FCkDebuggerStyle::GraphNode_Width;
+    const auto NodeH = FCkDebuggerStyle::GraphNode_Height;
 
-    // Iterate in reverse so topmost (last-drawn) nodes are hit first
+    // Use the actual slot offset (which is what determines where the widget renders)
+    // rather than recomputing from GraphToScreen, to avoid any coordinate mismatch.
     for (int32 i = NodeEntries.Num() - 1; i >= 0; --i)
     {
-        const auto NodeCenter = GraphToScreen(NodeEntries[i].GraphPosition, InViewSize);
-        const auto TopLeft = NodeCenter - HalfNode;
-        const auto BottomRight = NodeCenter + HalfNode;
+        if (NodeEntries[i].Slot == nullptr)
+        {
+            continue;
+        }
+
+        const auto SlotOffset = NodeEntries[i].Slot->GetOffset();
+        const auto TopLeft = FVector2D(SlotOffset.Left, SlotOffset.Top);
+        const auto BottomRight = TopLeft + FVector2D(NodeW, NodeH);
 
         if (InScreenPos.X >= TopLeft.X && InScreenPos.X <= BottomRight.X
             && InScreenPos.Y >= TopLeft.Y && InScreenPos.Y <= BottomRight.Y)

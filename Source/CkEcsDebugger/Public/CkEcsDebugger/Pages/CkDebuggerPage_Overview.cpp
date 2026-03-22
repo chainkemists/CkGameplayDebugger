@@ -65,21 +65,24 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
 
 auto FCkDebuggerPage_Overview::Tick(float InDeltaTime) -> void
 {
-    // The model's Rebuild() method has its own change detection.
-    // We call here to catch entity invalidation (e.g., PIE stop).
-    if (SelectionModel.IsValid() && SelectionModel->Get_SelectionCount() > 0)
+    if (NOT SelectionModel.IsValid() || NOT GraphModel.IsValid() || NOT GraphView.IsValid())
+    { return; }
+
+    if (SelectionModel->Get_SelectionCount() > 0)
     {
         const auto PrimaryEntity = SelectionModel->Get_PrimarySelection();
         if (ck::Is_NOT_Valid(PrimaryEntity))
         {
-            if (GraphView.IsValid())
-            {
-                GraphView->ClearGraph();
-            }
-            if (GraphModel.IsValid())
-            {
-                GraphModel->Invalidate();
-            }
+            // Entity was destroyed (e.g., PIE stop)
+            GraphView->ClearGraph();
+            GraphModel->Invalidate();
+        }
+        else
+        {
+            // Catch selections that happened before the delegate was wired
+            // (e.g., auto-select of locally controlled character on PIE start).
+            // Rebuild() returns false if nothing changed, so this is cheap.
+            RebuildGraph();
         }
     }
 }

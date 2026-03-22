@@ -4,6 +4,8 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Styling/CoreStyle.h"
+#include "Framework/Application/SlateApplication.h"
 
 #include "CkEcsDebugger/Graph/CkEcsGraphModel.h"
 #include "CkEcsDebugger/Graph/CkEcsGraphLayoutStrategy.h"
@@ -124,6 +126,7 @@ auto SCkDebuggerWidget_GraphView::RebuildFromModel(
         Entry.SourceIndex = ModelEdge.SourceNodeIndex;
         Entry.TargetIndex = ModelEdge.TargetNodeIndex;
         Entry.Color = ModelEdge.Color;
+        Entry.Label = ModelEdge.Label;
     }
 
     bPositionsDirty = true;
@@ -182,6 +185,8 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         FCkDebuggerStyle::GraphNode_Width,
         FCkDebuggerStyle::GraphNode_Height) * 0.5f;
 
+    const auto LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+
     for (const auto& Edge : EdgeEntries)
     {
         if (NOT NodeEntries.IsValidIndex(Edge.SourceIndex)
@@ -195,6 +200,10 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         const auto TargetScreen = GraphToScreen(
             NodeEntries[Edge.TargetIndex].GraphPosition, ViewSize) + HalfNode;
 
+        const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.5f);
+        const auto LineThickness = FMath::Max(1.5f, 2.0f * ZoomLevel);
+
+        // Draw the main line
         TArray<FVector2D> LinePoints;
         LinePoints.Add(SourceScreen);
         LinePoints.Add(TargetScreen);
@@ -205,9 +214,51 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             AllottedGeometry.ToPaintGeometry(),
             LinePoints,
             ESlateDrawEffect::None,
-            Edge.Color.CopyWithNewOpacity(0.5f),
+            EdgeColor,
             true,
-            FMath::Max(1.5f, 2.0f * ZoomLevel));
+            LineThickness);
+
+        // Draw a small arrow near the target end
+        const auto Direction = (TargetScreen - SourceScreen).GetSafeNormal();
+        const auto ArrowTip = TargetScreen - Direction * (HalfNode.Y + 2.0f);
+        const auto ArrowPerp = FVector2D(-Direction.Y, Direction.X);
+        constexpr float ArrowSize = 8.0f;
+
+        TArray<FVector2D> ArrowLeft;
+        ArrowLeft.Add(ArrowTip);
+        ArrowLeft.Add(ArrowTip - Direction * ArrowSize + ArrowPerp * ArrowSize * 0.5f);
+
+        TArray<FVector2D> ArrowRight;
+        ArrowRight.Add(ArrowTip);
+        ArrowRight.Add(ArrowTip - Direction * ArrowSize - ArrowPerp * ArrowSize * 0.5f);
+
+        FSlateDrawElement::MakeLines(OutDrawElements, LayerId,
+            AllottedGeometry.ToPaintGeometry(), ArrowLeft,
+            ESlateDrawEffect::None, EdgeColor, true, LineThickness);
+
+        FSlateDrawElement::MakeLines(OutDrawElements, LayerId,
+            AllottedGeometry.ToPaintGeometry(), ArrowRight,
+            ESlateDrawEffect::None, EdgeColor, true, LineThickness);
+
+        // Draw edge label at midpoint
+        if (NOT Edge.Label.IsEmpty())
+        {
+            const auto MidPoint = (SourceScreen + TargetScreen) * 0.5f;
+            const auto LabelText = Edge.Label.ToString();
+            const auto TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()
+                ->Measure(LabelText, LabelFont);
+
+            const auto LabelPos = MidPoint - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
+
+            FSlateDrawElement::MakeText(
+                OutDrawElements,
+                LayerId,
+                AllottedGeometry.ToPaintGeometry(LabelPos, TextSize),
+                LabelText,
+                LabelFont,
+                ESlateDrawEffect::None,
+                Edge.Color.CopyWithNewOpacity(0.7f));
+        }
     }
 
     // Paint children (nodes) on a higher layer

@@ -9,7 +9,6 @@
 
 auto SCkDebuggerWidget_GraphNode::Construct(const FArguments& InArgs) -> void
 {
-    OnClickedDelegate = InArgs._OnClicked;
     IsCenterAttribute = InArgs._IsCenter;
 
     const auto LabelAttribute = InArgs._Label;
@@ -22,7 +21,7 @@ auto SCkDebuggerWidget_GraphNode::Construct(const FArguments& InArgs) -> void
 
     const auto AccentColor = ColorAttribute.Get(FLinearColor::White);
 
-    SetCursor(EMouseCursor::Hand);
+    SetCursor(EMouseCursor::GrabHand);
 
     ChildSlot
     [
@@ -64,19 +63,6 @@ auto SCkDebuggerWidget_GraphNode::Construct(const FArguments& InArgs) -> void
         ]
         ]
     ];
-}
-
-auto SCkDebuggerWidget_GraphNode::OnMouseButtonDown(
-    const FGeometry& MyGeometry,
-    const FPointerEvent& MouseEvent) -> FReply
-{
-    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
-    {
-        OnClickedDelegate.ExecuteIfBound();
-        return FReply::Handled();
-    }
-
-    return FReply::Unhandled();
 }
 
 auto SCkDebuggerWidget_GraphNode::OnMouseEnter(

@@ -99,14 +99,10 @@ auto SCkDebuggerWidget_GraphView::RebuildFromModel(
         Entry.Entity = ModelNode.Entity;
         Entry.GraphPosition = PositionMap.FindRef(i);
 
-        const auto CapturedEntity = ModelNode.Entity;
-
         SAssignNew(Entry.Widget, SCkDebuggerWidget_GraphNode)
             .Label(ModelNode.Label)
             .NodeColor(ModelNode.Color)
-            .IsCenter(ModelNode.IsCenterNode)
-            .OnClicked(FSimpleDelegate::CreateRaw(
-                this, &SCkDebuggerWidget_GraphView::OnNodeWidgetClicked, CapturedEntity));
+            .IsCenter(ModelNode.IsCenterNode);
 
         // Add to canvas — initial offset will be set in UpdateNodeScreenPositions
         NodeCanvas->AddSlot()
@@ -248,15 +244,21 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             AllottedGeometry.ToPaintGeometry(), ArrowRight,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        // Draw edge label at midpoint
+        // Draw edge label offset from midpoint perpendicular to the edge
         if (NOT Edge.Label.IsEmpty())
         {
             const auto MidPoint = (SourceScreen + TargetScreen) * 0.5f;
+            const auto EdgePerp = FVector2D(-Direction.Y, Direction.X);
+
+            // Offset label to the right side of the edge
+            constexpr float LabelOffset = 8.0f;
+            const auto OffsetMidPoint = MidPoint + EdgePerp * LabelOffset;
+
             const auto LabelText = Edge.Label.ToString();
             const auto TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()
                 ->Measure(LabelText, LabelFont);
 
-            const auto LabelPos = MidPoint - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
+            const auto LabelPos = OffsetMidPoint - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
 
             FSlateDrawElement::MakeText(
                 OutDrawElements,
@@ -286,6 +288,22 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonDown(
         return FReply::Handled().CaptureMouse(AsShared());
     }
 
+    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
+        const auto LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+        const auto ViewSize = MyGeometry.GetLocalSize();
+        const auto HitIndex = HitTestNode(LocalPos, ViewSize);
+
+        if (HitIndex != INDEX_NONE)
+        {
+            DraggedNodeIndex = HitIndex;
+            DragStartMousePosition = MouseEvent.GetScreenSpacePosition();
+            DragStartNodePosition = NodeEntries[HitIndex].GraphPosition;
+            bDragThresholdMet = false;
+            return FReply::Handled().CaptureMouse(AsShared());
+        }
+    }
+
     return FReply::Unhandled();
 }
 
@@ -296,6 +314,20 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonUp(
     if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && bIsPanning)
     {
         bIsPanning = false;
+        return FReply::Handled().ReleaseMouseCapture();
+    }
+
+    if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && DraggedNodeIndex != INDEX_NONE)
+    {
+        const auto ClickedIndex = DraggedNodeIndex;
+        DraggedNodeIndex = INDEX_NONE;
+
+        // If we didn't drag past the threshold, treat as a click
+        if (NOT bDragThresholdMet && NodeEntries.IsValidIndex(ClickedIndex))
+        {
+            OnNodeWidgetClicked(NodeEntries[ClickedIndex].Entity);
+        }
+
         return FReply::Handled().ReleaseMouseCapture();
     }
 
@@ -311,6 +343,31 @@ auto SCkDebuggerWidget_GraphView::OnMouseMove(
         const auto CurrentMousePos = MouseEvent.GetScreenSpacePosition();
         const auto Delta = (CurrentMousePos - PanStartMousePosition) / ZoomLevel;
         ViewOffset = PanStartViewOffset + Delta;
+        bPositionsDirty = true;
+        return FReply::Handled();
+    }
+
+    if (DraggedNodeIndex != INDEX_NONE && NodeEntries.IsValidIndex(DraggedNodeIndex))
+    {
+        const auto CurrentMousePos = MouseEvent.GetScreenSpacePosition();
+        const auto MouseDelta = CurrentMousePos - DragStartMousePosition;
+
+        // Check drag threshold
+        if (NOT bDragThresholdMet)
+        {
+            if (MouseDelta.Size() >= DragThreshold)
+            {
+                bDragThresholdMet = true;
+            }
+            else
+            {
+                return FReply::Handled();
+            }
+        }
+
+        // Move the node in graph space
+        const auto GraphDelta = MouseDelta / ZoomLevel;
+        NodeEntries[DraggedNodeIndex].GraphPosition = DragStartNodePosition + GraphDelta;
         bPositionsDirty = true;
         return FReply::Handled();
     }
@@ -367,6 +424,30 @@ auto SCkDebuggerWidget_GraphView::ScreenToGraph(
 auto SCkDebuggerWidget_GraphView::OnNodeWidgetClicked(FCk_Handle InEntity) -> void
 {
     OnNodeClickedDelegate.ExecuteIfBound(InEntity);
+}
+
+// =====================================================================================================================
+
+auto SCkDebuggerWidget_GraphView::HitTestNode(
+    const FVector2D& InScreenPos,
+    const FVector2D& InViewSize) const -> int32
+{
+    const auto NodeW = FCkDebuggerStyle::GraphNode_Width;
+    const auto NodeH = FCkDebuggerStyle::GraphNode_Height;
+
+    // Iterate in reverse so topmost (last-drawn) nodes are hit first
+    for (int32 i = NodeEntries.Num() - 1; i >= 0; --i)
+    {
+        const auto NodeScreenPos = GraphToScreen(NodeEntries[i].GraphPosition, InViewSize);
+
+        if (InScreenPos.X >= NodeScreenPos.X && InScreenPos.X <= NodeScreenPos.X + NodeW
+            && InScreenPos.Y >= NodeScreenPos.Y && InScreenPos.Y <= NodeScreenPos.Y + NodeH)
+        {
+            return i;
+        }
+    }
+
+    return INDEX_NONE;
 }
 
 // =====================================================================================================================

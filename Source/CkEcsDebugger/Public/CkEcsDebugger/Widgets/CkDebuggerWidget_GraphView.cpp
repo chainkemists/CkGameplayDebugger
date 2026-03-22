@@ -185,7 +185,15 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         FCkDebuggerStyle::GraphNode_Width,
         FCkDebuggerStyle::GraphNode_Height) * 0.5f;
 
-    const auto LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+    // Paint children (background + nodes) first
+    const int32 ChildLayerId = SCompoundWidget::OnPaint(
+        Args, AllottedGeometry, MyCullingRect, OutDrawElements,
+        LayerId, InWidgetStyle, bParentEnabled);
+
+    // Draw edges ON TOP of the background but they'll visually interleave with nodes.
+    // Using ChildLayerId ensures edges paint above the background border.
+    const auto EdgeLayerId = ChildLayerId + 1;
+    const auto LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 9);
 
     for (const auto& Edge : EdgeEntries)
     {
@@ -200,7 +208,7 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         const auto TargetScreen = GraphToScreen(
             NodeEntries[Edge.TargetIndex].GraphPosition, ViewSize) + HalfNode;
 
-        const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.5f);
+        const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.6f);
         const auto LineThickness = FMath::Max(1.5f, 2.0f * ZoomLevel);
 
         // Draw the main line
@@ -210,7 +218,7 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
 
         FSlateDrawElement::MakeLines(
             OutDrawElements,
-            LayerId,
+            EdgeLayerId,
             AllottedGeometry.ToPaintGeometry(),
             LinePoints,
             ESlateDrawEffect::None,
@@ -218,11 +226,11 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             true,
             LineThickness);
 
-        // Draw a small arrow near the target end
+        // Draw a directional arrow near the target end
         const auto Direction = (TargetScreen - SourceScreen).GetSafeNormal();
-        const auto ArrowTip = TargetScreen - Direction * (HalfNode.Y + 2.0f);
+        const auto ArrowTip = TargetScreen - Direction * (HalfNode.Y + 4.0f);
         const auto ArrowPerp = FVector2D(-Direction.Y, Direction.X);
-        constexpr float ArrowSize = 8.0f;
+        constexpr float ArrowSize = 10.0f;
 
         TArray<FVector2D> ArrowLeft;
         ArrowLeft.Add(ArrowTip);
@@ -232,11 +240,11 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         ArrowRight.Add(ArrowTip);
         ArrowRight.Add(ArrowTip - Direction * ArrowSize - ArrowPerp * ArrowSize * 0.5f);
 
-        FSlateDrawElement::MakeLines(OutDrawElements, LayerId,
+        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId,
             AllottedGeometry.ToPaintGeometry(), ArrowLeft,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        FSlateDrawElement::MakeLines(OutDrawElements, LayerId,
+        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId,
             AllottedGeometry.ToPaintGeometry(), ArrowRight,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
@@ -252,19 +260,16 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
 
             FSlateDrawElement::MakeText(
                 OutDrawElements,
-                LayerId,
+                EdgeLayerId + 1,
                 AllottedGeometry.ToPaintGeometry(LabelPos, TextSize),
                 LabelText,
                 LabelFont,
                 ESlateDrawEffect::None,
-                Edge.Color.CopyWithNewOpacity(0.7f));
+                Edge.Color.CopyWithNewOpacity(0.8f));
         }
     }
 
-    // Paint children (nodes) on a higher layer
-    return SCompoundWidget::OnPaint(
-        Args, AllottedGeometry, MyCullingRect, OutDrawElements,
-        LayerId + 1, InWidgetStyle, bParentEnabled);
+    return EdgeLayerId + 2;
 }
 
 // =====================================================================================================================

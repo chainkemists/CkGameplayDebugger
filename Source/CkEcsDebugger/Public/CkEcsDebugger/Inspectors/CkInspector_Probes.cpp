@@ -5,7 +5,6 @@
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
-#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "Widgets/Layout/SGridPanel.h"
@@ -46,7 +45,6 @@ auto FCkInspector_Probes::Build_Inspector(const FCk_Handle& Entity, const FStrin
 auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
-    auto WeakSelectionModel = SelectionModel;
 
     auto MutableEntity = Entity;
     auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity);
@@ -172,10 +170,28 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString
 
 auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
-    // Enable debug drawing while the entity is inspected
-    auto MutableEntity = const_cast<FCk_Handle&>(Entity);
+    auto MutableEntity = Entity;
     if (auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity); ck::IsValid(Probe))
     {
         UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable);
+        LastInspectedEntity = Entity;
     }
+}
+
+auto FCkInspector_Probes::OnDeactivated() -> void
+{
+    DisableDebugDraw();
+}
+
+auto FCkInspector_Probes::DisableDebugDraw() -> void
+{
+    if (ck::IsValid(LastInspectedEntity) && UCk_Utils_Probe_UE::Has(LastInspectedEntity))
+    {
+        auto Probe = UCk_Utils_Probe_UE::Cast(LastInspectedEntity);
+        if (ck::IsValid(Probe))
+        {
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Disable);
+        }
+    }
+    LastInspectedEntity = FCk_Handle();
 }

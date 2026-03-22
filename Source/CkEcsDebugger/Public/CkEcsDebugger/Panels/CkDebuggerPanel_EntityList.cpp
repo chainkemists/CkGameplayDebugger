@@ -23,6 +23,8 @@ auto SCkDebuggerPanel_EntityList::Construct(
     SelectionModel = InSelectionModel;
     WorldModel = InWorldModel;
 
+    SetClipping(EWidgetClipping::ClipToBounds);
+
     ChildSlot
     [
         SNew(SBorder)

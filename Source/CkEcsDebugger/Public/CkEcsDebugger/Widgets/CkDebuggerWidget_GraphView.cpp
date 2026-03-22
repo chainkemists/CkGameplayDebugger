@@ -176,20 +176,18 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
 {
     // Draw edges BEFORE children so they appear behind nodes
     const auto ViewSize = AllottedGeometry.GetLocalSize();
-    // Node size is constant (not affected by zoom) for readability
-    const auto HalfNode = FVector2D(
-        FCkDebuggerStyle::GraphNode_Width,
-        FCkDebuggerStyle::GraphNode_Height) * 0.5f;
+    const auto HalfNodeY = FCkDebuggerStyle::GraphNode_Height * 0.5f;
 
     // Paint children (background + nodes) first
     const int32 ChildLayerId = SCompoundWidget::OnPaint(
         Args, AllottedGeometry, MyCullingRect, OutDrawElements,
         LayerId, InWidgetStyle, bParentEnabled);
 
-    // Draw edges ON TOP of the background but they'll visually interleave with nodes.
-    // Using ChildLayerId ensures edges paint above the background border.
     const auto EdgeLayerId = ChildLayerId + 1;
     const auto LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", 9);
+
+    // Count edges per source-target pair for curve offset when multiple edges share endpoints
+    int32 EdgeIndex = 0;
 
     for (const auto& Edge : EdgeEntries)
     {
@@ -199,42 +197,64 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             continue;
         }
 
-        const auto SourceScreen = GraphToScreen(
-            NodeEntries[Edge.SourceIndex].GraphPosition, ViewSize) + HalfNode;
-        const auto TargetScreen = GraphToScreen(
-            NodeEntries[Edge.TargetIndex].GraphPosition, ViewSize) + HalfNode;
+        // GraphToScreen now returns the node CENTER
+        const auto SourceCenter = GraphToScreen(
+            NodeEntries[Edge.SourceIndex].GraphPosition, ViewSize);
+        const auto TargetCenter = GraphToScreen(
+            NodeEntries[Edge.TargetIndex].GraphPosition, ViewSize);
 
         const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.6f);
         const auto LineThickness = FMath::Max(1.5f, 2.0f * ZoomLevel);
+        const auto Direction = (TargetCenter - SourceCenter).GetSafeNormal();
+        const auto Perp = FVector2D(-Direction.Y, Direction.X);
 
-        // Draw the main line
-        TArray<FVector2D> LinePoints;
-        LinePoints.Add(SourceScreen);
-        LinePoints.Add(TargetScreen);
+        // Offset parallel edges so they don't overlap
+        const float CurveOffset = static_cast<float>(EdgeIndex) * 20.0f;
+        const auto ControlOffset = Perp * CurveOffset;
 
-        FSlateDrawElement::MakeLines(
-            OutDrawElements,
-            EdgeLayerId,
-            AllottedGeometry.ToPaintGeometry(),
-            LinePoints,
-            ESlateDrawEffect::None,
-            EdgeColor,
-            true,
-            LineThickness);
+        // For curved edges: compute a midpoint offset to create a quadratic bezier feel
+        // using 3 line segments through an offset control point
+        const auto MidPoint = (SourceCenter + TargetCenter) * 0.5f + ControlOffset;
 
-        // Draw a directional arrow near the target end
-        const auto Direction = (TargetScreen - SourceScreen).GetSafeNormal();
-        const auto ArrowTip = TargetScreen - Direction * (HalfNode.Y + 4.0f);
-        const auto ArrowPerp = FVector2D(-Direction.Y, Direction.X);
+        if (FMath::IsNearlyZero(CurveOffset))
+        {
+            // Straight line for the first edge
+            TArray<FVector2D> LinePoints;
+            LinePoints.Add(SourceCenter);
+            LinePoints.Add(TargetCenter);
+
+            FSlateDrawElement::MakeLines(
+                OutDrawElements, EdgeLayerId,
+                AllottedGeometry.ToPaintGeometry(), LinePoints,
+                ESlateDrawEffect::None, EdgeColor, true, LineThickness);
+        }
+        else
+        {
+            // Curved path: source → control → target (two segments)
+            TArray<FVector2D> LinePoints;
+            LinePoints.Add(SourceCenter);
+            LinePoints.Add(MidPoint);
+            LinePoints.Add(TargetCenter);
+
+            FSlateDrawElement::MakeLines(
+                OutDrawElements, EdgeLayerId,
+                AllottedGeometry.ToPaintGeometry(), LinePoints,
+                ESlateDrawEffect::None, EdgeColor, true, LineThickness);
+        }
+
+        // Directional arrow near target
+        const auto ArrowDir = (TargetCenter - MidPoint).GetSafeNormal();
+        const auto ArrowTip = TargetCenter - ArrowDir * (HalfNodeY + 4.0f);
+        const auto ArrowPerp = FVector2D(-ArrowDir.Y, ArrowDir.X);
         constexpr float ArrowSize = 10.0f;
 
         TArray<FVector2D> ArrowLeft;
         ArrowLeft.Add(ArrowTip);
-        ArrowLeft.Add(ArrowTip - Direction * ArrowSize + ArrowPerp * ArrowSize * 0.5f);
+        ArrowLeft.Add(ArrowTip - ArrowDir * ArrowSize + ArrowPerp * ArrowSize * 0.5f);
 
         TArray<FVector2D> ArrowRight;
         ArrowRight.Add(ArrowTip);
-        ArrowRight.Add(ArrowTip - Direction * ArrowSize - ArrowPerp * ArrowSize * 0.5f);
+        ArrowRight.Add(ArrowTip - ArrowDir * ArrowSize - ArrowPerp * ArrowSize * 0.5f);
 
         FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId,
             AllottedGeometry.ToPaintGeometry(), ArrowLeft,
@@ -244,21 +264,16 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
             AllottedGeometry.ToPaintGeometry(), ArrowRight,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        // Draw edge label offset from midpoint perpendicular to the edge
+        // Edge label at the (possibly offset) midpoint
         if (NOT Edge.Label.IsEmpty())
         {
-            const auto MidPoint = (SourceScreen + TargetScreen) * 0.5f;
-            const auto EdgePerp = FVector2D(-Direction.Y, Direction.X);
-
-            // Offset label to the right side of the edge
-            constexpr float LabelOffset = 8.0f;
-            const auto OffsetMidPoint = MidPoint + EdgePerp * LabelOffset;
-
             const auto LabelText = Edge.Label.ToString();
             const auto TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()
                 ->Measure(LabelText, LabelFont);
 
-            const auto LabelPos = OffsetMidPoint - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
+            // Offset label slightly to the right of the edge path
+            const auto LabelCenter = MidPoint + Perp * 8.0f;
+            const auto LabelPos = LabelCenter - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
 
             FSlateDrawElement::MakeText(
                 OutDrawElements,
@@ -269,6 +284,8 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
                 ESlateDrawEffect::None,
                 Edge.Color.CopyWithNewOpacity(0.8f));
         }
+
+        ++EdgeIndex;
     }
 
     return EdgeLayerId + 2;
@@ -432,16 +449,19 @@ auto SCkDebuggerWidget_GraphView::HitTestNode(
     const FVector2D& InScreenPos,
     const FVector2D& InViewSize) const -> int32
 {
-    const auto NodeW = FCkDebuggerStyle::GraphNode_Width;
-    const auto NodeH = FCkDebuggerStyle::GraphNode_Height;
+    const auto HalfNode = FVector2D(
+        FCkDebuggerStyle::GraphNode_Width,
+        FCkDebuggerStyle::GraphNode_Height) * 0.5f;
 
     // Iterate in reverse so topmost (last-drawn) nodes are hit first
     for (int32 i = NodeEntries.Num() - 1; i >= 0; --i)
     {
-        const auto NodeScreenPos = GraphToScreen(NodeEntries[i].GraphPosition, InViewSize);
+        const auto NodeCenter = GraphToScreen(NodeEntries[i].GraphPosition, InViewSize);
+        const auto TopLeft = NodeCenter - HalfNode;
+        const auto BottomRight = NodeCenter + HalfNode;
 
-        if (InScreenPos.X >= NodeScreenPos.X && InScreenPos.X <= NodeScreenPos.X + NodeW
-            && InScreenPos.Y >= NodeScreenPos.Y && InScreenPos.Y <= NodeScreenPos.Y + NodeH)
+        if (InScreenPos.X >= TopLeft.X && InScreenPos.X <= BottomRight.X
+            && InScreenPos.Y >= TopLeft.Y && InScreenPos.Y <= BottomRight.Y)
         {
             return i;
         }
@@ -454,6 +474,11 @@ auto SCkDebuggerWidget_GraphView::HitTestNode(
 
 auto SCkDebuggerWidget_GraphView::UpdateNodeScreenPositions(const FVector2D& InViewSize) -> void
 {
+    // Center the node widget on its graph position
+    const auto HalfNode = FVector2D(
+        FCkDebuggerStyle::GraphNode_Width,
+        FCkDebuggerStyle::GraphNode_Height) * 0.5f;
+
     for (auto& Entry : NodeEntries)
     {
         if (Entry.Slot == nullptr)
@@ -461,11 +486,10 @@ auto SCkDebuggerWidget_GraphView::UpdateNodeScreenPositions(const FVector2D& InV
             continue;
         }
 
-        const auto ScreenPos = GraphToScreen(Entry.GraphPosition, InViewSize);
+        const auto ScreenCenter = GraphToScreen(Entry.GraphPosition, InViewSize);
+        const auto TopLeft = ScreenCenter - HalfNode;
 
-        // SConstraintCanvas with AutoSize=true: Left=X, Top=Y position the widget.
-        // Right and Bottom are ignored; widget sizes itself via its DesiredSize.
-        Entry.Slot->SetOffset(FMargin(ScreenPos.X, ScreenPos.Y, 0.0f, 0.0f));
+        Entry.Slot->SetOffset(FMargin(TopLeft.X, TopLeft.Y, 0.0f, 0.0f));
     }
 
     NodeCanvas->Invalidate(EInvalidateWidgetReason::Layout);

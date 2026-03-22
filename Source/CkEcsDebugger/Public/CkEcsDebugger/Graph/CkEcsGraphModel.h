@@ -7,8 +7,12 @@ enum class ECkGraphEdgeType : uint8
 {
     None,
     LifetimeOwner,
-    // Future: ContextOwner, SceneNodeChild, Attribute, Team, EntityCollection, AnimPlan
+    ContextOwner,
+    SceneNodeChild,
 };
+
+/** Returns a human-readable label for the edge type, used for edge labels in the graph. */
+auto GetEdgeTypeLabel(ECkGraphEdgeType InType) -> FText;
 
 struct FCkGraphNode
 {
@@ -25,6 +29,7 @@ struct FCkGraphEdge
     int32 TargetNodeIndex = INDEX_NONE;
     ECkGraphEdgeType Type = ECkGraphEdgeType::None;
     FLinearColor Color = FLinearColor::White;
+    FText Label;
 };
 
 class FCkEcsGraphModel
@@ -43,7 +48,10 @@ public:
 
 private:
     auto Gather_LifetimeOwner(const FCk_Handle& InEntity) -> void;
+    auto Gather_ContextOwner(const FCk_Handle& InEntity) -> void;
+    auto Gather_SceneNodeChildren(const FCk_Handle& InEntity) -> void;
 
+    auto MakeEntityLabel(const FCk_Handle& InEntity) const -> FText;
     auto FindOrAddNode(const FCk_Handle& InEntity, const FText& InLabel,
                        const FLinearColor& InColor, ECkGraphEdgeType InEdgeType) -> int32;
     auto AddEdge(int32 InSource, int32 InTarget, ECkGraphEdgeType InType,

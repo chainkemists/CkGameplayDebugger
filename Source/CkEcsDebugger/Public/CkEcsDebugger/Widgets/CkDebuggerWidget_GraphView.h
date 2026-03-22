@@ -73,6 +73,7 @@ private:
         int32 SourceIndex = INDEX_NONE;
         int32 TargetIndex = INDEX_NONE;
         FLinearColor Color = FLinearColor::White;
+        FText Label;
     };
     TArray<FEdgeLayoutEntry> EdgeEntries;
 

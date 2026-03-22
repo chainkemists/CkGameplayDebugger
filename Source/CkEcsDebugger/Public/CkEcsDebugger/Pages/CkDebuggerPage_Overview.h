@@ -4,7 +4,7 @@
 #include "CkEcs/Handle/CkHandle.h"
 
 class FCkEcsGraphModel;
-class FCkRadialGraphLayout;
+class FCkDirectionalGraphLayout;
 class SCkDebuggerWidget_GraphView;
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
@@ -30,7 +30,7 @@ private:
     bool IsActivePage = false;
 
     TUniquePtr<FCkEcsGraphModel> GraphModel;
-    TUniquePtr<FCkRadialGraphLayout> LayoutStrategy;
+    TUniquePtr<FCkDirectionalGraphLayout> LayoutStrategy;
     TSharedPtr<SCkDebuggerWidget_GraphView> GraphView;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;

@@ -47,7 +47,6 @@ public:
     auto OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
     auto OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
     auto OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
-    auto GetCursor() const -> TOptional<EMouseCursor::Type> override;
 
 private:
     // Coordinate transforms

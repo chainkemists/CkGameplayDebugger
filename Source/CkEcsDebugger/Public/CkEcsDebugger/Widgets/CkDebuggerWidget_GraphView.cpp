@@ -309,9 +309,9 @@ auto SCkDebuggerWidget_GraphView::OnMouseButtonDown(
 
     if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
-        const auto LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+        const auto AbsolutePos = MouseEvent.GetScreenSpacePosition();
         const auto ViewSize = MyGeometry.GetLocalSize();
-        const auto HitIndex = HitTestNode(LocalPos, ViewSize);
+        const auto HitIndex = HitTestNode(AbsolutePos, ViewSize);
 
         if (HitIndex != INDEX_NONE)
         {
@@ -448,27 +448,20 @@ auto SCkDebuggerWidget_GraphView::OnNodeWidgetClicked(FCk_Handle InEntity) -> vo
 // =====================================================================================================================
 
 auto SCkDebuggerWidget_GraphView::HitTestNode(
-    const FVector2D& InScreenPos,
+    const FVector2D& InAbsolutePos,
     const FVector2D& InViewSize) const -> int32
 {
-    const auto NodeW = FCkDebuggerStyle::GraphNode_Width;
-    const auto NodeH = FCkDebuggerStyle::GraphNode_Height;
-
-    // Use the actual slot offset (which is what determines where the widget renders)
-    // rather than recomputing from GraphToScreen, to avoid any coordinate mismatch.
+    // Test against each node widget's actual painted geometry to avoid
+    // coordinate space mismatches between the view and the canvas.
     for (int32 i = NodeEntries.Num() - 1; i >= 0; --i)
     {
-        if (NodeEntries[i].Slot == nullptr)
+        if (NOT NodeEntries[i].Widget.IsValid())
         {
             continue;
         }
 
-        const auto SlotOffset = NodeEntries[i].Slot->GetOffset();
-        const auto TopLeft = FVector2D(SlotOffset.Left, SlotOffset.Top);
-        const auto BottomRight = TopLeft + FVector2D(NodeW, NodeH);
-
-        if (InScreenPos.X >= TopLeft.X && InScreenPos.X <= BottomRight.X
-            && InScreenPos.Y >= TopLeft.Y && InScreenPos.Y <= BottomRight.Y)
+        const auto& NodeGeometry = NodeEntries[i].Widget->GetCachedGeometry();
+        if (NodeGeometry.IsUnderLocation(InAbsolutePos))
         {
             return i;
         }

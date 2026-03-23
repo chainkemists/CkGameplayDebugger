@@ -27,6 +27,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEntityCollection",
             "CkInventory",
             "CkLabel",
+            "CkRecord",
             "CkRelationship",
             "CkSpatialQuery",
             "CkTagSet",

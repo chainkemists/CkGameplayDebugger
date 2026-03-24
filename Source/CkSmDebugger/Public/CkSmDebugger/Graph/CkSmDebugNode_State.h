@@ -48,7 +48,9 @@ public:
     auto Get_HasSubStateMachine() const -> bool { return _HasSubStateMachine; }
     auto Get_HasBeenVisited() const -> bool { return _HasBeenVisited; }
     auto Get_DwellTimeSeconds() const -> float { return _DwellTimeSeconds; }
-    auto Get_HasBreakpoint() const -> bool { return _HasBreakpoint; }
+    auto Get_HasBreakpoint() const -> bool { return _HasEntryBreakpoint || _HasExitBreakpoint; }
+    auto Get_HasEntryBreakpoint() const -> bool { return _HasEntryBreakpoint; }
+    auto Get_HasExitBreakpoint() const -> bool { return _HasExitBreakpoint; }
     auto Get_IsBreakpointHit() const -> bool { return _IsBreakpointHit; }
     auto Get_StateIndex() const -> int32 { return _StateIndex; }
     auto Get_Tasks() const -> const TArray<FCkSmDebugger_TaskInfo>& { return _Tasks; }
@@ -76,7 +78,10 @@ private:
     float _DwellTimeSeconds = 0.0f;
 
     UPROPERTY()
-    bool _HasBreakpoint = false;
+    bool _HasEntryBreakpoint = false;
+
+    UPROPERTY()
+    bool _HasExitBreakpoint = false;
 
     UPROPERTY()
     bool _IsBreakpointHit = false;

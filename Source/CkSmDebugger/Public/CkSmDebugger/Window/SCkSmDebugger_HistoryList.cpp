@@ -30,7 +30,7 @@ auto
                 + SHeaderRow::Column("Index").DefaultLabel(FText::FromString(TEXT("#"))).FixedWidth(30.0f)
                 + SHeaderRow::Column("From").DefaultLabel(FText::FromString(TEXT("From"))).FillWidth(1.0f)
                 + SHeaderRow::Column("To").DefaultLabel(FText::FromString(TEXT("To"))).FillWidth(1.0f)
-                + SHeaderRow::Column("Time").DefaultLabel(FText::FromString(TEXT("Time"))).FixedWidth(70.0f)
+                + SHeaderRow::Column("Frame").DefaultLabel(FText::FromString(TEXT("Frame#"))).FixedWidth(70.0f)
             )
     ];
 
@@ -65,7 +65,7 @@ auto
     -> TSharedRef<ITableRow>
 {
     auto ItemIndex = _Items.IndexOfByKey(InItem);
-    auto TimeStr = FString::Printf(TEXT("%.2fs"), InItem->RealTimeSeconds);
+    auto TimeStr = FString::Printf(TEXT("%llu"), InItem->FrameNumber);
 
     auto FromColor = CkSmDebugger::ComputeStateColor(InItem->FromStateName);
     auto ToColor = CkSmDebugger::ComputeStateColor(InItem->ToStateName);

@@ -47,6 +47,9 @@ public:
     // Layout parameters — exposed to the toolbar
     FCkSmLayoutParams LayoutParams;
 
+    // Command callback — set by the window, invoked by context menu actions
+    TFunction<void(const FCkSmDebugger_Command&)> OnIssueCommand;
+
     // UEdGraph — suppress change notifications during batch population
     auto SetSuppressNotifications(bool bSuppress) -> void { _SuppressNotifications = bSuppress; }
     virtual void NotifyGraphChanged() override

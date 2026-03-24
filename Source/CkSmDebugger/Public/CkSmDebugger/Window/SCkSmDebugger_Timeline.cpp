@@ -165,7 +165,13 @@ auto
             auto Time = ViewStart + ViewDuration * Frac;
             auto X = Frac * Size.X;
 
-            auto Label = FString::Printf(TEXT("%.1fs"), Time);
+            // Convert time position to approximate frame number using the busy-frame data
+            auto FrameNum = static_cast<int64>(Time * 60.0);  // fallback: assume ~60fps
+            for (auto& BF : Run.BusyFrames)
+            {
+                if (BF.Time >= Time) { FrameNum = BF.FrameNumber; break; }
+            }
+            auto Label = FString::Printf(TEXT("F%lld"), FrameNum);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
             auto TextSize = FontService->Measure(Label, Font);
 

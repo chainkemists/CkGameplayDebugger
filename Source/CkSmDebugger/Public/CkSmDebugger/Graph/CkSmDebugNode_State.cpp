@@ -41,7 +41,8 @@ auto
     _HasSubStateMachine = InState.HasSubStateMachine;
     _HasBeenVisited = InState.HasBeenVisited;
     _DwellTimeSeconds = static_cast<float>(InState.DwellTimeSeconds);
-    _HasBreakpoint = InState.HasEntryBreakpoint || InState.HasExitBreakpoint;
+    _HasEntryBreakpoint = InState.HasEntryBreakpoint;
+    _HasExitBreakpoint = InState.HasExitBreakpoint;
     _IsBreakpointHit = InState.IsBreakpointHit;
     _Tasks = InState.Tasks;
 }
@@ -57,7 +58,8 @@ auto
     _IsCurrentState = InState.IsCurrentState;
     _HasBeenVisited = InState.HasBeenVisited;
     _DwellTimeSeconds = static_cast<float>(InState.DwellTimeSeconds);
-    _HasBreakpoint = InState.HasEntryBreakpoint || InState.HasExitBreakpoint;
+    _HasEntryBreakpoint = InState.HasEntryBreakpoint;
+    _HasExitBreakpoint = InState.HasExitBreakpoint;
     _IsBreakpointHit = InState.IsBreakpointHit;
     _Tasks = InState.Tasks;
 }

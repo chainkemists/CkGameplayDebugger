@@ -51,6 +51,13 @@ auto
     _Graph->AddToRoot();
     _Graph->Schema = UCkSmDebugGraphSchema::StaticClass();
 
+    // Wire command callback so context menu actions reach the ViewModel
+    _Graph->OnIssueCommand = [this](const FCkSmDebugger_Command& InCommand)
+    {
+        if (_ViewModel.IsValid())
+        { _ViewModel->IssueCommand(InCommand); }
+    };
+
     // Create graph editor with selection callback
     SGraphEditor::FGraphEditorEvents GraphEvents;
     GraphEvents.OnSelectionChanged = SGraphEditor::FOnSelectionChanged::CreateLambda(
@@ -502,6 +509,47 @@ auto
                             _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
                             _ViewModel->ClearScrubTransitionHighlight();
                         }
+                        return FReply::Handled();
+                    })
+            ]
+
+        // Pause/Resume button — reacts to breakpoints
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(2.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                    .Text_Lambda([this]()
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FText::FromString(TEXT("Pause")); }
+
+                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+                        if (SmInfo && SmInfo->IsPieDebugPaused)
+                        { return FText::FromString(TEXT("Resume")); }
+
+                        return FText::FromString(TEXT("Pause"));
+                    })
+                    .OnClicked_Lambda([this]()
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FReply::Handled(); }
+
+                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+                        if (SmInfo && SmInfo->IsPieDebugPaused)
+                        {
+                            auto Cmd = FCkSmDebugger_Command{};
+                            Cmd.Type = FCkSmDebugger_Command::EType::ResumeFromBreakpoint;
+                            _ViewModel->IssueCommand(Cmd);
+                        }
+                        else
+                        {
+                            auto Cmd = FCkSmDebugger_Command{};
+                            Cmd.Type = FCkSmDebugger_Command::EType::PauseExecution;
+                            _ViewModel->IssueCommand(Cmd);
+                        }
+
                         return FReply::Handled();
                     })
             ]

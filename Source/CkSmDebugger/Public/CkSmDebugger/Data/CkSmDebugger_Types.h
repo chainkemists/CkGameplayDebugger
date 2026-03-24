@@ -226,7 +226,8 @@ struct FCkSmDebugger_Command
         ResumeFromBreakpoint,
         ToggleStateEntryBreakpoint,
         ToggleStateExitBreakpoint,
-        ToggleTransitionBreakpoint
+        ToggleTransitionBreakpoint,
+        PauseExecution
     };
 
     EType Type = EType::None;

@@ -354,6 +354,44 @@ auto
 
 auto
     UCkSmDebugGraph::
+    FindStateNode(
+        int32 InStateIndex) const
+    -> UCkSmDebugNode_State*
+{
+    for (auto Node : Nodes)
+    {
+        if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
+        {
+            if (StateNode->Get_StateIndex() == InStateIndex)
+            { return StateNode; }
+        }
+    }
+    return nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
+    FindTransitionNode(
+        int32 InTransitionIndex) const
+    -> UCkSmDebugNode_Transition*
+{
+    for (auto Node : Nodes)
+    {
+        if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
+        {
+            if (TransNode->Get_TransitionIndex() == InTransitionIndex)
+            { return TransNode; }
+        }
+    }
+    return nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
     FindTransitionBetween(
         int32 InSourceIdx,
         int32 InTargetIdx) const
@@ -533,6 +571,12 @@ auto
         AddNode(StateNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
         StateNodes.Add(StateNode);
     }
+
+    // Mockup breakpoints — demonstrate the chosen styles (State=23, Transition=5)
+    StateNodes[0]->ToggleEntryBreakpoint();   // Idle — entry BP
+    StateNodes[1]->ToggleExitBreakpoint();    // Walking — exit BP
+    StateNodes[4]->ToggleEntryBreakpoint();   // CrouchIdle — both BPs
+    StateNodes[4]->ToggleExitBreakpoint();
 
     // ----------------------------------------------------------------------------------------------------------------
     // Entry → Idle (direct)

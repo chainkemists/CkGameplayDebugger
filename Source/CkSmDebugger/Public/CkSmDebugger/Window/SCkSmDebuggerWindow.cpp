@@ -12,6 +12,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "GraphEditor.h"
+#include "Editor.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -208,9 +209,52 @@ auto
     auto SmInfo = _ViewModel->Get_CurrentSmInfo();
     if (SmInfo && _Graph)
     {
-        // Safety: ensure notifications are never stuck off (e.g. from context menu rebuild race)
         _Graph->SetSuppressNotifications(false);
         _Graph->UpdateFromSmInfo(*SmInfo);
+
+        // ----- Breakpoint detection: pause PIE on state entry/exit -----
+        auto CurrentStateIdx = SmInfo->CurrentStateIndex;
+        if (CurrentStateIdx != _LastCurrentStateIdx && _LastCurrentStateIdx >= 0)
+        {
+            // Check EXIT breakpoint on the state we just left
+            if (auto* OldNode = _Graph->FindStateNode(_LastCurrentStateIdx))
+            {
+                if (OldNode->Get_HasExitBreakpoint())
+                {
+                    if (GEditor && GEditor->PlayWorld)
+                    { GEditor->PlayWorld->bDebugPauseExecution = true; }
+                }
+            }
+
+            // Check ENTRY breakpoint on the state we just entered
+            if (auto* NewNode = _Graph->FindStateNode(CurrentStateIdx))
+            {
+                if (NewNode->Get_HasEntryBreakpoint())
+                {
+                    if (GEditor && GEditor->PlayWorld)
+                    { GEditor->PlayWorld->bDebugPauseExecution = true; }
+                }
+            }
+
+            // Check TRANSITION breakpoints — any transition from old→new state
+            for (auto Node : _Graph->Nodes)
+            {
+                if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
+                {
+                    if (NOT TransNode->Get_HasBreakpoint()) { continue; }
+                    auto* Src = TransNode->GetSourceNode();
+                    auto* Dst = TransNode->GetTargetNode();
+                    if (Src && Dst
+                        && Src->Get_StateIndex() == _LastCurrentStateIdx
+                        && Dst->Get_StateIndex() == CurrentStateIdx)
+                    {
+                        if (GEditor && GEditor->PlayWorld)
+                        { GEditor->PlayWorld->bDebugPauseExecution = true; }
+                    }
+                }
+            }
+        }
+        _LastCurrentStateIdx = CurrentStateIdx;
     }
 }
 
@@ -297,16 +341,16 @@ auto
                 SNew(SCheckBox)
                     .IsChecked_Lambda([this]()
                     {
-                        return (_ViewModel.IsValid() && _ViewModel->Get_ExpandAllNodes())
+                        return (_Graph && _Graph->LayoutParams.bExpandTasks)
                             ? ECheckBoxState::Checked
                             : ECheckBoxState::Unchecked;
                     })
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
                     {
-                        if (_ViewModel.IsValid())
+                        if (_Graph)
                         {
-                            _ViewModel->Set_ExpandAllNodes(InState == ECheckBoxState::Checked);
-                            _ViewModel->RequestRelayout();
+                            _Graph->LayoutParams.bExpandTasks = (InState == ECheckBoxState::Checked);
+                            _Graph->ForceRebuild();
                         }
                     })
                     [
@@ -314,6 +358,72 @@ auto
                             .Text(FText::FromString(TEXT("Expand Tasks")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     ]
+            ]
+
+        // Name depth control
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(4.0f, 0.0f, 2.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Name:")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 0.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                    .Text(FText::FromString(TEXT("+")))
+                    .OnClicked_Lambda([this]()
+                    {
+                        if (_Graph)
+                        {
+                            auto& Depth = _Graph->LayoutParams.NameDepth;
+                            Depth = (Depth == 0) ? 0 : Depth + 1;
+                            _Graph->ForceRebuild();
+                        }
+                        return FReply::Handled();
+                    })
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 0.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text_Lambda([this]()
+                    {
+                        if (NOT _Graph) { return FText::FromString(TEXT("1")); }
+                        auto D = _Graph->LayoutParams.NameDepth;
+                        return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
+                    })
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .ColorAndOpacity(FLinearColor(0.85f, 0.85f, 0.85f))
+                    .Justification(ETextJustify::Center)
+                    .MinDesiredWidth(24.0f)
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 2.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                    .Text(FText::FromString(TEXT("-")))
+                    .OnClicked_Lambda([this]()
+                    {
+                        if (_Graph)
+                        {
+                            auto& Depth = _Graph->LayoutParams.NameDepth;
+                            if (Depth > 1) { --Depth; }
+                            else { Depth = 0; }  // 0 = full name
+                            _Graph->ForceRebuild();
+                        }
+                        return FReply::Handled();
+                    })
             ]
 
         // Relayout button
@@ -525,43 +635,26 @@ auto
                     })
             ]
 
-        // Pause/Resume button — reacts to breakpoints
+        // Pause/Resume button — directly controls PIE debug pause
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
-                    .Text_Lambda([this]()
+                    .Text_Lambda([]()
                     {
-                        if (NOT _ViewModel.IsValid())
-                        { return FText::FromString(TEXT("Pause")); }
-
-                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-                        if (SmInfo && SmInfo->IsPieDebugPaused)
-                        { return FText::FromString(TEXT("Resume")); }
-
-                        return FText::FromString(TEXT("Pause"));
+                        if (GEditor && GEditor->PlayWorld && GEditor->PlayWorld->bDebugPauseExecution)
+                        { return FText::FromString(TEXT("\x25B6 Resume")); }
+                        return FText::FromString(TEXT("\x23F8 Pause"));
                     })
                     .OnClicked_Lambda([this]()
                     {
-                        if (NOT _ViewModel.IsValid())
-                        { return FReply::Handled(); }
-
-                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-                        if (SmInfo && SmInfo->IsPieDebugPaused)
+                        if (GEditor && GEditor->PlayWorld)
                         {
-                            auto Cmd = FCkSmDebugger_Command{};
-                            Cmd.Type = FCkSmDebugger_Command::EType::ResumeFromBreakpoint;
-                            _ViewModel->IssueCommand(Cmd);
+                            GEditor->PlayWorld->bDebugPauseExecution =
+                                !GEditor->PlayWorld->bDebugPauseExecution;
                         }
-                        else
-                        {
-                            auto Cmd = FCkSmDebugger_Command{};
-                            Cmd.Type = FCkSmDebugger_Command::EType::PauseExecution;
-                            _ViewModel->IssueCommand(Cmd);
-                        }
-
                         return FReply::Handled();
                     })
             ]
@@ -678,7 +771,7 @@ auto
                 // Header — changes between "Node Details" and "Transition Details"
                 + SVerticalBox::Slot()
                     .AutoHeight()
-                    .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
                     [
                         SNew(STextBlock)
                             .Text_Lambda([this]()
@@ -690,6 +783,126 @@ auto
                             })
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                             .ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f))
+                    ]
+
+                // Action buttons — breakpoint toggles
+                + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(0.0f, 0.0f, 0.0f, 8.0f)
+                    [
+                        SNew(SHorizontalBox)
+
+                        // State: Toggle Entry Breakpoint
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                            [
+                                SNew(SButton)
+                                    .Text_Lambda([this]()
+                                    {
+                                        if (NOT _Graph) { return FText::GetEmpty(); }
+                                        auto Idx = _ViewModel.IsValid() ? _ViewModel->Get_SelectedNodeIndex() : -1;
+                                        auto* Node = _Graph->FindStateNode(Idx);
+                                        if (NOT Node) { return FText::GetEmpty(); }
+                                        return FText::FromString(Node->Get_HasEntryBreakpoint()
+                                            ? TEXT("\x25C9 Entry BP") : TEXT("\x25CB Entry BP"));
+                                    })
+                                    .Visibility_Lambda([this]()
+                                    {
+                                        return (_ViewModel.IsValid()
+                                            && _ViewModel->Get_SelectedNodeIndex() >= 0
+                                            && _SelectedTransitionIndex < 0)
+                                            ? EVisibility::Visible : EVisibility::Collapsed;
+                                    })
+                                    .OnClicked_Lambda([this]()
+                                    {
+                                        if (NOT _ViewModel.IsValid() || NOT _Graph) { return FReply::Handled(); }
+                                        auto Idx = _ViewModel->Get_SelectedNodeIndex();
+                                        if (auto* Node = _Graph->FindStateNode(Idx))
+                                        { Node->ToggleEntryBreakpoint(); }
+                                        if (_Graph->OnIssueCommand)
+                                        {
+                                            auto Cmd = FCkSmDebugger_Command{};
+                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleStateEntryBreakpoint;
+                                            Cmd.StateIndex = Idx;
+                                            _Graph->OnIssueCommand(Cmd);
+                                        }
+                                        return FReply::Handled();
+                                    })
+                            ]
+
+                        // State: Toggle Exit Breakpoint
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                            [
+                                SNew(SButton)
+                                    .Text_Lambda([this]()
+                                    {
+                                        if (NOT _Graph) { return FText::GetEmpty(); }
+                                        auto Idx = _ViewModel.IsValid() ? _ViewModel->Get_SelectedNodeIndex() : -1;
+                                        auto* Node = _Graph->FindStateNode(Idx);
+                                        if (NOT Node) { return FText::GetEmpty(); }
+                                        return FText::FromString(Node->Get_HasExitBreakpoint()
+                                            ? TEXT("\x25C9 Exit BP") : TEXT("\x25CB Exit BP"));
+                                    })
+                                    .Visibility_Lambda([this]()
+                                    {
+                                        return (_ViewModel.IsValid()
+                                            && _ViewModel->Get_SelectedNodeIndex() >= 0
+                                            && _SelectedTransitionIndex < 0)
+                                            ? EVisibility::Visible : EVisibility::Collapsed;
+                                    })
+                                    .OnClicked_Lambda([this]()
+                                    {
+                                        if (NOT _ViewModel.IsValid() || NOT _Graph) { return FReply::Handled(); }
+                                        auto Idx = _ViewModel->Get_SelectedNodeIndex();
+                                        if (auto* Node = _Graph->FindStateNode(Idx))
+                                        { Node->ToggleExitBreakpoint(); }
+                                        if (_Graph->OnIssueCommand)
+                                        {
+                                            auto Cmd = FCkSmDebugger_Command{};
+                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleStateExitBreakpoint;
+                                            Cmd.StateIndex = Idx;
+                                            _Graph->OnIssueCommand(Cmd);
+                                        }
+                                        return FReply::Handled();
+                                    })
+                            ]
+
+                        // Transition: Toggle Breakpoint
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            [
+                                SNew(SButton)
+                                    .Text_Lambda([this]()
+                                    {
+                                        if (NOT _Graph || _SelectedTransitionIndex < 0) { return FText::GetEmpty(); }
+                                        auto* Node = _Graph->FindTransitionNode(_SelectedTransitionIndex);
+                                        if (NOT Node) { return FText::GetEmpty(); }
+                                        return FText::FromString(Node->Get_HasBreakpoint()
+                                            ? TEXT("\x25C9 Breakpoint") : TEXT("\x25CB Breakpoint"));
+                                    })
+                                    .Visibility_Lambda([this]()
+                                    {
+                                        return (_SelectedTransitionIndex >= 0)
+                                            ? EVisibility::Visible : EVisibility::Collapsed;
+                                    })
+                                    .OnClicked_Lambda([this]()
+                                    {
+                                        if (NOT _Graph || _SelectedTransitionIndex < 0) { return FReply::Handled(); }
+                                        if (auto* Node = _Graph->FindTransitionNode(_SelectedTransitionIndex))
+                                        { Node->ToggleBreakpoint(); }
+                                        if (_Graph->OnIssueCommand)
+                                        {
+                                            auto Cmd = FCkSmDebugger_Command{};
+                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleTransitionBreakpoint;
+                                            Cmd.TransitionIndex = _SelectedTransitionIndex;
+                                            _Graph->OnIssueCommand(Cmd);
+                                        }
+                                        return FReply::Handled();
+                                    })
+                            ]
                     ]
 
                 // Content — state info OR transition info depending on selection
@@ -726,9 +939,13 @@ auto
 
                                         if (NOT bSameEdge) { continue; }
 
+                                        auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+                                        auto SrcName = FCkSmLayoutParams::ComputeDisplayName(Trans.SourceStateName, Depth);
+                                        auto DstName = FCkSmLayoutParams::ComputeDisplayName(Trans.TargetStateName, Depth);
+
                                         Info += FString::Printf(TEXT("%s -> %s  [%d/%d]"),
-                                            *Trans.SourceStateName,
-                                            *Trans.TargetStateName,
+                                            *SrcName,
+                                            *DstName,
                                             Trans.SatisfiedCount,
                                             Trans.TotalCount);
 
@@ -739,9 +956,10 @@ auto
 
                                         for (auto& Cond : Trans.Conditions)
                                         {
+                                            auto CondName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                             Info += FString::Printf(TEXT("  %s %s\n"),
                                                 Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"),
-                                                *Cond.ClassName);
+                                                *CondName);
                                         }
 
                                         Info += TEXT("\n");
@@ -760,8 +978,10 @@ auto
                                 { return FText::FromString(TEXT("No selection")); }
 
                                 auto& State = SmInfo->States[SelectedIdx];
+                                auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+                                auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
                                 auto Info = FString::Printf(TEXT("State: %s\nCurrent: %s\nDwell: %.2fs\nVisited: %s\nTasks: %d"),
-                                    *State.StateName,
+                                    *DisplayName,
                                     State.IsCurrentState ? TEXT("Yes") : TEXT("No"),
                                     State.DwellTimeSeconds,
                                     State.HasBeenVisited ? TEXT("Yes") : TEXT("No"),
@@ -795,6 +1015,7 @@ auto
                                 if (State.Tasks.Num() == 0)
                                 { return FText::GetEmpty(); }
 
+                                auto TaskDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
                                 auto TaskInfo = FString(TEXT("Tasks:\n"));
                                 for (auto& Task : State.Tasks)
                                 {
@@ -807,7 +1028,8 @@ auto
                                     default: break;
                                     }
 
-                                    TaskInfo += FString::Printf(TEXT("  %s [%s]\n"), *Task.ClassName, ResultStr);
+                                    auto TaskName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, TaskDepth);
+                                    TaskInfo += FString::Printf(TEXT("  %s [%s]\n"), *TaskName, ResultStr);
                                 }
 
                                 return FText::FromString(TaskInfo);
@@ -837,14 +1059,17 @@ auto
                                 auto TransInfo = FString(TEXT("Transitions:\n"));
                                 auto HasAny = false;
 
+                                auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+
                                 for (auto& Transition : SmInfo->Transitions)
                                 {
                                     if (Transition.SourceStateIndex != SelectedIdx)
                                     { continue; }
 
                                     HasAny = true;
+                                    auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
                                     TransInfo += FString::Printf(TEXT("  -> %s [%d/%d]"),
-                                        *Transition.TargetStateName,
+                                        *DstName,
                                         Transition.SatisfiedCount,
                                         Transition.TotalCount);
 
@@ -855,9 +1080,10 @@ auto
 
                                     for (auto& Cond : Transition.Conditions)
                                     {
+                                        auto CondName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                         TransInfo += FString::Printf(TEXT("    %s %s: %s\n"),
                                             Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"),
-                                            *Cond.ClassName,
+                                            *CondName,
                                             Cond.IsSatisfied ? TEXT("true") : TEXT("false"));
                                     }
                                 }

@@ -66,6 +66,9 @@ public:
     auto
     Get_CurrentSmInfo() const -> const FCkSmDebugger_SmInfo*;
 
+    auto
+    Get_MutableSmInfo() -> FCkSmDebugger_SmInfo*;
+
     // -----------------------------------------------------------------------------------------------------------------
     // Node selection
     // -----------------------------------------------------------------------------------------------------------------
@@ -172,7 +175,7 @@ private:
     int32 _ScrubHighlightTarget = -1;
 
     bool _NeedsRelayout = true;
-    bool _ExpandAllNodes = false;
+    bool _ExpandAllNodes = true;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

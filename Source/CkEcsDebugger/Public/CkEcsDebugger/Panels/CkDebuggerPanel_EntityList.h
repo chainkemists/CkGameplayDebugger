@@ -31,7 +31,7 @@ private:
     auto OnRefreshClicked() -> FReply;
     auto OnExpandAllClicked() -> FReply;
     auto OnCollapseAllClicked() -> FReply;
-    auto OnWorldButtonClicked(UWorld* InWorld) -> FReply;
+    auto OnWorldButtonClicked(TWeakObjectPtr<UWorld> InWorldWeak) -> FReply;
 
     auto Get_EntityCountText() const -> FText;
     auto Get_SelectionCountText() const -> FText;

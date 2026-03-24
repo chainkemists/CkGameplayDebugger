@@ -93,7 +93,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString
             const auto bOverlapping = UCk_Utils_Probe_UE::Get_IsOverlapping(P);
             if (NOT bOverlapping) { return FText::FromString(TEXT("None")); }
             const auto Overlaps = UCk_Utils_Probe_UE::Get_CurrentOverlaps(P);
-            return FText::FromString(FString::Printf(TEXT("Yes (%d entities)"), Overlaps.Num()));
+            return FText::FromString(ck::Format_UE(TEXT("Yes ({} entities)"), Overlaps.Num()));
         },
         [](const FCk_Handle& E)
         {

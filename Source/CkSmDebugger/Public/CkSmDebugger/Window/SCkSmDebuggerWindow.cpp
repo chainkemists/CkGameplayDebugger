@@ -7,6 +7,7 @@
 #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
 #include "CkSmDebugger/Graph/CkSmDebugNode_State.h"
+#include "CkSmDebugger/Graph/CkSmDebugNode_Transition.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
@@ -71,11 +72,20 @@ auto
                 if (auto* StateNode = Cast<UCkSmDebugNode_State>(Obj))
                 {
                     _ViewModel->Set_SelectedNodeIndex(StateNode->Get_StateIndex());
+                    _SelectedTransitionIndex = -1;
+                    return;
+                }
+
+                if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Obj))
+                {
+                    _SelectedTransitionIndex = TransNode->Get_TransitionIndex();
+                    _ViewModel->Set_SelectedNodeIndex(-1);
                     return;
                 }
             }
 
             _ViewModel->Set_SelectedNodeIndex(-1);
+            _SelectedTransitionIndex = -1;
         });
 
     _GraphEditor = SNew(SGraphEditor)
@@ -198,6 +208,8 @@ auto
     auto SmInfo = _ViewModel->Get_CurrentSmInfo();
     if (SmInfo && _Graph)
     {
+        // Safety: ensure notifications are never stuck off (e.g. from context menu rebuild race)
+        _Graph->SetSuppressNotifications(false);
         _Graph->UpdateFromSmInfo(*SmInfo);
     }
 }
@@ -663,18 +675,24 @@ auto
             [
                 SNew(SVerticalBox)
 
-                // Header
+                // Header — changes between "Node Details" and "Transition Details"
                 + SVerticalBox::Slot()
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, 8.0f)
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Node Details")))
+                            .Text_Lambda([this]()
+                            {
+                                if (_SelectedTransitionIndex >= 0)
+                                { return FText::FromString(TEXT("Transition Details")); }
+
+                                return FText::FromString(TEXT("Node Details"));
+                            })
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                             .ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f))
                     ]
 
-                // Selected node info
+                // Content — state info OR transition info depending on selection
                 + SVerticalBox::Slot()
                     .AutoHeight()
                     [
@@ -684,10 +702,61 @@ auto
                                 if (NOT _ViewModel.IsValid())
                                 { return FText::FromString(TEXT("No selection")); }
 
-                                auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
                                 auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+                                if (NOT SmInfo)
+                                { return FText::FromString(TEXT("No selection")); }
 
-                                if (NOT SmInfo || SelectedIdx < 0 || SelectedIdx >= SmInfo->States.Num())
+                                // ----- Transition selected -----
+                                if (_SelectedTransitionIndex >= 0 && _SelectedTransitionIndex < SmInfo->Transitions.Num())
+                                {
+                                    auto& ClickedTrans = SmInfo->Transitions[_SelectedTransitionIndex];
+                                    auto SrcIdx = ClickedTrans.SourceStateIndex;
+                                    auto DstIdx = ClickedTrans.TargetStateIndex;
+
+                                    auto Info = FString{};
+
+                                    // Show ALL transitions between this source↔target pair
+                                    for (auto i = 0; i < SmInfo->Transitions.Num(); ++i)
+                                    {
+                                        auto& Trans = SmInfo->Transitions[i];
+
+                                        auto bSameEdge =
+                                            (Trans.SourceStateIndex == SrcIdx && Trans.TargetStateIndex == DstIdx) ||
+                                            (Trans.SourceStateIndex == DstIdx && Trans.TargetStateIndex == SrcIdx);
+
+                                        if (NOT bSameEdge) { continue; }
+
+                                        Info += FString::Printf(TEXT("%s -> %s  [%d/%d]"),
+                                            *Trans.SourceStateName,
+                                            *Trans.TargetStateName,
+                                            Trans.SatisfiedCount,
+                                            Trans.TotalCount);
+
+                                        if (Trans.AreAllConditionsSatisfied)
+                                        { Info += TEXT("  READY"); }
+
+                                        Info += TEXT("\n");
+
+                                        for (auto& Cond : Trans.Conditions)
+                                        {
+                                            Info += FString::Printf(TEXT("  %s %s\n"),
+                                                Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"),
+                                                *Cond.ClassName);
+                                        }
+
+                                        Info += TEXT("\n");
+                                    }
+
+                                    if (Info.IsEmpty())
+                                    { return FText::FromString(TEXT("No transition data")); }
+
+                                    return FText::FromString(Info);
+                                }
+
+                                // ----- State selected -----
+                                auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
+
+                                if (SelectedIdx < 0 || SelectedIdx >= SmInfo->States.Num())
                                 { return FText::FromString(TEXT("No selection")); }
 
                                 auto& State = SmInfo->States[SelectedIdx];
@@ -705,7 +774,7 @@ auto
                             .AutoWrapText(true)
                     ]
 
-                // Task details for selected node
+                // Task details (only for state selection)
                 + SVerticalBox::Slot()
                     .AutoHeight()
                     .Padding(0.0f, 8.0f, 0.0f, 0.0f)
@@ -713,7 +782,7 @@ auto
                         SNew(STextBlock)
                             .Text_Lambda([this]()
                             {
-                                if (NOT _ViewModel.IsValid())
+                                if (NOT _ViewModel.IsValid() || _SelectedTransitionIndex >= 0)
                                 { return FText::GetEmpty(); }
 
                                 auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
@@ -748,7 +817,7 @@ auto
                             .AutoWrapText(true)
                     ]
 
-                // Transition details for selected node
+                // Outgoing transitions (only for state selection)
                 + SVerticalBox::Slot()
                     .AutoHeight()
                     .Padding(0.0f, 8.0f, 0.0f, 0.0f)
@@ -756,7 +825,7 @@ auto
                         SNew(STextBlock)
                             .Text_Lambda([this]()
                             {
-                                if (NOT _ViewModel.IsValid())
+                                if (NOT _ViewModel.IsValid() || _SelectedTransitionIndex >= 0)
                                 { return FText::GetEmpty(); }
 
                                 auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();

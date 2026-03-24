@@ -51,9 +51,16 @@ public:
     auto Get_HasBreakpoint() const -> bool { return _HasEntryBreakpoint || _HasExitBreakpoint; }
     auto Get_HasEntryBreakpoint() const -> bool { return _HasEntryBreakpoint; }
     auto Get_HasExitBreakpoint() const -> bool { return _HasExitBreakpoint; }
+
+    auto ToggleEntryBreakpoint() -> void { _HasEntryBreakpoint = !_HasEntryBreakpoint; }
+    auto ToggleExitBreakpoint() -> void { _HasExitBreakpoint = !_HasExitBreakpoint; }
     auto Get_IsBreakpointHit() const -> bool { return _IsBreakpointHit; }
     auto Get_StateIndex() const -> int32 { return _StateIndex; }
     auto Get_Tasks() const -> const TArray<FCkSmDebugger_TaskInfo>& { return _Tasks; }
+
+    // Breakpoint visual style variant (0 = default, used for A/B testing in mockup)
+    auto Get_BreakpointStyle() const -> int32 { return _BreakpointStyle; }
+    auto Set_BreakpointStyle(int32 InStyle) -> void { _BreakpointStyle = InStyle; }
 
 private:
     UPROPERTY()
@@ -90,6 +97,8 @@ private:
     int32 _StateIndex = -1;
 
     TArray<FCkSmDebugger_TaskInfo> _Tasks;
+
+    int32 _BreakpointStyle = 23;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

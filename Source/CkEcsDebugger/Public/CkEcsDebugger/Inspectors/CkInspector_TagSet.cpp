@@ -54,7 +54,7 @@ auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FStrin
     const auto NumTags = UCk_Utils_TagSet_UE::Get_NumTags(TagSetHandle);
     Builder.AddRow(
         FText::FromString(TEXT("Count:")),
-        [NumTags](const FCk_Handle& E) { return FText::FromString(FString::FromInt(NumTags)); },
+        [NumTags](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), NumTags)); },
         Color_TagCount);
 
     // Individual tags

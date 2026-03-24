@@ -153,7 +153,7 @@ auto SCkDebuggerWindow_Main::OnPageSelected(int32 InPageIndex) -> void
 
     ActivePageIndex = InPageIndex;
 
-    if (Pages[ActivePageIndex].IsValid())
+    if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())
     {
         Pages[ActivePageIndex]->Set_IsActive(true);
     }

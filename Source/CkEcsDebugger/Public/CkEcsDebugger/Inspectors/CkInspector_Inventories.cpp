@@ -69,7 +69,7 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
             {
                 const auto NumItems = UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory);
                 const auto TypeStr = IsSpatial ? TEXT("Spatial") : TEXT("DataOnly");
-                return FText::FromString(FString::Printf(TEXT("%s | %d items"), TypeStr, NumItems));
+                return FText::FromString(ck::Format_UE(TEXT("{} | {} items"), TypeStr, NumItems));
             },
             Color_InventoryName,
             [WeakSelectionModel, InventoryHandle]()
@@ -88,13 +88,13 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
 
             const auto* Definition = UCk_Utils_InventoryItem_UE::Get_Definition(ItemHandle);
             const auto ItemName = (Definition != nullptr)
-                ? Definition->Get_Name().ToString()
+                ? Definition->Get_CoreInfo().Get_Name().ToString()
                 : ItemHandle.ToString();
 
             const auto ItemEntity = FCk_Handle(ItemHandle);
 
             Builder.AddClickableRow(
-                FText::FromString(FString::Printf(TEXT("  %s"), *ItemName)),
+                FText::FromString(ck::Format_UE(TEXT("  {}"), ItemName)),
                 [](const FCk_Handle& E) { return FText::GetEmpty(); },
                 Color_ItemName,
                 [WeakSelectionModel, ItemEntity]()

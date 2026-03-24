@@ -108,6 +108,7 @@ auto
         {
             auto PinWidget = SNew(SGraphPin, Pin);
             PinWidget->SetIsEditable(false);
+            PinWidget->SetVisibility(EVisibility::HitTestInvisible);
             AddPin(PinWidget);
             break;
         }

@@ -19,6 +19,10 @@ public:
     virtual auto GetGraphContextActions(
         FGraphContextMenuBuilder& InContextMenuBuilder) const -> void override;
 
+    virtual auto GetContextMenuActions(
+        UToolMenu* InMenu,
+        UGraphNodeContextMenuContext* InContext) const -> void override;
+
     virtual auto CanCreateConnection(
         const UEdGraphPin* InPinA,
         const UEdGraphPin* InPinB) const -> const FPinConnectionResponse override;

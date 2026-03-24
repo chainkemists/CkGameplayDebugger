@@ -150,6 +150,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
             }
 
             const auto bIsSelected = WorldModel->Get_SelectedWorld() == World;
+            const TWeakObjectPtr<UWorld> WorldWeak(World);
 
             ButtonRow->AddSlot()
             .FillWidth(1.0f)
@@ -162,7 +163,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
                 [
                     SNew(SButton)
                     .ButtonStyle(FAppStyle::Get(), "Button")
-                    .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
+                    .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, WorldWeak)
                     .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
                     .HAlign(HAlign_Center)
                     [
@@ -350,29 +351,30 @@ auto SCkDebuggerPanel_EntityList::OnCollapseAllClicked() -> FReply
     return FReply::Handled();
 }
 
-auto SCkDebuggerPanel_EntityList::OnWorldButtonClicked(UWorld* InWorld) -> FReply
+auto SCkDebuggerPanel_EntityList::OnWorldButtonClicked(TWeakObjectPtr<UWorld> InWorldWeak) -> FReply
 {
-    if (WorldModel.IsValid() && ck::IsValid(InWorld))
+    auto* InWorld = InWorldWeak.Get();
+    if (NOT WorldModel.IsValid() || NOT InWorld)
+    { return FReply::Handled(); }
+
+    const auto PreviousWorld = WorldModel->Get_SelectedWorld();
+    WorldModel->Set_SelectedWorld(InWorld);
+
+    // Clear entity selection when switching worlds — previous entities are stale
+    if (PreviousWorld != InWorld && SelectionModel.IsValid())
     {
-        const auto PreviousWorld = WorldModel->Get_SelectedWorld();
-        WorldModel->Set_SelectedWorld(InWorld);
+        SelectionModel->Clear_Selection();
+    }
 
-        // Clear entity selection when switching worlds — previous entities are stale
-        if (PreviousWorld != InWorld && SelectionModel.IsValid())
-        {
-            SelectionModel->Clear_Selection();
-        }
+    // Rebuild the world selector to reflect the new active button
+    if (WorldSelectorContainer.IsValid())
+    {
+        WorldSelectorContainer->SetContent(Build_WorldSelector());
+    }
 
-        // Rebuild the world selector to reflect the new active button
-        if (WorldSelectorContainer.IsValid())
-        {
-            WorldSelectorContainer->SetContent(Build_WorldSelector());
-        }
-
-        if (EntityTree.IsValid())
-        {
-            EntityTree->RefreshTree();
-        }
+    if (EntityTree.IsValid())
+    {
+        EntityTree->RefreshTree();
     }
 
     return FReply::Handled();

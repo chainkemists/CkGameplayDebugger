@@ -105,6 +105,16 @@ auto
 
 auto
     FCkSmDebugger_ViewModel::
+    Get_MutableSmInfo()
+    -> FCkSmDebugger_SmInfo*
+{
+    return _HasSmInfo ? &_CurrentSmInfo : nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_ViewModel::
     Set_SelectedNodeIndex(
         int32 InIndex)
     -> void

@@ -44,28 +44,231 @@ auto
     RightNodeBox.Reset();
     LeftNodeBox.Reset();
 
+    auto BpRed    = FCkSmDebuggerStyle::Color_Sm_Breakpoint;
+    auto BpHollow = FLinearColor(BpRed.R, BpRed.G, BpRed.B, 0.25f);
+    auto BpStyle  = _TransitionNode ? _TransitionNode->Get_BreakpointStyle() : 0;
+
     // LogicDriverPro pattern: two-layer overlay with ColorSpill background + Icon foreground.
-    // The ColorSpill brush is a circular gradient, the Icon brush is a directional arrow.
+    auto TransOverlay = SNew(SOverlay)
+
+        // Circular background
+        + SOverlay::Slot()
+            [
+                SNew(SImage)
+                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.ColorSpill")))
+                    .ColorAndOpacity(FCkSmDebuggerStyle::Color_Sm_TransitionBadge)
+            ]
+
+        // Transition icon (directional arrow)
+        + SOverlay::Slot()
+            [
+                SNew(SImage)
+                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.Icon")))
+            ];
+
+    // ---- Style 0: filled red circle, top-right (only when set) ----
+    if (BpStyle == 0)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Right)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
+                    {
+                        return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    }))
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(BpRed)
+                    ]
+            ];
+    }
+    // ---- Style 1: filled red circle, top-left (only when set) ----
+    else if (BpStyle == 1)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
+                    {
+                        return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    }))
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(BpRed)
+                    ]
+            ];
+    }
+    // ---- Style 2: diamond, top-right (only when set) ----
+    else if (BpStyle == 2)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Right)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
+                    {
+                        return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    }))
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(BpRed)
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0)))
+                    ]
+            ];
+    }
+    // ---- Style 3: diamond, top-left (only when set) ----
+    else if (BpStyle == 3)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
+                    {
+                        return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                            ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+                    }))
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(BpRed)
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0)))
+                    ]
+            ];
+    }
+    // ---- Style 4: always-visible diamond, top-right (hollow=unset, filled=set) — matches State Style 23 ----
+    else if (BpStyle == 4)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Right)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed, BpHollow]()
+                            {
+                                return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                                    ? BpRed : BpHollow;
+                            })
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0)))
+                    ]
+            ];
+    }
+    // ---- Style 5: always-visible diamond, top-left ----
+    else if (BpStyle == 5)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed, BpHollow]()
+                            {
+                                return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                                    ? BpRed : BpHollow;
+                            })
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0)))
+                    ]
+            ];
+    }
+    // ---- Style 6: always-visible diamond, bottom-right ----
+    else if (BpStyle == 6)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Right)
+            .VAlign(VAlign_Bottom)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed, BpHollow]()
+                            {
+                                return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                                    ? BpRed : BpHollow;
+                            })
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(FSlateRenderTransform(FQuat2D(PI / 4.0)))
+                    ]
+            ];
+    }
+    // ---- Style 7: always-visible square, top-right ----
+    else if (BpStyle == 7)
+    {
+        TransOverlay->AddSlot()
+            .HAlign(HAlign_Right)
+            .VAlign(VAlign_Top)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed, BpHollow]()
+                            {
+                                return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                                    ? BpRed : BpHollow;
+                            })
+                    ]
+            ];
+    }
+    // ---- Style 8: red border ring around the whole badge (only when set) ----
+    else if (BpStyle == 8)
+    {
+        TransOverlay->AddSlot()
+            [
+                SNew(SBorder)
+                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed]()
+                    {
+                        return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
+                            ? FLinearColor(BpRed.R, BpRed.G, BpRed.B, 0.35f)
+                            : FLinearColor::Transparent;
+                    })
+            ];
+    }
+
     GetOrAddSlot(ENodeZone::Center)
         .HAlign(HAlign_Center)
         .VAlign(VAlign_Center)
         [
-            SNew(SOverlay)
-
-            // Circular background
-            + SOverlay::Slot()
-                [
-                    SNew(SImage)
-                        .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.ColorSpill")))
-                        .ColorAndOpacity(FCkSmDebuggerStyle::Color_Sm_TransitionBadge)
-                ]
-
-            // Transition icon (directional arrow)
-            + SOverlay::Slot()
-                [
-                    SNew(SImage)
-                        .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.Icon")))
-                ]
+            TransOverlay
         ];
 
     // No pin widgets — wires are drawn via state-to-state resolution in the connection policy.

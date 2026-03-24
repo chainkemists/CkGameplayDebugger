@@ -58,8 +58,8 @@ auto
     _IsCurrentState = InState.IsCurrentState;
     _HasBeenVisited = InState.HasBeenVisited;
     _DwellTimeSeconds = static_cast<float>(InState.DwellTimeSeconds);
-    _HasEntryBreakpoint = InState.HasEntryBreakpoint;
-    _HasExitBreakpoint = InState.HasExitBreakpoint;
+    // Breakpoints are NOT overwritten here — they are toggled by the UI and
+    // persist until the graph is rebuilt. The data collector doesn't track them yet.
     _IsBreakpointHit = InState.IsBreakpointHit;
     _Tasks = InState.Tasks;
 }

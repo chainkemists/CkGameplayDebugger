@@ -19,6 +19,7 @@ public class CkSmDebugger : CkModuleRules
             "WorkspaceMenuStructure",
             "EditorStyle",
             "AppFramework",
+            "ToolMenus",
 
             "CkCore",
             "CkEcs",

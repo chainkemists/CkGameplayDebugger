@@ -51,6 +51,9 @@ private:
 
     UWorld* _CachedWorld = nullptr;
     bool _IsTestMode = false;
+
+    // Selection — transition selection tracked locally (not in ViewModel)
+    int32 _SelectedTransitionIndex = -1;  // index into SmInfo.Transitions, -1 = none
 };
 
 // --------------------------------------------------------------------------------------------------------------------

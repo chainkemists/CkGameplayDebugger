@@ -1,9 +1,9 @@
 using System.IO;
 using UnrealBuildTool;
 
-public class CkEcsDebugger : CkModuleRules
+public class CkSmDebugger : CkModuleRules
 {
-    public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
+    public CkSmDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
         PublicDependencyModuleNames.AddRange(new string[]
         {
@@ -15,23 +15,14 @@ public class CkEcsDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
+            "GraphEditor",
             "WorkspaceMenuStructure",
             "EditorStyle",
             "AppFramework",
 
-            "CkAnimation",
-            "CkAttribute",
             "CkCore",
             "CkEcs",
-            "CkEcsExt",
-            "CkEntityCollection",
-            "CkEntityExtension",
-            "CkInventory",
-            "CkLabel",
-            "CkRecord",
-            "CkRelationship",
-            "CkSpatialQuery",
-            "CkTagSet",
+            "CkStateMachine",
         });
 
         if (Target.bBuildEditor)

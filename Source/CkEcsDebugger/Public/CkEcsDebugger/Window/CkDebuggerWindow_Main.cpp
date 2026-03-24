@@ -2,8 +2,10 @@
 
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Input/SButton.h"
 #include "Styling/AppStyle.h"
 
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
@@ -104,35 +106,80 @@ auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
 
 auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
 {
+    // Tab row
+    auto TabRow = SNew(SHorizontalBox);
+
+    for (auto i = 0; i < Pages.Num(); ++i)
+    {
+        if (NOT Pages[i].IsValid())
+        { continue; }
+
+        auto PageIndex = i;
+        auto IsActive = (i == ActivePageIndex);
+
+        TabRow->AddSlot()
+            .AutoWidth()
+            .Padding(1.0f, 0.0f)
+            [
+                SNew(SButton)
+                    .ButtonColorAndOpacity(IsActive
+                        ? FCkDebuggerStyle::Color_Selection
+                        : FCkDebuggerStyle::Color_Background_Light)
+                    .ForegroundColor(IsActive
+                        ? FCkDebuggerStyle::Color_Text_Highlight
+                        : FCkDebuggerStyle::Color_Text_Secondary)
+                    .OnClicked_Lambda([this, PageIndex]()
+                    {
+                        OnPageSelected(PageIndex);
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                            .Text(Pages[i]->Get_PageName())
+                            .Font(FCoreStyle::GetDefaultFontStyle(IsActive ? "Bold" : "Regular", 9))
+                    ]
+            ];
+    }
+
+    // Page content
+    TSharedRef<SWidget> PageContent = SNew(SBox)
+        .HAlign(HAlign_Center)
+        .VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
+            .Text(FText::FromString(TEXT("No Page Selected")))
+            .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Muted)
+        ];
+
     if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())
     {
-        const auto Context = FCkDebuggerPageContext
+        auto Context = FCkDebuggerPageContext
         {
             SelectionModel,
             WorldModel
         };
 
-        return SNew(SBorder)
-            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
-            .Padding(FCkDebuggerStyle::Padding_Small)
-            [
-                Pages[ActivePageIndex]->Build_Content(Context)
-            ];
+        PageContent = Pages[ActivePageIndex]->Build_Content(Context);
     }
 
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
-        .Padding(FCkDebuggerStyle::Padding_Small)
+        .Padding(0.0f)
         [
-            SNew(SBox)
-            .HAlign(HAlign_Center)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-                .Text(FText::FromString(TEXT("No Page Selected")))
-                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Muted)
-            ]
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    TabRow
+                ]
+            + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    PageContent
+                ]
         ];
 }
 

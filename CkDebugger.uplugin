@@ -35,6 +35,16 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "CkSmDebugger",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	],
 	"Plugins": [

@@ -68,15 +68,25 @@ auto SCkDebuggerWidget_GraphView::RebuildFromModel(
     // Clear existing state
     NodeEntries.Reset();
     EdgeEntries.Reset();
+
+    if (NOT NodeCanvas.IsValid())
+    { return; }
+
     NodeCanvas->ClearChildren();
 
     if (InModel.IsEmpty())
     {
-        EmptyStateWidget->SetVisibility(EVisibility::SelfHitTestInvisible);
+        if (EmptyStateWidget.IsValid())
+        {
+            EmptyStateWidget->SetVisibility(EVisibility::SelfHitTestInvisible);
+        }
         return;
     }
 
-    EmptyStateWidget->SetVisibility(EVisibility::Collapsed);
+    if (EmptyStateWidget.IsValid())
+    {
+        EmptyStateWidget->SetVisibility(EVisibility::Collapsed);
+    }
 
     // Compute layout positions
     const auto& ModelNodes = InModel.Get_Nodes();
@@ -137,8 +147,15 @@ auto SCkDebuggerWidget_GraphView::ClearGraph() -> void
 {
     NodeEntries.Reset();
     EdgeEntries.Reset();
-    NodeCanvas->ClearChildren();
-    EmptyStateWidget->SetVisibility(EVisibility::SelfHitTestInvisible);
+
+    if (NodeCanvas.IsValid())
+    {
+        NodeCanvas->ClearChildren();
+    }
+    if (EmptyStateWidget.IsValid())
+    {
+        EmptyStateWidget->SetVisibility(EVisibility::SelfHitTestInvisible);
+    }
 }
 
 // =====================================================================================================================
@@ -246,7 +263,7 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
 
         FSlateDrawElement::MakeLines(
             OutDrawElements, EdgeLayerId,
-            AllottedGeometry.ToPaintGeometry(), LinePoints,
+            AllottedGeometry.ToPaintGeometry(AllottedGeometry.GetLocalSize(), FSlateLayoutTransform()), LinePoints,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
         // Directional arrow near target
@@ -499,5 +516,8 @@ auto SCkDebuggerWidget_GraphView::UpdateNodeScreenPositions(const FVector2D& InV
         Entry.Slot->SetOffset(FMargin(TopLeft.X, TopLeft.Y, 0.0f, 0.0f));
     }
 
-    NodeCanvas->Invalidate(EInvalidateWidgetReason::Layout);
+    if (NodeCanvas.IsValid())
+    {
+        NodeCanvas->Invalidate(EInvalidateWidgetReason::Layout);
+    }
 }

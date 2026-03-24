@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkSmDebugger/Data/CkSmDebugger_Types.h"
+
 #include "SGraphNode.h"
 #include "CoreMinimal.h"
 
@@ -28,11 +30,22 @@ public:
     virtual auto GetNodeInfoPopups(
         FNodeInfoContext* InContext,
         TArray<FGraphInformationPopupInfo>& OutPopups) const -> void override;
+    virtual auto OnPaint(
+        const FPaintArgs& Args,
+        const FGeometry& AllottedGeometry,
+        const FSlateRect& MyCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 LayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool bParentEnabled) const -> int32 override;
 
 protected:
     auto GetBorderBackgroundColor() const -> FSlateColor;
 
 private:
+    auto CreateTaskRows() -> TSharedRef<SWidget>;
+    auto GetTaskResultBrushColor(ECk_SmTaskResult InResult) const -> FLinearColor;
+
     UCkSmDebugNode_State* _StateNode = nullptr;
 };
 

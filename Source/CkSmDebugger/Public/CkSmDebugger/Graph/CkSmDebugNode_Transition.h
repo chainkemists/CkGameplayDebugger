@@ -57,6 +57,11 @@ public:
     auto Get_IsSubSmTransition() const -> bool { return _IsSubSmTransition; }
     auto Get_TransitionIndex() const -> int32 { return _TransitionIndex; }
     auto Get_Conditions() const -> const TArray<FCkSmDebugger_ConditionInfo>& { return _Conditions; }
+    auto Get_HasBreakpoint() const -> bool { return _HasBreakpoint; }
+    auto ToggleBreakpoint() -> void { _HasBreakpoint = !_HasBreakpoint; }
+
+    auto Get_BreakpointStyle() const -> int32 { return _BreakpointStyle; }
+    auto Set_BreakpointStyle(int32 InStyle) -> void { _BreakpointStyle = InStyle; }
 
 private:
     UPROPERTY()
@@ -80,7 +85,12 @@ private:
     UPROPERTY()
     int32 _TransitionIndex = -1;
 
+    UPROPERTY()
+    bool _HasBreakpoint = false;
+
     TArray<FCkSmDebugger_ConditionInfo> _Conditions;
+
+    int32 _BreakpointStyle = 5;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

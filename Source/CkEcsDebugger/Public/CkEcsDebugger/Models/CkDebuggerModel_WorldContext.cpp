@@ -36,7 +36,7 @@ auto FCkDebuggerModel_WorldContext::Get_AvailableWorlds() const -> TArray<UWorld
         { continue; }
 
         if (auto GameInstance = ContextWorld->GetGameInstance();
-            ck::IsValid(GameInstance))
+            ck::IsValid(GameInstance) && ContextWorld->HasBegunPlay())
         {
             Worlds.Emplace(ContextWorld);
         }
@@ -56,6 +56,10 @@ auto FCkDebuggerModel_WorldContext::Refresh_EntityCache() -> void
 
     const auto World = Get_SelectedWorld();
     if (ck::Is_NOT_Valid(World))
+    { return; }
+
+    // Guard against worlds whose subsystems aren't initialized yet
+    if (NOT World->HasBegunPlay())
     { return; }
 
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(World);

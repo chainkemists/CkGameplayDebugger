@@ -35,7 +35,6 @@ private:
 
     auto Get_EntityCountText() const -> FText;
     auto Get_SelectionCountText() const -> FText;
-    auto Get_WorldButtonColor(UWorld* InWorld) const -> FSlateColor;
 
     TSharedPtr<SCkDebuggerWidget_SearchBar> SearchBar;
     TSharedPtr<SCkDebuggerWidget_EntityTree> EntityTree;

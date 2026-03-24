@@ -97,11 +97,6 @@ auto SCkDebuggerPanel_EntityList::Tick(
         {
             LastKnownWorldCount = CurrentWorldCount;
 
-            if (WorldSelectorContainer.IsValid())
-            {
-                WorldSelectorContainer->SetContent(Build_WorldSelector());
-            }
-
             // Auto-select first world if none selected and worlds are available
             if (CurrentWorldCount > 0 && NOT WorldModel->Get_SelectedWorld())
             {
@@ -121,6 +116,12 @@ auto SCkDebuggerPanel_EntityList::Tick(
             {
                 SelectionModel->Clear_Selection();
                 WorldModel->Set_SelectedWorld(nullptr);
+            }
+
+            // Rebuild world selector AFTER auto-select so the active state is correct
+            if (WorldSelectorContainer.IsValid())
+            {
+                WorldSelectorContainer->SetContent(Build_WorldSelector());
             }
         }
     }
@@ -148,20 +149,31 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
                 ];
             }
 
+            const auto bIsSelected = WorldModel->Get_SelectedWorld() == World;
+
             ButtonRow->AddSlot()
             .FillWidth(1.0f)
             [
-                SNew(SButton)
-                .ButtonStyle(FAppStyle::Get(), "Button")
-                .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
-                .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
-                .HAlign(HAlign_Center)
+                SNew(SBorder)
+                .BorderImage(bIsSelected
+                    ? FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border")
+                    : FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
+                .Padding(FMargin(2.0f))
                 [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
-                    .ColorAndOpacity(this, &SCkDebuggerPanel_EntityList::Get_WorldButtonColor, World)
-                    .Justification(ETextJustify::Center)
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                    SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "Button")
+                    .OnClicked(this, &SCkDebuggerPanel_EntityList::OnWorldButtonClicked, World)
+                    .ContentPadding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
+                    .HAlign(HAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
+                        .ColorAndOpacity(bIsSelected
+                            ? FCkDebuggerStyle::Color_Selection
+                            : FCkDebuggerStyle::Color_Text_Primary)
+                        .Justification(ETextJustify::Center)
+                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                    ]
                 ]
             ];
         }
@@ -342,7 +354,20 @@ auto SCkDebuggerPanel_EntityList::OnWorldButtonClicked(UWorld* InWorld) -> FRepl
 {
     if (WorldModel.IsValid() && ck::IsValid(InWorld))
     {
+        const auto PreviousWorld = WorldModel->Get_SelectedWorld();
         WorldModel->Set_SelectedWorld(InWorld);
+
+        // Clear entity selection when switching worlds — previous entities are stale
+        if (PreviousWorld != InWorld && SelectionModel.IsValid())
+        {
+            SelectionModel->Clear_Selection();
+        }
+
+        // Rebuild the world selector to reflect the new active button
+        if (WorldSelectorContainer.IsValid())
+        {
+            WorldSelectorContainer->SetContent(Build_WorldSelector());
+        }
 
         if (EntityTree.IsValid())
         {
@@ -371,15 +396,3 @@ auto SCkDebuggerPanel_EntityList::Get_SelectionCountText() const -> FText
     return FText::FromString(ck::Format_UE(TEXT("Selected: {}"), SelectionCount));
 }
 
-auto SCkDebuggerPanel_EntityList::Get_WorldButtonColor(UWorld* InWorld) const -> FSlateColor
-{
-    if (NOT WorldModel.IsValid())
-    { return FCkDebuggerStyle::Color_Text_Secondary; }
-
-    const auto SelectedWorld = WorldModel->Get_SelectedWorld();
-
-    if (SelectedWorld == InWorld)
-    { return FCkDebuggerStyle::Color_Selection; }
-
-    return FCkDebuggerStyle::Color_Text_Primary;
-}

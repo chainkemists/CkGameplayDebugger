@@ -36,7 +36,7 @@ auto FCkDebuggerModel_WorldContext::Get_AvailableWorlds() const -> TArray<UWorld
         { continue; }
 
         if (auto GameInstance = ContextWorld->GetGameInstance();
-            ck::IsValid(GameInstance) && ContextWorld->HasBegunPlay())
+            ck::IsValid(GameInstance))
         {
             Worlds.Emplace(ContextWorld);
         }

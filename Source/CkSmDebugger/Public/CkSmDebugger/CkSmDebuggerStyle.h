@@ -53,6 +53,12 @@ namespace FCkSmDebuggerStyle
     inline const FLinearColor Color_Sm_TransitionBadge        = FLinearColor(0.9f, 0.9f, 0.9f);
     inline const FLinearColor Color_Sm_TransitionWire         = FLinearColor(0.290f, 0.353f, 0.408f);
 
+    // Scrub / live highlight
+    inline const FLinearColor Color_Sm_ScrubActiveOutline     = FLinearColor(0.263f, 0.627f, 0.278f, 0.45f);
+    inline const FLinearColor Color_Sm_PreviousStateOutline   = FLinearColor(0.55f, 0.55f, 0.6f, 0.40f);
+    inline const FLinearColor Color_Sm_ScrubTransitionWire    = FLinearColor(0.259f, 0.647f, 0.961f, 1.0f);
+    inline const FLinearColor Color_Sm_LiveFlashWire          = FLinearColor(0.85f, 0.55f, 0.25f, 1.0f);
+
     // Entry node
     inline const FLinearColor Color_Sm_EntryText              = FLinearColor(0.7f, 0.7f, 0.7f);
 

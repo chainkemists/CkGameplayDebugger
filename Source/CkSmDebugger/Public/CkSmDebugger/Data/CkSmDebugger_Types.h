@@ -94,6 +94,14 @@ struct FCkSmDebugger_TransitionInfo
 
 // --------------------------------------------------------------------------------------------------------------------
 
+struct FCkSmDebugger_HistoryTaskSnapshot
+{
+    FString TaskName;
+    ECk_SmTaskResult Result = ECk_SmTaskResult::Running;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 struct FCkSmDebugger_HistoryEntry
 {
     FString FromStateName;
@@ -101,6 +109,7 @@ struct FCkSmDebugger_HistoryEntry
     uint64 FrameNumber = 0;
     int32 TransitionOrder = -1;
     TArray<FString> ConditionNames;
+    TArray<FCkSmDebugger_HistoryTaskSnapshot> TaskSnapshots;
     double RealTimeSeconds = 0.0;
 };
 

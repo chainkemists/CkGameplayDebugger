@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
+#include "CkSmDebugger/Graph/CkSmDebugGraph.h"
 
 #include "Widgets/SLeafWidget.h"
 
@@ -18,7 +19,7 @@ public:
         SLATE_ARGUMENT(float, DesiredHeight)
     SLATE_END_ARGS()
 
-    auto Construct(const FArguments& InArgs, TSharedPtr<FCkSmDebugger_ViewModel> InViewModel) -> void;
+    auto Construct(const FArguments& InArgs, TSharedPtr<FCkSmDebugger_ViewModel> InViewModel, UCkSmDebugGraph* InGraph = nullptr) -> void;
 
     // SWidget
     auto OnPaint(const FPaintArgs& InArgs, const FGeometry& InAllottedGeometry, const FSlateRect& InMyCullingRect, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FWidgetStyle& InWidgetStyle, bool InbParentEnabled) const -> int32 override;
@@ -28,13 +29,17 @@ public:
     auto OnMouseButtonUp(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) -> FReply override;
     auto OnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) -> FReply override;
     auto OnMouseWheel(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) -> FReply override;
+    auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
 
     auto IsInteractable() const -> bool override { return true; }
+    auto SupportsKeyboardFocus() const -> bool override { return true; }
 
 private:
     auto TimeToX(double InTime, double InViewStart, double InViewDuration, float InWidth) const -> float;
     auto XToTime(float InX, double InViewStart, double InViewDuration, float InWidth) const -> double;
     auto GetViewRange(double& OutStart, double& OutDuration) const -> void;
+
+    auto GetCurrentRunDuration() const -> double;
 
     auto PaintSegments(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
     auto PaintBusyFrames(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
@@ -42,8 +47,11 @@ private:
 
 private:
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
+    UCkSmDebugGraph* _Graph = nullptr;
     float _DesiredHeight = 40.0f;
     bool _IsScrubbing = false;
+    bool _IsPanning = false;
+    float _PanStartX = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

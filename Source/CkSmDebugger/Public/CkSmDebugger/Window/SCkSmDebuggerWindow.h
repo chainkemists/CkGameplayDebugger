@@ -27,6 +27,8 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+    auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
+    auto SupportsKeyboardFocus() const -> bool override { return true; }
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
@@ -54,6 +56,7 @@ private:
 
     // Selection — transition selection tracked locally (not in ViewModel)
     int32 _SelectedTransitionIndex = -1;  // index into SmInfo.Transitions, -1 = none
+    TSharedPtr<FCkSmDebugger_HistoryEntry> _SelectedHistoryEntry;
 
     // Breakpoint tracking — detect state transitions to trigger pause
     int32 _LastCurrentStateIdx = -1;

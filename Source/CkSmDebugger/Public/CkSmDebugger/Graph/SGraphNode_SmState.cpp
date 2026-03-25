@@ -145,7 +145,15 @@ auto
                                                     SNew(STextBlock)
                                                         .Text(FText::FromString(StateName))
                                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                                                        .ColorAndOpacity(FCkSmDebuggerStyle::Color_Sm_TextPrimary)
+                                                        .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
+                                                        {
+                                                            auto Color = FCkSmDebuggerStyle::Color_Sm_TextPrimary;
+                                                            if (StateNodePtr
+                                                                && StateNodePtr->Get_IsSubSmNode()
+                                                                && NOT StateNodePtr->Get_IsParentStateActive())
+                                                            { Color.A *= 0.35f; }
+                                                            return FSlateColor(Color);
+                                                        })
                                                 ]
 
                                             // Right icon: exit breakpoint (Style 22/23 only)
@@ -249,10 +257,18 @@ auto
     if (NOT _StateNode)
     { return FLinearColor::Transparent; }
 
-    if (_StateNode->Get_IsCurrentState())
-    { return FCkSmDebuggerStyle::Color_Sm_ActiveStateBody; }
+    auto Color = _StateNode->Get_IsCurrentState()
+        ? FCkSmDebuggerStyle::Color_Sm_ActiveStateBody
+        : FCkSmDebuggerStyle::Color_Sm_InactiveStateBody;
 
-    return FCkSmDebuggerStyle::Color_Sm_InactiveStateBody;
+    // Fade sub-SM states when their parent state is not active
+    if (_StateNode->Get_IsSubSmNode() && NOT _StateNode->Get_IsParentStateActive())
+    {
+        constexpr auto InactiveFade = 0.35f;
+        Color.A *= InactiveFade;
+    }
+
+    return Color;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -364,6 +380,37 @@ auto
 
     if (NOT _StateNode)
     { return Result; }
+
+    // --- Highlight glow: colored rect drawn behind the node ---
+    {
+        auto bHighlighted = _StateNode->Get_IsScrubActiveState()
+            || _StateNode->Get_IsScrubExitedState()
+            || _StateNode->Get_IsPreviousState();
+
+        if (bHighlighted)
+        {
+            auto HColor = _StateNode->Get_IsScrubActiveState()
+                ? FCkSmDebuggerStyle::Color_Sm_ScrubActiveOutline
+                : FCkSmDebuggerStyle::Color_Sm_PreviousStateOutline;
+
+            constexpr auto Pad = 4.0f;
+            auto GlowColor = FLinearColor(HColor.R, HColor.G, HColor.B, 0.25f);
+            static auto GlowBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
+
+            auto Size = AllottedGeometry.GetLocalSize();
+            auto W = static_cast<float>(Size.X);
+            auto H = static_cast<float>(Size.Y);
+
+            auto GlowGeom = AllottedGeometry.MakeChild(
+                FVector2f(W + Pad * 2, H + Pad * 2),
+                FSlateLayoutTransform(FVector2f(-Pad, -Pad)));
+
+            FSlateDrawElement::MakeBox(
+                OutDrawElements, LayerId - 1,
+                GlowGeom.ToPaintGeometry(),
+                &GlowBrush, ESlateDrawEffect::None, GlowColor);
+        }
+    }
 
     auto bEntry = _StateNode->Get_HasEntryBreakpoint();
     auto bExit  = _StateNode->Get_HasExitBreakpoint();

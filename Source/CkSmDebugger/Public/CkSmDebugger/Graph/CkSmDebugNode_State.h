@@ -46,6 +46,8 @@ public:
     auto Get_IsCurrentState() const -> bool { return _IsCurrentState; }
     auto Get_IsSubSmNode() const -> bool { return _IsSubSmNode; }
     auto Get_HasSubStateMachine() const -> bool { return _HasSubStateMachine; }
+    auto Get_IsParentStateActive() const -> bool { return _IsParentStateActive; }
+    auto Set_IsParentStateActive(bool InValue) -> void { _IsParentStateActive = InValue; }
     auto Get_HasBeenVisited() const -> bool { return _HasBeenVisited; }
     auto Get_DwellTimeSeconds() const -> float { return _DwellTimeSeconds; }
     auto Get_HasBreakpoint() const -> bool { return _HasEntryBreakpoint || _HasExitBreakpoint; }
@@ -57,6 +59,14 @@ public:
     auto Get_IsBreakpointHit() const -> bool { return _IsBreakpointHit; }
     auto Get_StateIndex() const -> int32 { return _StateIndex; }
     auto Get_Tasks() const -> const TArray<FCkSmDebugger_TaskInfo>& { return _Tasks; }
+
+    auto Get_IsScrubActiveState() const -> bool { return _IsScrubActiveState; }
+    auto Set_IsScrubActiveState(bool InValue) -> void { _IsScrubActiveState = InValue; }
+    auto Get_IsScrubExitedState() const -> bool { return _IsScrubExitedState; }
+    auto Set_IsScrubExitedState(bool InValue) -> void { _IsScrubExitedState = InValue; }
+    auto Get_IsPreviousState() const -> bool { return _IsPreviousState; }
+    auto Set_IsPreviousState(bool InValue) -> void { _IsPreviousState = InValue; }
+
 
     // Breakpoint visual style variant (0 = default, used for A/B testing in mockup)
     auto Get_BreakpointStyle() const -> int32 { return _BreakpointStyle; }
@@ -97,6 +107,11 @@ private:
     int32 _StateIndex = -1;
 
     TArray<FCkSmDebugger_TaskInfo> _Tasks;
+
+    bool _IsScrubActiveState = false;
+    bool _IsScrubExitedState = false;
+    bool _IsPreviousState = false;
+    bool _IsParentStateActive = false;
 
     int32 _BreakpointStyle = 23;
 };

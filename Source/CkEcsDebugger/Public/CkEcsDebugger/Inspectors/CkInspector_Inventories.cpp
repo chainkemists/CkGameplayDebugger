@@ -51,6 +51,15 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
     auto MutableEntity = Entity;
     const auto Inventories = UCk_Utils_Inventory_UE::RecordOfInventories_Utils::Get_ValidEntries(MutableEntity);
 
+    // Cache initial total item count for structural change detection in Tick
+    auto InitialTotalItems = 0;
+    for (const auto& Inv : Inventories)
+    {
+        if (ck::Is_NOT_Valid(Inv)) { continue; }
+        InitialTotalItems += UCk_Utils_Inventory_UE::Get_NumItems(UCk_Utils_Inventory_UE::CastChecked(Inv));
+    }
+    _CachedTotalItemCount = InitialTotalItems;
+
     for (const auto& InventoryHandle : Inventories)
     {
         if (ck::Is_NOT_Valid(InventoryHandle)) { continue; }
@@ -114,4 +123,22 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
 
 auto FCkInspector_Inventories::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
+    if (ck::Is_NOT_Valid(Entity)) { return; }
+
+    auto MutableEntity = Entity;
+    const auto Inventories = UCk_Utils_Inventory_UE::RecordOfInventories_Utils::Get_ValidEntries(MutableEntity);
+
+    auto TotalItems = 0;
+    for (const auto& InventoryHandle : Inventories)
+    {
+        if (ck::Is_NOT_Valid(InventoryHandle)) { continue; }
+        const auto Inventory = UCk_Utils_Inventory_UE::CastChecked(InventoryHandle);
+        TotalItems += UCk_Utils_Inventory_UE::Get_NumItems(Inventory);
+    }
+
+    if (_CachedTotalItemCount != TotalItems)
+    {
+        _CachedTotalItemCount = TotalItems;
+        RequestRebuild();
+    }
 }

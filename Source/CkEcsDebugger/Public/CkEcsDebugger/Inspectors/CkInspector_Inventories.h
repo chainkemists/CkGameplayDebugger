@@ -15,4 +15,7 @@ public:
 
 private:
     auto BuildInventoryGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>;
+
+    /** Cached total item count across all inventories for structural change detection */
+    int32 _CachedTotalItemCount = -1;
 };

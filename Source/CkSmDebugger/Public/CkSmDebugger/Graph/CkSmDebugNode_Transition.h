@@ -60,6 +60,11 @@ public:
     auto Get_HasBreakpoint() const -> bool { return _HasBreakpoint; }
     auto ToggleBreakpoint() -> void { _HasBreakpoint = !_HasBreakpoint; }
 
+    auto Get_IsScrubHighlighted() const -> bool { return _IsScrubHighlighted; }
+    auto Set_IsScrubHighlighted(bool InValue) -> void { _IsScrubHighlighted = InValue; }
+    auto Get_LiveFlashAlpha() const -> float { return _LiveFlashAlpha; }
+    auto Set_LiveFlashAlpha(float InValue) -> void { _LiveFlashAlpha = InValue; }
+
     auto Get_BreakpointStyle() const -> int32 { return _BreakpointStyle; }
     auto Set_BreakpointStyle(int32 InStyle) -> void { _BreakpointStyle = InStyle; }
 
@@ -89,6 +94,9 @@ private:
     bool _HasBreakpoint = false;
 
     TArray<FCkSmDebugger_ConditionInfo> _Conditions;
+
+    bool _IsScrubHighlighted = false;
+    float _LiveFlashAlpha = 0.0f;
 
     int32 _BreakpointStyle = 5;
 };

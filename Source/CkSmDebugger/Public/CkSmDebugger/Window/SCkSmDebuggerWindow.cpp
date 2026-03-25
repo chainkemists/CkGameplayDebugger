@@ -19,6 +19,7 @@
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -95,6 +96,12 @@ auto
         .GraphEvents(GraphEvents);
 
     // Build the full layout
+    //
+    //   Toolbar
+    //   ├─ Graph (full width, resizable)
+    //   ├─ Timeline (full width, auto-height)
+    //   └─ History | Details (side-by-side, resizable)
+
     ChildSlot
     [
         SNew(SVerticalBox)
@@ -107,62 +114,64 @@ auto
                     BuildToolbar()
                 ]
 
-            // Main content area: vertical split — top: graph+detail, bottom: history
+            // Main content area
             + SVerticalBox::Slot()
                 .FillHeight(1.0f)
                 [
                     SNew(SSplitter)
                         .Orientation(Orient_Vertical)
 
-                        // Top area (75%): graph + detail side-by-side
+                        // Graph canvas (full width, ~65%)
                         + SSplitter::Slot()
-                            .Value(0.75f)
+                            .Value(0.65f)
                             [
-                                SNew(SSplitter)
-                                    .Orientation(Orient_Horizontal)
-
-                                    // Graph view (left, 70%)
-                                    + SSplitter::Slot()
-                                        .Value(0.7f)
-                                        [
-                                            SNew(SVerticalBox)
-
-                                            // Graph canvas
-                                            + SVerticalBox::Slot()
-                                                .FillHeight(1.0f)
-                                                [
-                                                    _GraphEditor.ToSharedRef()
-                                                ]
-
-                                            // Timeline bar
-                                            + SVerticalBox::Slot()
-                                                .AutoHeight()
-                                                [
-                                                    SAssignNew(_Timeline, SCkSmDebugger_Timeline, _ViewModel)
-                                                        .DesiredHeight(40.0f)
-                                                ]
-                                        ]
-
-                                    // Detail panel (right, 30%)
-                                    + SSplitter::Slot()
-                                        .Value(0.3f)
-                                        [
-                                            BuildDetailPanel()
-                                        ]
+                                _GraphEditor.ToSharedRef()
                             ]
 
-                        // Bottom area (25%): history list (full width)
+                        // Bottom area (~35%): timeline + history|details
                         + SSplitter::Slot()
-                            .Value(0.25f)
+                            .Value(0.35f)
                             [
-                                SNew(SBox)
-                                    .Padding(FMargin(2.0f))
+                                SNew(SVerticalBox)
+
+                                // Timeline bar (full width, auto-height)
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
                                     [
-                                        SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel)
+                                        SAssignNew(_Timeline, SCkSmDebugger_Timeline, _ViewModel, _Graph)
+                                            .DesiredHeight(40.0f)
+                                    ]
+
+                                // History | Details (side-by-side, fills remaining)
+                                + SVerticalBox::Slot()
+                                    .FillHeight(1.0f)
+                                    [
+                                        SNew(SSplitter)
+                                            .Orientation(Orient_Horizontal)
+
+                                            // History list (left, 60%)
+                                            + SSplitter::Slot()
+                                                .Value(0.6f)
+                                                [
+                                                    SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel, _Graph)
+                                                ]
+
+                                            // Detail panel (right, 40%)
+                                            + SSplitter::Slot()
+                                                .Value(0.4f)
+                                                [
+                                                    BuildDetailPanel()
+                                                ]
                                     ]
                             ]
                 ]
     ];
+
+    // Bind history selection → detail panel
+    _HistoryList->OnEntrySelected.BindLambda([this](TSharedPtr<FCkSmDebugger_HistoryEntry> InEntry)
+    {
+        _SelectedHistoryEntry = InEntry;
+    });
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -180,20 +189,23 @@ auto
     if (_IsTestMode)
     { return; }
 
-    // Find PIE world if we don't have one
-    if (NOT IsValid(_CachedWorld))
+    // Find PIE world — re-validate each tick since PIE can end at any time
     {
+        auto FoundWorld = static_cast<UWorld*>(nullptr);
+
         for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
         {
             if (It->WorldType == EWorldType::PIE && IsValid(It->World()))
             {
-                _CachedWorld = It->World();
+                FoundWorld = It->World();
                 break;
             }
         }
+
+        _CachedWorld = FoundWorld;
     }
 
-    if (NOT IsValid(_CachedWorld))
+    if (NOT _CachedWorld)
     { return; }
 
     // Collect data from ECS
@@ -211,6 +223,19 @@ auto
     {
         _Graph->SetSuppressNotifications(false);
         _Graph->UpdateFromSmInfo(*SmInfo);
+
+        // ----- Highlight pass: scrub mode or live flash -----
+        if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+        {
+            auto HighlightTarget = _ViewModel->Get_ScrubHighlightTarget();
+            auto HighlightSource = _ViewModel->Get_ScrubHighlightSource();
+            _Graph->ApplyScrubHighlight(HighlightTarget, HighlightSource);
+        }
+        else
+        {
+            _Graph->ClearScrubHighlight();
+            _Graph->TickLiveFlash(InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex);
+        }
 
         // ----- Breakpoint detection: pause PIE on state entry/exit -----
         auto CurrentStateIdx = SmInfo->CurrentStateIndex;
@@ -259,6 +284,37 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// Key input — F to focus graph / timeline
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    OnKeyDown(
+        const FGeometry& InGeometry,
+        const FKeyEvent& InKeyEvent)
+    -> FReply
+{
+    if (InKeyEvent.GetKey() == EKeys::F)
+    {
+        // Zoom graph to fit all nodes
+        if (_GraphEditor.IsValid())
+        { _GraphEditor->ZoomToFit(false); }
+
+        // Reset timeline scroll to center on scrub cursor / "now"
+        if (_ViewModel.IsValid())
+        {
+            auto NewScrubState = _ViewModel->Get_ScrubState();
+            NewScrubState.TimelineScrollX = 0.0f;
+            _ViewModel->Set_ScrubState(NewScrubState);
+        }
+
+        return FReply::Handled();
+    }
+
+    return SCompoundWidget::OnKeyDown(InGeometry, InKeyEvent);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // Toolbar
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -269,7 +325,8 @@ auto
 {
     return SNew(SHorizontalBox)
 
-        // SM Selector label
+        // ── SM Selector ──────────────────────────────────────────────────
+
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -280,8 +337,6 @@ auto
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                     .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
             ]
-
-        // SM Selector combo
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -321,10 +376,11 @@ auto
                     ]
             ]
 
-        // Separator
+        // ── Separator ────────────────────────────────────────────────────
+
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(8.0f, 0.0f, 2.0f, 0.0f)
+            .Padding(6.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
@@ -332,7 +388,8 @@ auto
                     .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
             ]
 
-        // Expand all toggle
+        // ── Display: Tasks toggle, Name depth ────────────────────────────
+
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
@@ -355,35 +412,35 @@ auto
                     })
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Expand Tasks")))
+                            .Text(FText::FromString(TEXT("Tasks")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     ]
             ]
 
-        // Name depth control
+        // Name depth:  [<]  value  [>]
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(4.0f, 0.0f, 2.0f, 0.0f)
+            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Name:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Text(FText::FromString(TEXT("Name")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                     .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
             ]
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(0.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
-                    .Text(FText::FromString(TEXT("+")))
+                    .Text(FText::FromString(TEXT("\x25C0")))  // ◀
                     .OnClicked_Lambda([this]()
                     {
                         if (_Graph)
                         {
                             auto& Depth = _Graph->LayoutParams.NameDepth;
-                            Depth = (Depth == 0) ? 0 : Depth + 1;
+                            if (Depth > 1) { --Depth; }
+                            else { Depth = 0; }
                             _Graph->ForceRebuild();
                         }
                         return FReply::Handled();
@@ -391,7 +448,6 @@ auto
             ]
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(0.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
@@ -408,28 +464,26 @@ auto
             ]
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(0.0f, 0.0f, 2.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
-                    .Text(FText::FromString(TEXT("-")))
+                    .Text(FText::FromString(TEXT("\x25B6")))  // ▶
                     .OnClicked_Lambda([this]()
                     {
                         if (_Graph)
                         {
                             auto& Depth = _Graph->LayoutParams.NameDepth;
-                            if (Depth > 1) { --Depth; }
-                            else { Depth = 0; }  // 0 = full name
+                            Depth = (Depth == 0) ? 0 : Depth + 1;
                             _Graph->ForceRebuild();
                         }
                         return FReply::Handled();
                     })
             ]
 
-        // Relayout button
+        // Relayout
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(2.0f)
+            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
@@ -437,19 +491,346 @@ auto
                     .OnClicked_Lambda([this]()
                     {
                         if (_Graph)
-                        {
-                            _Graph->ForceRebuild();
-                        }
+                        { _Graph->ForceRebuild(); }
                         if (_ViewModel.IsValid())
                         { _ViewModel->RequestRelayout(); }
                         return FReply::Handled();
                     })
             ]
 
-        // Separator — layout controls
+        // ── Layout settings gear dropdown ────────────────────────────────
+
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(8.0f, 0.0f, 2.0f, 0.0f)
+            .Padding(2.0f, 0.0f, 0.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SComboButton)
+                    .HasDownArrow(true)
+                    .ButtonContent()
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("\x2699")))  // ⚙
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+                    ]
+                    .MenuContent()
+                    [
+                        SNew(SVerticalBox)
+
+                        // History style
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(4.0f, 4.0f, 4.0f, 2.0f)
+                            [
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SBox)
+                                            .MinDesiredWidth(80.0f)
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(FText::FromString(TEXT("History")))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                            ]
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("\x25C0")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    auto& S = _Graph->LayoutParams.HistoryStyle;
+                                                    S = static_cast<ECkSmDebugger_HistoryStyle>(
+                                                        (static_cast<int32>(S) + 2) % 3);
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]()
+                                            {
+                                                if (NOT _Graph)
+                                                { return FText::FromString(TEXT("Classic")); }
+
+                                                switch (_Graph->LayoutParams.HistoryStyle)
+                                                {
+                                                case ECkSmDebugger_HistoryStyle::ArrowCards:
+                                                    return FText::FromString(TEXT("Cards"));
+                                                case ECkSmDebugger_HistoryStyle::ClassicArrows:
+                                                    return FText::FromString(TEXT("Classic"));
+                                                case ECkSmDebugger_HistoryStyle::CompactBlocks:
+                                                    return FText::FromString(TEXT("Compact"));
+                                                default:
+                                                    return FText::FromString(TEXT("Classic"));
+                                                }
+                                            })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Justification(ETextJustify::Center)
+                                            .MinDesiredWidth(52.0f)
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("\x25B6")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    auto& S = _Graph->LayoutParams.HistoryStyle;
+                                                    S = static_cast<ECkSmDebugger_HistoryStyle>(
+                                                        (static_cast<int32>(S) + 1) % 3);
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                            ]
+
+                        // Compact toggle
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(4.0f, 4.0f, 4.0f, 2.0f)
+                            [
+                                SNew(SCheckBox)
+                                    .IsChecked_Lambda([this]()
+                                    {
+                                        return (_Graph && _Graph->LayoutParams.bUndirectedBFS)
+                                            ? ECheckBoxState::Checked
+                                            : ECheckBoxState::Unchecked;
+                                    })
+                                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                                    {
+                                        if (_Graph)
+                                        {
+                                            _Graph->LayoutParams.bUndirectedBFS = (InState == ECheckBoxState::Checked);
+                                            _Graph->ForceRebuild();
+                                        }
+                                    })
+                                    [
+                                        SNew(STextBlock)
+                                            .Text(FText::FromString(TEXT("Compact Layout")))
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                    ]
+                            ]
+
+                        // H Spacing
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(4.0f, 2.0f)
+                            [
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SBox)
+                                            .MinDesiredWidth(80.0f)
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(FText::FromString(TEXT("H Spacing")))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                            ]
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("-")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.SpacingX = FMath::Max(100, _Graph->LayoutParams.SpacingX - 50);
+                                                    _Graph->ForceRebuild();
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]()
+                                            {
+                                                if (NOT _Graph) { return FText::FromString(TEXT("350")); }
+                                                return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingX));
+                                            })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Justification(ETextJustify::Center)
+                                            .MinDesiredWidth(32.0f)
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("+")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.SpacingX = FMath::Min(800, _Graph->LayoutParams.SpacingX + 50);
+                                                    _Graph->ForceRebuild();
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                            ]
+
+                        // V Spacing
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(4.0f, 2.0f)
+                            [
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SBox)
+                                            .MinDesiredWidth(80.0f)
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(FText::FromString(TEXT("V Spacing")))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                            ]
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("-")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.SpacingY = FMath::Max(40, _Graph->LayoutParams.SpacingY - 20);
+                                                    _Graph->ForceRebuild();
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]()
+                                            {
+                                                if (NOT _Graph) { return FText::FromString(TEXT("120")); }
+                                                return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingY));
+                                            })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Justification(ETextJustify::Center)
+                                            .MinDesiredWidth(32.0f)
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("+")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.SpacingY = FMath::Min(400, _Graph->LayoutParams.SpacingY + 20);
+                                                    _Graph->ForceRebuild();
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                            ]
+
+                        // Badge Spread
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(4.0f, 2.0f, 4.0f, 4.0f)
+                            [
+                                SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SBox)
+                                            .MinDesiredWidth(80.0f)
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(FText::FromString(TEXT("Badge Gap")))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                            ]
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("-")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.BadgeSpread = FMath::Max(0.0f, _Graph->LayoutParams.BadgeSpread - 5.0f);
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]()
+                                            {
+                                                if (NOT _Graph) { return FText::FromString(TEXT("20")); }
+                                                return FText::FromString(FString::Printf(TEXT("%.0f"), _Graph->LayoutParams.BadgeSpread));
+                                            })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Justification(ETextJustify::Center)
+                                            .MinDesiredWidth(32.0f)
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .Text(FText::FromString(TEXT("+")))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                if (_Graph)
+                                                {
+                                                    _Graph->LayoutParams.BadgeSpread = FMath::Min(80.0f, _Graph->LayoutParams.BadgeSpread + 5.0f);
+                                                }
+                                                return FReply::Handled();
+                                            })
+                                    ]
+                            ]
+                    ]
+            ]
+
+        // ── Separator ────────────────────────────────────────────────────
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(6.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
@@ -457,126 +838,12 @@ auto
                     .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
             ]
 
-        // Compact layout toggle (undirected BFS)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCheckBox)
-                    .IsChecked_Lambda([this]()
-                    {
-                        return (_Graph && _Graph->LayoutParams.bUndirectedBFS)
-                            ? ECheckBoxState::Checked
-                            : ECheckBoxState::Unchecked;
-                    })
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.bUndirectedBFS = (InState == ECheckBoxState::Checked);
-                            _Graph->ForceRebuild();
-                        }
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Compact")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    ]
-            ]
+        // ── Playback: mode indicator + buttons ───────────────────────────
 
-        // Spacing X −/+
+        // View mode (LIVE / SCRUB / TEST)
         + SHorizontalBox::Slot()
             .AutoWidth()
-            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("H:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("-")))
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.SpacingX = FMath::Max(100, _Graph->LayoutParams.SpacingX - 50);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
-                    })
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("+")))
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.SpacingX = FMath::Min(800, _Graph->LayoutParams.SpacingX + 50);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
-                    })
-            ]
-
-        // Spacing Y −/+
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("V:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("-")))
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.SpacingY = FMath::Max(40, _Graph->LayoutParams.SpacingY - 20);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
-                    })
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("+")))
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.SpacingY = FMath::Min(400, _Graph->LayoutParams.SpacingY + 20);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
-                    })
-            ]
-
-        // View mode indicator (LIVE / SCRUB / TEST)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(8.0f, 0.0f, 2.0f, 0.0f)
+            .Padding(2.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
@@ -607,7 +874,7 @@ auto
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
             ]
 
-        // Back to Live button (only visible in scrub mode)
+        // Back to Live (conditional)
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
@@ -635,7 +902,7 @@ auto
                     })
             ]
 
-        // Pause/Resume button — directly controls PIE debug pause
+        // Pause / Resume
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
@@ -659,7 +926,7 @@ auto
                     })
             ]
 
-        // Test mockup toggle button
+        // Test
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
@@ -692,14 +959,16 @@ auto
                     })
             ]
 
-        // Spacer
+        // ── Spacer ───────────────────────────────────────────────────────
+
         + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             [
                 SNullWidget::NullWidget
             ]
 
-        // Breakpoint status
+        // ── Breakpoint status (right-aligned) ───────────────────────────
+
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
@@ -762,342 +1031,205 @@ auto
     BuildDetailPanel()
     -> TSharedRef<SWidget>
 {
-    return SNew(SScrollBox)
-        + SScrollBox::Slot()
-            .Padding(8.0f)
+    auto DimColor = FLinearColor(0.5f, 0.5f, 0.55f);
+    auto SepColor = FLinearColor(0.25f, 0.25f, 0.33f, 0.5f);
+
+    return SNew(SBorder)
+        .BorderBackgroundColor(FLinearColor(0.08f, 0.08f, 0.12f))
+        .Padding(FMargin(6.0f))
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot()
+            .Padding(4.0f)
             [
-                SNew(SVerticalBox)
+                SNew(STextBlock)
+                    .Text_Lambda([this]()
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FText::FromString(TEXT("No selection")); }
 
-                // Header — changes between "Node Details" and "Transition Details"
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(0.0f, 0.0f, 0.0f, 4.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]()
+                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+                        if (NOT SmInfo)
+                        { return FText::FromString(TEXT("No selection")); }
+
+                        auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+                        auto Info = FString{};
+
+                        // ── History entry selected ──────────────────────
+                        if (_SelectedHistoryEntry.IsValid())
+                        {
+                            auto& Entry = *_SelectedHistoryEntry;
+                            auto ToName = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName, Depth);
+                            auto FromName = FCkSmLayoutParams::ComputeDisplayName(Entry.FromStateName, Depth);
+
+                            // Find state indices
+                            auto ToIdx = -1;
+                            auto FromIdx = -1;
+                            for (auto i = 0; i < SmInfo->States.Num(); ++i)
                             {
-                                if (_SelectedTransitionIndex >= 0)
-                                { return FText::FromString(TEXT("Transition Details")); }
+                                if (SmInfo->States[i].StateName == Entry.ToStateName) { ToIdx = i; }
+                                if (SmInfo->States[i].StateName == Entry.FromStateName) { FromIdx = i; }
+                            }
 
-                                return FText::FromString(TEXT("Node Details"));
-                            })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                            .ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f))
-                    ]
-
-                // Action buttons — breakpoint toggles
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(0.0f, 0.0f, 0.0f, 8.0f)
-                    [
-                        SNew(SHorizontalBox)
-
-                        // State: Toggle Entry Breakpoint
-                        + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                            [
-                                SNew(SButton)
-                                    .Text_Lambda([this]()
-                                    {
-                                        if (NOT _Graph) { return FText::GetEmpty(); }
-                                        auto Idx = _ViewModel.IsValid() ? _ViewModel->Get_SelectedNodeIndex() : -1;
-                                        auto* Node = _Graph->FindStateNode(Idx);
-                                        if (NOT Node) { return FText::GetEmpty(); }
-                                        return FText::FromString(Node->Get_HasEntryBreakpoint()
-                                            ? TEXT("\x25C9 Entry BP") : TEXT("\x25CB Entry BP"));
-                                    })
-                                    .Visibility_Lambda([this]()
-                                    {
-                                        return (_ViewModel.IsValid()
-                                            && _ViewModel->Get_SelectedNodeIndex() >= 0
-                                            && _SelectedTransitionIndex < 0)
-                                            ? EVisibility::Visible : EVisibility::Collapsed;
-                                    })
-                                    .OnClicked_Lambda([this]()
-                                    {
-                                        if (NOT _ViewModel.IsValid() || NOT _Graph) { return FReply::Handled(); }
-                                        auto Idx = _ViewModel->Get_SelectedNodeIndex();
-                                        if (auto* Node = _Graph->FindStateNode(Idx))
-                                        { Node->ToggleEntryBreakpoint(); }
-                                        if (_Graph->OnIssueCommand)
-                                        {
-                                            auto Cmd = FCkSmDebugger_Command{};
-                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleStateEntryBreakpoint;
-                                            Cmd.StateIndex = Idx;
-                                            _Graph->OnIssueCommand(Cmd);
-                                        }
-                                        return FReply::Handled();
-                                    })
-                            ]
-
-                        // State: Toggle Exit Breakpoint
-                        + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                            [
-                                SNew(SButton)
-                                    .Text_Lambda([this]()
-                                    {
-                                        if (NOT _Graph) { return FText::GetEmpty(); }
-                                        auto Idx = _ViewModel.IsValid() ? _ViewModel->Get_SelectedNodeIndex() : -1;
-                                        auto* Node = _Graph->FindStateNode(Idx);
-                                        if (NOT Node) { return FText::GetEmpty(); }
-                                        return FText::FromString(Node->Get_HasExitBreakpoint()
-                                            ? TEXT("\x25C9 Exit BP") : TEXT("\x25CB Exit BP"));
-                                    })
-                                    .Visibility_Lambda([this]()
-                                    {
-                                        return (_ViewModel.IsValid()
-                                            && _ViewModel->Get_SelectedNodeIndex() >= 0
-                                            && _SelectedTransitionIndex < 0)
-                                            ? EVisibility::Visible : EVisibility::Collapsed;
-                                    })
-                                    .OnClicked_Lambda([this]()
-                                    {
-                                        if (NOT _ViewModel.IsValid() || NOT _Graph) { return FReply::Handled(); }
-                                        auto Idx = _ViewModel->Get_SelectedNodeIndex();
-                                        if (auto* Node = _Graph->FindStateNode(Idx))
-                                        { Node->ToggleExitBreakpoint(); }
-                                        if (_Graph->OnIssueCommand)
-                                        {
-                                            auto Cmd = FCkSmDebugger_Command{};
-                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleStateExitBreakpoint;
-                                            Cmd.StateIndex = Idx;
-                                            _Graph->OnIssueCommand(Cmd);
-                                        }
-                                        return FReply::Handled();
-                                    })
-                            ]
-
-                        // Transition: Toggle Breakpoint
-                        + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            [
-                                SNew(SButton)
-                                    .Text_Lambda([this]()
-                                    {
-                                        if (NOT _Graph || _SelectedTransitionIndex < 0) { return FText::GetEmpty(); }
-                                        auto* Node = _Graph->FindTransitionNode(_SelectedTransitionIndex);
-                                        if (NOT Node) { return FText::GetEmpty(); }
-                                        return FText::FromString(Node->Get_HasBreakpoint()
-                                            ? TEXT("\x25C9 Breakpoint") : TEXT("\x25CB Breakpoint"));
-                                    })
-                                    .Visibility_Lambda([this]()
-                                    {
-                                        return (_SelectedTransitionIndex >= 0)
-                                            ? EVisibility::Visible : EVisibility::Collapsed;
-                                    })
-                                    .OnClicked_Lambda([this]()
-                                    {
-                                        if (NOT _Graph || _SelectedTransitionIndex < 0) { return FReply::Handled(); }
-                                        if (auto* Node = _Graph->FindTransitionNode(_SelectedTransitionIndex))
-                                        { Node->ToggleBreakpoint(); }
-                                        if (_Graph->OnIssueCommand)
-                                        {
-                                            auto Cmd = FCkSmDebugger_Command{};
-                                            Cmd.Type = FCkSmDebugger_Command::EType::ToggleTransitionBreakpoint;
-                                            Cmd.TransitionIndex = _SelectedTransitionIndex;
-                                            _Graph->OnIssueCommand(Cmd);
-                                        }
-                                        return FReply::Handled();
-                                    })
-                            ]
-                    ]
-
-                // Content — state info OR transition info depending on selection
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]()
+                            // --- Arrived At ---
+                            Info += FString::Printf(TEXT("ARRIVED AT\n"));
+                            Info += FString::Printf(TEXT("\x25CF %s\n"), *ToName);
+                            if (ToIdx >= 0 && ToIdx < SmInfo->States.Num())
                             {
-                                if (NOT _ViewModel.IsValid())
-                                { return FText::FromString(TEXT("No selection")); }
-
-                                auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-                                if (NOT SmInfo)
-                                { return FText::FromString(TEXT("No selection")); }
-
-                                // ----- Transition selected -----
-                                if (_SelectedTransitionIndex >= 0 && _SelectedTransitionIndex < SmInfo->Transitions.Num())
+                                auto& ToState = SmInfo->States[ToIdx];
+                                for (auto& Task : ToState.Tasks)
                                 {
-                                    auto& ClickedTrans = SmInfo->Transitions[_SelectedTransitionIndex];
-                                    auto SrcIdx = ClickedTrans.SourceStateIndex;
-                                    auto DstIdx = ClickedTrans.TargetStateIndex;
-
-                                    auto Info = FString{};
-
-                                    // Show ALL transitions between this source↔target pair
-                                    for (auto i = 0; i < SmInfo->Transitions.Num(); ++i)
-                                    {
-                                        auto& Trans = SmInfo->Transitions[i];
-
-                                        auto bSameEdge =
-                                            (Trans.SourceStateIndex == SrcIdx && Trans.TargetStateIndex == DstIdx) ||
-                                            (Trans.SourceStateIndex == DstIdx && Trans.TargetStateIndex == SrcIdx);
-
-                                        if (NOT bSameEdge) { continue; }
-
-                                        auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                        auto SrcName = FCkSmLayoutParams::ComputeDisplayName(Trans.SourceStateName, Depth);
-                                        auto DstName = FCkSmLayoutParams::ComputeDisplayName(Trans.TargetStateName, Depth);
-
-                                        Info += FString::Printf(TEXT("%s -> %s  [%d/%d]"),
-                                            *SrcName,
-                                            *DstName,
-                                            Trans.SatisfiedCount,
-                                            Trans.TotalCount);
-
-                                        if (Trans.AreAllConditionsSatisfied)
-                                        { Info += TEXT("  READY"); }
-
-                                        Info += TEXT("\n");
-
-                                        for (auto& Cond : Trans.Conditions)
-                                        {
-                                            auto CondName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
-                                            Info += FString::Printf(TEXT("  %s %s\n"),
-                                                Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"),
-                                                *CondName);
-                                        }
-
-                                        Info += TEXT("\n");
-                                    }
-
-                                    if (Info.IsEmpty())
-                                    { return FText::FromString(TEXT("No transition data")); }
-
-                                    return FText::FromString(Info);
-                                }
-
-                                // ----- State selected -----
-                                auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-
-                                if (SelectedIdx < 0 || SelectedIdx >= SmInfo->States.Num())
-                                { return FText::FromString(TEXT("No selection")); }
-
-                                auto& State = SmInfo->States[SelectedIdx];
-                                auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
-                                auto Info = FString::Printf(TEXT("State: %s\nCurrent: %s\nDwell: %.2fs\nVisited: %s\nTasks: %d"),
-                                    *DisplayName,
-                                    State.IsCurrentState ? TEXT("Yes") : TEXT("No"),
-                                    State.DwellTimeSeconds,
-                                    State.HasBeenVisited ? TEXT("Yes") : TEXT("No"),
-                                    State.Tasks.Num());
-
-                                return FText::FromString(Info);
-                            })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FLinearColor(0.85f, 0.85f, 0.85f))
-                            .AutoWrapText(true)
-                    ]
-
-                // Task details (only for state selection)
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]()
-                            {
-                                if (NOT _ViewModel.IsValid() || _SelectedTransitionIndex >= 0)
-                                { return FText::GetEmpty(); }
-
-                                auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-                                auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-
-                                if (NOT SmInfo || SelectedIdx < 0 || SelectedIdx >= SmInfo->States.Num())
-                                { return FText::GetEmpty(); }
-
-                                auto& State = SmInfo->States[SelectedIdx];
-                                if (State.Tasks.Num() == 0)
-                                { return FText::GetEmpty(); }
-
-                                auto TaskDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                auto TaskInfo = FString(TEXT("Tasks:\n"));
-                                for (auto& Task : State.Tasks)
-                                {
-                                    auto ResultStr = TEXT("Unknown");
+                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                                    auto Icon = TEXT("\x25CF");
                                     switch (Task.LastResult)
                                     {
-                                    case ECk_SmTaskResult::Running:   ResultStr = TEXT("Running"); break;
+                                    case ECk_SmTaskResult::Succeeded: Icon = TEXT("\x2713"); break;
+                                    case ECk_SmTaskResult::Failed:    Icon = TEXT("\x2717"); break;
+                                    default: break;
+                                    }
+                                    Info += FString::Printf(TEXT("    %s %s\n"), *TName, Icon);
+                                }
+                            }
+
+                            Info += TEXT("\n");
+
+                            // --- Came From ---
+                            Info += FString::Printf(TEXT("CAME FROM\n"));
+                            Info += FString::Printf(TEXT("\x25CB %s\n"), *FromName);
+                            if (FromIdx >= 0 && FromIdx < SmInfo->States.Num())
+                            {
+                                auto& FromState = SmInfo->States[FromIdx];
+                                for (auto& Task : FromState.Tasks)
+                                {
+                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                                    Info += FString::Printf(TEXT("    %s\n"), *TName);
+                                }
+                            }
+
+                            // --- Task snapshots at transition time ---
+                            if (Entry.TaskSnapshots.Num() > 0)
+                            {
+                                Info += TEXT("\nTASKS AT TRANSITION\n");
+                                for (auto& Snap : Entry.TaskSnapshots)
+                                {
+                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth);
+                                    auto ResultStr = TEXT("Running");
+                                    switch (Snap.Result)
+                                    {
                                     case ECk_SmTaskResult::Succeeded: ResultStr = TEXT("Succeeded"); break;
                                     case ECk_SmTaskResult::Failed:    ResultStr = TEXT("Failed"); break;
                                     default: break;
                                     }
-
-                                    auto TaskName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, TaskDepth);
-                                    TaskInfo += FString::Printf(TEXT("  %s [%s]\n"), *TaskName, ResultStr);
+                                    Info += FString::Printf(TEXT("    %s  %s\n"), *TName, ResultStr);
                                 }
+                            }
 
-                                return FText::FromString(TaskInfo);
-                            })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                            .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-                            .AutoWrapText(true)
-                    ]
+                            Info += TEXT("\n");
 
-                // Outgoing transitions (only for state selection)
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(0.0f, 8.0f, 0.0f, 0.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]()
+                            // --- Transition conditions ---
+                            Info += TEXT("TRANSITION\n");
+                            if (Entry.ConditionNames.Num() > 0)
                             {
-                                if (NOT _ViewModel.IsValid() || _SelectedTransitionIndex >= 0)
-                                { return FText::GetEmpty(); }
-
-                                auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-                                auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-
-                                if (NOT SmInfo || SelectedIdx < 0)
-                                { return FText::GetEmpty(); }
-
-                                auto TransInfo = FString(TEXT("Transitions:\n"));
-                                auto HasAny = false;
-
-                                auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-
-                                for (auto& Transition : SmInfo->Transitions)
+                                for (auto& CondName : Entry.ConditionNames)
                                 {
-                                    if (Transition.SourceStateIndex != SelectedIdx)
-                                    { continue; }
-
-                                    HasAny = true;
-                                    auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
-                                    TransInfo += FString::Printf(TEXT("  -> %s [%d/%d]"),
-                                        *DstName,
-                                        Transition.SatisfiedCount,
-                                        Transition.TotalCount);
-
-                                    if (Transition.AreAllConditionsSatisfied)
-                                    { TransInfo += TEXT(" READY"); }
-
-                                    TransInfo += TEXT("\n");
-
-                                    for (auto& Cond : Transition.Conditions)
-                                    {
-                                        auto CondName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
-                                        TransInfo += FString::Printf(TEXT("    %s %s: %s\n"),
-                                            Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"),
-                                            *CondName,
-                                            Cond.IsSatisfied ? TEXT("true") : TEXT("false"));
-                                    }
+                                    auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                                    Info += FString::Printf(TEXT("    [+] %s\n"), *CName);
                                 }
+                            }
+                            else
+                            {
+                                Info += TEXT("    (unconditional)\n");
+                            }
 
-                                if (NOT HasAny)
-                                { return FText::GetEmpty(); }
+                            Info += FString::Printf(TEXT("\nFrame [%llu]\n"), Entry.FrameNumber);
 
-                                return FText::FromString(TransInfo);
-                            })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                            .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-                            .AutoWrapText(true)
-                    ]
-            ];
+                            return FText::FromString(Info);
+                        }
+
+                        // ── Transition selected in graph ───────────────
+                        if (_SelectedTransitionIndex >= 0 && _SelectedTransitionIndex < SmInfo->Transitions.Num())
+                        {
+                            auto& Trans = SmInfo->Transitions[_SelectedTransitionIndex];
+                            auto SrcName = FCkSmLayoutParams::ComputeDisplayName(Trans.SourceStateName, Depth);
+                            auto DstName = FCkSmLayoutParams::ComputeDisplayName(Trans.TargetStateName, Depth);
+
+                            Info += FString::Printf(TEXT("TRANSITION\n%s \x2500\x25B6 %s\n\n"), *SrcName, *DstName);
+                            Info += FString::Printf(TEXT("Conditions [%d/%d]%s\n"),
+                                Trans.SatisfiedCount, Trans.TotalCount,
+                                Trans.AreAllConditionsSatisfied ? TEXT("  READY") : TEXT(""));
+
+                            for (auto& Cond : Trans.Conditions)
+                            {
+                                auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+                                Info += FString::Printf(TEXT("  %s %s\n"),
+                                    Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"), *CName);
+                            }
+
+                            return FText::FromString(Info);
+                        }
+
+                        // ── State selected in graph ────────────────────
+                        auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
+                        if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
+                        {
+                            auto& State = SmInfo->States[SelectedIdx];
+                            auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
+
+                            Info += FString::Printf(TEXT("STATE\n\x25CF %s\n\n"), *DisplayName);
+                            Info += FString::Printf(TEXT("Current: %s\n"), State.IsCurrentState ? TEXT("Yes") : TEXT("No"));
+                            Info += FString::Printf(TEXT("Dwell: %.2fs\n"), State.DwellTimeSeconds);
+                            Info += FString::Printf(TEXT("Visited: %s\n\n"), State.HasBeenVisited ? TEXT("Yes") : TEXT("No"));
+
+                            if (State.Tasks.Num() > 0)
+                            {
+                                Info += TEXT("TASKS\n");
+                                for (auto& Task : State.Tasks)
+                                {
+                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                                    auto ResultStr = TEXT("Running");
+                                    switch (Task.LastResult)
+                                    {
+                                    case ECk_SmTaskResult::Succeeded: ResultStr = TEXT("Succeeded"); break;
+                                    case ECk_SmTaskResult::Failed:    ResultStr = TEXT("Failed"); break;
+                                    default: break;
+                                    }
+                                    Info += FString::Printf(TEXT("    %s  %s\n"), *TName, ResultStr);
+                                }
+                                Info += TEXT("\n");
+                            }
+
+                            // Outgoing transitions
+                            auto HasTrans = false;
+                            for (auto& Transition : SmInfo->Transitions)
+                            {
+                                if (Transition.SourceStateIndex != SelectedIdx) { continue; }
+                                if (NOT HasTrans) { Info += TEXT("TRANSITIONS\n"); HasTrans = true; }
+
+                                auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
+                                Info += FString::Printf(TEXT("  \x2500\x25B6 %s  [%d/%d]%s\n"),
+                                    *DstName,
+                                    Transition.SatisfiedCount,
+                                    Transition.TotalCount,
+                                    Transition.AreAllConditionsSatisfied ? TEXT(" READY") : TEXT(""));
+
+                                for (auto& Cond : Transition.Conditions)
+                                {
+                                    auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+                                    Info += FString::Printf(TEXT("      %s %s\n"),
+                                        Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"), *CName);
+                                }
+                            }
+
+                            return FText::FromString(Info);
+                        }
+
+                        return FText::FromString(TEXT("No selection"));
+                    })
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FLinearColor(0.75f, 0.75f, 0.78f))
+                    .AutoWrapText(true)
+            ]
+        ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

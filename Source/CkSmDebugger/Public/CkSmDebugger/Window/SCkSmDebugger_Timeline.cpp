@@ -1,19 +1,25 @@
 #include "CkSmDebugger/Window/SCkSmDebugger_Timeline.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "Rendering/SlateRenderer.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 
-// --------------------------------------------------------------------------------------------------------------------
+// ====================================================================================================================
+// Construction
+// ====================================================================================================================
 
 auto
     SCkSmDebugger_Timeline::
     Construct(
         const FArguments& InArgs,
-        TSharedPtr<FCkSmDebugger_ViewModel> InViewModel)
+        TSharedPtr<FCkSmDebugger_ViewModel> InViewModel,
+        UCkSmDebugGraph* InGraph)
     -> void
 {
     _ViewModel = InViewModel;
+    _Graph = InGraph;
     _DesiredHeight = InArgs._DesiredHeight;
 }
 
@@ -26,7 +32,28 @@ auto
     return FVector2D(100.0f, _DesiredHeight);
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+// ====================================================================================================================
+// View range + coordinate conversion
+// ====================================================================================================================
+
+auto
+    SCkSmDebugger_Timeline::
+    GetCurrentRunDuration() const
+    -> double
+{
+    if (NOT _ViewModel.IsValid()) { return 0.0; }
+    auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo) { return 0.0; }
+
+    auto& ScrubState = _ViewModel->Get_ScrubState();
+    auto& Run = (ScrubState.SelectedRunIndex < 0)
+        ? SmInfo->CurrentRun
+        : (ScrubState.SelectedRunIndex < SmInfo->CompletedRuns.Num()
+            ? SmInfo->CompletedRuns[ScrubState.SelectedRunIndex]
+            : SmInfo->CurrentRun);
+
+    return Run.Duration;
+}
 
 auto
     SCkSmDebugger_Timeline::
@@ -45,28 +72,16 @@ auto
     auto& ScrubState = _ViewModel->Get_ScrubState();
     OutDuration = ScrubState.TimelineViewDuration;
 
-    auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-    if (NOT SmInfo)
-    {
-        OutStart = 0.0;
-        return;
-    }
-
-    auto& Run = (_ViewModel->Get_ScrubState().SelectedRunIndex < 0)
-        ? SmInfo->CurrentRun
-        : (ScrubState.SelectedRunIndex < SmInfo->CompletedRuns.Num()
-            ? SmInfo->CompletedRuns[ScrubState.SelectedRunIndex]
-            : SmInfo->CurrentRun);
+    // TimelineScrollX is the absolute view-start offset.
+    // In Live mode with ScrollX == 0, the view's right edge tracks "now".
+    auto RunDuration = GetCurrentRunDuration();
 
     if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live)
     {
-        // Segments use relative time (0 to Duration), so view range must also be relative
-        auto Now = Run.Duration;
-        OutStart = Now - OutDuration + ScrubState.TimelineScrollX;
+        OutStart = RunDuration - OutDuration + ScrubState.TimelineScrollX;
     }
     else
     {
-        // ScrubTime is also relative to run start
         OutStart = ScrubState.ScrubTime - OutDuration * 0.5 + ScrubState.TimelineScrollX;
     }
 }
@@ -80,9 +95,7 @@ auto
         float InWidth) const
     -> float
 {
-    if (InViewDuration <= 0.0)
-    { return 0.0f; }
-
+    if (InViewDuration <= 0.0) { return 0.0f; }
     return static_cast<float>((InTime - InViewStart) / InViewDuration) * InWidth;
 }
 
@@ -95,13 +108,13 @@ auto
         float InWidth) const
     -> double
 {
-    if (InWidth <= 0.0f)
-    { return InViewStart; }
-
+    if (InWidth <= 0.0f) { return InViewStart; }
     return InViewStart + (static_cast<double>(InX) / InWidth) * InViewDuration;
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+// ====================================================================================================================
+// Painting
+// ====================================================================================================================
 
 auto
     SCkSmDebugger_Timeline::
@@ -115,14 +128,12 @@ auto
         bool InbParentEnabled) const
     -> int32
 {
-    // Background
     FSlateDrawElement::MakeBox(
-        InOutDrawElements,
-        InLayerId,
+        InOutDrawElements, InLayerId,
         InAllottedGeometry.ToPaintGeometry(),
         FAppStyle::GetBrush("WhiteBrush"),
         ESlateDrawEffect::None,
-        FLinearColor(0.01f, 0.01f, 0.01f));
+        FLinearColor(0.04f, 0.04f, 0.06f));
 
     if (NOT _ViewModel.IsValid())
     { return InLayerId + 1; }
@@ -145,18 +156,14 @@ auto
     GetViewRange(ViewStart, ViewDuration);
 
     PaintSegments(InAllottedGeometry, InOutDrawElements, InLayerId + 1, Run, ViewStart, ViewDuration);
-    PaintBusyFrames(InAllottedGeometry, InOutDrawElements, InLayerId + 2, Run, ViewStart, ViewDuration);
+    PaintBusyFrames(InAllottedGeometry, InOutDrawElements, InLayerId + 3, Run, ViewStart, ViewDuration);
+    PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 4, ViewStart, ViewDuration);
 
-    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-    {
-        PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 3, ViewStart, ViewDuration);
-    }
-
-    // Time labels
+    // Time labels — relative seconds
     {
         auto Size = InAllottedGeometry.GetLocalSize();
         auto Font = FCoreStyle::GetDefaultFontStyle("Mono", 7);
-        auto TextColor = FLinearColor(0.35f, 0.35f, 0.4f);
+        auto TextColor = FLinearColor(0.4f, 0.4f, 0.45f);
 
         constexpr auto LabelCount = 5;
         for (auto i = 0; i <= LabelCount; ++i)
@@ -165,31 +172,21 @@ auto
             auto Time = ViewStart + ViewDuration * Frac;
             auto X = Frac * Size.X;
 
-            // Convert time position to approximate frame number using the busy-frame data
-            auto FrameNum = static_cast<int64>(Time * 60.0);  // fallback: assume ~60fps
-            for (auto& BF : Run.BusyFrames)
-            {
-                if (BF.Time >= Time) { FrameNum = BF.FrameNumber; break; }
-            }
-            auto Label = FString::Printf(TEXT("F%lld"), FrameNum);
+            auto Label = FString::Printf(TEXT("%.1fs"), Time);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
             auto TextSize = FontService->Measure(Label, Font);
 
             auto TextPos = FVector2D(X - TextSize.X * 0.5f, Size.Y - TextSize.Y - 2.0f);
-            TextPos.X = FMath::Clamp(TextPos.X, 0.0f, Size.X - TextSize.X);
+            TextPos.X = FMath::Clamp(TextPos.X, 0.0, Size.X - TextSize.X);
 
             FSlateDrawElement::MakeText(
-                InOutDrawElements,
-                InLayerId + 4,
+                InOutDrawElements, InLayerId + 5,
                 InAllottedGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPos)),
-                Label,
-                Font,
-                ESlateDrawEffect::None,
-                TextColor);
+                Label, Font, ESlateDrawEffect::None, TextColor);
         }
     }
 
-    return InLayerId + 5;
+    return InLayerId + 6;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -207,55 +204,55 @@ auto
 {
     auto Size = InGeometry.GetLocalSize();
     auto SegmentHeight = Size.Y * 0.6f;
+    auto NameDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
 
     for (auto& Segment : InRun.Segments)
     {
         auto X0 = TimeToX(Segment.StartTime, InViewStart, InViewDuration, Size.X);
         auto X1 = TimeToX(Segment.EndTime, InViewStart, InViewDuration, Size.X);
 
-        if (X1 < 0.0f || X0 > Size.X)
-        { continue; }
+        if (X1 < 0.0f || X0 > Size.X) { continue; }
 
         X0 = FMath::Max(X0, 0.0f);
-        X1 = FMath::Min(X1, Size.X);
+        X1 = FMath::Min(X1, static_cast<float>(Size.X));
 
         auto Width = FMath::Max(X1 - X0, 1.0f);
+        constexpr auto Gap = 1.0f;
+        auto BodyWidth = FMath::Max(Width - Gap, 1.0f);
 
         FSlateDrawElement::MakeBox(
-            InOutDrawElements,
-            InLayerId,
+            InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D(Width, SegmentHeight),
+                FVector2D(BodyWidth, SegmentHeight),
                 FSlateLayoutTransform(FVector2D(X0, 0.0f))),
             FAppStyle::GetBrush("WhiteBrush"),
             ESlateDrawEffect::None,
             Segment.Color);
 
-        // State name label if wide enough
-        if (Width > 40.0f)
+        if (Width > 30.0f)
         {
-            auto Font = FCoreStyle::GetDefaultFontStyle("Regular", 7);
+            auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(Segment.StateName, NameDepth);
+            auto Font = FCoreStyle::GetDefaultFontStyle("Bold", 8);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
-            auto TextSize = FontService->Measure(Segment.StateName, Font);
+            auto TextSize = FontService->Measure(DisplayName, Font);
 
-            if (TextSize.X < Width - 4.0f)
+            if (TextSize.X < BodyWidth - 4.0f)
             {
                 auto TextPos = FVector2D(
-                    X0 + (Width - TextSize.X) * 0.5f,
+                    X0 + (BodyWidth - TextSize.X) * 0.5f,
                     (SegmentHeight - TextSize.Y) * 0.5f);
 
                 FSlateDrawElement::MakeText(
-                    InOutDrawElements,
-                    InLayerId + 1,
+                    InOutDrawElements, InLayerId + 1,
                     InGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPos)),
-                    Segment.StateName,
-                    Font,
-                    ESlateDrawEffect::None,
-                    FLinearColor(0.85f, 0.85f, 0.85f));
+                    DisplayName, Font, ESlateDrawEffect::None,
+                    FLinearColor(0.95f, 0.95f, 0.95f));
             }
         }
     }
 }
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkSmDebugger_Timeline::
@@ -273,24 +270,19 @@ auto
     for (auto& BusyFrame : InRun.BusyFrames)
     {
         auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
-        if (X < 0.0f || X > Size.X)
-        { continue; }
-
-        TArray<FVector2D> Points;
-        Points.Add(FVector2D(X, 0.0f));
-        Points.Add(FVector2D(X, Size.Y));
+        if (X < 0.0f || X > Size.X) { continue; }
 
         FSlateDrawElement::MakeLines(
-            InOutDrawElements,
-            InLayerId,
+            InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(),
-            Points,
+            TArray<FVector2D>{ FVector2D(X, 0.0f), FVector2D(X, Size.Y) },
             ESlateDrawEffect::None,
-            FLinearColor(0.9f, 0.7f, 0.1f),
-            false,
-            1.0f);
+            FLinearColor(0.9f, 0.7f, 0.1f, 0.6f),
+            false, 1.0f);
     }
 }
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkSmDebugger_Timeline::
@@ -303,42 +295,45 @@ auto
     -> void
 {
     auto Size = InGeometry.GetLocalSize();
-    auto ScrubTime = _ViewModel->Get_ScrubState().ScrubTime;
-    auto X = TimeToX(ScrubTime, InViewStart, InViewDuration, Size.X);
+    auto CursorTime = 0.0;
+    auto CursorColor = FLinearColor::White;
 
-    if (X < 0.0f || X > Size.X)
-    { return; }
+    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live)
+    {
+        CursorTime = GetCurrentRunDuration();
+        CursorColor = FLinearColor(0.2f, 0.8f, 0.2f);
+    }
+    else
+    {
+        CursorTime = _ViewModel->Get_ScrubState().ScrubTime;
+        CursorColor = FLinearColor::White;
+    }
 
-    TArray<FVector2D> Points;
-    Points.Add(FVector2D(X, 0.0f));
-    Points.Add(FVector2D(X, Size.Y));
+    auto X = TimeToX(CursorTime, InViewStart, InViewDuration, Size.X);
+    if (X < -5.0f || X > Size.X + 5.0f) { return; }
+    X = FMath::Clamp(X, 0.0f, static_cast<float>(Size.X));
 
     FSlateDrawElement::MakeLines(
-        InOutDrawElements,
-        InLayerId,
+        InOutDrawElements, InLayerId,
         InGeometry.ToPaintGeometry(),
-        Points,
+        TArray<FVector2D>{ FVector2D(X, 0.0f), FVector2D(X, Size.Y) },
         ESlateDrawEffect::None,
-        FLinearColor::White,
-        false,
-        2.0f);
+        CursorColor, false, 2.0f);
 
-    // Small triangle indicator at top
-    auto TriSize = 5.0f;
+    constexpr auto TriSize = 5.0f;
     FSlateDrawElement::MakeBox(
-        InOutDrawElements,
-        InLayerId,
+        InOutDrawElements, InLayerId,
         InGeometry.ToPaintGeometry(
             FVector2D(TriSize * 2.0f, TriSize),
             FSlateLayoutTransform(FVector2D(X - TriSize, 0.0f))),
         FAppStyle::GetBrush("WhiteBrush"),
         ESlateDrawEffect::None,
-        FLinearColor::White);
+        CursorColor);
 }
 
-// --------------------------------------------------------------------------------------------------------------------
+// ====================================================================================================================
 // Input
-// --------------------------------------------------------------------------------------------------------------------
+// ====================================================================================================================
 
 auto
     SCkSmDebugger_Timeline::
@@ -360,12 +355,26 @@ auto
 
         auto ScrubTime = XToTime(LocalPos.X, ViewStart, ViewDuration, Size.X);
 
+        // Clamp to valid run range
+        auto RunDuration = GetCurrentRunDuration();
+        ScrubTime = FMath::Clamp(ScrubTime, 0.0, RunDuration);
+
         auto NewScrubState = _ViewModel->Get_ScrubState();
         NewScrubState.ViewMode = ECkSmDebugger_ViewMode::Scrub;
         NewScrubState.ScrubTime = ScrubTime;
+        // Reset scroll so view centers on the new scrub position
+        NewScrubState.TimelineScrollX = 0.0f;
         _ViewModel->Set_ScrubState(NewScrubState);
 
         _IsScrubbing = true;
+        return FReply::Handled().CaptureMouse(SharedThis(this));
+    }
+
+    if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+    {
+        auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+        _PanStartX = LocalPos.X;
+        _IsPanning = true;
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
 
@@ -382,6 +391,12 @@ auto
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && _IsScrubbing)
     {
         _IsScrubbing = false;
+        return FReply::Handled().ReleaseMouseCapture();
+    }
+
+    if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && _IsPanning)
+    {
+        _IsPanning = false;
         return FReply::Handled().ReleaseMouseCapture();
     }
 
@@ -406,8 +421,29 @@ auto
 
         auto ScrubTime = XToTime(LocalPos.X, ViewStart, ViewDuration, Size.X);
 
+        // Clamp to valid run range
+        auto RunDuration = GetCurrentRunDuration();
+        ScrubTime = FMath::Clamp(ScrubTime, 0.0, RunDuration);
+
         auto NewScrubState = _ViewModel->Get_ScrubState();
         NewScrubState.ScrubTime = ScrubTime;
+        _ViewModel->Set_ScrubState(NewScrubState);
+
+        return FReply::Handled();
+    }
+
+    if (_IsPanning && _ViewModel.IsValid())
+    {
+        auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+        auto DeltaX = LocalPos.X - _PanStartX;
+        _PanStartX = LocalPos.X;
+
+        auto Size = InGeometry.GetLocalSize();
+        auto ViewDuration = _ViewModel->Get_ScrubState().TimelineViewDuration;
+        auto TimeDelta = -(static_cast<double>(DeltaX) / Size.X) * ViewDuration;
+
+        auto NewScrubState = _ViewModel->Get_ScrubState();
+        NewScrubState.TimelineScrollX += static_cast<float>(TimeDelta);
         _ViewModel->Set_ScrubState(NewScrubState);
 
         return FReply::Handled();
@@ -426,25 +462,71 @@ auto
     if (NOT _ViewModel.IsValid())
     { return FReply::Unhandled(); }
 
-    auto NewScrubState = _ViewModel->Get_ScrubState();
+    // Zoom centered on the mouse cursor position.
+    // We compute the time under the cursor, change the duration, then adjust
+    // ScrollX so that same time stays under the cursor in the new view.
 
-    if (InMouseEvent.IsControlDown())
+    auto Size = InGeometry.GetLocalSize();
+    auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+    auto CursorFrac = static_cast<double>(LocalPos.X) / Size.X;
+
+    auto ViewStart = 0.0;
+    auto ViewDuration = 0.0;
+    GetViewRange(ViewStart, ViewDuration);
+
+    auto CursorTime = ViewStart + ViewDuration * CursorFrac;
+
+    constexpr auto ZoomFactor = 0.15;
+    auto Multiplier = (InMouseEvent.GetWheelDelta() > 0) ? (1.0 - ZoomFactor) : (1.0 + ZoomFactor);
+    auto NewDuration = FMath::Clamp(
+        _ViewModel->Get_ScrubState().TimelineViewDuration * Multiplier, 0.5, 300.0);
+
+    // Derive the required ScrollX so CursorTime stays at CursorFrac.
+    //
+    // For Live mode:  ViewStart = RunDuration - Duration + ScrollX
+    //   => want: RunDuration - NewDuration + NewScrollX = CursorTime - NewDuration * CursorFrac
+    //   => NewScrollX = CursorTime - RunDuration + NewDuration * (1.0 - CursorFrac)
+    //
+    // For Scrub mode: ViewStart = ScrubTime - Duration * 0.5 + ScrollX
+    //   => want: ScrubTime - NewDuration * 0.5 + NewScrollX = CursorTime - NewDuration * CursorFrac
+    //   => NewScrollX = CursorTime - ScrubTime + NewDuration * (0.5 - CursorFrac)
+
+    auto NewScrubState = _ViewModel->Get_ScrubState();
+    NewScrubState.TimelineViewDuration = NewDuration;
+
+    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live)
     {
-        // Zoom timeline
-        constexpr auto ZoomFactor = 0.15;
-        auto Multiplier = (InMouseEvent.GetWheelDelta() > 0) ? (1.0 - ZoomFactor) : (1.0 + ZoomFactor);
-        NewScrubState.TimelineViewDuration = FMath::Clamp(
-            NewScrubState.TimelineViewDuration * Multiplier, 1.0, 120.0);
+        auto RunDuration = GetCurrentRunDuration();
+        NewScrubState.TimelineScrollX = static_cast<float>(
+            CursorTime - RunDuration + NewDuration * (1.0 - CursorFrac));
     }
     else
     {
-        // Scroll timeline
-        constexpr auto ScrollStep = 0.5f;
-        NewScrubState.TimelineScrollX -= InMouseEvent.GetWheelDelta() * ScrollStep;
+        NewScrubState.TimelineScrollX = static_cast<float>(
+            CursorTime - NewScrubState.ScrubTime + NewDuration * (0.5 - CursorFrac));
     }
 
     _ViewModel->Set_ScrubState(NewScrubState);
     return FReply::Handled();
+}
+
+auto
+    SCkSmDebugger_Timeline::
+    OnKeyDown(
+        const FGeometry& InGeometry,
+        const FKeyEvent& InKeyEvent)
+    -> FReply
+{
+    if (InKeyEvent.GetKey() == EKeys::F && _ViewModel.IsValid())
+    {
+        // F = focus: reset scroll so the view centers on the scrub cursor / "now"
+        auto NewScrubState = _ViewModel->Get_ScrubState();
+        NewScrubState.TimelineScrollX = 0.0f;
+        _ViewModel->Set_ScrubState(NewScrubState);
+        return FReply::Handled();
+    }
+
+    return FReply::Unhandled();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

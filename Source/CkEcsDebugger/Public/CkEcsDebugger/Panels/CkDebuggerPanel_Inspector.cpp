@@ -61,11 +61,30 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 
     if (ck::IsValid(CurrentInspectedEntity))
     {
-        for (const auto& Inspector : Inspectors)
+        for (int32 Index = 0; Index < Inspectors.Num(); ++Index)
         {
-            if (Inspector.IsValid() && Inspector->CanInspect(CurrentInspectedEntity))
+            const auto& Inspector = Inspectors[Index];
+            if (NOT Inspector.IsValid() || NOT Inspector->CanInspect(CurrentInspectedEntity))
+            { continue; }
+
+            Inspector->Tick(CurrentInspectedEntity, InDeltaTime);
+
+            if (Inspector->NeedsRebuild())
             {
-                Inspector->Tick(CurrentInspectedEntity, InDeltaTime);
+                Inspector->ClearRebuildFlag();
+
+                const auto Filter = InspectorFilters.FindRef(Index);
+                if (const auto Container = InspectorContentContainers.Find(Index))
+                {
+                    if (Container->IsValid())
+                    {
+                        (*Container)->SetContent(
+                            Inspector->IsFilterable()
+                                ? Inspector->Build_Inspector(CurrentInspectedEntity, Filter)
+                                : Inspector->Build_Inspector(CurrentInspectedEntity)
+                        );
+                    }
+                }
             }
         }
     }

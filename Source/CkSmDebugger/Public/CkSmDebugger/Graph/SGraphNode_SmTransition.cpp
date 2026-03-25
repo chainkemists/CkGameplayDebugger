@@ -2,6 +2,7 @@
 
 #include "CkSmDebugNode_Transition.h"
 #include "CkSmDebugNode_State.h"
+#include "CkSmDebugGraph.h"
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -295,18 +296,118 @@ auto
         const TMap<UObject*, TSharedRef<SNode>>& InNodeToWidgetLookup) const
     -> void
 {
-    auto Center = GetCenterBetweenNodes(InNodeToWidgetLookup);
+    if (NOT _TransitionNode)
+    { return; }
 
-    // Offset by half the badge size so it is centered on the wire midpoint.
+    auto* SourceNode = _TransitionNode->GetSourceNode();
+    auto* TargetNode = _TransitionNode->GetTargetNode();
+    if (NOT SourceNode || NOT TargetNode)
+    { return; }
+
+    auto SourceWidgetPtr = InNodeToWidgetLookup.Find(SourceNode);
+    auto TargetWidgetPtr = InNodeToWidgetLookup.Find(TargetNode);
+    if (NOT SourceWidgetPtr || NOT TargetWidgetPtr)
+    { return; }
+
+    auto SourceGeometry = (*SourceWidgetPtr)->GetCachedGeometry();
+    auto TargetGeometry = (*TargetWidgetPtr)->GetCachedGeometry();
+
+    auto SourceCenter = FVector2D(
+        SourceNode->NodePosX + SourceGeometry.GetLocalSize().X * 0.5,
+        SourceNode->NodePosY + SourceGeometry.GetLocalSize().Y * 0.5);
+    auto TargetCenter = FVector2D(
+        TargetNode->NodePosX + TargetGeometry.GetLocalSize().X * 0.5,
+        TargetNode->NodePosY + TargetGeometry.GetLocalSize().Y * 0.5);
+
+    auto Midpoint = (SourceCenter + TargetCenter) * 0.5;
+
     // Standard TransitionNode.ColorSpill brush is ~16x16.
     constexpr auto BadgeHalf = 8.0f;
-    auto NewPos = Center - FVector2D(BadgeHalf, BadgeHalf);
+    auto FinalPos = Midpoint;
 
-    if (_TransitionNode)
+    // --- Bidirectional offset: shift perpendicular to wire ---
+    // Each direction gets offset to the right of its direction vector,
+    // so A→B and B→A naturally separate to opposite sides.
+    if (SourceNode != TargetNode && HasReverseTransition())
     {
-        _TransitionNode->NodePosX = static_cast<int32>(NewPos.X);
-        _TransitionNode->NodePosY = static_cast<int32>(NewPos.Y);
+        auto Dir = TargetCenter - SourceCenter;
+        auto Len = Dir.Size();
+        if (Len > KINDA_SMALL_NUMBER)
+        {
+            constexpr auto BidirectionalOffset = 12.0f;
+            auto Perp = FVector2D(Dir.Y, -Dir.X) / Len;
+            FinalPos += Perp * BidirectionalOffset;
+        }
     }
+
+    // --- Collision avoidance: slide along wire when badges cluster ---
+    // For each other transition whose raw midpoint is within collision radius,
+    // count total colliders and this badge's rank (by transition index).
+    // Spread the group evenly along this badge's wire direction.
+    auto* Graph = _TransitionNode->GetGraph();
+    if (Graph && SourceNode != TargetNode)
+    {
+        auto MyIndex = _TransitionNode->Get_TransitionIndex();
+        auto Rank = 0;
+        auto TotalColliders = 1;  // count self
+        constexpr auto CollisionRadius = 18.0f;
+
+        for (UEdGraphNode* Node : Graph->Nodes)
+        {
+            auto* Other = Cast<UCkSmDebugNode_Transition>(Node);
+            if (NOT Other || Other == _TransitionNode)
+            { continue; }
+
+            auto* OtherSource = Other->GetSourceNode();
+            auto* OtherTarget = Other->GetTargetNode();
+            if (NOT OtherSource || NOT OtherTarget)
+            { continue; }
+
+            // Skip reverse transitions — already handled by perpendicular offset
+            if (OtherSource == TargetNode && OtherTarget == SourceNode)
+            { continue; }
+
+            // Compute other transition's raw midpoint
+            auto OsPtr = InNodeToWidgetLookup.Find(OtherSource);
+            auto OtPtr = InNodeToWidgetLookup.Find(OtherTarget);
+            if (NOT OsPtr || NOT OtPtr)
+            { continue; }
+
+            auto OsGeo = (*OsPtr)->GetCachedGeometry();
+            auto OtGeo = (*OtPtr)->GetCachedGeometry();
+
+            auto OtherSourceCenter = FVector2D(
+                OtherSource->NodePosX + OsGeo.GetLocalSize().X * 0.5,
+                OtherSource->NodePosY + OsGeo.GetLocalSize().Y * 0.5);
+            auto OtherTargetCenter = FVector2D(
+                OtherTarget->NodePosX + OtGeo.GetLocalSize().X * 0.5,
+                OtherTarget->NodePosY + OtGeo.GetLocalSize().Y * 0.5);
+
+            auto OtherMidpoint = (OtherSourceCenter + OtherTargetCenter) * 0.5;
+
+            if ((Midpoint - OtherMidpoint).Size() < CollisionRadius)
+            {
+                ++TotalColliders;
+                if (Other->Get_TransitionIndex() < MyIndex)
+                { ++Rank; }
+            }
+        }
+
+        if (TotalColliders > 1)
+        {
+            auto Dir = (TargetCenter - SourceCenter).GetSafeNormal();
+            auto SlideStep = 20.0f;
+            if (auto* SmGraph = Cast<UCkSmDebugGraph>(Graph))
+            { SlideStep = SmGraph->LayoutParams.BadgeSpread; }
+            // Center the group around the midpoint: rank 0 shifts negative, highest shifts positive
+            auto CenterOffset = (static_cast<double>(Rank) - (TotalColliders - 1) * 0.5) * SlideStep;
+            FinalPos += Dir * CenterOffset;
+        }
+    }
+
+    auto NewPos = FinalPos - FVector2D(BadgeHalf, BadgeHalf);
+    _TransitionNode->NodePosX = static_cast<int32>(NewPos.X);
+    _TransitionNode->NodePosY = static_cast<int32>(NewPos.Y);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -359,6 +460,38 @@ auto
         TargetNode->NodePosY + TargetGeometry.GetLocalSize().Y * 0.5);
 
     return (SourceCenter + TargetCenter) * 0.5;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SGraphNode_SmTransition::
+    HasReverseTransition() const
+    -> bool
+{
+    if (NOT _TransitionNode)
+    { return false; }
+
+    auto* SourceNode = _TransitionNode->GetSourceNode();
+    auto* TargetNode = _TransitionNode->GetTargetNode();
+    if (NOT SourceNode || NOT TargetNode)
+    { return false; }
+
+    auto* Graph = _TransitionNode->GetGraph();
+    if (NOT Graph)
+    { return false; }
+
+    for (UEdGraphNode* Node : Graph->Nodes)
+    {
+        auto* Other = Cast<UCkSmDebugNode_Transition>(Node);
+        if (Other && Other != _TransitionNode
+            && Other->GetSourceNode() == TargetNode
+            && Other->GetTargetNode() == SourceNode)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

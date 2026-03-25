@@ -36,6 +36,8 @@ private:
     auto GetCenterBetweenNodes(
         const TMap<UObject*, TSharedRef<SNode>>& InNodeToWidgetLookup) const -> FVector2D;
 
+    auto HasReverseTransition() const -> bool;
+
 private:
     UCkSmDebugNode_Transition* _TransitionNode = nullptr;
 };

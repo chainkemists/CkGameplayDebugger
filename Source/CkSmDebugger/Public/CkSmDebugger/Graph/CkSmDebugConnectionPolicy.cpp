@@ -1,5 +1,6 @@
 #include "CkSmDebugConnectionPolicy.h"
 
+#include "CkSmDebugNode_Compound.h"
 #include "CkSmDebugNode_Entry.h"
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugNode_Transition.h"
@@ -49,12 +50,37 @@ auto
     if (Cast<UCkSmDebugNode_Entry>(InOutputPin->GetOwningNode()))
     { return; }
 
-    // Transition wires: check if transition is between same pair of states (self-loop flag)
+    // State → Compound: connector wire with sub-SM styling
+    if (Cast<UCkSmDebugNode_Compound>(InInputPin->GetOwningNode()))
+    {
+        OutParams.WireColor = FCkSmDebuggerStyle::Color_Sm_SubSmConnector;
+        OutParams.WireThickness = 1.5f;
+        return;
+    }
+
+    // Transition wires: highlight state + self-loop flag
     if (auto* TransitionNode = Cast<UCkSmDebugNode_Transition>(InInputPin->GetOwningNode()))
     {
         if (TransitionNode->GetSourceNode() == TransitionNode->GetTargetNode())
         {
             OutParams.bUserFlag2 = true;
+        }
+
+        // Scrub highlight: thick bright wire for the fired transition
+        if (TransitionNode->Get_IsScrubHighlighted())
+        {
+            OutParams.WireColor = FCkSmDebuggerStyle::Color_Sm_ScrubTransitionWire;
+            OutParams.WireThickness = 3.0f;
+        }
+        // Live flash: interpolate from flash color back to normal
+        else if (TransitionNode->Get_LiveFlashAlpha() > 0.0f)
+        {
+            auto Alpha = TransitionNode->Get_LiveFlashAlpha();
+            OutParams.WireColor = FMath::Lerp(
+                FCkSmDebuggerStyle::Color_Sm_TransitionWire,
+                FCkSmDebuggerStyle::Color_Sm_LiveFlashWire,
+                Alpha);
+            OutParams.WireThickness = FMath::Lerp(1.5f, 3.5f, Alpha);
         }
     }
 
@@ -124,7 +150,23 @@ auto
     }
 
     // -----------------------------------------------------------------------------------
-    // Case 2: Entry → State — resolve to entry node and target state geometries.
+    // Case 2: State → Compound — resolve to state and compound node geometries.
+    // -----------------------------------------------------------------------------------
+    if (Cast<UCkSmDebugNode_Compound>(InInputPin->GetOwningNode()))
+    {
+        auto* StateIdx = _NodeWidgetMap.Find(InOutputPin->GetOwningNode());
+        auto* CompIdx  = _NodeWidgetMap.Find(InInputPin->GetOwningNode());
+
+        if (StateIdx && CompIdx)
+        {
+            OutStartWidgetGeometry = &InArrangedNodes[*StateIdx];
+            OutEndWidgetGeometry   = &InArrangedNodes[*CompIdx];
+            return;
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // Case 3: Entry → State — resolve to entry node and target state geometries.
     // -----------------------------------------------------------------------------------
     if (Cast<UCkSmDebugNode_Entry>(InOutputPin->GetOwningNode()))
     {

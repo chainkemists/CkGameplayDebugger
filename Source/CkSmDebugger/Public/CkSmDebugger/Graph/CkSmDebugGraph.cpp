@@ -1,5 +1,6 @@
 #include "CkSmDebugGraph.h"
 
+#include "CkSmDebugNode_Compound.h"
 #include "CkSmDebugNode_Entry.h"
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugNode_Transition.h"
@@ -19,55 +20,332 @@ auto
     SetSuppressNotifications(true);
 
     Nodes.Empty();
-    _TransitionData = InSmInfo.Transitions;
 
     // ================================================================================================================
-    // Sugiyama layered graph drawing — full pipeline
-    // Phase 1: Layer assignment (BFS)
-    // Phase 2: Dummy vertex insertion (for edges spanning multiple ranks)
-    // Phase 3: Barycenter crossing reduction (with dummies for proper long-edge handling)
-    // Phase 4: Coordinate assignment
+    // Pre-pass: Inject cached sub-SM data for parent states whose sub-SM is not currently running.
+    // This keeps compound blocks always visible regardless of sub-SM lifecycle.
     // ================================================================================================================
 
-    auto StateCount = InSmInfo.States.Num();
+    auto SmInfo = InSmInfo;  // mutable copy — we may append cached sub-SM states
 
-    // ----------------------------------------------------------------------------------------------------------------
-    // Phase 1: Layer assignment via BFS
-    // ----------------------------------------------------------------------------------------------------------------
+    // Identify which parent states have live sub-SM data
+    auto ParentsWithLiveSubSm = TSet<int32>{};
+    for (auto& State : SmInfo.States)
+    {
+        if (State.IsSubSmNode)
+        { ParentsWithLiveSubSm.Add(State.SubSmParentStateIndex); }
+    }
 
-    auto Ranks = TArray<int32>{};
-    Ranks.SetNum(StateCount);
-    for (auto& R : Ranks) { R = -1; }
+    // Cache live sub-SM data for future use
+    for (auto ParentIdx : ParentsWithLiveSubSm)
+    {
+        auto& Cached = _CachedSubSmData.FindOrAdd(ParentIdx);
+        Cached.States.Empty();
+        Cached.Transitions.Empty();
 
-    auto InitialIdx = -1;
+        // Determine label
+        if (ParentIdx >= 0 && ParentIdx < SmInfo.States.Num())
+        {
+            for (auto& Task : SmInfo.States[ParentIdx].Tasks)
+            {
+                if (Task.HasSubStateMachine)
+                { Cached.Label = Task.ClassName; break; }
+            }
+        }
+
+        // Collect sub-SM states with LOCAL indices (0-based)
+        auto GlobalToLocal = TMap<int32, int32>{};
+        for (auto i = 0; i < SmInfo.States.Num(); ++i)
+        {
+            if (SmInfo.States[i].IsSubSmNode && SmInfo.States[i].SubSmParentStateIndex == ParentIdx)
+            {
+                auto LocalIdx = Cached.States.Num();
+                GlobalToLocal.Add(i, LocalIdx);
+
+                auto StateCopy = SmInfo.States[i];
+                Cached.States.Add(MoveTemp(StateCopy));
+            }
+        }
+
+        // Collect transitions with local indices
+        for (auto& Trans : SmInfo.Transitions)
+        {
+            if (NOT Trans.IsSubSmTransition) { continue; }
+            auto* LocalSrc = GlobalToLocal.Find(Trans.SourceStateIndex);
+            auto* LocalDst = GlobalToLocal.Find(Trans.TargetStateIndex);
+            if (LocalSrc && LocalDst)
+            {
+                auto TransCopy = Trans;
+                TransCopy.SourceStateIndex = *LocalSrc;
+                TransCopy.TargetStateIndex = *LocalDst;
+                Cached.Transitions.Add(MoveTemp(TransCopy));
+            }
+        }
+    }
+
+    // Inject cached sub-SM data for parent states whose sub-SM is NOT currently running.
+    // Don't gate on HasSubStateMachine — that flag may not be set when the parent state
+    // is inactive (task entities don't exist). The cache is the source of truth.
+    for (auto i = 0; i < InSmInfo.States.Num(); ++i)
+    {
+        if (InSmInfo.States[i].IsSubSmNode) { continue; }
+        if (ParentsWithLiveSubSm.Contains(i)) { continue; }
+
+        auto* Cached = _CachedSubSmData.Find(i);
+        if (NOT Cached || Cached->States.Num() == 0) { continue; }
+
+        auto IndexOffset = SmInfo.States.Num();
+
+        for (auto& CachedState : Cached->States)
+        {
+            auto InjectedState = CachedState;
+            InjectedState.IsCurrentState = false;
+            InjectedState.HasBeenVisited = false;
+            InjectedState.DwellTimeSeconds = 0.0;
+            InjectedState.IsSubSmNode = true;
+            InjectedState.SubSmParentStateIndex = i;
+            InjectedState.SubSmParentStateName = SmInfo.States[i].StateName;
+            SmInfo.States.Add(MoveTemp(InjectedState));
+        }
+
+        for (auto& CachedTrans : Cached->Transitions)
+        {
+            auto InjectedTrans = CachedTrans;
+            InjectedTrans.SourceStateIndex += IndexOffset;
+            InjectedTrans.TargetStateIndex += IndexOffset;
+            InjectedTrans.IsSubSmTransition = true;
+            InjectedTrans.AreAllConditionsSatisfied = false;
+            SmInfo.Transitions.Add(MoveTemp(InjectedTrans));
+        }
+    }
+
+    _TransitionData = SmInfo.Transitions;
+
+    // ================================================================================================================
+    // Compound-aware Sugiyama layered graph drawing
+    // Phase 0: Partition states into parent vs sub-SM groups, layout sub-SM groups internally
+    // Phase 1: Layer assignment (BFS) over parent-level nodes + compound blocks
+    // Phase 2: Dummy vertex insertion for parent-level edges
+    // Phase 3: Barycenter crossing reduction
+    // Phase 4: Coordinate assignment with variable node heights
+    // Phase 5: Create graph nodes, wires, and compound containers
+    // ================================================================================================================
+
+    auto StateCount = SmInfo.States.Num();
+
+    // ================================================================================================================
+    // Phase 0: Partition & internal sub-SM layout
+    // ================================================================================================================
+
+    auto ParentStateIndices = TArray<int32>{};
+    auto SubSmGroups = TMap<int32, TArray<int32>>{};
+
     for (auto i = 0; i < StateCount; ++i)
     {
-        if (InSmInfo.States[i].StateClass == InSmInfo.InitialStateClass)
-        { InitialIdx = i; break; }
+        if (SmInfo.States[i].IsSubSmNode)
+        {
+            auto ParentIdx = SmInfo.States[i].SubSmParentStateIndex;
+            SubSmGroups.FindOrAdd(ParentIdx).Add(i);
+        }
+        else
+        {
+            ParentStateIndices.Add(i);
+        }
     }
-    if (InitialIdx < 0 && StateCount > 0) { InitialIdx = 0; }
 
-    if (InitialIdx >= 0)
+    // Internal layout data for each compound block
+    struct FCompoundBlock
+    {
+        int32 ParentStateIndex;
+        FString Label;
+        TArray<int32> SubSmStateIndices;
+        float Width;
+        float Height;
+        TMap<int32, FVector2D> InternalOffsets;
+        int32 LayoutPosX = 0;
+        int32 LayoutPosY = 0;
+    };
+    auto CompoundBlocks = TArray<FCompoundBlock>{};
+
+    constexpr auto CompoundPadding = 20.0f;
+    constexpr auto CompoundHeaderHeight = 28.0f;
+    constexpr auto InternalSpacingX = 250;
+    constexpr auto InternalSpacingY = 80;
+
+    for (auto& Pair : SubSmGroups)
+    {
+        auto ParentIdx = Pair.Key;
+        auto& SubIndices = Pair.Value;
+
+        if (SubIndices.Num() == 0) { continue; }
+
+        // Build local index mapping: global index → local index (0-based within this sub-SM)
+        auto GlobalToLocal = TMap<int32, int32>{};
+        for (auto LocalIdx = 0; LocalIdx < SubIndices.Num(); ++LocalIdx)
+        { GlobalToLocal.Add(SubIndices[LocalIdx], LocalIdx); }
+
+        auto LocalCount = SubIndices.Num();
+
+        // Collect internal transitions (both endpoints in this sub-SM group)
+        struct FLocalTrans { int32 LocalSrc; int32 LocalDst; };
+        auto LocalTransitions = TArray<FLocalTrans>{};
+
+        for (auto& Trans : SmInfo.Transitions)
+        {
+            if (NOT Trans.IsSubSmTransition) { continue; }
+            auto* LocalSrc = GlobalToLocal.Find(Trans.SourceStateIndex);
+            auto* LocalDst = GlobalToLocal.Find(Trans.TargetStateIndex);
+            if (LocalSrc && LocalDst)
+            { LocalTransitions.Add({ *LocalSrc, *LocalDst }); }
+        }
+
+        // Mini Sugiyama: BFS layer assignment
+        auto LocalRanks = TArray<int32>{};
+        LocalRanks.SetNum(LocalCount);
+        for (auto& R : LocalRanks) { R = -1; }
+
+        // Start from index 0 (first sub-SM state, typically the initial state)
+        LocalRanks[0] = 0;
+        auto Queue = TArray<int32>{ 0 };
+        for (auto Head = 0; Head < Queue.Num(); ++Head)
+        {
+            auto Cur = Queue[Head];
+            for (auto& LT : LocalTransitions)
+            {
+                auto Neighbor = -1;
+                if (LT.LocalSrc == Cur) { Neighbor = LT.LocalDst; }
+                else if (LT.LocalDst == Cur) { Neighbor = LT.LocalSrc; }
+
+                if (Neighbor >= 0 && Neighbor < LocalCount && LocalRanks[Neighbor] < 0)
+                {
+                    LocalRanks[Neighbor] = LocalRanks[Cur] + 1;
+                    Queue.Add(Neighbor);
+                }
+            }
+        }
+        for (auto& R : LocalRanks) { if (R < 0) { R = 0; } }
+
+        auto LocalMaxRank = 0;
+        for (auto R : LocalRanks) { LocalMaxRank = FMath::Max(LocalMaxRank, R); }
+
+        // Mini Sugiyama: coordinate assignment (skip full dummy/crossing for internal layouts)
+        auto NodesPerRank = TArray<int32>{};
+        NodesPerRank.SetNumZeroed(LocalMaxRank + 1);
+        for (auto R : LocalRanks) { ++NodesPerRank[R]; }
+
+        auto SlotCounter = TArray<int32>{};
+        SlotCounter.SetNumZeroed(LocalMaxRank + 1);
+
+        auto InternalOffsets = TMap<int32, FVector2D>{};
+        auto MaxX = 0.0f;
+        auto MaxY = 0.0f;
+
+        for (auto LocalIdx = 0; LocalIdx < LocalCount; ++LocalIdx)
+        {
+            auto R = LocalRanks[LocalIdx];
+            auto Slot = SlotCounter[R]++;
+            auto Count = NodesPerRank[R];
+
+            auto X = static_cast<float>(R * InternalSpacingX) + CompoundPadding;
+            auto TotalSlotHeight = (Count - 1) * InternalSpacingY;
+            auto Y = static_cast<float>(Slot * InternalSpacingY) - TotalSlotHeight / 2.0f
+                + CompoundHeaderHeight + CompoundPadding;
+
+            auto GlobalIdx = SubIndices[LocalIdx];
+            InternalOffsets.Add(GlobalIdx, FVector2D(X, Y));
+
+            MaxX = FMath::Max(MaxX, X + 140.0f);  // approximate node width
+            MaxY = FMath::Max(MaxY, Y + 40.0f);   // approximate node height
+        }
+
+        // Compute compound block dimensions
+        auto BlockWidth = MaxX + CompoundPadding;
+        auto BlockHeight = MaxY + CompoundPadding;
+
+        // Determine label (parent task name that owns the sub-SM)
+        auto Label = FString{};
+        if (ParentIdx >= 0 && ParentIdx < StateCount)
+        {
+            for (auto& Task : SmInfo.States[ParentIdx].Tasks)
+            {
+                if (Task.HasSubStateMachine)
+                {
+                    Label = Task.ClassName;
+                    break;
+                }
+            }
+            if (Label.IsEmpty())
+            { Label = SmInfo.States[ParentIdx].StateName; }
+        }
+
+        CompoundBlocks.Add({
+            ParentIdx,
+            Label,
+            SubIndices,
+            BlockWidth,
+            BlockHeight,
+            MoveTemp(InternalOffsets)
+        });
+    }
+
+    // Sort compound blocks by parent state index for deterministic placement order.
+    // Without this, TMap iteration order changes when sub-SMs activate/deactivate,
+    // causing compound blocks to jump positions.
+    CompoundBlocks.Sort([](const FCompoundBlock& A, const FCompoundBlock& B)
+    { return A.ParentStateIndex < B.ParentStateIndex; });
+
+    // ================================================================================================================
+    // Phase 1: Layer assignment via BFS — parent-level states only
+    // Compound blocks are placed AFTER the parent layout, not as participants.
+    // ================================================================================================================
+
+    auto ParentCount = ParentStateIndices.Num();
+    auto CompoundCount = CompoundBlocks.Num();
+
+    // Map: parent state global index → layout index (0-based)
+    auto ParentGlobalToLayout = TMap<int32, int32>{};
+    for (auto i = 0; i < ParentCount; ++i)
+    { ParentGlobalToLayout.Add(ParentStateIndices[i], i); }
+
+    auto Ranks = TArray<int32>{};
+    Ranks.SetNum(ParentCount);
+    for (auto& R : Ranks) { R = -1; }
+
+    auto InitialLayoutIdx = -1;
+    for (auto i = 0; i < ParentCount; ++i)
+    {
+        if (SmInfo.States[ParentStateIndices[i]].StateClass == SmInfo.InitialStateClass)
+        { InitialLayoutIdx = i; break; }
+    }
+    if (InitialLayoutIdx < 0 && ParentCount > 0) { InitialLayoutIdx = 0; }
+
+    if (InitialLayoutIdx >= 0)
     {
         auto Queue = TArray<int32>{};
-        Queue.Add(InitialIdx);
-        Ranks[InitialIdx] = 0;
+        Queue.Add(InitialLayoutIdx);
+        Ranks[InitialLayoutIdx] = 0;
 
         for (auto Head = 0; Head < Queue.Num(); ++Head)
         {
             auto Current = Queue[Head];
-            for (auto& Trans : InSmInfo.Transitions)
-            {
-                auto Neighbor = -1;
 
+            for (auto& Trans : SmInfo.Transitions)
+            {
+                if (Trans.IsSubSmTransition) { continue; }
+
+                auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
+                auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
+                if (NOT LayoutSrc || NOT LayoutDst) { continue; }
+
+                auto Neighbor = -1;
                 if (LayoutParams.bUndirectedBFS)
                 {
-                    if (Trans.SourceStateIndex == Current) { Neighbor = Trans.TargetStateIndex; }
-                    else if (Trans.TargetStateIndex == Current) { Neighbor = Trans.SourceStateIndex; }
+                    if (*LayoutSrc == Current) { Neighbor = *LayoutDst; }
+                    else if (*LayoutDst == Current) { Neighbor = *LayoutSrc; }
                 }
                 else
                 {
-                    if (Trans.SourceStateIndex == Current) { Neighbor = Trans.TargetStateIndex; }
+                    if (*LayoutSrc == Current) { Neighbor = *LayoutDst; }
                 }
 
                 if (Neighbor >= 0 && Neighbor < Ranks.Num() && Ranks[Neighbor] < 0)
@@ -84,37 +362,37 @@ auto
     auto MaxRank = 0;
     for (auto R : Ranks) { MaxRank = FMath::Max(MaxRank, R); }
 
-    // ----------------------------------------------------------------------------------------------------------------
-    // Phase 2: Dummy vertex insertion
-    // For edges spanning multiple ranks, insert virtual nodes at each intermediate rank.
-    // This is critical for crossing reduction — without dummies, the barycenter heuristic
-    // cannot detect crossings caused by long-distance edges passing through intermediate ranks.
-    // ----------------------------------------------------------------------------------------------------------------
+    // ================================================================================================================
+    // Phase 2: Dummy vertex insertion (parent-level edges only)
+    // ================================================================================================================
 
-    // Layout node: OriginalIndex >= 0 means real state, -1 means dummy
     struct FLayoutNode { int32 OriginalIndex; int32 Rank; };
 
     auto LayoutNodes = TArray<FLayoutNode>{};
-    LayoutNodes.Reserve(StateCount * 2);
+    LayoutNodes.Reserve(ParentCount * 2);
 
-    for (auto i = 0; i < StateCount; ++i)
+    for (auto i = 0; i < ParentCount; ++i)
     { LayoutNodes.Add({ i, Ranks[i] }); }
 
-    // Layout edges (through dummies for multi-rank spans)
     struct FLayoutEdge { int32 From; int32 To; };
     auto LayoutEdges = TArray<FLayoutEdge>{};
 
-    for (auto& Trans : InSmInfo.Transitions)
+    for (auto& Trans : SmInfo.Transitions)
     {
-        auto S = Trans.SourceStateIndex;
-        auto T = Trans.TargetStateIndex;
-        if (S < 0 || S >= StateCount || T < 0 || T >= StateCount || S == T) { continue; }
+        if (Trans.IsSubSmTransition) { continue; }
+
+        auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
+        auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
+        if (NOT LayoutSrc || NOT LayoutDst) { continue; }
+
+        auto S = *LayoutSrc;
+        auto T = *LayoutDst;
+        if (S == T) { continue; }
 
         auto RankS = Ranks[S];
         auto RankT = Ranks[T];
         if (RankS == RankT) { continue; }
 
-        // Orient from lower rank to higher rank
         auto From = (RankS < RankT) ? S : T;
         auto To   = (RankS < RankT) ? T : S;
         auto FromRank = FMath::Min(RankS, RankT);
@@ -122,12 +400,10 @@ auto
 
         if (ToRank - FromRank == 1)
         {
-            // Adjacent ranks — direct edge, no dummy needed
             LayoutEdges.Add({ From, To });
         }
         else
         {
-            // Multi-rank span — insert dummy at each intermediate rank
             auto Prev = From;
             for (auto R = FromRank + 1; R < ToRank; ++R)
             {
@@ -141,22 +417,17 @@ auto
     }
 
     auto TotalLayoutNodes = LayoutNodes.Num();
-
-    // Recompute MaxRank (dummies don't change it, but be safe)
     for (auto& N : LayoutNodes) { MaxRank = FMath::Max(MaxRank, N.Rank); }
 
-    // ----------------------------------------------------------------------------------------------------------------
+    // ================================================================================================================
     // Phase 3: Barycenter crossing reduction
-    // Operates on all nodes (real + dummy). Dummies at intermediate ranks let the
-    // heuristic properly route long-distance edges and avoid crossings.
-    // ----------------------------------------------------------------------------------------------------------------
+    // ================================================================================================================
 
     auto RankLayers = TArray<TArray<int32>>{};
     RankLayers.SetNum(MaxRank + 1);
     for (auto i = 0; i < TotalLayoutNodes; ++i)
     { RankLayers[LayoutNodes[i].Rank].Add(i); }
 
-    // Undirected adjacency over layout edges
     auto Adj = TArray<TArray<int32>>{};
     Adj.SetNum(TotalLayoutNodes);
     for (auto& E : LayoutEdges)
@@ -165,15 +436,18 @@ auto
         Adj[E.To].AddUnique(E.From);
     }
 
-    // Also add same-rank adjacency for states connected by same-rank edges
-    for (auto& Trans : InSmInfo.Transitions)
+    for (auto& Trans : SmInfo.Transitions)
     {
-        auto S = Trans.SourceStateIndex;
-        auto T = Trans.TargetStateIndex;
-        if (S >= 0 && S < StateCount && T >= 0 && T < StateCount && Ranks[S] == Ranks[T])
+        if (Trans.IsSubSmTransition) { continue; }
+
+        auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
+        auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
+        if (NOT LayoutSrc || NOT LayoutDst) { continue; }
+
+        if (Ranks[*LayoutSrc] == Ranks[*LayoutDst])
         {
-            Adj[S].AddUnique(T);
-            Adj[T].AddUnique(S);
+            Adj[*LayoutSrc].AddUnique(*LayoutDst);
+            Adj[*LayoutDst].AddUnique(*LayoutSrc);
         }
     }
 
@@ -185,7 +459,6 @@ auto
         { Slots[RankLayers[R][S]] = static_cast<float>(S); }
     }
 
-    // Alternating sweeps
     for (auto Iter = 0; Iter < LayoutParams.CrossingReductionPasses; ++Iter)
     {
         auto bLTR  = (Iter % 2 == 0);
@@ -223,15 +496,14 @@ auto
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------
-    // Phase 4: Coordinate assignment — extract real node positions from final ordering
-    // Dummies are discarded; real nodes keep their rank-order slot.
-    // ----------------------------------------------------------------------------------------------------------------
+    // ================================================================================================================
+    // Phase 4: Coordinate assignment — same formula as the original Sugiyama
+    // ================================================================================================================
 
-    auto PosX = TArray<int32>{};
-    auto PosY = TArray<int32>{};
-    PosX.SetNum(StateCount);
-    PosY.SetNum(StateCount);
+    auto ParentPosX = TArray<int32>{};
+    auto ParentPosY = TArray<int32>{};
+    ParentPosX.SetNum(ParentCount);
+    ParentPosY.SetNum(ParentCount);
 
     for (auto R = 0; R <= MaxRank; ++R)
     {
@@ -245,22 +517,96 @@ auto
             if (LayoutNodes[Idx].OriginalIndex >= 0)
             {
                 auto Orig = LayoutNodes[Idx].OriginalIndex;
-                PosX[Orig] = R * LayoutParams.SpacingX;
-                PosY[Orig] = S * LayoutParams.SpacingY - TotalHeight / 2;
+                ParentPosX[Orig] = R * LayoutParams.SpacingX;
+                ParentPosY[Orig] = S * LayoutParams.SpacingY - TotalHeight / 2;
+            }
+        }
+    }
+
+    // ================================================================================================================
+    // Phase 5: Compute final state positions
+    // Parent states get their Sugiyama positions.
+    // Compound blocks are placed to the right of their owning parent state.
+    // Sub-SM states are offset within their compound block.
+    // ================================================================================================================
+
+    // Build final PosX/PosY for all states
+    auto PosX = TArray<int32>{};
+    auto PosY = TArray<int32>{};
+    PosX.SetNum(StateCount);
+    PosY.SetNum(StateCount);
+
+    for (auto i = 0; i < ParentCount; ++i)
+    {
+        auto GlobalIdx = ParentStateIndices[i];
+        PosX[GlobalIdx] = ParentPosX[i];
+        PosY[GlobalIdx] = ParentPosY[i];
+    }
+
+    // Place compound blocks below the entire parent graph, X-aligned with their
+    // parent state. Each block starts at the same Y row. If two blocks overlap
+    // horizontally, the later one is pushed down to a new row.
+    if (CompoundCount > 0)
+    {
+        auto ParentMaxY = INT_MIN;
+        for (auto i = 0; i < ParentCount; ++i)
+        { ParentMaxY = FMath::Max(ParentMaxY, ParentPosY[i]); }
+
+        constexpr auto EstimatedNodeHeight = 50;
+        auto BaseCompoundY = ParentMaxY + EstimatedNodeHeight + LayoutParams.SpacingY;
+
+        // Each placed block occupies an X range. Track them to detect horizontal overlap.
+        struct FPlacedBlock { int32 X; int32 Width; int32 Y; int32 Height; };
+        auto PlacedBlocks = TArray<FPlacedBlock>{};
+
+        for (auto CompIdx = 0; CompIdx < CompoundCount; ++CompIdx)
+        {
+            auto& Block = CompoundBlocks[CompIdx];
+            auto* ParentLayoutIdx = ParentGlobalToLayout.Find(Block.ParentStateIndex);
+            if (NOT ParentLayoutIdx) { continue; }
+
+            auto BlockX = ParentPosX[*ParentLayoutIdx];
+            auto BlockW = static_cast<int32>(Block.Width);
+            auto BlockH = static_cast<int32>(Block.Height);
+
+            // Find the lowest Y where this block doesn't overlap any already-placed block
+            auto BlockY = BaseCompoundY;
+            for (auto& Placed : PlacedBlocks)
+            {
+                auto HorizontalOverlap = BlockX < (Placed.X + Placed.Width + LayoutParams.SpacingX)
+                    && (BlockX + BlockW) > (Placed.X - LayoutParams.SpacingX);
+
+                if (HorizontalOverlap)
+                { BlockY = FMath::Max(BlockY, Placed.Y + Placed.Height + LayoutParams.SpacingY); }
+            }
+
+            PlacedBlocks.Add({ BlockX, BlockW, BlockY, BlockH });
+
+            Block.LayoutPosX = BlockX;
+            Block.LayoutPosY = BlockY;
+
+            for (auto GlobalIdx : Block.SubSmStateIndices)
+            {
+                auto* Offset = Block.InternalOffsets.Find(GlobalIdx);
+                if (Offset)
+                {
+                    PosX[GlobalIdx] = BlockX + static_cast<int32>(Offset->X);
+                    PosY[GlobalIdx] = BlockY + static_cast<int32>(Offset->Y);
+                }
             }
         }
     }
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Create state nodes
+    // Create state nodes (all states — parent and sub-SM)
     // ----------------------------------------------------------------------------------------------------------------
 
     auto StateNodes = TArray<UCkSmDebugNode_State*>{};
-    StateNodes.Reserve(StateCount);
+    StateNodes.SetNum(StateCount);
 
     for (auto i = 0; i < StateCount; ++i)
     {
-        auto& State = InSmInfo.States[i];
+        auto& State = SmInfo.States[i];
 
         auto StateNode = NewObject<UCkSmDebugNode_State>(this);
         StateNode->PopulateFromStateInfo(State, i);
@@ -270,26 +616,91 @@ auto
 
         StateNode->SetFlags(RF_Transactional);
         AddNode(StateNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
-        StateNodes.Add(StateNode);
+        StateNodes[i] = StateNode;
+    }
+
+    // Set parent-active state on sub-SM nodes (for fade effect)
+    for (auto& Block : CompoundBlocks)
+    {
+        auto ParentIsActive = Block.ParentStateIndex >= 0
+            && Block.ParentStateIndex < StateCount
+            && SmInfo.States[Block.ParentStateIndex].IsCurrentState;
+
+        for (auto SubIdx : Block.SubSmStateIndices)
+        {
+            if (SubIdx >= 0 && SubIdx < StateCount && StateNodes[SubIdx])
+            { StateNodes[SubIdx]->Set_IsParentStateActive(ParentIsActive); }
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Create compound block nodes
+    // ----------------------------------------------------------------------------------------------------------------
+
+    for (auto CompIdx = 0; CompIdx < CompoundCount; ++CompIdx)
+    {
+        auto& Block = CompoundBlocks[CompIdx];
+
+        auto CompoundNode = NewObject<UCkSmDebugNode_Compound>(this);
+        CompoundNode->Populate(
+            Block.ParentStateIndex,
+            Block.Label,
+            Block.Width,
+            Block.Height,
+            Block.SubSmStateIndices);
+
+        CompoundNode->NodePosX = Block.LayoutPosX;
+        CompoundNode->NodePosY = Block.LayoutPosY;
+        CompoundNode->AllocateDefaultPins();
+
+        // Check if any sub-SM state is the current state
+        auto HasActive = false;
+        for (auto GlobalIdx : Block.SubSmStateIndices)
+        {
+            if (GlobalIdx >= 0 && GlobalIdx < StateCount && SmInfo.States[GlobalIdx].IsCurrentState)
+            { HasActive = true; break; }
+        }
+        CompoundNode->Set_HasActiveSubState(HasActive);
+
+        auto ParentIsActive = Block.ParentStateIndex >= 0
+            && Block.ParentStateIndex < StateCount
+            && SmInfo.States[Block.ParentStateIndex].IsCurrentState;
+        CompoundNode->Set_IsParentStateActive(ParentIsActive);
+
+        CompoundNode->SetFlags(RF_Transactional);
+        AddNode(CompoundNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
+
+        // Wire: ParentState.Out → CompoundBlock.In (draws an arrow like any other transition)
+        if (Block.ParentStateIndex >= 0 && Block.ParentStateIndex < StateNodes.Num())
+        {
+            auto* ParentState = StateNodes[Block.ParentStateIndex];
+            if (ParentState)
+            {
+                auto ParentOutputPin = ParentState->Pins.IsValidIndex(1) ? ParentState->Pins[1] : nullptr;
+                auto CompoundInputPin = CompoundNode->Pins.IsValidIndex(0) ? CompoundNode->Pins[0] : nullptr;
+                if (ParentOutputPin && CompoundInputPin)
+                { ParentOutputPin->MakeLinkTo(CompoundInputPin); }
+            }
+        }
     }
 
     // ----------------------------------------------------------------------------------------------------------------
     // Create transition nodes wired in series: SourceState.Out → Transition.In → Transition.Out → TargetState.In
     // ----------------------------------------------------------------------------------------------------------------
 
-    for (auto i = 0; i < InSmInfo.Transitions.Num(); ++i)
+    for (auto i = 0; i < SmInfo.Transitions.Num(); ++i)
     {
-        auto& Transition = InSmInfo.Transitions[i];
+        auto& Transition = SmInfo.Transitions[i];
         auto SourceIdx = Transition.SourceStateIndex;
         auto TargetIdx = Transition.TargetStateIndex;
 
         if (SourceIdx < 0 || SourceIdx >= StateNodes.Num()) { continue; }
         if (TargetIdx < 0 || TargetIdx >= StateNodes.Num()) { continue; }
+        if (NOT StateNodes[SourceIdx] || NOT StateNodes[TargetIdx]) { continue; }
 
         auto TransitionNode = NewObject<UCkSmDebugNode_Transition>(this);
         TransitionNode->PopulateFromTransitionInfo(Transition, i);
 
-        // Position at midpoint — PerformSecondPassLayout will refine
         TransitionNode->NodePosX = (StateNodes[SourceIdx]->NodePosX + StateNodes[TargetIdx]->NodePosX) / 2;
         TransitionNode->NodePosY = (StateNodes[SourceIdx]->NodePosY + StateNodes[TargetIdx]->NodePosY) / 2;
         TransitionNode->AllocateDefaultPins();
@@ -297,20 +708,18 @@ auto
         TransitionNode->SetFlags(RF_Transactional);
         AddNode(TransitionNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
 
-        // Wire: SourceState.Out → Transition.In
         auto SourceOutputPin = StateNodes[SourceIdx]->Pins.IsValidIndex(1) ? StateNodes[SourceIdx]->Pins[1] : nullptr;
         auto TransInputPin = TransitionNode->Pins.IsValidIndex(0) ? TransitionNode->Pins[0] : nullptr;
         if (SourceOutputPin && TransInputPin)
         { SourceOutputPin->MakeLinkTo(TransInputPin); }
 
-        // Wire: Transition.Out → TargetState.In
         auto TransOutputPin = TransitionNode->Pins.IsValidIndex(1) ? TransitionNode->Pins[1] : nullptr;
         auto TargetInputPin = StateNodes[TargetIdx]->Pins.IsValidIndex(0) ? StateNodes[TargetIdx]->Pins[0] : nullptr;
         if (TransOutputPin && TargetInputPin)
         { TransOutputPin->MakeLinkTo(TargetInputPin); }
     }
 
-    _TopologyHash = ComputeTopologyHash(InSmInfo);
+    _TopologyHash = ComputeTopologyHash(SmInfo);
 
     SetSuppressNotifications(false);
     NotifyGraphChanged();
@@ -324,28 +733,94 @@ auto
         const FCkSmDebugger_SmInfo& InSmInfo)
     -> void
 {
-    auto NewHash = ComputeTopologyHash(InSmInfo);
+    // Build augmented SmInfo with cached sub-SM data (same as RebuildFromSmInfo)
+    auto SmInfo = InSmInfo;
+
+    auto ParentsWithLiveSubSm = TSet<int32>{};
+    for (auto& State : SmInfo.States)
+    {
+        if (State.IsSubSmNode)
+        { ParentsWithLiveSubSm.Add(State.SubSmParentStateIndex); }
+    }
+
+    for (auto i = 0; i < InSmInfo.States.Num(); ++i)
+    {
+        if (InSmInfo.States[i].IsSubSmNode) { continue; }
+        if (ParentsWithLiveSubSm.Contains(i)) { continue; }
+
+        auto* Cached = _CachedSubSmData.Find(i);
+        if (NOT Cached || Cached->States.Num() == 0) { continue; }
+
+        auto IndexOffset = SmInfo.States.Num();
+        for (auto& CachedState : Cached->States)
+        {
+            auto InjectedState = CachedState;
+            InjectedState.IsCurrentState = false;
+            InjectedState.HasBeenVisited = false;
+            InjectedState.DwellTimeSeconds = 0.0;
+            InjectedState.IsSubSmNode = true;
+            InjectedState.SubSmParentStateIndex = i;
+            InjectedState.SubSmParentStateName = SmInfo.States[i].StateName;
+            SmInfo.States.Add(MoveTemp(InjectedState));
+        }
+        for (auto& CachedTrans : Cached->Transitions)
+        {
+            auto InjectedTrans = CachedTrans;
+            InjectedTrans.SourceStateIndex += IndexOffset;
+            InjectedTrans.TargetStateIndex += IndexOffset;
+            InjectedTrans.IsSubSmTransition = true;
+            InjectedTrans.AreAllConditionsSatisfied = false;
+            SmInfo.Transitions.Add(MoveTemp(InjectedTrans));
+        }
+    }
+
+    auto NewHash = ComputeTopologyHash(SmInfo);
     if (NewHash != _TopologyHash)
     {
         RebuildFromSmInfo(InSmInfo);
         return;
     }
 
-    _TransitionData = InSmInfo.Transitions;
+    _TransitionData = SmInfo.Transitions;
 
     for (auto Node : Nodes)
     {
         if (auto StateNode = Cast<UCkSmDebugNode_State>(Node))
         {
             auto Idx = StateNode->Get_StateIndex();
-            if (Idx >= 0 && Idx < InSmInfo.States.Num())
-            { StateNode->UpdateRuntimeData(InSmInfo.States[Idx]); }
+            if (Idx >= 0 && Idx < SmInfo.States.Num())
+            { StateNode->UpdateRuntimeData(SmInfo.States[Idx]); }
         }
         else if (auto TransitionNode = Cast<UCkSmDebugNode_Transition>(Node))
         {
             auto Idx = TransitionNode->Get_TransitionIndex();
-            if (Idx >= 0 && Idx < InSmInfo.Transitions.Num())
-            { TransitionNode->UpdateRuntimeData(InSmInfo.Transitions[Idx]); }
+            if (Idx >= 0 && Idx < SmInfo.Transitions.Num())
+            { TransitionNode->UpdateRuntimeData(SmInfo.Transitions[Idx]); }
+        }
+        else if (auto CompoundNode = Cast<UCkSmDebugNode_Compound>(Node))
+        {
+            auto HasActive = false;
+            for (auto SubIdx : CompoundNode->Get_SubSmStateIndices())
+            {
+                if (SubIdx >= 0 && SubIdx < SmInfo.States.Num() && SmInfo.States[SubIdx].IsCurrentState)
+                { HasActive = true; break; }
+            }
+            CompoundNode->Set_HasActiveSubState(HasActive);
+
+            auto ParentIdx = CompoundNode->Get_ParentStateIndex();
+            auto ParentIsActive = ParentIdx >= 0
+                && ParentIdx < SmInfo.States.Num()
+                && SmInfo.States[ParentIdx].IsCurrentState;
+
+            CompoundNode->Set_IsParentStateActive(ParentIsActive);
+
+            // Update parent-active state on sub-SM nodes (for fade effect)
+
+            for (auto SubIdx : CompoundNode->Get_SubSmStateIndices())
+            {
+                if (auto* SubNode = FindStateNode(SubIdx))
+                { SubNode->Set_IsParentStateActive(ParentIsActive); }
+            }
         }
     }
 }
@@ -392,6 +867,25 @@ auto
 
 auto
     UCkSmDebugGraph::
+    FindCompoundNode(
+        int32 InParentStateIndex) const
+    -> UCkSmDebugNode_Compound*
+{
+    for (auto Node : Nodes)
+    {
+        if (auto* CompNode = Cast<UCkSmDebugNode_Compound>(Node))
+        {
+            if (CompNode->Get_ParentStateIndex() == InParentStateIndex)
+            { return CompNode; }
+        }
+    }
+    return nullptr;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
     FindTransitionBetween(
         int32 InSourceIdx,
         int32 InTargetIdx) const
@@ -427,6 +921,125 @@ auto
     }
 
     return Hash;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Scrub + Live highlight
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
+    ApplyScrubHighlight(
+        int32 InActiveStateIdx,
+        int32 InExitedStateIdx)
+    -> void
+{
+    for (auto Node : Nodes)
+    {
+        if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
+        {
+            auto Idx = StateNode->Get_StateIndex();
+            StateNode->Set_IsScrubActiveState(Idx == InActiveStateIdx);
+            StateNode->Set_IsScrubExitedState(Idx == InExitedStateIdx);
+        }
+        else if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
+        {
+            auto IsHighlighted =
+                TransNode->Get_TransitionIndex() >= 0
+                && InExitedStateIdx >= 0
+                && InActiveStateIdx >= 0;
+
+            if (IsHighlighted)
+            {
+                auto FoundTrans = FindTransitionBetween(InExitedStateIdx, InActiveStateIdx);
+                IsHighlighted = FoundTrans
+                    && FoundTrans->SourceStateIndex == InExitedStateIdx
+                    && FoundTrans->TargetStateIndex == InActiveStateIdx
+                    && TransNode->Get_TransitionIndex() == (FoundTrans - _TransitionData.GetData());
+            }
+
+            TransNode->Set_IsScrubHighlighted(IsHighlighted);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
+    ClearScrubHighlight()
+    -> void
+{
+    for (auto Node : Nodes)
+    {
+        if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
+        {
+            StateNode->Set_IsScrubActiveState(false);
+            StateNode->Set_IsScrubExitedState(false);
+            StateNode->Set_IsPreviousState(false);
+        }
+        else if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
+        {
+            TransNode->Set_IsScrubHighlighted(false);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
+    TickLiveFlash(
+        float InDeltaTime,
+        int32 InPrevStateIdx,
+        int32 InCurrentStateIdx)
+    -> void
+{
+    // On state change: find the transition that fired and flash it
+    if (InPrevStateIdx >= 0
+        && InCurrentStateIdx >= 0
+        && InPrevStateIdx != InCurrentStateIdx)
+    {
+        for (auto i = 0; i < _TransitionData.Num(); ++i)
+        {
+            if (_TransitionData[i].SourceStateIndex == InPrevStateIdx
+                && _TransitionData[i].TargetStateIndex == InCurrentStateIdx)
+            {
+                if (auto* TransNode = FindTransitionNode(i))
+                { TransNode->Set_LiveFlashAlpha(1.0f); }
+                break;
+            }
+        }
+    }
+
+    // Mark previous state (the state we just left) with a grey outline.
+    // InPrevStateIdx reflects the last-known state from the previous tick.
+    for (auto Node : Nodes)
+    {
+        if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
+        {
+            auto Idx = StateNode->Get_StateIndex();
+            StateNode->Set_IsPreviousState(
+                InPrevStateIdx >= 0
+                && Idx == InPrevStateIdx
+                && InPrevStateIdx != InCurrentStateIdx);
+        }
+    }
+
+    // Decay all flash alphas
+    constexpr auto FlashDuration = 0.5f;
+    for (auto Node : Nodes)
+    {
+        if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
+        {
+            auto Alpha = TransNode->Get_LiveFlashAlpha();
+            if (Alpha > 0.0f)
+            {
+                Alpha -= InDeltaTime / FlashDuration;
+                TransNode->Set_LiveFlashAlpha(FMath::Max(0.0f, Alpha));
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -577,6 +1190,11 @@ auto
     StateNodes[1]->ToggleExitBreakpoint();    // Walking — exit BP
     StateNodes[4]->ToggleEntryBreakpoint();   // CrouchIdle — both BPs
     StateNodes[4]->ToggleExitBreakpoint();
+
+    // Mockup highlight states — demonstrate glow style
+    // State 3 (IdleLanding) is already IsActive=true → orange body tint (current state).
+    StateNodes[1]->Set_IsScrubActiveState(true);   // Walking — green glow (scrub active)
+    StateNodes[2]->Set_IsPreviousState(true);       // IdleJump — grey glow (previous state)
 
     // ----------------------------------------------------------------------------------------------------------------
     // Entry → Idle (direct)

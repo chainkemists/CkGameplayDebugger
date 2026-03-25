@@ -9,8 +9,18 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class UCkSmDebugNode_Compound;
 class UCkSmDebugNode_State;
 class UCkSmDebugNode_Transition;
+
+// --------------------------------------------------------------------------------------------------------------------
+
+enum class ECkSmDebugger_HistoryStyle : uint8
+{
+    ArrowCards,
+    ClassicArrows,
+    CompactBlocks,
+};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -22,6 +32,8 @@ struct FCkSmLayoutParams
     int32 SpacingY                 = 120;
     int32 CrossingReductionPasses  = 4;
     int32 NameDepth                = 1;      // how many tag segments to show (from the leaf). 0 = full name.
+    float BadgeSpread              = 20.0f;  // slide step (px) for separating overlapping transition badges
+    ECkSmDebugger_HistoryStyle HistoryStyle = ECkSmDebugger_HistoryStyle::ClassicArrows;
 
     // Convert a class name like "Ck_SmTest_Complex_State_Chase" to a short display name
     // at the configured depth. Depth 1 → "Chase", 2 → "State.Chase", 0 → full tag.
@@ -77,6 +89,9 @@ public:
     // Find a transition node by its transition index (returns nullptr if not found)
     auto FindTransitionNode(int32 InTransitionIndex) const -> UCkSmDebugNode_Transition*;
 
+    // Find a compound node by its parent state index (returns nullptr if not found)
+    auto FindCompoundNode(int32 InParentStateIndex) const -> UCkSmDebugNode_Compound*;
+
     // Layout parameters — exposed to the toolbar
     FCkSmLayoutParams LayoutParams;
 
@@ -94,6 +109,11 @@ public:
     auto Get_TransitionData() const -> const TArray<FCkSmDebugger_TransitionInfo>& { return _TransitionData; }
     auto FindTransitionBetween(int32 InSourceIdx, int32 InTargetIdx) const -> const FCkSmDebugger_TransitionInfo*;
 
+    // Highlight: scrub mode (history click) and live flash (transition just fired)
+    auto ApplyScrubHighlight(int32 InActiveStateIdx, int32 InExitedStateIdx) -> void;
+    auto ClearScrubHighlight() -> void;
+    auto TickLiveFlash(float InDeltaTime, int32 InPrevStateIdx, int32 InCurrentStateIdx) -> void;
+
 private:
     auto
     ComputeTopologyHash(
@@ -107,6 +127,16 @@ private:
 
     // Cached transition info for the connection policy to read
     TArray<FCkSmDebugger_TransitionInfo> _TransitionData;
+
+    // Cached sub-SM topology — persists across rebuilds so compound blocks remain
+    // visible even when the sub-SM entity is not running
+    struct FCachedSubSmData
+    {
+        FString Label;
+        TArray<FCkSmDebugger_StateInfo> States;
+        TArray<FCkSmDebugger_TransitionInfo> Transitions;
+    };
+    TMap<int32, FCachedSubSmData> _CachedSubSmData;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

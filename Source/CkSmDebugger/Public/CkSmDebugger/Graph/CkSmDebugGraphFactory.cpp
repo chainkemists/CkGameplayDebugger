@@ -1,8 +1,10 @@
 #include "CkSmDebugGraphFactory.h"
 
+#include "CkSmDebugNode_Compound.h"
 #include "CkSmDebugNode_Entry.h"
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugNode_Transition.h"
+#include "SGraphNode_SmCompound.h"
 #include "SGraphNode_SmEntry.h"
 #include "SGraphNode_SmState.h"
 #include "SGraphNode_SmTransition.h"
@@ -15,6 +17,11 @@ auto
         UEdGraphNode* InNode) const
     -> TSharedPtr<SGraphNode>
 {
+    if (auto* CompoundNode = Cast<UCkSmDebugNode_Compound>(InNode))
+    {
+        return SNew(SGraphNode_SmCompound, CompoundNode);
+    }
+
     if (auto* StateNode = Cast<UCkSmDebugNode_State>(InNode))
     {
         return SNew(SGraphNode_SmState, StateNode);

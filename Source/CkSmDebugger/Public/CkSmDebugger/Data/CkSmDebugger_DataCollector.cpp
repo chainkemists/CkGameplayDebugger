@@ -383,6 +383,15 @@ auto
         ViewerEntry.TransitionOrder = HistoryEntry.TransitionOrder;
         ViewerEntry.ConditionNames = HistoryEntry.TransitionConditionNames;
         ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistoryEntry.RealTimeSeconds);
+
+        for (const auto& Snap : HistoryEntry.TaskSnapshots)
+        {
+            auto ViewSnap = FCkSmDebugger_HistoryTaskSnapshot{};
+            ViewSnap.TaskName = Snap.TaskName;
+            ViewSnap.Result = Snap.Result;
+            ViewerEntry.TaskSnapshots.Add(MoveTemp(ViewSnap));
+        }
+
         SmInfo.History.Add(MoveTemp(ViewerEntry));
     }
 
@@ -531,6 +540,15 @@ auto
                 ViewerEntry.TransitionOrder = HistEntry.TransitionOrder;
                 ViewerEntry.ConditionNames = HistEntry.TransitionConditionNames;
                 ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistEntry.RealTimeSeconds);
+
+                for (const auto& Snap : HistEntry.TaskSnapshots)
+                {
+                    auto ViewSnap = FCkSmDebugger_HistoryTaskSnapshot{};
+                    ViewSnap.TaskName = Snap.TaskName;
+                    ViewSnap.Result = Snap.Result;
+                    ViewerEntry.TaskSnapshots.Add(MoveTemp(ViewSnap));
+                }
+
                 ViewerRun.History.Add(MoveTemp(ViewerEntry));
             }
 
@@ -604,17 +622,18 @@ auto
     MergeSubStateMachines(
         FCkSmDebugger_SmInfo& InOutSmInfo,
         TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
-        int32 InDepth)
+        int32 InDepth,
+        int32 InScanFrom)
     -> void
 {
     // Guard against infinite recursion
     if (InDepth > 8)
     { return; }
 
-    // Scan current states for sub-SMs (iterate over a snapshot of count since we append)
+    // Scan states for sub-SMs starting from InScanFrom (avoids re-processing already-merged parents)
     auto OriginalStateCount = InOutSmInfo.States.Num();
 
-    for (auto StateIdx = 0; StateIdx < OriginalStateCount; ++StateIdx)
+    for (auto StateIdx = InScanFrom; StateIdx < OriginalStateCount; ++StateIdx)
     {
         auto& State = InOutSmInfo.States[StateIdx];
 
@@ -661,10 +680,10 @@ auto
         }
     }
 
-    // Recurse for nested sub-SMs (states added above may themselves have sub-SMs)
+    // Recurse for nested sub-SMs — only scan newly added states to avoid re-merging
     if (InOutSmInfo.States.Num() > OriginalStateCount)
     {
-        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, InDepth + 1);
+        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, InDepth + 1, OriginalStateCount);
     }
 }
 

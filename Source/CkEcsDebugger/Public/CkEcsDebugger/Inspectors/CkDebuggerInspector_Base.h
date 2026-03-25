@@ -30,9 +30,23 @@ public:
      */
     virtual auto OnDeactivated() -> void {}
 
+    /**
+     * Returns true if the inspector wants to be fully rebuilt this frame.
+     * The panel checks this after Tick and rebuilds if set.
+     * The flag is automatically cleared after the rebuild.
+     */
+    auto NeedsRebuild() const -> bool { return bNeedsRebuild; }
+    auto ClearRebuildFlag() -> void { bNeedsRebuild = false; }
+
     virtual auto Set_SelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> void { SelectionModel = MoveTemp(InModel); }
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection> { return SelectionModel; }
 
 protected:
+    /** Call this from Tick when the inspector detects its data has structurally changed */
+    auto RequestRebuild() -> void { bNeedsRebuild = true; }
+
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+
+private:
+    bool bNeedsRebuild = false;
 };

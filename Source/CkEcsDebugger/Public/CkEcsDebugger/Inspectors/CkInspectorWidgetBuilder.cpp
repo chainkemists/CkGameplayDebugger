@@ -68,6 +68,24 @@ auto FCkInspectorWidgetBuilder::AddClickableRow(
     return *this;
 }
 
+auto FCkInspectorWidgetBuilder::AddClickableRow(
+    const FText& InLabel,
+    FValueGetter InValueGetter,
+    FColorGetter InColorGetter,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
+{
+    Rows.Add(FRowDefinition
+    {
+        InLabel,
+        MoveTemp(InValueGetter),
+        MoveTemp(InColorGetter),
+        MoveTemp(InOnClicked),
+        false
+    });
+
+    return *this;
+}
+
 auto FCkInspectorWidgetBuilder::AddHeader(const FText& InHeaderText) -> FCkInspectorWidgetBuilder&
 {
     Rows.Add(FRowDefinition

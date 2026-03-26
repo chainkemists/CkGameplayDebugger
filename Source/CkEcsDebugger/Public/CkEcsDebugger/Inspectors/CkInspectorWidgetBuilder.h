@@ -34,6 +34,12 @@ public:
         const FLinearColor& InValueColor,
         FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&;
 
+    auto AddClickableRow(
+        const FText& InLabel,
+        FValueGetter InValueGetter,
+        FColorGetter InColorGetter,
+        FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&;
+
     auto AddHeader(const FText& InHeaderText) -> FCkInspectorWidgetBuilder&;
 
     auto Build(const FCk_Handle& InEntity, const FString& InFilter = FString()) -> TSharedRef<SWidget>;

@@ -95,7 +95,7 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
         {
             if (ck::Is_NOT_Valid(ItemHandle)) { continue; }
 
-            const auto* Definition = UCk_Utils_InventoryItem_UE::Get_Definition(ItemHandle);
+            const auto* Definition = UCk_Utils_Item_UE::Get_Definition(ItemHandle);
             const auto ItemName = (Definition != nullptr)
                 ? Definition->Get_CoreInfo().Get_Name().ToString()
                 : ItemHandle.ToString();

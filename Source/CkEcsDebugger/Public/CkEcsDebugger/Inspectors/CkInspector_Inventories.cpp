@@ -2,8 +2,8 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkInventory/Inventory/CkInventory_Utils.h"
-#include "CkInventory/Item/CkInventoryItem_Utils.h"
-#include "CkInventory/Item/CkInventoryItem_Definition.h"
+#include "CkInventory/Item/CkItem_Utils.h"
+#include "CkInventory/Item/CkItem_Definition.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -15,9 +15,9 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Inventories)
 
-static const FLinearColor Color_InventoryName = FLinearColor(0.55f, 0.78f, 0.95f);
-static const FLinearColor Color_InventoryType = FLinearColor(0.75f, 0.75f, 0.75f);
-static const FLinearColor Color_ItemName = FLinearColor(0.85f, 0.75f, 0.55f);
+static constexpr FLinearColor Color_InventoryName = FLinearColor(0.55f, 0.78f, 0.95f);
+static constexpr FLinearColor Color_InventoryType = FLinearColor(0.75f, 0.75f, 0.75f);
+static constexpr FLinearColor Color_ItemName = FLinearColor(0.85f, 0.75f, 0.55f);
 
 // =====================================================================================================================
 

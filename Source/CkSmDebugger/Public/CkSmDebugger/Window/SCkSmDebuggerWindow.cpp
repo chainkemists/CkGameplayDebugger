@@ -31,7 +31,7 @@
 
 SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
 {
-    if (_Graph)
+    if (_Graph && UObjectInitialized())
     {
         _Graph->RemoveFromRoot();
         _Graph = nullptr;

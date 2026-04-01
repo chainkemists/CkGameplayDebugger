@@ -18,12 +18,22 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
 
+    auto OnPaint(
+        const FPaintArgs& Args,
+        const FGeometry& AllottedGeometry,
+        const FSlateRect& MyCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 LayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool bParentEnabled) const -> int32 override;
+
     auto OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> void override;
     auto OnMouseLeave(const FPointerEvent& MouseEvent) -> void override;
 
 private:
     auto Get_BackgroundBrush() const -> const FSlateBrush*;
 
+    TAttribute<FLinearColor> NodeColorAttribute;
     TAttribute<bool> IsCenterAttribute;
     bool bIsHovered = false;
 };

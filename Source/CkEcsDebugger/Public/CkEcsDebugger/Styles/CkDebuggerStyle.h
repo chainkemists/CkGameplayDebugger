@@ -45,10 +45,15 @@ public:
     static const FLinearColor Color_Graph_Node_Center;
     static const FLinearColor Color_Graph_Node_Default;
 
-    static constexpr float GraphNode_Width = 140.0f;
-    static constexpr float GraphNode_Height = 36.0f;
+    static const FLinearColor Color_Graph_Node_Border_Default;
+    static const FLinearColor Color_Graph_Node_Border_Center;
+
+    static constexpr float GraphNode_Width = 180.0f;
+    static constexpr float GraphNode_Height = 40.0f;
     static constexpr float GraphNode_AccentWidth = 4.0f;
-    static constexpr float GraphNode_CornerRadius = 4.0f;
+    static constexpr float GraphNode_CornerRadius = 6.0f;
+    static constexpr float GraphNode_BorderThickness = 2.0f;
+    static constexpr float GraphNode_BorderThickness_Center = 3.0f;
 
 private:
     static TSharedPtr<FSlateStyleSet> StyleInstance;

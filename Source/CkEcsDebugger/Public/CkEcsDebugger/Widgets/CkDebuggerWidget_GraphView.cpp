@@ -231,44 +231,56 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         const auto TargetCenter = GraphToScreen(
             NodeEntries[Edge.TargetIndex].GraphPosition, ViewSize);
 
-        const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.6f);
+        const auto EdgeColor = Edge.Color.CopyWithNewOpacity(0.7f);
         const auto LineThickness = FMath::Max(1.5f, 2.0f * ZoomLevel);
         const auto Direction = (TargetCenter - SourceCenter).GetSafeNormal();
         const auto Perp = FVector2D(-Direction.Y, Direction.X);
+        const auto Distance = FVector2D::Distance(SourceCenter, TargetCenter);
 
-        // Only curve if multiple edges connect the same two nodes
+        // Compute curve offset for duplicate edges
         const uint64 PairKey = (static_cast<uint64>(FMath::Min(Edge.SourceIndex, Edge.TargetIndex)) << 32)
             | static_cast<uint64>(FMath::Max(Edge.SourceIndex, Edge.TargetIndex));
         const auto PairTotal = EdgePairCount.FindRef(PairKey);
         auto& DrawnCount = EdgePairDrawn.FindOrAdd(PairKey, 0);
         const auto PairIndex = DrawnCount++;
 
-        float CurveOffset = 0.0f;
+        auto CurveOffset = 0.0f;
         if (PairTotal > 1)
         {
-            // Spread edges symmetrically: -20, +20 for 2 edges; -20, 0, +20 for 3, etc.
             CurveOffset = (static_cast<float>(PairIndex) - static_cast<float>(PairTotal - 1) * 0.5f) * 25.0f;
         }
 
-        const auto MidPoint = (SourceCenter + TargetCenter) * 0.5f + Perp * CurveOffset;
+        // Cubic bezier control points — subtle curve for all edges, larger for duplicates
+        const auto BaseOffset = FMath::Min(Distance * 0.12f, 30.0f);
+        const auto P0 = SourceCenter;
+        const auto P3 = TargetCenter;
+        const auto P1 = P0 + Direction * Distance * 0.33f + Perp * (BaseOffset + CurveOffset);
+        const auto P2 = P0 + Direction * Distance * 0.67f + Perp * (BaseOffset + CurveOffset);
 
-        // Draw line (straight or curved through midpoint)
-        TArray<FVector2D> LinePoints;
-        LinePoints.Add(SourceCenter);
-        if (NOT FMath::IsNearlyZero(CurveOffset))
+        // Tessellate bezier into line segments
+        constexpr int32 NumSegments = 20;
+        TArray<FVector2D> CurvePoints;
+        CurvePoints.Reserve(NumSegments + 1);
+        for (int32 Seg = 0; Seg <= NumSegments; ++Seg)
         {
-            LinePoints.Add(MidPoint);
+            const auto T = static_cast<float>(Seg) / static_cast<float>(NumSegments);
+            const auto OneMinusT = 1.0f - T;
+            const auto Point = OneMinusT * OneMinusT * OneMinusT * P0
+                + 3.0f * OneMinusT * OneMinusT * T * P1
+                + 3.0f * OneMinusT * T * T * P2
+                + T * T * T * P3;
+            CurvePoints.Add(Point);
         }
-        LinePoints.Add(TargetCenter);
+
+        const auto PaintGeometry = AllottedGeometry.ToPaintGeometry(
+            AllottedGeometry.GetLocalSize(), FSlateLayoutTransform());
 
         FSlateDrawElement::MakeLines(
-            OutDrawElements, EdgeLayerId,
-            AllottedGeometry.ToPaintGeometry(AllottedGeometry.GetLocalSize(), FSlateLayoutTransform()), LinePoints,
+            OutDrawElements, EdgeLayerId, PaintGeometry, CurvePoints,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        // Directional arrow near target
-        const auto ArrowSource = FMath::IsNearlyZero(CurveOffset) ? SourceCenter : MidPoint;
-        const auto ArrowDir = (TargetCenter - ArrowSource).GetSafeNormal();
+        // Arrow head aligned with bezier tangent at endpoint
+        const auto ArrowDir = (CurvePoints.Last() - CurvePoints[CurvePoints.Num() - 2]).GetSafeNormal();
         const auto ArrowTip = TargetCenter - ArrowDir * (HalfNodeY + 4.0f);
         const auto ArrowPerp = FVector2D(-ArrowDir.Y, ArrowDir.X);
         constexpr float ArrowSize = 10.0f;
@@ -281,22 +293,25 @@ auto SCkDebuggerWidget_GraphView::OnPaint(
         ArrowRight.Add(ArrowTip);
         ArrowRight.Add(ArrowTip - ArrowDir * ArrowSize - ArrowPerp * ArrowSize * 0.5f);
 
-        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId,
-            AllottedGeometry.ToPaintGeometry(), ArrowLeft,
+        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId, PaintGeometry, ArrowLeft,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId,
-            AllottedGeometry.ToPaintGeometry(), ArrowRight,
+        FSlateDrawElement::MakeLines(OutDrawElements, EdgeLayerId, PaintGeometry, ArrowRight,
             ESlateDrawEffect::None, EdgeColor, true, LineThickness);
 
-        // Edge label at midpoint
+        // Edge label at bezier midpoint (T=0.5)
         if (NOT Edge.Label.IsEmpty())
         {
             const auto LabelText = Edge.Label.ToString();
             const auto TextSize = FSlateApplication::Get().GetRenderer()->GetFontMeasureService()
                 ->Measure(LabelText, LabelFont);
 
-            const auto LabelCenter = MidPoint + Perp * 8.0f;
+            // Bezier at T=0.5: coefficients are 0.125, 0.375, 0.375, 0.125
+            const auto BezierMid = 0.125f * P0 + 0.375f * P1 + 0.375f * P2 + 0.125f * P3;
+            // Tangent at T=0.5 for perpendicular offset
+            const auto BezierTangent = (-0.75f * P0 + -0.75f * P1 + 0.75f * P2 + 0.75f * P3).GetSafeNormal();
+            const auto LabelPerp = FVector2D(-BezierTangent.Y, BezierTangent.X);
+            const auto LabelCenter = BezierMid + LabelPerp * 8.0f;
             const auto LabelPos = LabelCenter - FVector2D(TextSize.X, TextSize.Y) * 0.5f;
 
             FSlateDrawElement::MakeText(

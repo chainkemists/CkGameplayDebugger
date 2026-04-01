@@ -45,6 +45,16 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "CkUIDebugger",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	],
 	"Plugins": [

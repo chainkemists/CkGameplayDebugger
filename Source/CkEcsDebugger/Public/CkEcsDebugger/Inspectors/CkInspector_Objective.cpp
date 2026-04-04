@@ -9,11 +9,7 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Objective)
 
-static const FLinearColor Color_NotStarted = FLinearColor(0.5f, 0.5f, 0.5f);
-static const FLinearColor Color_Active     = FLinearColor(0.55f, 0.78f, 0.95f);
-static const FLinearColor Color_Completed  = FLinearColor(0.6f, 0.85f, 0.55f);
-static const FLinearColor Color_Failed     = FLinearColor(0.95f, 0.35f, 0.3f);
-static const FLinearColor Color_MetaData   = FLinearColor(0.85f, 0.75f, 0.55f);
+static const FLinearColor Color_MetaData = FLinearColor(0.85f, 0.75f, 0.55f);
 
 // =====================================================================================================================
 
@@ -21,10 +17,10 @@ static auto GetStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
 {
     switch (InStatus)
     {
-        case ECk_ObjectiveStatus::NotStarted: return Color_NotStarted;
-        case ECk_ObjectiveStatus::Active:     return Color_Active;
-        case ECk_ObjectiveStatus::Completed:  return Color_Completed;
-        case ECk_ObjectiveStatus::Failed:     return Color_Failed;
+        case ECk_ObjectiveStatus::NotStarted: return FCkDebuggerStyle::Color_Status_NotStarted;
+        case ECk_ObjectiveStatus::Active:     return FCkDebuggerStyle::Color_Status_Active;
+        case ECk_ObjectiveStatus::Completed:  return FCkDebuggerStyle::Color_Status_Completed;
+        case ECk_ObjectiveStatus::Failed:     return FCkDebuggerStyle::Color_Status_Failed;
         default:                              return FCkDebuggerStyle::Color_Text_Primary;
     }
 }
@@ -66,7 +62,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
     Builder.AddRow(
         FText::FromString(TEXT("Name:")),
         [Name](const FCk_Handle& E) { return FText::FromString(Name.ToString()); },
-        Color_Active);
+        FCkDebuggerStyle::Color_Status_Active);
 
     // Display Name
     const auto DisplayName = UCk_Utils_Objective_UE::Get_DisplayName(ObjectiveHandle);

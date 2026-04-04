@@ -21,7 +21,7 @@ static const FLinearColor Color_Trace_Overlapping = FLinearColor(1.0f, 0.95f, 0.
 
 auto FCkInspector_ProbeTraces::Get_ComponentName() const -> FText
 {
-    return FText::FromString(TEXT("Probe Traces"));
+    return FText::FromString(TEXT("Probe Trace"));
 }
 
 auto FCkInspector_ProbeTraces::CanInspect(const FCk_Handle& Entity) const -> bool

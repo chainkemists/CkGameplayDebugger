@@ -40,6 +40,34 @@ public:
     static const FLinearColor Color_Warning;
     static const FLinearColor Color_Success;
 
+    // ---- Value-type colors (for displaying typed data uniformly across inspectors)
+
+    static const FLinearColor Color_Value_Bool_True;
+    static const FLinearColor Color_Value_Bool_False;
+    static const FLinearColor Color_Value_Numeric;
+    static const FLinearColor Color_Value_String;
+    static const FLinearColor Color_Value_Math;
+    static const FLinearColor Color_Value_Tag;
+    static const FLinearColor Color_Value_Enum;
+    static const FLinearColor Color_Value_Object;
+    static const FLinearColor Color_Value_Handle;
+
+    // ---- State colors (for enabled/disabled/overlapping status)
+
+    static const FLinearColor Color_State_Enabled;
+    static const FLinearColor Color_State_Disabled;
+    static const FLinearColor Color_State_Overlapping;
+    static const FLinearColor Color_State_Config;
+
+    // ---- Status colors (for objective/task progress)
+
+    static const FLinearColor Color_Status_NotStarted;
+    static const FLinearColor Color_Status_Active;
+    static const FLinearColor Color_Status_Completed;
+    static const FLinearColor Color_Status_Failed;
+
+    // ---- Graph colors
+
     static const FLinearColor Color_Graph_Background;
     static const FLinearColor Color_Graph_Edge;
     static const FLinearColor Color_Graph_Node_Center;

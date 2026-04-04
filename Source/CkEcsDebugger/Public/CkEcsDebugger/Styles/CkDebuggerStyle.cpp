@@ -31,6 +31,30 @@ const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(1.0f, 0.34f, 0.1
 const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
 const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.25f, 0.75f, 0.25f);
 
+// ---- Value-type colors
+const FLinearColor FCkDebuggerStyle::Color_Value_Bool_True = FLinearColor(0.2f, 1.0f, 0.4f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Bool_False = FLinearColor(1.0f, 0.4f, 0.4f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Numeric = FLinearColor(0.6f, 0.9f, 0.6f);
+const FLinearColor FCkDebuggerStyle::Color_Value_String = FLinearColor(1.0f, 0.85f, 0.5f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Math = FLinearColor(0.7f, 0.7f, 1.0f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Tag = FLinearColor(0.8f, 0.6f, 1.0f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Enum = FLinearColor(0.5f, 0.9f, 0.9f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Object = FLinearColor(0.9f, 0.7f, 0.4f);
+const FLinearColor FCkDebuggerStyle::Color_Value_Handle = FLinearColor(0.4f, 0.8f, 1.0f);
+
+// ---- State colors
+const FLinearColor FCkDebuggerStyle::Color_State_Enabled = FLinearColor(0.0f, 1.0f, 0.5f);
+const FLinearColor FCkDebuggerStyle::Color_State_Disabled = FLinearColor(1.0f, 0.5f, 0.5f);
+const FLinearColor FCkDebuggerStyle::Color_State_Overlapping = FLinearColor(1.0f, 0.95f, 0.0f);
+const FLinearColor FCkDebuggerStyle::Color_State_Config = FLinearColor(1.0f, 0.8f, 0.01f);
+
+// ---- Status colors
+const FLinearColor FCkDebuggerStyle::Color_Status_NotStarted = FLinearColor(0.5f, 0.5f, 0.5f);
+const FLinearColor FCkDebuggerStyle::Color_Status_Active = FLinearColor(0.55f, 0.78f, 0.95f);
+const FLinearColor FCkDebuggerStyle::Color_Status_Completed = FLinearColor(0.6f, 0.85f, 0.55f);
+const FLinearColor FCkDebuggerStyle::Color_Status_Failed = FLinearColor(0.95f, 0.35f, 0.3f);
+
+// ---- Graph colors
 const FLinearColor FCkDebuggerStyle::Color_Graph_Background = FLinearColor(FColor(0x0D, 0x0D, 0x14));
 const FLinearColor FCkDebuggerStyle::Color_Graph_Edge = FLinearColor(0.4f, 0.4f, 0.45f);
 const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Center = FLinearColor(FColor(0x2D, 0x2D, 0x3D));

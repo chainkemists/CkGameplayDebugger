@@ -22,7 +22,7 @@ static const FLinearColor Color_Probe_Config = FLinearColor(1.0f, 0.8f, 0.01f);
 
 auto FCkInspector_Probes::Get_ComponentName() const -> FText
 {
-    return FText::FromString(TEXT("Probes"));
+    return FText::FromString(TEXT("Probe"));
 }
 
 auto FCkInspector_Probes::CanInspect(const FCk_Handle& Entity) const -> bool
@@ -32,17 +32,12 @@ auto FCkInspector_Probes::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Probes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    return BuildProbeGrid(Entity, FString());
-}
-
-auto FCkInspector_Probes::Build_Inspector(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
-{
-    return BuildProbeGrid(Entity, InFilter);
+    return BuildProbeGrid(Entity);
 }
 
 // =====================================================================================================================
 
-auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
+auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
 
@@ -50,7 +45,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString
     auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity);
     if (ck::Is_NOT_Valid(Probe))
     {
-        return Builder.Build(Entity, InFilter);
+        return Builder.Build(Entity);
     }
 
     const auto ProbeName = UCk_Utils_Probe_UE::Get_Name(Probe);
@@ -90,8 +85,8 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString
             auto MutableE = E;
             const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
             if (ck::Is_NOT_Valid(P)) { return FText::GetEmpty(); }
-            const auto bOverlapping = UCk_Utils_Probe_UE::Get_IsOverlapping(P);
-            if (NOT bOverlapping) { return FText::FromString(TEXT("None")); }
+            const auto IsOverlapping = UCk_Utils_Probe_UE::Get_IsOverlapping(P);
+            if (NOT IsOverlapping) { return FText::FromString(TEXT("None")); }
             const auto Overlaps = UCk_Utils_Probe_UE::Get_CurrentOverlaps(P);
             return FText::FromString(ck::Format_UE(TEXT("Yes ({} entities)"), Overlaps.Num()));
         },
@@ -163,7 +158,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity, const FString
         },
         FCkDebuggerStyle::Color_Text_Secondary);
 
-    return Builder.Build(Entity, InFilter);
+    return Builder.Build(Entity);
 }
 
 // =====================================================================================================================

@@ -32,6 +32,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkObjective",
             "CkRecord",
             "CkRelationship",
+            "CkShapes",
             "CkDynamic",
             "CkSpatialQuery",
             "CkTagSet",

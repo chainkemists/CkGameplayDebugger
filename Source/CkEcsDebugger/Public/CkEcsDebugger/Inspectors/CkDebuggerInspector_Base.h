@@ -30,6 +30,25 @@ public:
      */
     virtual auto OnDeactivated() -> void {}
 
+    struct FInspectorSection
+    {
+        FText Name;
+        TSharedRef<SWidget> Widget;
+    };
+
+    /**
+     * Override to produce multiple top-level collapsible sections from a single inspector.
+     * Each section appears as its own entry in the inspector panel.
+     * Only called when IsMultiSection() returns true.
+     */
+    virtual auto Get_InspectorSections(const FCk_Handle& Entity) -> TArray<FInspectorSection> { return {}; }
+
+    /**
+     * Returns true if this inspector produces multiple top-level sections.
+     * When true, the panel calls Get_InspectorSections instead of Build_Inspector.
+     */
+    virtual auto IsMultiSection() const -> bool { return false; }
+
     /**
      * Returns true if the inspector wants to be fully rebuilt this frame.
      * The panel checks this after Tick and rebuilds if set.

@@ -227,19 +227,11 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
 {
     auto VerticalBox = SNew(SVerticalBox);
 
-    bool FirstInspector = true;
+    auto FirstSection = true;
 
-    for (int32 Index = 0; Index < Inspectors.Num(); ++Index)
+    auto AddSeparator = [&]()
     {
-        const auto& Inspector = Inspectors[Index];
-
-        if (NOT Inspector.IsValid())
-        { continue; }
-
-        if (NOT Inspector->CanInspect(Entity))
-        { continue; }
-
-        if (NOT FirstInspector)
+        if (NOT FirstSection)
         {
             VerticalBox->AddSlot()
                 .AutoHeight()
@@ -251,15 +243,66 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
                     .Thickness(1.0f)
                 ];
         }
+        FirstSection = false;
+    };
 
-        FirstInspector = false;
-
+    auto AddSection = [&](const FText& InName, const TSharedRef<SWidget>& InContent)
+    {
         VerticalBox->AddSlot()
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                Build_InspectorSection(Entity, Inspector, Index)
+                SNew(SExpandableArea)
+                .InitiallyCollapsed(false)
+                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
+                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
+                .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+                .HeaderContent()
+                [
+                    SNew(STextBlock)
+                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
+                    .Text(InName)
+                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
+                ]
+                .BodyContent()
+                [
+                    SNew(SBox)
+                    .Padding(FMargin(FCkDebuggerStyle::Padding_Medium))
+                    [
+                        InContent
+                    ]
+                ]
             ];
+    };
+
+    for (int32 Index = 0; Index < Inspectors.Num(); ++Index)
+    {
+        const auto& Inspector = Inspectors[Index];
+
+        if (NOT Inspector.IsValid())
+        { continue; }
+
+        if (NOT Inspector->CanInspect(Entity))
+        { continue; }
+
+        if (Inspector->IsMultiSection())
+        {
+            for (const auto& Section : Inspector->Get_InspectorSections(Entity))
+            {
+                AddSeparator();
+                AddSection(Section.Name, Section.Widget);
+            }
+        }
+        else
+        {
+            AddSeparator();
+            VerticalBox->AddSlot()
+                .AutoHeight()
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    Build_InspectorSection(Entity, Inspector, Index)
+                ];
+        }
     }
 
     return VerticalBox;

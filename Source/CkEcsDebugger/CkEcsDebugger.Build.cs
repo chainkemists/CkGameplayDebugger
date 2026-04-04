@@ -34,6 +34,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkRelationship",
             "CkSpatialQuery",
             "CkTagSet",
+            "CkVariables",
         });
 
         if (Target.bBuildEditor)

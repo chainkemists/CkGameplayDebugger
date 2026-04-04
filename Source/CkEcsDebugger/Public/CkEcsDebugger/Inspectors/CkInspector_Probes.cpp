@@ -13,10 +13,6 @@
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Probes)
 
 static const FLinearColor Color_Probe = FLinearColor(0.0f, 0.8f, 1.0f);
-static const FLinearColor Color_Probe_Enabled = FLinearColor(0.0f, 1.0f, 0.5f);
-static const FLinearColor Color_Probe_Disabled = FLinearColor(1.0f, 0.5f, 0.5f);
-static const FLinearColor Color_Probe_Overlapping = FLinearColor(1.0f, 0.95f, 0.0f);
-static const FLinearColor Color_Probe_Config = FLinearColor(1.0f, 0.8f, 0.01f);
 
 // =====================================================================================================================
 
@@ -74,7 +70,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
             if (ck::Is_NOT_Valid(P)) { return FCkDebuggerStyle::Color_None; }
             return UCk_Utils_Probe_UE::Get_IsEnabledDisabled(P) == ECk_EnableDisable::Enable
-                ? Color_Probe_Enabled : Color_Probe_Disabled;
+                ? FCkDebuggerStyle::Color_State_Enabled : FCkDebuggerStyle::Color_State_Disabled;
         });
 
     // Overlap status
@@ -96,7 +92,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
             if (ck::Is_NOT_Valid(P)) { return FCkDebuggerStyle::Color_None; }
             return UCk_Utils_Probe_UE::Get_IsOverlapping(P)
-                ? Color_Probe_Overlapping : FCkDebuggerStyle::Color_None;
+                ? FCkDebuggerStyle::Color_State_Overlapping : FCkDebuggerStyle::Color_None;
         });
 
     // Response policy
@@ -110,7 +106,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto Policy = UCk_Utils_Probe_UE::Get_ResponsePolicy(P);
             return FText::FromString(Policy == ECk_ProbeResponse_Policy::Notify ? TEXT("Notify") : TEXT("Silent"));
         },
-        Color_Probe_Config);
+        FCkDebuggerStyle::Color_State_Config);
 
     // Motion type
     Builder.AddRow(
@@ -129,7 +125,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             default:                        return FText::FromString(TEXT("Unknown"));
             }
         },
-        Color_Probe_Config);
+        FCkDebuggerStyle::Color_State_Config);
 
     // Motion quality
     Builder.AddRow(
@@ -142,7 +138,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto Quality = UCk_Utils_Probe_UE::Get_MotionQuality(P);
             return FText::FromString(Quality == ECk_MotionQuality::Discrete ? TEXT("Discrete") : TEXT("LinearCast (CCD)"));
         },
-        Color_Probe_Config);
+        FCkDebuggerStyle::Color_State_Config);
 
     // Filter
     Builder.AddRow(

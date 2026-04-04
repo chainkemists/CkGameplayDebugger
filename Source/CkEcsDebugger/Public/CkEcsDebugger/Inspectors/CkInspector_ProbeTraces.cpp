@@ -14,8 +14,6 @@
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ProbeTraces)
 
 static const FLinearColor Color_Trace = FLinearColor(0.6f, 0.4f, 1.0f);
-static const FLinearColor Color_Trace_Config = FLinearColor(1.0f, 0.8f, 0.01f);
-static const FLinearColor Color_Trace_Overlapping = FLinearColor(1.0f, 0.95f, 0.0f);
 
 // =====================================================================================================================
 
@@ -69,7 +67,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 const auto& Settings = E.Get<ck::FFragment_ProbeTrace_RayCast>();
                 return FText::FromString(Settings.Get_DirectionAndLength().ToString());
             },
-            Color_Trace_Config);
+            FCkDebuggerStyle::Color_State_Config);
     }
     else
     {
@@ -80,7 +78,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 const auto& Settings = E.Get<ck::FFragment_ProbeTrace_ShapeCast>();
                 return FText::FromString(Settings.Get_DirectionAndLength().ToString());
             },
-            Color_Trace_Config);
+            FCkDebuggerStyle::Color_State_Config);
     }
 
     // ---- Trace Policy
@@ -94,7 +92,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 : E.Get<ck::FFragment_ProbeTrace_ShapeCast>().Get_TracePolicy();
             return FText::FromString(Policy == ECk_ProbeTrace_Policy::Single ? TEXT("Single") : TEXT("Multi"));
         },
-        Color_Trace_Config);
+        FCkDebuggerStyle::Color_State_Config);
 
     // ---- Shape (ShapeCast only)
 
@@ -114,7 +112,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 default:                       return FText::FromString(TEXT("Unknown"));
                 }
             },
-            Color_Trace_Config);
+            FCkDebuggerStyle::Color_State_Config);
     }
 
     // ---- Filter
@@ -147,7 +145,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
         [](const FCk_Handle& E)
         {
             if (E.Has<TSet<FCk_Probe_OverlapInfo>>() && NOT E.Get<TSet<FCk_Probe_OverlapInfo>>().IsEmpty())
-            { return Color_Trace_Overlapping; }
+            { return FCkDebuggerStyle::Color_State_Overlapping; }
             return FCkDebuggerStyle::Color_None;
         });
 

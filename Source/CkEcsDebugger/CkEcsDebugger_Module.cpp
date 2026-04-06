@@ -2,7 +2,9 @@
 
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
+#include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
 
+#include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -39,6 +41,9 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
 {
     FCkDebuggerStyle::Initialize();
 
+    _NodeFactory = MakeShared<FCkEcsDebugGraphFactory>();
+    FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkEcsDebuggerModule::OnSpawnDebuggerTab))
@@ -52,6 +57,12 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
     if (FGlobalTabmanager::Get()->HasTabSpawner(DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DebuggerTabName);
+    }
+
+    if (_NodeFactory.IsValid())
+    {
+        FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
+        _NodeFactory.Reset();
     }
 
     DebuggerWindow.Reset();

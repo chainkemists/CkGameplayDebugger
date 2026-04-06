@@ -15,9 +15,11 @@ public class CkEcsDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
+            "GraphEditor",
             "WorkspaceMenuStructure",
             "EditorStyle",
             "AppFramework",
+            "ToolMenus",
 
             "CkAnimation",
             "CkAttribute",

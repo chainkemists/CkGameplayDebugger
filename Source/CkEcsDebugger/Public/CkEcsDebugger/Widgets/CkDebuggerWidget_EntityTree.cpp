@@ -174,11 +174,15 @@ auto SCkDebuggerWidget_EntityTree::Tick(
 
     TimeSinceLastRefresh += InDeltaTime;
 
-    if (NeedsRefresh && TimeSinceLastRefresh >= RefreshInterval)
+    if (TimeSinceLastRefresh >= RefreshInterval)
     {
-        RefreshTree();
-        NeedsRefresh = false;
         TimeSinceLastRefresh = 0.0f;
+
+        if (NeedsRefresh || (WorldModel.IsValid() && WorldModel->IsCacheDirty()))
+        {
+            RefreshTree();
+            NeedsRefresh = false;
+        }
     }
 }
 

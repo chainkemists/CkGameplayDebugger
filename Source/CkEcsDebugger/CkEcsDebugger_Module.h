@@ -5,6 +5,7 @@
 
 class SCkDebuggerWindow_Main;
 class SDockTab;
+struct FGraphPanelNodeFactory;
 
 class FCkEcsDebuggerModule : public IModuleInterface
 {
@@ -24,6 +25,7 @@ private:
 
 	TSharedPtr<SCkDebuggerWindow_Main> DebuggerWindow;
 	TSharedPtr<SDockTab> DebuggerTab;
+	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
 	static const FName DebuggerTabName;
 };

@@ -3,9 +3,9 @@
 #include "CkDebuggerPage_Base.h"
 #include "CkEcs/Handle/CkHandle.h"
 
-class FCkEcsGraphModel;
-class FCkDirectionalGraphLayout;
-class SCkDebuggerWidget_GraphView;
+class UCkEcsDebugGraph;
+class UCkEcsDebugNode_Entity;
+class SGraphEditor;
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 
@@ -25,17 +25,18 @@ public:
 private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& InEntities) -> void;
     auto OnWorldChanged(UWorld* InWorld) -> void;
-    auto OnNodeClicked(const FCk_Handle& InEntity) -> void;
+    auto OnGraphNodeDoubleClicked(UCkEcsDebugNode_Entity* InNode) -> void;
     auto RebuildGraph() -> void;
 
     bool IsActivePage = false;
 
-    TUniquePtr<FCkEcsGraphModel> GraphModel;
-    TUniquePtr<FCkDirectionalGraphLayout> LayoutStrategy;
-    TSharedPtr<SCkDebuggerWidget_GraphView> GraphView;
+    UCkEcsDebugGraph* _Graph = nullptr;
+    TSharedPtr<SGraphEditor> _GraphEditor;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     FDelegateHandle SelectionChangedHandle;
     FDelegateHandle WorldChangedHandle;
+
+    bool _bNavigatingFromGraph = false;
 };

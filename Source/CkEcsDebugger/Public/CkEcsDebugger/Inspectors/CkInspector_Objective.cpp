@@ -13,20 +13,6 @@ static const FLinearColor Color_MetaData = FLinearColor(0.85f, 0.75f, 0.55f);
 
 // =====================================================================================================================
 
-static auto GetStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
-{
-    switch (InStatus)
-    {
-        case ECk_ObjectiveStatus::NotStarted: return FCkDebuggerStyle::Color_Status_NotStarted;
-        case ECk_ObjectiveStatus::Active:     return FCkDebuggerStyle::Color_Status_Active;
-        case ECk_ObjectiveStatus::Completed:  return FCkDebuggerStyle::Color_Status_Completed;
-        case ECk_ObjectiveStatus::Failed:     return FCkDebuggerStyle::Color_Status_Failed;
-        default:                              return FCkDebuggerStyle::Color_Text_Primary;
-    }
-}
-
-// =====================================================================================================================
-
 auto FCkInspector_Objective::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Objective"));
@@ -96,7 +82,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
         [CapturedObjective](const FCk_Handle& E) -> FLinearColor
         {
             if (ck::Is_NOT_Valid(CapturedObjective)) { return FCkDebuggerStyle::Color_None; }
-            return GetStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
+            return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
         });
 
     return Builder.Build(Entity, FString());

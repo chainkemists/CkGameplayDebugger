@@ -4,6 +4,8 @@
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateColor.h"
 
+enum class ECk_ObjectiveStatus : uint8;
+
 class FCkDebuggerStyle
 {
 public:
@@ -11,6 +13,8 @@ public:
     static auto Shutdown() -> void;
     static auto Get() -> const ISlateStyle&;
     static auto GetStyleSetName() -> FName;
+
+    static auto Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor;
 
     static constexpr float Padding_Small = 4.0f;
     static constexpr float Padding_Medium = 8.0f;

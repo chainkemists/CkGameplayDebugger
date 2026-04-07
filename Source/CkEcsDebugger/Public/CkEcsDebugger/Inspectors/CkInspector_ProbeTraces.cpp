@@ -1,19 +1,70 @@
 #include "CkInspector_ProbeTraces.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkSpatialQuery/Probe/CkProbe_Fragment.h"
 #include "CkSpatialQuery/Probe/CkProbeTrace_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SGridPanel.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Styling/AppStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ProbeTraces)
 
 static const FLinearColor Color_Trace = FLinearColor(0.6f, 0.4f, 1.0f);
+
+static auto PopulateBadgeBox(
+    SWrapBox& InBox,
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
+{
+    InBox.ClearChildren();
+
+    for (const auto& Handle : InHandles)
+    {
+        if (ck::Is_NOT_Valid(Handle)) { continue; }
+
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
+        const auto CapturedHandle = Handle;
+
+        InBox.AddSlot()
+            .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
+            [
+                SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                    .ContentPadding(FMargin(4.0f, 1.0f))
+                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
+                    {
+                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
+                        {
+                            Model->Set_SelectedEntities({ CapturedHandle });
+                        }
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(DebugName))
+                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+                    ]
+            ];
+    }
+}
+
+static auto MakeBadgeBox(
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
+{
+    auto Box = SNew(SWrapBox).UseAllottedSize(true);
+    PopulateBadgeBox(*Box, InHandles, InWeakModel);
+    return Box;
+}
 
 // =====================================================================================================================
 
@@ -129,25 +180,23 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
         },
         FCkDebuggerStyle::Color_Text_Secondary);
 
-    // ---- Overlaps
-
-    Builder.AddConditionalRow(
-        FText::FromString(TEXT("Overlaps:")),
-        [](const FCk_Handle& E)
+    // ---- Overlaps — live badge box stored for in-place updates
+    {
+        auto OverlapHandles = TArray<FCk_Handle>{};
+        if (Entity.Has<TSet<FCk_Probe_OverlapInfo>>())
         {
-            if (NOT E.Has<TSet<FCk_Probe_OverlapInfo>>())
-            { return FText::FromString(TEXT("None")); }
-            const auto& Overlaps = E.Get<TSet<FCk_Probe_OverlapInfo>>();
-            if (Overlaps.IsEmpty())
-            { return FText::FromString(TEXT("None")); }
-            return FText::FromString(ck::Format_UE(TEXT("{} entities"), Overlaps.Num()));
-        },
-        [](const FCk_Handle& E)
-        {
-            if (E.Has<TSet<FCk_Probe_OverlapInfo>>() && NOT E.Get<TSet<FCk_Probe_OverlapInfo>>().IsEmpty())
-            { return FCkDebuggerStyle::Color_State_Overlapping; }
-            return FCkDebuggerStyle::Color_None;
-        });
+            for (const auto& Info : Entity.Get<TSet<FCk_Probe_OverlapInfo>>())
+            {
+                if (ck::IsValid(Info.Get_OtherEntity()))
+                {
+                    OverlapHandles.Add(Info.Get_OtherEntity());
+                }
+            }
+        }
+        _LastOverlapCount = OverlapHandles.Num();
+        _OverlapsBox = MakeBadgeBox(OverlapHandles, SelectionModel);
+        Builder.AddWidgetRow(FText::FromString(TEXT("Overlaps:")), _OverlapsBox.ToSharedRef());
+    }
 
     return Builder.Build(Entity);
 }
@@ -161,6 +210,30 @@ auto FCkInspector_ProbeTraces::Tick(const FCk_Handle& Entity, float InDeltaTime)
         auto MutableEntity = Entity;
         MutableEntity.AddOrGet<ck::FTag_ProbeTrace_DebugDraw>();
         LastInspectedEntity = Entity;
+
+        if (_OverlapsBox.IsValid())
+        {
+            const auto CurrentCount = Entity.Has<TSet<FCk_Probe_OverlapInfo>>()
+                ? static_cast<int32>(Entity.Get<TSet<FCk_Probe_OverlapInfo>>().Num())
+                : 0;
+            if (CurrentCount != _LastOverlapCount)
+            {
+                _LastOverlapCount = CurrentCount;
+
+                auto OverlapHandles = TArray<FCk_Handle>{};
+                if (Entity.Has<TSet<FCk_Probe_OverlapInfo>>())
+                {
+                    for (const auto& Info : Entity.Get<TSet<FCk_Probe_OverlapInfo>>())
+                    {
+                        if (ck::IsValid(Info.Get_OtherEntity()))
+                        {
+                            OverlapHandles.Add(Info.Get_OtherEntity());
+                        }
+                    }
+                }
+                PopulateBadgeBox(*_OverlapsBox, OverlapHandles, SelectionModel);
+            }
+        }
     }
 }
 

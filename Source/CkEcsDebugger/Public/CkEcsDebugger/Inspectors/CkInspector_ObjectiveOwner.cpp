@@ -13,20 +13,6 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ObjectiveOwner)
 
 // =====================================================================================================================
 
-static auto GetStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
-{
-    switch (InStatus)
-    {
-        case ECk_ObjectiveStatus::NotStarted: return FCkDebuggerStyle::Color_Status_NotStarted;
-        case ECk_ObjectiveStatus::Active:     return FCkDebuggerStyle::Color_Status_Active;
-        case ECk_ObjectiveStatus::Completed:  return FCkDebuggerStyle::Color_Status_Completed;
-        case ECk_ObjectiveStatus::Failed:     return FCkDebuggerStyle::Color_Status_Failed;
-        default:                              return FCkDebuggerStyle::Color_Text_Primary;
-    }
-}
-
-// =====================================================================================================================
-
 auto FCkInspector_ObjectiveOwner::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Objectives"));
@@ -93,7 +79,7 @@ auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const
             [CapturedObjective](const FCk_Handle& E) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedObjective)) { return FCkDebuggerStyle::Color_None; }
-                return GetStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
+                return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
             },
             [WeakSelectionModel, ObjectiveAsEntity]()
             {

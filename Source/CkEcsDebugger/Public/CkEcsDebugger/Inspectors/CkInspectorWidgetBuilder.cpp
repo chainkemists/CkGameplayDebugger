@@ -25,6 +25,7 @@ auto FCkInspectorWidgetBuilder::AddRow(
         MoveTemp(InValueGetter),
         [CapturedColor](const FCk_Handle&) { return CapturedColor; },
         nullptr,
+        nullptr,
         false
     });
 
@@ -41,6 +42,7 @@ auto FCkInspectorWidgetBuilder::AddConditionalRow(
         InLabel,
         MoveTemp(InValueGetter),
         MoveTemp(InColorGetter),
+        nullptr,
         nullptr,
         false
     });
@@ -62,6 +64,7 @@ auto FCkInspectorWidgetBuilder::AddClickableRow(
         MoveTemp(InValueGetter),
         [CapturedColor](const FCk_Handle&) { return CapturedColor; },
         MoveTemp(InOnClicked),
+        nullptr,
         false
     });
 
@@ -80,9 +83,25 @@ auto FCkInspectorWidgetBuilder::AddClickableRow(
         MoveTemp(InValueGetter),
         MoveTemp(InColorGetter),
         MoveTemp(InOnClicked),
+        nullptr,
         false
     });
 
+    return *this;
+}
+
+auto FCkInspectorWidgetBuilder::AddWidgetRow(
+    const FText& InLabel,
+    TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&
+{
+    Rows.Add(FRowDefinition{
+        InLabel,
+        nullptr,
+        nullptr,
+        nullptr,
+        InWidget.ToSharedPtr(),
+        false
+    });
     return *this;
 }
 
@@ -91,6 +110,7 @@ auto FCkInspectorWidgetBuilder::AddHeader(const FText& InHeaderText) -> FCkInspe
     Rows.Add(FRowDefinition
     {
         InHeaderText,
+        nullptr,
         nullptr,
         nullptr,
         nullptr,
@@ -126,6 +146,28 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
                     .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                     .ToolTipText(RowDef.Label)
+                ];
+
+            Row++;
+            continue;
+        }
+
+        // Custom widget row — label in col 0, pre-built widget in col 1
+        if (RowDef.CustomWidget.IsValid())
+        {
+            Grid->AddSlot(0, Row)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    SNew(STextBlock)
+                    .Text(RowDef.Label)
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                    .ToolTipText(RowDef.Label)
+                ];
+
+            Grid->AddSlot(1, Row)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    RowDef.CustomWidget.ToSharedRef()
                 ];
 
             Row++;

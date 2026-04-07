@@ -42,6 +42,11 @@ public:
 
     auto AddHeader(const FText& InHeaderText) -> FCkInspectorWidgetBuilder&;
 
+    /** Place a pre-built widget directly in the value column, next to a plain label. */
+    auto AddWidgetRow(
+        const FText& InLabel,
+        TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&;
+
     auto Build(const FCk_Handle& InEntity, const FString& InFilter = FString()) -> TSharedRef<SWidget>;
 
 private:
@@ -51,6 +56,7 @@ private:
         FValueGetter ValueGetter;
         FColorGetter ColorGetter;
         FOnClicked OnClicked;
+        TSharedPtr<SWidget> CustomWidget;
         bool IsHeader = false;
     };
 

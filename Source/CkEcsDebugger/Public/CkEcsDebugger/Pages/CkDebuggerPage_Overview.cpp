@@ -271,7 +271,12 @@ auto FCkDebuggerPage_Overview::RebuildGraph() -> void
         return;
     }
 
-    _Graph->RebuildFromEntity(PrimaryEntity);
+    const auto bChanged = _Graph->RebuildFromEntity(PrimaryEntity);
+
+    if (bChanged && _GraphEditor.IsValid())
+    {
+        _GraphEditor->ZoomToFit(false);
+    }
 }
 
 // =====================================================================================================================

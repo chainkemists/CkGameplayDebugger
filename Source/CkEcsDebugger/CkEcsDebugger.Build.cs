@@ -3,7 +3,7 @@ using UnrealBuildTool;
 
 public class CkEcsDebugger : CkModuleRules
 {
-    public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target, UseUnityBuild: false)
+    public CkEcsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
         PublicDependencyModuleNames.AddRange(new string[]
         {

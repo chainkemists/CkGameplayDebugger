@@ -1,5 +1,7 @@
 #include "CkDebuggerStyle.h"
 
+#include "CkObjective/Objective/CkObjective_Fragment_Data.h"
+
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
@@ -61,6 +63,19 @@ const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Center = FLinearColor(FCol
 const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Default = FLinearColor(FColor(0x1E, 0x1E, 0x2E));
 const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Border_Default = FLinearColor(FColor(0x60, 0x7D, 0x8B));
 const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Border_Center = FLinearColor(FColor(0x4C, 0xAF, 0x50));
+
+// -----------------------------------------------------------------------------------------------------------------
+auto FCkDebuggerStyle::Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
+{
+    switch (InStatus)
+    {
+        case ECk_ObjectiveStatus::NotStarted: return Color_Status_NotStarted;
+        case ECk_ObjectiveStatus::Active:     return Color_Status_Active;
+        case ECk_ObjectiveStatus::Completed:  return Color_Status_Completed;
+        case ECk_ObjectiveStatus::Failed:     return Color_Status_Failed;
+        default:                              return Color_Text_Primary;
+    }
+}
 
 // -----------------------------------------------------------------------------------------------------------------
 auto FCkDebuggerStyle::Initialize() -> void

@@ -1,18 +1,69 @@
 #include "CkInspector_Probes.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkSpatialQuery/Probe/CkProbe_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SGridPanel.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Styling/AppStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Probes)
 
 static const FLinearColor Color_Probe = FLinearColor(0.0f, 0.8f, 1.0f);
+
+static auto PopulateBadgeBox(
+    SWrapBox& InBox,
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
+{
+    InBox.ClearChildren();
+
+    for (const auto& Handle : InHandles)
+    {
+        if (ck::Is_NOT_Valid(Handle)) { continue; }
+
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
+        const auto CapturedHandle = Handle;
+
+        InBox.AddSlot()
+            .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
+            [
+                SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                    .ContentPadding(FMargin(4.0f, 1.0f))
+                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
+                    {
+                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
+                        {
+                            Model->Set_SelectedEntities({ CapturedHandle });
+                        }
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(DebugName))
+                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+                    ]
+            ];
+    }
+}
+
+static auto MakeBadgeBox(
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
+{
+    auto Box = SNew(SWrapBox).UseAllottedSize(true);
+    PopulateBadgeBox(*Box, InHandles, InWeakModel);
+    return Box;
+}
 
 // =====================================================================================================================
 
@@ -73,27 +124,23 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
                 ? FCkDebuggerStyle::Color_State_Enabled : FCkDebuggerStyle::Color_State_Disabled;
         });
 
-    // Overlap status
-    Builder.AddConditionalRow(
-        FText::FromString(TEXT("Overlap:")),
-        [](const FCk_Handle& E)
+    // Overlaps — live badge box stored for in-place updates
+    {
+        auto OverlapHandles = TArray<FCk_Handle>{};
+        if (ck::IsValid(Probe))
         {
-            auto MutableE = E;
-            const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
-            if (ck::Is_NOT_Valid(P)) { return FText::GetEmpty(); }
-            const auto IsOverlapping = UCk_Utils_Probe_UE::Get_IsOverlapping(P);
-            if (NOT IsOverlapping) { return FText::FromString(TEXT("None")); }
-            const auto Overlaps = UCk_Utils_Probe_UE::Get_CurrentOverlaps(P);
-            return FText::FromString(ck::Format_UE(TEXT("Yes ({} entities)"), Overlaps.Num()));
-        },
-        [](const FCk_Handle& E)
-        {
-            auto MutableE = E;
-            const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
-            if (ck::Is_NOT_Valid(P)) { return FCkDebuggerStyle::Color_None; }
-            return UCk_Utils_Probe_UE::Get_IsOverlapping(P)
-                ? FCkDebuggerStyle::Color_State_Overlapping : FCkDebuggerStyle::Color_None;
-        });
+            for (const auto& Info : UCk_Utils_Probe_UE::Get_CurrentOverlaps(Probe))
+            {
+                if (ck::IsValid(Info.Get_OtherEntity()))
+                {
+                    OverlapHandles.Add(Info.Get_OtherEntity());
+                }
+            }
+        }
+        _LastOverlapCount = OverlapHandles.Num();
+        _OverlapsBox = MakeBadgeBox(OverlapHandles, SelectionModel);
+        Builder.AddWidgetRow(FText::FromString(TEXT("Overlaps:")), _OverlapsBox.ToSharedRef());
+    }
 
     // Response policy
     Builder.AddRow(
@@ -166,6 +213,25 @@ auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     {
         UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable);
         LastInspectedEntity = Entity;
+
+        if (_OverlapsBox.IsValid())
+        {
+            const auto CurrentCount = static_cast<int32>(UCk_Utils_Probe_UE::Get_CurrentOverlaps(Probe).Num());
+            if (CurrentCount != _LastOverlapCount)
+            {
+                _LastOverlapCount = CurrentCount;
+
+                auto OverlapHandles = TArray<FCk_Handle>{};
+                for (const auto& Info : UCk_Utils_Probe_UE::Get_CurrentOverlaps(Probe))
+                {
+                    if (ck::IsValid(Info.Get_OtherEntity()))
+                    {
+                        OverlapHandles.Add(Info.Get_OtherEntity());
+                    }
+                }
+                PopulateBadgeBox(*_OverlapsBox, OverlapHandles, SelectionModel);
+            }
+        }
     }
 }
 

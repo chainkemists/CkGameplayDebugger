@@ -3,6 +3,8 @@
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 #include "CkSpatialQuery/Probe/CkProbe_Fragment_Data.h"
 
+#include "Widgets/Layout/SWrapBox.h"
+
 class FCkInspector_ProbeTraces : public ICkDebuggerComponentInspector_Base
 {
 public:
@@ -18,4 +20,6 @@ private:
     auto DisableDebugDraw() -> void;
 
     FCk_Handle LastInspectedEntity;
+    TSharedPtr<SWrapBox> _OverlapsBox;
+    int32 _LastOverlapCount = -1;
 };

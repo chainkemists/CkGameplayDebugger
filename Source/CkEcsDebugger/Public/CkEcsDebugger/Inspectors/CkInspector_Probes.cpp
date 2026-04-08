@@ -19,52 +19,6 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Probes)
 
 static const FLinearColor Color_Probe = FLinearColor(0.0f, 0.8f, 1.0f);
 
-static auto PopulateBadgeBox(
-    SWrapBox& InBox,
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
-{
-    InBox.ClearChildren();
-
-    for (const auto& Handle : InHandles)
-    {
-        if (ck::Is_NOT_Valid(Handle)) { continue; }
-
-        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
-        const auto CapturedHandle = Handle;
-
-        InBox.AddSlot()
-            .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
-            [
-                SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .ContentPadding(FMargin(4.0f, 1.0f))
-                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
-                    {
-                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
-                        {
-                            Model->Set_SelectedEntities({ CapturedHandle });
-                        }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(DebugName))
-                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
-                    ]
-            ];
-    }
-}
-
-static auto MakeBadgeBox(
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
-{
-    auto Box = SNew(SWrapBox).UseAllottedSize(true);
-    PopulateBadgeBox(*Box, InHandles, InWeakModel);
-    return Box;
-}
-
 // =====================================================================================================================
 
 auto FCkInspector_Probes::Get_ComponentName() const -> FText
@@ -138,7 +92,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             }
         }
         _LastOverlapCount = OverlapHandles.Num();
-        _OverlapsBox = MakeBadgeBox(OverlapHandles, SelectionModel);
+        _OverlapsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(OverlapHandles, SelectionModel);
         Builder.AddWidgetRow(FText::FromString(TEXT("Overlaps:")), _OverlapsBox.ToSharedRef());
     }
 
@@ -229,7 +183,7 @@ auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
                         OverlapHandles.Add(Info.Get_OtherEntity());
                     }
                 }
-                PopulateBadgeBox(*_OverlapsBox, OverlapHandles, SelectionModel);
+                FCkInspectorWidgetBuilder::PopulateBadgeBox(*_OverlapsBox, OverlapHandles, SelectionModel);
             }
         }
     }

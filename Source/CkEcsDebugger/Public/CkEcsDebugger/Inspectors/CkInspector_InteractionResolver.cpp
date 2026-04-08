@@ -17,52 +17,6 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_InteractionResolver)
 
-static auto PopulateBadgeBox(
-    SWrapBox& InBox,
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
-{
-    InBox.ClearChildren();
-
-    for (const auto& Handle : InHandles)
-    {
-        if (ck::Is_NOT_Valid(Handle)) { continue; }
-
-        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
-        const auto CapturedHandle = Handle;
-
-        InBox.AddSlot()
-            .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
-            [
-                SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .ContentPadding(FMargin(4.0f, 1.0f))
-                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
-                    {
-                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
-                        {
-                            Model->Set_SelectedEntities({ CapturedHandle });
-                        }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(DebugName))
-                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
-                    ]
-            ];
-    }
-}
-
-static auto MakeBadgeBox(
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
-{
-    auto Box = SNew(SWrapBox).UseAllottedSize(true);
-    PopulateBadgeBox(*Box, InHandles, InWeakModel);
-    return Box;
-}
-
 // =====================================================================================================================
 
 auto FCkInspector_InteractionResolver::Get_ComponentName() const -> FText
@@ -155,7 +109,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
             }
             _LastTotalBestCount += BestHandles.Num();
 
-            auto BestBox = MakeBadgeBox(BestHandles, SelectionModel);
+            auto BestBox = FCkInspectorWidgetBuilder::MakeBadgeBox(BestHandles, SelectionModel);
             _BestTargetBoxes.Add(BestBox);
             Builder.AddWidgetRow(FText::FromString(TEXT("Best Targets:")), BestBox);
         }
@@ -201,7 +155,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         }
         _LastAvailableCount = AvailHandles.Num();
 
-        _AvailableTargetsBox = MakeBadgeBox(AvailHandles, SelectionModel);
+        _AvailableTargetsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(AvailHandles, SelectionModel);
         Builder.AddWidgetRow(FText::FromString(TEXT("Available Targets:")), _AvailableTargetsBox.ToSharedRef());
     }
 
@@ -235,7 +189,7 @@ auto FCkInspector_InteractionResolver::Tick(const FCk_Handle& Entity, float InDe
             {
                 if (ck::IsValid(T)) { AvailHandles.Add(T); }
             }
-            PopulateBadgeBox(*_AvailableTargetsBox, AvailHandles, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_AvailableTargetsBox, AvailHandles, SelectionModel);
         }
     }
 
@@ -261,7 +215,7 @@ auto FCkInspector_InteractionResolver::Tick(const FCk_Handle& Entity, float InDe
             {
                 if (ck::IsValid(T)) { BestHandles.Add(T); }
             }
-            PopulateBadgeBox(*_BestTargetBoxes[i], BestHandles, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_BestTargetBoxes[i], BestHandles, SelectionModel);
         }
     }
 }

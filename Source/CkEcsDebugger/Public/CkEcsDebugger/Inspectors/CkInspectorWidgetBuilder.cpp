@@ -1,9 +1,12 @@
 #include "CkInspectorWidgetBuilder.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
 auto FCkInspectorWidgetBuilder::SetSelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> FCkInspectorWidgetBuilder&
@@ -103,6 +106,52 @@ auto FCkInspectorWidgetBuilder::AddWidgetRow(
         false
     });
     return *this;
+}
+
+auto FCkInspectorWidgetBuilder::MakeBadgeBox(
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
+{
+    auto Box = SNew(SWrapBox).UseAllottedSize(true);
+    PopulateBadgeBox(*Box, InHandles, InWeakModel);
+    return Box;
+}
+
+auto FCkInspectorWidgetBuilder::PopulateBadgeBox(
+    SWrapBox& InBox,
+    const TArray<FCk_Handle>& InHandles,
+    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
+{
+    InBox.ClearChildren();
+
+    for (const auto& Handle : InHandles)
+    {
+        if (ck::Is_NOT_Valid(Handle)) { continue; }
+
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
+        const auto CapturedHandle = Handle;
+
+        InBox.AddSlot()
+            .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
+            [
+                SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                    .ContentPadding(FMargin(4.0f, 1.0f))
+                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
+                    {
+                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
+                        {
+                            Model->Set_SelectedEntities({ CapturedHandle });
+                        }
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(DebugName))
+                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+                    ]
+            ];
+    }
 }
 
 auto FCkInspectorWidgetBuilder::AddHeader(const FText& InHeaderText) -> FCkInspectorWidgetBuilder&

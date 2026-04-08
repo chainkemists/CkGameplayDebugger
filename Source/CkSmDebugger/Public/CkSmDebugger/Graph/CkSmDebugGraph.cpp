@@ -6,6 +6,7 @@
 #include "CkSmDebugNode_Transition.h"
 #include "CkSmDebugGraphSchema.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Real data
@@ -295,231 +296,65 @@ auto
     { return A.ParentStateIndex < B.ParentStateIndex; });
 
     // ================================================================================================================
-    // Phase 1: Layer assignment via BFS — parent-level states only
-    // Compound blocks are placed AFTER the parent layout, not as participants.
+    // Phases 1-4: Sugiyama layout via shared utility (parent-level states only)
     // ================================================================================================================
 
     auto ParentCount = ParentStateIndices.Num();
     auto CompoundCount = CompoundBlocks.Num();
 
-    // Map: parent state global index → layout index (0-based)
     auto ParentGlobalToLayout = TMap<int32, int32>{};
     for (auto i = 0; i < ParentCount; ++i)
     { ParentGlobalToLayout.Add(ParentStateIndices[i], i); }
 
-    auto Ranks = TArray<int32>{};
-    Ranks.SetNum(ParentCount);
-    for (auto& R : Ranks) { R = -1; }
+    // Build layout nodes (using layout indices 0..N-1)
+    auto LayoutNodesInput = TArray<FCkDebugGraphLayoutNode>{};
+    for (auto i = 0; i < ParentCount; ++i)
+    { LayoutNodesInput.Add({ i }); }
 
-    auto InitialLayoutIdx = -1;
+    // Build layout edges from parent-level transitions
+    auto LayoutEdgesInput = TArray<FCkDebugGraphLayoutEdge>{};
+    for (auto& Trans : SmInfo.Transitions)
+    {
+        if (Trans.IsSubSmTransition) { continue; }
+
+        auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
+        auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
+        if (NOT LayoutSrc || NOT LayoutDst) { continue; }
+        if (*LayoutSrc == *LayoutDst) { continue; }
+
+        LayoutEdgesInput.Add({ *LayoutSrc, *LayoutDst });
+    }
+
+    // Find initial state for BFS root
+    auto InitialLayoutIdx = static_cast<int32>(INDEX_NONE);
     for (auto i = 0; i < ParentCount; ++i)
     {
         if (SmInfo.States[ParentStateIndices[i]].StateClass == SmInfo.InitialStateClass)
         { InitialLayoutIdx = i; break; }
     }
-    if (InitialLayoutIdx < 0 && ParentCount > 0) { InitialLayoutIdx = 0; }
+    if (InitialLayoutIdx == INDEX_NONE && ParentCount > 0) { InitialLayoutIdx = 0; }
 
-    if (InitialLayoutIdx >= 0)
-    {
-        auto Queue = TArray<int32>{};
-        Queue.Add(InitialLayoutIdx);
-        Ranks[InitialLayoutIdx] = 0;
+    auto SharedLayoutParams = FCkDebugGraphLayoutParams{};
+    SharedLayoutParams.SpacingX = LayoutParams.SpacingX;
+    SharedLayoutParams.SpacingY = LayoutParams.SpacingY;
+    SharedLayoutParams.CrossingReductionPasses = LayoutParams.CrossingReductionPasses;
+    SharedLayoutParams.IsDirectedBFS = NOT LayoutParams.bUndirectedBFS;
+    SharedLayoutParams.InitialNodeIndex = InitialLayoutIdx;
 
-        for (auto Head = 0; Head < Queue.Num(); ++Head)
-        {
-            auto Current = Queue[Head];
-
-            for (auto& Trans : SmInfo.Transitions)
-            {
-                if (Trans.IsSubSmTransition) { continue; }
-
-                auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
-                auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
-                if (NOT LayoutSrc || NOT LayoutDst) { continue; }
-
-                auto Neighbor = -1;
-                if (LayoutParams.bUndirectedBFS)
-                {
-                    if (*LayoutSrc == Current) { Neighbor = *LayoutDst; }
-                    else if (*LayoutDst == Current) { Neighbor = *LayoutSrc; }
-                }
-                else
-                {
-                    if (*LayoutSrc == Current) { Neighbor = *LayoutDst; }
-                }
-
-                if (Neighbor >= 0 && Neighbor < Ranks.Num() && Ranks[Neighbor] < 0)
-                {
-                    Ranks[Neighbor] = Ranks[Current] + 1;
-                    Queue.Add(Neighbor);
-                }
-            }
-        }
-    }
-
-    for (auto& R : Ranks) { if (R < 0) { R = 0; } }
-
-    auto MaxRank = 0;
-    for (auto R : Ranks) { MaxRank = FMath::Max(MaxRank, R); }
-
-    // ================================================================================================================
-    // Phase 2: Dummy vertex insertion (parent-level edges only)
-    // ================================================================================================================
-
-    struct FLayoutNode { int32 OriginalIndex; int32 Rank; };
-
-    auto LayoutNodes = TArray<FLayoutNode>{};
-    LayoutNodes.Reserve(ParentCount * 2);
-
-    for (auto i = 0; i < ParentCount; ++i)
-    { LayoutNodes.Add({ i, Ranks[i] }); }
-
-    struct FLayoutEdge { int32 From; int32 To; };
-    auto LayoutEdges = TArray<FLayoutEdge>{};
-
-    for (auto& Trans : SmInfo.Transitions)
-    {
-        if (Trans.IsSubSmTransition) { continue; }
-
-        auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
-        auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
-        if (NOT LayoutSrc || NOT LayoutDst) { continue; }
-
-        auto S = *LayoutSrc;
-        auto T = *LayoutDst;
-        if (S == T) { continue; }
-
-        auto RankS = Ranks[S];
-        auto RankT = Ranks[T];
-        if (RankS == RankT) { continue; }
-
-        auto From = (RankS < RankT) ? S : T;
-        auto To   = (RankS < RankT) ? T : S;
-        auto FromRank = FMath::Min(RankS, RankT);
-        auto ToRank   = FMath::Max(RankS, RankT);
-
-        if (ToRank - FromRank == 1)
-        {
-            LayoutEdges.Add({ From, To });
-        }
-        else
-        {
-            auto Prev = From;
-            for (auto R = FromRank + 1; R < ToRank; ++R)
-            {
-                auto DummyIdx = LayoutNodes.Num();
-                LayoutNodes.Add({ -1, R });
-                LayoutEdges.Add({ Prev, DummyIdx });
-                Prev = DummyIdx;
-            }
-            LayoutEdges.Add({ Prev, To });
-        }
-    }
-
-    auto TotalLayoutNodes = LayoutNodes.Num();
-    for (auto& N : LayoutNodes) { MaxRank = FMath::Max(MaxRank, N.Rank); }
-
-    // ================================================================================================================
-    // Phase 3: Barycenter crossing reduction
-    // ================================================================================================================
-
-    auto RankLayers = TArray<TArray<int32>>{};
-    RankLayers.SetNum(MaxRank + 1);
-    for (auto i = 0; i < TotalLayoutNodes; ++i)
-    { RankLayers[LayoutNodes[i].Rank].Add(i); }
-
-    auto Adj = TArray<TArray<int32>>{};
-    Adj.SetNum(TotalLayoutNodes);
-    for (auto& E : LayoutEdges)
-    {
-        Adj[E.From].AddUnique(E.To);
-        Adj[E.To].AddUnique(E.From);
-    }
-
-    for (auto& Trans : SmInfo.Transitions)
-    {
-        if (Trans.IsSubSmTransition) { continue; }
-
-        auto* LayoutSrc = ParentGlobalToLayout.Find(Trans.SourceStateIndex);
-        auto* LayoutDst = ParentGlobalToLayout.Find(Trans.TargetStateIndex);
-        if (NOT LayoutSrc || NOT LayoutDst) { continue; }
-
-        if (Ranks[*LayoutSrc] == Ranks[*LayoutDst])
-        {
-            Adj[*LayoutSrc].AddUnique(*LayoutDst);
-            Adj[*LayoutDst].AddUnique(*LayoutSrc);
-        }
-    }
-
-    auto Slots = TArray<float>{};
-    Slots.SetNum(TotalLayoutNodes);
-    for (auto R = 0; R <= MaxRank; ++R)
-    {
-        for (auto S = 0; S < RankLayers[R].Num(); ++S)
-        { Slots[RankLayers[R][S]] = static_cast<float>(S); }
-    }
-
-    for (auto Iter = 0; Iter < LayoutParams.CrossingReductionPasses; ++Iter)
-    {
-        auto bLTR  = (Iter % 2 == 0);
-        auto Start = bLTR ? 1 : MaxRank - 1;
-        auto End   = bLTR ? MaxRank + 1 : -1;
-        auto Step  = bLTR ? 1 : -1;
-
-        for (auto R = Start; R != End; R += Step)
-        {
-            auto& Layer = RankLayers[R];
-            auto Weights = TArray<TPair<float, int32>>{};
-
-            for (auto Idx : Layer)
-            {
-                auto Sum = 0.0f;
-                auto Cnt = 0;
-                for (auto Nbr : Adj[Idx])
-                {
-                    if (LayoutNodes[Nbr].Rank != R)
-                    {
-                        Sum += Slots[Nbr];
-                        ++Cnt;
-                    }
-                }
-                Weights.Add({ Cnt > 0 ? Sum / Cnt : Slots[Idx], Idx });
-            }
-
-            Weights.Sort([](const auto& A, const auto& B) { return A.Key < B.Key; });
-
-            for (auto S = 0; S < Weights.Num(); ++S)
-            {
-                Layer[S] = Weights[S].Value;
-                Slots[Weights[S].Value] = static_cast<float>(S);
-            }
-        }
-    }
-
-    // ================================================================================================================
-    // Phase 4: Coordinate assignment — same formula as the original Sugiyama
-    // ================================================================================================================
+    auto LayoutResult = FCkDebugGraphLayout::ComputeLayout(LayoutNodesInput, LayoutEdgesInput, SharedLayoutParams);
 
     auto ParentPosX = TArray<int32>{};
     auto ParentPosY = TArray<int32>{};
     ParentPosX.SetNum(ParentCount);
     ParentPosY.SetNum(ParentCount);
 
-    for (auto R = 0; R <= MaxRank; ++R)
+    for (auto i = 0; i < ParentCount; ++i)
     {
-        auto& Layer = RankLayers[R];
-        auto Count = Layer.Num();
-        auto TotalHeight = (Count - 1) * LayoutParams.SpacingY;
-
-        for (auto S = 0; S < Count; ++S)
+        auto* Pos = LayoutResult.Positions.Find(i);
+        if (Pos)
         {
-            auto Idx = Layer[S];
-            if (LayoutNodes[Idx].OriginalIndex >= 0)
-            {
-                auto Orig = LayoutNodes[Idx].OriginalIndex;
-                ParentPosX[Orig] = R * LayoutParams.SpacingX;
-                ParentPosY[Orig] = S * LayoutParams.SpacingY - TotalHeight / 2;
-            }
+            ParentPosX[i] = Pos->X;
+            ParentPosY[i] = Pos->Y;
         }
     }
 

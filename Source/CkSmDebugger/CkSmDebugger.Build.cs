@@ -24,6 +24,8 @@ public class CkSmDebugger : CkModuleRules
             "CkCore",
             "CkEcs",
             "CkStateMachine",
+
+            "CkDebuggerCommon",
         });
 
         if (Target.bBuildEditor)

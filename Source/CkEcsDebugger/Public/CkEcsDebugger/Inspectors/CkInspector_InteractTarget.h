@@ -4,6 +4,8 @@
 
 #include "CkInteraction/InteractTarget/CkInteractTarget_Fragment_Data.h"
 
+#include "Widgets/Layout/SWrapBox.h"
+
 class FCkInspector_InteractTarget : public ICkDebuggerComponentInspector_Base
 {
 public:
@@ -18,5 +20,13 @@ public:
 private:
     auto BuildTargetWidget(const FCk_Handle_InteractTarget& InTarget) -> TSharedRef<SWidget>;
 
+    struct FTargetState
+    {
+        FCk_Handle_InteractTarget Handle;
+        TSharedPtr<SWrapBox> InteractionsBox;
+        int32 LastInteractionCount = 0;
+    };
+
+    TArray<FTargetState> _TargetStates;
     int32 _LastTargetCount = 0;
 };

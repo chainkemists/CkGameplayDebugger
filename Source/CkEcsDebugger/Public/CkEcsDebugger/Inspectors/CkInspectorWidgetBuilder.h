@@ -5,6 +5,7 @@
 
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Layout/SGridPanel.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 class FCkDebuggerModel_EntitySelection;
@@ -46,6 +47,22 @@ public:
     auto AddWidgetRow(
         const FText& InLabel,
         TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * Build a clickable entity badge wrap-box. Each handle becomes a button labeled with
+     * its debug name; clicking the button selects that entity in the supplied selection model.
+     * Used by inspectors that need to show lists of related entities (e.g. probe overlaps,
+     * interaction targets) as live, clickable badges.
+     */
+    static auto MakeBadgeBox(
+        const TArray<FCk_Handle>& InHandles,
+        TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>;
+
+    /** Populate (or repopulate) an existing badge box with the given handles. */
+    static auto PopulateBadgeBox(
+        SWrapBox& InBox,
+        const TArray<FCk_Handle>& InHandles,
+        TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void;
 
     auto Build(const FCk_Handle& InEntity, const FString& InFilter = FString()) -> TSharedRef<SWidget>;
 

@@ -32,6 +32,7 @@ auto FCkInspector_InteractTarget::Build_Inspector(const FCk_Handle& Entity) -> T
 auto FCkInspector_InteractTarget::Get_InspectorSections(const FCk_Handle& Entity) -> TArray<FInspectorSection>
 {
     auto Sections = TArray<FInspectorSection>{};
+    _TargetStates.Reset();
 
     UCk_Utils_InteractTarget_UE::ForEach_InteractTarget(Entity,
         [this, &Sections](FCk_Handle_InteractTarget InTarget)
@@ -43,6 +44,9 @@ auto FCkInspector_InteractTarget::Get_InspectorSections(const FCk_Handle& Entity
             const auto SectionName = Channel.IsValid()
                 ? Channel.GetTagName().ToString()
                 : TEXT("Unknown Channel");
+
+            auto& State = _TargetStates.AddDefaulted_GetRef();
+            State.Handle = InTarget;
 
             Sections.Add(FInspectorSection
             {
@@ -135,25 +139,32 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
         },
         FCkDebuggerStyle::Color_Value_Enum);
 
-    // Current Interactions count
-    Builder.AddConditionalRow(
-        FText::FromString(TEXT("Interactions:")),
-        [CapturedTarget](const FCk_Handle& E)
+    // Current Interactions — live badge box
+    {
+        auto MutableTarget = InTarget;
+        auto InteractionHandles = TArray<FCk_Handle>{};
+
+        const auto Interactions = UCk_Utils_InteractTarget_UE::Get_CurrentInteractions(MutableTarget);
+        for (const auto& Interaction : Interactions)
         {
-            if (ck::Is_NOT_Valid(CapturedTarget)) { return FText::FromString(TEXT("--")); }
-            auto MutableTarget = CapturedTarget;
-            const auto Interactions = UCk_Utils_InteractTarget_UE::Get_CurrentInteractions(MutableTarget);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Interactions.Num()));
-        },
-        [CapturedTarget](const FCk_Handle& E) -> FLinearColor
+            if (ck::IsValid(Interaction))
+            {
+                InteractionHandles.Add(Interaction);
+            }
+        }
+
+        // Find the matching target state and store the badge box
+        for (auto& State : _TargetStates)
         {
-            if (ck::Is_NOT_Valid(CapturedTarget)) { return FCkDebuggerStyle::Color_None; }
-            auto MutableTarget = CapturedTarget;
-            const auto Interactions = UCk_Utils_InteractTarget_UE::Get_CurrentInteractions(MutableTarget);
-            return Interactions.Num() > 0
-                ? FCkDebuggerStyle::Color_Status_Active
-                : FCkDebuggerStyle::Color_Text_Secondary;
-        });
+            if (State.Handle == InTarget)
+            {
+                State.LastInteractionCount = InteractionHandles.Num();
+                State.InteractionsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(InteractionHandles, SelectionModel);
+                Builder.AddWidgetRow(FText::FromString(TEXT("Interactions:")), State.InteractionsBox.ToSharedRef());
+                break;
+            }
+        }
+    }
 
     return Builder.Build(InTarget, FString());
 }
@@ -165,12 +176,41 @@ auto FCkInspector_InteractTarget::Tick(const FCk_Handle& Entity, float InDeltaTi
     if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_RecordOfInteractTargets>())
     { return; }
 
-    auto CurrentCount = int32{ 0 };
+    // ---- Check for structural changes (target count) ----
+
+    auto CurrentCount = int32{0};
     UCk_Utils_InteractTarget_UE::ForEach_InteractTarget(Entity,
         [&CurrentCount](FCk_Handle_InteractTarget InTarget) { CurrentCount++; });
 
     if (CurrentCount != _LastTargetCount)
     {
         RequestRebuild();
+        return;
+    }
+
+    // ---- In-place update: refresh interaction badge boxes ----
+
+    for (auto& State : _TargetStates)
+    {
+        if (ck::Is_NOT_Valid(State.Handle) || NOT State.InteractionsBox.IsValid())
+        { continue; }
+
+        auto MutableTarget = State.Handle;
+        const auto Interactions = UCk_Utils_InteractTarget_UE::Get_CurrentInteractions(MutableTarget);
+
+        if (Interactions.Num() != State.LastInteractionCount)
+        {
+            State.LastInteractionCount = Interactions.Num();
+
+            auto InteractionHandles = TArray<FCk_Handle>{};
+            for (const auto& Interaction : Interactions)
+            {
+                if (ck::IsValid(Interaction))
+                {
+                    InteractionHandles.Add(Interaction);
+                }
+            }
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*State.InteractionsBox, InteractionHandles, SelectionModel);
+        }
     }
 }

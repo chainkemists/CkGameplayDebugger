@@ -1,0 +1,7 @@
+{
+  "name": "scheduler-debugger-mockups",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve -l 3000 ."
+  }
+}

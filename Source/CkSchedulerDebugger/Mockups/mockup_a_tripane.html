@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Processor Scheduler Debugger - Mockup A: Classic Tri-Pane</title>
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg-canvas: rgb(18, 18, 26);
+    --bg-panel: rgb(30, 30, 42);
+    --bg-panel-light: rgb(40, 40, 56);
+    --bg-panel-lighter: rgb(48, 48, 66);
+    --border: rgb(55, 55, 75);
+    --border-light: rgb(70, 70, 90);
+    --text-primary: rgb(224, 224, 224);
+    --text-secondary: rgb(160, 160, 175);
+    --text-muted: rgb(100, 100, 115);
+    --accent: rgb(60, 130, 220);
+    --accent-dim: rgba(60, 130, 220, 0.15);
+    --accent-hover: rgba(60, 130, 220, 0.25);
+    --active-green: rgb(67, 160, 71);
+    --pumped-orange: rgb(255, 167, 38);
+    --ghost: rgb(80, 80, 95);
+    --error-red: rgb(239, 83, 80);
+    --warning-yellow: rgb(255, 213, 79);
+    --timing-fast: rgb(67, 160, 71);
+    --timing-mid: rgb(255, 213, 79);
+    --timing-slow: rgb(255, 167, 38);
+    --timing-hot: rgb(239, 83, 80);
+    /* Group accent colors */
+    --grp-predestruction: rgb(176, 130, 180);
+    --grp-destruction: rgb(200, 100, 100);
+    --grp-gameplay: rgb(80, 160, 220);
+    --grp-physics: rgb(220, 160, 60);
+    --grp-transform: rgb(100, 200, 140);
+    --grp-posttransform: rgb(140, 200, 200);
+    --grp-replication: rgb(200, 140, 80);
+    --grp-entitylifecycle: rgb(160, 120, 200);
+    --grp-overlap: rgb(200, 180, 100);
+
+    --splitter-width: 4px;
+    --toolbar-height: 36px;
+    --statusbar-height: 26px;
+    --tab-height: 32px;
+    font-family: 'Segoe UI', -apple-system, sans-serif;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+html, body {
+    width: 100%; height: 100%;
+    background: var(--bg-canvas);
+    overflow: hidden;
+    user-select: none;
+}
+
+/* ========== TOP-LEVEL LAYOUT ========== */
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+}
+
+#title-bar {
+    height: 28px;
+    background: rgb(22, 22, 34);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 8px;
+    flex-shrink: 0;
+}
+#title-bar .title { color: var(--text-secondary); font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+#title-bar .badge { background: var(--accent); color: #fff; font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 700; }
+
+#main-area {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+#status-bar {
+    height: var(--statusbar-height);
+    background: rgb(22, 22, 34);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+#status-bar .sep { width: 1px; height: 14px; background: var(--border); }
+#status-bar .val { color: var(--text-secondary); }
+
+/* ========== SPLITTERS ========== */
+.splitter {
+    width: var(--splitter-width);
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+    transition: background 0.15s;
+}
+.splitter:hover, .splitter.dragging { background: var(--accent); }
+
+/* ========== PANES ========== */
+.pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--bg-panel);
+}
+#left-pane { width: 20%; min-width: 220px; }
+#center-pane { flex: 1; min-width: 400px; }
+#right-pane { width: 30%; min-width: 250px; }
+
+/* ========== TOOLBAR / CONTROLS ========== */
+.toolbar {
+    display: flex;
+    align-items: center;
+    height: var(--toolbar-height);
+    padding: 0 8px;
+    gap: 6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-panel);
+}
+.toolbar select, .toolbar input {
+    background: var(--bg-panel-light);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    outline: none;
+}
+.toolbar select:focus, .toolbar input:focus { border-color: var(--accent); }
+.toolbar input { flex: 1; }
+.toolbar label { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+
+/* ========== TREE VIEW ========== */
+#tree-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 0;
+}
+#tree-container::-webkit-scrollbar { width: 6px; }
+#tree-container::-webkit-scrollbar-track { background: transparent; }
+#tree-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.tree-tick-group {
+    margin-bottom: 2px;
+}
+.tree-tick-group-header {
+    display: flex; align-items: center;
+    padding: 4px 8px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    cursor: pointer;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.tree-tick-group-header .arrow { margin-right: 4px; font-size: 8px; transition: transform 0.15s; display: inline-block; }
+.tree-tick-group-header.collapsed .arrow { transform: rotate(-90deg); }
+
+.tree-group {
+    margin: 1px 0;
+}
+.tree-group-header {
+    display: flex; align-items: center;
+    padding: 3px 8px 3px 20px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.1s;
+    gap: 6px;
+}
+.tree-group-header:hover { background: rgba(255,255,255,0.04); }
+.tree-group-header .arrow { font-size: 8px; color: var(--text-muted); transition: transform 0.15s; display: inline-block; width: 10px; text-align: center; }
+.tree-group-header.collapsed .arrow { transform: rotate(-90deg); }
+.tree-group-header .grp-accent { width: 3px; height: 14px; border-radius: 1px; flex-shrink: 0; }
+.tree-group-header .grp-name { color: var(--text-secondary); font-size: 11px; font-weight: 600; flex: 1; }
+.tree-group-header .grp-count { color: var(--text-muted); font-size: 10px; }
+.tree-group-header .grp-timing { font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.tree-processor {
+    display: flex; align-items: center;
+    padding: 2px 8px 2px 36px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.1s;
+    gap: 4px;
+    height: 22px;
+}
+.tree-processor:hover { background: rgba(255,255,255,0.04); }
+.tree-processor.selected { background: var(--accent-dim); outline: 1px solid rgba(60,130,220,0.3); }
+.tree-processor.ghost { opacity: 0.45; }
+.tree-processor .exec-order { color: var(--text-muted); font-size: 10px; width: 24px; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.tree-processor .proc-accent { width: 2px; height: 12px; border-radius: 1px; flex-shrink: 0; }
+.tree-processor .proc-name { flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-processor .proc-timing { font-size: 10px; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 38px; text-align: right; }
+.tree-processor .badge-parallel { color: var(--accent); font-size: 9px; flex-shrink: 0; }
+.tree-processor .badge-dirty { color: var(--pumped-orange); font-size: 8px; flex-shrink: 0; }
+.tree-processor .badge-ghost { color: var(--ghost); font-size: 9px; flex-shrink: 0; }
+
+/* Pump section */
+#pump-section {
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    max-height: 120px;
+    overflow-y: auto;
+}
+#pump-section::-webkit-scrollbar { width: 6px; }
+#pump-section::-webkit-scrollbar-track { background: transparent; }
+#pump-section::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#pump-section .pump-title {
+    padding: 5px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--pumped-orange);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: rgba(255, 167, 38, 0.06);
+    border-bottom: 1px solid var(--border);
+}
+.pump-pass {
+    padding: 3px 8px 3px 16px;
+    font-size: 10px;
+}
+.pump-pass .pass-label { color: var(--text-muted); font-weight: 600; }
+.pump-pass .pass-items { color: var(--pumped-orange); }
+
+/* ========== CENTER PANE: TABS ========== */
+.tab-bar {
+    display: flex;
+    height: var(--tab-height);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-panel);
+}
+.tab-btn {
+    padding: 0 16px;
+    height: 100%;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+}
+.tab-btn:hover { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
+.tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+.tab-content { flex: 1; display: none; min-height: 0; position: relative; }
+.tab-content.active { display: flex; flex-direction: column; }
+
+/* Tree detail view */
+#tree-detail-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 20px;
+}
+#tree-detail-view .no-selection {
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+}
+#tree-detail-svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* Graph view */
+#graph-view {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-canvas);
+}
+#graph-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+#graph-controls {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    z-index: 5;
+}
+#graph-controls button {
+    width: 28px; height: 28px;
+    background: var(--bg-panel-light);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+#graph-controls button:hover { background: var(--bg-panel-lighter); border-color: var(--accent); }
+
+/* ========== RIGHT PANE ========== */
+#right-pane { overflow-y: auto; }
+#right-pane::-webkit-scrollbar { width: 6px; }
+#right-pane::-webkit-scrollbar-track { background: transparent; }
+#right-pane::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.detail-section {
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+}
+.detail-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    font-size: 11px;
+}
+.stat-row .stat-label { color: var(--text-muted); }
+.stat-row .stat-value { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.stat-row .stat-value.warning { color: var(--error-red); }
+.stat-row .stat-value.good { color: var(--active-green); }
+.stat-row .stat-value.orange { color: var(--pumped-orange); }
+
+.detail-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    word-break: break-all;
+    line-height: 1.4;
+}
+.detail-badge {
+    display: inline-block;
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.detail-badge.parallel { background: rgba(60,130,220,0.2); color: var(--accent); }
+.detail-badge.ghost { background: rgba(80,80,95,0.3); color: var(--ghost); }
+.detail-badge.dirty { background: rgba(255,167,38,0.15); color: var(--pumped-orange); }
+.detail-badge.active { background: rgba(67,160,71,0.15); color: var(--active-green); }
+
+.sparkline-container { margin: 6px 0; }
+
+.dep-list { list-style: none; padding: 0; }
+.dep-list li {
+    padding: 2px 4px;
+    font-size: 11px;
+    color: var(--accent);
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.1s;
+}
+.dep-list li:hover { background: var(--accent-dim); text-decoration: underline; }
+
+.fragment-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.fragment-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--bg-panel-light);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+/* ========== TOOLTIP ========== */
+#tooltip {
+    position: fixed;
+    background: rgb(22, 22, 34);
+    border: 1px solid var(--border-light);
+    color: var(--text-primary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    pointer-events: none;
+    z-index: 1000;
+    display: none;
+    max-width: 350px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+    <div id="title-bar">
+        <span class="title">PROCESSOR SCHEDULER DEBUGGER</span>
+        <span class="badge">MOCKUP A</span>
+    </div>
+    <div id="main-area">
+        <!-- LEFT PANE -->
+        <div id="left-pane" class="pane">
+            <div class="toolbar">
+                <label>World</label>
+                <select id="world-select" style="width:90px">
+                    <option>GameWorld</option>
+                    <option>EditorWorld</option>
+                </select>
+                <label>Sort</label>
+                <select id="sort-select" style="width:80px">
+                    <option value="exec">Exec Order</option>
+                    <option value="name">Name</option>
+                    <option value="timing">Timing</option>
+                </select>
+            </div>
+            <div class="toolbar" style="height:30px">
+                <input type="text" id="search-input" placeholder="Search processors..." />
+            </div>
+            <div id="tree-container"></div>
+            <div id="pump-section">
+                <div class="pump-title">Pump This Frame</div>
+                <div id="pump-content"></div>
+            </div>
+        </div>
+
+        <!-- SPLITTER 1 -->
+        <div class="splitter" id="splitter-left"></div>
+
+        <!-- CENTER PANE -->
+        <div id="center-pane" class="pane">
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="tree-detail">Tree Detail</button>
+                <button class="tab-btn" data-tab="graph">Graph View</button>
+            </div>
+            <div class="tab-content active" id="tab-tree-detail">
+                <div id="tree-detail-view">
+                    <div class="no-selection">Select a processor to view its dependency tree</div>
+                </div>
+            </div>
+            <div class="tab-content" id="tab-graph">
+                <div id="graph-view">
+                    <canvas id="graph-canvas"></canvas>
+                    <div id="graph-controls">
+                        <button id="zoom-in" title="Zoom In">+</button>
+                        <button id="zoom-out" title="Zoom Out">&minus;</button>
+                        <button id="zoom-fit" title="Fit All">&#8644;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SPLITTER 2 -->
+        <div class="splitter" id="splitter-right"></div>
+
+        <!-- RIGHT PANE -->
+        <div id="right-pane" class="pane">
+            <div class="detail-section" id="global-stats"></div>
+            <div class="detail-section" id="selected-details">
+                <div class="detail-section-title">Selected Processor</div>
+                <div style="color:var(--text-muted); font-size:11px; font-style:italic;">No processor selected</div>
+            </div>
+            <div class="detail-section" id="dep-details" style="display:none"></div>
+        </div>
+    </div>
+    <div id="status-bar">
+        <span>Processors: <span class="val" id="sb-proc-count">0</span></span>
+        <span class="sep"></span>
+        <span>Active: <span class="val" id="sb-active-count">0</span></span>
+        <span class="sep"></span>
+        <span>Ghost: <span class="val" id="sb-ghost-count">0</span></span>
+        <span class="sep"></span>
+        <span>Frame: <span class="val" id="sb-frame-time">0ms</span></span>
+        <span class="sep"></span>
+        <span>Pumps: <span class="val" id="sb-pump-count">0</span></span>
+        <span style="flex:1"></span>
+        <span>Mockup A - Classic Tri-Pane</span>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ============================================================================
+// MOCK DATA
+// ============================================================================
+
+const GROUP_COLORS = {
+    PreDestruction: 'rgb(176, 130, 180)',
+    DestructionPipeline: 'rgb(200, 100, 100)',
+    Gameplay: 'rgb(80, 160, 220)',
+    Physics: 'rgb(220, 160, 60)',
+    Transform: 'rgb(100, 200, 140)',
+    PostTransform: 'rgb(140, 200, 200)',
+    Replication: 'rgb(200, 140, 80)',
+    EntityLifecycle: 'rgb(160, 120, 200)',
+    Overlap: 'rgb(200, 180, 100)',
+};
+
+function makeProc(id, name, group, tickGroup, execOrder, opts = {}) {
+    const timing = opts.timing ?? +(Math.random() * 0.35 + 0.01).toFixed(3);
+    const history = [];
+    for (let i = 0; i < 60; i++) history.push(+(timing * (0.6 + Math.random() * 0.8)).toFixed(3));
+    return {
+        id, name,
+        fullName: `FProcessor_${name}`,
+        group, tickGroup, execOrder,
+        timing,
+        history,
+        totalTicks: Math.floor(Math.random() * 50000 + 5000),
+        tickRate: opts.tickRate ?? 'EveryFrame',
+        parallel: opts.parallel ?? false,
+        ghost: opts.ghost ?? false,
+        dirty: opts.dirty ?? false,
+        dirtyFragment: opts.dirtyFragment ?? null,
+        runAfter: opts.runAfter ?? [],
+        runBefore: opts.runBefore ?? [],
+        fragments: opts.fragments ?? [],
+    };
+}
+
+const PROCESSORS = [
+    // PreDestruction
+    makeProc(1, 'EndPlay_Audio', 'PreDestruction', 'TG_PrePhysics', 5, { timing: 0.02, fragments: ['Fragment_Audio_Current'] }),
+    makeProc(2, 'EndPlay_Vfx', 'PreDestruction', 'TG_PrePhysics', 6, { timing: 0.01, fragments: ['Fragment_Vfx_Current'] }),
+    makeProc(3, 'EndPlay_Combat', 'PreDestruction', 'TG_PrePhysics', 7, { timing: 0.01, fragments: ['Fragment_Combat_Current'] }),
+
+    // DestructionPipeline
+    makeProc(4, 'Destruction_Teardown', 'DestructionPipeline', 'TG_PrePhysics', 10, { timing: 0.03, runAfter: ['EndPlay_Combat'], fragments: ['Fragment_Destruction_Request'] }),
+    makeProc(5, 'Destruction_Await', 'DestructionPipeline', 'TG_PrePhysics', 11, { timing: 0.01, runAfter: ['Destruction_Teardown'], fragments: ['Fragment_Destruction_Await'] }),
+    makeProc(6, 'Destruction_Finalize', 'DestructionPipeline', 'TG_PrePhysics', 12, { timing: 0.02, runAfter: ['Destruction_Await'], fragments: ['Fragment_Destruction_Finalize'] }),
+    makeProc(7, 'Destruction_Destroy', 'DestructionPipeline', 'TG_PrePhysics', 13, { timing: 0.04, runAfter: ['Destruction_Finalize'], fragments: ['Tag_NeedsDestroy'] }),
+
+    // Gameplay
+    makeProc(8, 'Input_Process', 'Gameplay', 'TG_PrePhysics', 20, { timing: 0.08, fragments: ['Fragment_Input_Current', 'Fragment_Input_Params'] }),
+    makeProc(9, 'AI_DecisionTree', 'Gameplay', 'TG_PrePhysics', 21, { timing: 0.32, parallel: true, runAfter: ['Input_Process'], fragments: ['Fragment_AI_Current', 'Fragment_AI_Params'] }),
+    makeProc(10, 'Audio_Process', 'Gameplay', 'TG_PrePhysics', 25, { timing: 0.15, dirty: true, dirtyFragment: 'Fragment_Audio_Params', runAfter: ['AI_DecisionTree'], fragments: ['Fragment_Audio_Current', 'Fragment_Audio_Params'] }),
+    makeProc(11, 'AudioSetup_Init', 'Gameplay', 'TG_PrePhysics', 26, { timing: 0.05, dirty: true, dirtyFragment: 'Fragment_Audio_Params', runAfter: ['Audio_Process'], fragments: ['Fragment_Audio_Params', 'Tag_Audio_NeedsSetup'] }),
+    makeProc(12, 'VfxSetup_Init', 'Gameplay', 'TG_PrePhysics', 27, { timing: 0.04, fragments: ['Fragment_Vfx_Params', 'Tag_Vfx_NeedsSetup'] }),
+    makeProc(13, 'VfxLifetime_Monitor', 'Gameplay', 'TG_PrePhysics', 28, { timing: 0.03, runAfter: ['VfxSetup_Init'], fragments: ['Fragment_Vfx_Current'] }),
+    makeProc(14, 'Combat_EvaluateHits', 'Gameplay', 'TG_PrePhysics', 30, { timing: 0.22, runAfter: ['AI_DecisionTree'], fragments: ['Fragment_Combat_Current', 'Fragment_Combat_Params'] }),
+    makeProc(15, 'Targeting_Update', 'Gameplay', 'TG_PrePhysics', 31, { timing: 0.18, runAfter: ['Combat_EvaluateHits'], fragments: ['Fragment_Targeting_Current'] }),
+    makeProc(16, 'Ability_Process', 'Gameplay', 'TG_PrePhysics', 32, { timing: 0.12, runAfter: ['Targeting_Update'], fragments: ['Fragment_Ability_Current', 'Fragment_Ability_Params'] }),
+    makeProc(17, 'Inventory_Sync', 'Gameplay', 'TG_PrePhysics', 35, { timing: 0.06, fragments: ['Fragment_Inventory_Current'] }),
+    makeProc(18, 'Quest_Evaluate', 'Gameplay', 'TG_PrePhysics', 36, { timing: 0.04, runAfter: ['Inventory_Sync'], fragments: ['Fragment_Quest_Current'] }),
+    makeProc(19, 'Dialog_Process', 'Gameplay', 'TG_PrePhysics', 37, { timing: 0.03, fragments: ['Fragment_Dialog_Current'] }),
+
+    // Physics
+    makeProc(20, 'PhysicsStep_Simulate', 'Physics', 'TG_PrePhysics', 50, { timing: 0.45, parallel: true, runAfter: ['Combat_EvaluateHits', 'Ability_Process'], fragments: ['Fragment_Physics_Body'] }),
+    makeProc(21, 'CollisionResponse_Process', 'Physics', 'TG_PrePhysics', 51, { timing: 0.28, parallel: true, runAfter: ['PhysicsStep_Simulate'], fragments: ['Fragment_Collision_Result'] }),
+    makeProc(22, 'RagdollUpdate_Sync', 'Physics', 'TG_PrePhysics', 52, { timing: 0.08, runAfter: ['CollisionResponse_Process'], fragments: ['Fragment_Ragdoll_Current'] }),
+
+    // Transform
+    makeProc(23, 'TransformSync_FromPhysics', 'Transform', 'TG_PrePhysics', 60, { timing: 0.12, runAfter: ['CollisionResponse_Process'], fragments: ['Fragment_Transform_Current'] }),
+    makeProc(24, 'TransformPump_Propagate', 'Transform', 'TG_PrePhysics', 61, { timing: 0.09, runAfter: ['TransformSync_FromPhysics'], fragments: ['Fragment_Transform_Current', 'Fragment_Transform_Hierarchy'] }),
+    makeProc(25, 'TransformFinalize_Apply', 'Transform', 'TG_PrePhysics', 62, { timing: 0.07, runAfter: ['TransformPump_Propagate'], fragments: ['Fragment_Transform_Current'] }),
+
+    // PostTransform
+    makeProc(26, 'CameraUpdate_Process', 'PostTransform', 'TG_PrePhysics', 70, { timing: 0.11, runAfter: ['TransformFinalize_Apply'], fragments: ['Fragment_Camera_Current', 'Fragment_Camera_Params'] }),
+    makeProc(27, 'AttachmentSync_Update', 'PostTransform', 'TG_PrePhysics', 71, { timing: 0.06, runAfter: ['TransformFinalize_Apply'], fragments: ['Fragment_Attachment_Current'] }),
+
+    // Replication
+    makeProc(28, 'NetSerialize_Pack', 'Replication', 'TG_PrePhysics', 80, { timing: 0.14, ghost: true, dirty: true, dirtyFragment: 'Fragment_Replication_State', fragments: ['Fragment_Replication_State'] }),
+    makeProc(29, 'NetReceive_Unpack', 'Replication', 'TG_PrePhysics', 81, { timing: 0.11, ghost: true, dirty: true, dirtyFragment: 'Fragment_Replication_State', runAfter: ['NetSerialize_Pack'], fragments: ['Fragment_Replication_State'] }),
+    makeProc(30, 'NetSend_Dispatch', 'Replication', 'TG_PrePhysics', 82, { timing: 0.09, runAfter: ['NetReceive_Unpack'], fragments: ['Fragment_Replication_State', 'Fragment_Net_Send'] }),
+
+    // EntityLifecycle
+    makeProc(31, 'EntitySetup_Initialize', 'EntityLifecycle', 'TG_PrePhysics', 90, { timing: 0.05, fragments: ['Tag_NeedsSetup', 'Fragment_EntityMeta'] }),
+    makeProc(32, 'EntityCleanup_Finalize', 'EntityLifecycle', 'TG_PrePhysics', 91, { timing: 0.03, runAfter: ['EntitySetup_Initialize'], fragments: ['Tag_NeedsCleanup', 'Fragment_EntityMeta'] }),
+
+    // Overlap (TG_PostPhysics)
+    makeProc(33, 'ProbeCheck_Evaluate', 'Overlap', 'TG_PostPhysics', 100, { timing: 0.16, fragments: ['Fragment_Probe_Current', 'Fragment_Probe_Params'] }),
+    makeProc(34, 'ProbeResponse_Fire', 'Overlap', 'TG_PostPhysics', 101, { timing: 0.08, runAfter: ['ProbeCheck_Evaluate'], fragments: ['Fragment_Probe_Current', 'Fragment_Probe_Response'] }),
+    makeProc(35, 'ProbeCleanup_Reset', 'Overlap', 'TG_PostPhysics', 102, { timing: 0.02, runAfter: ['ProbeResponse_Fire'], fragments: ['Fragment_Probe_Current'] }),
+
+    // Additional gameplay processors to fill out
+    makeProc(36, 'StatusEffect_Tick', 'Gameplay', 'TG_PrePhysics', 33, { timing: 0.07, runAfter: ['Ability_Process'], fragments: ['Fragment_StatusEffect_Current'] }),
+    makeProc(37, 'Cooldown_Tick', 'Gameplay', 'TG_PrePhysics', 34, { timing: 0.02, fragments: ['Fragment_Cooldown_Current'] }),
+    makeProc(38, 'Spawner_Process', 'EntityLifecycle', 'TG_PrePhysics', 89, { timing: 0.04, fragments: ['Fragment_Spawner_Params'] }),
+    makeProc(39, 'Animation_Drive', 'PostTransform', 'TG_PrePhysics', 72, { timing: 0.14, runAfter: ['AttachmentSync_Update'], fragments: ['Fragment_Animation_Current'] }),
+    makeProc(40, 'LOD_Update', 'PostTransform', 'TG_PrePhysics', 73, { timing: 0.03, runAfter: ['CameraUpdate_Process'], fragments: ['Fragment_LOD_Current'] }),
+    makeProc(41, 'Healthbar_Update', 'Gameplay', 'TG_PrePhysics', 38, { timing: 0.02, runAfter: ['Combat_EvaluateHits'], fragments: ['Fragment_Healthbar_Current'] }),
+    makeProc(42, 'Aggro_Evaluate', 'Gameplay', 'TG_PrePhysics', 22, { timing: 0.09, runAfter: ['AI_DecisionTree'], fragments: ['Fragment_Aggro_Current'] }),
+    makeProc(43, 'Patrol_Navigate', 'Gameplay', 'TG_PrePhysics', 23, { timing: 0.11, parallel: true, runAfter: ['AI_DecisionTree'], fragments: ['Fragment_Patrol_Current'] }),
+    makeProc(44, 'PhysicsCleanup_Reset', 'Physics', 'TG_PrePhysics', 53, { timing: 0.02, runAfter: ['RagdollUpdate_Sync'], fragments: ['Fragment_Physics_Body'] }),
+    makeProc(45, 'Interaction_Check', 'Gameplay', 'TG_PrePhysics', 24, { timing: 0.05, runAfter: ['Input_Process'], fragments: ['Fragment_Interaction_Current'] }),
+];
+
+// Build run-before from run-after
+PROCESSORS.forEach(p => {
+    p.runAfter.forEach(depName => {
+        const dep = PROCESSORS.find(d => d.name === depName);
+        if (dep && !dep.runBefore.includes(p.name)) dep.runBefore.push(p.name);
+    });
+});
+
+const PUMP_DATA = [
+    { pass: 1, processors: ['Audio_Process', 'AudioSetup_Init'] },
+    { pass: 2, processors: ['Audio_Process'] },
+];
+
+const TICK_GROUPS = ['TG_PrePhysics', 'TG_PostPhysics'];
+const GROUP_ORDER_PRE = ['PreDestruction', 'DestructionPipeline', 'Gameplay', 'Physics', 'Transform', 'PostTransform', 'Replication', 'EntityLifecycle'];
+const GROUP_ORDER_POST = ['Overlap'];
+
+// ============================================================================
+// STATE
+// ============================================================================
+
+let selectedProcId = null;
+let searchTerm = '';
+let sortMode = 'exec';
+let graphZoom = 1;
+let graphPanX = 0, graphPanY = 0;
+let graphDragging = false;
+let graphDragStart = { x: 0, y: 0 };
+let graphNodePositions = {};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+function timingColor(ms) {
+    if (ms < 0.05) return 'rgb(67, 160, 71)';
+    if (ms < 0.15) return 'rgb(255, 213, 79)';
+    if (ms < 0.30) return 'rgb(255, 167, 38)';
+    return 'rgb(239, 83, 80)';
+}
+
+function getGroupProcs(group, tickGroup) {
+    let procs = PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup);
+    if (searchTerm) procs = procs.filter(p => p.name.toLowerCase().includes(searchTerm) || p.fullName.toLowerCase().includes(searchTerm));
+    if (sortMode === 'exec') procs.sort((a, b) => a.execOrder - b.execOrder);
+    else if (sortMode === 'name') procs.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortMode === 'timing') procs.sort((a, b) => b.timing - a.timing);
+    return procs;
+}
+
+function groupTiming(group, tickGroup) {
+    return PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup)
+        .reduce((s, p) => s + p.timing, 0);
+}
+
+function groupCount(group, tickGroup) {
+    return PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup).length;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ============================================================================
+// RENDER TREE
+// ============================================================================
+
+function renderTree() {
+    const container = document.getElementById('tree-container');
+    let html = '';
+
+    function renderTickGroup(tg, groups) {
+        html += `<div class="tree-tick-group">`;
+        html += `<div class="tree-tick-group-header" data-tg="${tg}"><span class="arrow">&#9660;</span>${tg}</div>`;
+        html += `<div class="tree-tick-group-body" data-tg-body="${tg}">`;
+        for (const grp of groups) {
+            const procs = getGroupProcs(grp, tg);
+            const totalCount = groupCount(grp, tg);
+            if (searchTerm && procs.length === 0) continue;
+            const gt = groupTiming(grp, tg).toFixed(2);
+            const color = GROUP_COLORS[grp] || 'var(--text-muted)';
+            html += `<div class="tree-group">`;
+            html += `<div class="tree-group-header" data-grp="${grp}-${tg}">`;
+            html += `<span class="arrow">&#9660;</span>`;
+            html += `<span class="grp-accent" style="background:${color}"></span>`;
+            html += `<span class="grp-name">${grp}</span>`;
+            html += `<span class="grp-count">${totalCount}</span>`;
+            html += `<span class="grp-timing" style="color:${timingColor(+gt)}">${gt}ms</span>`;
+            html += `</div>`;
+            html += `<div class="tree-group-body" data-grp-body="${grp}-${tg}">`;
+            for (const p of procs) {
+                const cls = ['tree-processor'];
+                if (p.id === selectedProcId) cls.push('selected');
+                if (p.ghost) cls.push('ghost');
+                html += `<div class="${cls.join(' ')}" data-proc-id="${p.id}" title="${p.fullName}">`;
+                html += `<span class="exec-order">${p.execOrder}</span>`;
+                html += `<span class="proc-accent" style="background:${color}"></span>`;
+                html += `<span class="proc-name">${escHtml(p.name)}</span>`;
+                if (p.parallel) html += `<span class="badge-parallel" title="Parallel">&#9670;</span>`;
+                if (p.dirty) html += `<span class="badge-dirty" title="Dirty Marker">&#9679;</span>`;
+                if (p.ghost) html += `<span class="badge-ghost" title="Ghost">&#9617;</span>`;
+                html += `<span class="proc-timing" style="color:${timingColor(p.timing)}">${p.timing.toFixed(2)}</span>`;
+                html += `</div>`;
+            }
+            html += `</div></div>`;
+        }
+        html += `</div></div>`;
+    }
+
+    renderTickGroup('TG_PrePhysics', GROUP_ORDER_PRE);
+    renderTickGroup('TG_PostPhysics', GROUP_ORDER_POST);
+
+    container.innerHTML = html;
+
+    // Event: click processor
+    container.querySelectorAll('.tree-processor').forEach(el => {
+        el.addEventListener('click', () => selectProcessor(+el.dataset.procId));
+    });
+    // Event: collapse tick group
+    container.querySelectorAll('.tree-tick-group-header').forEach(el => {
+        el.addEventListener('click', () => {
+            el.classList.toggle('collapsed');
+            const body = el.nextElementSibling;
+            body.style.display = el.classList.contains('collapsed') ? 'none' : '';
+        });
+    });
+    // Event: collapse group
+    container.querySelectorAll('.tree-group-header').forEach(el => {
+        el.addEventListener('click', () => {
+            el.classList.toggle('collapsed');
+            const body = el.nextElementSibling;
+            body.style.display = el.classList.contains('collapsed') ? 'none' : '';
+        });
+    });
+}
+
+// ============================================================================
+// RENDER PUMP SECTION
+// ============================================================================
+
+function renderPumpSection() {
+    let html = '';
+    for (const p of PUMP_DATA) {
+        html += `<div class="pump-pass"><span class="pass-label">Pass ${p.pass}:</span> <span class="pass-items">${p.processors.join(', ')}</span></div>`;
+    }
+    document.getElementById('pump-content').innerHTML = html;
+}
+
+// ============================================================================
+// RENDER GLOBAL STATS
+// ============================================================================
+
+function renderGlobalStats() {
+    const totalTiming = PROCESSORS.reduce((s, p) => s + p.timing, 0);
+    const ghostCount = PROCESSORS.filter(p => p.ghost).length;
+    const activeCount = PROCESSORS.length - ghostCount;
+    const pumpCount = PUMP_DATA.length;
+    const buildTime = 1.24;
+
+    let html = `<div class="detail-section-title">Global Stats</div>`;
+    html += `<div class="stat-row"><span class="stat-label">Frame Time</span><span class="stat-value">${totalTiming.toFixed(2)}ms</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Pump Count</span><span class="stat-value ${pumpCount >= 3 ? 'warning' : 'orange'}">${pumpCount}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Total Processors</span><span class="stat-value">${PROCESSORS.length}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Active</span><span class="stat-value good">${activeCount}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Ghost</span><span class="stat-value" style="color:var(--ghost)">${ghostCount}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Build Time</span><span class="stat-value">${buildTime.toFixed(2)}ms</span></div>`;
+    document.getElementById('global-stats').innerHTML = html;
+
+    document.getElementById('sb-proc-count').textContent = PROCESSORS.length;
+    document.getElementById('sb-active-count').textContent = activeCount;
+    document.getElementById('sb-ghost-count').textContent = ghostCount;
+    document.getElementById('sb-frame-time').textContent = totalTiming.toFixed(2) + 'ms';
+    document.getElementById('sb-pump-count').textContent = pumpCount;
+}
+
+// ============================================================================
+// SPARKLINE SVG
+// ============================================================================
+
+function sparklineSVG(history, w = 200, h = 28) {
+    const max = Math.max(...history, 0.01);
+    const pts = history.map((v, i) => `${(i / (history.length - 1)) * w},${h - (v / max) * (h - 4)}`).join(' ');
+    const avgVal = (history.reduce((s, v) => s + v, 0) / history.length);
+    const avgY = h - (avgVal / max) * (h - 4);
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block">
+        <line x1="0" y1="${avgY}" x2="${w}" y2="${avgY}" stroke="rgba(60,130,220,0.3)" stroke-width="1" stroke-dasharray="3,3"/>
+        <polyline points="${pts}" fill="none" stroke="${timingColor(avgVal)}" stroke-width="1.5"/>
+    </svg>`;
+}
+
+// ============================================================================
+// RENDER SELECTED DETAILS
+// ============================================================================
+
+function renderSelectedDetails() {
+    const detailEl = document.getElementById('selected-details');
+    const depEl = document.getElementById('dep-details');
+
+    if (!selectedProcId) {
+        detailEl.innerHTML = `<div class="detail-section-title">Selected Processor</div><div style="color:var(--text-muted); font-size:11px; font-style:italic;">No processor selected</div>`;
+        depEl.style.display = 'none';
+        return;
+    }
+
+    const p = PROCESSORS.find(pr => pr.id === selectedProcId);
+    if (!p) return;
+
+    let badges = '';
+    if (!p.ghost) badges += `<span class="detail-badge active">ACTIVE</span>`;
+    if (p.parallel) badges += `<span class="detail-badge parallel">PARALLEL</span>`;
+    if (p.ghost) badges += `<span class="detail-badge ghost">GHOST</span>`;
+    if (p.dirty) badges += `<span class="detail-badge dirty">DIRTY</span>`;
+
+    let html = `<div class="detail-section-title">Selected Processor</div>`;
+    html += `<div class="detail-name">${escHtml(p.fullName)}</div>`;
+    html += `<div style="margin-bottom:8px">${badges}</div>`;
+    html += `<div class="stat-row"><span class="stat-label">Group</span><span class="stat-value" style="color:${GROUP_COLORS[p.group]}">${p.group}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Tick Group</span><span class="stat-value">${p.tickGroup}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Exec Order</span><span class="stat-value">${p.execOrder}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Timing</span><span class="stat-value" style="color:${timingColor(p.timing)}">${p.timing.toFixed(3)}ms</span></div>`;
+    html += `<div class="sparkline-container">${sparklineSVG(p.history)}</div>`;
+    html += `<div class="stat-row"><span class="stat-label">Total Ticks</span><span class="stat-value">${p.totalTicks.toLocaleString()}</span></div>`;
+    html += `<div class="stat-row"><span class="stat-label">Tick Rate</span><span class="stat-value">${p.tickRate}</span></div>`;
+    if (p.dirty) {
+        html += `<div class="stat-row"><span class="stat-label">Dirty Marker</span><span class="stat-value" style="color:var(--pumped-orange)">${p.dirtyFragment}</span></div>`;
+    }
+    detailEl.innerHTML = html;
+
+    // Dependencies
+    let depHtml = `<div class="detail-section-title">Dependencies</div>`;
+    depHtml += `<div style="margin-bottom:6px;font-size:10px;color:var(--text-muted);font-weight:600">RUN AFTER (${p.runAfter.length})</div>`;
+    if (p.runAfter.length) {
+        depHtml += `<ul class="dep-list">`;
+        for (const d of p.runAfter) {
+            const dp = PROCESSORS.find(x => x.name === d);
+            depHtml += `<li data-dep-id="${dp ? dp.id : ''}">${escHtml(d)}</li>`;
+        }
+        depHtml += `</ul>`;
+    } else {
+        depHtml += `<div style="font-size:10px;color:var(--text-muted);padding:2px 4px;font-style:italic">None</div>`;
+    }
+    depHtml += `<div style="margin:6px 0 6px;font-size:10px;color:var(--text-muted);font-weight:600">RUN BEFORE (${p.runBefore.length})</div>`;
+    if (p.runBefore.length) {
+        depHtml += `<ul class="dep-list">`;
+        for (const d of p.runBefore) {
+            const dp = PROCESSORS.find(x => x.name === d);
+            depHtml += `<li data-dep-id="${dp ? dp.id : ''}">${escHtml(d)}</li>`;
+        }
+        depHtml += `</ul>`;
+    } else {
+        depHtml += `<div style="font-size:10px;color:var(--text-muted);padding:2px 4px;font-style:italic">None</div>`;
+    }
+    depHtml += `<div style="margin:8px 0 4px;font-size:10px;color:var(--text-muted);font-weight:600">FRAGMENTS</div>`;
+    depHtml += `<div class="fragment-list">`;
+    for (const f of p.fragments) depHtml += `<span class="fragment-tag">${escHtml(f)}</span>`;
+    depHtml += `</div>`;
+
+    depEl.innerHTML = depHtml;
+    depEl.style.display = '';
+
+    // Click dependency
+    depEl.querySelectorAll('.dep-list li').forEach(el => {
+        el.addEventListener('click', () => {
+            const id = +el.dataset.depId;
+            if (id) selectProcessor(id);
+        });
+    });
+}
+
+// ============================================================================
+// TREE DETAIL VIEW (Mini dependency graph)
+// ============================================================================
+
+function renderTreeDetail() {
+    const view = document.getElementById('tree-detail-view');
+    if (!selectedProcId) {
+        view.innerHTML = `<div class="no-selection">Select a processor to view its dependency tree</div>`;
+        return;
+    }
+    const p = PROCESSORS.find(pr => pr.id === selectedProcId);
+    if (!p) return;
+
+    const runAfterProcs = p.runAfter.map(n => PROCESSORS.find(x => x.name === n)).filter(Boolean);
+    const runBeforeProcs = p.runBefore.map(n => PROCESSORS.find(x => x.name === n)).filter(Boolean);
+
+    const nodeW = 180, nodeH = 40, padX = 20, padY = 60;
+    const maxCols = Math.max(runAfterProcs.length, runBeforeProcs.length, 1);
+    const svgW = Math.max(maxCols * (nodeW + padX) + padX, nodeW + padX * 2);
+    const svgH = (runAfterProcs.length ? nodeH + padY : 0) + nodeH + (runBeforeProcs.length ? padY + nodeH : 0) + padY * 2;
+
+    function nodeRect(x, y, proc, isSelected) {
+        const color = GROUP_COLORS[proc.group] || '#888';
+        const bg = isSelected ? 'rgba(60,130,220,0.25)' : (proc.ghost ? 'rgba(40,40,56,0.8)' : 'rgba(40,40,56,1)');
+        const border = isSelected ? 'rgba(60,130,220,0.7)' : 'rgba(55,55,75,1)';
+        const textColor = proc.ghost ? 'rgb(80,80,95)' : 'rgb(224,224,224)';
+        return `<g>
+            <rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="6" fill="${bg}" stroke="${border}" stroke-width="1.5"/>
+            <rect x="${x}" y="${y}" width="4" height="${nodeH}" rx="2" fill="${color}"/>
+            <text x="${x + 12}" y="${y + 16}" fill="${textColor}" font-size="11" font-weight="600">${escHtml(proc.name)}</text>
+            <text x="${x + 12}" y="${y + 30}" fill="rgb(100,100,115)" font-size="9">#${proc.execOrder}  ${proc.timing.toFixed(2)}ms</text>
+            <text x="${x + nodeW - 8}" y="${y + 16}" fill="${timingColor(proc.timing)}" font-size="10" text-anchor="end">${proc.timing.toFixed(2)}</text>
+        </g>`;
+    }
+
+    let svg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" id="tree-detail-svg">`;
+    svg += `<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgb(100,100,115)"/></marker></defs>`;
+
+    const centerX = svgW / 2 - nodeW / 2;
+    let centerY = padY;
+    if (runAfterProcs.length) centerY += nodeH + padY;
+
+    // RunAfter nodes (above)
+    const afterStartX = svgW / 2 - (runAfterProcs.length * (nodeW + padX) - padX) / 2;
+    runAfterProcs.forEach((dep, i) => {
+        const x = afterStartX + i * (nodeW + padX);
+        const y = padY;
+        svg += nodeRect(x, y, dep, false);
+        // Arrow from dep down to center
+        const fromX = x + nodeW / 2, fromY = y + nodeH;
+        const toX = centerX + nodeW / 2, toY = centerY;
+        svg += `<line x1="${fromX}" y1="${fromY + 4}" x2="${toX}" y2="${toY - 4}" stroke="rgb(100,100,115)" stroke-width="1.5" marker-end="url(#arrowhead)"/>`;
+    });
+
+    // Selected node (center)
+    svg += nodeRect(centerX, centerY, p, true);
+
+    // RunBefore nodes (below)
+    const beforeStartX = svgW / 2 - (runBeforeProcs.length * (nodeW + padX) - padX) / 2;
+    runBeforeProcs.forEach((dep, i) => {
+        const x = beforeStartX + i * (nodeW + padX);
+        const y = centerY + nodeH + padY;
+        svg += nodeRect(x, y, dep, false);
+        // Arrow from center down to dep
+        const fromX = centerX + nodeW / 2, fromY = centerY + nodeH;
+        const toX = x + nodeW / 2, toY = y;
+        svg += `<line x1="${fromX}" y1="${fromY + 4}" x2="${toX}" y2="${toY - 4}" stroke="rgb(100,100,115)" stroke-width="1.5" marker-end="url(#arrowhead)"/>`;
+    });
+
+    // Labels
+    if (runAfterProcs.length) svg += `<text x="8" y="${padY - 6}" fill="rgb(100,100,115)" font-size="9" font-weight="600">RUN AFTER</text>`;
+    if (runBeforeProcs.length) svg += `<text x="8" y="${centerY + nodeH + padY - 6}" fill="rgb(100,100,115)" font-size="9" font-weight="600">RUN BEFORE</text>`;
+
+    svg += `</svg>`;
+    view.innerHTML = svg;
+}
+
+// ============================================================================
+// GRAPH VIEW (Full DAG on Canvas)
+// ============================================================================
+
+function layoutGraphNodes() {
+    graphNodePositions = {};
+    const groupCols = {};
+    let colIdx = 0;
+    const allGroups = [...GROUP_ORDER_PRE, ...GROUP_ORDER_POST];
+    allGroups.forEach(g => { groupCols[g] = colIdx++; });
+
+    const nodeW = 150, nodeH = 36, colW = 175, rowH = 46, padTop = 60, padLeft = 30;
+
+    // Group processors by group, sorted by exec order
+    const groupedProcs = {};
+    allGroups.forEach(g => { groupedProcs[g] = []; });
+    PROCESSORS.forEach(p => {
+        if (groupedProcs[p.group]) groupedProcs[p.group].push(p);
+    });
+    allGroups.forEach(g => groupedProcs[g].sort((a, b) => a.execOrder - b.execOrder));
+
+    allGroups.forEach(g => {
+        const col = groupCols[g];
+        groupedProcs[g].forEach((p, rowIdx) => {
+            graphNodePositions[p.id] = {
+                x: padLeft + col * colW,
+                y: padTop + rowIdx * rowH,
+                w: nodeW,
+                h: nodeH,
+                proc: p,
+            };
+        });
+    });
+
+    // Compute group bounding boxes
+    const groupBounds = {};
+    allGroups.forEach(g => {
+        const nodes = groupedProcs[g].map(p => graphNodePositions[p.id]).filter(Boolean);
+        if (!nodes.length) return;
+        const minX = Math.min(...nodes.map(n => n.x)) - 10;
+        const minY = Math.min(...nodes.map(n => n.y)) - 24;
+        const maxX = Math.max(...nodes.map(n => n.x + n.w)) + 10;
+        const maxY = Math.max(...nodes.map(n => n.y + n.h)) + 10;
+        groupBounds[g] = { x: minX, y: minY, w: maxX - minX, h: maxY - minY, color: GROUP_COLORS[g] };
+    });
+
+    return { groupBounds, nodeW, nodeH };
+}
+
+function drawGraph() {
+    const canvas = document.getElementById('graph-canvas');
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Background
+    ctx.fillStyle = 'rgb(18, 18, 26)';
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    ctx.save();
+    ctx.translate(graphPanX, graphPanY);
+    ctx.scale(graphZoom, graphZoom);
+
+    const { groupBounds } = layoutGraphNodes();
+
+    // Draw group bounding boxes
+    Object.entries(groupBounds).forEach(([name, b]) => {
+        ctx.strokeStyle = b.color.replace('rgb', 'rgba').replace(')', ',0.25)');
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.setLineDash([]);
+        ctx.fillStyle = b.color.replace('rgb', 'rgba').replace(')', ',0.06)');
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = b.color.replace('rgb', 'rgba').replace(')', ',0.5)');
+        ctx.font = '600 9px "Segoe UI", sans-serif';
+        ctx.fillText(name, b.x + 4, b.y + 12);
+    });
+
+    // Draw edges
+    ctx.lineWidth = 1;
+    PROCESSORS.forEach(p => {
+        const to = graphNodePositions[p.id];
+        if (!to) return;
+        p.runAfter.forEach(depName => {
+            const dep = PROCESSORS.find(d => d.name === depName);
+            if (!dep) return;
+            const from = graphNodePositions[dep.id];
+            if (!from) return;
+            ctx.strokeStyle = 'rgba(100, 100, 115, 0.4)';
+            ctx.beginPath();
+            ctx.moveTo(from.x + from.w, from.y + from.h / 2);
+            const midX = (from.x + from.w + to.x) / 2;
+            ctx.bezierCurveTo(midX, from.y + from.h / 2, midX, to.y + to.h / 2, to.x, to.y + to.h / 2);
+            ctx.stroke();
+            // Arrowhead
+            const angle = Math.atan2(to.y + to.h / 2 - (from.y + from.h / 2), to.x - midX);
+            const ax = to.x, ay = to.y + to.h / 2;
+            ctx.fillStyle = 'rgba(100, 100, 115, 0.6)';
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(ax - 6 * Math.cos(angle - 0.4), ay - 6 * Math.sin(angle - 0.4));
+            ctx.lineTo(ax - 6 * Math.cos(angle + 0.4), ay - 6 * Math.sin(angle + 0.4));
+            ctx.closePath();
+            ctx.fill();
+        });
+    });
+
+    // Draw nodes
+    Object.values(graphNodePositions).forEach(n => {
+        const p = n.proc;
+        const isSelected = p.id === selectedProcId;
+        const isPumped = PUMP_DATA.some(pd => pd.processors.includes(p.name));
+
+        // Node background
+        if (isSelected) {
+            ctx.fillStyle = 'rgba(60, 130, 220, 0.3)';
+            ctx.strokeStyle = 'rgba(60, 130, 220, 0.8)';
+        } else if (isPumped) {
+            ctx.fillStyle = 'rgba(255, 167, 38, 0.12)';
+            ctx.strokeStyle = 'rgba(255, 167, 38, 0.5)';
+        } else if (p.ghost) {
+            ctx.fillStyle = 'rgba(30, 30, 42, 0.6)';
+            ctx.strokeStyle = 'rgba(55, 55, 75, 0.4)';
+        } else {
+            ctx.fillStyle = 'rgb(40, 40, 56)';
+            ctx.strokeStyle = 'rgb(55, 55, 75)';
+        }
+        ctx.lineWidth = isSelected ? 2 : 1;
+
+        // Rounded rect
+        const r = 5;
+        ctx.beginPath();
+        ctx.moveTo(n.x + r, n.y);
+        ctx.lineTo(n.x + n.w - r, n.y);
+        ctx.arcTo(n.x + n.w, n.y, n.x + n.w, n.y + r, r);
+        ctx.lineTo(n.x + n.w, n.y + n.h - r);
+        ctx.arcTo(n.x + n.w, n.y + n.h, n.x + n.w - r, n.y + n.h, r);
+        ctx.lineTo(n.x + r, n.y + n.h);
+        ctx.arcTo(n.x, n.y + n.h, n.x, n.y + n.h - r, r);
+        ctx.lineTo(n.x, n.y + r);
+        ctx.arcTo(n.x, n.y, n.x + r, n.y, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Left accent strip
+        const color = GROUP_COLORS[p.group] || '#888';
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(n.x, n.y + r);
+        ctx.arcTo(n.x, n.y, n.x + r, n.y, r);
+        ctx.lineTo(n.x + 4, n.y);
+        ctx.lineTo(n.x + 4, n.y + n.h);
+        ctx.lineTo(n.x + r, n.y + n.h);
+        ctx.arcTo(n.x, n.y + n.h, n.x, n.y + n.h - r, r);
+        ctx.closePath();
+        ctx.fill();
+
+        // Text
+        ctx.fillStyle = p.ghost ? 'rgb(80, 80, 95)' : 'rgb(224, 224, 224)';
+        ctx.font = '600 10px "Segoe UI", sans-serif';
+        const displayName = p.name.length > 18 ? p.name.substring(0, 17) + '\u2026' : p.name;
+        ctx.fillText(displayName, n.x + 10, n.y + 15);
+
+        ctx.fillStyle = 'rgb(100, 100, 115)';
+        ctx.font = '9px "Segoe UI", sans-serif';
+        ctx.fillText(`#${p.execOrder}`, n.x + 10, n.y + 28);
+
+        ctx.fillStyle = timingColor(p.timing);
+        ctx.font = '9px "Segoe UI", sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${p.timing.toFixed(2)}ms`, n.x + n.w - 8, n.y + 28);
+        ctx.textAlign = 'left';
+
+        // Badges
+        let bx = n.x + n.w - 8;
+        if (p.parallel) {
+            ctx.fillStyle = 'rgb(60, 130, 220)';
+            ctx.font = '8px "Segoe UI", sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('\u25C6', bx, n.y + 14);
+            bx -= 10;
+            ctx.textAlign = 'left';
+        }
+    });
+
+    ctx.restore();
+}
+
+function graphHitTest(mx, my) {
+    const x = (mx - graphPanX) / graphZoom;
+    const y = (my - graphPanY) / graphZoom;
+    for (const n of Object.values(graphNodePositions)) {
+        if (x >= n.x && x <= n.x + n.w && y >= n.y && y <= n.y + n.h) return n.proc;
+    }
+    return null;
+}
+
+// ============================================================================
+// SELECTION
+// ============================================================================
+
+function selectProcessor(id) {
+    selectedProcId = id;
+    renderTree();
+    renderSelectedDetails();
+    renderTreeDetail();
+    drawGraph();
+    // Scroll selected into view in tree
+    const el = document.querySelector(`.tree-processor[data-proc-id="${id}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        if (btn.dataset.tab === 'graph') {
+            requestAnimationFrame(() => drawGraph());
+        }
+    });
+});
+
+// ============================================================================
+// SPLITTER DRAG
+// ============================================================================
+
+function initSplitter(splitterId, leftPaneId, rightPaneId, minLeft, minRight) {
+    const splitter = document.getElementById(splitterId);
+    const leftPane = document.getElementById(leftPaneId);
+    let dragging = false;
+
+    splitter.addEventListener('mousedown', e => {
+        e.preventDefault();
+        dragging = true;
+        splitter.classList.add('dragging');
+        document.body.style.cursor = 'col-resize';
+    });
+
+    document.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        const mainRect = document.getElementById('main-area').getBoundingClientRect();
+        const x = e.clientX - mainRect.left;
+
+        if (splitterId === 'splitter-left') {
+            const newW = Math.max(minLeft, Math.min(x, mainRect.width * 0.4));
+            leftPane.style.width = newW + 'px';
+            leftPane.style.flex = 'none';
+        } else {
+            // splitter-right: right pane
+            const rightPane = document.getElementById(rightPaneId);
+            const newW = Math.max(minRight, mainRect.width - x);
+            rightPane.style.width = newW + 'px';
+            rightPane.style.flex = 'none';
+        }
+        drawGraph();
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (dragging) {
+            dragging = false;
+            splitter.classList.remove('dragging');
+            document.body.style.cursor = '';
+        }
+    });
+}
+
+initSplitter('splitter-left', 'left-pane', 'center-pane', 220, 400);
+initSplitter('splitter-right', 'center-pane', 'right-pane', 400, 250);
+
+// ============================================================================
+// SEARCH
+// ============================================================================
+
+let searchTimeout = null;
+document.getElementById('search-input').addEventListener('input', e => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        searchTerm = e.target.value.toLowerCase().trim();
+        renderTree();
+    }, 150);
+});
+
+// ============================================================================
+// SORT
+// ============================================================================
+
+document.getElementById('sort-select').addEventListener('change', e => {
+    sortMode = e.target.value;
+    renderTree();
+});
+
+// ============================================================================
+// GRAPH INTERACTIONS
+// ============================================================================
+
+const graphCanvas = document.getElementById('graph-canvas');
+
+graphCanvas.addEventListener('mousedown', e => {
+    const rect = graphCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const hit = graphHitTest(mx, my);
+    if (hit) {
+        selectProcessor(hit.id);
+        return;
+    }
+
+    graphDragging = true;
+    graphDragStart = { x: e.clientX - graphPanX, y: e.clientY - graphPanY };
+    graphCanvas.style.cursor = 'grabbing';
+});
+
+graphCanvas.addEventListener('mousemove', e => {
+    if (graphDragging) {
+        graphPanX = e.clientX - graphDragStart.x;
+        graphPanY = e.clientY - graphDragStart.y;
+        drawGraph();
+    } else {
+        // Tooltip
+        const rect = graphCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const hit = graphHitTest(mx, my);
+        const tooltip = document.getElementById('tooltip');
+        if (hit) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 12) + 'px';
+            tooltip.style.top = (e.clientY + 12) + 'px';
+            tooltip.textContent = hit.fullName + ' | ' + hit.group + ' | ' + hit.timing.toFixed(3) + 'ms';
+            graphCanvas.style.cursor = 'pointer';
+        } else {
+            tooltip.style.display = 'none';
+            graphCanvas.style.cursor = 'grab';
+        }
+    }
+});
+
+graphCanvas.addEventListener('mouseup', () => {
+    graphDragging = false;
+    graphCanvas.style.cursor = 'grab';
+});
+
+graphCanvas.addEventListener('mouseleave', () => {
+    graphDragging = false;
+    document.getElementById('tooltip').style.display = 'none';
+});
+
+graphCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = graphCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const oldZoom = graphZoom;
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    graphZoom = Math.max(0.2, Math.min(3, graphZoom * delta));
+    // Zoom toward cursor
+    graphPanX = mx - (mx - graphPanX) * (graphZoom / oldZoom);
+    graphPanY = my - (my - graphPanY) * (graphZoom / oldZoom);
+    drawGraph();
+}, { passive: false });
+
+document.getElementById('zoom-in').addEventListener('click', () => { graphZoom = Math.min(3, graphZoom * 1.2); drawGraph(); });
+document.getElementById('zoom-out').addEventListener('click', () => { graphZoom = Math.max(0.2, graphZoom / 1.2); drawGraph(); });
+document.getElementById('zoom-fit').addEventListener('click', () => {
+    graphZoom = 1; graphPanX = 10; graphPanY = 10;
+    // Auto-fit
+    const canvas = document.getElementById('graph-canvas');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const allNodes = Object.values(graphNodePositions);
+    if (!allNodes.length) return;
+    const minX = Math.min(...allNodes.map(n => n.x));
+    const minY = Math.min(...allNodes.map(n => n.y));
+    const maxX = Math.max(...allNodes.map(n => n.x + n.w));
+    const maxY = Math.max(...allNodes.map(n => n.y + n.h));
+    const contentW = maxX - minX + 60;
+    const contentH = maxY - minY + 60;
+    graphZoom = Math.min(rect.width / contentW, rect.height / contentH, 1.5);
+    graphPanX = (rect.width - contentW * graphZoom) / 2 - minX * graphZoom + 30;
+    graphPanY = (rect.height - contentH * graphZoom) / 2 - minY * graphZoom + 30;
+    drawGraph();
+});
+
+// ============================================================================
+// RESIZE HANDLER
+// ============================================================================
+
+window.addEventListener('resize', () => {
+    drawGraph();
+});
+
+// ============================================================================
+// INIT
+// ============================================================================
+
+renderTree();
+renderPumpSection();
+renderGlobalStats();
+renderSelectedDetails();
+renderTreeDetail();
+layoutGraphNodes();
+
+// Select first processor by default
+selectProcessor(8);
+
+// Initial graph draw after layout settles
+requestAnimationFrame(() => {
+    drawGraph();
+    // Auto-fit on initial load
+    document.getElementById('zoom-fit').click();
+});
+</script>
+</body>
+</html>

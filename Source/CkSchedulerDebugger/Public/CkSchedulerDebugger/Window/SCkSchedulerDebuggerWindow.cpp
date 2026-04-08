@@ -1,0 +1,510 @@
+#include "SCkSchedulerDebuggerWindow.h"
+
+#include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
+#include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Timeline.h"
+#include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Combined.h"
+
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SSpacer.h"
+#include "Widgets/Layout/SSeparator.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SComboBox.h"
+#include "Widgets/SBoxPanel.h"
+
+#include "Engine/World.h"
+#include "Editor.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+	class FPlaceholderPage : public ICkSchedulerDebuggerPage
+	{
+	public:
+		explicit FPlaceholderPage(const FText& InName)
+			: _Name(InName)
+		{
+		}
+
+		auto Get_PageName() const -> FText override { return _Name; }
+
+		auto Build_Content(TSharedPtr<FCkSchedulerDebugger_ViewModel> InViewModel) -> TSharedRef<SWidget> override
+		{
+			return SNew(SBox)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(TEXT("Coming Soon")))
+						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
+				];
+		}
+
+	private:
+		FText _Name;
+	};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	Construct(
+		const FArguments& InArgs)
+	-> void
+{
+	_ViewModel = MakeShared<FCkSchedulerDebugger_ViewModel>();
+
+	_WorldOptions.Add(MakeShared<FString>(TEXT("Game World")));
+	_WorldOptions.Add(MakeShared<FString>(TEXT("Editor World")));
+	_WorldOptions.Add(MakeShared<FString>(TEXT("PIE World")));
+
+	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_TreeView>());
+	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_Timeline>());
+	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_Combined>());
+
+	_ContentContainer = SNew(SBox);
+
+	ChildSlot
+	[
+		SNew(SBorder)
+			.BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
+			.ColorAndOpacity(FLinearColor::White)
+			.Padding(0.0f)
+			[
+				SNew(SVerticalBox)
+
+				+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						DoBuildTopBar()
+					]
+
+				+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
+					[
+						DoBuildStatsBar()
+					]
+
+				+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						DoBuildTabBar()
+					]
+
+				+ SVerticalBox::Slot()
+					.FillHeight(1.0f)
+					[
+						_ContentContainer.ToSharedRef()
+					]
+			]
+	];
+
+	DoSwitchToPage(0);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	Tick(
+		const FGeometry& AllottedGeometry,
+		double InCurrentTime,
+		float InDeltaTime)
+	-> void
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	auto World = DoFindBestWorld();
+	_ViewModel->Tick(World, InDeltaTime);
+
+	if (_ActivePageIndex >= 0 && _ActivePageIndex < _Pages.Num())
+	{
+		_Pages[_ActivePageIndex]->Tick(InDeltaTime);
+	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoBuildTopBar()
+	-> TSharedRef<SWidget>
+{
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+		.Padding(FMargin(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small))
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Large, 0.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(TEXT("CkScheduler Debugger")))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
+						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
+				[
+					SNew(SComboBox<TSharedPtr<FString>>)
+						.OptionsSource(&_WorldOptions)
+						.InitiallySelectedItem(_WorldOptions[0])
+						.OnGenerateWidget_Lambda([](TSharedPtr<FString> InItem) -> TSharedRef<SWidget>
+						{
+							return SNew(STextBlock)
+								.Text(FText::FromString(*InItem))
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10));
+						})
+						.OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type InType)
+						{
+							_SelectedWorldIndex = _WorldOptions.IndexOfByKey(InItem);
+						})
+						[
+							SNew(STextBlock)
+								.Text_Lambda([this]() -> FText
+								{
+									if (_WorldOptions.IsValidIndex(_SelectedWorldIndex))
+									{
+										return FText::FromString(*_WorldOptions[_SelectedWorldIndex]);
+									}
+									return FText::FromString(TEXT("Game World"));
+								})
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+						]
+				]
+
+			+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(SSpacer)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(SButton)
+						.OnClicked_Lambda([this]() -> FReply
+						{
+							_ViewModel->Set_IsFrozen(NOT _ViewModel->Get_IsFrozen());
+							return FReply::Handled();
+						})
+						[
+							SNew(STextBlock)
+								.Text_Lambda([this]() -> FText
+								{
+									return _ViewModel->Get_IsFrozen()
+										? FText::FromString(TEXT("Resume"))
+										: FText::FromString(TEXT("Freeze"));
+								})
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+						]
+				]
+		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoBuildStatsBar()
+	-> TSharedRef<SWidget>
+{
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+		.Padding(FMargin(FCkSchedulerDebuggerStyle::Padding_Small))
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Frame Time")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::FromString(FString::Printf(TEXT("%.2f ms"),
+								_ViewModel->Get_DataCollector().Get_TotalFrameTimeMs()));
+						}),
+						TAttribute<FSlateColor>::CreateLambda([this]()
+						{
+							return FSlateColor(FCkSchedulerDebuggerStyle::Get_TimingColor(
+								_ViewModel->Get_DataCollector().Get_TotalFrameTimeMs()));
+						})
+					)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Pump Count")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_PumpCount());
+						}),
+						TAttribute<FSlateColor>::CreateLambda([this]()
+						{
+							constexpr auto PumpWarningThreshold = 3;
+							const auto Count = _ViewModel->Get_DataCollector().Get_PumpCount();
+							return FSlateColor(Count >= PumpWarningThreshold
+								? FCkSchedulerDebuggerStyle::Color_Warning
+								: FCkSchedulerDebuggerStyle::Color_Text_Primary);
+						})
+					)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Processors")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_ProcessorCount());
+						}),
+						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Primary))
+					)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Ghosts")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_GhostCount());
+						}),
+						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Ghost))
+					)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Dirty")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_DirtyCount());
+						}),
+						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_DirtyMarker))
+					)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					DoMakeStatItem(
+						FText::FromString(TEXT("Parallel")),
+						TAttribute<FText>::CreateLambda([this]()
+						{
+							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_ParallelCount());
+						}),
+						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Parallel))
+					)
+				]
+		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoBuildTabBar()
+	-> TSharedRef<SWidget>
+{
+	auto TabBar = SNew(SHorizontalBox);
+
+	for (auto PageIdx = 0; PageIdx < _Pages.Num(); ++PageIdx)
+	{
+		TabBar->AddSlot()
+			.AutoWidth()
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(SBox)
+					.Padding(0.0f)
+					[
+						SNew(SVerticalBox)
+
+						+ SVerticalBox::Slot()
+							.AutoHeight()
+							[
+								SNew(SBox)
+									.HeightOverride(2.0f)
+									[
+										SNew(SBorder)
+											.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+											.ColorAndOpacity_Lambda([this, PageIdx]()
+											{
+												return _ActivePageIndex == PageIdx
+													? FCkSchedulerDebuggerStyle::Color_Selection
+													: FLinearColor::Transparent;
+											})
+									]
+							]
+
+						+ SVerticalBox::Slot()
+							.AutoHeight()
+							[
+								SNew(SButton)
+									.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+									.ContentPadding(FMargin(
+										FCkSchedulerDebuggerStyle::Padding_Medium,
+										FCkSchedulerDebuggerStyle::Padding_Small))
+									.OnClicked_Lambda([this, PageIdx]() -> FReply
+									{
+										DoSwitchToPage(PageIdx);
+										return FReply::Handled();
+									})
+									[
+										SNew(STextBlock)
+											.Text(_Pages[PageIdx]->Get_PageName())
+											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+											.ColorAndOpacity_Lambda([this, PageIdx]()
+											{
+												return _ActivePageIndex == PageIdx
+													? FCkSchedulerDebuggerStyle::Color_Text_Highlight
+													: FCkSchedulerDebuggerStyle::Color_Text_Secondary;
+											})
+									]
+							]
+					]
+			];
+	}
+
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+		.Padding(FMargin(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f))
+		[
+			TabBar
+		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoSwitchToPage(
+		int32 InPageIndex)
+	-> void
+{
+	if (NOT _Pages.IsValidIndex(InPageIndex))
+	{ return; }
+
+	if (_ActivePageIndex >= 0 && _ActivePageIndex < _Pages.Num())
+	{
+		_Pages[_ActivePageIndex]->Set_IsActive(false);
+	}
+
+	_ActivePageIndex = InPageIndex;
+	_Pages[_ActivePageIndex]->Set_IsActive(true);
+
+	_ContentContainer->SetContent(
+		_Pages[_ActivePageIndex]->Build_Content(_ViewModel));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoFindBestWorld() const
+	-> UWorld*
+{
+	if (_SelectedWorldIndex == 2)
+	{
+		if (GEditor)
+		{
+			for (const auto& Context : GEditor->GetWorldContexts())
+			{
+				if (Context.WorldType == EWorldType::PIE && IsValid(Context.World()))
+				{
+					return Context.World();
+				}
+			}
+		}
+	}
+
+	if (_SelectedWorldIndex == 1)
+	{
+		if (GEditor)
+		{
+			return GEditor->GetEditorWorldContext().World();
+		}
+	}
+
+	if (GEditor)
+	{
+		for (const auto& Context : GEditor->GetWorldContexts())
+		{
+			if (Context.WorldType == EWorldType::Game && IsValid(Context.World()))
+			{
+				return Context.World();
+			}
+		}
+
+		for (const auto& Context : GEditor->GetWorldContexts())
+		{
+			if (Context.WorldType == EWorldType::PIE && IsValid(Context.World()))
+			{
+				return Context.World();
+			}
+		}
+	}
+
+	return GWorld;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoMakeStatItem(
+		const FText& InLabel,
+		TAttribute<FText> InValue,
+		TAttribute<FSlateColor> InColor)
+	-> TSharedRef<SWidget>
+{
+	return SNew(SHorizontalBox)
+
+		+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(InLabel)
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+			]
+
+		+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+					.Text(InValue)
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+					.ColorAndOpacity(InColor)
+			];
+}
+
+// --------------------------------------------------------------------------------------------------------------------

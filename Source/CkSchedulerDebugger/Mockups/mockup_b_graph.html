@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Processor Scheduler Debugger - Graph View</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: rgb(18, 18, 26);
+    color: rgb(224, 224, 224);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+}
+
+/* ── Color Variables ── */
+:root {
+    --canvas-bg: rgb(18, 18, 26);
+    --panel-bg: rgb(30, 30, 42);
+    --panel-lighter: rgb(40, 40, 56);
+    --border: rgb(55, 55, 75);
+    --text-primary: rgb(224, 224, 224);
+    --text-secondary: rgb(160, 160, 175);
+    --text-muted: rgb(100, 100, 115);
+    --selection: rgb(60, 130, 220);
+    --node-body: rgb(35, 35, 50);
+    --node-border: rgb(65, 65, 85);
+    --edge-default: rgb(70, 70, 90);
+    --grp-predestruction: rgb(180, 80, 80);
+    --grp-destruction: rgb(180, 100, 70);
+    --grp-gameplay: rgb(60, 150, 200);
+    --grp-physics: rgb(200, 160, 60);
+    --grp-transform: rgb(130, 180, 80);
+    --grp-posttransform: rgb(100, 160, 130);
+    --grp-replication: rgb(160, 100, 200);
+    --grp-entitylifecycle: rgb(100, 130, 180);
+    --grp-overlap: rgb(200, 120, 160);
+}
+
+/* ── Main Layout ── */
+.main-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--panel-bg);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width 0.2s ease, min-width 0.2s ease, opacity 0.2s ease;
+    position: relative;
+    z-index: 10;
+}
+.sidebar.collapsed {
+    width: 0;
+    min-width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+.sidebar-toggle {
+    position: absolute;
+    left: 280px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 48px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 11;
+    transition: left 0.2s ease;
+    font-size: 12px;
+}
+.sidebar-toggle:hover { background: var(--panel-lighter); color: var(--text-primary); }
+.sidebar-toggle.collapsed { left: 0; }
+
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.sidebar-content::-webkit-scrollbar { width: 5px; }
+.sidebar-content::-webkit-scrollbar-track { background: transparent; }
+.sidebar-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Sidebar Sections ── */
+.sidebar-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.sidebar-header h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+}
+.world-select {
+    background: var(--panel-lighter);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.world-select:hover { border-color: var(--text-muted); }
+
+.section {
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+}
+.section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+
+/* Search */
+.search-input {
+    width: 100%;
+    background: rgb(22, 22, 32);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    outline: none;
+    margin-bottom: 6px;
+}
+.search-input:focus { border-color: var(--selection); }
+.search-input::placeholder { color: var(--text-muted); }
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 3px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.checkbox-row input[type="checkbox"] {
+    accent-color: var(--selection);
+    width: 12px;
+    height: 12px;
+}
+
+/* Stats */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    padding: 2px 0;
+}
+.stat-label { color: var(--text-secondary); }
+.stat-value { color: var(--text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat-value.warn { color: rgb(220, 160, 50); }
+.stat-value.good { color: rgb(80, 180, 100); }
+
+/* Pump Log */
+.pump-entry {
+    font-size: 10px;
+    color: var(--text-secondary);
+    padding: 3px 6px;
+    background: rgb(25, 25, 36);
+    border-radius: 3px;
+    margin-bottom: 3px;
+    border-left: 2px solid rgb(220, 160, 50);
+}
+.pump-entry .pump-label { color: rgb(220, 160, 50); font-weight: 600; }
+.pump-item { color: var(--text-muted); margin-left: 8px; }
+
+/* Selected Detail */
+.detail-section { display: none; }
+.detail-section.visible { display: block; }
+.detail-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+.detail-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+.badge {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.badge-group { background: rgba(60, 150, 200, 0.2); color: rgb(60, 150, 200); }
+.badge-parallel { background: rgba(100, 200, 150, 0.2); color: rgb(100, 200, 150); }
+.badge-ghost { background: rgba(120, 120, 140, 0.2); color: rgb(120, 120, 140); }
+.badge-dirty { background: rgba(220, 160, 50, 0.2); color: rgb(220, 160, 50); }
+.badge-pumped { background: rgba(220, 140, 50, 0.2); color: rgb(220, 140, 50); }
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding: 1px 0;
+}
+.detail-row .label { color: var(--text-muted); }
+.detail-row .value { color: var(--text-secondary); }
+
+.sparkline-container {
+    margin: 4px 0;
+    height: 24px;
+    background: rgb(22, 22, 32);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.dep-list {
+    margin-top: 4px;
+}
+.dep-list-title {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+.dep-link {
+    font-size: 11px;
+    color: var(--selection);
+    cursor: pointer;
+    padding: 1px 4px;
+    border-radius: 2px;
+    display: inline-block;
+    margin: 1px 0;
+}
+.dep-link:hover {
+    background: rgba(60, 130, 220, 0.15);
+    text-decoration: underline;
+}
+
+.fragment-list {
+    margin-top: 4px;
+}
+.fragment-tag {
+    font-size: 10px;
+    color: var(--text-muted);
+    background: rgb(25, 25, 36);
+    padding: 1px 5px;
+    border-radius: 2px;
+    display: inline-block;
+    margin: 1px 2px 1px 0;
+}
+
+/* ── Graph Area ── */
+.graph-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* Toolbar */
+.graph-toolbar {
+    height: 32px;
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 8px;
+}
+.toolbar-group::after {
+    content: '';
+    display: block;
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin-left: 6px;
+}
+.toolbar-group:last-child::after { display: none; }
+
+.toolbar-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.toolbar-btn:hover { background: var(--panel-lighter); color: var(--text-primary); }
+.toolbar-btn.active {
+    background: rgba(60, 130, 220, 0.15);
+    color: var(--selection);
+    border-color: rgba(60, 130, 220, 0.3);
+}
+.toolbar-btn .icon { font-size: 13px; }
+
+.zoom-display {
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 36px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Canvas */
+.canvas-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+}
+.canvas-container.grabbing { cursor: grabbing; }
+#graphCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+/* Tooltip */
+.tooltip {
+    position: fixed;
+    background: rgb(25, 25, 38);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--text-primary);
+    pointer-events: none;
+    z-index: 100;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    max-width: 280px;
+}
+.tooltip .tt-name { font-weight: 600; margin-bottom: 2px; }
+.tooltip .tt-detail { color: var(--text-secondary); font-size: 10px; }
+
+/* ── Bottom Bar ── */
+.bottom-bar {
+    height: 22px;
+    background: var(--panel-bg);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.bottom-bar .status-item { display: flex; align-items: center; gap: 4px; }
+.bottom-bar .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.bottom-bar .dot-green { background: rgb(80, 180, 100); }
+.bottom-bar .dot-orange { background: rgb(220, 160, 50); }
+</style>
+</head>
+<body>
+
+<div class="main-container">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h1>Scheduler Debugger</h1>
+            <select class="world-select">
+                <option>Game World</option>
+                <option>Editor World</option>
+                <option>PIE World 0</option>
+            </select>
+        </div>
+        <div class="sidebar-content">
+            <!-- Search & Filters -->
+            <div class="section">
+                <div class="section-title">Search &amp; Filter</div>
+                <input type="text" class="search-input" id="searchInput" placeholder="Filter processors..." />
+                <label class="checkbox-row"><input type="checkbox" id="chkGhosts" checked /> Show Ghosts</label>
+                <label class="checkbox-row"><input type="checkbox" id="chkTiming" checked /> Show Timing</label>
+                <label class="checkbox-row"><input type="checkbox" id="chkHeatmap" /> Heat Map</label>
+            </div>
+
+            <!-- Global Stats -->
+            <div class="section">
+                <div class="section-title">Global Stats</div>
+                <div class="stat-row"><span class="stat-label">Frame Time</span><span class="stat-value">1.82ms</span></div>
+                <div class="stat-row"><span class="stat-label">Pump Count</span><span class="stat-value warn">2 <span style="font-size:9px">&#9888;</span></span></div>
+                <div class="stat-row"><span class="stat-label">Processors</span><span class="stat-value">47</span></div>
+                <div class="stat-row"><span class="stat-label">Ghosts</span><span class="stat-value">3</span></div>
+                <div class="stat-row"><span class="stat-label">Build Time</span><span class="stat-value good">0.4ms</span></div>
+            </div>
+
+            <!-- Pump Log -->
+            <div class="section">
+                <div class="section-title">Pump Log</div>
+                <div class="pump-entry">
+                    <span class="pump-label">Pass 1</span>
+                    <div class="pump-item">Audio_Process 0.08ms</div>
+                    <div class="pump-item">AudioSetup 0.02ms</div>
+                </div>
+                <div class="pump-entry">
+                    <span class="pump-label">Pass 2</span>
+                    <div class="pump-item">Audio_Process 0.04ms</div>
+                </div>
+            </div>
+
+            <!-- Selected Detail -->
+            <div class="section detail-section" id="detailSection">
+                <div class="section-title">Selected Processor</div>
+                <div class="detail-name" id="detailName">--</div>
+                <div class="detail-badges" id="detailBadges"></div>
+                <div id="detailRows"></div>
+                <div class="sparkline-container" id="sparklineContainer">
+                    <svg id="sparklineSvg" width="100%" height="24"></svg>
+                </div>
+                <div id="detailDeps"></div>
+                <div class="fragment-list" id="detailFragments"></div>
+            </div>
+        </div>
+    </div>
+    <div class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">&#9664;</div>
+
+    <!-- Graph Area -->
+    <div class="graph-area">
+        <div class="graph-toolbar">
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btnZoomOut" title="Zoom out"><span class="icon">-</span></button>
+                <span class="zoom-display" id="zoomDisplay">100%</span>
+                <button class="toolbar-btn" id="btnZoomIn" title="Zoom in"><span class="icon">+</span></button>
+                <button class="toolbar-btn" id="btnFitAll">Fit All</button>
+                <button class="toolbar-btn" id="btnFitSel">Fit Sel</button>
+            </div>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btnHeatmap">Heat Map</button>
+                <button class="toolbar-btn active" id="btnEdges">Edges</button>
+                <button class="toolbar-btn active" id="btnExecOrder">Exec Order</button>
+            </div>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btnAutoLayout">Auto Layout</button>
+            </div>
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="btnPause">&#9208; Pause</button>
+            </div>
+        </div>
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="graphCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip">
+    <div class="tt-name" id="ttName"></div>
+    <div class="tt-detail" id="ttDetail"></div>
+</div>
+
+<!-- Bottom Bar -->
+<div class="bottom-bar">
+    <div class="status-item"><span class="dot dot-green"></span> Scheduler Active</div>
+    <div class="status-item">47 Processors | 9 Groups | 2 Tick Groups</div>
+    <div class="status-item">Zoom: <span id="bottomZoom">100%</span></div>
+    <div class="status-item">Frame #14832</div>
+    <div class="status-item"><span class="dot dot-orange"></span> 2 Pumps this frame</div>
+</div>
+
+<script>
+// ============================================================================
+// DATA MODEL
+// ============================================================================
+
+const GROUP_COLORS = {
+    PreDestruction:      { r: 180, g: 80,  b: 80  },
+    DestructionPipeline: { r: 180, g: 100, b: 70  },
+    Gameplay:            { r: 60,  g: 150, b: 200 },
+    Physics:             { r: 200, g: 160, b: 60  },
+    Transform:           { r: 130, g: 180, b: 80  },
+    PostTransform:       { r: 100, g: 160, b: 130 },
+    Replication:         { r: 160, g: 100, b: 200 },
+    EntityLifecycle:     { r: 100, g: 130, b: 180 },
+    Overlap:             { r: 200, g: 120, b: 160 },
+};
+
+function gc(name) {
+    const c = GROUP_COLORS[name];
+    return c ? `rgb(${c.r},${c.g},${c.b})` : 'rgb(100,100,100)';
+}
+function gcA(name, a) {
+    const c = GROUP_COLORS[name];
+    return c ? `rgba(${c.r},${c.g},${c.b},${a})` : `rgba(100,100,100,${a})`;
+}
+
+const TICK_GROUPS = ['TG_PrePhysics', 'TG_PostPhysics'];
+
+const GROUPS_ORDER = [
+    { name: 'PreDestruction',      tickGroup: 'TG_PrePhysics' },
+    { name: 'DestructionPipeline', tickGroup: 'TG_PrePhysics' },
+    { name: 'Gameplay',            tickGroup: 'TG_PrePhysics' },
+    { name: 'Physics',             tickGroup: 'TG_PrePhysics' },
+    { name: 'Transform',           tickGroup: 'TG_PrePhysics' },
+    { name: 'PostTransform',       tickGroup: 'TG_PrePhysics' },
+    { name: 'Replication',         tickGroup: 'TG_PrePhysics' },
+    { name: 'EntityLifecycle',     tickGroup: 'TG_PrePhysics' },
+    { name: 'Overlap',             tickGroup: 'TG_PostPhysics' },
+];
+
+// Generate processors
+const PROCESSORS = [
+    // PreDestruction
+    { id: 'PreDestroy_Cleanup', short: 'Cleanup', group: 'PreDestruction', order: 1, time: 0.03, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Destroy_MarkPending'], fragments: ['FTag_PreDestroy'] },
+    { id: 'PreDestroy_Signals', short: 'Signals', group: 'PreDestruction', order: 2, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['PreDestroy_Cleanup'], runBefore: ['Destroy_MarkPending'], fragments: ['FTag_PreDestroy', 'FFragment_Signal'] },
+
+    // DestructionPipeline
+    { id: 'Destroy_MarkPending', short: 'MarkPending', group: 'DestructionPipeline', order: 3, time: 0.04, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['PreDestroy_Signals'], runBefore: ['Destroy_Execute'], fragments: ['FTag_PendingDestroy'] },
+    { id: 'Destroy_Execute', short: 'Execute', group: 'DestructionPipeline', order: 4, time: 0.06, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Destroy_MarkPending'], runBefore: ['Destroy_Finalize'], fragments: ['FTag_PendingDestroy', 'FFragment_Entity'] },
+    { id: 'Destroy_Finalize', short: 'Finalize', group: 'DestructionPipeline', order: 5, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Destroy_Execute'], runBefore: [], fragments: ['FFragment_Entity'] },
+
+    // Gameplay
+    { id: 'AI_DecisionTree', short: 'AI_Decision', group: 'Gameplay', order: 6, time: 0.18, ghost: false, parallel: true, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['AI_ActionExec'], fragments: ['FFragment_AI_Brain', 'FFragment_AI_Blackboard'] },
+    { id: 'AI_ActionExec', short: 'AI_Action', group: 'Gameplay', order: 7, time: 0.12, ghost: false, parallel: true, dirty: false, pumped: false, active: true, runAfter: ['AI_DecisionTree'], runBefore: ['Combat_DamageCalc'], fragments: ['FFragment_AI_Action'] },
+    { id: 'Audio_Process', short: 'Audio', group: 'Gameplay', order: 8, time: 0.08, ghost: false, parallel: false, dirty: true, pumped: true, active: true, runAfter: [], runBefore: [], fragments: ['FFragment_AudioTrack_Current', 'FFragment_AudioTrack_Params'] },
+    { id: 'AudioSetup', short: 'AudioSetup', group: 'Gameplay', order: 9, time: 0.02, ghost: false, parallel: false, dirty: true, pumped: true, active: true, runAfter: ['Audio_Process'], runBefore: [], fragments: ['FFragment_AudioTrack_Params', 'FTag_NeedsSetup'] },
+    { id: 'Combat_DamageCalc', short: 'DamageCalc', group: 'Gameplay', order: 10, time: 0.09, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['AI_ActionExec'], runBefore: ['Combat_ApplyDmg'], fragments: ['FFragment_Combat_Damage'] },
+    { id: 'Combat_ApplyDmg', short: 'ApplyDmg', group: 'Gameplay', order: 11, time: 0.07, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Combat_DamageCalc'], runBefore: ['Health_Update'], fragments: ['FFragment_Combat_Damage', 'FFragment_Health'] },
+    { id: 'Health_Update', short: 'Health', group: 'Gameplay', order: 12, time: 0.04, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Combat_ApplyDmg'], runBefore: [], fragments: ['FFragment_Health'] },
+    { id: 'Inventory_Process', short: 'Inventory', group: 'Gameplay', order: 13, time: 0.05, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: [], fragments: ['FFragment_Inventory'] },
+    { id: 'Cooldown_Tick', short: 'Cooldowns', group: 'Gameplay', order: 14, time: 0.03, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: [], fragments: ['FFragment_Cooldown'] },
+    { id: 'StatusEffect_Tick', short: 'StatusFX', group: 'Gameplay', order: 15, time: 0.06, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Health_Update'], runBefore: [], fragments: ['FFragment_StatusEffect'] },
+    { id: 'VfxCue_Setup', short: 'VfxSetup', group: 'Gameplay', order: 16, time: 0.03, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['VfxCue_Lifetime'], fragments: ['FFragment_VfxCue_Params', 'FTag_NeedsSetup'] },
+    { id: 'VfxCue_Lifetime', short: 'VfxLife', group: 'Gameplay', order: 17, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['VfxCue_Setup'], runBefore: [], fragments: ['FFragment_VfxCue_Current'] },
+
+    // Physics
+    { id: 'Physics_PrepBodies', short: 'PrepBodies', group: 'Physics', order: 18, time: 0.06, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Physics_Step'], fragments: ['FFragment_PhysicsBody'] },
+    { id: 'Physics_Step', short: 'PhysStep', group: 'Physics', order: 19, time: 0.22, ghost: false, parallel: true, dirty: false, pumped: false, active: true, runAfter: ['Physics_PrepBodies'], runBefore: ['Physics_Resolve'], fragments: ['FFragment_PhysicsBody', 'FFragment_Transform'] },
+    { id: 'Physics_Resolve', short: 'Resolve', group: 'Physics', order: 20, time: 0.08, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Physics_Step'], runBefore: ['CollisionResponse'], fragments: ['FFragment_PhysicsBody'] },
+    { id: 'CollisionResponse', short: 'Collision', group: 'Physics', order: 21, time: 0.11, ghost: false, parallel: true, dirty: false, pumped: false, active: true, runAfter: ['Physics_Resolve'], runBefore: [], fragments: ['FFragment_Collision'] },
+
+    // Transform
+    { id: 'Transform_WorldUpdate', short: 'WorldUpd', group: 'Transform', order: 22, time: 0.10, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Transform_Hierarchy'], fragments: ['FFragment_Transform'] },
+    { id: 'Transform_Hierarchy', short: 'Hierarchy', group: 'Transform', order: 23, time: 0.07, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Transform_WorldUpdate'], runBefore: ['Transform_Notify'], fragments: ['FFragment_Transform', 'FFragment_Parent'] },
+    { id: 'Transform_Notify', short: 'Notify', group: 'Transform', order: 24, time: 0.03, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Transform_Hierarchy'], runBefore: [], fragments: ['FFragment_Transform'] },
+
+    // PostTransform
+    { id: 'Animation_Update', short: 'AnimUpd', group: 'PostTransform', order: 25, time: 0.14, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Animation_Blend'], fragments: ['FFragment_Animation'] },
+    { id: 'Animation_Blend', short: 'AnimBlend', group: 'PostTransform', order: 26, time: 0.08, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Animation_Update'], runBefore: [], fragments: ['FFragment_Animation', 'FFragment_Skeleton'] },
+    { id: 'Camera_Follow', short: 'CamFollow', group: 'PostTransform', order: 27, time: 0.04, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Camera_Shake'], fragments: ['FFragment_Camera'] },
+    { id: 'Camera_Shake', short: 'CamShake', group: 'PostTransform', order: 28, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Camera_Follow'], runBefore: [], fragments: ['FFragment_Camera', 'FFragment_CameraShake'] },
+
+    // Replication
+    { id: 'Rep_GatherDirty', short: 'GatherDirty', group: 'Replication', order: 29, time: 0.06, ghost: false, parallel: false, dirty: true, pumped: false, active: true, runAfter: [], runBefore: ['Rep_Serialize'], fragments: ['FFragment_Replication'] },
+    { id: 'Rep_Serialize', short: 'Serialize', group: 'Replication', order: 30, time: 0.09, ghost: false, parallel: false, dirty: true, pumped: false, active: true, runAfter: ['Rep_GatherDirty'], runBefore: ['Rep_Send'], fragments: ['FFragment_Replication', 'FFragment_NetState'] },
+    { id: 'Rep_Send', short: 'Send', group: 'Replication', order: 31, time: 0.05, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Rep_Serialize'], runBefore: [], fragments: ['FFragment_NetState'] },
+    { id: 'Rep_NetSerialize', short: 'NetSerialize', group: 'Replication', order: 32, time: 0.00, ghost: true, parallel: false, dirty: false, pumped: false, active: false, runAfter: ['Rep_Serialize'], runBefore: [], fragments: ['FFragment_NetState'] },
+    { id: 'Rep_NetReceive', short: 'NetReceive', group: 'Replication', order: 33, time: 0.00, ghost: true, parallel: false, dirty: false, pumped: false, active: false, runAfter: [], runBefore: ['Rep_GatherDirty'], fragments: ['FFragment_NetState'] },
+
+    // EntityLifecycle
+    { id: 'Lifecycle_Spawn', short: 'Spawn', group: 'EntityLifecycle', order: 34, time: 0.05, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Lifecycle_Init'], fragments: ['FFragment_Entity', 'FTag_NeedsSpawn'] },
+    { id: 'Lifecycle_Init', short: 'Init', group: 'EntityLifecycle', order: 35, time: 0.04, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Lifecycle_Spawn'], runBefore: ['Lifecycle_BeginPlay'], fragments: ['FFragment_Entity'] },
+    { id: 'Lifecycle_BeginPlay', short: 'BeginPlay', group: 'EntityLifecycle', order: 36, time: 0.06, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Lifecycle_Init'], runBefore: [], fragments: ['FFragment_Entity'] },
+    { id: 'Lifecycle_EndPlay', short: 'EndPlay', group: 'EntityLifecycle', order: 37, time: 0.03, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: [], fragments: ['FFragment_Entity'] },
+    { id: 'Lifecycle_GC', short: 'GC', group: 'EntityLifecycle', order: 38, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Lifecycle_EndPlay'], runBefore: [], fragments: ['FFragment_Entity'] },
+    { id: 'Lifecycle_NetSpawn', short: 'NetSpawn', group: 'EntityLifecycle', order: 39, time: 0.00, ghost: true, parallel: false, dirty: false, pumped: false, active: false, runAfter: [], runBefore: ['Lifecycle_Spawn'], fragments: ['FFragment_Entity', 'FFragment_NetState'] },
+
+    // Overlap (TG_PostPhysics)
+    { id: 'Overlap_Broad', short: 'Broad', group: 'Overlap', order: 40, time: 0.08, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: [], runBefore: ['Overlap_Narrow'], fragments: ['FFragment_Collision', 'FFragment_Transform'] },
+    { id: 'Overlap_Narrow', short: 'Narrow', group: 'Overlap', order: 41, time: 0.12, ghost: false, parallel: true, dirty: false, pumped: false, active: true, runAfter: ['Overlap_Broad'], runBefore: ['Overlap_Dispatch'], fragments: ['FFragment_Collision'] },
+    { id: 'Overlap_Dispatch', short: 'Dispatch', group: 'Overlap', order: 42, time: 0.05, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Overlap_Narrow'], runBefore: ['Overlap_Cleanup'], fragments: ['FFragment_OverlapResult'] },
+    { id: 'Overlap_Cleanup', short: 'Cleanup', group: 'Overlap', order: 43, time: 0.02, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Overlap_Dispatch'], runBefore: [], fragments: ['FFragment_OverlapResult'] },
+    { id: 'Probe_TraceUpdate', short: 'ProbeTrace', group: 'Overlap', order: 44, time: 0.06, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Overlap_Dispatch'], runBefore: [], fragments: ['FFragment_ProbeTrace'] },
+    { id: 'Probe_SphereUpdate', short: 'ProbeSphere', group: 'Overlap', order: 45, time: 0.04, ghost: false, parallel: false, dirty: false, pumped: false, active: true, runAfter: ['Overlap_Dispatch'], runBefore: [], fragments: ['FFragment_ProbeSphere'] },
+];
+
+// Generate sparkline data per processor
+PROCESSORS.forEach(p => {
+    p.sparkline = [];
+    const base = p.time;
+    for (let i = 0; i < 60; i++) {
+        p.sparkline.push(Math.max(0.001, base + (Math.random() - 0.5) * base * 0.6));
+    }
+    p.totalTicks = Math.floor(Math.random() * 8000 + 2000);
+    p.tickRate = p.ghost ? 0 : (Math.random() > 0.3 ? 1 : (Math.random() > 0.5 ? 2 : 0.5));
+});
+
+// ============================================================================
+// GRAPH STATE
+// ============================================================================
+const canvas = document.getElementById('graphCanvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvasContainer');
+
+let camX = 0, camY = 0;
+let zoom = 1.0;
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0;
+let camStartX = 0, camStartY = 0;
+
+let selectedId = null;
+let hoveredId = null;
+let searchTerm = '';
+let showGhosts = true;
+let showTiming = true;
+let showHeatmap = false;
+let showEdges = true;
+let showExecOrder = true;
+let paused = false;
+let collapsedGroups = {};
+
+// Node layout data (computed)
+let nodeRects = {}; // id -> {x, y, w, h}
+let groupRects = {}; // groupName -> {x, y, w, h}
+let tickGroupBands = []; // {y, label}
+
+const NODE_W = 160;
+const NODE_H = 58;
+const NODE_PAD = 14;
+const GROUP_PAD = 20;
+const GROUP_HEADER = 22;
+const GROUP_GAP = 16;
+const TICK_GROUP_GAP = 40;
+
+// ============================================================================
+// LAYOUT
+// ============================================================================
+function computeLayout() {
+    nodeRects = {};
+    groupRects = {};
+    tickGroupBands = [];
+
+    let curY = 40;
+    let lastTickGroup = null;
+
+    for (const grp of GROUPS_ORDER) {
+        // Tick group separator
+        if (grp.tickGroup !== lastTickGroup) {
+            if (lastTickGroup !== null) {
+                curY += TICK_GROUP_GAP;
+            }
+            tickGroupBands.push({ y: curY - 12, label: grp.tickGroup });
+            lastTickGroup = grp.tickGroup;
+        }
+
+        const groupProcs = PROCESSORS.filter(p => p.group === grp.name);
+        if (groupProcs.length === 0) continue;
+
+        if (collapsedGroups[grp.name]) {
+            // Collapsed group: single summary node
+            const gx = 40;
+            const gy = curY;
+            groupRects[grp.name] = { x: gx, y: gy, w: NODE_W + GROUP_PAD * 2, h: NODE_H + GROUP_HEADER + GROUP_PAD * 2, collapsed: true };
+            nodeRects['__group__' + grp.name] = { x: gx + GROUP_PAD, y: gy + GROUP_HEADER + GROUP_PAD, w: NODE_W, h: NODE_H };
+            curY += NODE_H + GROUP_HEADER + GROUP_PAD * 2 + GROUP_GAP;
+            continue;
+        }
+
+        // Compute dependency depth within group for row placement
+        const inGroup = new Set(groupProcs.map(p => p.id));
+        const depthMap = {};
+
+        function getDepth(pid) {
+            if (depthMap[pid] !== undefined) return depthMap[pid];
+            const p = PROCESSORS.find(pp => pp.id === pid);
+            if (!p) return 0;
+            let maxParentDepth = -1;
+            for (const dep of p.runAfter) {
+                if (inGroup.has(dep)) {
+                    maxParentDepth = Math.max(maxParentDepth, getDepth(dep));
+                }
+            }
+            depthMap[pid] = maxParentDepth + 1;
+            return depthMap[pid];
+        }
+
+        groupProcs.forEach(p => getDepth(p.id));
+
+        // Group by columns (depth)
+        const columns = {};
+        groupProcs.forEach(p => {
+            const d = depthMap[p.id] || 0;
+            if (!columns[d]) columns[d] = [];
+            columns[d].push(p);
+        });
+
+        const maxDepth = Math.max(...Object.keys(columns).map(Number));
+        const maxColHeight = Math.max(...Object.values(columns).map(c => c.length));
+
+        const groupWidth = (maxDepth + 1) * (NODE_W + NODE_PAD) + GROUP_PAD * 2;
+        const groupHeight = maxColHeight * (NODE_H + NODE_PAD) + GROUP_HEADER + GROUP_PAD * 2;
+
+        const gx = 40;
+        const gy = curY;
+        groupRects[grp.name] = { x: gx, y: gy, w: groupWidth, h: groupHeight, collapsed: false };
+
+        for (let col = 0; col <= maxDepth; col++) {
+            const nodes = columns[col] || [];
+            nodes.forEach((p, row) => {
+                const nx = gx + GROUP_PAD + col * (NODE_W + NODE_PAD);
+                const ny = gy + GROUP_HEADER + GROUP_PAD + row * (NODE_H + NODE_PAD);
+                nodeRects[p.id] = { x: nx, y: ny, w: NODE_W, h: NODE_H };
+            });
+        }
+
+        curY += groupHeight + GROUP_GAP;
+    }
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = container.clientWidth * dpr;
+    canvas.height = container.clientHeight * dpr;
+    canvas.style.width = container.clientWidth + 'px';
+    canvas.style.height = container.clientHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function worldToScreen(wx, wy) {
+    return [(wx - camX) * zoom + container.clientWidth / 2, (wy - camY) * zoom + container.clientHeight / 2];
+}
+function screenToWorld(sx, sy) {
+    return [(sx - container.clientWidth / 2) / zoom + camX, (sy - container.clientHeight / 2) / zoom + camY];
+}
+
+function getHeatColor(time) {
+    // 0ms=green, 0.1ms=yellow, 0.2ms+=red
+    const t = Math.min(time / 0.22, 1);
+    if (t < 0.5) {
+        const r = Math.floor(80 + t * 2 * 170);
+        const g = Math.floor(180 - t * 2 * 40);
+        return `rgba(${r},${g},50,0.25)`;
+    } else {
+        const r = Math.floor(250);
+        const g = Math.floor(140 - (t - 0.5) * 2 * 120);
+        return `rgba(${r},${g},40,0.3)`;
+    }
+}
+
+function isMatchingSearch(proc) {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return proc.id.toLowerCase().includes(term) || proc.short.toLowerCase().includes(term) || proc.group.toLowerCase().includes(term);
+}
+
+function drawDotGrid() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    const spacing = 20 * zoom;
+    if (spacing < 4) return; // too dense
+
+    const offsetX = (-camX * zoom + w / 2) % spacing;
+    const offsetY = (-camY * zoom + h / 2) % spacing;
+
+    ctx.fillStyle = 'rgba(60, 60, 80, 0.25)';
+    for (let x = offsetX; x < w; x += spacing) {
+        for (let y = offsetY; y < h; y += spacing) {
+            ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+        }
+    }
+}
+
+function drawRoundedRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
+function drawDashedRoundedRect(x, y, w, h, r, dashPattern) {
+    ctx.setLineDash(dashPattern);
+    drawRoundedRect(x, y, w, h, r);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawArrow(x1, y1, x2, y2, color, lineWidth) {
+    const headLen = 6 * zoom;
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLen * Math.cos(angle - 0.4), y2 - headLen * Math.sin(angle - 0.4));
+    ctx.lineTo(x2 - headLen * Math.cos(angle + 0.4), y2 - headLen * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fill();
+}
+
+function render() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgb(18, 18, 26)';
+    ctx.fillRect(0, 0, w, h);
+
+    drawDotGrid();
+
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-camX, -camY);
+
+    // Draw tick group bands
+    tickGroupBands.forEach(band => {
+        ctx.fillStyle = 'rgba(50, 50, 70, 0.3)';
+        ctx.fillRect(-200, band.y - 6, 3000, 18);
+        ctx.fillStyle = 'rgb(100, 100, 115)';
+        ctx.font = '10px "Segoe UI"';
+        ctx.fillText(band.label, -180, band.y + 5);
+    });
+
+    // Draw group bounding boxes
+    for (const grp of GROUPS_ORDER) {
+        const gr = groupRects[grp.name];
+        if (!gr) continue;
+
+        const color = gc(grp.name);
+
+        // Fill
+        ctx.fillStyle = gcA(grp.name, 0.04);
+        drawRoundedRect(gr.x, gr.y, gr.w, gr.h, 6);
+        ctx.fill();
+
+        // Border
+        ctx.strokeStyle = gcA(grp.name, 0.3);
+        ctx.lineWidth = 1;
+        drawDashedRoundedRect(gr.x, gr.y, gr.w, gr.h, 6, [6, 4]);
+
+        // Label
+        ctx.fillStyle = gcA(grp.name, 0.7);
+        ctx.font = 'bold 11px "Segoe UI"';
+        ctx.fillText(grp.name, gr.x + 8, gr.y + 14);
+
+        // Stats (top right)
+        const groupProcs = PROCESSORS.filter(p => p.group === grp.name && !p.ghost);
+        const totalTime = groupProcs.reduce((s, p) => s + p.time, 0).toFixed(2);
+        const countStr = `${groupProcs.length} / ${totalTime}ms`;
+        ctx.fillStyle = gcA(grp.name, 0.5);
+        ctx.font = '10px "Segoe UI"';
+        const tw = ctx.measureText(countStr).width;
+        ctx.fillText(countStr, gr.x + gr.w - tw - 8, gr.y + 14);
+    }
+
+    // Draw edges
+    if (showEdges) {
+        PROCESSORS.forEach(proc => {
+            if (!showGhosts && proc.ghost) return;
+            const rect = nodeRects[proc.id];
+            if (!rect) return;
+
+            proc.runAfter.forEach(depId => {
+                const depRect = nodeRects[depId];
+                if (!depRect) return;
+                const depProc = PROCESSORS.find(p => p.id === depId);
+                if (!showGhosts && depProc && depProc.ghost) return;
+
+                const isHighlighted = selectedId === proc.id || selectedId === depId;
+                const opacity = isMatchingSearch(proc) && (!depProc || isMatchingSearch(depProc)) ? 1 : 0.15;
+
+                const fromX = depRect.x + depRect.w;
+                const fromY = depRect.y + depRect.h / 2;
+                const toX = rect.x;
+                const toY = rect.y + rect.h / 2;
+
+                let color, lw;
+                if (isHighlighted) {
+                    color = `rgba(60, 130, 220, ${opacity})`;
+                    lw = 1.8;
+                } else {
+                    color = `rgba(70, 70, 90, ${opacity * 0.6})`;
+                    lw = 0.8;
+                }
+
+                // If same column or close, draw a curve
+                if (Math.abs(fromX - toX) < NODE_W) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = lw;
+                    ctx.beginPath();
+                    ctx.moveTo(fromX, fromY);
+                    const cpx = (fromX + toX) / 2 + 30;
+                    ctx.quadraticCurveTo(cpx, (fromY + toY) / 2, toX, toY);
+                    ctx.stroke();
+                    // arrowhead
+                    const angle = Math.atan2(toY - (fromY + toY) / 2, toX - cpx);
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.moveTo(toX, toY);
+                    ctx.lineTo(toX - 5 * Math.cos(angle - 0.4), toY - 5 * Math.sin(angle - 0.4));
+                    ctx.lineTo(toX - 5 * Math.cos(angle + 0.4), toY - 5 * Math.sin(angle + 0.4));
+                    ctx.closePath();
+                    ctx.fill();
+                } else {
+                    drawArrow(fromX, fromY, toX, toY, color, lw);
+                }
+            });
+        });
+    }
+
+    // Draw nodes
+    PROCESSORS.forEach(proc => {
+        if (!showGhosts && proc.ghost) return;
+        const rect = nodeRects[proc.id];
+        if (!rect) return;
+
+        const isSelected = selectedId === proc.id;
+        const isHovered = hoveredId === proc.id;
+        const isMatch = isMatchingSearch(proc);
+        const globalAlpha = isMatch ? 1 : 0.25;
+
+        ctx.globalAlpha = proc.ghost ? 0.4 * globalAlpha : globalAlpha;
+
+        // Node shadow
+        if (isSelected || isHovered) {
+            ctx.shadowColor = isSelected ? 'rgba(60, 130, 220, 0.3)' : 'rgba(255,255,255,0.05)';
+            ctx.shadowBlur = isSelected ? 8 : 4;
+        }
+
+        // Node body
+        let bodyColor = 'rgb(35, 35, 50)';
+        if (showHeatmap && !proc.ghost) {
+            bodyColor = getHeatColor(proc.time);
+        }
+        ctx.fillStyle = bodyColor;
+        drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 5);
+        ctx.fill();
+
+        // Border
+        if (isSelected) {
+            ctx.strokeStyle = 'rgb(60, 130, 220)';
+            ctx.lineWidth = 2;
+        } else if (proc.pumped) {
+            ctx.strokeStyle = 'rgba(220, 160, 50, 0.7)';
+            ctx.lineWidth = 1.5;
+        } else if (proc.active && !proc.ghost) {
+            ctx.strokeStyle = 'rgba(80, 180, 100, 0.25)';
+            ctx.lineWidth = 1;
+        } else if (isHovered) {
+            ctx.strokeStyle = 'rgb(90, 90, 110)';
+            ctx.lineWidth = 1;
+        } else {
+            ctx.strokeStyle = proc.ghost ? 'rgb(55, 55, 70)' : 'rgb(65, 65, 85)';
+            ctx.lineWidth = 1;
+        }
+
+        if (proc.ghost) {
+            ctx.setLineDash([4, 3]);
+        }
+        drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+
+        // Pumped glow
+        if (proc.pumped && !isSelected) {
+            ctx.strokeStyle = 'rgba(220, 160, 50, 0.2)';
+            ctx.lineWidth = 4;
+            drawRoundedRect(rect.x - 2, rect.y - 2, rect.w + 4, rect.h + 4, 7);
+            ctx.stroke();
+        }
+
+        // Active glow
+        if (proc.active && !proc.ghost && !proc.pumped && !isSelected) {
+            ctx.strokeStyle = 'rgba(80, 180, 100, 0.1)';
+            ctx.lineWidth = 3;
+            drawRoundedRect(rect.x - 1, rect.y - 1, rect.w + 2, rect.h + 2, 6);
+            ctx.stroke();
+        }
+
+        // Left accent strip
+        ctx.fillStyle = gc(proc.group);
+        ctx.beginPath();
+        ctx.moveTo(rect.x, rect.y + 5);
+        ctx.arcTo(rect.x, rect.y, rect.x + 5, rect.y, 5);
+        ctx.lineTo(rect.x + 4, rect.y);
+        ctx.lineTo(rect.x + 4, rect.y + rect.h);
+        ctx.lineTo(rect.x + 5, rect.y + rect.h);
+        ctx.arcTo(rect.x, rect.y + rect.h, rect.x, rect.y + rect.h - 5, 5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Text: short name
+        ctx.fillStyle = proc.ghost ? 'rgb(100, 100, 115)' : 'rgb(210, 210, 220)';
+        ctx.font = 'bold 11px "Segoe UI"';
+        ctx.fillText(proc.short, rect.x + 10, rect.y + 17);
+
+        // Second line: timing + exec order
+        if (showTiming && !proc.ghost) {
+            ctx.fillStyle = 'rgb(140, 140, 155)';
+            ctx.font = '10px "Segoe UI"';
+            ctx.fillText(proc.time.toFixed(2) + 'ms', rect.x + 10, rect.y + 32);
+        }
+
+        if (showExecOrder) {
+            ctx.fillStyle = 'rgb(100, 100, 115)';
+            ctx.font = '10px "Segoe UI"';
+            const orderStr = '#' + String(proc.order).padStart(2, '0');
+            const ow = ctx.measureText(orderStr).width;
+            ctx.fillText(orderStr, rect.x + rect.w - ow - 8, rect.y + 32);
+        }
+
+        // Badges row
+        let badgeX = rect.x + rect.w - 8;
+        const badgeY = rect.y + rect.h - 13;
+
+        if (proc.dirty) {
+            ctx.fillStyle = 'rgb(220, 160, 50)';
+            ctx.font = '13px "Segoe UI"';
+            const tw = ctx.measureText('\u25C6').width;
+            badgeX -= tw;
+            ctx.fillText('\u25C6', badgeX, badgeY);
+            badgeX -= 4;
+        }
+
+        if (proc.parallel) {
+            ctx.fillStyle = 'rgb(100, 200, 150)';
+            ctx.font = 'bold 10px "Segoe UI"';
+            const tw = ctx.measureText('\u2225').width;
+            badgeX -= tw;
+            ctx.fillText('\u2225', badgeX, badgeY);
+            badgeX -= 4;
+        }
+
+        if (proc.ghost) {
+            ctx.fillStyle = 'rgb(100, 100, 115)';
+            ctx.font = '10px "Segoe UI"';
+            ctx.fillText('ghost', rect.x + 10, rect.y + rect.h - 8);
+        }
+
+        ctx.globalAlpha = 1;
+    });
+
+    ctx.restore();
+
+    requestAnimationFrame(render);
+}
+
+// ============================================================================
+// HIT TESTING
+// ============================================================================
+function hitTest(sx, sy) {
+    const [wx, wy] = screenToWorld(sx, sy);
+
+    // Check nodes in reverse order (top-most first)
+    for (let i = PROCESSORS.length - 1; i >= 0; i--) {
+        const p = PROCESSORS[i];
+        if (!showGhosts && p.ghost) continue;
+        const r = nodeRects[p.id];
+        if (!r) continue;
+        if (wx >= r.x && wx <= r.x + r.w && wy >= r.y && wy <= r.y + r.h) {
+            return p.id;
+        }
+    }
+    return null;
+}
+
+function hitTestGroup(sx, sy) {
+    const [wx, wy] = screenToWorld(sx, sy);
+    for (const grp of GROUPS_ORDER) {
+        const gr = groupRects[grp.name];
+        if (!gr) continue;
+        if (wx >= gr.x && wx <= gr.x + gr.w && wy >= gr.y && wy <= gr.y + GROUP_HEADER + GROUP_PAD) {
+            return grp.name;
+        }
+    }
+    return null;
+}
+
+// ============================================================================
+// INTERACTIONS
+// ============================================================================
+container.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const rect = container.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+
+    const hit = hitTest(sx, sy);
+    if (hit) {
+        selectNode(hit);
+        return;
+    }
+
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    camStartX = camX;
+    camStartY = camY;
+    container.classList.add('grabbing');
+});
+
+window.addEventListener('mousemove', e => {
+    if (isDragging) {
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        camX = camStartX - dx / zoom;
+        camY = camStartY - dy / zoom;
+        return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const hit = hitTest(sx, sy);
+    hoveredId = hit;
+
+    const tooltip = document.getElementById('tooltip');
+    if (hit) {
+        const proc = PROCESSORS.find(p => p.id === hit);
+        document.getElementById('ttName').textContent = proc.id;
+        let detail = `Group: ${proc.group} | ${proc.time.toFixed(2)}ms | #${proc.order}`;
+        if (proc.parallel) detail += ' | Parallel';
+        if (proc.ghost) detail += ' | Ghost';
+        if (proc.dirty) detail += ' | Dirty';
+        if (proc.pumped) detail += ' | Pumped';
+        document.getElementById('ttDetail').textContent = detail;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top = (e.clientY + 14) + 'px';
+        container.style.cursor = 'pointer';
+    } else {
+        tooltip.style.display = 'none';
+        container.style.cursor = isDragging ? 'grabbing' : 'grab';
+    }
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+    container.classList.remove('grabbing');
+});
+
+container.addEventListener('dblclick', e => {
+    const rect = container.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const grp = hitTestGroup(sx, sy);
+    if (grp) {
+        collapsedGroups[grp] = !collapsedGroups[grp];
+        computeLayout();
+    }
+});
+
+container.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.15, Math.min(3, zoom * factor));
+
+    // Zoom toward mouse position
+    const rect = container.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const [wx, wy] = screenToWorld(mx, my);
+
+    zoom = newZoom;
+    camX = wx - (mx - container.clientWidth / 2) / zoom;
+    camY = wy - (my - container.clientHeight / 2) / zoom;
+
+    updateZoomDisplay();
+}, { passive: false });
+
+function updateZoomDisplay() {
+    const pct = Math.round(zoom * 100) + '%';
+    document.getElementById('zoomDisplay').textContent = pct;
+    document.getElementById('bottomZoom').textContent = pct;
+}
+
+// ============================================================================
+// SELECTION & SIDEBAR
+// ============================================================================
+function selectNode(id) {
+    selectedId = id;
+    const section = document.getElementById('detailSection');
+
+    if (!id) {
+        section.classList.remove('visible');
+        return;
+    }
+
+    const proc = PROCESSORS.find(p => p.id === id);
+    if (!proc) { section.classList.remove('visible'); return; }
+
+    section.classList.add('visible');
+    document.getElementById('detailName').textContent = 'FProcessor_' + proc.id;
+
+    // Badges
+    const badgesEl = document.getElementById('detailBadges');
+    badgesEl.innerHTML = '';
+    const groupBadge = document.createElement('span');
+    groupBadge.className = 'badge badge-group';
+    groupBadge.style.background = gcA(proc.group, 0.2);
+    groupBadge.style.color = gc(proc.group);
+    groupBadge.textContent = proc.group;
+    badgesEl.appendChild(groupBadge);
+    if (proc.parallel) { const b = document.createElement('span'); b.className = 'badge badge-parallel'; b.textContent = 'Parallel'; badgesEl.appendChild(b); }
+    if (proc.ghost) { const b = document.createElement('span'); b.className = 'badge badge-ghost'; b.textContent = 'Ghost'; badgesEl.appendChild(b); }
+    if (proc.dirty) { const b = document.createElement('span'); b.className = 'badge badge-dirty'; b.textContent = 'Dirty'; badgesEl.appendChild(b); }
+    if (proc.pumped) { const b = document.createElement('span'); b.className = 'badge badge-pumped'; b.textContent = 'Pumped'; badgesEl.appendChild(b); }
+
+    // Detail rows
+    const rowsEl = document.getElementById('detailRows');
+    const tg = GROUPS_ORDER.find(g => g.name === proc.group);
+    rowsEl.innerHTML = `
+        <div class="detail-row"><span class="label">Tick Group</span><span class="value">${tg ? tg.tickGroup : '--'}</span></div>
+        <div class="detail-row"><span class="label">Exec Order</span><span class="value">#${proc.order}</span></div>
+        <div class="detail-row"><span class="label">Avg Time</span><span class="value">${proc.time.toFixed(2)}ms</span></div>
+        <div class="detail-row"><span class="label">Total Ticks</span><span class="value">${proc.totalTicks.toLocaleString()}</span></div>
+        <div class="detail-row"><span class="label">Tick Rate</span><span class="value">${proc.tickRate === 0 ? 'N/A' : 'Every ' + (proc.tickRate === 1 ? 'frame' : proc.tickRate + ' frames')}</span></div>
+        <div class="detail-row"><span class="label">Dirty Marker</span><span class="value">${proc.dirty ? 'Yes' : 'No'}</span></div>
+    `;
+
+    // Sparkline
+    drawSparkline(proc);
+
+    // Dependencies
+    const depsEl = document.getElementById('detailDeps');
+    let depsHtml = '';
+
+    if (proc.runAfter.length > 0) {
+        depsHtml += '<div class="dep-list"><div class="dep-list-title">Run After</div>';
+        proc.runAfter.forEach(d => {
+            depsHtml += `<span class="dep-link" onclick="panToNode('${d}')">${d}</span> `;
+        });
+        depsHtml += '</div>';
+    }
+    if (proc.runBefore.length > 0) {
+        depsHtml += '<div class="dep-list"><div class="dep-list-title">Run Before</div>';
+        proc.runBefore.forEach(d => {
+            depsHtml += `<span class="dep-link" onclick="panToNode('${d}')">${d}</span> `;
+        });
+        depsHtml += '</div>';
+    }
+    depsEl.innerHTML = depsHtml;
+
+    // Fragments
+    const fragEl = document.getElementById('detailFragments');
+    fragEl.innerHTML = '<div class="dep-list-title" style="margin-top:6px">Fragments</div>' +
+        proc.fragments.map(f => `<span class="fragment-tag">${f}</span>`).join('');
+}
+
+function drawSparkline(proc) {
+    const svg = document.getElementById('sparklineSvg');
+    const containerEl = document.getElementById('sparklineContainer');
+    const w = containerEl.clientWidth || 252;
+    const h = 24;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+    const data = proc.sparkline;
+    const maxVal = Math.max(...data) * 1.2;
+    const points = data.map((v, i) => {
+        const x = (i / (data.length - 1)) * w;
+        const y = h - (v / maxVal) * (h - 4) - 2;
+        return `${x},${y}`;
+    });
+
+    const color = gc(proc.group);
+    svg.innerHTML = `
+        <polyline points="${points.join(' ')}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linejoin="round"/>
+        <polyline points="0,${h} ${points.join(' ')} ${w},${h}" fill="${gcA(proc.group, 0.15)}" stroke="none"/>
+    `;
+}
+
+function panToNode(id) {
+    const rect = nodeRects[id];
+    if (!rect) return;
+
+    const targetX = rect.x + rect.w / 2;
+    const targetY = rect.y + rect.h / 2;
+
+    // Smooth animation
+    const startX = camX, startY = camY;
+    const duration = 300;
+    const startTime = performance.now();
+
+    function animate(time) {
+        const t = Math.min((time - startTime) / duration, 1);
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        camX = startX + (targetX - startX) * ease;
+        camY = startY + (targetY - startY) * ease;
+        if (t < 1) requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+
+    selectNode(id);
+}
+
+// ============================================================================
+// TOOLBAR HANDLERS
+// ============================================================================
+document.getElementById('btnZoomIn').addEventListener('click', () => {
+    zoom = Math.min(3, zoom * 1.2);
+    updateZoomDisplay();
+});
+document.getElementById('btnZoomOut').addEventListener('click', () => {
+    zoom = Math.max(0.15, zoom / 1.2);
+    updateZoomDisplay();
+});
+document.getElementById('btnFitAll').addEventListener('click', fitAll);
+document.getElementById('btnFitSel').addEventListener('click', () => {
+    if (selectedId) panToNode(selectedId);
+});
+
+function fitAll() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const id in nodeRects) {
+        const r = nodeRects[id];
+        minX = Math.min(minX, r.x);
+        minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.w);
+        maxY = Math.max(maxY, r.y + r.h);
+    }
+    if (minX === Infinity) return;
+
+    const padFrac = 0.05;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const zoomX = container.clientWidth * (1 - 2 * padFrac) / contentW;
+    const zoomY = container.clientHeight * (1 - 2 * padFrac) / contentH;
+    zoom = Math.min(zoomX, zoomY, 2);
+
+    camX = (minX + maxX) / 2;
+    camY = (minY + maxY) / 2;
+    updateZoomDisplay();
+}
+
+function toggleBtn(id) {
+    const btn = document.getElementById(id);
+    btn.classList.toggle('active');
+    return btn.classList.contains('active');
+}
+
+document.getElementById('btnHeatmap').addEventListener('click', () => {
+    showHeatmap = toggleBtn('btnHeatmap');
+    document.getElementById('chkHeatmap').checked = showHeatmap;
+});
+document.getElementById('btnEdges').addEventListener('click', () => { showEdges = toggleBtn('btnEdges'); });
+document.getElementById('btnExecOrder').addEventListener('click', () => { showExecOrder = toggleBtn('btnExecOrder'); });
+document.getElementById('btnAutoLayout').addEventListener('click', () => {
+    collapsedGroups = {};
+    computeLayout();
+    fitAll();
+});
+document.getElementById('btnPause').addEventListener('click', () => {
+    paused = !paused;
+    const btn = document.getElementById('btnPause');
+    btn.textContent = paused ? '\u25B6 Resume' : '\u23F8 Pause';
+    btn.classList.toggle('active', paused);
+});
+
+// ============================================================================
+// SIDEBAR HANDLERS
+// ============================================================================
+document.getElementById('sidebarToggle').addEventListener('click', () => {
+    const sidebar = document.getElementById('sidebar');
+    const toggle = document.getElementById('sidebarToggle');
+    sidebar.classList.toggle('collapsed');
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    toggle.classList.toggle('collapsed', isCollapsed);
+    toggle.innerHTML = isCollapsed ? '&#9654;' : '&#9664;';
+    setTimeout(resizeCanvas, 220);
+});
+
+document.getElementById('searchInput').addEventListener('input', e => {
+    searchTerm = e.target.value;
+});
+
+document.getElementById('chkGhosts').addEventListener('change', e => { showGhosts = e.target.checked; });
+document.getElementById('chkTiming').addEventListener('change', e => { showTiming = e.target.checked; });
+document.getElementById('chkHeatmap').addEventListener('change', e => {
+    showHeatmap = e.target.checked;
+    document.getElementById('btnHeatmap').classList.toggle('active', showHeatmap);
+});
+
+// ============================================================================
+// INIT
+// ============================================================================
+window.addEventListener('resize', () => {
+    resizeCanvas();
+});
+
+computeLayout();
+resizeCanvas();
+fitAll();
+render();
+</script>
+</body>
+</html>

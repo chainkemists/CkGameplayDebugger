@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mockups",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-l", "3000", "D:\\Repos\\CkPlugins\\Plugins\\CkGameplayDebugger\\Source\\CkSchedulerDebugger\\Mockups"],
+      "port": 3000
+    }
+  ]
+}

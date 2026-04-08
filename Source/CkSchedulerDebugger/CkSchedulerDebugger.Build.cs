@@ -1,0 +1,38 @@
+using System.IO;
+using UnrealBuildTool;
+
+public class CkSchedulerDebugger : CkModuleRules
+{
+    public CkSchedulerDebugger(ReadOnlyTargetRules Target) : base(Target)
+    {
+        PublicDependencyModuleNames.AddRange(new string[]
+        {
+            "Core",
+            "CoreUObject",
+            "Engine",
+            "GameplayTags",
+            "InputCore",
+
+            "Slate",
+            "SlateCore",
+            "GraphEditor",
+            "WorkspaceMenuStructure",
+            "EditorStyle",
+            "AppFramework",
+            "ToolMenus",
+
+            "CkCore",
+            "CkEcs",
+
+            "CkDebuggerCommon",
+        });
+
+        if (Target.bBuildEditor)
+        {
+            PublicDependencyModuleNames.AddRange(new string[]
+            {
+                "UnrealEd"
+            });
+        }
+    }
+}

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scheduler Debugger Mockups</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: rgb(18, 18, 26);
+        color: rgb(224, 224, 224);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 60px 40px;
+    }
+    h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        color: rgb(240, 240, 245);
+    }
+    .subtitle {
+        color: rgb(130, 130, 150);
+        font-size: 14px;
+        margin-bottom: 48px;
+    }
+    .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+        gap: 24px;
+        max-width: 1200px;
+        width: 100%;
+    }
+    .card {
+        background: rgb(30, 30, 42);
+        border: 1px solid rgb(55, 55, 75);
+        border-radius: 8px;
+        overflow: hidden;
+        transition: border-color 0.2s, transform 0.15s;
+        cursor: pointer;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    .card:hover {
+        border-color: rgb(60, 130, 220);
+        transform: translateY(-2px);
+    }
+    .card-accent {
+        height: 4px;
+    }
+    .card-body {
+        padding: 24px;
+    }
+    .card-label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin-bottom: 8px;
+    }
+    .card-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 12px;
+        color: rgb(240, 240, 245);
+    }
+    .card-desc {
+        font-size: 13px;
+        line-height: 1.6;
+        color: rgb(160, 160, 175);
+        margin-bottom: 16px;
+    }
+    .card-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .tag {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: rgb(40, 40, 56);
+        color: rgb(140, 140, 160);
+        border: 1px solid rgb(55, 55, 75);
+    }
+    .tag.pro { color: rgb(67, 160, 71); border-color: rgba(67, 160, 71, 0.3); }
+    .tag.con { color: rgb(239, 83, 80); border-color: rgba(239, 83, 80, 0.3); }
+    .tag.neutral { color: rgb(60, 130, 220); border-color: rgba(60, 130, 220, 0.3); }
+</style>
+</head>
+<body>
+    <h1>Processor Scheduler Debugger — Mockups</h1>
+    <p class="subtitle">Click a mockup to open it. Each is a self-contained interactive prototype.</p>
+    <div class="cards">
+        <a class="card" href="mockup_a_tripane.html">
+            <div class="card-accent" style="background: linear-gradient(90deg, rgb(60,130,220), rgb(100,160,220));"></div>
+            <div class="card-body">
+                <div class="card-label" style="color: rgb(60,130,220);">Mockup A</div>
+                <div class="card-title">Classic Tri-Pane</div>
+                <div class="card-desc">
+                    Three-pane split: processor tree on the left, tabbed content area (tree detail + graph) in the center,
+                    details panel on the right. Follows the existing ECS Debugger layout pattern.
+                </div>
+                <div class="card-tags">
+                    <span class="tag pro">+ Familiar layout</span>
+                    <span class="tag pro">+ Tree scales well</span>
+                    <span class="tag pro">+ Proven pattern</span>
+                    <span class="tag con">- Tree/graph not simultaneous</span>
+                    <span class="tag neutral">Navigation-first</span>
+                </div>
+            </div>
+        </a>
+        <a class="card" href="mockup_b_graph.html">
+            <div class="card-accent" style="background: linear-gradient(90deg, rgb(130,180,80), rgb(100,200,160));"></div>
+            <div class="card-body">
+                <div class="card-label" style="color: rgb(130,180,80);">Mockup B</div>
+                <div class="card-title">Graph-Centric</div>
+                <div class="card-desc">
+                    Full DAG graph as the hero view with a collapsible sidebar for search, stats, and details.
+                    Groups as bounding boxes. No separate tree — the graph IS the navigation.
+                </div>
+                <div class="card-tags">
+                    <span class="tag pro">+ Max graph space</span>
+                    <span class="tag pro">+ Dependencies visible</span>
+                    <span class="tag pro">+ Heat map overlay</span>
+                    <span class="tag con">- 260+ nodes needs zoom</span>
+                    <span class="tag neutral">Structure-first</span>
+                </div>
+            </div>
+        </a>
+        <a class="card" href="mockup_c_timeline.html">
+            <div class="card-accent" style="background: linear-gradient(90deg, rgb(200,160,60), rgb(220,180,80));"></div>
+            <div class="card-body">
+                <div class="card-label" style="color: rgb(200,160,60);">Mockup C</div>
+                <div class="card-title">Execution Timeline</div>
+                <div class="card-desc">
+                    Waterfall/profiler view with horizontal bars proportional to execution time.
+                    Groups as swim lanes. Pump passes extend the timeline. Instant hotspot detection.
+                </div>
+                <div class="card-tags">
+                    <span class="tag pro">+ Timing at a glance</span>
+                    <span class="tag pro">+ Profiler-like</span>
+                    <span class="tag pro">+ Pump flow visible</span>
+                    <span class="tag con">- Deps need overlay</span>
+                    <span class="tag neutral">Performance-first</span>
+                </div>
+            </div>
+        </a>
+        <a class="card" href="mockup_unified.html" style="grid-column: 1 / -1;">
+            <div class="card-accent" style="background: linear-gradient(90deg, rgb(60,130,220), rgb(200,160,60), rgb(130,180,80));"></div>
+            <div class="card-body">
+                <div class="card-label" style="color: rgb(240,240,245);">UNIFIED</div>
+                <div class="card-title">Combined: Tree + Timeline (with tabs)</div>
+                <div class="card-desc">
+                    Three tabs in one tool: Tree View (Mockup A), Timeline (Mockup C), and Combined (both views
+                    with toggleable split). Shared selection state across all tabs. This is the chosen direction.
+                </div>
+                <div class="card-tags">
+                    <span class="tag pro">+ Best of both worlds</span>
+                    <span class="tag pro">+ Shared selection</span>
+                    <span class="tag pro">+ Flexible layout</span>
+                    <span class="tag neutral">3 viewing modes</span>
+                </div>
+            </div>
+        </a>
+    </div>
+</body>
+</html>

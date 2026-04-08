@@ -27,6 +27,16 @@
 			]
 		},
 		{
+			"Name": "CkDebuggerCommon",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkEcsDebugger",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default",
@@ -48,6 +58,16 @@
 		},
 		{
 			"Name": "CkUIDebugger",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
+			"Name": "CkSchedulerDebugger",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [

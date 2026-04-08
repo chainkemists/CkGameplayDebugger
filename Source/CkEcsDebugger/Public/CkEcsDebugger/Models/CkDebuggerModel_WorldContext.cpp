@@ -58,10 +58,6 @@ auto FCkDebuggerModel_WorldContext::Refresh_EntityCache() -> void
     if (ck::Is_NOT_Valid(World))
     { return; }
 
-    // Guard against worlds whose subsystems aren't initialized yet
-    if (NOT World->HasBegunPlay())
-    { return; }
-
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(World);
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }

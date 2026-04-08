@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CkScheduler Debugger - Unified</title>
+<style>
+/* ========== RESET & BASE ========== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg-canvas: rgb(18, 18, 26);
+    --bg-panel: rgb(30, 30, 42);
+    --bg-panel-light: rgb(40, 40, 56);
+    --bg-panel-lighter: rgb(48, 48, 66);
+    --bg-hover: rgb(50, 50, 68);
+    --border: rgb(55, 55, 75);
+    --border-light: rgb(70, 70, 90);
+    --text-primary: rgb(224, 224, 224);
+    --text-secondary: rgb(160, 160, 175);
+    --text-muted: rgb(100, 100, 115);
+    --accent: rgb(60, 130, 220);
+    --accent-dim: rgba(60, 130, 220, 0.15);
+    --accent-hover: rgba(60, 130, 220, 0.25);
+    --active-green: rgb(67, 160, 71);
+    --pumped-orange: rgb(255, 167, 38);
+    --ghost: rgb(80, 80, 95);
+    --error-red: rgb(239, 83, 80);
+    --warning-yellow: rgb(255, 213, 79);
+    --timing-fast: rgb(67, 160, 71);
+    --timing-mid: rgb(255, 213, 79);
+    --timing-slow: rgb(255, 167, 38);
+    --timing-hot: rgb(239, 83, 80);
+    --scrollbar-thumb: rgb(60, 60, 80);
+    --scrollbar-track: rgb(22, 22, 32);
+    --pump-bg-1: rgba(200, 160, 60, 0.04);
+    --pump-bg-2: rgba(200, 100, 60, 0.04);
+    --splitter-width: 4px;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+html, body { width: 100%; height: 100%; background: var(--bg-canvas); overflow: hidden; user-select: none; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(80, 80, 100); }
+::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
+
+/* ========== APP LAYOUT ========== */
+#app { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+
+/* ========== TOP BAR ========== */
+#top-bar {
+    height: 38px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; background: rgb(22, 22, 34);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#top-bar .title { font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; }
+#top-bar .title span { color: var(--accent); }
+#top-bar .sep { width: 1px; height: 20px; background: var(--border); }
+.ue-select, .ue-input, .ue-btn {
+    height: 26px; border: 1px solid var(--border); background: var(--bg-panel-light);
+    color: var(--text-primary); border-radius: 3px; padding: 0 8px; font-size: 11px; outline: none;
+}
+.ue-select:focus, .ue-input:focus { border-color: var(--accent); }
+.ue-btn { cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 4px; padding: 0 10px; }
+.ue-btn:hover { background: var(--bg-hover); }
+.ue-btn.active { background: rgba(60, 130, 220, 0.25); border-color: var(--accent); color: #fff; }
+.frozen-indicator { display: none; color: var(--error-red); font-weight: 700; font-size: 11px; letter-spacing: 1px; animation: pulse 1.2s ease-in-out infinite; }
+.frozen-indicator.visible { display: inline; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ========== TAB BAR ========== */
+#tab-bar {
+    height: 32px; display: flex; align-items: stretch; gap: 0;
+    background: rgb(22, 22, 34); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    padding: 0 8px;
+}
+.main-tab {
+    padding: 0 18px; border: none; background: var(--bg-panel);
+    color: var(--text-muted); font-size: 11px; font-weight: 600;
+    cursor: pointer; border-top: 2px solid transparent;
+    margin-right: 1px; transition: all 0.15s;
+}
+.main-tab:hover { color: var(--text-secondary); background: var(--bg-panel-light); }
+.main-tab.active { color: var(--text-primary); background: rgb(45, 45, 65); border-top-color: var(--accent); }
+
+/* ========== STATS BAR ========== */
+#stats-bar {
+    height: 28px; display: flex; align-items: center; gap: 20px;
+    padding: 0 14px; background: var(--bg-canvas);
+    border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: 11px;
+}
+.stat-item { display: flex; align-items: center; gap: 5px; }
+.stat-label { color: var(--text-muted); }
+.stat-value { color: var(--text-secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-value.warn { color: var(--warning-yellow); }
+.stat-value.hot { color: var(--error-red); }
+
+/* ========== TAB CONTENT ========== */
+#tab-content { flex: 1; min-height: 0; position: relative; }
+.tab-panel { position: absolute; inset: 0; display: none; }
+.tab-panel.active { display: flex; }
+
+/* ========== SPLITTERS ========== */
+.v-splitter {
+    width: var(--splitter-width); background: var(--border); cursor: col-resize;
+    flex-shrink: 0; z-index: 10; transition: background 0.15s;
+}
+.v-splitter:hover, .v-splitter.dragging { background: var(--accent); }
+.h-splitter {
+    height: var(--splitter-width); background: var(--border); cursor: ns-resize;
+    flex-shrink: 0; z-index: 10; transition: background 0.15s;
+}
+.h-splitter:hover, .h-splitter.dragging { background: var(--accent); }
+
+/* ========== PANE STYLES ========== */
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-panel); }
+
+/* ========== TREE VIEW STYLES ========== */
+.tree-toolbar {
+    display: flex; align-items: center; height: 30px; padding: 0 6px; gap: 4px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg-panel);
+}
+.tree-toolbar select, .tree-toolbar input {
+    background: var(--bg-panel-light); border: 1px solid var(--border); color: var(--text-primary);
+    padding: 2px 5px; border-radius: 3px; font-size: 10px; outline: none; height: 22px;
+}
+.tree-toolbar input { flex: 1; }
+.tree-toolbar label { color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.tree-container { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 2px 0; }
+
+.tree-tg-header {
+    display: flex; align-items: center; padding: 3px 8px; color: var(--text-muted);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase;
+    cursor: pointer; background: rgba(255,255,255,0.02);
+}
+.tree-tg-header .arrow { margin-right: 4px; font-size: 8px; transition: transform 0.15s; display: inline-block; }
+.tree-tg-header.collapsed .arrow { transform: rotate(-90deg); }
+
+.tree-grp-header {
+    display: flex; align-items: center; padding: 2px 8px 2px 18px; cursor: pointer;
+    border-radius: 2px; transition: background 0.1s; gap: 5px; height: 22px;
+}
+.tree-grp-header:hover { background: rgba(255,255,255,0.04); }
+.tree-grp-header .arrow { font-size: 8px; color: var(--text-muted); transition: transform 0.15s; display: inline-block; width: 10px; text-align: center; }
+.tree-grp-header.collapsed .arrow { transform: rotate(-90deg); }
+.tree-grp-header .grp-accent { width: 3px; height: 13px; border-radius: 1px; flex-shrink: 0; }
+.tree-grp-header .grp-name { color: var(--text-secondary); font-size: 11px; font-weight: 600; flex: 1; }
+.tree-grp-header .grp-count { color: var(--text-muted); font-size: 10px; }
+.tree-grp-header .grp-timing { font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.tree-proc {
+    display: flex; align-items: center; padding: 1px 8px 1px 34px;
+    cursor: pointer; border-radius: 2px; transition: background 0.1s; gap: 4px; height: 21px;
+}
+.tree-proc:hover { background: rgba(255,255,255,0.04); }
+.tree-proc.selected { background: var(--accent-dim); outline: 1px solid rgba(60,130,220,0.3); }
+.tree-proc.ghost { opacity: 0.45; }
+.tree-proc .exec-order { color: var(--text-muted); font-size: 9px; width: 22px; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.tree-proc .proc-accent { width: 2px; height: 11px; border-radius: 1px; flex-shrink: 0; }
+.tree-proc .proc-name { flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-proc .proc-timing { font-size: 10px; font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 36px; text-align: right; }
+.tree-proc .badge { font-size: 9px; flex-shrink: 0; }
+.tree-proc .badge-p { color: var(--accent); }
+.tree-proc .badge-d { color: var(--pumped-orange); }
+.tree-proc .badge-g { color: var(--ghost); }
+
+.pump-section { border-top: 1px solid var(--border); flex-shrink: 0; max-height: 100px; overflow-y: auto; }
+.pump-section .pump-title {
+    padding: 4px 8px; font-size: 10px; font-weight: 700; color: var(--pumped-orange);
+    letter-spacing: 0.5px; text-transform: uppercase; background: rgba(255, 167, 38, 0.06);
+    border-bottom: 1px solid var(--border);
+}
+.pump-pass { padding: 2px 8px 2px 14px; font-size: 10px; }
+.pump-pass .pass-label { color: var(--text-muted); font-weight: 600; }
+.pump-pass .pass-items { color: var(--pumped-orange); }
+
+/* ========== DETAIL GRAPH (SVG mini dep graph) ========== */
+.detail-graph-container { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; background: var(--bg-canvas); }
+.detail-graph-container .no-sel { color: var(--text-muted); font-size: 12px; font-style: italic; }
+
+/* ========== FULL GRAPH (Canvas DAG) ========== */
+.full-graph-container { flex: 1; position: relative; overflow: hidden; background: var(--bg-canvas); }
+.full-graph-container canvas { display: block; width: 100%; height: 100%; }
+.graph-controls {
+    position: absolute; bottom: 10px; right: 10px; display: flex; gap: 3px; z-index: 5;
+}
+.graph-controls button {
+    width: 26px; height: 26px; background: var(--bg-panel-light); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 3px; cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+}
+.graph-controls button:hover { background: var(--bg-panel-lighter); border-color: var(--accent); }
+
+/* ========== CENTER SUB-TABS ========== */
+.sub-tab-bar {
+    display: flex; height: 28px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg-panel);
+}
+.sub-tab {
+    padding: 0 14px; border: none; background: none; color: var(--text-muted);
+    font-size: 10px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
+}
+.sub-tab:hover { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
+.sub-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.sub-tab-content { flex: 1; display: none; min-height: 0; }
+.sub-tab-content.active { display: flex; flex-direction: column; }
+
+/* ========== DETAIL PANEL (Right pane) ========== */
+.detail-panel { overflow-y: auto; padding: 0; }
+.detail-section { border-bottom: 1px solid var(--border); padding: 8px 10px; }
+.detail-section-title {
+    font-size: 10px; font-weight: 700; color: var(--text-muted);
+    letter-spacing: 0.7px; text-transform: uppercase; margin-bottom: 6px;
+}
+.detail-name { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; word-break: break-all; line-height: 1.3; }
+.detail-badge {
+    display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    margin-right: 3px; margin-bottom: 3px; font-weight: 600;
+}
+.detail-badge.parallel { background: rgba(60,130,220,0.2); color: var(--accent); }
+.detail-badge.ghost { background: rgba(80,80,95,0.3); color: var(--ghost); }
+.detail-badge.dirty { background: rgba(255,167,38,0.15); color: var(--pumped-orange); }
+.detail-badge.active { background: rgba(67,160,71,0.15); color: var(--active-green); }
+.d-row { display: flex; justify-content: space-between; align-items: center; padding: 1px 0; font-size: 11px; }
+.d-row .d-label { color: var(--text-muted); }
+.d-row .d-value { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.d-row .d-value.warn { color: var(--error-red); }
+.d-row .d-value.good { color: var(--active-green); }
+.d-row .d-value.orange { color: var(--pumped-orange); }
+
+.dep-list { list-style: none; padding: 0; }
+.dep-list li {
+    padding: 1px 4px; font-size: 11px; color: var(--accent); cursor: pointer;
+    border-radius: 2px; transition: background 0.1s;
+}
+.dep-list li:hover { background: var(--accent-dim); text-decoration: underline; }
+.fragment-list { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.fragment-tag {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    background: var(--bg-panel-light); border: 1px solid var(--border); color: var(--text-secondary);
+}
+.sparkline-wrap { margin: 4px 0; }
+
+/* ========== TIMELINE STYLES ========== */
+.timeline-section { display: flex; flex-direction: column; overflow: hidden; }
+.timeline-header { display: flex; height: 32px; flex-shrink: 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+.timeline-header-label {
+    width: 190px; min-width: 190px; flex-shrink: 0; display: flex; align-items: center;
+    justify-content: center; font-size: 10px; color: var(--text-muted); border-right: 1px solid var(--border);
+}
+.time-axis { flex: 1; position: relative; overflow: hidden; background: var(--bg-canvas); }
+.time-axis canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+.timeline-body { display: flex; flex: 1; overflow: hidden; }
+.swim-labels {
+    width: 190px; min-width: 190px; flex-shrink: 0; overflow-y: auto; overflow-x: hidden;
+    border-right: 1px solid var(--border); background: var(--bg-panel);
+}
+.swim-labels::-webkit-scrollbar { width: 0; }
+.timeline-bars { flex: 1; overflow: auto; position: relative; background: var(--bg-canvas); }
+
+.tl-tg-header {
+    height: 24px; display: flex; align-items: center; padding: 0 8px;
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    background: rgba(40, 40, 56, 0.6); border-bottom: 1px solid var(--border);
+}
+.tl-tg-header-bar { height: 24px; background: rgba(40, 40, 56, 0.6); border-bottom: 1px solid var(--border); }
+
+.tl-grp-label {
+    display: flex; align-items: center; height: 28px; padding: 0 6px; gap: 5px;
+    cursor: pointer; border-bottom: 1px solid rgba(55, 55, 75, 0.4); transition: background 0.15s;
+}
+.tl-grp-label:hover { background: var(--bg-panel-light); }
+.tl-grp-label .arrow { font-size: 9px; width: 12px; text-align: center; color: var(--text-muted); transition: transform 0.2s; }
+.tl-grp-label .arrow.collapsed { transform: rotate(-90deg); }
+.tl-grp-label .gname { font-size: 11px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-grp-label .gstats { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+
+.tl-row-label { height: 26px; display: flex; align-items: center; border-bottom: 1px solid rgba(55, 55, 75, 0.2); }
+.tl-row-bar { height: 26px; position: relative; border-bottom: 1px solid rgba(55, 55, 75, 0.2); }
+.tl-collapsed-label { height: 20px; display: flex; align-items: center; padding: 0 24px; font-size: 10px; color: var(--text-muted); border-bottom: 1px solid rgba(55, 55, 75, 0.2); }
+.tl-collapsed-bar { height: 20px; position: relative; border-bottom: 1px solid rgba(55, 55, 75, 0.2); }
+.tl-grp-bar { height: 28px; border-bottom: 1px solid rgba(55, 55, 75, 0.4); }
+
+.proc-bar {
+    position: absolute; top: 3px; height: 20px; border-radius: 3px; cursor: pointer;
+    display: flex; align-items: center; padding: 0 4px; font-size: 10px;
+    color: rgba(255,255,255,0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: box-shadow 0.15s, filter 0.15s; z-index: 1;
+}
+.proc-bar:hover { filter: brightness(1.2); z-index: 5; }
+.proc-bar.selected { box-shadow: 0 0 0 2px var(--accent), 0 2px 8px rgba(60, 130, 220, 0.4); z-index: 10; filter: brightness(1.1); }
+.proc-bar .bar-order { font-size: 8px; opacity: 0.6; margin-right: 2px; }
+.proc-bar .bar-badge { margin-left: 2px; font-size: 9px; }
+.proc-bar.ghost-bar {
+    opacity: 0.45;
+    background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.08) 3px, rgba(255,255,255,0.08) 6px) !important;
+}
+.proc-bar.pumped { border: 1.5px solid rgb(220, 160, 50) !important; }
+.proc-bar.search-dim { opacity: 0.2; }
+.proc-bar.search-match { box-shadow: 0 0 0 1px rgba(255, 220, 60, 0.7); }
+.aggregate-bar { position: absolute; top: 5px; height: 10px; border-radius: 2px; opacity: 0.5; }
+
+.pump-separator { position: absolute; top: 0; bottom: 0; width: 1px; border-left: 1px dashed rgba(200, 160, 60, 0.4); z-index: 2; pointer-events: none; }
+.pump-label { position: absolute; top: 2px; font-size: 8px; color: rgba(200, 160, 60, 0.6); white-space: nowrap; z-index: 2; pointer-events: none; }
+.pump-zone { position: absolute; top: 0; bottom: 0; z-index: 0; pointer-events: none; }
+
+/* ========== PUMP BREAKDOWN ========== */
+.section-title { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.pump-stacked-bar { display: flex; height: 20px; border-radius: 3px; overflow: hidden; margin-bottom: 8px; background: var(--bg-panel-light); }
+.pump-stacked-bar .seg { display: flex; align-items: center; justify-content: center; font-size: 9px; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; }
+.pump-proc-row { display: flex; align-items: center; gap: 6px; height: 18px; font-size: 10px; padding: 0 4px; }
+.pump-proc-row .pname { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pump-proc-row .ptime { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.dirty-row { display: flex; align-items: center; gap: 6px; height: 20px; font-size: 10px; padding: 0 4px; border-bottom: 1px solid rgba(55,55,75,0.3); }
+.dirty-row .dname { flex: 1; color: var(--text-primary); }
+.dirty-row .dfrag { color: var(--text-muted); font-size: 9px; }
+.dirty-badge { display: inline-block; padding: 1px 4px; border-radius: 2px; font-size: 9px; font-weight: 600; background: rgba(220, 160, 50, 0.2); color: rgb(220, 180, 80); }
+
+/* ========== COMBINED TAB ========== */
+.combined-toolbar {
+    height: 26px; display: flex; align-items: center; gap: 4px; padding: 0 8px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--bg-panel);
+}
+.combined-toolbar .ue-btn { height: 22px; font-size: 10px; padding: 0 8px; }
+
+/* ========== TOOLTIP ========== */
+#tooltip {
+    position: fixed; background: rgb(22, 22, 34); border: 1px solid var(--border-light);
+    color: var(--text-primary); padding: 6px 8px; border-radius: 4px; font-size: 11px;
+    pointer-events: none; z-index: 1000; display: none; max-width: 320px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+#tooltip .tt-name { font-weight: 600; margin-bottom: 3px; }
+#tooltip .tt-row { display: flex; gap: 6px; color: var(--text-secondary); font-size: 10px; }
+#tooltip .tt-row span:first-child { color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div id="app">
+    <!-- TOP BAR -->
+    <div id="top-bar">
+        <div class="title">CkScheduler <span>Debugger</span></div>
+        <div class="sep"></div>
+        <select class="ue-select" id="worldSelect">
+            <option>Game World</option><option>Editor World</option><option>PIE World 0</option>
+        </select>
+        <button class="ue-btn" id="freezeBtn" onclick="toggleFreeze()">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="3" height="10" rx="1" fill="currentColor"/><rect x="7" y="1" width="3" height="10" rx="1" fill="currentColor"/></svg>
+            Freeze
+        </button>
+        <span class="frozen-indicator" id="frozenLabel">FROZEN</span>
+        <div style="flex:1"></div>
+    </div>
+
+    <!-- TAB BAR -->
+    <div id="tab-bar">
+        <button class="main-tab active" data-tab="tree-view" onclick="switchTab('tree-view')">Tree View</button>
+        <button class="main-tab" data-tab="timeline" onclick="switchTab('timeline')">Timeline</button>
+        <button class="main-tab" data-tab="combined" onclick="switchTab('combined')">Combined</button>
+    </div>
+
+    <!-- STATS BAR -->
+    <div id="stats-bar">
+        <div class="stat-item"><span class="stat-label">Frame Time</span><span class="stat-value" id="statFrame">2.34ms</span></div>
+        <div class="stat-item"><span class="stat-label">Pump Count</span><span class="stat-value warn" id="statPumps">3</span></div>
+        <div class="stat-item"><span class="stat-label">Processors</span><span class="stat-value" id="statProcs">45</span></div>
+        <div class="stat-item"><span class="stat-label">Ghosts</span><span class="stat-value" id="statGhosts">3</span></div>
+        <div class="stat-item"><span class="stat-label">Dirty</span><span class="stat-value warn" id="statDirty">2</span></div>
+        <div class="stat-item"><span class="stat-label">Parallel</span><span class="stat-value" id="statParallel">4</span></div>
+    </div>
+
+    <!-- TAB CONTENT -->
+    <div id="tab-content">
+        <!-- TAB 1: TREE VIEW -->
+        <div class="tab-panel active" id="panel-tree-view" style="flex-direction:row;"></div>
+        <!-- TAB 2: TIMELINE -->
+        <div class="tab-panel" id="panel-timeline" style="flex-direction:column;"></div>
+        <!-- TAB 3: COMBINED -->
+        <div class="tab-panel" id="panel-combined" style="flex-direction:row;"></div>
+    </div>
+</div>
+<div id="tooltip"></div>
+
+<script>
+// ============================================================================
+// DATA MODEL
+// ============================================================================
+const GROUP_COLORS = {
+    PreDestruction: 'rgb(180, 80, 80)',
+    DestructionPipeline: 'rgb(180, 100, 70)',
+    Gameplay: 'rgb(60, 150, 200)',
+    Physics: 'rgb(200, 160, 60)',
+    Transform: 'rgb(130, 180, 80)',
+    PostTransform: 'rgb(100, 160, 130)',
+    Replication: 'rgb(160, 100, 200)',
+    EntityLifecycle: 'rgb(100, 130, 180)',
+    Overlap: 'rgb(200, 120, 160)',
+};
+
+const TICK_GROUPS = [
+    { name: 'TG_PrePhysics', groups: ['PreDestruction','DestructionPipeline','Gameplay','Physics','Transform','PostTransform','Replication','EntityLifecycle'] },
+    { name: 'TG_PostPhysics', groups: ['Overlap'] },
+];
+
+function makeProc(id, name, group, tickGroup, execOrder, opts = {}) {
+    const timing = opts.timing ?? +(Math.random() * 0.35 + 0.01).toFixed(3);
+    const history = [];
+    for (let i = 0; i < 60; i++) history.push(+(timing * (0.6 + Math.random() * 0.8)).toFixed(3));
+    return {
+        id, name, fullName: `FProcessor_${name}`, group, tickGroup, execOrder, timing, history,
+        totalTicks: opts.totalTicks ?? Math.floor(Math.random() * 20000 + 5000),
+        tickRate: opts.tickRate ?? 0,
+        parallel: opts.parallel ?? false,
+        ghost: opts.ghost ?? false,
+        dirty: opts.dirty ?? false,
+        dirtyFragment: opts.dirtyFragment ?? null,
+        runAfter: opts.runAfter ?? [],
+        runBefore: [],
+        fragments: opts.fragments ?? [],
+    };
+}
+
+const PROCESSORS = [
+    // PreDestruction
+    makeProc(1, 'EndPlay_Audio', 'PreDestruction', 'TG_PrePhysics', 1, { timing: 0.02, fragments: ['FFragment_Audio_Current'] }),
+    makeProc(2, 'EndPlay_Vfx', 'PreDestruction', 'TG_PrePhysics', 2, { timing: 0.01, runAfter: ['EndPlay_Audio'], fragments: ['FFragment_Vfx_Current'] }),
+    // DestructionPipeline
+    makeProc(3, 'Destruction_Teardown', 'DestructionPipeline', 'TG_PrePhysics', 3, { timing: 0.03, runAfter: ['EndPlay_Vfx'], fragments: ['FFragment_Destruction_Request'] }),
+    makeProc(4, 'Destruction_Await', 'DestructionPipeline', 'TG_PrePhysics', 4, { timing: 0.01, runAfter: ['Destruction_Teardown'], fragments: ['FFragment_Destruction_Await'] }),
+    makeProc(5, 'Destruction_Finalize', 'DestructionPipeline', 'TG_PrePhysics', 5, { timing: 0.02, runAfter: ['Destruction_Await'], fragments: ['FFragment_Destruction_Final'] }),
+    makeProc(6, 'Destruction_Destroy', 'DestructionPipeline', 'TG_PrePhysics', 6, { timing: 0.04, runAfter: ['Destruction_Finalize'], fragments: ['FTag_NeedsDestroy'] }),
+    makeProc(7, 'Destruction_Cleanup', 'DestructionPipeline', 'TG_PrePhysics', 7, { timing: 0.02, runAfter: ['Destruction_Destroy'], fragments: ['FFragment_Reference_Cleanup'] }),
+    // Gameplay
+    makeProc(8, 'Input_Process', 'Gameplay', 'TG_PrePhysics', 8, { timing: 0.08, runAfter: ['Destruction_Cleanup'], fragments: ['FFragment_Input_Current', 'FFragment_Input_Params'] }),
+    makeProc(9, 'AI_DecisionTree', 'Gameplay', 'TG_PrePhysics', 9, { timing: 0.32, parallel: true, runAfter: ['Input_Process'], fragments: ['FFragment_AI_Current', 'FFragment_AI_Blackboard'] }),
+    makeProc(10, 'Aggro_Evaluate', 'Gameplay', 'TG_PrePhysics', 10, { timing: 0.09, runAfter: ['AI_DecisionTree'], fragments: ['FFragment_Aggro_Current'] }),
+    makeProc(11, 'Patrol_Navigate', 'Gameplay', 'TG_PrePhysics', 11, { timing: 0.11, parallel: true, runAfter: ['AI_DecisionTree'], fragments: ['FFragment_Patrol_Current'] }),
+    makeProc(12, 'Interaction_Check', 'Gameplay', 'TG_PrePhysics', 12, { timing: 0.05, runAfter: ['Input_Process'], fragments: ['FFragment_Interaction_Current'] }),
+    makeProc(13, 'Audio_Process', 'Gameplay', 'TG_PrePhysics', 13, { timing: 0.15, dirty: true, dirtyFragment: 'FFragment_AudioTrack_Requests', runAfter: ['Aggro_Evaluate'], fragments: ['FFragment_Audio_Current', 'FFragment_Audio_Params'] }),
+    makeProc(14, 'AudioSetup_Init', 'Gameplay', 'TG_PrePhysics', 14, { timing: 0.05, dirty: true, dirtyFragment: 'FFragment_AudioTrack_Params', runAfter: ['Audio_Process'], fragments: ['FFragment_Audio_Params', 'FTag_Audio_NeedsSetup'] }),
+    makeProc(15, 'VfxSetup_Init', 'Gameplay', 'TG_PrePhysics', 15, { timing: 0.04, fragments: ['FFragment_Vfx_Params', 'FTag_Vfx_NeedsSetup'] }),
+    makeProc(16, 'VfxLifetime_Monitor', 'Gameplay', 'TG_PrePhysics', 16, { timing: 0.03, runAfter: ['VfxSetup_Init'], fragments: ['FFragment_Vfx_Current'] }),
+    makeProc(17, 'Combat_EvaluateHits', 'Gameplay', 'TG_PrePhysics', 17, { timing: 0.22, runAfter: ['AI_DecisionTree'], fragments: ['FFragment_Combat_Current', 'FFragment_Combat_Params'] }),
+    makeProc(18, 'Targeting_Update', 'Gameplay', 'TG_PrePhysics', 18, { timing: 0.18, runAfter: ['Combat_EvaluateHits'], fragments: ['FFragment_Targeting_Current', 'FFragment_Targeting_Result'] }),
+    makeProc(19, 'Ability_Process', 'Gameplay', 'TG_PrePhysics', 19, { timing: 0.12, tickRate: 2, totalTicks: 7100, runAfter: ['Targeting_Update'], fragments: ['FFragment_Ability_Current', 'FFragment_Ability_Params'] }),
+    makeProc(20, 'StatusEffect_Tick', 'Gameplay', 'TG_PrePhysics', 20, { timing: 0.07, runAfter: ['Ability_Process'], fragments: ['FFragment_StatusEffect_Current'] }),
+    makeProc(21, 'Cooldown_Tick', 'Gameplay', 'TG_PrePhysics', 21, { timing: 0.02, runAfter: ['StatusEffect_Tick'], fragments: ['FFragment_Cooldown_Current'] }),
+    // Physics
+    makeProc(22, 'PhysicsStep_Simulate', 'Physics', 'TG_PrePhysics', 22, { timing: 0.45, parallel: true, runAfter: ['Cooldown_Tick'], fragments: ['FFragment_Physics_Body', 'FFragment_Physics_Velocity'] }),
+    makeProc(23, 'CollisionResponse_Process', 'Physics', 'TG_PrePhysics', 23, { timing: 0.28, parallel: true, runAfter: ['PhysicsStep_Simulate'], fragments: ['FFragment_Collision_Result', 'FFragment_Collision_Response'] }),
+    makeProc(24, 'RagdollUpdate_Sync', 'Physics', 'TG_PrePhysics', 24, { timing: 0.08, runAfter: ['CollisionResponse_Process'], fragments: ['FFragment_Ragdoll_State', 'FFragment_Physics_Body'] }),
+    makeProc(25, 'PhysicsCleanup_Reset', 'Physics', 'TG_PrePhysics', 25, { timing: 0.02, runAfter: ['RagdollUpdate_Sync'], fragments: ['FFragment_Physics_Body'] }),
+    // Transform
+    makeProc(26, 'TransformSync_FromPhysics', 'Transform', 'TG_PrePhysics', 26, { timing: 0.06, runAfter: ['RagdollUpdate_Sync'], fragments: ['FFragment_Transform_Current'] }),
+    makeProc(27, 'TransformPump_Propagate', 'Transform', 'TG_PrePhysics', 27, { timing: 0.04, runAfter: ['TransformSync_FromPhysics'], fragments: ['FFragment_Transform_Current', 'FFragment_Transform_Hierarchy'] }),
+    makeProc(28, 'TransformFinalize_Apply', 'Transform', 'TG_PrePhysics', 28, { timing: 0.03, runAfter: ['TransformPump_Propagate'], fragments: ['FFragment_Transform_Current'] }),
+    // PostTransform
+    makeProc(29, 'CameraUpdate_Follow', 'PostTransform', 'TG_PrePhysics', 29, { timing: 0.05, runAfter: ['TransformFinalize_Apply'], fragments: ['FFragment_Camera_Current', 'FFragment_Camera_Params'] }),
+    makeProc(30, 'AttachmentSync_Update', 'PostTransform', 'TG_PrePhysics', 30, { timing: 0.03, runAfter: ['TransformFinalize_Apply'], fragments: ['FFragment_Attachment_Current'] }),
+    // Replication
+    makeProc(31, 'NetSerialize_Outgoing', 'Replication', 'TG_PrePhysics', 31, { timing: 0.005, tickRate: 3, totalTicks: 4700, ghost: true, fragments: ['FFragment_Net_Serialize'] }),
+    makeProc(32, 'NetReceive_Incoming', 'Replication', 'TG_PrePhysics', 32, { timing: 0.008, tickRate: 3, totalTicks: 4700, ghost: true, runAfter: ['NetSerialize_Outgoing'], fragments: ['FFragment_Net_Receive', 'FFragment_Net_State'] }),
+    makeProc(33, 'NetApply_State', 'Replication', 'TG_PrePhysics', 33, { timing: 0.007, tickRate: 3, totalTicks: 4700, runAfter: ['NetReceive_Incoming'], fragments: ['FFragment_Net_Apply'] }),
+    // EntityLifecycle
+    makeProc(34, 'EntitySetup_Initialize', 'EntityLifecycle', 'TG_PrePhysics', 34, { timing: 0.05, fragments: ['FTag_NeedsSetup', 'FFragment_EntityMeta'] }),
+    makeProc(35, 'EntityCleanup_Finalize', 'EntityLifecycle', 'TG_PrePhysics', 35, { timing: 0.03, runAfter: ['EntitySetup_Initialize'], fragments: ['FTag_NeedsCleanup', 'FFragment_EntityMeta'] }),
+    // Overlap (TG_PostPhysics)
+    makeProc(36, 'ProbeCheck_Traces', 'Overlap', 'TG_PostPhysics', 36, { timing: 0.15, fragments: ['FFragment_Probe_Current', 'FFragment_Probe_Params'] }),
+    makeProc(37, 'ProbeResponse_Handle', 'Overlap', 'TG_PostPhysics', 37, { timing: 0.10, runAfter: ['ProbeCheck_Traces'], fragments: ['FFragment_Probe_Current', 'FFragment_Probe_Response'] }),
+    makeProc(38, 'ProbeCleanup_Reset', 'Overlap', 'TG_PostPhysics', 38, { timing: 0.05, runAfter: ['ProbeResponse_Handle'], fragments: ['FFragment_Probe_Cleanup'] }),
+    // Extra gameplay processors
+    makeProc(39, 'Inventory_Sync', 'Gameplay', 'TG_PrePhysics', 39, { timing: 0.06, fragments: ['FFragment_Inventory_Current'] }),
+    makeProc(40, 'Quest_Evaluate', 'Gameplay', 'TG_PrePhysics', 40, { timing: 0.04, tickRate: 5, totalTicks: 2800, runAfter: ['Inventory_Sync'], fragments: ['FFragment_Quest_Current'] }),
+    makeProc(41, 'Dialog_Process', 'Gameplay', 'TG_PrePhysics', 41, { timing: 0.03, fragments: ['FFragment_Dialog_Current'] }),
+    makeProc(42, 'Healthbar_Update', 'Gameplay', 'TG_PrePhysics', 42, { timing: 0.02, runAfter: ['Combat_EvaluateHits'], fragments: ['FFragment_Healthbar_Current'] }),
+    makeProc(43, 'Spawner_Process', 'EntityLifecycle', 'TG_PrePhysics', 43, { timing: 0.04, fragments: ['FFragment_Spawner_Params'] }),
+    makeProc(44, 'Animation_Drive', 'PostTransform', 'TG_PrePhysics', 44, { timing: 0.14, runAfter: ['AttachmentSync_Update'], fragments: ['FFragment_Animation_Current'] }),
+    makeProc(45, 'LOD_Update', 'PostTransform', 'TG_PrePhysics', 45, { timing: 0.03, runAfter: ['CameraUpdate_Follow'], fragments: ['FFragment_LOD_Current'] }),
+];
+
+// Build runBefore from runAfter
+PROCESSORS.forEach(p => {
+    p.runAfter.forEach(depName => {
+        const dep = PROCESSORS.find(d => d.name === depName);
+        if (dep && !dep.runBefore.includes(p.name)) dep.runBefore.push(p.name);
+    });
+});
+
+const PUMP_DATA = [
+    { pass: 1, processors: [
+        { name: 'Audio_Process', timing: 0.08 },
+        { name: 'AudioSetup_Init', timing: 0.02 },
+    ]},
+    { pass: 2, processors: [
+        { name: 'Audio_Process', timing: 0.04 },
+    ]},
+];
+
+// Timeline layout: compute cumulative start times
+function computeTimelineLayout() {
+    const pass0 = PROCESSORS.filter(p => true); // all are pass 0 in our model
+    let t = 0;
+    const groupOrder = [];
+    TICK_GROUPS.forEach(tg => tg.groups.forEach(g => groupOrder.push(g)));
+    // Sort by exec order
+    const sorted = [...PROCESSORS].sort((a, b) => a.execOrder - b.execOrder);
+    sorted.forEach(p => { p._startMs = t; t += p.timing; });
+    // Pump passes
+    let pumpOffset = t + 0.05;
+    const pumpProcs = [];
+    PUMP_DATA.forEach(pump => {
+        let pt = 0;
+        pump.processors.forEach(pp => {
+            const base = PROCESSORS.find(p => p.name === pp.name);
+            pumpProcs.push({
+                ...base, timing: pp.timing, _startMs: pumpOffset + pt,
+                pass: pump.pass, _isPump: true, id: base.id + 100 * pump.pass,
+            });
+            pt += pp.timing;
+        });
+        pumpOffset += pt + 0.05;
+    });
+    return { pumpProcs, totalMs: pumpOffset };
+}
+const TL_LAYOUT = computeTimelineLayout();
+
+// ============================================================================
+// SHARED STATE
+// ============================================================================
+let selectedProcId = null;
+let searchTerm = '';
+let sortMode = 'exec';
+let frozen = false;
+const collapsedGroups = new Set();
+const tlCollapsedGroups = new Set(['Transform','PostTransform','Replication','EntityLifecycle']);
+let activeTab = 'tree-view';
+let combinedSplit = 0.5; // top fraction
+
+// Graph state
+let graphZoom = 1, graphPanX = 0, graphPanY = 0;
+let graphDragging = false, graphDragStart = { x: 0, y: 0 };
+let graphNodePositions = {};
+
+// Timeline state
+let pxPerMs = 500;
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+function timingColor(ms) {
+    if (ms < 0.05) return 'rgb(67, 160, 71)';
+    if (ms < 0.15) return 'rgb(255, 213, 79)';
+    if (ms < 0.30) return 'rgb(255, 167, 38)';
+    return 'rgb(239, 83, 80)';
+}
+
+function barColor(groupColor, ms) {
+    const m = groupColor.match(/\d+/g).map(Number);
+    const heat = ms < 0.05 ? [80,200,100] : ms < 0.12 ? [220,200,60] : ms < 0.25 ? [220,120,40] : [220,60,60];
+    const t = Math.min(ms / 0.3, 1) * 0.35;
+    return `rgb(${Math.round(m[0]*(1-t)+heat[0]*t)},${Math.round(m[1]*(1-t)+heat[1]*t)},${Math.round(m[2]*(1-t)+heat[2]*t)})`;
+}
+
+function heatBg(ms) {
+    if (ms < 0.05) return 'rgba(80, 200, 100, 0.25)';
+    if (ms < 0.12) return 'rgba(220, 200, 60, 0.20)';
+    if (ms < 0.25) return 'rgba(220, 120, 40, 0.25)';
+    return 'rgba(220, 60, 60, 0.30)';
+}
+
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function getProc(id) { return PROCESSORS.find(p => p.id === id); }
+function getProcByName(name) { return PROCESSORS.find(p => p.name === name); }
+
+function getGroupProcs(group, tickGroup) {
+    let procs = PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup);
+    if (searchTerm) procs = procs.filter(p => p.name.toLowerCase().includes(searchTerm) || p.fullName.toLowerCase().includes(searchTerm));
+    if (sortMode === 'exec') procs.sort((a, b) => a.execOrder - b.execOrder);
+    else if (sortMode === 'name') procs.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortMode === 'timing') procs.sort((a, b) => b.timing - a.timing);
+    return procs;
+}
+
+function groupTiming(group, tickGroup) {
+    return PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup).reduce((s, p) => s + p.timing, 0);
+}
+
+function groupCount(group, tickGroup) {
+    return PROCESSORS.filter(p => p.group === group && p.tickGroup === tickGroup).length;
+}
+
+function sparklineSVG(history, width, height) {
+    if (!history || history.length === 0) return '';
+    const max = Math.max(...history, 0.01);
+    const pts = history.map((v, i) => `${(i / (history.length - 1)) * width},${height - (v / max) * height}`).join(' ');
+    const lastVal = history[history.length - 1];
+    const col = timingColor(lastVal);
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="display:block">
+        <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.2" opacity="0.8"/>
+        <circle cx="${width}" cy="${height - (lastVal / max) * height}" r="2" fill="${col}"/>
+    </svg>`;
+}
+
+function selectProcessor(id) {
+    selectedProcId = id;
+    updateAllSelectionHighlights();
+    renderAllDetailPanels();
+    renderDetailGraph('detail-graph-tv');
+    renderDetailGraph('detail-graph-cb');
+}
+
+function updateAllSelectionHighlights() {
+    document.querySelectorAll('.tree-proc').forEach(el => {
+        el.classList.toggle('selected', +el.dataset.id === selectedProcId);
+    });
+    document.querySelectorAll('.proc-bar').forEach(el => {
+        el.classList.toggle('selected', +el.dataset.id === selectedProcId);
+    });
+}
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.main-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+    // Resize canvases when becoming visible
+    requestAnimationFrame(() => {
+        resizeAllCanvases();
+        if (tab === 'tree-view' || tab === 'combined') renderFullGraph();
+        if (tab === 'timeline' || tab === 'combined') {
+            renderTimelineBars('tl-bars-main');
+            renderTimeAxis('time-axis-canvas-main');
+            renderTimelineBars('tl-bars-cb');
+            renderTimeAxis('time-axis-canvas-cb');
+        }
+    });
+}
+
+function toggleFreeze() {
+    frozen = !frozen;
+    document.getElementById('freezeBtn').classList.toggle('active', frozen);
+    document.getElementById('frozenLabel').classList.toggle('visible', frozen);
+}
+
+// ============================================================================
+// TREE VIEW RENDERING
+// ============================================================================
+function renderTree(containerId, collSet) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    let html = '';
+    for (const tg of TICK_GROUPS) {
+        html += `<div class="tree-tg-header" onclick="toggleTG(this)"><span class="arrow">\u25BC</span>${tg.name}</div>`;
+        html += `<div class="tree-tg-body">`;
+        for (const grp of tg.groups) {
+            const procs = getGroupProcs(grp, tg.name);
+            const totalCount = groupCount(grp, tg.name);
+            if (searchTerm && procs.length === 0) continue;
+            const gt = groupTiming(grp, tg.name).toFixed(2);
+            const color = GROUP_COLORS[grp] || 'var(--text-muted)';
+            const collapsed = collSet.has(grp + '-' + tg.name);
+            html += `<div class="tree-grp-header ${collapsed ? 'collapsed' : ''}" onclick="toggleTreeGroup('${grp}-${tg.name}', '${containerId}', this)">`;
+            html += `<span class="arrow">\u25BC</span>`;
+            html += `<span class="grp-accent" style="background:${color}"></span>`;
+            html += `<span class="grp-name">${grp}</span>`;
+            html += `<span class="grp-count">${totalCount}</span>`;
+            html += `<span class="grp-timing" style="color:${timingColor(+gt)}">${gt}ms</span>`;
+            html += `</div>`;
+            if (!collapsed) {
+                for (const p of procs) {
+                    html += `<div class="tree-proc ${p.ghost ? 'ghost' : ''} ${p.id === selectedProcId ? 'selected' : ''}" data-id="${p.id}" onclick="selectProcessor(${p.id})">`;
+                    html += `<span class="exec-order">${p.execOrder}</span>`;
+                    html += `<span class="proc-accent" style="background:${color}"></span>`;
+                    html += `<span class="proc-name">${esc(p.name)}</span>`;
+                    html += `<span class="proc-timing" style="color:${timingColor(p.timing)}">${p.timing.toFixed(2)}ms</span>`;
+                    if (p.parallel) html += `<span class="badge badge-p" title="Parallel">\u25C6</span>`;
+                    if (p.dirty) html += `<span class="badge badge-d" title="Dirty">\u25CF</span>`;
+                    if (p.ghost) html += `<span class="badge badge-g" title="Ghost">\u2591</span>`;
+                    html += `</div>`;
+                }
+            }
+        }
+        html += `</div>`;
+    }
+    // Pump section
+    html += `<div class="pump-section"><div class="pump-title">Pump This Frame</div>`;
+    PUMP_DATA.forEach(pump => {
+        html += `<div class="pump-pass"><span class="pass-label">Pump ${pump.pass}: </span>`;
+        html += `<span class="pass-items">${pump.processors.map(p => p.name + ' (' + p.timing.toFixed(2) + 'ms)').join(', ')}</span></div>`;
+    });
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function toggleTG(el) {
+    el.classList.toggle('collapsed');
+    const body = el.nextElementSibling;
+    if (body) body.style.display = el.classList.contains('collapsed') ? 'none' : '';
+}
+
+function toggleTreeGroup(key, containerId, headerEl) {
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+    else collapsedGroups.add(key);
+    renderTree('tree-container-tv', collapsedGroups);
+    renderTree('tree-container-cb', collapsedGroups);
+}
+
+// ============================================================================
+// DETAIL GRAPH (SVG mini dependency view)
+// ============================================================================
+function renderDetailGraph(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!selectedProcId) {
+        container.innerHTML = '<div class="no-sel">Select a processor to view dependencies</div>';
+        return;
+    }
+    const proc = getProc(selectedProcId);
+    if (!proc) return;
+
+    const W = 500, nodeW = 160, nodeH = 34, gapY = 60;
+    const afterProcs = proc.runAfter.map(n => getProcByName(n)).filter(Boolean);
+    const beforeProcs = proc.runBefore.map(n => getProcByName(n)).filter(Boolean);
+    const maxRow = Math.max(afterProcs.length, beforeProcs.length, 1);
+    const H = (afterProcs.length > 0 ? gapY + nodeH : 0) + nodeH + (beforeProcs.length > 0 ? gapY + nodeH : 0) + 40;
+    const centerY = (afterProcs.length > 0 ? gapY + nodeH : 0) + 20;
+    const centerX = W / 2;
+
+    let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+    svg += `<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="rgb(100,100,130)"/></marker></defs>`;
+
+    function drawNode(x, y, p, isCenter) {
+        const color = GROUP_COLORS[p.group] || '#888';
+        const bg = isCenter ? 'rgb(50,55,80)' : 'rgb(38,38,55)';
+        const border = isCenter ? 'rgb(60,130,220)' : 'rgb(60,60,80)';
+        svg += `<rect x="${x - nodeW/2}" y="${y}" width="${nodeW}" height="${nodeH}" rx="4" fill="${bg}" stroke="${border}" stroke-width="${isCenter ? 2 : 1}" `;
+        if (!isCenter) svg += `style="cursor:pointer" onclick="selectProcessor(${p.id})"`;
+        svg += `/>`;
+        svg += `<rect x="${x - nodeW/2}" y="${y}" width="3" height="${nodeH}" rx="1" fill="${color}"/>`;
+        svg += `<text x="${x - nodeW/2 + 8}" y="${y + 14}" fill="rgb(224,224,224)" font-size="10" font-weight="600">${esc(p.name)}</text>`;
+        svg += `<text x="${x - nodeW/2 + 8}" y="${y + 26}" fill="rgb(100,100,115)" font-size="9">#${p.execOrder} ${p.timing.toFixed(2)}ms</text>`;
+    }
+
+    function drawArrow(x1, y1, x2, y2) {
+        svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgb(100,100,130)" stroke-width="1" marker-end="url(#arrowhead)"/>`;
+    }
+
+    // RunAfter (above)
+    afterProcs.forEach((p, i) => {
+        const x = centerX + (i - (afterProcs.length - 1) / 2) * (nodeW + 20);
+        const y = 10;
+        drawNode(x, y, p, false);
+        drawArrow(x, y + nodeH, centerX, centerY);
+    });
+
+    // Center node
+    drawNode(centerX, centerY, proc, true);
+
+    // RunBefore (below)
+    beforeProcs.forEach((p, i) => {
+        const x = centerX + (i - (beforeProcs.length - 1) / 2) * (nodeW + 20);
+        const y = centerY + nodeH + gapY;
+        drawNode(x, y, p, false);
+        drawArrow(centerX, centerY + nodeH, x, y);
+    });
+
+    svg += `</svg>`;
+    container.innerHTML = svg;
+}
+
+// ============================================================================
+// FULL GRAPH (Canvas DAG)
+// ============================================================================
+function renderFullGraph(canvasId) {
+    const canvas = document.getElementById(canvasId || 'graph-canvas-tv');
+    if (!canvas || !canvas.offsetParent) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.translate(graphPanX + W / 2, graphPanY + H / 2);
+    ctx.scale(graphZoom, graphZoom);
+    ctx.translate(-W / 2, -H / 2);
+
+    // Lay out nodes by group columns and exec order rows
+    const nodeW = 140, nodeH = 28, padX = 30, padY = 8;
+    const groupList = [];
+    TICK_GROUPS.forEach(tg => tg.groups.forEach(g => groupList.push(g)));
+
+    const positions = {};
+    let colX = 40;
+    for (const grp of groupList) {
+        const procs = PROCESSORS.filter(p => p.group === grp).sort((a, b) => a.execOrder - b.execOrder);
+        if (procs.length === 0) continue;
+        let rowY = 50;
+
+        // Group bounding box
+        const boxX = colX - 8;
+        const boxY = rowY - 20;
+        const boxW = nodeW + 16;
+        const boxH = procs.length * (nodeH + padY) + 20;
+        ctx.fillStyle = 'rgba(40,40,56,0.3)';
+        ctx.strokeStyle = GROUP_COLORS[grp] || '#555';
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 4); ctx.fill(); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = GROUP_COLORS[grp] || '#888';
+        ctx.font = '9px Segoe UI';
+        ctx.fillText(grp, colX, rowY - 8);
+
+        for (const p of procs) {
+            positions[p.name] = { x: colX, y: rowY, w: nodeW, h: nodeH };
+
+            // Node
+            const selected = p.id === selectedProcId;
+            ctx.fillStyle = selected ? 'rgb(50,55,80)' : 'rgb(35,35,50)';
+            ctx.strokeStyle = selected ? 'rgb(60,130,220)' : 'rgb(55,55,75)';
+            ctx.lineWidth = selected ? 2 : 1;
+            ctx.beginPath(); ctx.roundRect(colX, rowY, nodeW, nodeH, 3); ctx.fill(); ctx.stroke();
+
+            // Accent strip
+            ctx.fillStyle = GROUP_COLORS[grp] || '#888';
+            ctx.fillRect(colX, rowY, 3, nodeH);
+
+            // Text
+            ctx.fillStyle = 'rgb(224,224,224)';
+            ctx.font = '10px Segoe UI';
+            ctx.fillText(p.name.length > 18 ? p.name.substring(0, 17) + '..' : p.name, colX + 7, rowY + 12);
+            ctx.fillStyle = timingColor(p.timing);
+            ctx.font = '9px Segoe UI';
+            ctx.fillText(`#${p.execOrder}  ${p.timing.toFixed(2)}ms`, colX + 7, rowY + 23);
+
+            if (p.parallel) { ctx.fillStyle = 'rgb(60,130,220)'; ctx.fillText('\u25C6', colX + nodeW - 14, rowY + 12); }
+            if (p.ghost) { ctx.globalAlpha = 0.4; }
+
+            rowY += nodeH + padY;
+            ctx.globalAlpha = 1;
+        }
+        colX += nodeW + padX;
+    }
+    graphNodePositions = positions;
+
+    // Draw dependency edges
+    ctx.strokeStyle = 'rgba(100,130,200,0.3)';
+    ctx.lineWidth = 1;
+    for (const p of PROCESSORS) {
+        const from = positions[p.name];
+        if (!from) continue;
+        for (const depName of p.runAfter) {
+            const to = positions[depName];
+            if (!to) continue;
+            ctx.beginPath();
+            ctx.moveTo(to.x + to.w / 2, to.y + to.h);
+            ctx.lineTo(from.x + from.w / 2, from.y);
+            ctx.stroke();
+        }
+    }
+
+    // Highlight selected edges
+    if (selectedProcId) {
+        const sp = getProc(selectedProcId);
+        if (sp && positions[sp.name]) {
+            ctx.strokeStyle = 'rgba(60,130,220,0.6)';
+            ctx.lineWidth = 2;
+            for (const depName of sp.runAfter) {
+                const to = positions[depName];
+                if (!to) continue;
+                const from = positions[sp.name];
+                ctx.beginPath(); ctx.moveTo(to.x + to.w/2, to.y + to.h); ctx.lineTo(from.x + from.w/2, from.y); ctx.stroke();
+            }
+            for (const depName of sp.runBefore) {
+                const to = positions[depName];
+                if (!to) continue;
+                const from = positions[sp.name];
+                ctx.beginPath(); ctx.moveTo(from.x + from.w/2, from.y + from.h); ctx.lineTo(to.x + to.w/2, to.y); ctx.stroke();
+            }
+        }
+    }
+
+    ctx.restore();
+}
+
+// ============================================================================
+// DETAIL PANEL
+// ============================================================================
+function renderDetailContent(proc) {
+    if (!proc) return '<div style="color:var(--text-muted);font-style:italic;padding:10px;">No processor selected</div>';
+    let h = '';
+    h += `<div class="detail-section">`;
+    h += `<div class="detail-section-title">Processor</div>`;
+    h += `<div class="detail-name">${esc(proc.fullName)}</div>`;
+    if (proc.parallel) h += `<span class="detail-badge parallel">\u25C6 PARALLEL</span>`;
+    if (proc.ghost) h += `<span class="detail-badge ghost">\u2591 GHOST</span>`;
+    if (proc.dirty) h += `<span class="detail-badge dirty">\u25CF DIRTY</span>`;
+    if (!proc.ghost) h += `<span class="detail-badge active">ACTIVE</span>`;
+    h += `</div>`;
+
+    h += `<div class="detail-section">`;
+    h += `<div class="detail-section-title">Info</div>`;
+    h += `<div class="d-row"><span class="d-label">Group</span><span class="d-value" style="color:${GROUP_COLORS[proc.group]}">${proc.group}</span></div>`;
+    h += `<div class="d-row"><span class="d-label">Tick Group</span><span class="d-value">${proc.tickGroup}</span></div>`;
+    h += `<div class="d-row"><span class="d-label">Exec Order</span><span class="d-value">#${proc.execOrder}</span></div>`;
+    h += `<div class="d-row"><span class="d-label">Tick Rate</span><span class="d-value">${proc.tickRate === 0 ? 'Every Frame' : 'Every ' + proc.tickRate + ' frames'}</span></div>`;
+    h += `<div class="d-row"><span class="d-label">Total Ticks</span><span class="d-value">${proc.totalTicks.toLocaleString()}</span></div>`;
+    if (proc.dirty) h += `<div class="d-row"><span class="d-label">Dirty Marker</span><span class="d-value orange">${proc.dirtyFragment}</span></div>`;
+    h += `</div>`;
+
+    h += `<div class="detail-section">`;
+    h += `<div class="detail-section-title">Timing</div>`;
+    h += `<div class="d-row"><span class="d-label">Last Frame</span><span class="d-value" style="color:${timingColor(proc.timing)}">${proc.timing.toFixed(3)}ms</span></div>`;
+    h += `<div class="sparkline-wrap">${sparklineSVG(proc.history, 200, 30)}</div>`;
+    h += `</div>`;
+
+    if (proc.runAfter.length > 0) {
+        h += `<div class="detail-section"><div class="detail-section-title">RunAfter</div><ul class="dep-list">`;
+        proc.runAfter.forEach(n => {
+            const dp = getProcByName(n);
+            h += `<li onclick="selectProcessor(${dp ? dp.id : 0})">${esc(n)}</li>`;
+        });
+        h += `</ul></div>`;
+    }
+    if (proc.runBefore.length > 0) {
+        h += `<div class="detail-section"><div class="detail-section-title">RunBefore</div><ul class="dep-list">`;
+        proc.runBefore.forEach(n => {
+            const dp = getProcByName(n);
+            h += `<li onclick="selectProcessor(${dp ? dp.id : 0})">${esc(n)}</li>`;
+        });
+        h += `</ul></div>`;
+    }
+
+    if (proc.fragments.length > 0) {
+        h += `<div class="detail-section"><div class="detail-section-title">Fragments</div><div class="fragment-list">`;
+        proc.fragments.forEach(f => { h += `<span class="fragment-tag">${esc(f)}</span>`; });
+        h += `</div></div>`;
+    }
+    return h;
+}
+
+function renderAllDetailPanels() {
+    const proc = selectedProcId ? getProc(selectedProcId) : null;
+    const content = renderDetailContent(proc);
+    document.querySelectorAll('.detail-panel-content').forEach(el => { el.innerHTML = content; });
+}
+
+// ============================================================================
+// TIMELINE RENDERING
+// ============================================================================
+function renderTimelineLabels(containerId, collSet) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    let html = '';
+    for (const tg of TICK_GROUPS) {
+        html += `<div class="tl-tg-header">${tg.name}</div>`;
+        for (const gname of tg.groups) {
+            const count = groupCount(gname, tg.name);
+            const timing = groupTiming(gname, tg.name).toFixed(2);
+            const isColl = collSet.has(gname);
+            html += `<div class="tl-grp-label" data-group="${gname}" onclick="toggleTLGroup('${gname}','${containerId}')">`;
+            html += `<span class="arrow ${isColl ? 'collapsed' : ''}">\u25BC</span>`;
+            html += `<span class="gname" style="color:${GROUP_COLORS[gname]}">${gname}</span>`;
+            html += `<span class="gstats">${count} / ${timing}</span>`;
+            html += `</div>`;
+            if (isColl) {
+                html += `<div class="tl-collapsed-label">Collapsed</div>`;
+            } else {
+                const procs = PROCESSORS.filter(p => p.group === gname && p.tickGroup === tg.name).sort((a,b) => a.execOrder - b.execOrder);
+                procs.forEach(() => { html += `<div class="tl-row-label"></div>`; });
+            }
+        }
+    }
+    el.innerHTML = html;
+}
+
+function renderTimelineBars(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const totalWidth = TL_LAYOUT.totalMs * pxPerMs + 100;
+    let html = '';
+
+    // Pump zones
+    let pumpOffset = 0;
+    const pass0End = Math.max(...PROCESSORS.map(p => p._startMs + p.timing));
+    pumpOffset = pass0End + 0.05;
+    PUMP_DATA.forEach((pump, pi) => {
+        const startPx = pumpOffset * pxPerMs;
+        let pLen = pump.processors.reduce((s, pp) => s + pp.timing, 0);
+        const endPx = (pumpOffset + pLen) * pxPerMs;
+        const bgVar = pi === 0 ? 'var(--pump-bg-1)' : 'var(--pump-bg-2)';
+        html += `<div class="pump-zone" style="left:${startPx}px;width:${endPx - startPx}px;background:${bgVar}"></div>`;
+        // Separator
+        html += `<div class="pump-separator" style="left:${startPx}px"></div>`;
+        html += `<div class="pump-label" style="left:${startPx + 4}px">Pump ${pump.pass}</div>`;
+        pumpOffset += pLen + 0.05;
+    });
+
+    // Rows
+    for (const tg of TICK_GROUPS) {
+        html += `<div class="tl-tg-header-bar" style="width:${totalWidth}px"></div>`;
+        for (const gname of tg.groups) {
+            const isColl = tlCollapsedGroups.has(gname);
+            html += `<div class="tl-grp-bar" style="width:${totalWidth}px"></div>`;
+            const procs = PROCESSORS.filter(p => p.group === gname && p.tickGroup === tg.name).sort((a,b) => a.execOrder - b.execOrder);
+            if (isColl) {
+                html += `<div class="tl-collapsed-bar" style="width:${totalWidth}px;position:relative;">`;
+                // Aggregate bar
+                if (procs.length > 0) {
+                    const startPx = Math.min(...procs.map(p => p._startMs)) * pxPerMs;
+                    const endPx = Math.max(...procs.map(p => p._startMs + p.timing)) * pxPerMs;
+                    html += `<div class="aggregate-bar" style="left:${startPx}px;width:${Math.max(endPx - startPx, 4)}px;background:${GROUP_COLORS[gname]}"></div>`;
+                }
+                html += `</div>`;
+            } else {
+                procs.forEach(p => {
+                    const left = p._startMs * pxPerMs;
+                    const width = Math.max(p.timing * pxPerMs, 4);
+                    const color = barColor(GROUP_COLORS[p.group], p.timing);
+                    const dimClass = searchTerm && !p.name.toLowerCase().includes(searchTerm) ? ' search-dim' : '';
+                    const matchClass = searchTerm && p.name.toLowerCase().includes(searchTerm) ? ' search-match' : '';
+                    const ghostClass = p.ghost ? ' ghost-bar' : '';
+                    const selClass = p.id === selectedProcId ? ' selected' : '';
+                    html += `<div class="tl-row-bar" style="width:${totalWidth}px;position:relative;">`;
+                    html += `<div class="proc-bar${ghostClass}${selClass}${dimClass}${matchClass}" data-id="${p.id}" style="left:${left}px;width:${width}px;background:${color}" onclick="selectProcessor(${p.id})" onmouseenter="showTooltip(event,${p.id})" onmouseleave="hideTooltip()">`;
+                    html += `<span class="bar-order">#${p.execOrder}</span>`;
+                    html += esc(p.name.length > 20 ? p.name.substring(0, 19) + '..' : p.name);
+                    if (width > 80) html += ` <span style="opacity:0.6;font-size:9px">${p.timing.toFixed(2)}</span>`;
+                    if (p.parallel) html += `<span class="bar-badge">\u25C6</span>`;
+                    if (p.dirty) html += `<span class="bar-badge" style="color:var(--pumped-orange)">\u25CF</span>`;
+                    html += `</div></div>`;
+                });
+            }
+            // Pump bars for this group
+            TL_LAYOUT.pumpProcs.filter(pp => pp.group === gname).forEach(pp => {
+                if (isColl) return;
+                // Don't add extra row, overlay on last row? Actually pump procs appear in the same swim lane
+                // For simplicity, let's not add extra rows for pump procs in collapsed view
+            });
+        }
+    }
+    container.innerHTML = html;
+    container.style.width = totalWidth + 'px';
+}
+
+function renderTimeAxis(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !canvas.offsetParent) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.parentElement.clientWidth;
+    const H = canvas.parentElement.clientHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    const maxMs = TL_LAYOUT.totalMs;
+    // Determine tick interval
+    let interval = 0.1;
+    if (pxPerMs < 200) interval = 0.5;
+    if (pxPerMs < 100) interval = 1.0;
+    if (pxPerMs > 800) interval = 0.05;
+
+    ctx.strokeStyle = 'rgb(60,60,80)';
+    ctx.fillStyle = 'rgb(120,120,140)';
+    ctx.font = '9px Segoe UI';
+    ctx.textAlign = 'center';
+    for (let t = 0; t <= maxMs + 0.5; t += interval) {
+        const x = t * pxPerMs;
+        if (x > W + 100) break;
+        ctx.beginPath();
+        ctx.moveTo(x, H - 1);
+        ctx.lineTo(x, H * 0.4);
+        ctx.stroke();
+        ctx.fillText(t.toFixed(interval < 0.1 ? 2 : 1) + 'ms', x, 12);
+    }
+}
+
+function toggleTLGroup(gname, containerId) {
+    if (tlCollapsedGroups.has(gname)) tlCollapsedGroups.delete(gname);
+    else tlCollapsedGroups.add(gname);
+    renderAllTimelines();
+}
+
+function renderAllTimelines() {
+    renderTimelineLabels('tl-labels-main', tlCollapsedGroups);
+    renderTimelineBars('tl-bars-main');
+    renderTimelineLabels('tl-labels-cb', tlCollapsedGroups);
+    renderTimelineBars('tl-bars-cb');
+}
+
+// ============================================================================
+// PUMP BREAKDOWN
+// ============================================================================
+function renderPumpBreakdown(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    let h = '<div class="section-title">Pump Breakdown</div>';
+
+    // Stacked bar
+    const pass0Total = PROCESSORS.reduce((s, p) => s + p.timing, 0);
+    const pump1Total = PUMP_DATA[0].processors.reduce((s, p) => s + p.timing, 0);
+    const pump2Total = PUMP_DATA[1].processors.reduce((s, p) => s + p.timing, 0);
+    const total = pass0Total + pump1Total + pump2Total;
+
+    h += `<div class="pump-stacked-bar">`;
+    h += `<div class="seg" style="flex:${pass0Total};background:${GROUP_COLORS.Gameplay}">Pass 0 (${pass0Total.toFixed(2)}ms)</div>`;
+    h += `<div class="seg" style="flex:${pump1Total};background:rgba(255,167,38,0.7)">P1 (${pump1Total.toFixed(2)}ms)</div>`;
+    h += `<div class="seg" style="flex:${pump2Total};background:rgba(255,120,38,0.7)">P2 (${pump2Total.toFixed(2)}ms)</div>`;
+    h += `</div>`;
+
+    PUMP_DATA.forEach(pump => {
+        h += `<div style="margin-bottom:8px"><div class="section-title" style="font-size:10px;margin-bottom:3px">Pump ${pump.pass}</div>`;
+        pump.processors.forEach(pp => {
+            h += `<div class="pump-proc-row"><span class="pname">${esc(pp.name)}</span><span class="ptime">${pp.timing.toFixed(2)}ms</span></div>`;
+        });
+        h += `</div>`;
+    });
+
+    // Dirty processors
+    h += `<div style="margin-top:8px"><div class="section-title">Dirty Processors</div>`;
+    PROCESSORS.filter(p => p.dirty).forEach(p => {
+        h += `<div class="dirty-row"><span class="dname">${esc(p.name)}</span><span class="dfrag">${p.dirtyFragment || ''}</span><span class="dirty-badge">DIRTY</span></div>`;
+    });
+    h += `</div>`;
+    el.innerHTML = h;
+}
+
+// ============================================================================
+// TOOLTIP
+// ============================================================================
+function showTooltip(event, id) {
+    const p = getProc(id);
+    if (!p) return;
+    const tt = document.getElementById('tooltip');
+    tt.innerHTML = `<div class="tt-name">${esc(p.fullName)}</div>
+        <div class="tt-row"><span>Group:</span><span style="color:${GROUP_COLORS[p.group]}">${p.group}</span></div>
+        <div class="tt-row"><span>Timing:</span><span style="color:${timingColor(p.timing)}">${p.timing.toFixed(3)}ms</span></div>
+        <div class="tt-row"><span>Exec:</span><span>#${p.execOrder}</span></div>
+        ${p.parallel ? '<div class="tt-row"><span>Mode:</span><span style="color:var(--accent)">Parallel</span></div>' : ''}
+        ${p.dirty ? '<div class="tt-row"><span>Dirty:</span><span style="color:var(--pumped-orange)">' + (p.dirtyFragment||'') + '</span></div>' : ''}
+        ${p.ghost ? '<div class="tt-row"><span>Status:</span><span style="color:var(--ghost)">Ghost</span></div>' : ''}`;
+    tt.style.display = 'block';
+    tt.style.left = (event.clientX + 12) + 'px';
+    tt.style.top = (event.clientY - 10) + 'px';
+}
+function hideTooltip() { document.getElementById('tooltip').style.display = 'none'; }
+
+// ============================================================================
+// BUILD TAB STRUCTURES (once)
+// ============================================================================
+function buildTreeViewTab() {
+    const panel = document.getElementById('panel-tree-view');
+    panel.innerHTML = `
+        <!-- LEFT: Tree -->
+        <div class="pane" id="tv-left" style="width:22%;min-width:240px;">
+            <div class="tree-toolbar">
+                <label>Sort</label>
+                <select id="tv-sort" onchange="sortMode=this.value;renderTree('tree-container-tv',collapsedGroups);" style="width:80px">
+                    <option value="exec">Exec Order</option><option value="name">Name</option><option value="timing">Timing</option>
+                </select>
+                <input type="text" id="tv-search" placeholder="Search..." oninput="searchTerm=this.value.toLowerCase();renderTree('tree-container-tv',collapsedGroups);renderAllTimelines();updateAllSelectionHighlights();">
+            </div>
+            <div class="tree-container" id="tree-container-tv"></div>
+        </div>
+        <div class="v-splitter" id="splitter-tv-1"></div>
+        <!-- CENTER: Sub-tabs -->
+        <div class="pane" style="flex:1;min-width:400px;">
+            <div class="sub-tab-bar">
+                <button class="sub-tab active" data-stab="detail-graph" onclick="switchSubTab(this,'stab-tv')">Detail Graph</button>
+                <button class="sub-tab" data-stab="full-graph" onclick="switchSubTab(this,'stab-tv')">Full Graph</button>
+            </div>
+            <div class="sub-tab-content active" data-stab-content="detail-graph" data-group="stab-tv">
+                <div class="detail-graph-container" id="detail-graph-tv"></div>
+            </div>
+            <div class="sub-tab-content" data-stab-content="full-graph" data-group="stab-tv">
+                <div class="full-graph-container">
+                    <canvas id="graph-canvas-tv"></canvas>
+                    <div class="graph-controls">
+                        <button onclick="graphZoom=Math.min(3,graphZoom*1.2);renderFullGraph('graph-canvas-tv');">+</button>
+                        <button onclick="graphZoom=Math.max(0.2,graphZoom/1.2);renderFullGraph('graph-canvas-tv');">&minus;</button>
+                        <button onclick="graphZoom=1;graphPanX=0;graphPanY=0;renderFullGraph('graph-canvas-tv');">\u21C4</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="v-splitter" id="splitter-tv-2"></div>
+        <!-- RIGHT: Detail -->
+        <div class="pane detail-panel" id="tv-right" style="width:30%;min-width:260px;overflow-y:auto;">
+            <div class="detail-panel-content"></div>
+        </div>
+    `;
+}
+
+function buildTimelineTab() {
+    const panel = document.getElementById('panel-timeline');
+    panel.innerHTML = `
+        <!-- TOP: Timeline -->
+        <div class="timeline-section" id="tl-top" style="flex:0 0 65%;min-height:200px;">
+            <div class="timeline-header">
+                <div class="timeline-header-label">Group / Processor</div>
+                <div class="time-axis"><canvas id="time-axis-canvas-main"></canvas></div>
+            </div>
+            <div class="timeline-body">
+                <div class="swim-labels" id="tl-labels-main"></div>
+                <div class="timeline-bars" id="tl-bars-wrapper-main" style="flex:1;overflow:auto;position:relative;">
+                    <div id="tl-bars-main" style="position:relative;min-height:100%;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="h-splitter" id="splitter-tl-h"></div>
+        <!-- BOTTOM -->
+        <div style="flex:1;min-height:120px;display:flex;overflow:hidden;">
+            <div class="pane" style="flex:0 0 60%;overflow-y:auto;border-right:1px solid var(--border);padding:8px 12px;">
+                <div id="pump-breakdown-main"></div>
+            </div>
+            <div class="pane detail-panel" style="flex:1;overflow-y:auto;padding:0;">
+                <div class="detail-panel-content"></div>
+            </div>
+        </div>
+    `;
+}
+
+function buildCombinedTab() {
+    const panel = document.getElementById('panel-combined');
+    panel.innerHTML = `
+        <div style="display:flex;flex-direction:column;flex:1;min-width:0;">
+            <!-- Toolbar -->
+            <div class="combined-toolbar">
+                <button class="ue-btn active" id="cb-split" onclick="setCombinedLayout(0.5);">\u25A4 Split</button>
+                <button class="ue-btn" id="cb-tree-focus" onclick="setCombinedLayout(0.7);">\u25A5 Tree Focus</button>
+                <button class="ue-btn" id="cb-tl-focus" onclick="setCombinedLayout(0.3);">\u25A6 Timeline Focus</button>
+            </div>
+            <!-- TOP: Tree + detail graph -->
+            <div id="cb-top" style="flex:0 0 50%;min-height:100px;display:flex;overflow:hidden;">
+                <div class="pane" style="width:35%;min-width:200px;overflow:hidden;">
+                    <div class="tree-toolbar">
+                        <input type="text" placeholder="Search..." oninput="searchTerm=this.value.toLowerCase();renderTree('tree-container-cb',collapsedGroups);renderAllTimelines();">
+                    </div>
+                    <div class="tree-container" id="tree-container-cb"></div>
+                </div>
+                <div class="v-splitter" id="splitter-cb-v1"></div>
+                <div class="pane" style="flex:1;min-width:200px;">
+                    <div class="detail-graph-container" id="detail-graph-cb"></div>
+                </div>
+            </div>
+            <div class="h-splitter" id="splitter-cb-h"></div>
+            <!-- BOTTOM: Timeline -->
+            <div id="cb-bottom" style="flex:1;min-height:100px;display:flex;flex-direction:column;overflow:hidden;">
+                <div class="timeline-section" style="flex:1;">
+                    <div class="timeline-header">
+                        <div class="timeline-header-label">Group / Processor</div>
+                        <div class="time-axis"><canvas id="time-axis-canvas-cb"></canvas></div>
+                    </div>
+                    <div class="timeline-body">
+                        <div class="swim-labels" id="tl-labels-cb"></div>
+                        <div style="flex:1;overflow:auto;position:relative;">
+                            <div id="tl-bars-cb" style="position:relative;min-height:100%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- RIGHT: Floating detail panel -->
+        <div class="v-splitter" id="splitter-cb-v2"></div>
+        <div class="pane detail-panel" style="width:280px;min-width:200px;overflow-y:auto;">
+            <div class="detail-panel-content"></div>
+        </div>
+    `;
+}
+
+function switchSubTab(btn, group) {
+    const bar = btn.parentElement;
+    bar.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const parent = bar.parentElement;
+    parent.querySelectorAll(`.sub-tab-content[data-group="${group}"]`).forEach(c => {
+        c.classList.toggle('active', c.dataset.stabContent === btn.dataset.stab);
+    });
+    if (btn.dataset.stab === 'full-graph') {
+        requestAnimationFrame(() => renderFullGraph('graph-canvas-tv'));
+    }
+}
+
+function setCombinedLayout(topFrac) {
+    combinedSplit = topFrac;
+    const top = document.getElementById('cb-top');
+    const bottom = document.getElementById('cb-bottom');
+    if (top) top.style.flex = `0 0 ${topFrac * 100}%`;
+    if (bottom) bottom.style.flex = '1';
+    document.querySelectorAll('.combined-toolbar .ue-btn').forEach(b => b.classList.remove('active'));
+    if (topFrac === 0.5) document.getElementById('cb-split').classList.add('active');
+    else if (topFrac === 0.7) document.getElementById('cb-tree-focus').classList.add('active');
+    else document.getElementById('cb-tl-focus').classList.add('active');
+    requestAnimationFrame(() => {
+        renderTimelineBars('tl-bars-cb');
+        renderTimeAxis('time-axis-canvas-cb');
+    });
+}
+
+// ============================================================================
+// SPLITTER LOGIC
+// ============================================================================
+function initSplitter(splitterId, beforeId, afterId, dir) {
+    const splitter = document.getElementById(splitterId);
+    if (!splitter) return;
+    const before = document.getElementById(beforeId);
+    const after = afterId ? document.getElementById(afterId) : null;
+
+    let startPos, startSize;
+    function onMouseDown(e) {
+        e.preventDefault();
+        splitter.classList.add('dragging');
+        if (dir === 'h') {
+            startPos = e.clientX;
+            startSize = before.getBoundingClientRect().width;
+        } else {
+            startPos = e.clientY;
+            startSize = before.getBoundingClientRect().height;
+        }
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    }
+    function onMouseMove(e) {
+        const delta = dir === 'h' ? e.clientX - startPos : e.clientY - startPos;
+        const newSize = Math.max(dir === 'h' ? 150 : 80, startSize + delta);
+        if (dir === 'h') {
+            before.style.width = newSize + 'px';
+            before.style.flex = 'none';
+        } else {
+            before.style.height = newSize + 'px';
+            before.style.flex = `0 0 ${newSize}px`;
+        }
+        resizeAllCanvases();
+    }
+    function onMouseUp() {
+        splitter.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    }
+    splitter.addEventListener('mousedown', onMouseDown);
+}
+
+// ============================================================================
+// CANVAS GRAPH INTERACTION
+// ============================================================================
+function initGraphInteraction(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    let dragging = false, lastX, lastY;
+
+    canvas.addEventListener('mousedown', e => {
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+    });
+    canvas.addEventListener('mousemove', e => {
+        if (!dragging) return;
+        graphPanX += e.clientX - lastX;
+        graphPanY += e.clientY - lastY;
+        lastX = e.clientX; lastY = e.clientY;
+        renderFullGraph(canvasId);
+    });
+    canvas.addEventListener('mouseup', () => { dragging = false; canvas.style.cursor = 'grab'; });
+    canvas.addEventListener('mouseleave', () => { dragging = false; canvas.style.cursor = 'grab'; });
+    canvas.style.cursor = 'grab';
+
+    canvas.addEventListener('wheel', e => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        graphZoom = Math.max(0.15, Math.min(4, graphZoom * factor));
+        renderFullGraph(canvasId);
+    });
+
+    canvas.addEventListener('click', e => {
+        // Hit test nodes
+        const rect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const mx = (e.clientX - rect.left);
+        const my = (e.clientY - rect.top);
+        // Transform mouse to graph coords
+        const W = canvas.clientWidth, H = canvas.clientHeight;
+        const gx = (mx - graphPanX - W/2) / graphZoom + W/2;
+        const gy = (my - graphPanY - H/2) / graphZoom + H/2;
+        for (const [name, pos] of Object.entries(graphNodePositions)) {
+            if (gx >= pos.x && gx <= pos.x + pos.w && gy >= pos.y && gy <= pos.y + pos.h) {
+                const p = getProcByName(name);
+                if (p) selectProcessor(p.id);
+                return;
+            }
+        }
+    });
+}
+
+// ============================================================================
+// TIMELINE ZOOM (mouse wheel)
+// ============================================================================
+function initTimelineZoom(wrapperId) {
+    const wrapper = document.getElementById(wrapperId);
+    if (!wrapper) return;
+    wrapper.addEventListener('wheel', e => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.85 : 1.18;
+        pxPerMs = Math.max(50, Math.min(3000, pxPerMs * factor));
+        renderTimelineBars('tl-bars-main');
+        renderTimeAxis('time-axis-canvas-main');
+        renderTimelineBars('tl-bars-cb');
+        renderTimeAxis('time-axis-canvas-cb');
+    }, { passive: false });
+}
+
+// Sync scroll between labels and bars
+function initScrollSync(labelsId, barsWrapperId) {
+    const labels = document.getElementById(labelsId);
+    const bars = document.getElementById(barsWrapperId);
+    if (!labels || !bars) return;
+    bars.addEventListener('scroll', () => { labels.scrollTop = bars.scrollTop; });
+    labels.addEventListener('scroll', () => { bars.scrollTop = labels.scrollTop; });
+}
+
+// ============================================================================
+// RESIZE
+// ============================================================================
+function resizeAllCanvases() {
+    renderFullGraph('graph-canvas-tv');
+    renderTimeAxis('time-axis-canvas-main');
+    renderTimeAxis('time-axis-canvas-cb');
+}
+
+// ============================================================================
+// INITIALIZE
+// ============================================================================
+function init() {
+    buildTreeViewTab();
+    buildTimelineTab();
+    buildCombinedTab();
+
+    // Render everything
+    renderTree('tree-container-tv', collapsedGroups);
+    renderTree('tree-container-cb', collapsedGroups);
+    renderDetailGraph('detail-graph-tv');
+    renderDetailGraph('detail-graph-cb');
+    renderAllDetailPanels();
+
+    renderTimelineLabels('tl-labels-main', tlCollapsedGroups);
+    renderTimelineBars('tl-bars-main');
+    renderTimelineLabels('tl-labels-cb', tlCollapsedGroups);
+    renderTimelineBars('tl-bars-cb');
+    renderPumpBreakdown('pump-breakdown-main');
+
+    // Stats
+    const totalMs = PROCESSORS.reduce((s, p) => s + p.timing, 0);
+    const pumpMs = PUMP_DATA.reduce((s, pump) => s + pump.processors.reduce((ss, pp) => ss + pp.timing, 0), 0);
+    document.getElementById('statFrame').textContent = (totalMs + pumpMs).toFixed(2) + 'ms';
+    document.getElementById('statProcs').textContent = PROCESSORS.length;
+    document.getElementById('statGhosts').textContent = PROCESSORS.filter(p => p.ghost).length;
+    document.getElementById('statDirty').textContent = PROCESSORS.filter(p => p.dirty).length;
+    document.getElementById('statParallel').textContent = PROCESSORS.filter(p => p.parallel).length;
+
+    // Splitters
+    initSplitter('splitter-tv-1', 'tv-left', null, 'h');
+    initSplitter('splitter-tv-2', 'tv-right', null, 'h');
+    initSplitter('splitter-tl-h', 'tl-top', null, 'v');
+    initSplitter('splitter-cb-h', 'cb-top', 'cb-bottom', 'v');
+
+    // Graph interaction
+    setTimeout(() => {
+        initGraphInteraction('graph-canvas-tv');
+        initTimelineZoom('tl-bars-wrapper-main');
+        initScrollSync('tl-labels-main', 'tl-bars-wrapper-main');
+    }, 100);
+
+    // Canvases on resize
+    window.addEventListener('resize', () => { resizeAllCanvases(); });
+
+    // Initial render of canvases
+    requestAnimationFrame(() => {
+        renderFullGraph('graph-canvas-tv');
+        renderTimeAxis('time-axis-canvas-main');
+        renderTimeAxis('time-axis-canvas-cb');
+    });
+}
+
+init();
+</script>
+</body>
+</html>

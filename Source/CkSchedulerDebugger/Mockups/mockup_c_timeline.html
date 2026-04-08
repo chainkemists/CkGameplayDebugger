@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CkScheduler Debugger - Execution Timeline</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg-deep: rgb(18, 18, 26);
+    --bg-panel: rgb(30, 30, 42);
+    --bg-lighter: rgb(40, 40, 56);
+    --bg-hover: rgb(50, 50, 68);
+    --border: rgb(55, 55, 75);
+    --border-light: rgb(70, 70, 90);
+    --text-primary: rgb(224, 224, 224);
+    --text-secondary: rgb(160, 160, 175);
+    --text-muted: rgb(100, 100, 115);
+    --selection: rgb(60, 130, 220);
+    --selection-dim: rgba(60, 130, 220, 0.25);
+    --scrollbar-thumb: rgb(60, 60, 80);
+    --scrollbar-track: rgb(22, 22, 32);
+    /* Group accent colors */
+    --clr-predestruction: rgb(180, 80, 80);
+    --clr-destruction: rgb(180, 100, 70);
+    --clr-gameplay: rgb(60, 150, 200);
+    --clr-physics: rgb(200, 160, 60);
+    --clr-transform: rgb(130, 180, 80);
+    --clr-posttransform: rgb(100, 160, 130);
+    --clr-replication: rgb(160, 100, 200);
+    --clr-entitylifecycle: rgb(100, 130, 180);
+    --clr-overlap: rgb(200, 120, 160);
+    /* Heat colors */
+    --heat-fast: rgb(80, 200, 100);
+    --heat-mid: rgb(220, 200, 60);
+    --heat-slow: rgb(220, 120, 40);
+    --heat-hot: rgb(220, 60, 60);
+    /* Pump bg tints */
+    --pump-bg-1: rgba(200, 160, 60, 0.04);
+    --pump-bg-2: rgba(200, 100, 60, 0.04);
+}
+
+html, body {
+    width: 100%; height: 100%;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--bg-deep);
+    overflow: hidden;
+    user-select: none;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(80, 80, 100); }
+::-webkit-scrollbar-corner { background: var(--scrollbar-track); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOP BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+#topBar {
+    display: flex; align-items: center; gap: 12px;
+    height: 40px; padding: 0 12px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+#topBar .title {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+    white-space: nowrap;
+}
+#topBar .title span { color: var(--selection); }
+#topBar .separator { width: 1px; height: 20px; background: var(--border); }
+.ue-select, .ue-input, .ue-btn {
+    height: 26px; border: 1px solid var(--border);
+    background: var(--bg-lighter); color: var(--text-primary);
+    border-radius: 3px; padding: 0 8px; font-size: 12px;
+    outline: none;
+}
+.ue-select:focus, .ue-input:focus { border-color: var(--selection); }
+.ue-btn {
+    cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 4px;
+    padding: 0 10px;
+}
+.ue-btn:hover { background: var(--bg-hover); }
+.ue-btn.active { background: rgba(60, 130, 220, 0.25); border-color: var(--selection); color: #fff; }
+.ue-input { width: 180px; }
+#searchBox { margin-left: auto; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATS BAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+#statsBar {
+    display: flex; align-items: center; gap: 24px;
+    height: 32px; padding: 0 16px;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.stat-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.stat-label { color: var(--text-muted); }
+.stat-value { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-value.warn { color: var(--heat-mid); }
+.stat-value.hot { color: var(--heat-hot); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN LAYOUT
+   ═══════════════════════════════════════════════════════════════════════════ */
+#mainContainer {
+    display: flex; flex-direction: column;
+    height: calc(100vh - 72px);
+}
+#timelineSection {
+    flex: 0 0 65%; min-height: 200px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+#hSplitter {
+    height: 5px; background: var(--border);
+    cursor: ns-resize; flex-shrink: 0;
+    position: relative;
+}
+#hSplitter::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px; height: 2px; background: var(--text-muted); border-radius: 1px;
+}
+#bottomSection {
+    flex: 1; min-height: 120px;
+    display: flex; overflow: hidden;
+}
+#bottomLeft {
+    flex: 0 0 60%; overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 10px 14px;
+    background: var(--bg-panel);
+}
+#bottomRight {
+    flex: 1; overflow-y: auto;
+    padding: 10px 14px;
+    background: var(--bg-panel);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TIMELINE
+   ═══════════════════════════════════════════════════════════════════════════ */
+#timelineHeader {
+    display: flex; height: 38px; flex-shrink: 0;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+}
+#timelineHeaderLabel {
+    width: 200px; min-width: 200px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--text-muted);
+    border-right: 1px solid var(--border);
+}
+#timeAxis {
+    flex: 1; position: relative; overflow: hidden;
+    background: var(--bg-deep);
+}
+#timeAxisCanvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+}
+
+#timelineBody {
+    display: flex; flex: 1; overflow: hidden;
+}
+#swimLaneLabels {
+    width: 200px; min-width: 200px; flex-shrink: 0;
+    overflow-y: auto; overflow-x: hidden;
+    border-right: 1px solid var(--border);
+    background: var(--bg-panel);
+}
+#swimLaneLabels::-webkit-scrollbar { width: 0; }
+#timelineBars {
+    flex: 1; overflow: auto; position: relative;
+    background: var(--bg-deep);
+}
+
+/* Sync vertical scroll between labels and bars */
+.tick-group-header {
+    height: 28px; display: flex; align-items: center;
+    padding: 0 10px; font-size: 12px; font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(40, 40, 56, 0.6);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 1;
+}
+.tick-group-header-timeline {
+    height: 28px;
+    background: rgba(40, 40, 56, 0.6);
+    border-bottom: 1px solid var(--border);
+}
+
+.group-label {
+    display: flex; align-items: center;
+    height: 32px; padding: 0 8px; gap: 6px;
+    cursor: pointer; border-bottom: 1px solid rgba(55, 55, 75, 0.4);
+    transition: background 0.15s;
+}
+.group-label:hover { background: var(--bg-lighter); }
+.group-label .arrow {
+    font-size: 10px; width: 14px; text-align: center;
+    color: var(--text-muted); transition: transform 0.2s;
+}
+.group-label .arrow.collapsed { transform: rotate(-90deg); }
+.group-label .gname {
+    font-size: 12px; font-weight: 600; flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.group-label .gstats {
+    font-size: 10px; color: var(--text-muted); white-space: nowrap;
+}
+
+.group-row-label {
+    height: 28px; display: flex; align-items: center;
+    border-bottom: 1px solid rgba(55, 55, 75, 0.2);
+}
+.group-row-timeline {
+    height: 28px; position: relative;
+    border-bottom: 1px solid rgba(55, 55, 75, 0.2);
+}
+
+.collapsed-aggregate-label {
+    height: 22px; display: flex; align-items: center;
+    padding: 0 28px; font-size: 11px; color: var(--text-muted);
+    border-bottom: 1px solid rgba(55, 55, 75, 0.2);
+}
+.collapsed-aggregate-timeline {
+    height: 22px; position: relative;
+    border-bottom: 1px solid rgba(55, 55, 75, 0.2);
+}
+
+/* Processor bar */
+.proc-bar {
+    position: absolute; top: 3px; height: 22px;
+    border-radius: 3px; cursor: pointer;
+    display: flex; align-items: center; padding: 0 5px;
+    font-size: 10px; color: rgba(255,255,255,0.9);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: box-shadow 0.15s, filter 0.15s;
+    z-index: 1;
+}
+.proc-bar:hover {
+    filter: brightness(1.2);
+    z-index: 5;
+}
+.proc-bar.selected {
+    box-shadow: 0 0 0 2px var(--selection), 0 2px 8px rgba(60, 130, 220, 0.4);
+    z-index: 10;
+    filter: brightness(1.1);
+}
+.proc-bar .bar-order {
+    font-size: 9px; opacity: 0.6; margin-right: 3px;
+}
+.proc-bar .bar-badge {
+    margin-left: 3px; font-size: 10px;
+}
+.proc-bar.ghost {
+    opacity: 0.45;
+    background-image: repeating-linear-gradient(
+        -45deg, transparent, transparent 3px,
+        rgba(255,255,255,0.08) 3px, rgba(255,255,255,0.08) 6px
+    ) !important;
+}
+.proc-bar.pumped {
+    border: 1.5px solid rgb(220, 160, 50) !important;
+}
+
+/* Aggregate bar (collapsed groups) */
+.aggregate-bar {
+    position: absolute; top: 5px; height: 12px;
+    border-radius: 2px; opacity: 0.5;
+}
+
+/* Pump separator lines */
+.pump-separator {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    border-left: 1px dashed rgba(200, 160, 60, 0.4);
+    z-index: 2; pointer-events: none;
+}
+.pump-label {
+    position: absolute; top: 2px; font-size: 9px;
+    color: rgba(200, 160, 60, 0.6); white-space: nowrap;
+    z-index: 2; pointer-events: none;
+}
+
+/* Pump zone background tints */
+.pump-zone {
+    position: absolute; top: 0; bottom: 0; z-index: 0; pointer-events: none;
+}
+
+/* Dependency arcs overlay */
+#depOverlay {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 20;
+    display: none;
+}
+
+/* Tooltip */
+#tooltip {
+    position: fixed; z-index: 1000;
+    background: rgb(35, 35, 50);
+    border: 1px solid var(--border-light);
+    border-radius: 4px; padding: 8px 10px;
+    font-size: 11px; color: var(--text-primary);
+    pointer-events: none; display: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    max-width: 300px;
+}
+#tooltip .tt-name { font-weight: 600; margin-bottom: 4px; }
+#tooltip .tt-row { display: flex; gap: 8px; color: var(--text-secondary); }
+#tooltip .tt-row span:first-child { color: var(--text-muted); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOTTOM LEFT - PUMP BREAKDOWN
+   ═══════════════════════════════════════════════════════════════════════════ */
+.section-title {
+    font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.pump-stacked-bar {
+    display: flex; height: 22px; border-radius: 3px; overflow: hidden;
+    margin-bottom: 10px; background: var(--bg-lighter);
+}
+.pump-stacked-bar .seg {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: rgba(255,255,255,0.85);
+    white-space: nowrap; overflow: hidden;
+    transition: flex 0.3s;
+}
+.pump-pass-section {
+    margin-bottom: 10px;
+}
+.pump-pass-title {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.pump-proc-row {
+    display: flex; align-items: center; gap: 8px;
+    height: 20px; font-size: 11px; padding: 0 4px;
+}
+.pump-proc-row .pname { flex: 1; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pump-proc-row .ptime { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.pump-proc-row .pbar-track { width: 100px; height: 6px; background: var(--bg-lighter); border-radius: 3px; overflow: hidden; }
+.pump-proc-row .pbar-fill { height: 100%; border-radius: 3px; }
+
+.dirty-section { margin-top: 14px; }
+.dirty-row {
+    display: flex; align-items: center; gap: 8px;
+    height: 22px; font-size: 11px; padding: 0 4px;
+    border-bottom: 1px solid rgba(55,55,75,0.3);
+}
+.dirty-row .dname { flex: 1; color: var(--text-primary); }
+.dirty-row .dfrag { color: var(--text-muted); font-size: 10px; }
+.dirty-row .dpumps { color: var(--heat-mid); font-weight: 600; font-size: 11px; }
+.dirty-badge {
+    display: inline-block; padding: 1px 5px; border-radius: 2px;
+    font-size: 9px; font-weight: 600;
+    background: rgba(220, 160, 50, 0.2); color: rgb(220, 180, 80);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOTTOM RIGHT - SELECTED DETAIL
+   ═══════════════════════════════════════════════════════════════════════════ */
+#detailPanel .detail-header {
+    font-size: 14px; font-weight: 600; margin-bottom: 10px;
+    color: var(--text-primary);
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+#detailPanel .detail-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    margin-bottom: 5px; font-size: 12px;
+    min-height: 20px; align-items: center;
+}
+#detailPanel .detail-label {
+    width: 100px; flex-shrink: 0;
+    color: var(--text-muted); font-size: 11px;
+}
+#detailPanel .detail-value {
+    color: var(--text-primary); font-size: 12px;
+}
+.badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; font-weight: 600; margin-right: 4px;
+}
+.badge-parallel { background: rgba(100, 180, 220, 0.2); color: rgb(120, 200, 240); }
+.badge-ghost { background: rgba(160, 100, 200, 0.2); color: rgb(180, 140, 220); }
+.badge-dirty { background: rgba(220, 160, 50, 0.2); color: rgb(220, 180, 80); }
+.dep-link {
+    color: var(--selection); cursor: pointer; font-size: 11px;
+    text-decoration: none; margin-right: 6px;
+}
+.dep-link:hover { text-decoration: underline; }
+.sparkline-container { display: inline-block; vertical-align: middle; margin-left: 6px; }
+.no-selection { color: var(--text-muted); font-style: italic; margin-top: 20px; }
+
+/* Search highlight */
+.proc-bar.search-dim { opacity: 0.2; }
+.proc-bar.search-match { box-shadow: 0 0 0 1px rgba(255, 220, 60, 0.7); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topBar">
+    <div class="title">CkScheduler <span>Timeline</span></div>
+    <div class="separator"></div>
+    <select class="ue-select" id="worldSelect">
+        <option>Game World</option>
+        <option>Editor World</option>
+        <option>PIE World 0</option>
+    </select>
+    <button class="ue-btn" id="freezeBtn" onclick="toggleFreeze()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="1" width="3" height="10" rx="1" fill="currentColor"/><rect x="7" y="1" width="3" height="10" rx="1" fill="currentColor"/></svg>
+        Freeze
+    </button>
+    <button class="ue-btn" id="showDepsBtn" onclick="toggleDepsMode()">Show Deps</button>
+    <button class="ue-btn" onclick="resetZoom()">Reset Zoom</button>
+    <input class="ue-input" id="searchBox" type="text" placeholder="Search processors..." oninput="onSearch(this.value)">
+</div>
+
+<!-- STATS BAR -->
+<div id="statsBar">
+    <div class="stat-item"><span class="stat-label">Frame Time</span><span class="stat-value" id="statFrameTime">2.34ms</span></div>
+    <div class="stat-item"><span class="stat-label">Pump Count</span><span class="stat-value warn" id="statPumpCount">3</span></div>
+    <div class="stat-item"><span class="stat-label">Processors</span><span class="stat-value" id="statProcCount">35</span></div>
+    <div class="stat-item"><span class="stat-label">Ghosts</span><span class="stat-value" id="statGhostCount">3</span></div>
+    <div class="stat-item"><span class="stat-label">Dirty</span><span class="stat-value warn" id="statDirtyCount">2</span></div>
+    <div class="stat-item"><span class="stat-label">Parallel</span><span class="stat-value" id="statParallelCount">4</span></div>
+</div>
+
+<!-- MAIN CONTAINER -->
+<div id="mainContainer">
+    <!-- TIMELINE SECTION -->
+    <div id="timelineSection">
+        <div id="timelineHeader">
+            <div id="timelineHeaderLabel">Group / Processor</div>
+            <div id="timeAxis"><canvas id="timeAxisCanvas"></canvas></div>
+        </div>
+        <div id="timelineBody">
+            <div id="swimLaneLabels"></div>
+            <div id="timelineBars">
+                <svg id="depOverlay"></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- HORIZONTAL SPLITTER -->
+    <div id="hSplitter"></div>
+
+    <!-- BOTTOM SECTION -->
+    <div id="bottomSection">
+        <div id="bottomLeft">
+            <div class="section-title">Pump Breakdown</div>
+            <div id="pumpBreakdown"></div>
+            <div class="dirty-section">
+                <div class="section-title">Dirty Processors This Frame</div>
+                <div id="dirtyList"></div>
+            </div>
+        </div>
+        <div id="bottomRight">
+            <div id="detailPanel">
+                <div class="no-selection">Click a processor bar to view details</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════════════
+
+const GROUP_COLORS = {
+    PreDestruction:     'rgb(180, 80, 80)',
+    DestructionPipeline:'rgb(180, 100, 70)',
+    Gameplay:           'rgb(60, 150, 200)',
+    Physics:            'rgb(200, 160, 60)',
+    Transform:          'rgb(130, 180, 80)',
+    PostTransform:      'rgb(100, 160, 130)',
+    Replication:        'rgb(160, 100, 200)',
+    EntityLifecycle:    'rgb(100, 130, 180)',
+    Overlap:            'rgb(200, 120, 160)',
+};
+
+function heatColor(ms) {
+    if (ms < 0.05) return 'rgba(80, 200, 100, 0.25)';
+    if (ms < 0.12) return 'rgba(220, 200, 60, 0.20)';
+    if (ms < 0.25) return 'rgba(220, 120, 40, 0.25)';
+    return 'rgba(220, 60, 60, 0.30)';
+}
+
+function barColor(groupColor, ms) {
+    // Parse group color, blend with heat
+    const m = groupColor.match(/\d+/g).map(Number);
+    const heat = ms < 0.05 ? [80,200,100] : ms < 0.12 ? [220,200,60] : ms < 0.25 ? [220,120,40] : [220,60,60];
+    const t = Math.min(ms / 0.3, 1) * 0.35;
+    const r = Math.round(m[0] * (1-t) + heat[0] * t);
+    const g = Math.round(m[1] * (1-t) + heat[1] * t);
+    const b = Math.round(m[2] * (1-t) + heat[2] * t);
+    return `rgb(${r},${g},${b})`;
+}
+
+// Generate sparkline data (last 60 frames)
+function genSparkline(baseMs, variance) {
+    const d = [];
+    for (let i = 0; i < 60; i++) d.push(Math.max(0.001, baseMs + (Math.random() - 0.5) * variance));
+    return d;
+}
+
+const TICK_GROUPS = [
+    { name: 'TG_PrePhysics', groups: ['PreDestruction','DestructionPipeline','Gameplay','Physics','Transform','PostTransform','Replication','EntityLifecycle'] },
+    { name: 'TG_PostPhysics', groups: ['Overlap'] },
+];
+
+// pass: 0 = main, 1 = pump1, 2 = pump2
+const PROCESSORS = [
+    // PreDestruction
+    { name: 'EndPlay_Processor', group: 'PreDestruction', ms: 0.03, order: 1, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: [], runBefore: ['Teardown_Processor'], fragments: ['FFragment_EndPlay_Params','FFragment_EndPlay_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'PreDestruction_Cleanup', group: 'PreDestruction', ms: 0.02, order: 2, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['EndPlay_Processor'], runBefore: ['Teardown_Processor'], fragments: ['FFragment_PreDestruction_State'], parallel: false, ghost: false, dirty: null },
+    // DestructionPipeline
+    { name: 'Teardown_Processor', group: 'DestructionPipeline', ms: 0.06, order: 3, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['EndPlay_Processor'], runBefore: ['AwaitDestruction_Processor'], fragments: ['FFragment_Teardown_Params','FFragment_Teardown_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'AwaitDestruction_Processor', group: 'DestructionPipeline', ms: 0.02, order: 4, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Teardown_Processor'], runBefore: ['FinalizeDestruction_Processor'], fragments: ['FFragment_Destruction_State'], parallel: false, ghost: false, dirty: null },
+    { name: 'FinalizeDestruction_Processor', group: 'DestructionPipeline', ms: 0.04, order: 5, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['AwaitDestruction_Processor'], runBefore: ['DestroyEntities_Processor'], fragments: ['FFragment_Destruction_Final'], parallel: false, ghost: false, dirty: null },
+    { name: 'DestroyEntities_Processor', group: 'DestructionPipeline', ms: 0.05, order: 6, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['FinalizeDestruction_Processor'], runBefore: ['CleanupReferences_Processor'], fragments: ['FFragment_Entity_Destroy'], parallel: false, ghost: false, dirty: null },
+    { name: 'CleanupReferences_Processor', group: 'DestructionPipeline', ms: 0.04, order: 7, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['DestroyEntities_Processor'], runBefore: [], fragments: ['FFragment_Reference_Cleanup'], parallel: false, ghost: false, dirty: null },
+    // Gameplay
+    { name: 'Input_Process', group: 'Gameplay', ms: 0.08, order: 8, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['CleanupReferences_Processor'], runBefore: ['AI_Update'], fragments: ['FFragment_Input_Params','FFragment_Input_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'AI_Update', group: 'Gameplay', ms: 0.22, order: 9, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Input_Process'], runBefore: ['AudioTrack_Setup'], fragments: ['FFragment_AI_State','FFragment_AI_Blackboard'], parallel: true, ghost: false, dirty: null },
+    { name: 'AudioTrack_Setup', group: 'Gameplay', ms: 0.10, order: 10, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['AI_Update'], runBefore: ['AudioTrack_Lifetime'], fragments: ['FFragment_AudioTrack_Params','FFragment_AudioTrack_Current'], parallel: false, ghost: false, dirty: 'FFragment_AudioTrack_Params' },
+    { name: 'AudioTrack_Lifetime', group: 'Gameplay', ms: 0.07, order: 11, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['AudioTrack_Setup'], runBefore: ['VfxCue_Setup'], fragments: ['FFragment_AudioTrack_Current','FFragment_AudioTrack_Lifetime'], parallel: false, ghost: false, dirty: 'FFragment_AudioTrack_Current' },
+    { name: 'VfxCue_Setup', group: 'Gameplay', ms: 0.09, order: 12, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['AudioTrack_Lifetime'], runBefore: ['VfxCue_Lifetime'], fragments: ['FFragment_VfxCue_Params','FFragment_VfxCue_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'VfxCue_Lifetime', group: 'Gameplay', ms: 0.06, order: 13, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['VfxCue_Setup'], runBefore: ['Combat_Evaluate'], fragments: ['FFragment_VfxCue_Current','FFragment_VfxCue_Lifetime'], parallel: false, ghost: false, dirty: null },
+    { name: 'Combat_Evaluate', group: 'Gameplay', ms: 0.14, order: 14, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['VfxCue_Lifetime'], runBefore: ['Targeting_Update'], fragments: ['FFragment_Combat_Params','FFragment_Combat_State'], parallel: false, ghost: false, dirty: null },
+    { name: 'Targeting_Update', group: 'Gameplay', ms: 0.11, order: 15, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Combat_Evaluate'], runBefore: ['Ability_Process'], fragments: ['FFragment_Targeting_State','FFragment_Targeting_Result'], parallel: false, ghost: false, dirty: null },
+    { name: 'Ability_Process', group: 'Gameplay', ms: 0.13, order: 16, pass: 0, tickRate: 2, totalTicks: 7115, runAfter: ['Targeting_Update'], runBefore: ['Inventory_Sync'], fragments: ['FFragment_Ability_Params','FFragment_Ability_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'Inventory_Sync', group: 'Gameplay', ms: 0.05, order: 17, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Ability_Process'], runBefore: ['Quest_Update'], fragments: ['FFragment_Inventory_State'], parallel: false, ghost: false, dirty: null },
+    { name: 'Quest_Update', group: 'Gameplay', ms: 0.04, order: 18, pass: 0, tickRate: 5, totalTicks: 2846, runAfter: ['Inventory_Sync'], runBefore: ['Dialog_Process'], fragments: ['FFragment_Quest_State','FFragment_Quest_Objective'], parallel: false, ghost: false, dirty: null },
+    { name: 'Dialog_Process', group: 'Gameplay', ms: 0.03, order: 19, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Quest_Update'], runBefore: ['PhysicsStep_Processor'], fragments: ['FFragment_Dialog_State'], parallel: false, ghost: false, dirty: null },
+    // Physics
+    { name: 'PhysicsStep_Processor', group: 'Physics', ms: 0.35, order: 20, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['Dialog_Process'], runBefore: ['CollisionResponse_Processor'], fragments: ['FFragment_Physics_Body','FFragment_Physics_Velocity'], parallel: true, ghost: false, dirty: null },
+    { name: 'CollisionResponse_Processor', group: 'Physics', ms: 0.28, order: 21, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['PhysicsStep_Processor'], runBefore: ['RagdollUpdate_Processor'], fragments: ['FFragment_Collision_Result','FFragment_Collision_Response'], parallel: true, ghost: false, dirty: null },
+    { name: 'RagdollUpdate_Processor', group: 'Physics', ms: 0.17, order: 22, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['CollisionResponse_Processor'], runBefore: ['TransformSync_Processor'], fragments: ['FFragment_Ragdoll_State','FFragment_Physics_Body'], parallel: false, ghost: false, dirty: null },
+    // Transform
+    { name: 'TransformSync_Processor', group: 'Transform', ms: 0.06, order: 23, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['RagdollUpdate_Processor'], runBefore: ['TransformPump_Processor'], fragments: ['FFragment_Transform_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'TransformPump_Processor', group: 'Transform', ms: 0.04, order: 24, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['TransformSync_Processor'], runBefore: ['TransformFinalize_Processor'], fragments: ['FFragment_Transform_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'TransformFinalize_Processor', group: 'Transform', ms: 0.03, order: 25, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['TransformPump_Processor'], runBefore: ['CameraUpdate_Processor'], fragments: ['FFragment_Transform_Current','FFragment_Transform_Final'], parallel: false, ghost: false, dirty: null },
+    // PostTransform
+    { name: 'CameraUpdate_Processor', group: 'PostTransform', ms: 0.03, order: 26, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['TransformFinalize_Processor'], runBefore: ['AttachmentSync_Processor'], fragments: ['FFragment_Camera_Params','FFragment_Camera_Current'], parallel: false, ghost: false, dirty: null },
+    { name: 'AttachmentSync_Processor', group: 'PostTransform', ms: 0.02, order: 27, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['CameraUpdate_Processor'], runBefore: ['NetSerialize_Processor'], fragments: ['FFragment_Attachment_State'], parallel: false, ghost: false, dirty: null },
+    // Replication
+    { name: 'NetSerialize_Processor', group: 'Replication', ms: 0.005, order: 28, pass: 0, tickRate: 3, totalTicks: 4743, runAfter: ['AttachmentSync_Processor'], runBefore: ['NetReceive_Processor'], fragments: ['FFragment_Net_Serialize'], parallel: false, ghost: true, dirty: null },
+    { name: 'NetReceive_Processor', group: 'Replication', ms: 0.008, order: 29, pass: 0, tickRate: 3, totalTicks: 4743, runAfter: ['NetSerialize_Processor'], runBefore: ['NetSend_Processor'], fragments: ['FFragment_Net_Receive','FFragment_Net_State'], parallel: false, ghost: true, dirty: null },
+    { name: 'NetSend_Processor', group: 'Replication', ms: 0.007, order: 30, pass: 0, tickRate: 3, totalTicks: 4743, runAfter: ['NetReceive_Processor'], runBefore: ['EntitySetup_Processor'], fragments: ['FFragment_Net_Send'], parallel: false, ghost: true, dirty: null },
+    // EntityLifecycle
+    { name: 'EntitySetup_Processor', group: 'EntityLifecycle', ms: 0.005, order: 31, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['NetSend_Processor'], runBefore: ['EntityCleanup_Processor'], fragments: ['FFragment_Entity_Setup'], parallel: false, ghost: false, dirty: null },
+    { name: 'EntityCleanup_Processor', group: 'EntityLifecycle', ms: 0.005, order: 32, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['EntitySetup_Processor'], runBefore: [], fragments: ['FFragment_Entity_Cleanup'], parallel: false, ghost: false, dirty: null },
+    // Overlap (TG_PostPhysics)
+    { name: 'ProbeCheck_Processor', group: 'Overlap', ms: 0.15, order: 33, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: [], runBefore: ['ProbeResponse_Processor'], fragments: ['FFragment_Probe_Params','FFragment_Probe_Result'], parallel: false, ghost: false, dirty: null },
+    { name: 'ProbeResponse_Processor', group: 'Overlap', ms: 0.10, order: 34, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['ProbeCheck_Processor'], runBefore: ['ProbeCleanup_Processor'], fragments: ['FFragment_Probe_Result','FFragment_Probe_Response'], parallel: false, ghost: false, dirty: null },
+    { name: 'ProbeCleanup_Processor', group: 'Overlap', ms: 0.05, order: 35, pass: 0, tickRate: 0, totalTicks: 14230, runAfter: ['ProbeResponse_Processor'], runBefore: [], fragments: ['FFragment_Probe_Cleanup'], parallel: false, ghost: false, dirty: null },
+
+    // PUMP PASS 1
+    { name: 'AudioTrack_Setup', group: 'Gameplay', ms: 0.08, order: 36, pass: 1, tickRate: 0, totalTicks: 14230, runAfter: [], runBefore: ['AudioTrack_Lifetime'], fragments: ['FFragment_AudioTrack_Params','FFragment_AudioTrack_Current'], parallel: false, ghost: false, dirty: 'FFragment_AudioTrack_Params', _isPumpRepeat: true },
+    { name: 'AudioTrack_Lifetime', group: 'Gameplay', ms: 0.02, order: 37, pass: 1, tickRate: 0, totalTicks: 14230, runAfter: ['AudioTrack_Setup'], runBefore: [], fragments: ['FFragment_AudioTrack_Current','FFragment_AudioTrack_Lifetime'], parallel: false, ghost: false, dirty: 'FFragment_AudioTrack_Current', _isPumpRepeat: true },
+    // PUMP PASS 2
+    { name: 'AudioTrack_Setup', group: 'Gameplay', ms: 0.04, order: 38, pass: 2, tickRate: 0, totalTicks: 14230, runAfter: [], runBefore: [], fragments: ['FFragment_AudioTrack_Params','FFragment_AudioTrack_Current'], parallel: false, ghost: false, dirty: 'FFragment_AudioTrack_Params', _isPumpRepeat: true },
+];
+
+// Compute cumulative start times per pass
+function computeLayout() {
+    const passes = [[], [], []];
+    PROCESSORS.forEach(p => passes[p.pass].push(p));
+    let passOffsets = [0, 0, 0];
+    for (let pi = 0; pi < 3; pi++) {
+        let t = 0;
+        for (const p of passes[pi]) {
+            p._startMs = t;
+            t += p.ms;
+        }
+        if (pi > 0) {
+            let prevEnd = 0;
+            for (const p of passes[pi - 1]) prevEnd = Math.max(prevEnd, p._startMs + p.ms);
+            passOffsets[pi] = passOffsets[pi - 1] + prevEnd + 0.05; // 0.05ms gap
+        }
+    }
+    PROCESSORS.forEach(p => {
+        p._absoluteStart = passOffsets[p.pass] + p._startMs;
+    });
+    return passOffsets;
+}
+
+const PASS_OFFSETS = computeLayout();
+const TOTAL_TIME_MS = Math.max(...PROCESSORS.map(p => p._absoluteStart + p.ms));
+
+// Group aggregates
+function groupAggregates() {
+    const agg = {};
+    for (const g of Object.keys(GROUP_COLORS)) {
+        const procs = PROCESSORS.filter(p => p.group === g && p.pass === 0);
+        agg[g] = { count: procs.length, totalMs: procs.reduce((s, p) => s + p.ms, 0) };
+    }
+    return agg;
+}
+const GROUP_AGG = groupAggregates();
+
+// Pass end times
+function passEndTime(pi) {
+    const procs = PROCESSORS.filter(p => p.pass === pi);
+    if (procs.length === 0) return PASS_OFFSETS[pi];
+    return Math.max(...procs.map(p => p._absoluteStart + p.ms));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let pxPerMs = 500;
+let selectedProc = null;
+let frozen = false;
+let depsMode = false;
+let searchTerm = '';
+const collapsedGroups = new Set(['Transform','PostTransform','Replication','EntityLifecycle']);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function render() {
+    renderLabels();
+    renderBars();
+    renderTimeAxis();
+    renderPumpBreakdown();
+    renderDirtyList();
+    if (selectedProc) renderDetail(selectedProc);
+}
+
+function renderLabels() {
+    const el = document.getElementById('swimLaneLabels');
+    let html = '';
+    for (const tg of TICK_GROUPS) {
+        html += `<div class="tick-group-header">${tg.name}</div>`;
+        for (const gname of tg.groups) {
+            const agg = GROUP_AGG[gname];
+            const isCollapsed = collapsedGroups.has(gname);
+            const arrow = isCollapsed ? 'collapsed' : '';
+            html += `<div class="group-label" data-group="${gname}" onclick="toggleGroup('${gname}')">
+                <span class="arrow ${arrow}">\u25BC</span>
+                <span class="gname" style="color:${GROUP_COLORS[gname]}">${gname}</span>
+                <span class="gstats">${agg.count} / ${agg.totalMs.toFixed(2)}</span>
+            </div>`;
+            if (isCollapsed) {
+                html += `<div class="collapsed-aggregate-label"></div>`;
+            } else {
+                const procs = getGroupProcs(gname);
+                for (const p of procs) {
+                    html += `<div class="group-row-label"></div>`;
+                }
+            }
+        }
+    }
+    el.innerHTML = html;
+}
+
+function getGroupProcs(gname) {
+    // All pass-0 procs, plus pumped procs from this group
+    return PROCESSORS.filter(p => p.group === gname);
+}
+
+function getGroupProcsPass0(gname) {
+    return PROCESSORS.filter(p => p.group === gname && p.pass === 0);
+}
+
+function renderBars() {
+    const container = document.getElementById('timelineBars');
+    const totalWidth = TOTAL_TIME_MS * pxPerMs + 100;
+    let html = '';
+
+    // Pump zone backgrounds
+    for (let pi = 1; pi <= 2; pi++) {
+        const startPx = PASS_OFFSETS[pi] * pxPerMs;
+        const endPx = passEndTime(pi) * pxPerMs;
+        const bgVar = pi === 1 ? 'var(--pump-bg-1)' : 'var(--pump-bg-2)';
+        html += `<div class="pump-zone" style="left:${startPx}px;width:${endPx - startPx}px;background:${bgVar}"></div>`;
+    }
+
+    // Pump separators
+    for (let pi = 1; pi <= 2; pi++) {
+        const px = PASS_OFFSETS[pi] * pxPerMs;
+        html += `<div class="pump-separator" style="left:${px}px"></div>`;
+        html += `<div class="pump-label" style="left:${px + 4}px">Pump ${pi}</div>`;
+    }
+
+    let yOffset = 0;
+    for (const tg of TICK_GROUPS) {
+        // Tick group header row
+        html += `<div class="tick-group-header-timeline" style="position:relative;top:0;"></div>`;
+        yOffset += 28;
+
+        for (const gname of tg.groups) {
+            // Group label row (in timeline = empty, just height)
+            html += `<div style="height:32px;"></div>`;
+            yOffset += 32;
+            const isCollapsed = collapsedGroups.has(gname);
+
+            if (isCollapsed) {
+                // Single aggregate bar
+                const procs0 = getGroupProcsPass0(gname);
+                if (procs0.length > 0) {
+                    const minStart = Math.min(...procs0.map(p => p._absoluteStart));
+                    const maxEnd = Math.max(...procs0.map(p => p._absoluteStart + p.ms));
+                    const leftPx = minStart * pxPerMs;
+                    const widthPx = (maxEnd - minStart) * pxPerMs;
+                    html += `<div class="collapsed-aggregate-timeline">
+                        <div class="aggregate-bar" style="left:${leftPx}px;width:${widthPx}px;background:${GROUP_COLORS[gname]}"></div>
+                    </div>`;
+                } else {
+                    html += `<div class="collapsed-aggregate-timeline"></div>`;
+                }
+                yOffset += 22;
+            } else {
+                // Expanded: one row per processor, across all passes
+                const allProcs = getGroupProcs(gname);
+                // Group by name to combine main + pump bars on same row
+                const uniqueNames = [];
+                const seen = new Set();
+                for (const p of PROCESSORS.filter(pp => pp.group === gname && pp.pass === 0)) {
+                    if (!seen.has(p.name)) { uniqueNames.push(p.name); seen.add(p.name); }
+                }
+                // Also add pump-only procs that aren't in pass 0
+                for (const p of PROCESSORS.filter(pp => pp.group === gname && pp.pass > 0)) {
+                    if (!seen.has(p.name)) { uniqueNames.push(p.name); seen.add(p.name); }
+                }
+
+                for (const pname of uniqueNames) {
+                    html += `<div class="group-row-timeline" style="width:${totalWidth}px;">`;
+                    const instances = PROCESSORS.filter(p => p.group === gname && p.name === pname);
+                    for (const p of instances) {
+                        const leftPx = p._absoluteStart * pxPerMs;
+                        const widthPx = Math.max(p.ms * pxPerMs, 4);
+                        const bg = barColor(GROUP_COLORS[gname], p.ms);
+                        const selClass = (selectedProc && selectedProc.name === p.name && selectedProc.pass === p.pass && selectedProc.order === p.order) ? ' selected' : '';
+                        const ghostClass = p.ghost ? ' ghost' : '';
+                        const pumpedClass = p._isPumpRepeat ? ' pumped' : '';
+                        const dimClass = searchTerm && !p.name.toLowerCase().includes(searchTerm.toLowerCase()) ? ' search-dim' :
+                                         searchTerm && p.name.toLowerCase().includes(searchTerm.toLowerCase()) ? ' search-match' : '';
+                        const badges = (p.parallel ? '<span class="bar-badge" title="Parallel">\u25C6</span>' : '') +
+                                       (p.dirty ? '<span class="bar-badge" title="Dirty">\u25CF</span>' : '');
+                        const label = widthPx > 40 ? `<span class="bar-order">#${p.order}</span>${p.name}${badges}` :
+                                      widthPx > 20 ? `${p.name.substring(0, 3)}` : '';
+                        html += `<div class="proc-bar${selClass}${ghostClass}${pumpedClass}${dimClass}"
+                            style="left:${leftPx}px;width:${widthPx}px;background:${bg};"
+                            data-order="${p.order}"
+                            onmouseenter="showTooltip(event,${p.order})"
+                            onmouseleave="hideTooltip()"
+                            onclick="selectProc(${p.order})"
+                            ondblclick="showDeps(${p.order})"
+                        >${label}</div>`;
+                    }
+                    html += `</div>`;
+                    yOffset += 28;
+                }
+            }
+        }
+    }
+
+    container.innerHTML = html + `<svg id="depOverlay" style="position:absolute;top:0;left:0;width:${totalWidth}px;height:${yOffset}px;pointer-events:none;z-index:20;display:${depsMode && selectedProc ? 'block' : 'none'};"></svg>`;
+    container.style.minWidth = totalWidth + 'px';
+
+    if (depsMode && selectedProc) renderDepArcs();
+}
+
+function renderTimeAxis() {
+    const canvas = document.getElementById('timeAxisCanvas');
+    const container = document.getElementById('timeAxis');
+    const scrollLeft = document.getElementById('timelineBars').scrollLeft;
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Determine tick interval based on zoom
+    let tickIntervalMs = 0.1;
+    const pxPerTick = tickIntervalMs * pxPerMs;
+    if (pxPerTick < 40) tickIntervalMs = 0.2;
+    if (pxPerTick < 20) tickIntervalMs = 0.5;
+    if (tickIntervalMs * pxPerMs < 20) tickIntervalMs = 1.0;
+
+    const startMs = scrollLeft / pxPerMs;
+    const endMs = (scrollLeft + canvas.width) / pxPerMs;
+    const firstTick = Math.floor(startMs / tickIntervalMs) * tickIntervalMs;
+
+    ctx.strokeStyle = 'rgba(80, 80, 100, 0.4)';
+    ctx.fillStyle = 'rgb(140, 140, 160)';
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+
+    for (let t = firstTick; t <= endMs + tickIntervalMs; t += tickIntervalMs) {
+        const x = t * pxPerMs - scrollLeft;
+        if (x < -20 || x > canvas.width + 20) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, canvas.height - 4);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+        ctx.fillText(t.toFixed(t >= 1 ? 1 : 2) + 'ms', x, canvas.height - 8);
+    }
+
+    // Pass labels at top
+    ctx.fillStyle = 'rgb(100, 160, 120)';
+    ctx.font = '10px Segoe UI, sans-serif';
+    ctx.textAlign = 'left';
+    const p0end = passEndTime(0);
+    const p0startX = -scrollLeft;
+    const p0midX = (p0end * pxPerMs) / 2 - scrollLeft;
+    ctx.fillText('Pass 0 (Main Tick)', Math.max(4, p0startX + 4), 12);
+
+    ctx.fillStyle = 'rgba(200, 160, 60, 0.7)';
+    for (let pi = 1; pi <= 2; pi++) {
+        const px = PASS_OFFSETS[pi] * pxPerMs - scrollLeft;
+        ctx.fillText(`Pump ${pi}`, px + 4, 12);
+        // Dashed separator
+        ctx.save();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(200, 160, 60, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, canvas.height);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Total time label at right
+    ctx.fillStyle = 'rgb(180, 180, 200)';
+    ctx.textAlign = 'right';
+    const totalPx = TOTAL_TIME_MS * pxPerMs - scrollLeft;
+    if (totalPx > 0 && totalPx < canvas.width + 60) {
+        ctx.fillText(TOTAL_TIME_MS.toFixed(2) + 'ms', totalPx - 2, 12);
+    }
+}
+
+function renderPumpBreakdown() {
+    const el = document.getElementById('pumpBreakdown');
+    const pass0Time = passEndTime(0);
+    const pass1Procs = PROCESSORS.filter(p => p.pass === 1);
+    const pass2Procs = PROCESSORS.filter(p => p.pass === 2);
+    const pass1Time = pass1Procs.reduce((s, p) => s + p.ms, 0);
+    const pass2Time = pass2Procs.reduce((s, p) => s + p.ms, 0);
+    const totalTime = pass0Time + pass1Time + pass2Time;
+
+    let html = `<div class="pump-stacked-bar">
+        <div class="seg" style="flex:${pass0Time};background:rgba(60,150,200,0.5)">Pass 0: ${pass0Time.toFixed(2)}ms</div>
+        <div class="seg" style="flex:${pass1Time};background:rgba(220,160,50,0.5)">P1: ${pass1Time.toFixed(2)}</div>
+        <div class="seg" style="flex:${pass2Time};background:rgba(220,120,40,0.5)">P2: ${pass2Time.toFixed(2)}</div>
+    </div>`;
+
+    // Pass 1 detail
+    if (pass1Procs.length > 0) {
+        html += `<div class="pump-pass-section"><div class="pump-pass-title">Pump 1</div>`;
+        for (const p of pass1Procs) {
+            const pct = (p.ms / pass1Time * 100).toFixed(0);
+            html += `<div class="pump-proc-row">
+                <span class="pname">${p.name}</span>
+                <span class="ptime">${p.ms.toFixed(2)}ms</span>
+                <div class="pbar-track"><div class="pbar-fill" style="width:${pct}%;background:${GROUP_COLORS[p.group]}"></div></div>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    // Pass 2 detail
+    if (pass2Procs.length > 0) {
+        html += `<div class="pump-pass-section"><div class="pump-pass-title">Pump 2</div>`;
+        for (const p of pass2Procs) {
+            const pct = (p.ms / pass2Time * 100).toFixed(0);
+            html += `<div class="pump-proc-row">
+                <span class="pname">${p.name}</span>
+                <span class="ptime">${p.ms.toFixed(2)}ms</span>
+                <div class="pbar-track"><div class="pbar-fill" style="width:${pct}%;background:${GROUP_COLORS[p.group]}"></div></div>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    el.innerHTML = html;
+}
+
+function renderDirtyList() {
+    const el = document.getElementById('dirtyList');
+    const dirtyProcs = PROCESSORS.filter(p => p.dirty && p.pass === 0);
+    if (dirtyProcs.length === 0) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:11px;padding:4px;">No dirty processors this frame</div>';
+        return;
+    }
+    let html = '';
+    for (const p of dirtyProcs) {
+        const pumpCount = PROCESSORS.filter(pp => pp.name === p.name && pp.pass > 0).length;
+        html += `<div class="dirty-row">
+            <span class="dname">${p.name}</span>
+            <span class="dfrag">${p.dirty}</span>
+            <span class="dpumps"><span class="dirty-badge">${pumpCount + 1}x pumped</span></span>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+function renderDetail(proc) {
+    const el = document.getElementById('detailPanel');
+    const sparkData = genSparkline(proc.ms, proc.ms * 0.6);
+    const sparkSvg = makeSparkline(sparkData, 120, 24);
+    const badges = [];
+    if (proc.parallel) badges.push('<span class="badge badge-parallel">PARALLEL</span>');
+    if (proc.ghost) badges.push('<span class="badge badge-ghost">GHOST</span>');
+    if (proc.dirty) badges.push('<span class="badge badge-dirty">DIRTY</span>');
+
+    const runAfterLinks = proc.runAfter.map(n => `<a class="dep-link" onclick="selectByName('${n}')">${n}</a>`).join('') || '<span style="color:var(--text-muted)">None</span>';
+    const runBeforeLinks = proc.runBefore.map(n => `<a class="dep-link" onclick="selectByName('${n}')">${n}</a>`).join('') || '<span style="color:var(--text-muted)">None</span>';
+    const fragList = proc.fragments.map(f => `<span style="color:var(--text-secondary);font-size:11px;display:block;">${f}</span>`).join('');
+
+    // Find tick group
+    let tickGroup = '';
+    for (const tg of TICK_GROUPS) {
+        if (tg.groups.includes(proc.group)) { tickGroup = tg.name; break; }
+    }
+
+    el.innerHTML = `
+        <div class="detail-header">${proc.name} ${badges.join('')}</div>
+        <div class="detail-row"><span class="detail-label">Group</span><span class="detail-value" style="color:${GROUP_COLORS[proc.group]}">${proc.group}</span></div>
+        <div class="detail-row"><span class="detail-label">Tick Group</span><span class="detail-value">${tickGroup}</span></div>
+        <div class="detail-row"><span class="detail-label">Exec Order</span><span class="detail-value">#${proc.order}</span></div>
+        <div class="detail-row"><span class="detail-label">Pass</span><span class="detail-value">${proc.pass === 0 ? 'Main (0)' : 'Pump ' + proc.pass}</span></div>
+        <div class="detail-row"><span class="detail-label">Timing</span><span class="detail-value">${proc.ms.toFixed(3)}ms <span class="sparkline-container">${sparkSvg}</span></span></div>
+        <div class="detail-row"><span class="detail-label">Total Ticks</span><span class="detail-value">${proc.totalTicks.toLocaleString()}</span></div>
+        <div class="detail-row"><span class="detail-label">Tick Rate</span><span class="detail-value">${proc.tickRate === 0 ? 'Every frame' : 'Every ' + proc.tickRate + ' frames'}</span></div>
+        ${proc.dirty ? `<div class="detail-row"><span class="detail-label">Dirty Marker</span><span class="detail-value" style="color:rgb(220,180,80)">${proc.dirty}</span></div>` : ''}
+        <div class="detail-row"><span class="detail-label">RunAfter</span><span class="detail-value">${runAfterLinks}</span></div>
+        <div class="detail-row"><span class="detail-label">RunBefore</span><span class="detail-value">${runBeforeLinks}</span></div>
+        <div class="detail-row" style="align-items:flex-start"><span class="detail-label">Fragments</span><span class="detail-value">${fragList}</span></div>
+    `;
+}
+
+function makeSparkline(data, w, h) {
+    const max = Math.max(...data) * 1.1;
+    const step = w / (data.length - 1);
+    let path = '';
+    for (let i = 0; i < data.length; i++) {
+        const x = i * step;
+        const y = h - (data[i] / max) * h;
+        path += (i === 0 ? 'M' : 'L') + `${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    // Current value dot
+    const lastY = h - (data[data.length - 1] / max) * h;
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:middle;">
+        <path d="${path}" fill="none" stroke="rgba(60,150,200,0.6)" stroke-width="1.5"/>
+        <circle cx="${w}" cy="${lastY.toFixed(1)}" r="2.5" fill="rgb(60,150,200)"/>
+    </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEPENDENCY ARCS
+// ═══════════════════════════════════════════════════════════════════════════
+function renderDepArcs() {
+    if (!selectedProc || !depsMode) return;
+    const overlay = document.getElementById('depOverlay');
+    if (!overlay) return;
+    overlay.style.display = 'block';
+    let svgContent = '';
+
+    // Find bar positions for selected proc
+    const selBar = findBarElement(selectedProc.order);
+    if (!selBar) return;
+    const selRect = barRect(selBar);
+    const containerRect = document.getElementById('timelineBars').getBoundingClientRect();
+    const scrollLeft = document.getElementById('timelineBars').scrollLeft;
+    const scrollTop = document.getElementById('timelineBars').scrollTop;
+
+    const selMidX = selRect.left + selRect.width / 2;
+    const selTopY = selRect.top - 8;
+
+    // RunAfter: arcs FROM dependency TO selected
+    for (const depName of selectedProc.runAfter) {
+        const depProc = PROCESSORS.find(p => p.name === depName && p.pass === 0);
+        if (!depProc) continue;
+        const depBar = findBarElement(depProc.order);
+        if (!depBar) continue;
+        const depRect = barRect(depBar);
+        const depMidX = depRect.left + depRect.width / 2;
+        const depTopY = depRect.top - 8;
+        const midY = Math.min(selTopY, depTopY) - 20;
+        svgContent += `<path d="M${depMidX},${depTopY} C${depMidX},${midY} ${selMidX},${midY} ${selMidX},${selTopY}"
+            fill="none" stroke="rgba(60,130,220,0.6)" stroke-width="2" marker-end="url(#arrowhead)"/>`;
+    }
+
+    // RunBefore: arcs FROM selected TO dependents
+    for (const depName of selectedProc.runBefore) {
+        const depProc = PROCESSORS.find(p => p.name === depName && p.pass === 0);
+        if (!depProc) continue;
+        const depBar = findBarElement(depProc.order);
+        if (!depBar) continue;
+        const depRect = barRect(depBar);
+        const depMidX = depRect.left + depRect.width / 2;
+        const depTopY = depRect.top - 8;
+        const midY = Math.min(selTopY, depTopY) - 20;
+        svgContent += `<path d="M${selMidX},${selTopY} C${selMidX},${midY} ${depMidX},${midY} ${depMidX},${depTopY}"
+            fill="none" stroke="rgba(220,120,60,0.6)" stroke-width="2" marker-end="url(#arrowhead-out)"/>`;
+    }
+
+    overlay.innerHTML = `<defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(60,130,220,0.8)"/>
+        </marker>
+        <marker id="arrowhead-out" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="rgba(220,120,60,0.8)"/>
+        </marker>
+    </defs>` + svgContent;
+}
+
+function findBarElement(order) {
+    return document.querySelector(`.proc-bar[data-order="${order}"]`);
+}
+
+function barRect(el) {
+    const container = document.getElementById('timelineBars');
+    const cr = el.getBoundingClientRect();
+    const pr = container.getBoundingClientRect();
+    return {
+        left: cr.left - pr.left + container.scrollLeft,
+        top: cr.top - pr.top + container.scrollTop,
+        width: cr.width,
+        height: cr.height,
+    };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTERACTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+function toggleGroup(gname) {
+    if (collapsedGroups.has(gname)) collapsedGroups.delete(gname);
+    else collapsedGroups.add(gname);
+    render();
+}
+
+function selectProc(order) {
+    selectedProc = PROCESSORS.find(p => p.order === order) || null;
+    render();
+}
+
+function selectByName(name) {
+    const proc = PROCESSORS.find(p => p.name === name && p.pass === 0);
+    if (proc) {
+        // Ensure group is expanded
+        collapsedGroups.delete(proc.group);
+        selectedProc = proc;
+        render();
+        // Scroll bar into view
+        setTimeout(() => {
+            const bar = findBarElement(proc.order);
+            if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }, 50);
+    }
+}
+
+function showDeps(order) {
+    depsMode = true;
+    document.getElementById('showDepsBtn').classList.add('active');
+    selectedProc = PROCESSORS.find(p => p.order === order) || null;
+    render();
+}
+
+function toggleDepsMode() {
+    depsMode = !depsMode;
+    document.getElementById('showDepsBtn').classList.toggle('active', depsMode);
+    render();
+}
+
+function toggleFreeze() {
+    frozen = !frozen;
+    document.getElementById('freezeBtn').classList.toggle('active', frozen);
+}
+
+function onSearch(term) {
+    searchTerm = term;
+    render();
+}
+
+function resetZoom() {
+    pxPerMs = 500;
+    render();
+}
+
+// Tooltip
+function showTooltip(e, order) {
+    const p = PROCESSORS.find(pp => pp.order === order);
+    if (!p) return;
+    const tt = document.getElementById('tooltip');
+    tt.innerHTML = `<div class="tt-name">${p.name}</div>
+        <div class="tt-row"><span>Group:</span><span style="color:${GROUP_COLORS[p.group]}">${p.group}</span></div>
+        <div class="tt-row"><span>Time:</span><span>${p.ms.toFixed(3)}ms</span></div>
+        <div class="tt-row"><span>Order:</span><span>#${p.order}</span></div>
+        <div class="tt-row"><span>Pass:</span><span>${p.pass === 0 ? 'Main' : 'Pump ' + p.pass}</span></div>
+        ${p.parallel ? '<div class="tt-row"><span>Mode:</span><span style="color:rgb(120,200,240)">Parallel</span></div>' : ''}
+        ${p.ghost ? '<div class="tt-row"><span>Type:</span><span style="color:rgb(180,140,220)">Ghost</span></div>' : ''}
+        ${p.dirty ? '<div class="tt-row"><span>Dirty:</span><span style="color:rgb(220,180,80)">' + p.dirty + '</span></div>' : ''}`;
+    tt.style.display = 'block';
+    positionTooltip(e);
+}
+
+function positionTooltip(e) {
+    const tt = document.getElementById('tooltip');
+    let x = e.clientX + 12;
+    let y = e.clientY + 12;
+    if (x + 250 > window.innerWidth) x = e.clientX - 260;
+    if (y + 120 > window.innerHeight) y = e.clientY - 130;
+    tt.style.left = x + 'px';
+    tt.style.top = y + 'px';
+}
+
+function hideTooltip() {
+    document.getElementById('tooltip').style.display = 'none';
+}
+
+document.addEventListener('mousemove', (e) => {
+    if (document.getElementById('tooltip').style.display === 'block') positionTooltip(e);
+});
+
+// Zoom with mouse wheel over timeline
+document.getElementById('timelineBars')?.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const oldPxPerMs = pxPerMs;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    pxPerMs = Math.max(100, Math.min(3000, pxPerMs * factor));
+
+    // Zoom toward mouse position
+    const container = document.getElementById('timelineBars');
+    const mouseX = e.clientX - container.getBoundingClientRect().left;
+    const msAtMouse = (container.scrollLeft + mouseX) / oldPxPerMs;
+    render();
+    container.scrollLeft = msAtMouse * pxPerMs - mouseX;
+}, { passive: false });
+
+// Sync vertical scroll between labels and bars
+document.getElementById('timelineBars')?.addEventListener('scroll', () => {
+    document.getElementById('swimLaneLabels').scrollTop = document.getElementById('timelineBars').scrollTop;
+    renderTimeAxis();
+});
+
+// Horizontal splitter
+(function initSplitter() {
+    const splitter = document.getElementById('hSplitter');
+    const timeline = document.getElementById('timelineSection');
+    const container = document.getElementById('mainContainer');
+    let dragging = false;
+    let startY = 0;
+    let startH = 0;
+
+    splitter.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startY = e.clientY;
+        startH = timeline.offsetHeight;
+        document.body.style.cursor = 'ns-resize';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const delta = e.clientY - startY;
+        const newH = Math.max(150, Math.min(container.offsetHeight - 120, startH + delta));
+        timeline.style.flex = `0 0 ${newH}px`;
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (dragging) {
+            dragging = false;
+            document.body.style.cursor = '';
+        }
+    });
+})();
+
+// Click outside bars dismisses deps overlay
+document.getElementById('timelineBars')?.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('proc-bar') && depsMode) {
+        // Don't dismiss, let the user toggle the button
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+render();
+
+// Re-render time axis on resize
+window.addEventListener('resize', () => renderTimeAxis());
+</script>
+</body>
+</html>

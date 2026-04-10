@@ -4,7 +4,6 @@
 #include "CkInventory/Inventory/CkInventory_Utils.h"
 #include "CkInventory/Item/CkItem_Utils.h"
 #include "CkInventory/Item/CkItem_Definition.h"
-#include "CkInventory/InventorySlot/CkInventorySlot_Fragment.h"
 
 #include "CkGrid/2dGridSystem/Grid/Ck2dGridSystem_Utils.h"
 #include "CkGrid/2dGridSystem/Cell/Ck2dGridCell_Utils.h"

@@ -49,6 +49,15 @@ public:
         TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&;
 
     /**
+     * Same as AddClickableRow, but the value column hosts an arbitrary widget instead of dynamic text.
+     * The label column remains a clickable button that fires the supplied delegate.
+     */
+    auto AddClickableWidgetRow(
+        const FText& InLabel,
+        TSharedRef<SWidget> InValueWidget,
+        FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&;
+
+    /**
      * Build a clickable entity badge wrap-box. Each handle becomes a button labeled with
      * its debug name; clicking the button selects that entity in the supplied selection model.
      * Used by inspectors that need to show lists of related entities (e.g. probe overlaps,

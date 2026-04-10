@@ -45,7 +45,6 @@ auto
     LeftNodeBox.Reset();
 
     auto DisplayName = _EntityNode ? _EntityNode->Get_DisplayName() : TEXT("Unknown");
-    auto AccentColor = _EntityNode ? _EntityNode->Get_AccentColor() : FLinearColor::White;
     auto bIsCenter = _EntityNode ? _EntityNode->Get_IsCenterNode() : false;
     auto AccentWidth = 4.0f;
     auto PinPadding = FMargin(8.0f, 4.0f);
@@ -78,16 +77,14 @@ auto
                         [
                             SNew(SBorder)
                                 .BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill")))
-                                .BorderBackgroundColor(
-                                    bIsCenter
-                                    ? FCkDebuggerStyle::Color_Graph_Node_Center
-                                    : FCkDebuggerStyle::Color_Graph_Node_Default)
+                                .BorderBackgroundColor(this, &SGraphNode_EcsEntity::GetContentBackgroundColor)
                                 .Padding(PinPadding)
                                 .Visibility(EVisibility::SelfHitTestInvisible)
                                 [
                                     SNew(SHorizontalBox)
 
-                                    // Accent strip
+                                    // Accent strip — TAttribute callback so the inspector filter
+                                    // can dim it without rebuilding the graph.
                                     + SHorizontalBox::Slot()
                                         .AutoWidth()
                                         .VAlign(VAlign_Fill)
@@ -97,7 +94,7 @@ auto
                                                 .WidthOverride(AccentWidth)
                                                 [
                                                     SNew(SImage)
-                                                        .ColorAndOpacity(AccentColor)
+                                                        .ColorAndOpacity(this, &SGraphNode_EcsEntity::GetAccentColor)
                                                 ]
                                         ]
 
@@ -112,12 +109,18 @@ auto
                                                     bIsCenter
                                                     ? &FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold")
                                                     : &FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                                                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
+                                                .ColorAndOpacity(this, &SGraphNode_EcsEntity::GetLabelColor)
                                         ]
                                 ]
                         ]
                 ]
         ];
+
+    // Mark the node volatile so Slate re-polls TAttribute callbacks every paint instead of
+    // caching them — required for the inspector-filter dim path to take effect without a
+    // full graph rebuild.
+    constexpr auto ForceVolatileWidget = true;
+    ForceVolatile(ForceVolatileWidget);
 
     CreatePinWidgets();
 }
@@ -198,26 +201,80 @@ auto
 
 auto
     SGraphNode_EcsEntity::
+    Get_DimMultiplier() const
+    -> float
+{
+    constexpr auto FullAlpha = 1.0f;
+    constexpr auto DimAlpha  = 0.30f;
+
+    if (NOT _EntityNode)
+    { return FullAlpha; }
+
+    return _EntityNode->Get_IsFilterMatch() ? FullAlpha : DimAlpha;
+}
+
+auto
+    SGraphNode_EcsEntity::
     GetBorderBackgroundColor() const
     -> FSlateColor
 {
+    const auto Apply_Dim = [this](const FLinearColor& InColor) -> FLinearColor
+    {
+        auto Dimmed = InColor;
+        Dimmed.A *= Get_DimMultiplier();
+        return Dimmed;
+    };
+
     if (NOT _EntityNode)
-    { return FSlateColor(FCkDebuggerStyle::Color_Graph_Node_Border_Default); }
+    { return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Graph_Node_Border_Default)); }
 
     if (_EntityNode->Get_IsCenterNode())
-    { return FSlateColor(FCkDebuggerStyle::Color_Graph_Node_Border_Center); }
+    { return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Graph_Node_Border_Center)); }
 
     switch (_EntityNode->Get_EdgeType())
     {
     case ECkEcsDebugEdgeType::LifetimeOwner:
-        return FSlateColor(FCkDebuggerStyle::Color_Relationship);
+        return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Relationship));
     case ECkEcsDebugEdgeType::ContextOwner:
-        return FSlateColor(FCkDebuggerStyle::Color_Reference);
+        return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Reference));
     case ECkEcsDebugEdgeType::LifetimeDependent:
-        return FSlateColor(FCkDebuggerStyle::Color_Transform);
+        return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Transform));
     default:
-        return FSlateColor(FCkDebuggerStyle::Color_Graph_Node_Border_Default);
+        return FSlateColor(Apply_Dim(FCkDebuggerStyle::Color_Graph_Node_Border_Default));
     }
+}
+
+auto
+    SGraphNode_EcsEntity::
+    GetContentBackgroundColor() const
+    -> FSlateColor
+{
+    const auto bIsCenter = _EntityNode && _EntityNode->Get_IsCenterNode();
+    auto BaseColor = bIsCenter
+        ? FCkDebuggerStyle::Color_Graph_Node_Center
+        : FCkDebuggerStyle::Color_Graph_Node_Default;
+    BaseColor.A *= Get_DimMultiplier();
+    return FSlateColor(BaseColor);
+}
+
+auto
+    SGraphNode_EcsEntity::
+    GetAccentColor() const
+    -> FSlateColor
+{
+    auto AccentColor = _EntityNode ? _EntityNode->Get_AccentColor() : FLinearColor::White;
+    AccentColor.A *= Get_DimMultiplier();
+    return FSlateColor(AccentColor);
+}
+
+auto
+    SGraphNode_EcsEntity::
+    GetLabelColor() const
+    -> FSlateColor
+{
+    auto LabelColor = FCkDebuggerStyle::Color_Text_Highlight;
+    LabelColor.A *= Get_DimMultiplier();
+    return FSlateColor(LabelColor);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

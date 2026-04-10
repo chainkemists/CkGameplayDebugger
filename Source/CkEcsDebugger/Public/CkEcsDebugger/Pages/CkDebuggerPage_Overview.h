@@ -8,6 +8,7 @@ class UCkEcsDebugNode_Entity;
 class SGraphEditor;
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class FCkDebuggerModel_InspectorFilter;
 
 class FCkDebuggerPage_Overview : public ICkDebuggerPage_Base
 {
@@ -25,8 +26,10 @@ public:
 private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& InEntities) -> void;
     auto OnWorldChanged(UWorld* InWorld) -> void;
+    auto OnInspectorFilterChanged() -> void;
     auto OnGraphNodeDoubleClicked(UCkEcsDebugNode_Entity* InNode) -> void;
     auto RebuildGraph() -> void;
+    auto Apply_InspectorFilterToGraph() -> void;
 
     bool IsActivePage = false;
 
@@ -35,8 +38,10 @@ private:
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
+    TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
     FDelegateHandle SelectionChangedHandle;
     FDelegateHandle WorldChangedHandle;
+    FDelegateHandle FilterChangedHandle;
 
     bool _bNavigatingFromGraph = false;
 };

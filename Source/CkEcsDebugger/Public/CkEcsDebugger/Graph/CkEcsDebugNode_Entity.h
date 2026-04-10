@@ -46,6 +46,9 @@ public:
     auto Get_IsCenterNode() const -> bool { return _IsCenterNode; }
     auto Get_EdgeType() const -> ECkEcsDebugEdgeType { return _EdgeType; }
 
+    auto Get_IsFilterMatch() const -> bool { return _IsFilterMatch; }
+    auto Set_IsFilterMatch(bool InValue) -> void { _IsFilterMatch = InValue; }
+
 private:
     FCk_Handle _Entity;
 
@@ -57,6 +60,9 @@ private:
 
     UPROPERTY()
     bool _IsCenterNode = false;
+
+    UPROPERTY()
+    bool _IsFilterMatch = true;
 
     ECkEcsDebugEdgeType _EdgeType = ECkEcsDebugEdgeType::None;
 };

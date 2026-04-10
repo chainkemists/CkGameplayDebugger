@@ -5,6 +5,7 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class FCkDebuggerModel_InspectorFilter;
 class SBox;
 class SCkDebuggerWidget_SearchBar;
 class SCkDebuggerWidget_EntityTree;
@@ -18,7 +19,8 @@ public:
     auto Construct(
         const FArguments& InArgs,
         TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel,
-        TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel) -> void;
+        TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel,
+        TSharedPtr<FCkDebuggerModel_InspectorFilter> InFilterModel) -> void;
 
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 

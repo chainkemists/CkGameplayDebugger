@@ -35,8 +35,14 @@ public:
 
 protected:
     auto GetBorderBackgroundColor() const -> FSlateColor;
+    auto GetContentBackgroundColor() const -> FSlateColor;
+    auto GetAccentColor() const -> FSlateColor;
+    auto GetLabelColor() const -> FSlateColor;
 
 private:
+    /** Returns 1.0 when matching the active filter, dim alpha when not. */
+    auto Get_DimMultiplier() const -> float;
+
     UCkEcsDebugNode_Entity* _EntityNode = nullptr;
 };
 

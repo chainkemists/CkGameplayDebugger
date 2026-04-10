@@ -150,6 +150,9 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
     InStyle->Set("CkDebugger.Graph.NodeBackground.Center", new FSlateRoundedBoxBrush(
         Color_Graph_Node_Center, GraphNode_CornerRadius));
 
+    // ---- Filter badge brush (white so per-badge BorderBackgroundColor controls the color) ----
+    InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
+        FLinearColor::White, 3.0f /* corner radius */));
 }
 
 auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void

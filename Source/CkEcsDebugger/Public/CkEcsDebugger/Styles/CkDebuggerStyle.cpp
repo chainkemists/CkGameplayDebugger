@@ -24,6 +24,8 @@ const FLinearColor FCkDebuggerStyle::Color_Text_Highlight = FLinearColor(0.95f, 
 
 const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.51f, 0.69f, 1.0f);
 const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.76f, 0.91f, 0.55f);
+const FLinearColor FCkDebuggerStyle::Color_PickMarker_Default = FLinearColor(0.35f, 0.75f, 0.95f, 0.65f);
+const FLinearColor FCkDebuggerStyle::Color_PickMarker_Hover = FLinearColor(1.0f, 0.9f, 0.2f, 1.0f);
 const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(1.0f, 0.8f, 0.01f);
 const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.97f, 0.73f, 0.85f);
 const FLinearColor FCkDebuggerStyle::Color_Attribute = FLinearColor(0.55f, 0.85f, 0.95f);

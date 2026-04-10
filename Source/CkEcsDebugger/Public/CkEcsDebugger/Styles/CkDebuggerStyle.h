@@ -35,6 +35,8 @@ public:
     
     static const FLinearColor Color_Entity_ID;
     static const FLinearColor Color_Transform;
+    static const FLinearColor Color_PickMarker_Default;
+    static const FLinearColor Color_PickMarker_Hover;
     static const FLinearColor Color_Network;
     static const FLinearColor Color_Relationship;
     static const FLinearColor Color_Attribute;

@@ -35,6 +35,9 @@ static constexpr FLinearColor Color_InventoryType = FLinearColor(0.75f, 0.75f, 0
 static constexpr FLinearColor Color_ItemName = FLinearColor(0.85f, 0.75f, 0.55f);
 
 // ---- Distinct item colors (tetris-like palette) ----
+// 20 visually distinct hues with consistent saturation/brightness. Ordered so that
+// adjacent indices are far apart on the color wheel — this helps when the hash-into-palette
+// produces near-neighbor collisions for typical small inventories.
 
 static const TArray<FLinearColor> ItemColors =
 {
@@ -46,6 +49,18 @@ static const TArray<FLinearColor> ItemColors =
     FLinearColor(0.85f, 0.75f, 0.25f),  // Yellow
     FLinearColor(0.40f, 0.80f, 0.80f),  // Cyan
     FLinearColor(0.85f, 0.50f, 0.65f),  // Pink
+    FLinearColor(0.50f, 0.85f, 0.30f),  // Lime
+    FLinearColor(0.90f, 0.55f, 0.30f),  // Amber
+    FLinearColor(0.35f, 0.50f, 0.90f),  // Indigo
+    FLinearColor(0.85f, 0.30f, 0.60f),  // Magenta
+    FLinearColor(0.25f, 0.80f, 0.60f),  // Teal
+    FLinearColor(0.90f, 0.65f, 0.20f),  // Gold
+    FLinearColor(0.55f, 0.75f, 0.95f),  // Sky
+    FLinearColor(0.75f, 0.35f, 0.20f),  // Rust
+    FLinearColor(0.60f, 0.85f, 0.70f),  // Mint
+    FLinearColor(0.80f, 0.60f, 0.90f),  // Lavender
+    FLinearColor(0.50f, 0.35f, 0.25f),  // Brown
+    FLinearColor(0.95f, 0.85f, 0.60f),  // Cream
 };
 
 static constexpr FLinearColor Color_CellEmpty    = FLinearColor(0.12f, 0.12f, 0.12f);
@@ -286,16 +301,18 @@ static auto BuildItemColorMap(const FCk_Handle_Inventory& InInventory) -> TMap<F
 {
     const auto Items = UCk_Utils_Inventory_UE::Get_Items(InInventory);
 
+    // Derive each item's color index from the handle's hash so the color stays stable across
+    // refreshes — moving, adding, or removing other items doesn't recolor existing entries.
     auto ItemColorMap = TMap<FCk_Handle, int32>{};
-    auto ColorIndex = int32{0};
 
     for (const auto& ItemHandle : Items)
     {
-        if (ck::IsValid(ItemHandle))
-        {
-            ItemColorMap.Add(ItemHandle, ColorIndex);
-            ColorIndex++;
-        }
+        if (ck::Is_NOT_Valid(ItemHandle))
+        { continue; }
+
+        const auto Hash = GetTypeHash(ItemHandle);
+        const auto ColorIndex = static_cast<int32>(Hash % static_cast<uint32>(ItemColors.Num()));
+        ItemColorMap.Add(ItemHandle, ColorIndex);
     }
 
     return ItemColorMap;

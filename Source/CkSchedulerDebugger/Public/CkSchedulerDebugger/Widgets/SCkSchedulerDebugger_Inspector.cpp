@@ -226,6 +226,15 @@ auto
 			];
 	}
 
+	if (InProc.WriteConflicts.Num() > 0)
+	{
+		Content->AddSlot()
+			.AutoHeight()
+			[
+				DoBuildWriteConflictSection(InProc)
+			];
+	}
+
 	Content->AddSlot()
 		.AutoHeight()
 		[
@@ -380,6 +389,83 @@ auto
 				.Text(FText::FromString(TEXT("DIRTY MARKER")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
 				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+		];
+
+	Section->AddSlot().AutoHeight()
+		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
+		[
+			Body
+		];
+
+	Section->AddSlot().AutoHeight()
+		[SNew(SSeparator)];
+
+	return Section;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_Inspector::
+	DoBuildWriteConflictSection(
+		const FCkSchedulerDebugger_ProcessorInfo& InProc)
+	-> TSharedRef<SWidget>
+{
+	// Red accent to signal these are errors/warnings, not ordinary metadata.
+	constexpr auto ErrorColorRGBA = FLinearColor{0.92f, 0.30f, 0.30f, 1.0f};
+
+	auto Body = SNew(SVerticalBox);
+
+	auto AnyUnresolved = false;
+	for (const auto& Conflict : InProc.WriteConflicts)
+	{
+		if (NOT Conflict.WasAutoResolved)
+		{
+			AnyUnresolved = true;
+			break;
+		}
+	}
+
+	Body->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small)
+		[
+			SNew(STextBlock)
+				.Text(FText::FromString(AnyUnresolved
+					? TEXT("Unresolved write-write conflicts — add RunAfter/RunBefore to fix.")
+					: TEXT("Auto-resolved in declaration order — consider adding explicit ordering.")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+				.ColorAndOpacity(ErrorColorRGBA)
+				.AutoWrapText(true)
+		];
+
+	for (const auto& Conflict : InProc.WriteConflicts)
+	{
+		const auto PeerName = Conflict.PeerProcessorName.IsNone()
+			? FString(TEXT("(unknown)"))
+			: Conflict.PeerProcessorName.ToString();
+		const auto FragName = Conflict.FragmentName.IsNone()
+			? FString(TEXT("(unknown fragment)"))
+			: Conflict.FragmentName.ToString();
+		const auto Resolution = Conflict.WasAutoResolved
+			? FString(TEXT("auto-edge"))
+			: FString(TEXT("UNRESOLVED"));
+
+		Body->AddSlot().AutoHeight()
+			[DoMakeInfoRow(
+				FString::Printf(TEXT("%s (%s)"), *PeerName, *Resolution),
+				FragName)];
+	}
+
+	auto Section = SNew(SVerticalBox);
+
+	Section->AddSlot().AutoHeight()
+		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
+		[
+			SNew(STextBlock)
+				.Text(FText::FromString(TEXT("WRITE CONFLICTS")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(ErrorColorRGBA)
 		];
 
 	Section->AddSlot().AutoHeight()

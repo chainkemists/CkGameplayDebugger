@@ -8,6 +8,7 @@
 #include "CkEcsDebugger/Graph/CkEcsDebugNode_Entity.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "GraphEditor.h"
@@ -32,6 +33,10 @@ FCkDebuggerPage_Overview::~FCkDebuggerPage_Overview()
     if (WorldModel.IsValid() && WorldChangedHandle.IsValid())
     {
         WorldModel->OnWorldChanged.Remove(WorldChangedHandle);
+    }
+    if (FilterModel.IsValid() && FilterChangedHandle.IsValid())
+    {
+        FilterModel->OnFilterChanged.Remove(FilterChangedHandle);
     }
 
     if (_Graph && UObjectInitialized())
@@ -59,6 +64,7 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
 {
     SelectionModel = InContext.SelectionModel;
     WorldModel = InContext.WorldModel;
+    FilterModel = InContext.FilterModel;
 
     // Create the debug graph — prevent GC
     _Graph = NewObject<UCkEcsDebugGraph>(GetTransientPackage());
@@ -152,6 +158,12 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
             this, &FCkDebuggerPage_Overview::OnWorldChanged);
     }
 
+    if (FilterModel.IsValid())
+    {
+        FilterChangedHandle = FilterModel->OnFilterChanged.AddRaw(
+            this, &FCkDebuggerPage_Overview::OnInspectorFilterChanged);
+    }
+
     return Result;
 }
 
@@ -220,6 +232,7 @@ auto FCkDebuggerPage_Overview::OnSelectionChanged(const TArray<FCk_Handle>& InEn
         _Graph->ForceRebuild();
     }
     RebuildGraph();
+    Apply_InspectorFilterToGraph();
 }
 
 auto FCkDebuggerPage_Overview::OnWorldChanged(UWorld* InWorld) -> void
@@ -228,6 +241,41 @@ auto FCkDebuggerPage_Overview::OnWorldChanged(UWorld* InWorld) -> void
     {
         _Graph->ForceRebuild();
         _Graph->RebuildFromEntity(FCk_Handle());
+    }
+    Apply_InspectorFilterToGraph();
+}
+
+auto FCkDebuggerPage_Overview::OnInspectorFilterChanged() -> void
+{
+    Apply_InspectorFilterToGraph();
+}
+
+auto FCkDebuggerPage_Overview::Apply_InspectorFilterToGraph() -> void
+{
+    if (NOT _Graph)
+    { return; }
+
+    const auto HasFilter = FilterModel.IsValid();
+
+    for (UEdGraphNode* Node : _Graph->Nodes)
+    {
+        auto* EntityNode = Cast<UCkEcsDebugNode_Entity>(Node);
+        if (NOT EntityNode)
+        { continue; }
+
+        const auto Matches = HasFilter
+            ? FilterModel->Test_Entity(EntityNode->Get_Entity())
+            : true;
+
+        EntityNode->Set_IsFilterMatch(Matches);
+    }
+
+    // Each SGraphNode_EcsEntity is marked ForceVolatile and reads its colors via TAttribute
+    // callbacks, so the next paint pass will pick up the new flag automatically. Trigger an
+    // explicit invalidation on the graph editor for snappier feedback.
+    if (_GraphEditor.IsValid())
+    {
+        _GraphEditor->Invalidate(EInvalidateWidgetReason::Paint);
     }
 }
 
@@ -273,9 +321,15 @@ auto FCkDebuggerPage_Overview::RebuildGraph() -> void
 
     const auto bChanged = _Graph->RebuildFromEntity(PrimaryEntity);
 
-    if (bChanged && _GraphEditor.IsValid())
+    if (bChanged)
     {
-        _GraphEditor->ZoomToFit(false);
+        // Newly created nodes default IsFilterMatch=true; reapply so they pick up the active filter.
+        Apply_InspectorFilterToGraph();
+
+        if (_GraphEditor.IsValid())
+        {
+            _GraphEditor->ZoomToFit(false);
+        }
     }
 }
 

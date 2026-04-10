@@ -18,7 +18,8 @@
 auto SCkDebuggerPanel_EntityList::Construct(
     const FArguments& InArgs,
     TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel,
-    TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel) -> void
+    TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel,
+    TSharedPtr<FCkDebuggerModel_InspectorFilter> InFilterModel) -> void
 {
     SelectionModel = InSelectionModel;
     WorldModel = InWorldModel;
@@ -66,7 +67,7 @@ auto SCkDebuggerPanel_EntityList::Construct(
                 .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
                 .Padding(0.0f)
                 [
-                    SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel)
+                    SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel, InFilterModel)
                 ]
             ]
 

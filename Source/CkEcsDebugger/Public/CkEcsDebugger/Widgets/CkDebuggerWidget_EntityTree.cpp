@@ -15,6 +15,7 @@
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
@@ -104,6 +105,11 @@ private:
         if (NOT Node.IsValid())
         { return FCkDebuggerStyle::Color_Text_Primary; }
 
+        // Inspector-filter dim takes precedence over selection — dimmed entities still
+        // read as dimmed even when clicked, so the user knows the row didn't pass the filter.
+        if (NOT Node->IsFilterMatch)
+        { return FCkDebuggerStyle::Color_Text_Muted; }
+
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
         { return FCkDebuggerStyle::Color_Text_Highlight; }
 
@@ -114,6 +120,9 @@ private:
     {
         if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
         { return FCkDebuggerStyle::Color_Error; }
+
+        if (NOT Node->IsFilterMatch)
+        { return FCkDebuggerStyle::Color_Text_Muted; }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
         { return FCkDebuggerStyle::Color_Selection; }
@@ -135,17 +144,47 @@ private:
     TWeakPtr<SCkDebuggerWidget_EntityTree> TreeWidget;
 };
 
+SCkDebuggerWidget_EntityTree::~SCkDebuggerWidget_EntityTree()
+{
+    if (FilterChangedHandle.IsValid() && FilterModel.IsValid())
+    {
+        FilterModel->OnFilterChanged.Remove(FilterChangedHandle);
+        FilterChangedHandle.Reset();
+    }
+}
+
 auto SCkDebuggerWidget_EntityTree::Construct(
     const FArguments& InArgs,
     TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel,
-    TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel) -> void
+    TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel,
+    TSharedPtr<FCkDebuggerModel_InspectorFilter> InFilterModel) -> void
 {
     SelectionModel = InSelectionModel;
     WorldModel = InWorldModel;
+    FilterModel = InFilterModel;
 
     if (SelectionModel.IsValid())
     {
         SelectionModel->OnSelectionChanged.AddSP(this, &SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged);
+    }
+
+    if (FilterModel.IsValid())
+    {
+        // TWeakPtr capture so a destroyed tree widget cannot be called back into.
+        auto WeakSelf = TWeakPtr<SCkDebuggerWidget_EntityTree>(SharedThis(this));
+        FilterChangedHandle = FilterModel->OnFilterChanged.AddLambda(
+        [WeakSelf]()
+        {
+            const auto Pinned = WeakSelf.Pin();
+            if (NOT Pinned.IsValid())
+            { return; }
+
+            Pinned->ApplyInspectorFilter();
+            if (Pinned->TreeView.IsValid())
+            {
+                Pinned->TreeView->RequestTreeRefresh();
+            }
+        });
     }
 
     ChildSlot
@@ -205,6 +244,7 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
 
     BuildEntityTree();
     ApplyFilterToNodes();
+    ApplyInspectorFilter();
     UpdateFilteredRootNodes();
 
     if (TreeView.IsValid())
@@ -374,6 +414,23 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
                 TreeView->SetItemExpansion(Node, true);
             }
         }
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::ApplyInspectorFilter() -> void
+{
+    // Walk the FULL node list (independent of IsVisible) so the inspector filter and the
+    // search filter compose correctly: search hides via IsVisible, inspector filter dims
+    // via IsFilterMatch.
+    const auto HasFilter = FilterModel.IsValid();
+    for (const auto& Node : AllNodes)
+    {
+        if (NOT Node.IsValid())
+        { continue; }
+
+        Node->IsFilterMatch = HasFilter
+            ? FilterModel->Test_Entity(Node->Entity)
+            : true;
     }
 }
 

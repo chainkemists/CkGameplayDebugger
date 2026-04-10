@@ -14,11 +14,22 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SGridPanel.h"
-#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Inventories)
+
+FCkInspector_Inventories::~FCkInspector_Inventories()
+{
+    Close_AllSpatialGridPopups();
+}
 
 static constexpr FLinearColor Color_InventoryName = FLinearColor(0.55f, 0.78f, 0.95f);
 static constexpr FLinearColor Color_InventoryType = FLinearColor(0.75f, 0.75f, 0.75f);
@@ -71,8 +82,6 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
     auto Builder = FCkInspectorWidgetBuilder();
     auto WeakSelectionModel = SelectionModel;
 
-    _SpatialGridStates.Reset();
-
     auto MutableEntity = Entity;
     const auto Inventories = UCk_Utils_Inventory_UE::RecordOfInventories_Utils::Get_ValidEntries(MutableEntity);
 
@@ -85,46 +94,6 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
     }
     _CachedTotalItemCount = InitialTotalItems;
 
-    // ---- Grid visualization toggle (compact, same line as header area) ----
-
-    {
-        auto ToggleWidget = SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([this]() { return _ShowGridVisualization ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                {
-                    _ShowGridVisualization = (InState == ECheckBoxState::Checked);
-
-                    const auto Visibility = _ShowGridVisualization
-                        ? EVisibility::Visible
-                        : EVisibility::Collapsed;
-
-                    for (auto& State : _SpatialGridStates)
-                    {
-                        if (State.GridWidget.IsValid())
-                        {
-                            State.GridWidget->SetVisibility(Visibility);
-                        }
-                    }
-                })
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Show Grid")))
-                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
-            ];
-
-        Builder.AddWidgetRow(FText::GetEmpty(), ToggleWidget);
-    }
-
     for (const auto& InventoryHandle : Inventories)
     {
         if (ck::Is_NOT_Valid(InventoryHandle)) { continue; }
@@ -135,29 +104,80 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
         const auto IsSpatial = InventoryType == ECk_InventoryType::Spatial;
         const auto CapturedInventory = Inventory;
 
-        // Clickable inventory header
-        const auto TypeStr = IsSpatial ? TEXT("Spatial") : TEXT("DataOnly");
-        Builder.AddClickableRow(
-            FText::FromString(ck::Format_UE(TEXT("{} ({})"), InventoryHandle.ToString(), TypeStr)),
-            [CapturedInventory](const FCk_Handle& E)
-            {
-                const auto NumItems = UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory);
-                return FText::FromString(ck::Format_UE(TEXT("{} items"), NumItems));
-            },
-            IsSpatial ? Color_InventoryName : Color_InventoryType,
-            [WeakSelectionModel, InventoryHandle]()
-            {
-                if (WeakSelectionModel.IsValid() && ck::IsValid(InventoryHandle))
-                {
-                    WeakSelectionModel->Set_SelectedEntities({ InventoryHandle });
-                }
-            });
+        const auto TypeStr     = IsSpatial ? TEXT("Spatial") : TEXT("DataOnly");
+        const auto HeaderLabel = FText::FromString(ck::Format_UE(TEXT("{} ({})"), InventoryHandle.ToString(), TypeStr));
+        const auto HeaderColor = IsSpatial ? Color_InventoryName : Color_InventoryType;
 
-        // Spatial grid visualization
+        const auto SelectInventoryClick = [WeakSelectionModel, InventoryHandle]()
+        {
+            if (WeakSelectionModel.IsValid() && ck::IsValid(InventoryHandle))
+            {
+                WeakSelectionModel->Set_SelectedEntities({ InventoryHandle });
+            }
+        };
+
+        // For spatial inventories, build a combined value widget [N items] + [View Tilemap (W×H)] button
+        // so the tilemap entry point lives inline with the inventory header instead of in its own row.
         if (IsSpatial)
         {
-            auto GridWidget = BuildSpatialGridWidget(InventoryHandle);
-            Builder.AddWidgetRow(FText::FromString(TEXT("  Grid")), GridWidget);
+            auto MutableInvHandle = InventoryHandle;
+            auto SpatialHandle = UCk_Utils_Inventory_Spatial_UE::Cast(MutableInvHandle);
+            const auto Dims = ck::IsValid(SpatialHandle)
+                ? UCk_Utils_2dGridSystem_UE::Get_Dimensions(UCk_Utils_Inventory_Spatial_UE::Get_Grid(SpatialHandle))
+                : FIntPoint::ZeroValue;
+
+            const auto ButtonLabel = FText::FromString(
+                ck::Format_UE(TEXT("View Tilemap ({}\u00D7{})"), Dims.X, Dims.Y));
+
+            auto ValueRow = SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([CapturedInventory]() -> FText
+                    {
+                        if (ck::Is_NOT_Valid(CapturedInventory))
+                        { return FText::GetEmpty(); }
+
+                        const auto NumItems = UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory);
+                        return FText::FromString(ck::Format_UE(TEXT("{} items"), NumItems));
+                    })
+                    .ColorAndOpacity(FSlateColor(HeaderColor))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Open a separate, scrollable window showing the spatial grid for this inventory.")))
+                    .OnClicked_Lambda([this, InventoryHandle]() -> FReply
+                    {
+                        OpenOrFocus_SpatialGridPopup(InventoryHandle);
+                        return FReply::Handled();
+                    })
+                    [
+                        SNew(STextBlock)
+                        .Text(ButtonLabel)
+                        .ColorAndOpacity(FSlateColor(FCkDebuggerStyle::Color_Text_Secondary))
+                    ]
+                ];
+
+            Builder.AddClickableWidgetRow(HeaderLabel, ValueRow, SelectInventoryClick);
+        }
+        else
+        {
+            Builder.AddClickableRow(
+                HeaderLabel,
+                [CapturedInventory](const FCk_Handle& E)
+                {
+                    const auto NumItems = UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory);
+                    return FText::FromString(ck::Format_UE(TEXT("{} items"), NumItems));
+                },
+                HeaderColor,
+                SelectInventoryClick);
         }
 
         // List items in this inventory
@@ -284,7 +304,7 @@ static auto BuildItemColorMap(const FCk_Handle_Inventory& InInventory) -> TMap<F
 
 // =====================================================================================================================
 
-auto FCkInspector_Inventories::BuildSpatialGridWidget(const FCk_Handle& InInventoryHandle) -> TSharedRef<SWidget>
+auto FCkInspector_Inventories::Build_SpatialGridContent(const FCk_Handle& InInventoryHandle) -> TSharedRef<SWidget>
 {
     auto MutableHandle = InInventoryHandle;
     auto SpatialHandle = UCk_Utils_Inventory_Spatial_UE::Cast(MutableHandle);
@@ -297,54 +317,153 @@ auto FCkInspector_Inventories::BuildSpatialGridWidget(const FCk_Handle& InInvent
 
     const auto Inventory = UCk_Utils_Inventory_UE::CastChecked(MutableHandle);
     const auto ItemColorMap = BuildItemColorMap(Inventory);
-    auto GridPanel = BuildGridPanel(GridHandle, ItemColorMap);
-
-    auto Container = SNew(SBox)
-        .Padding(FMargin(4.0f, 2.0f))
-        [
-            GridPanel
-        ];
-
-    const auto Visibility = _ShowGridVisualization
-        ? EVisibility::Visible
-        : EVisibility::Collapsed;
-    Container->SetVisibility(Visibility);
-
-    _SpatialGridStates.Add(FSpatialGridState{InInventoryHandle, Container});
-
-    return Container;
+    return BuildGridPanel(GridHandle, ItemColorMap);
 }
 
 // =====================================================================================================================
 
-auto FCkInspector_Inventories::RefreshSpatialGridWidget(const FCk_Handle& InInventoryHandle) -> void
+auto FCkInspector_Inventories::OpenOrFocus_SpatialGridPopup(const FCk_Handle& InInventoryHandle) -> void
 {
-    for (auto& State : _SpatialGridStates)
+    if (ck::Is_NOT_Valid(InInventoryHandle))
+    { return; }
+
+    // Reuse an existing popup if it's still alive — bring it to front instead of opening a duplicate.
+    for (auto& Existing : _SpatialGridPopups)
     {
-        if (State.InventoryHandle != InInventoryHandle || NOT State.GridWidget.IsValid())
+        if (Existing.InventoryHandle != InInventoryHandle)
         { continue; }
 
-        if (NOT _ShowGridVisualization)
+        if (auto ExistingWindow = Existing.Window.Pin())
+        {
+            ExistingWindow->BringToFront();
+            ExistingWindow->FlashWindow();
+            return;
+        }
+    }
+
+    auto MutableHandle = InInventoryHandle;
+    auto SpatialHandle = UCk_Utils_Inventory_Spatial_UE::Cast(MutableHandle);
+    if (ck::Is_NOT_Valid(SpatialHandle))
+    { return; }
+
+    auto GridHandle = UCk_Utils_Inventory_Spatial_UE::Get_Grid(SpatialHandle);
+    if (ck::Is_NOT_Valid(GridHandle))
+    { return; }
+
+    const auto Dims = UCk_Utils_2dGridSystem_UE::Get_Dimensions(GridHandle);
+    const auto WindowTitle = FText::FromString(
+        ck::Format_UE(TEXT("Spatial Grid {} ({}\u00D7{})"), InInventoryHandle.ToString(), Dims.X, Dims.Y));
+
+    auto GridContent = Build_SpatialGridContent(InInventoryHandle);
+
+    // Host SBox lets us swap the grid panel in place when the inventory contents change in Tick.
+    auto GridHost = SNew(SBox)
+        .Padding(FMargin(4.0f, 2.0f))
+        [
+            GridContent
+        ];
+
+    constexpr auto InitialClientWidth  = 600.0f;
+    constexpr auto InitialClientHeight = 500.0f;
+
+    auto Window = SNew(SWindow)
+        .Title(WindowTitle)
+        .ClientSize(FVector2D(InitialClientWidth, InitialClientHeight))
+        .SizingRule(ESizingRule::UserSized)
+        .SupportsMaximize(true)
+        .SupportsMinimize(false)
+        .IsTopmostWindow(false)
+        .HasCloseButton(true)
+        [
+            SNew(SBorder)
+            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
+            .Padding(FCkDebuggerStyle::Padding_Small)
+            [
+                // Nested scroll boxes give both horizontal and vertical scrolling for very large grids.
+                SNew(SScrollBox)
+                .Orientation(Orient_Horizontal)
+                + SScrollBox::Slot()
+                [
+                    SNew(SScrollBox)
+                    .Orientation(Orient_Vertical)
+                    + SScrollBox::Slot()
+                    [
+                        GridHost
+                    ]
+                ]
+            ]
+        ];
+
+    // Track the popup so Tick can refresh it and OnDeactivated can close it.
+    auto PopupEntry = FSpatialGridPopup{};
+    PopupEntry.InventoryHandle = InInventoryHandle;
+    PopupEntry.Window          = Window;
+    PopupEntry.GridHost        = GridHost;
+    _SpatialGridPopups.Add(PopupEntry);
+
+    // Drop the entry from our tracking when the user closes the window.
+    Window->SetOnWindowClosed(FOnWindowClosed::CreateLambda(
+        [this, InInventoryHandle](const TSharedRef<SWindow>&)
+        {
+            _SpatialGridPopups.RemoveAll([&](const FSpatialGridPopup& InPopup)
+            {
+                return InPopup.InventoryHandle == InInventoryHandle;
+            });
+        }));
+
+    constexpr auto ShowWindowImmediately = true;
+    FSlateApplication::Get().AddWindow(Window, ShowWindowImmediately);
+}
+
+// =====================================================================================================================
+
+auto FCkInspector_Inventories::RefreshSpatialGridPopup(const FCk_Handle& InInventoryHandle) -> void
+{
+    for (auto& Popup : _SpatialGridPopups)
+    {
+        if (Popup.InventoryHandle != InInventoryHandle)
         { continue; }
 
-        auto MutableHandle = InInventoryHandle;
-        auto SpatialHandle = UCk_Utils_Inventory_Spatial_UE::Cast(MutableHandle);
-        if (ck::Is_NOT_Valid(SpatialHandle))
+        const auto GridHost = Popup.GridHost.Pin();
+        if (NOT GridHost.IsValid())
         { continue; }
 
-        auto GridHandle = UCk_Utils_Inventory_Spatial_UE::Get_Grid(SpatialHandle);
-        if (ck::Is_NOT_Valid(GridHandle))
+        if (NOT Popup.Window.IsValid())
         { continue; }
 
-        const auto Inventory = UCk_Utils_Inventory_UE::CastChecked(MutableHandle);
-        const auto ItemColorMap = BuildItemColorMap(Inventory);
-        auto GridPanel = BuildGridPanel(GridHandle, ItemColorMap);
-
-        auto* ContainerBox = static_cast<SBox*>(State.GridWidget.Get());
-        ContainerBox->SetContent(GridPanel);
-
+        auto NewContent = Build_SpatialGridContent(InInventoryHandle);
+        GridHost->SetContent(NewContent);
         break;
     }
+}
+
+// =====================================================================================================================
+
+auto FCkInspector_Inventories::Close_AllSpatialGridPopups() -> void
+{
+    // Take a copy because RequestDestroyWindow triggers OnWindowClosed which mutates _SpatialGridPopups.
+    auto Snapshot = _SpatialGridPopups;
+    _SpatialGridPopups.Reset();
+
+    if (NOT FSlateApplication::IsInitialized())
+    { return; }
+
+    auto& SlateApp = FSlateApplication::Get();
+
+    for (auto& Popup : Snapshot)
+    {
+        if (auto Window = Popup.Window.Pin())
+        {
+            SlateApp.RequestDestroyWindow(Window.ToSharedRef());
+        }
+    }
+}
+
+// =====================================================================================================================
+
+auto FCkInspector_Inventories::OnDeactivated() -> void
+{
+    Close_AllSpatialGridPopups();
 }
 
 // =====================================================================================================================
@@ -352,6 +471,13 @@ auto FCkInspector_Inventories::RefreshSpatialGridWidget(const FCk_Handle& InInve
 auto FCkInspector_Inventories::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
     if (ck::Is_NOT_Valid(Entity)) { return; }
+
+    // Drop tracked popups whose window has been destroyed externally (e.g. user clicked X) and we
+    // missed the OnWindowClosed callback (defensive — usually the callback already cleaned up).
+    _SpatialGridPopups.RemoveAll([](const FSpatialGridPopup& InPopup)
+    {
+        return NOT InPopup.Window.IsValid();
+    });
 
     auto MutableEntity = Entity;
     const auto Inventories = UCk_Utils_Inventory_UE::RecordOfInventories_Utils::Get_ValidEntries(MutableEntity);
@@ -368,14 +494,14 @@ auto FCkInspector_Inventories::Tick(const FCk_Handle& Entity, float InDeltaTime)
     {
         _CachedTotalItemCount = TotalItems;
 
-        // ---- Refresh grids in-place instead of full rebuild ----
+        // ---- Refresh open popups in-place ----
 
         for (const auto& InventoryHandle : Inventories)
         {
             if (ck::Is_NOT_Valid(InventoryHandle)) { continue; }
             if (UCk_Utils_Inventory_UE::Get_IsSpatial(UCk_Utils_Inventory_UE::CastChecked(InventoryHandle)))
             {
-                RefreshSpatialGridWidget(InventoryHandle);
+                RefreshSpatialGridPopup(InventoryHandle);
             }
         }
     }

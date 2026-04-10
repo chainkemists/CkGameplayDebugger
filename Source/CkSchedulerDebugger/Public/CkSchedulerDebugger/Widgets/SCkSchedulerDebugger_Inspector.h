@@ -26,6 +26,7 @@ private:
 	auto DoBuildInfoSection(const FCkSchedulerDebugger_ProcessorInfo& InProc) -> TSharedRef<SWidget>;
 	auto DoBuildTimingSection(const FCkSchedulerDebugger_ProcessorInfo& InProc) -> TSharedRef<SWidget>;
 	auto DoBuildDirtySection(const FCkSchedulerDebugger_ProcessorInfo& InProc) -> TSharedRef<SWidget>;
+	auto DoBuildWriteConflictSection(const FCkSchedulerDebugger_ProcessorInfo& InProc) -> TSharedRef<SWidget>;
 	auto DoBuildDependenciesSection(const FCkSchedulerDebugger_ProcessorInfo& InProc) -> TSharedRef<SWidget>;
 
 	auto DoMakeInfoRow(const FString& InLabel, const FString& InValue) -> TSharedRef<SWidget>;

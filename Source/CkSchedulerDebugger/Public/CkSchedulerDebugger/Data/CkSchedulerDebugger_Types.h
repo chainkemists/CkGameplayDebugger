@@ -15,6 +15,22 @@ enum class ECkSchedulerDebugger_TreeNodeType : uint8
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Per-processor write-conflict record as surfaced in the scheduler debugger Inspector.
+// One entry is emitted for every conflict in which this processor participates — the peer is whichever
+// of (First, Second) is NOT this processor. WasAutoResolved mirrors FCk_WriteConflictInfo::_AutoInserted:
+// true in Permissive mode (an edge was auto-inserted in declaration order), false in Strict mode (graph
+// build failed and the user must add explicit RunAfter/RunBefore).
+struct FCkSchedulerDebugger_WriteConflictInfo
+{
+	CK_GENERATED_BODY(FCkSchedulerDebugger_WriteConflictInfo);
+
+	FName PeerProcessorName;
+	FName FragmentName;
+	bool  WasAutoResolved = false;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 struct FCkSchedulerDebugger_ProcessorInfo
 {
 	CK_GENERATED_BODY(FCkSchedulerDebugger_ProcessorInfo);
@@ -47,6 +63,10 @@ struct FCkSchedulerDebugger_ProcessorInfo
 	double TickRate = 0.0;
 
 	TArray<double> TimingHistory;
+
+	// Populated from FProcessorGraphPartition::_WriteConflicts when this processor is one of the
+	// two writers in a conflict. Empty for any processor with no detected conflicts.
+	TArray<FCkSchedulerDebugger_WriteConflictInfo> WriteConflicts;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

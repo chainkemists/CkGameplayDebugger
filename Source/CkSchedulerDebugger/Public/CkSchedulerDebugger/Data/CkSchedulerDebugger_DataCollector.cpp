@@ -221,6 +221,29 @@ auto
 			_Processors[Idx].GroupName = FName(*GroupNameStr);
 		}
 	}
+
+	// Attach any write-conflict records that involve processors we just imported. Each partition
+	// owns its conflicts (all pairs R1.3 flags are same-tick-group by construction), so this loop
+	// only needs to look at the newly added slice [BaseProcessorIndex, _Processors.Num()).
+	for (const auto& Conflict : Partition._WriteConflicts)
+	{
+		for (auto Idx = BaseProcessorIndex; Idx < _Processors.Num(); ++Idx)
+		{
+			const auto& ProcName = _Processors[Idx].ProcessorName;
+
+			if (ProcName != Conflict._First && ProcName != Conflict._Second)
+			{ continue; }
+
+			auto Record = FCkSchedulerDebugger_WriteConflictInfo{};
+			Record.PeerProcessorName = (ProcName == Conflict._First)
+				? Conflict._Second
+				: Conflict._First;
+			Record.FragmentName = Conflict._FragmentName;
+			Record.WasAutoResolved = Conflict._AutoInserted;
+
+			_Processors[Idx].WriteConflicts.Add(MoveTemp(Record));
+		}
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -1,5 +1,7 @@
 #include "CkDebuggerInspectorRegistry.h"
 
+#include "CkCore/Validation/CkIsValid.h"
+
 auto FCkDebuggerInspectorRegistry::Get() -> FCkDebuggerInspectorRegistry&
 {
     static FCkDebuggerInspectorRegistry Instance;
@@ -44,4 +46,66 @@ auto FCkDebuggerInspectorRegistry::CreateAll() -> TArray<TSharedPtr<ICkDebuggerC
     });
 
     return Result;
+}
+
+auto FCkDebuggerInspectorRegistry::Get_AllMetadata() const -> TArray<FCkDebuggerInspectorMetadata>
+{
+    auto Result = TArray<FCkDebuggerInspectorMetadata>{};
+    Result.Reserve(Entries.Num());
+
+    // Build sorted (ID, sort-priority, display-name) triples by instantiating each factory
+    // once. Instances go out of scope at the end of this function — no prototypes pinned.
+    struct FSortable
+    {
+        FName ID;
+        FText DisplayName;
+        int32 SortPriority;
+    };
+
+    auto Sortable = TArray<FSortable>{};
+    Sortable.Reserve(Entries.Num());
+
+    for (const auto& Entry : Entries)
+    {
+        const auto Inspector = Entry.Factory();
+        if (NOT Inspector.IsValid())
+        { continue; }
+
+        Sortable.Add(FSortable{
+            Entry.ID,
+            Inspector->Get_ComponentName(),
+            Inspector->Get_SortPriority()
+        });
+    }
+
+    Sortable.Sort([](const FSortable& A, const FSortable& B)
+    {
+        return A.SortPriority < B.SortPriority;
+    });
+
+    for (const auto& Item : Sortable)
+    {
+        Result.Add(FCkDebuggerInspectorMetadata{ Item.ID, Item.DisplayName });
+    }
+
+    return Result;
+}
+
+auto FCkDebuggerInspectorRegistry::Test(
+    FName             InInspectorID,
+    const FCk_Handle& InEntity) const -> bool
+{
+    for (const auto& Entry : Entries)
+    {
+        if (Entry.ID != InInspectorID)
+        { continue; }
+
+        const auto Inspector = Entry.Factory();
+        if (NOT Inspector.IsValid())
+        { return false; }
+
+        return Inspector->CanInspect(InEntity);
+    }
+
+    return false;
 }

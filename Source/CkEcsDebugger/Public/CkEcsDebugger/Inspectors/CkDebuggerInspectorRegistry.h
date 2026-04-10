@@ -2,6 +2,13 @@
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 
+/** Lightweight description of a registered inspector — does not pin a live instance. */
+struct FCkDebuggerInspectorMetadata
+{
+    FName ID;
+    FText DisplayName;
+};
+
 class FCkDebuggerInspectorRegistry
 {
 public:
@@ -12,6 +19,23 @@ public:
     auto Register(FName InInspectorID, FInspectorFactory InFactory) -> void;
     auto Unregister(FName InInspectorID) -> void;
     auto CreateAll() -> TArray<TSharedPtr<ICkDebuggerComponentInspector_Base>>;
+
+    /**
+     * Snapshot of registered inspectors as (ID, DisplayName) pairs.
+     * Each entry is built by instantiating the factory once and calling Get_ComponentName(),
+     * then discarding the instance — no prototypes are pinned. Sorted by sort priority for
+     * stable presentation in UI.
+     */
+    auto Get_AllMetadata() const -> TArray<FCkDebuggerInspectorMetadata>;
+
+    /**
+     * Lifetime-safe CanInspect query: instantiates a fresh inspector for InInspectorID,
+     * calls CanInspect(InEntity), then discards the instance. Returns false if the ID is
+     * not registered or the factory returned null.
+     */
+    auto Test(
+        FName             InInspectorID,
+        const FCk_Handle& InEntity) const -> bool;
 
 private:
     struct FRegistryEntry

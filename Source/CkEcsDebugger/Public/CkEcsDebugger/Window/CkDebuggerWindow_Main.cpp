@@ -2,14 +2,18 @@
 
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Styling/AppStyle.h"
 
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_ViewportPicker.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
@@ -20,6 +24,8 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
     SelectionModel = MakeShared<FCkDebuggerModel_EntitySelection>();
     WorldModel = MakeShared<FCkDebuggerModel_WorldContext>();
+    ViewportPicker = MakeShared<FCkDebuggerModel_ViewportPicker>();
+    ViewportPicker->Construct(SelectionModel, WorldModel);
 
     const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
     if (AvailableWorlds.Num() > 0)
@@ -36,47 +42,59 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
-            SNew(SSplitter)
-            .Orientation(Orient_Horizontal)
-            .PhysicalSplitterHandleSize(3.0f)
-            .HitDetectionSplitterHandleSize(5.0f)
-            .Style(FAppStyle::Get(), "Splitter")
+            SNew(SVerticalBox)
 
-            + SSplitter::Slot()
-            .Value(0.2f)
-            .MinSize(200.0f)
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(SBox)
-                .MaxDesiredWidth(500.0f)
-                [
-                    Build_LeftSidebar()
-                ]
+                Build_Toolbar()
             ]
 
-            + SSplitter::Slot()
-            .Value(0.5f)
-            .MinSize(400.0f)
+            + SVerticalBox::Slot()
+            .FillHeight(1.0f)
             [
-                SNew(SBorder)
-                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Border"))
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Border)
-                .Padding(FMargin(1.0f, 0.0f))
+                SNew(SSplitter)
+                .Orientation(Orient_Horizontal)
+                .PhysicalSplitterHandleSize(3.0f)
+                .HitDetectionSplitterHandleSize(5.0f)
+                .Style(FAppStyle::Get(), "Splitter")
+
+                + SSplitter::Slot()
+                .Value(0.2f)
+                .MinSize(200.0f)
                 [
-                    SAssignNew(ContentAreaContainer, SBox)
+                    SNew(SBox)
+                    .MaxDesiredWidth(500.0f)
                     [
-                        Build_ContentArea()
+                        Build_LeftSidebar()
                     ]
                 ]
-            ]
 
-            + SSplitter::Slot()
-            .Value(0.3f)
-            .MinSize(250.0f)
-            [
-                SNew(SBox)
-                .MaxDesiredWidth(600.0f)
+                + SSplitter::Slot()
+                .Value(0.5f)
+                .MinSize(400.0f)
                 [
-                    Build_InspectorPanel()
+                    SNew(SBorder)
+                    .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Border"))
+                    .BorderBackgroundColor(FCkDebuggerStyle::Color_Border)
+                    .Padding(FMargin(1.0f, 0.0f))
+                    [
+                        SAssignNew(ContentAreaContainer, SBox)
+                        [
+                            Build_ContentArea()
+                        ]
+                    ]
+                ]
+
+                + SSplitter::Slot()
+                .Value(0.3f)
+                .MinSize(250.0f)
+                [
+                    SNew(SBox)
+                    .MaxDesiredWidth(600.0f)
+                    [
+                        Build_InspectorPanel()
+                    ]
                 ]
             ]
         ]
@@ -97,6 +115,202 @@ auto SCkDebuggerWindow_Main::Tick(
             Page->Tick(InDeltaTime);
         }
     }
+
+    if (ViewportPicker.IsValid() && ViewportPicker->IsActive())
+    {
+        ViewportPicker->Tick(InDeltaTime);
+    }
+}
+
+auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
+{
+    return SNew(SBorder)
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
+        .Padding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(SButton)
+                .ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
+                {
+                    return ViewportPicker.IsValid() && ViewportPicker->IsActive()
+                        ? FCkDebuggerStyle::Color_Selection
+                        : FCkDebuggerStyle::Color_Background_Light;
+                })
+                .ForegroundColor_Lambda([this]() -> FSlateColor
+                {
+                    return ViewportPicker.IsValid() && ViewportPicker->IsActive()
+                        ? FSlateColor(FCkDebuggerStyle::Color_Text_Highlight)
+                        : FSlateColor(FCkDebuggerStyle::Color_Text_Secondary);
+                })
+                .IsEnabled_Lambda([this]() -> bool
+                {
+                    if (NOT ViewportPicker.IsValid())
+                    { return false; }
+
+                    if (ViewportPicker->IsActive())
+                    { return true; }
+
+                    return ViewportPicker->CanActivate();
+                })
+                .ToolTipText_Lambda([this]() -> FText
+                {
+                    if (NOT ViewportPicker.IsValid())
+                    { return FText::GetEmpty(); }
+
+                    if (ViewportPicker->IsActive())
+                    {
+                        return FText::FromString(TEXT("Exit pick mode (Esc)"));
+                    }
+
+                    if (NOT ViewportPicker->CanActivate())
+                    {
+                        return FText::FromString(TEXT(
+                            "Pick mode unavailable — select a running PIE or Game world first.\n"
+                            "(Simulate-in-Editor is not supported.)"));
+                    }
+
+                    return FText::FromString(TEXT(
+                        "Enter pick mode: click an entity in the viewport to select it in the debugger."));
+                })
+                .OnClicked_Lambda([this]() -> FReply
+                {
+                    if (ViewportPicker.IsValid())
+                    {
+                        ViewportPicker->Toggle();
+                    }
+                    return FReply::Handled();
+                })
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        return ViewportPicker.IsValid() && ViewportPicker->IsActive()
+                            ? FText::FromString(TEXT("Picking..."))
+                            : FText::FromString(TEXT("Pick"));
+                    })
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(SSeparator)
+                .Orientation(Orient_Vertical)
+                .Thickness(1.0f)
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([this]() -> ECheckBoxState
+                {
+                    return ViewportPicker.IsValid() && ViewportPicker->Get_DrawThroughWalls()
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                {
+                    if (ViewportPicker.IsValid())
+                    {
+                        ViewportPicker->Set_DrawThroughWalls(InState == ECheckBoxState::Checked);
+                    }
+                })
+                .ToolTipText(FText::FromString(TEXT(
+                    "Draw pick markers and hover highlight on top of world geometry.\n"
+                    "Enable this when entities are enclosed in meshes.")))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Through Walls")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(FCkDebuggerStyle::Color_Text_Secondary))
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([this]() -> ECheckBoxState
+                {
+                    return ViewportPicker.IsValid() && ViewportPicker->Get_IgnoreLocalPawn()
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                {
+                    if (ViewportPicker.IsValid())
+                    {
+                        ViewportPicker->Set_IgnoreLocalPawn(InState == ECheckBoxState::Checked);
+                    }
+                })
+                .ToolTipText(FText::FromString(TEXT(
+                    "Ignore entities that belong to the locally controlled pawn\n"
+                    "(including attached actors and child ECS entities).\n"
+                    "Useful to avoid picking your own first-person viewpoint entity.")))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Ignore Self")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(FCkDebuggerStyle::Color_Text_Secondary))
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Cull Radius:")))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                .ColorAndOpacity(FSlateColor(FCkDebuggerStyle::Color_Text_Secondary))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SBox)
+                .WidthOverride(100.0f)
+                [
+                    SNew(SSpinBox<float>)
+                    .MinValue(100.0f)
+                    .MaxValue(100000.0f)
+                    .MinSliderValue(500.0f)
+                    .MaxSliderValue(20000.0f)
+                    .Delta(100.0f)
+                    .Value_Lambda([this]() -> float
+                    {
+                        return ViewportPicker.IsValid() ? ViewportPicker->Get_CullRadius() : 0.0f;
+                    })
+                    .OnValueChanged_Lambda([this](float InValue)
+                    {
+                        if (ViewportPicker.IsValid())
+                        {
+                            ViewportPicker->Set_CullRadius(InValue);
+                        }
+                    })
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Maximum distance (cm) from the camera at which entities are\n"
+                        "drawn and considered for picking. Lower values reduce clutter\n"
+                        "in large worlds.")))
+                ]
+            ]
+        ];
 }
 
 auto SCkDebuggerWindow_Main::Build_LeftSidebar() -> TSharedRef<SWidget>
@@ -250,4 +464,9 @@ auto SCkDebuggerWindow_Main::Get_SelectionModel() const -> TSharedPtr<FCkDebugge
 auto SCkDebuggerWindow_Main::Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>
 {
     return WorldModel;
+}
+
+auto SCkDebuggerWindow_Main::Get_ViewportPicker() const -> TSharedPtr<FCkDebuggerModel_ViewportPicker>
+{
+    return ViewportPicker;
 }

@@ -5,6 +5,7 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class FCkDebuggerModel_ViewportPicker;
 class ICkDebuggerPage_Base;
 class SBox;
 class SCkDebuggerPanel_Inspector;
@@ -22,8 +23,10 @@ public:
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
+    auto Get_ViewportPicker() const -> TSharedPtr<FCkDebuggerModel_ViewportPicker>;
 
 private:
+    auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_LeftSidebar() -> TSharedRef<SWidget>;
     auto Build_ContentArea() -> TSharedRef<SWidget>;
     auto Build_InspectorPanel() -> TSharedRef<SWidget>;
@@ -33,6 +36,7 @@ private:
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
+    TSharedPtr<FCkDebuggerModel_ViewportPicker> ViewportPicker;
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
     int32 ActivePageIndex = 0;
 

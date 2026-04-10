@@ -108,6 +108,22 @@ auto FCkInspectorWidgetBuilder::AddWidgetRow(
     return *this;
 }
 
+auto FCkInspectorWidgetBuilder::AddClickableWidgetRow(
+    const FText& InLabel,
+    TSharedRef<SWidget> InValueWidget,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
+{
+    Rows.Add(FRowDefinition{
+        InLabel,
+        nullptr,
+        nullptr,
+        MoveTemp(InOnClicked),
+        InValueWidget.ToSharedPtr(),
+        false
+    });
+    return *this;
+}
+
 auto FCkInspectorWidgetBuilder::MakeBadgeBox(
     const TArray<FCk_Handle>& InHandles,
     TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
@@ -201,29 +217,7 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
             continue;
         }
 
-        // Custom widget row — label in col 0, pre-built widget in col 1
-        if (RowDef.CustomWidget.IsValid())
-        {
-            Grid->AddSlot(0, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    SNew(STextBlock)
-                    .Text(RowDef.Label)
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    .ToolTipText(RowDef.Label)
-                ];
-
-            Grid->AddSlot(1, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    RowDef.CustomWidget.ToSharedRef()
-                ];
-
-            Row++;
-            continue;
-        }
-
-        // Label column -- clickable if OnClicked is set
+        // ---- Label column: clickable button if OnClicked is set, otherwise plain text ----
         if (RowDef.OnClicked)
         {
             const auto OnClicked = RowDef.OnClicked;
@@ -260,29 +254,47 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
                 ];
         }
 
-        const auto ValueGetter = RowDef.ValueGetter;
-        const auto ColorGetter = RowDef.ColorGetter;
+        // ---- Value column: pre-built widget if supplied, otherwise dynamic text ----
+        if (RowDef.CustomWidget.IsValid())
+        {
+            Grid->AddSlot(1, Row)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    RowDef.CustomWidget.ToSharedRef()
+                ];
+        }
+        else
+        {
+            const auto ValueGetter = RowDef.ValueGetter;
+            const auto ColorGetter = RowDef.ColorGetter;
 
-        Grid->AddSlot(1, Row)
-            .Padding(FCkDebuggerStyle::Padding_Small)
-            [
-                SNew(STextBlock)
-                .Text(TAttribute<FText>::Create([InEntity, ValueGetter]()
-                {
-                    if (ck::Is_NOT_Valid(InEntity))
-                    { return FText::GetEmpty(); }
+            Grid->AddSlot(1, Row)
+                .Padding(FCkDebuggerStyle::Padding_Small)
+                [
+                    SNew(STextBlock)
+                    .Text(TAttribute<FText>::Create([InEntity, ValueGetter]()
+                    {
+                        if (ck::Is_NOT_Valid(InEntity))
+                        { return FText::GetEmpty(); }
 
-                    return ValueGetter(InEntity);
-                }))
-                .ColorAndOpacity(TAttribute<FSlateColor>::Create([InEntity, ColorGetter]()
-                {
-                    if (ck::Is_NOT_Valid(InEntity))
-                    { return FSlateColor(FCkDebuggerStyle::Color_None); }
+                        if (NOT ValueGetter)
+                        { return FText::GetEmpty(); }
 
-                    return FSlateColor(ColorGetter(InEntity));
-                }))
-                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-            ];
+                        return ValueGetter(InEntity);
+                    }))
+                    .ColorAndOpacity(TAttribute<FSlateColor>::Create([InEntity, ColorGetter]()
+                    {
+                        if (ck::Is_NOT_Valid(InEntity))
+                        { return FSlateColor(FCkDebuggerStyle::Color_None); }
+
+                        if (NOT ColorGetter)
+                        { return FSlateColor(FCkDebuggerStyle::Color_Text_Primary); }
+
+                        return FSlateColor(ColorGetter(InEntity));
+                    }))
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                ];
+        }
 
         Row++;
     }

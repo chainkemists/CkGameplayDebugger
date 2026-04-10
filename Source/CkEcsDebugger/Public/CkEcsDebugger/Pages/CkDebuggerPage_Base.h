@@ -5,11 +5,13 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class FCkDebuggerModel_InspectorFilter;
 
 struct FCkDebuggerPageContext
 {
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
+    TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
 };
 
 class ICkDebuggerPage_Base

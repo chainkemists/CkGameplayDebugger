@@ -7,6 +7,7 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
+class FCkDebuggerModel_InspectorFilter;
 
 struct FCkEntityTreeNode
 {
@@ -15,6 +16,13 @@ struct FCkEntityTreeNode
     TWeakPtr<FCkEntityTreeNode> Parent;
     bool IsVisible = true;
     bool IsExpanded = false;
+
+    /**
+     * Inspector-filter dim state. Independent of IsVisible — search-text filtering hides
+     * non-matches via IsVisible, while inspector filtering dims non-matches via IsFilterMatch.
+     * The two flags compose: a row is rendered iff IsVisible, and rendered dimmed iff !IsFilterMatch.
+     */
+    bool IsFilterMatch = true;
 };
 
 class SCkDebuggerWidget_EntityTree : public SCompoundWidget
@@ -23,10 +31,13 @@ public:
     SLATE_BEGIN_ARGS(SCkDebuggerWidget_EntityTree) {}
     SLATE_END_ARGS()
 
+    ~SCkDebuggerWidget_EntityTree();
+
     auto Construct(
         const FArguments& InArgs,
         TSharedPtr<FCkDebuggerModel_EntitySelection> InSelectionModel,
-        TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel) -> void;
+        TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel,
+        TSharedPtr<FCkDebuggerModel_InspectorFilter> InFilterModel) -> void;
 
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
@@ -41,6 +52,7 @@ private:
     auto BuildEntityTree() -> void;
     auto BuildHierarchy(const TArray<FCk_Handle>& InEntities) -> void;
     auto ApplyFilterToNodes() -> void;
+    auto ApplyInspectorFilter() -> void;
     auto UpdateFilteredRootNodes() -> void;
     auto MarkNodeVisibilityRecursive(TSharedPtr<FCkEntityTreeNode> InNode, bool InVisible) -> void;
     auto RestoreSelection(const TArray<FCk_Handle>& InPreviousSelection) -> void;
@@ -65,6 +77,8 @@ private:
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
+    TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
+    FDelegateHandle FilterChangedHandle;
 
     FString CurrentFilter;
     bool NeedsRefresh = true;

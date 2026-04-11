@@ -4,6 +4,7 @@
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Timeline.h"
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Combined.h"
+#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -11,6 +12,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/SBoxPanel.h"
 
 #include "Engine/World.h"
@@ -93,6 +95,13 @@ auto
 				+ SVerticalBox::Slot()
 					.AutoHeight()
 					[
+						SNew(SCkSchedulerDebugger_FrameHistoryBar)
+							.ViewModel(_ViewModel)
+					]
+
+				+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
 						DoBuildTabBar()
 					]
 
@@ -120,7 +129,15 @@ auto
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	auto World = DoFindBestWorld();
+	_CurrentWorld = World;
 	_ViewModel->Tick(World, InDeltaTime);
+
+	// Re-apply frame history buffer size every tick so new schedulers (after PIE restart)
+	// pick up the user's setting instead of reverting to the default 300.
+	if (IsValid(World))
+	{
+		_ViewModel->Set_FrameHistoryMaxSize(World, _FrameHistoryMaxSize);
+	}
 
 	if (_ActivePageIndex >= 0 && _ActivePageIndex < _Pages.Num())
 	{
@@ -193,11 +210,61 @@ auto
 			+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
+				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+						[
+							SNew(STextBlock)
+								.Text(FText::FromString(TEXT("History")))
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+						]
+
+					+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						[
+							SNew(SBox)
+								.WidthOverride(70.0f)
+								[
+									SNew(SSpinBox<int32>)
+										.MinValue(10)
+										.MaxValue(10000)
+										.Value(this, &SCkSchedulerDebuggerWindow::DoGetFrameHistoryMaxSize)
+										.OnValueCommitted_Lambda([this](int32 InValue, ETextCommit::Type)
+										{
+											_FrameHistoryMaxSize = InValue;
+											if (_CurrentWorld.IsValid())
+											{
+												_ViewModel->Set_FrameHistoryMaxSize(_CurrentWorld.Get(), InValue);
+											}
+										})
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+								]
+						]
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
 				[
 					SNew(SButton)
 						.OnClicked_Lambda([this]() -> FReply
 						{
-							_ViewModel->Set_IsFrozen(NOT _ViewModel->Get_IsFrozen());
+							if (_ViewModel->Get_SelectedFrameOffset() > 0)
+							{
+								// If on a historical frame, resume = return to live
+								_ViewModel->Set_SelectedFrameOffset(0);
+							}
+							else
+							{
+								_ViewModel->Set_IsFrozen(NOT _ViewModel->Get_IsFrozen());
+							}
 							return FReply::Handled();
 						})
 						[

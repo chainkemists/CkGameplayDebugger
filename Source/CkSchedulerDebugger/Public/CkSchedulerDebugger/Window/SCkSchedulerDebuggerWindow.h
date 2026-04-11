@@ -29,6 +29,8 @@ private:
 		TAttribute<FText> InValue,
 		TAttribute<FSlateColor> InColor) -> TSharedRef<SWidget>;
 
+	auto DoGetFrameHistoryMaxSize() const -> int32 { return _FrameHistoryMaxSize; }
+
 private:
 	TSharedPtr<FCkSchedulerDebugger_ViewModel> _ViewModel;
 	TArray<TSharedPtr<ICkSchedulerDebuggerPage>> _Pages;
@@ -37,6 +39,8 @@ private:
 
 	TArray<TSharedPtr<FString>> _WorldOptions;
 	int32 _SelectedWorldIndex = 0;
+	int32 _FrameHistoryMaxSize = 300;
+	TWeakObjectPtr<UWorld> _CurrentWorld;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

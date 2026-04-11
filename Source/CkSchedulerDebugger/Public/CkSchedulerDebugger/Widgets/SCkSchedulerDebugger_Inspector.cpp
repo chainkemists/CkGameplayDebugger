@@ -1,6 +1,7 @@
 #include "SCkSchedulerDebugger_Inspector.h"
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_Sparkline.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -71,6 +72,17 @@ auto
 {
 	// Don't rebuild every frame — only selection changes trigger a full rebuild.
 	// Per-frame rebuilds cause SScrollBox layout measurement failures (overlapping text).
+	// EXCEPTION: when the frame offset changes (user scrubbing the history bar), we need
+	// to rebuild to show the historical frame's timing data.
+	if (NOT _ViewModel.IsValid())
+	{ return; }
+
+	const auto CurrentFrameOffset = _ViewModel->Get_SelectedFrameOffset();
+	if (CurrentFrameOffset != _LastSeenFrameOffset)
+	{
+		_LastSeenFrameOffset = CurrentFrameOffset;
+		DoRebuildContent();
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -152,7 +164,7 @@ auto
 						[
 							SNew(SBorder)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.ColorAndOpacity(InProc.IsGhost
+								.BorderBackgroundColor(InProc.IsGhost
 									? FCkSchedulerDebuggerStyle::Color_Ghost
 									: FCkSchedulerDebuggerStyle::Color_Active)
 								.Padding(FMargin(6.0f, 2.0f))
@@ -171,7 +183,7 @@ auto
 							SNew(SBorder)
 								.Visibility(InProc.HasDirtyMarker ? EVisibility::Visible : EVisibility::Collapsed)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+								.BorderBackgroundColor(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
 								.Padding(FMargin(6.0f, 2.0f))
 								[
 									SNew(STextBlock)
@@ -187,7 +199,7 @@ auto
 							SNew(SBorder)
 								.Visibility(InProc.IsParallel ? EVisibility::Visible : EVisibility::Collapsed)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Parallel)
+								.BorderBackgroundColor(FCkSchedulerDebuggerStyle::Color_Parallel)
 								.Padding(FMargin(6.0f, 2.0f))
 								[
 									SNew(STextBlock)
@@ -308,19 +320,12 @@ auto
 	Body->AddSlot().AutoHeight()
 		[
 			SNew(SBox)
-				.HeightOverride(40.0f)
+				.HeightOverride(48.0f)
 				.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
 				[
-					SNew(SBorder)
-						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Background_Dark)
-						.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Sparkline placeholder")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-						]
+					SNew(SCkSchedulerDebugger_Sparkline)
+						.TimingHistory(InProc.TimingHistory)
+						.DesiredHeight(40.0f)
 				]
 		];
 
@@ -363,6 +368,12 @@ auto
 	-> TSharedRef<SWidget>
 {
 	auto Body = SNew(SVerticalBox);
+
+	Body->AddSlot().AutoHeight()
+		[DoMakeInfoRow(TEXT("Marker"),
+			InProc.DirtyMarkerName.IsNone()
+				? TEXT("(unknown)")
+				: InProc.DirtyMarkerName.ToString())];
 
 	Body->AddSlot().AutoHeight()
 		[DoMakeInfoRow(TEXT("Dirty This Frame"),

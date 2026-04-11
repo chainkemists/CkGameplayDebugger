@@ -52,6 +52,8 @@ struct FCkSchedulerDebugger_ProcessorInfo
 	int32 PairedGroupNodeIndex = INDEX_NONE;
 
 	bool HasDirtyMarker = false;
+	uint32 DirtyMarkerHash = 0;
+	FName DirtyMarkerName;
 	bool IsParallel = false;
 
 	double MainPassTimeMs = 0.0;
@@ -81,8 +83,22 @@ struct FCkSchedulerDebugger_GroupInfo
 	int32 StartNodeIndex = INDEX_NONE;
 	int32 EndNodeIndex = INDEX_NONE;
 	TArray<int32> MemberIndices;
+	int32 ParentGroupIndex = INDEX_NONE;
+	TArray<int32> ChildGroupIndices;
 	FLinearColor AccentColor;
 	double AggregateTimeMs = 0.0;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+struct FCkSchedulerDebugger_FrameSnapshotInfo
+{
+	CK_GENERATED_BODY(FCkSchedulerDebugger_FrameSnapshotInfo);
+
+	uint64 FrameNumber = 0;
+	double TotalFrameTimeMs = 0.0;
+	int32 PumpIterationCount = 0;
+	int32 DirtyProcessorCount = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

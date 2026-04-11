@@ -58,7 +58,13 @@
 - [x] Switched ProcessorTree from `SMultiColumnTableRow` to `STableRow` with `.Content()` for proper tree indentation + selection
 - [x] Removed `HeaderRow` that was breaking tree layout
 - [x] Wired real Timeline and Combined pages (removed FPlaceholderPage)
-- [ ] **CURRENT FOCUS**: Perfect the Tree View + Detail Graph sub-tab
+- [x] Fixed: Pump pane not updating — removed `_LastPumpCount` guard that blocked refresh when pump count was unchanged
+- [x] Fixed: Groups displayed flat — added parent-child relationship detection via execution order containment, recursive tree building for nested groups
+- [x] Added: Frame history bar (`SCkSchedulerDebugger_FrameHistoryBar`) — SLeafWidget rendering 300-frame history with timing heat colors, click/drag scrubbing, auto-freeze on historical frame selection, double-click to return to live
+- [x] Added: `FCkSchedulerDebugger_FrameSnapshotInfo` type for lightweight per-frame summaries
+- [x] Added: `ApplyFrameSnapshot()`/`RestoreLiveData()` on DataCollector to swap processor timing data to historical frames
+- [x] Added: `SelectedFrameOffset` on ViewModel with auto-freeze/unfreeze state management
+- [x] Updated: Recursive filter/sort/expand in ProcessorTree to support arbitrary group nesting depth
 - [ ] Wire detail graph (mini neighbor view) into TreeView's "Detail Graph" sub-tab
 - [ ] Verify all Tick() refresh paths actually trigger widget rebuilds
 
@@ -78,7 +84,7 @@
 - Graph layout: Basic single-row-per-group; no Sugiyama crossing minimization yet
 - The `UPROPERTY()` on `_DebugGraph` in the TreeView page header won't compile — it's not a UCLASS; need to use AddToRoot/RemoveFromRoot pattern instead
 
-## File Inventory (36 source files in module + 5 modified in CkFoundation)
+## File Inventory (38 source files in module + 5 modified in CkFoundation)
 
 ```
 CkSchedulerDebugger/
@@ -112,7 +118,8 @@ CkSchedulerDebugger/
     ├── Widgets/
     │   ├── SCkSchedulerDebugger_ProcessorTree.h/.cpp
     │   ├── SCkSchedulerDebugger_Inspector.h/.cpp
-    │   └── SCkSchedulerDebugger_Timeline.h/.cpp
+    │   ├── SCkSchedulerDebugger_Timeline.h/.cpp
+    │   └── SCkSchedulerDebugger_FrameHistoryBar.h/.cpp
     └── Window/
         ├── SCkSchedulerDebuggerWindow.h
         └── SCkSchedulerDebuggerWindow.cpp

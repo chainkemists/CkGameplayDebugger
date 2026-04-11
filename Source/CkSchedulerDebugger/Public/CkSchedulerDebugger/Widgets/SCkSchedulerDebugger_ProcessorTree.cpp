@@ -11,6 +11,7 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Views/STableRow.h"
+#include "Widgets/Input/SButton.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -225,13 +226,13 @@ namespace
 				[
 					SNew(SBorder)
 						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+						.BorderBackgroundColor(FLinearColor(0.235f, 0.510f, 0.863f, 0.3f))
 						.Padding(FMargin(4.0f, 1.0f))
 						[
 							SNew(STextBlock)
 								.Text(FText::AsNumber(TotalChildren))
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Highlight)
+								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
 						]
 				];
 	}
@@ -270,7 +271,7 @@ auto
 {
 	_ViewModel = InArgs._ViewModel;
 
-	_PumpContainer = SNew(SVerticalBox);
+	_PumpContainer = SNew(SBox);
 
 	static TArray<TSharedPtr<FString>> SortOptions = {
 		MakeShared<FString>(TEXT("Exec Order")),
@@ -374,10 +375,31 @@ auto
 										.AutoHeight()
 										.Padding(0.0f, 0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small)
 										[
-											SNew(STextBlock)
-												.Text(FText::FromString(TEXT("Pump This Frame")))
-												.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-												.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+											SNew(SHorizontalBox)
+
+											+ SHorizontalBox::Slot()
+												.AutoWidth()
+												.VAlign(VAlign_Center)
+												.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+												[
+													SNew(STextBlock)
+														.Text(FText::FromString(TEXT("Frame Breakdown")))
+														.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+														.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+												]
+
+											+ SHorizontalBox::Slot()
+												.FillWidth(1.0f)
+												[
+													SNew(SSearchBox)
+														.OnTextChanged_Lambda([this](const FText& InText)
+														{
+															_BreakdownFilterString = InText.ToString();
+															_LastPumpDataHash = 0;
+															DoOnDataRefreshed();
+														})
+														.HintText(FText::FromString(TEXT("Filter...")))
+												]
 										]
 
 									+ SVerticalBox::Slot()
@@ -424,37 +446,153 @@ auto
 	}
 	else if (_TreeView.IsValid())
 	{
-		_TreeView->RequestTreeRefresh();
+		// RebuildList forces STreeView to discard cached row widgets and re-call DoGenerateRow
+		// for all visible items. This is necessary because row content (timing text, badges) is
+		// baked at creation time, not bound via lambdas. Without this, scrubbing to a historical
+		// frame via the frame history bar would show stale timing values.
+		_TreeView->RebuildList();
 	}
 
-	if (NOT _ViewModel.IsValid())
+	if (NOT _ViewModel.IsValid() || NOT _PumpContainer.IsValid())
 	{ return; }
 
+	const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
 	const auto PumpCount = _ViewModel->Get_DataCollector().Get_PumpCount();
 
-	if (PumpCount == _LastPumpCount)
-	{ return; }
+	// Compute a hash of the pump data so we only rebuild when content actually changes.
+	// This avoids Slate layout measurement issues (overlapping text) from rebuilding every frame,
+	// while still catching changes the old _LastPumpCount guard missed (same count, different processors).
+	// Hash includes both main-pass and pump data so the pane updates when either changes
+	// (e.g., when scrubbing to a historical frame with different timing).
+	auto PumpDataHash = GetTypeHash(PumpCount);
+	for (const auto& Proc : Procs)
+	{
+		PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(static_cast<int32>(Proc.MainPassTimeMs * 10000.0)));
+		if (Proc.PumpCountThisFrame > 0)
+		{
+			PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(Proc.ProcessorName));
+			PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(Proc.PumpCountThisFrame));
+			for (const auto PumpTimeMs : Proc.PumpPassTimesMs)
+			{
+				PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(static_cast<int32>(PumpTimeMs * 10000.0)));
+			}
+		}
+	}
+	// Also hash the selected frame offset and filter so scrubbing/searching triggers a rebuild
+	if (_ViewModel.IsValid())
+	{
+		PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_ViewModel->Get_SelectedFrameOffset()));
+	}
+	PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_BreakdownFilterString));
 
-	_LastPumpCount = PumpCount;
-	_PumpContainer->ClearChildren();
+	if (PumpDataHash == _LastPumpDataHash)
+	{ return; }
+	_LastPumpDataHash = PumpDataHash;
+
+	// Build a fresh widget tree and swap it in atomically via SetContent().
+	// This avoids the SVerticalBox slot mutation layout measurement bug that causes overlapping text.
+
+	auto NewContent = SNew(SVerticalBox);
+
+	// ---- MAIN PASS section: show all processors that ticked, sorted by timing (descending)
+	{
+		auto MainPassIndices = TArray<int32>{};
+		auto MainPassTotalMs = 0.0;
+		for (auto ProcIdx = 0; ProcIdx < Procs.Num(); ++ProcIdx)
+		{
+			const auto& Proc = Procs[ProcIdx];
+			if (Proc.MainPassTimeMs > 0.0 && NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
+			{
+				if (NOT _BreakdownFilterString.IsEmpty()
+					&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+				{ continue; }
+
+				MainPassIndices.Add(ProcIdx);
+				MainPassTotalMs += Proc.MainPassTimeMs;
+			}
+		}
+
+		MainPassIndices.Sort([&Procs](int32 A, int32 B)
+		{
+			return Procs[A].MainPassTimeMs > Procs[B].MainPassTimeMs;
+		});
+
+		NewContent->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("Main Pass (%d) %.3f ms"),
+						MainPassIndices.Num(), MainPassTotalMs)))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Active)
+			];
+
+		for (const auto ProcIdx : MainPassIndices)
+		{
+			const auto& Proc = Procs[ProcIdx];
+			auto CapturedIdx = ProcIdx;
+
+			NewContent->AddSlot()
+				.AutoHeight()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+						.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+						.ContentPadding(FMargin(0.0f, 1.0f))
+						.OnClicked_Lambda([this, CapturedIdx]() -> FReply
+						{
+							if (_ViewModel.IsValid())
+							{
+								_ViewModel->Set_SelectedProcessorIndex(CapturedIdx);
+							}
+							return FReply::Handled();
+						})
+						[
+							SNew(SHorizontalBox)
+
+							+ SHorizontalBox::Slot()
+								.FillWidth(1.0f)
+								.VAlign(VAlign_Center)
+								[
+									SNew(STextBlock)
+										.Text(FText::FromString(Proc.DisplayName))
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+										.AutoWrapText(true)
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+								[
+									SNew(STextBlock)
+										.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
+											Proc.MainPassTimeMs)))
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Get_TimingColor(
+											Proc.MainPassTimeMs))
+								]
+						]
+				];
+		}
+	}
 
 	if (PumpCount == 0)
 	{
-		_PumpContainer->AddSlot()
-			.AutoHeight()
-			[
-				SNew(STextBlock)
-					.Text(FText::FromString(TEXT("No pumps this frame")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-			];
+		_PumpContainer->SetContent(NewContent);
 		return;
 	}
 
-	const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
-	for (auto PassIdx = 0; PassIdx < PumpCount; ++PassIdx)
+	// ---- Per-pass breakdown (collapsed to summary when > 5 passes)
+
+	const auto ShowAllPasses = PumpCount <= 5;
+	const auto PassesToShow = ShowAllPasses ? PumpCount : 3;
+
+	for (auto PassIdx = 0; PassIdx < PassesToShow; ++PassIdx)
 	{
-		_PumpContainer->AddSlot()
+		NewContent->AddSlot()
 			.AutoHeight()
 			.Padding(0.0f, 2.0f, 0.0f, 0.0f)
 			[
@@ -464,43 +602,219 @@ auto
 					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Pumped)
 			];
 
-		for (const auto& Proc : Procs)
+		for (auto ProcIdx = 0; ProcIdx < Procs.Num(); ++ProcIdx)
 		{
-			if (Proc.PumpPassTimesMs.IsValidIndex(PassIdx) && Proc.PumpPassTimesMs[PassIdx] > 0.0)
+			const auto& Proc = Procs[ProcIdx];
+			if (NOT Proc.PumpPassTimesMs.IsValidIndex(PassIdx) || Proc.PumpPassTimesMs[PassIdx] <= 0.0)
+			{ continue; }
+			if (NOT _BreakdownFilterString.IsEmpty()
+				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+			{ continue; }
+
+			auto CapturedProcIdx = ProcIdx;
+
+			NewContent->AddSlot()
+				.AutoHeight()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+						.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+						.ContentPadding(FMargin(0.0f, 1.0f))
+						.OnClicked_Lambda([this, CapturedProcIdx]() -> FReply
+						{
+							if (_ViewModel.IsValid())
+							{
+								_ViewModel->Set_SelectedProcessorIndex(CapturedProcIdx);
+							}
+							return FReply::Handled();
+						})
+						[
+							SNew(SHorizontalBox)
+
+							+ SHorizontalBox::Slot()
+								.FillWidth(1.0f)
+								.VAlign(VAlign_Center)
+								[
+									SNew(STextBlock)
+										.Text(FText::FromString(Proc.DisplayName))
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+										.AutoWrapText(true)
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+								[
+									SNew(STextBlock)
+										.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
+											Proc.PumpPassTimesMs[PassIdx])))
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Get_TimingColor(
+											Proc.PumpPassTimesMs[PassIdx]))
+								]
+						]
+				];
+		}
+	}
+
+	if (NOT ShowAllPasses)
+	{
+		NewContent->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(
+						TEXT("... %d more passes (same processors) ..."), PumpCount - PassesToShow)))
+					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			];
+	}
+
+	// ---- PUMP CYCLE ANALYSIS section
+
+	NewContent->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small)
+		[
+			SNew(STextBlock)
+				.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Warning)
+		];
+
+	// Group pumped processors by dirty marker
+	auto MarkerGroups = TMap<uint32, TArray<int32>>{};
+	for (auto ProcIdx = 0; ProcIdx < Procs.Num(); ++ProcIdx)
+	{
+		const auto& Proc = Procs[ProcIdx];
+		if (Proc.PumpCountThisFrame > 0 && Proc.HasDirtyMarker)
+		{
+			if (NOT _BreakdownFilterString.IsEmpty()
+				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+			{ continue; }
+
+			MarkerGroups.FindOrAdd(Proc.DirtyMarkerHash).Add(ProcIdx);
+		}
+	}
+
+	if (MarkerGroups.IsEmpty())
+	{
+		NewContent->AddSlot()
+			.AutoHeight()
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(TEXT("No dirty processors")))
+					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			];
+	}
+	else
+	{
+		for (const auto& [MarkerHash, MemberIndices] : MarkerGroups)
+		{
+			// Determine the dirty marker name from the first member
+			auto MarkerDisplayName = FString{TEXT("Unknown")};
+			if (MemberIndices.Num() > 0 && Procs.IsValidIndex(MemberIndices[0]))
 			{
-				_PumpContainer->AddSlot()
+				const auto& MarkerName = Procs[MemberIndices[0]].DirtyMarkerName;
+				if (NOT MarkerName.IsNone())
+				{
+					MarkerDisplayName = MarkerName.ToString();
+					// Strip common prefixes for readability
+					MarkerDisplayName.RemoveFromStart(TEXT("ck::"));
+					MarkerDisplayName.RemoveFromStart(TEXT("FTag_"));
+					MarkerDisplayName.RemoveFromStart(TEXT("F"));
+				}
+			}
+
+			const auto AllMembersHitAllPasses = [&]()
+			{
+				for (const auto MemberIdx : MemberIndices)
+				{
+					if (Procs[MemberIdx].PumpCountThisFrame < PumpCount)
+					{ return false; }
+				}
+				return true;
+			}();
+
+			auto CycleColor = AllMembersHitAllPasses
+				? FCkSchedulerDebuggerStyle::Color_Warning
+				: FCkSchedulerDebuggerStyle::Color_Pumped;
+
+			NewContent->AddSlot()
+				.AutoHeight()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+						[
+							SNew(STextBlock)
+								.Text(FText::FromString(FString(TEXT("\u25CF"))))
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.ColorAndOpacity(CycleColor)
+						]
+
+					+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+								.Text(FText::FromString(MarkerDisplayName))
+								.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+								.ColorAndOpacity(CycleColor)
+								.AutoWrapText(true)
+						]
+				];
+
+			for (const auto MemberIdx : MemberIndices)
+			{
+				const auto& Member = Procs[MemberIdx];
+				auto CapturedIdx = MemberIdx;
+
+				NewContent->AddSlot()
 					.AutoHeight()
-					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 1.0f, 0.0f, 1.0f)
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Large, 0.0f, 0.0f, 0.0f)
 					[
-						SNew(SHorizontalBox)
-
-						+ SHorizontalBox::Slot()
-							.FillWidth(1.0f)
-							.VAlign(VAlign_Center)
+						SNew(SButton)
+							.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+							.ContentPadding(FMargin(0.0f, 1.0f))
+							.OnClicked_Lambda([this, CapturedIdx]() -> FReply
+							{
+								if (_ViewModel.IsValid())
+								{
+									_ViewModel->Set_SelectedProcessorIndex(CapturedIdx);
+								}
+								return FReply::Handled();
+							})
 							[
-								SNew(STextBlock)
-									.Text(FText::FromString(Proc.DisplayName))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-									.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
-									.AutoWrapText(true)
-							]
+								SNew(SHorizontalBox)
 
-						+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-							[
-								SNew(STextBlock)
-									.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
-										Proc.PumpPassTimesMs[PassIdx])))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-									.ColorAndOpacity(FCkSchedulerDebuggerStyle::Get_TimingColor(
-										Proc.PumpPassTimesMs[PassIdx]))
+								+ SHorizontalBox::Slot()
+									.FillWidth(1.0f)
+									.VAlign(VAlign_Center)
+									[
+										SNew(STextBlock)
+											.Text(FText::FromString(FString::Printf(TEXT("%s (x%d)"),
+												*Member.DisplayName, Member.PumpCountThisFrame)))
+											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+											.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+											.AutoWrapText(true)
+									]
 							]
 					];
 			}
 		}
 	}
+
+	_PumpContainer->SetContent(NewContent);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -524,13 +838,19 @@ auto
 
 	if (_TreeView.IsValid())
 	{
+		TFunction<void(const TSharedPtr<FCkSchedulerDebugger_TreeNode>&)> ExpandRecursive =
+			[&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode)
+		{
+			_TreeView->SetItemExpansion(InNode, InNode->IsExpanded);
+			for (const auto& Child : InNode->Children)
+			{
+				ExpandRecursive(Child);
+			}
+		};
+
 		for (const auto& Root : _DisplayRoots)
 		{
-			_TreeView->SetItemExpansion(Root, Root->IsExpanded);
-			for (const auto& Child : Root->Children)
-			{
-				_TreeView->SetItemExpansion(Child, Child->IsExpanded);
-			}
+			ExpandRecursive(Root);
 		}
 		_TreeView->RequestTreeRefresh();
 	}
@@ -546,48 +866,37 @@ auto
 {
 	_FilterString = InFilterText.ToString();
 
-	if (_FilterString.IsEmpty())
+	TFunction<bool(const TSharedPtr<FCkSchedulerDebugger_TreeNode>&, const FString&)> ApplyFilterRecursive =
+		[&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode, const FString& InFilter) -> bool
 	{
-		for (const auto& Root : _DisplayRoots)
+		if (InFilter.IsEmpty())
 		{
-			Root->IsVisible = true;
-			for (const auto& Child : Root->Children)
+			InNode->IsVisible = true;
+			for (const auto& Child : InNode->Children)
 			{
-				Child->IsVisible = true;
-				for (const auto& Grandchild : Child->Children)
-				{
-					Grandchild->IsVisible = true;
-				}
+				ApplyFilterRecursive(Child, InFilter);
 			}
+			return true;
 		}
-	}
-	else
-	{
-		for (const auto& Root : _DisplayRoots)
+
+		if (InNode->Children.Num() > 0)
 		{
 			auto AnyChildVisible = false;
-			for (const auto& Child : Root->Children)
+			for (const auto& Child : InNode->Children)
 			{
-				if (Child->Type == ECkSchedulerDebugger_TreeNodeType::Group)
-				{
-					auto AnyGrandchildVisible = false;
-					for (const auto& Grandchild : Child->Children)
-					{
-						Grandchild->IsVisible = DoMatchesFilter(*Grandchild, _FilterString);
-						AnyGrandchildVisible |= Grandchild->IsVisible;
-					}
-					Child->IsVisible = AnyGrandchildVisible
-						|| DoMatchesFilter(*Child, _FilterString);
-					AnyChildVisible |= Child->IsVisible;
-				}
-				else
-				{
-					Child->IsVisible = DoMatchesFilter(*Child, _FilterString);
-					AnyChildVisible |= Child->IsVisible;
-				}
+				AnyChildVisible |= ApplyFilterRecursive(Child, InFilter);
 			}
-			Root->IsVisible = AnyChildVisible;
+			InNode->IsVisible = AnyChildVisible || DoMatchesFilter(*InNode, InFilter);
+			return InNode->IsVisible;
 		}
+
+		InNode->IsVisible = DoMatchesFilter(*InNode, InFilter);
+		return InNode->IsVisible;
+	};
+
+	for (const auto& Root : _DisplayRoots)
+	{
+		ApplyFilterRecursive(Root, _FilterString);
 	}
 
 	if (_TreeView.IsValid())
@@ -639,16 +948,22 @@ auto
 		});
 	};
 
-	for (auto& Root : _DisplayRoots)
+	TFunction<void(TSharedPtr<FCkSchedulerDebugger_TreeNode>&)> SortRecursive =
+		[&](TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode)
 	{
-		for (auto& Child : Root->Children)
+		for (auto& Child : InNode->Children)
 		{
 			if (Child->Type == ECkSchedulerDebugger_TreeNodeType::Group)
 			{
-				SortChildren(Child->Children);
+				SortRecursive(Child);
 			}
 		}
-		SortChildren(Root->Children);
+		SortChildren(InNode->Children);
+	};
+
+	for (auto& Root : _DisplayRoots)
+	{
+		SortRecursive(Root);
 	}
 }
 

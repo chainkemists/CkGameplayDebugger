@@ -55,12 +55,12 @@ private:
 	TSharedPtr<STreeView<TSharedPtr<FCkSchedulerDebugger_TreeNode>>> _TreeView;
 
 	FString _FilterString;
+	FString _BreakdownFilterString;
 	ECkSchedulerDebugger_SortMode _SortMode = ECkSchedulerDebugger_SortMode::ExecutionOrder;
-	TSharedPtr<SVerticalBox> _PumpContainer;
+	TSharedPtr<SBox> _PumpContainer;
 
 	FDelegateHandle _DataRefreshedHandle;
-	int32 _LastPumpCount = 0;
-	double _PumpRebuildCooldown = 0.0;
+	uint32 _LastPumpDataHash = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

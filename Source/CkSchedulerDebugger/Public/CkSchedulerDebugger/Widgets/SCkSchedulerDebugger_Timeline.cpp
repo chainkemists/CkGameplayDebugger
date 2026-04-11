@@ -80,7 +80,7 @@ auto
     // ---- Time axis at top
     LayerId = DoPaintTimeAxis(AllottedGeometry, OutDrawElements, LayerId, TotalFrameTimeMs);
 
-    auto CurrentY = _TimeAxisHeight;
+    auto CurrentY = _TimeAxisHeight - _ScrollOffsetY;
 
     // ---- Group processors by tick group for ordered rendering
     auto PrePhysicsGroups = TArray<int32>{};
@@ -714,11 +714,13 @@ auto
         return FReply::Handled();
     }
 
-    if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton)
+    if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton
+        || MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
     {
         _IsPanning = true;
-        _PanStartX = LocalPosition.X;
+        _PanStart = LocalPosition;
         _PanStartOffsetX = _ScrollOffsetX;
+        _PanStartOffsetY = _ScrollOffsetY;
         return FReply::Handled().CaptureMouse(SharedThis(const_cast<SCkSchedulerDebugger_Timeline*>(this)));
     }
 
@@ -734,7 +736,8 @@ auto
         const FPointerEvent& MouseEvent)
     -> FReply
 {
-    if (MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton && _IsPanning)
+    if ((MouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton
+        || MouseEvent.GetEffectingButton() == EKeys::RightMouseButton) && _IsPanning)
     {
         _IsPanning = false;
         return FReply::Handled().ReleaseMouseCapture();
@@ -777,7 +780,8 @@ auto
     if (_IsPanning)
     {
         const auto LocalPosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-        _ScrollOffsetX = _PanStartOffsetX - (LocalPosition.X - _PanStartX);
+        _ScrollOffsetX = _PanStartOffsetX - (LocalPosition.X - _PanStart.X);
+        _ScrollOffsetY = FMath::Max(0.0f, _PanStartOffsetY - (LocalPosition.Y - _PanStart.Y));
         return FReply::Handled();
     }
 

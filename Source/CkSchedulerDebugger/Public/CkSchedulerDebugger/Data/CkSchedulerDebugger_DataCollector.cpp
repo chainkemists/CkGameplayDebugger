@@ -92,6 +92,26 @@ auto
 			_Groups[GroupIdx].AggregateTimeMs = AggregateTime;
 		}
 	}
+
+	// ---- Cache frame history summaries from all schedulers
+	_CachedSchedulerHistories.Reset();
+	for (const auto& [TickGroup, ActorPtr] : Subsystem->Get_WorldActors())
+	{
+		if (NOT ActorPtr.IsValid())
+		{ continue; }
+		const auto& SchedulerOpt = ActorPtr->Get_Scheduler();
+		if (NOT SchedulerOpt.IsSet())
+		{ continue; }
+
+#if !UE_BUILD_SHIPPING
+		auto CachedHistory = FCachedSchedulerHistory{};
+		CachedHistory.TickGroup = TickGroup;
+		CachedHistory.Snapshots = SchedulerOpt.GetValue().Get_DebugFrameHistory();
+		_CachedSchedulerHistories.Add(MoveTemp(CachedHistory));
+#endif
+	}
+
+	DoCacheFrameHistory();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -145,6 +165,8 @@ auto
 		Info.IsGroupEnd = Node._IsGroupEnd;
 		Info.PairedGroupNodeIndex = Node._PairedGroupNodeIndex;
 		Info.HasDirtyMarker = Node._HasDirtyMarker;
+		Info.DirtyMarkerHash = Node._DirtyMarkerHash;
+		Info.DirtyMarkerName = Node._DirtyMarkerName;
 		Info.GroupName = NAME_None;
 
 		const auto* FoundOrder = ExecutionOrderLookup.Find(NodeIdx);
@@ -305,6 +327,78 @@ auto
 
 		_Groups.Add(MoveTemp(GroupInfo));
 	}
+
+	// ---- Second pass: compute parent-child relationships from execution order containment.
+	// A group B is a child of group A if A's exec range fully contains B's exec range.
+	// We pick the tightest (smallest) containing group as the parent.
+
+	for (auto ChildIdx = 0; ChildIdx < _Groups.Num(); ++ChildIdx)
+	{
+		const auto& Child = _Groups[ChildIdx];
+		if (Child.StartNodeIndex == INDEX_NONE || Child.EndNodeIndex == INDEX_NONE)
+		{ continue; }
+
+		const auto ChildStartExec = _Processors[Child.StartNodeIndex].ExecutionOrder;
+		const auto ChildEndExec = _Processors[Child.EndNodeIndex].ExecutionOrder;
+
+		auto BestParentIdx = static_cast<int32>(INDEX_NONE);
+		auto BestParentSpan = INT32_MAX;
+
+		for (auto ParentIdx = 0; ParentIdx < _Groups.Num(); ++ParentIdx)
+		{
+			if (ParentIdx == ChildIdx) { continue; }
+
+			const auto& Parent = _Groups[ParentIdx];
+			if (Parent.TickGroup != Child.TickGroup) { continue; }
+			if (Parent.StartNodeIndex == INDEX_NONE || Parent.EndNodeIndex == INDEX_NONE)
+			{ continue; }
+
+			const auto ParentStartExec = _Processors[Parent.StartNodeIndex].ExecutionOrder;
+			const auto ParentEndExec = _Processors[Parent.EndNodeIndex].ExecutionOrder;
+
+			if (ParentStartExec < ChildStartExec && ParentEndExec > ChildEndExec)
+			{
+				const auto Span = ParentEndExec - ParentStartExec;
+				if (Span < BestParentSpan)
+				{
+					BestParentSpan = Span;
+					BestParentIdx = ParentIdx;
+				}
+			}
+		}
+
+		if (BestParentIdx != INDEX_NONE)
+		{
+			_Groups[ChildIdx].ParentGroupIndex = BestParentIdx;
+			_Groups[BestParentIdx].ChildGroupIndices.Add(ChildIdx);
+		}
+	}
+
+	// ---- Third pass: remove processors from parent groups that belong to a child group.
+	// A processor should only appear in its most specific (leaf) group.
+
+	for (auto GroupIdx = 0; GroupIdx < _Groups.Num(); ++GroupIdx)
+	{
+		auto& Group = _Groups[GroupIdx];
+		if (Group.ChildGroupIndices.IsEmpty()) { continue; }
+
+		auto ChildMembers = TSet<int32>{};
+		for (const auto ChildGroupIdx : Group.ChildGroupIndices)
+		{
+			for (const auto MemberIdx : _Groups[ChildGroupIdx].MemberIndices)
+			{
+				ChildMembers.Add(MemberIdx);
+			}
+			// Also exclude the child group's start/end nodes
+			ChildMembers.Add(_Groups[ChildGroupIdx].StartNodeIndex);
+			ChildMembers.Add(_Groups[ChildGroupIdx].EndNodeIndex);
+		}
+
+		Group.MemberIndices.RemoveAll([&ChildMembers](int32 Idx)
+		{
+			return ChildMembers.Contains(Idx);
+		});
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -354,18 +448,38 @@ auto
 
 		auto AssignedToGroup = TSet<int32>{};
 
-		for (auto GroupIdx = 0; GroupIdx < _Groups.Num(); ++GroupIdx)
+		// ---- Recursive lambda to build a group node and its children (including nested sub-groups)
+
+		TFunction<TSharedPtr<FCkSchedulerDebugger_TreeNode>(int32, TSharedPtr<FCkSchedulerDebugger_TreeNode>)>
+			BuildGroupNode = [&](int32 GroupIdx, TSharedPtr<FCkSchedulerDebugger_TreeNode> InParentNode)
+				-> TSharedPtr<FCkSchedulerDebugger_TreeNode>
 		{
 			const auto& Group = _Groups[GroupIdx];
-			if (Group.TickGroup != TickGroup)
-			{ continue; }
 
 			auto GroupNode = MakeShared<FCkSchedulerDebugger_TreeNode>();
 			GroupNode->Type = ECkSchedulerDebugger_TreeNodeType::Group;
 			GroupNode->DisplayName = Group.DisplayName;
 			GroupNode->GroupIndex = GroupIdx;
-			GroupNode->Parent = TickGroupNode;
+			GroupNode->Parent = InParentNode;
 
+			// ---- Add child groups first (in execution order)
+			auto SortedChildGroups = Group.ChildGroupIndices;
+			SortedChildGroups.Sort([this](int32 A, int32 B)
+			{
+				return _Processors[_Groups[A].StartNodeIndex].ExecutionOrder
+					< _Processors[_Groups[B].StartNodeIndex].ExecutionOrder;
+			});
+
+			for (const auto ChildGroupIdx : SortedChildGroups)
+			{
+				auto ChildGroupNode = BuildGroupNode(ChildGroupIdx, GroupNode);
+				if (ChildGroupNode.IsValid() && ChildGroupNode->Children.Num() > 0)
+				{
+					GroupNode->Children.Add(ChildGroupNode);
+				}
+			}
+
+			// ---- Add direct member processors
 			auto SortedMembers = Group.MemberIndices;
 			SortedMembers.Sort([this](int32 A, int32 B)
 			{
@@ -388,7 +502,27 @@ auto
 				AssignedToGroup.Add(MemberIdx);
 			}
 
-			if (GroupNode->Children.Num() > 0)
+			// ---- Mark group start/end nodes as assigned
+			AssignedToGroup.Add(Group.StartNodeIndex);
+			if (Group.EndNodeIndex != INDEX_NONE)
+			{
+				AssignedToGroup.Add(Group.EndNodeIndex);
+			}
+
+			return GroupNode;
+		};
+
+		// ---- Build only root-level groups (no parent) for this tick group
+		for (auto GroupIdx = 0; GroupIdx < _Groups.Num(); ++GroupIdx)
+		{
+			const auto& Group = _Groups[GroupIdx];
+			if (Group.TickGroup != TickGroup)
+			{ continue; }
+			if (Group.ParentGroupIndex != INDEX_NONE)
+			{ continue; }
+
+			auto GroupNode = BuildGroupNode(GroupIdx, TickGroupNode);
+			if (GroupNode.IsValid() && GroupNode->Children.Num() > 0)
 			{
 				TickGroupNode->Children.Add(GroupNode);
 			}
@@ -572,6 +706,174 @@ auto
 		Proc.PumpPassTimesMs = Timing.PumpPassTimesMs;
 		Proc.WasDirtyThisFrame = Timing.WasDirtyThisFrame;
 		Proc.PumpCountThisFrame = Timing.PumpCountThisFrame;
+	}
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	Get_FrameSnapshots() const
+	-> const TArray<FCkSchedulerDebugger_FrameSnapshotInfo>&
+{
+	return _FrameSnapshots;
+}
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	Get_FrameSnapshotCount() const
+	-> int32
+{
+	return _FrameSnapshots.Num();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	DoCacheFrameHistory()
+	-> void
+{
+#if !UE_BUILD_SHIPPING
+	_FrameSnapshots.Reset();
+
+	// Merge frame histories from all schedulers (usually just one) into a single timeline
+	// keyed by FrameNumber. For simplicity, use the first scheduler's history as the primary
+	// timeline (multiple schedulers in different tick groups share the same frame numbers).
+
+	if (_CachedSchedulerHistories.Num() == 0)
+	{ return; }
+
+	const auto& PrimaryHistory = _CachedSchedulerHistories[0].Snapshots;
+	_FrameSnapshots.Reserve(PrimaryHistory.Num());
+
+	for (const auto& Snapshot : PrimaryHistory)
+	{
+		auto Info = FCkSchedulerDebugger_FrameSnapshotInfo{};
+		Info.FrameNumber = Snapshot.FrameNumber;
+		Info.TotalFrameTimeMs = Snapshot.TotalFrameTimeMs;
+		Info.PumpIterationCount = Snapshot.PumpIterationCount;
+
+		auto DirtyCount = 0;
+		for (const auto& Timing : Snapshot.ProcessorTimings)
+		{
+			if (Timing.WasDirtyThisFrame) { ++DirtyCount; }
+		}
+		Info.DirtyProcessorCount = DirtyCount;
+
+		_FrameSnapshots.Add(MoveTemp(Info));
+	}
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	ApplyFrameSnapshot(
+		int32 InOffset)
+	-> void
+{
+#if !UE_BUILD_SHIPPING
+	if (_CachedSchedulerHistories.Num() == 0)
+	{ return; }
+
+	// Apply timing data from the historical frame at InOffset (0=latest, 1=one back, ...)
+	// to the current _Processors array.
+
+	_TotalFrameTimeMs = 0.0;
+	_PumpCount = 0;
+
+	for (const auto& CachedHistory : _CachedSchedulerHistories)
+	{
+		const auto& Snapshots = CachedHistory.Snapshots;
+		if (Snapshots.Num() == 0)
+		{ continue; }
+
+		const auto SnapshotIdx = Snapshots.Num() - 1 - InOffset;
+		if (SnapshotIdx < 0 || SnapshotIdx >= Snapshots.Num())
+		{ continue; }
+
+		const auto& Snapshot = Snapshots[SnapshotIdx];
+		_TotalFrameTimeMs += Snapshot.TotalFrameTimeMs;
+		_PumpCount = FMath::Max(_PumpCount, Snapshot.PumpIterationCount);
+
+		for (auto ProcIdx = 0; ProcIdx < _Processors.Num(); ++ProcIdx)
+		{
+			auto& Proc = _Processors[ProcIdx];
+			if (Proc.TickGroup != CachedHistory.TickGroup)
+			{ continue; }
+
+			const auto NodeIdx = Proc.NodeIndex;
+			if (NOT Snapshot.ProcessorTimings.IsValidIndex(NodeIdx))
+			{ continue; }
+
+			const auto& Timing = Snapshot.ProcessorTimings[NodeIdx];
+			Proc.MainPassTimeMs = Timing.MainPassTimeMs;
+			Proc.PumpPassTimesMs = Timing.PumpPassTimesMs;
+			Proc.WasDirtyThisFrame = Timing.WasDirtyThisFrame;
+			Proc.PumpCountThisFrame = Timing.PumpCountThisFrame;
+		}
+	}
+
+	// Recompute group aggregate times
+	for (auto GroupIdx = 0; GroupIdx < _Groups.Num(); ++GroupIdx)
+	{
+		auto AggregateTime = 0.0;
+		for (const auto MemberIdx : _Groups[GroupIdx].MemberIndices)
+		{
+			if (_Processors.IsValidIndex(MemberIdx))
+			{
+				AggregateTime += _Processors[MemberIdx].MainPassTimeMs;
+			}
+		}
+		_Groups[GroupIdx].AggregateTimeMs = AggregateTime;
+	}
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	RestoreLiveData()
+	-> void
+{
+	ApplyFrameSnapshot(0);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	Set_FrameHistoryMaxSize(
+		UWorld* InWorld,
+		int32 InMaxFrames)
+	-> void
+{
+#if !UE_BUILD_SHIPPING
+	if (NOT IsValid(InWorld))
+	{ return; }
+
+	auto Subsystem = InWorld->GetSubsystem<UCk_EcsWorld_Subsystem_UE>();
+	if (NOT IsValid(Subsystem))
+	{ return; }
+
+	const auto ClampedMax = FMath::Max(InMaxFrames, 10);
+
+	for (const auto& [TickGroup, ActorPtr] : Subsystem->Get_WorldActors())
+	{
+		if (NOT ActorPtr.IsValid())
+		{ continue; }
+		const auto& SchedulerOpt = ActorPtr->Get_Scheduler();
+		if (NOT SchedulerOpt.IsSet())
+		{ continue; }
+
+		// const_cast is acceptable here: this is a debug-only setter for a debug-only buffer size,
+		// and the world actor only exposes const access to the scheduler.
+		auto& MutableScheduler = const_cast<ck::FProcessorScheduler&>(SchedulerOpt.GetValue());
+		MutableScheduler.Set_DebugFrameHistoryMax(ClampedMax);
 	}
 #endif
 }

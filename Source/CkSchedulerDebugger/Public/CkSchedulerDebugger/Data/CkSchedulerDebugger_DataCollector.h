@@ -3,6 +3,7 @@
 #include "CkSchedulerDebugger/Data/CkSchedulerDebugger_Types.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkEcs/Scheduler/CkSchedulerDebugData.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -27,6 +28,18 @@ public:
 	auto Get_GhostCount() const -> int32;
 	auto Get_DirtyCount() const -> int32;
 	auto Get_ParallelCount() const -> int32;
+
+	auto Get_FrameSnapshots() const -> const TArray<FCkSchedulerDebugger_FrameSnapshotInfo>&;
+	auto Get_FrameSnapshotCount() const -> int32;
+
+	/** Overwrites processor timing data with a historical frame. InOffset=0 means latest, 1=one frame back, etc. */
+	auto ApplyFrameSnapshot(int32 InOffset) -> void;
+
+	/** Restores the latest frame's timing data (offset 0). */
+	auto RestoreLiveData() -> void;
+
+	/** Sets the max frame history buffer size on all active schedulers. */
+	auto Set_FrameHistoryMaxSize(UWorld* InWorld, int32 InMaxFrames) -> void;
 
 private:
 	auto DoCollectFromScheduler(
@@ -58,6 +71,20 @@ private:
 	int32 _ParallelCount = 0;
 
 	uint32 _LastTopologyHash = 0;
+
+	// ---- Frame history (cached from scheduler's _DebugFrameHistory)
+	TArray<FCkSchedulerDebugger_FrameSnapshotInfo> _FrameSnapshots;
+
+	// We need to store the raw scheduler snapshots so ApplyFrameSnapshot can read per-processor data.
+	// This is a copy of the scheduler's circular buffer taken each Collect().
+	struct FCachedSchedulerHistory
+	{
+		ETickingGroup TickGroup;
+		TArray<ck::FSchedulerDebug_FrameSnapshot> Snapshots;
+	};
+	TArray<FCachedSchedulerHistory> _CachedSchedulerHistories;
+
+	auto DoCacheFrameHistory() -> void;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

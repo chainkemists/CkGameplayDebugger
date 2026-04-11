@@ -24,6 +24,7 @@ namespace
 	{
 		auto ExecOrderText = FString{};
 		auto TimingText = FString{};
+		auto EntityCountText = FString{};
 		auto TimingColor = FCkSchedulerDebuggerStyle::Color_Heat_Fast;
 		auto IsGhost = false;
 		auto IsDirty = false;
@@ -41,6 +42,7 @@ namespace
 				IsGhost = Proc.IsGhost;
 				IsDirty = Proc.HasDirtyMarker;
 				IsParallel = Proc.IsParallel;
+				EntityCountText = FString::Printf(TEXT("%d"), Proc.MainPassEntityCount);
 			}
 		}
 
@@ -106,6 +108,23 @@ namespace
 						.ToolTipText(FText::FromString(TEXT("Parallel processor")))
 				];
 		}
+
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(SBox)
+					.WidthOverride(40.0f)
+					[
+						SNew(STextBlock)
+							.Text(FText::FromString(EntityCountText))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+							.Justification(ETextJustify::Right)
+							.ToolTipText(FText::FromString(TEXT("Entity count")))
+					]
+			];
 
 		Row->AddSlot()
 			.AutoWidth()
@@ -567,6 +586,23 @@ auto
 								.VAlign(VAlign_Center)
 								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
 								[
+									SNew(SBox)
+										.WidthOverride(35.0f)
+										[
+											SNew(STextBlock)
+												.Text(FText::FromString(FString::Printf(TEXT("%d"),
+													Proc.MainPassEntityCount)))
+												.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+												.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+												.Justification(ETextJustify::Right)
+										]
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+								[
 									SNew(STextBlock)
 										.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
 											Proc.MainPassTimeMs)))
@@ -640,6 +676,24 @@ auto
 										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
 										.AutoWrapText(true)
+								]
+
+							+ SHorizontalBox::Slot()
+								.AutoWidth()
+								.VAlign(VAlign_Center)
+								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+								[
+									SNew(SBox)
+										.WidthOverride(35.0f)
+										[
+											SNew(STextBlock)
+												.Text(FText::FromString(FString::Printf(TEXT("%d"),
+													Proc.PumpPassEntityCounts.IsValidIndex(PassIdx)
+														? Proc.PumpPassEntityCounts[PassIdx] : 0)))
+												.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+												.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+												.Justification(ETextJustify::Right)
+										]
 								]
 
 							+ SHorizontalBox::Slot()

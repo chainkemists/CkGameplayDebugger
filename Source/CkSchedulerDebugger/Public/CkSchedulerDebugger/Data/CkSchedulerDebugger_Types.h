@@ -61,6 +61,9 @@ struct FCkSchedulerDebugger_ProcessorInfo
 	bool WasDirtyThisFrame = false;
 	int32 PumpCountThisFrame = 0;
 
+	int32 MainPassEntityCount = 0;
+	TArray<int32> PumpPassEntityCounts;
+
 	int32 TotalTicks = 0;
 	double TickRate = 0.0;
 

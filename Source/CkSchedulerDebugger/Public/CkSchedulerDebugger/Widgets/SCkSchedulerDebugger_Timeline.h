@@ -49,6 +49,7 @@ private:
 
     mutable float _PixelsPerMs = 400.0f;
     mutable float _ScrollOffsetX = 0.0f;
+    mutable float _ScrollOffsetY = 0.0f;
     float _LabelColumnWidth = 200.0f;
     float _RowHeight = 28.0f;
     float _GroupHeaderHeight = 24.0f;
@@ -72,8 +73,9 @@ private:
     // ---- Panning
 
     bool _IsPanning = false;
-    float _PanStartX = 0.0f;
+    FVector2D _PanStart = FVector2D::ZeroVector;
     float _PanStartOffsetX = 0.0f;
+    float _PanStartOffsetY = 0.0f;
 
     // ---- Paint helpers
 

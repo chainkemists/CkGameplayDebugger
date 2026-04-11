@@ -40,6 +40,7 @@ private:
 
 	FDelegateHandle _SelectionChangedHandle;
 	FDelegateHandle _DataRefreshedHandle;
+	int32 _LastSeenFrameOffset = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

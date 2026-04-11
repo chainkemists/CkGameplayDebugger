@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CkScheduler Debugger - Frame History + Nested Groups</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+    --bg-canvas: rgb(18, 18, 26);
+    --bg-panel: rgb(30, 30, 42);
+    --bg-panel-light: rgb(40, 40, 56);
+    --bg-panel-lighter: rgb(48, 48, 66);
+    --bg-hover: rgb(50, 50, 68);
+    --border: rgb(55, 55, 75);
+    --border-light: rgb(70, 70, 90);
+    --text-primary: rgb(224, 224, 224);
+    --text-secondary: rgb(160, 160, 175);
+    --text-muted: rgb(100, 100, 115);
+    --accent: rgb(60, 130, 220);
+    --accent-dim: rgba(60, 130, 220, 0.15);
+    --active-green: rgb(67, 160, 71);
+    --pumped-orange: rgb(255, 167, 38);
+    --ghost: rgb(80, 80, 95);
+    --error-red: rgb(239, 83, 80);
+    --warning-yellow: rgb(255, 213, 79);
+    --timing-fast: rgb(67, 160, 71);
+    --timing-mid: rgb(255, 213, 79);
+    --timing-slow: rgb(255, 167, 38);
+    --timing-hot: rgb(239, 83, 80);
+    --dirty-orange: rgb(255, 167, 38);
+    --parallel-blue: rgb(102, 186, 232);
+
+    --group-gameplay: rgb(60, 150, 200);
+    --group-attribute: rgb(80, 170, 220);
+    --group-recompute: rgb(100, 185, 235);
+    --group-clamp: rgb(120, 195, 240);
+    --group-fire-signals: rgb(140, 200, 245);
+    --group-physics: rgb(200, 160, 60);
+    --group-transform: rgb(130, 180, 80);
+    --group-destruction: rgb(180, 100, 70);
+    --group-replication: rgb(160, 100, 200);
+    --group-entity: rgb(100, 130, 180);
+
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+html, body { width: 100%; height: 100%; background: var(--bg-canvas); overflow: hidden; user-select: none; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: rgb(22, 22, 32); }
+::-webkit-scrollbar-thumb { background: rgb(60, 60, 80); border-radius: 3px; }
+
+/* ========== LAYOUT ========== */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ========== TOP BAR ========== */
+#top-bar {
+    height: 38px; display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; background: rgb(22, 22, 34);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#top-bar .title { font-size: 13px; font-weight: 600; }
+#top-bar .title span { color: var(--accent); }
+.sep { width: 1px; height: 20px; background: var(--border); }
+.btn {
+    height: 26px; border: 1px solid var(--border); background: var(--bg-panel-light);
+    color: var(--text-primary); border-radius: 3px; padding: 0 10px; font-size: 11px;
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn.active { background: rgba(60, 130, 220, 0.25); border-color: var(--accent); color: #fff; }
+.frozen-badge {
+    display: none; color: var(--error-red); font-weight: 700; font-size: 11px;
+    letter-spacing: 1px; animation: pulse 1.2s ease-in-out infinite;
+}
+.frozen-badge.visible { display: inline; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ========== STATS BAR ========== */
+#stats-bar {
+    height: 28px; display: flex; align-items: center; gap: 16px;
+    padding: 0 12px; background: var(--bg-panel);
+    border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: 11px;
+}
+.stat-item .label { color: var(--text-secondary); margin-right: 4px; }
+.stat-item .value { font-weight: 600; }
+.stat-item .value.green { color: var(--timing-fast); }
+.stat-item .value.orange { color: var(--pumped-orange); }
+.stat-item .value.red { color: var(--error-red); }
+.stat-item .value.blue { color: var(--parallel-blue); }
+
+/* ========== FRAME HISTORY BAR ========== */
+#frame-history-bar {
+    height: 48px; display: flex; align-items: stretch;
+    background: rgb(22, 22, 30); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    position: relative; cursor: crosshair;
+}
+#frame-history-canvas {
+    flex: 1; position: relative;
+}
+#frame-history-canvas canvas { width: 100%; height: 100%; display: block; }
+#frame-history-label {
+    position: absolute; top: 2px; right: 8px; font-size: 10px; font-weight: 600;
+    pointer-events: none; z-index: 2;
+}
+#frame-history-label.live { color: var(--active-green); }
+#frame-history-label.historical { color: var(--pumped-orange); }
+#frame-history-tooltip {
+    position: absolute; bottom: 100%; left: 0;
+    background: rgb(20, 20, 30); border: 1px solid var(--border);
+    padding: 4px 8px; font-size: 10px; border-radius: 3px;
+    pointer-events: none; white-space: nowrap; display: none; z-index: 10;
+}
+
+/* ========== TAB BAR ========== */
+#tab-bar {
+    height: 30px; display: flex; align-items: stretch;
+    background: rgb(22, 22, 34); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    padding: 0 8px;
+}
+.tab {
+    padding: 0 16px; border: none; background: transparent;
+    color: var(--text-secondary); font-size: 11px; cursor: pointer;
+    border-top: 2px solid transparent; display: flex; align-items: center;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: #fff; border-top-color: var(--accent); background: var(--bg-panel); }
+
+/* ========== CONTENT ========== */
+#content { flex: 1; display: flex; overflow: hidden; }
+
+/* ========== TREE PANE ========== */
+#tree-pane {
+    width: 320px; display: flex; flex-direction: column;
+    background: var(--bg-panel); border-right: 1px solid var(--border);
+}
+#tree-toolbar {
+    height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 8px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#tree-search {
+    flex: 1; height: 22px; background: var(--bg-panel-light); border: 1px solid var(--border);
+    color: var(--text-primary); border-radius: 3px; padding: 0 6px; font-size: 11px; outline: none;
+}
+#tree-search:focus { border-color: var(--accent); }
+#tree-content { flex: 1; overflow-y: auto; padding: 2px 0; }
+
+.tree-node { cursor: pointer; }
+.tree-node:hover { background: var(--bg-hover); }
+.tree-node.selected { background: var(--accent-dim); }
+
+.tree-row {
+    display: flex; align-items: center; padding: 2px 0; padding-right: 8px;
+    min-height: 24px; white-space: nowrap;
+}
+.tree-indent { flex-shrink: 0; }
+.tree-expand { width: 16px; flex-shrink: 0; color: var(--text-muted); font-size: 9px; text-align: center; cursor: pointer; }
+.tree-accent { width: 3px; height: 18px; border-radius: 1px; margin-right: 6px; flex-shrink: 0; }
+.tree-name { flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.tree-name.group { font-weight: 600; }
+.tree-name.tick-group { font-weight: 700; font-size: 12px; }
+.tree-badge { font-size: 9px; margin-left: 4px; flex-shrink: 0; }
+.tree-badge.dirty { color: var(--dirty-orange); }
+.tree-badge.parallel { color: var(--parallel-blue); }
+.tree-count { font-size: 10px; color: var(--text-muted); margin-left: 6px; }
+.tree-timing { font-size: 10px; margin-left: auto; padding-left: 8px; flex-shrink: 0; }
+.tree-exec-order { font-size: 9px; color: var(--text-muted); width: 28px; text-align: right; margin-right: 6px; flex-shrink: 0; }
+
+/* ========== PUMP PANE ========== */
+#pump-pane {
+    border-top: 1px solid var(--border); flex-shrink: 0;
+    max-height: 200px; overflow-y: auto;
+}
+#pump-pane .pump-header {
+    padding: 6px 8px; font-size: 11px; font-weight: 600;
+    color: var(--text-secondary); background: var(--bg-panel-light);
+    border-bottom: 1px solid var(--border);
+}
+.pump-pass { padding: 4px 8px; }
+.pump-pass-label { font-size: 10px; font-weight: 600; color: var(--pumped-orange); margin-bottom: 2px; }
+.pump-proc { display: flex; align-items: center; padding: 1px 0 1px 12px; font-size: 10px; }
+.pump-proc .name { flex: 1; color: var(--text-secondary); }
+.pump-proc .time { color: var(--timing-fast); }
+
+/* ========== CENTER PANE (placeholder) ========== */
+#center-pane {
+    flex: 1; display: flex; flex-direction: column; background: var(--bg-canvas);
+    overflow: hidden;
+}
+#center-placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 14px; font-weight: 600;
+}
+
+/* ========== INSPECTOR ========== */
+#inspector {
+    width: 280px; background: var(--bg-panel); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 8px;
+}
+.insp-header { font-size: 13px; font-weight: 700; margin-bottom: 4px; word-break: break-all; }
+.insp-badges { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.insp-badge {
+    padding: 1px 6px; border-radius: 2px; font-size: 9px; font-weight: 700; color: #fff;
+}
+.insp-badge.active { background: var(--active-green); }
+.insp-badge.dirty { background: var(--dirty-orange); }
+.insp-badge.ghost { background: var(--ghost); }
+.insp-section { margin-top: 8px; }
+.insp-section-title { font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px; }
+.insp-row { display: flex; padding: 2px 0; font-size: 11px; }
+.insp-row .label { width: 90px; color: var(--text-secondary); flex-shrink: 0; }
+.insp-row .value { flex: 1; }
+.insp-dep { color: var(--accent); cursor: pointer; padding: 1px 0; font-size: 11px; }
+.insp-dep:hover { text-decoration: underline; }
+.insp-empty { color: var(--text-muted); font-style: italic; padding: 40px 0; text-align: center; }
+.insp-sep { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+    <!-- TOP BAR -->
+    <div id="top-bar">
+        <div class="title"><span>Ck</span>Scheduler Debugger</div>
+        <div class="sep"></div>
+        <select class="btn" style="padding: 0 6px;">
+            <option>PIE World</option>
+            <option>Game World</option>
+            <option>Editor World</option>
+        </select>
+        <div style="flex:1"></div>
+        <span class="frozen-badge" id="frozen-badge">FROZEN</span>
+        <button class="btn" id="freeze-btn" onclick="toggleFreeze()">Freeze</button>
+    </div>
+
+    <!-- STATS BAR -->
+    <div id="stats-bar">
+        <span class="stat-item"><span class="label">Frame Time</span><span class="value green" id="stat-frame-time">0.42 ms</span></span>
+        <span class="stat-item"><span class="label">Pump Count</span><span class="value orange" id="stat-pump-count">1</span></span>
+        <span class="stat-item"><span class="label">Processors</span><span class="value" id="stat-proc-count">18</span></span>
+        <span class="stat-item"><span class="label">Ghosts</span><span class="value" style="color:var(--ghost)" id="stat-ghost-count">4</span></span>
+        <span class="stat-item"><span class="label">Dirty</span><span class="value" style="color:var(--dirty-orange)" id="stat-dirty-count">3</span></span>
+    </div>
+
+    <!-- FRAME HISTORY BAR -->
+    <div id="frame-history-bar">
+        <div id="frame-history-canvas">
+            <canvas id="history-canvas"></canvas>
+        </div>
+        <div id="frame-history-label" class="live">LIVE</div>
+        <div id="frame-history-tooltip"></div>
+    </div>
+
+    <!-- TAB BAR -->
+    <div id="tab-bar">
+        <button class="tab active" onclick="switchTab(0, this)">Tree View</button>
+        <button class="tab" onclick="switchTab(1, this)">Timeline</button>
+        <button class="tab" onclick="switchTab(2, this)">Combined</button>
+    </div>
+
+    <!-- CONTENT -->
+    <div id="content">
+        <!-- TREE PANE -->
+        <div id="tree-pane">
+            <div id="tree-toolbar">
+                <input id="tree-search" type="text" placeholder="Search processors...">
+                <select class="btn" style="padding:0 6px; height:22px; font-size:10px;">
+                    <option>Exec Order</option>
+                    <option>Name</option>
+                    <option>Timing</option>
+                </select>
+            </div>
+            <div id="tree-content"></div>
+            <div id="pump-pane"></div>
+        </div>
+
+        <!-- CENTER -->
+        <div id="center-pane">
+            <div id="center-placeholder">Graph / Timeline View</div>
+        </div>
+
+        <!-- INSPECTOR -->
+        <div id="inspector">
+            <div class="insp-empty">No processor selected</div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================================
+// MOCK DATA
+// ============================================================================
+
+const GROUPS = {
+    'FGroup_Gameplay': { color: 'var(--group-gameplay)', parent: null },
+    'FGroup_Attribute': { color: 'var(--group-attribute)', parent: 'FGroup_Gameplay' },
+    'FGroup_Attribute_Recompute': { color: 'var(--group-recompute)', parent: 'FGroup_Attribute' },
+    'FGroup_Attribute_Clamp': { color: 'var(--group-clamp)', parent: 'FGroup_Attribute' },
+    'FGroup_Attribute_FireSignals': { color: 'var(--group-fire-signals)', parent: 'FGroup_Attribute' },
+    'FGroup_Physics': { color: 'var(--group-physics)', parent: null },
+    'FGroup_Transform': { color: 'var(--group-transform)', parent: null },
+    'FGroup_Replication': { color: 'var(--group-replication)', parent: null },
+};
+
+const PROCESSORS = [
+    // Gameplay group (direct members)
+    { name: 'FProcessor_Gameplay_Input', display: 'Gameplay: Input', group: 'FGroup_Gameplay', exec: 0, dirty: false, ghost: false },
+    { name: 'FProcessor_Gameplay_AbilitySystem', display: 'Gameplay: AbilitySystem', group: 'FGroup_Gameplay', exec: 1, dirty: false, ghost: false },
+    // Attribute > Recompute
+    { name: 'FProcessor_Attribute_Recompute_Health', display: 'Attribute: RecomputeHealth', group: 'FGroup_Attribute_Recompute', exec: 2, dirty: true, ghost: false },
+    { name: 'FProcessor_Attribute_Recompute_Stamina', display: 'Attribute: RecomputeStamina', group: 'FGroup_Attribute_Recompute', exec: 3, dirty: true, ghost: false },
+    { name: 'FProcessor_Attribute_Recompute_Mana', display: 'Attribute: RecomputeMana', group: 'FGroup_Attribute_Recompute', exec: 4, dirty: true, ghost: false },
+    // Attribute > Clamp
+    { name: 'FProcessor_Attribute_Clamp_Health', display: 'Attribute: ClampHealth', group: 'FGroup_Attribute_Clamp', exec: 5, dirty: true, ghost: false },
+    { name: 'FProcessor_Attribute_Clamp_Stamina', display: 'Attribute: ClampStamina', group: 'FGroup_Attribute_Clamp', exec: 6, dirty: true, ghost: false },
+    { name: 'FProcessor_Attribute_Clamp_Mana', display: 'Attribute: ClampMana', group: 'FGroup_Attribute_Clamp', exec: 7, dirty: true, ghost: false },
+    // Attribute > FireSignals
+    { name: 'FProcessor_Attribute_FireSignals_Health', display: 'Attribute: FireHealth', group: 'FGroup_Attribute_FireSignals', exec: 8, dirty: false, ghost: false },
+    { name: 'FProcessor_Attribute_FireSignals_Stamina', display: 'Attribute: FireStamina', group: 'FGroup_Attribute_FireSignals', exec: 9, dirty: false, ghost: false },
+    // Gameplay continued
+    { name: 'FProcessor_Gameplay_Cooldown', display: 'Gameplay: Cooldown', group: 'FGroup_Gameplay', exec: 10, dirty: false, ghost: false },
+    // Physics
+    { name: 'FProcessor_Physics_Velocity', display: 'Physics: Velocity', group: 'FGroup_Physics', exec: 11, dirty: false, ghost: false },
+    { name: 'FProcessor_Physics_Collision', display: 'Physics: Collision', group: 'FGroup_Physics', exec: 12, dirty: false, ghost: false },
+    // Transform
+    { name: 'FProcessor_Transform_Sync', display: 'Transform: Sync', group: 'FGroup_Transform', exec: 13, dirty: false, ghost: false },
+    { name: 'FProcessor_Transform_Interpolate', display: 'Transform: Interpolate', group: 'FGroup_Transform', exec: 14, dirty: false, ghost: true },
+    // Replication
+    { name: 'FProcessor_Replication_Replicate', display: 'Replication: Replicate', group: 'FGroup_Replication', exec: 15, dirty: false, ghost: true },
+    { name: 'FProcessor_Replication_Authority', display: 'Replication: Authority', group: 'FGroup_Replication', exec: 16, dirty: false, ghost: false },
+    // Ungrouped
+    { name: 'FProcessor_Debug_Stats', display: 'Debug: Stats', group: null, exec: 17, dirty: false, ghost: false },
+];
+
+// Generate 300 frames of mock history
+function generateFrameHistory() {
+    const frames = [];
+    for (let i = 0; i < 300; i++) {
+        const baseTime = 0.3 + Math.sin(i * 0.05) * 0.15 + Math.random() * 0.2;
+        const spikeChance = Math.random();
+        const totalTime = spikeChance > 0.95 ? baseTime + 0.8 : spikeChance > 0.9 ? baseTime + 0.3 : baseTime;
+        const pumpCount = Math.random() > 0.7 ? (Math.random() > 0.8 ? 2 : 1) : (Math.random() > 0.5 ? 1 : 0);
+        const dirtyCount = pumpCount > 0 ? Math.floor(Math.random() * 4) + 1 : Math.floor(Math.random() * 2);
+
+        const procTimings = PROCESSORS.map(p => {
+            const base = p.ghost ? 0.001 : (0.01 + Math.random() * 0.04);
+            const main = base * (1 + Math.sin(i * 0.03 + p.exec) * 0.3);
+            const pumpTimes = [];
+            if (p.dirty && pumpCount > 0) {
+                for (let pi = 0; pi < pumpCount; pi++) {
+                    pumpTimes.push(0.005 + Math.random() * 0.02);
+                }
+            }
+            return {
+                mainPassTimeMs: main,
+                pumpPassTimesMs: pumpTimes,
+                wasDirty: p.dirty && pumpCount > 0 && Math.random() > 0.3,
+                pumpCount: pumpTimes.length
+            };
+        });
+
+        frames.push({
+            frameNumber: 1000 + i,
+            totalFrameTimeMs: totalTime,
+            pumpIterationCount: pumpCount,
+            dirtyProcessorCount: dirtyCount,
+            processorTimings: procTimings
+        });
+    }
+    return frames;
+}
+
+const FRAME_HISTORY = generateFrameHistory();
+
+// ============================================================================
+// STATE
+// ============================================================================
+
+let selectedFrameOffset = 0; // 0 = live (latest frame)
+let isFrozen = false;
+let selectedProcessorIndex = -1;
+let expandedGroups = new Set([
+    'TG_PrePhysics', 'FGroup_Gameplay', 'FGroup_Attribute',
+    'FGroup_Attribute_Recompute', 'FGroup_Attribute_Clamp', 'FGroup_Attribute_FireSignals',
+    'FGroup_Physics', 'FGroup_Transform', 'FGroup_Replication', 'TG_PostPhysics'
+]);
+
+function getCurrentFrame() {
+    const idx = FRAME_HISTORY.length - 1 - selectedFrameOffset;
+    return FRAME_HISTORY[Math.max(0, Math.min(idx, FRAME_HISTORY.length - 1))];
+}
+
+// ============================================================================
+// FRAME HISTORY BAR
+// ============================================================================
+
+function getTimingColor(ms) {
+    if (ms < 0.3) return [67, 160, 71];
+    if (ms < 0.5) return [255, 213, 79];
+    if (ms < 0.8) return [255, 167, 38];
+    return [239, 83, 80];
+}
+
+function renderHistoryBar() {
+    const canvas = document.getElementById('history-canvas');
+    const container = canvas.parentElement;
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = rect.height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = rect.height;
+    const barCount = FRAME_HISTORY.length;
+    const barWidth = Math.max(1, (w - 20) / barCount);
+    const leftPad = 10;
+
+    // Background
+    ctx.fillStyle = 'rgb(18, 18, 26)';
+    ctx.fillRect(0, 0, w, h);
+
+    // Find max time for normalization
+    const maxTime = Math.max(...FRAME_HISTORY.map(f => f.totalFrameTimeMs), 0.5);
+
+    // Draw bars
+    for (let i = 0; i < barCount; i++) {
+        const frame = FRAME_HISTORY[i];
+        const barH = (frame.totalFrameTimeMs / maxTime) * (h - 8);
+        const x = leftPad + i * barWidth;
+        const y = h - 4 - barH;
+        const [r, g, b] = getTimingColor(frame.totalFrameTimeMs);
+
+        const offset = barCount - 1 - i;
+        const isSelected = offset === selectedFrameOffset;
+
+        if (isSelected) {
+            // Selection marker background
+            ctx.fillStyle = `rgba(60, 130, 220, 0.3)`;
+            ctx.fillRect(x - 1, 0, barWidth + 2, h);
+        }
+
+        // Bar
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.globalAlpha = isSelected ? 1.0 : 0.7;
+        ctx.fillRect(x, y, Math.max(barWidth - 0.5, 1), barH);
+        ctx.globalAlpha = 1.0;
+
+        // Pump indicator (small dot at bottom)
+        if (frame.pumpIterationCount > 0) {
+            ctx.fillStyle = 'rgb(255, 167, 38)';
+            ctx.globalAlpha = 0.6;
+            ctx.fillRect(x, h - 3, Math.max(barWidth - 0.5, 1), 2);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    // Selection marker line
+    if (selectedFrameOffset >= 0 && selectedFrameOffset < barCount) {
+        const selIdx = barCount - 1 - selectedFrameOffset;
+        const x = leftPad + selIdx * barWidth + barWidth / 2;
+        ctx.strokeStyle = 'rgb(60, 130, 220)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+
+        // Triangle marker at top
+        ctx.fillStyle = 'rgb(60, 130, 220)';
+        ctx.beginPath();
+        ctx.moveTo(x - 4, 0);
+        ctx.lineTo(x + 4, 0);
+        ctx.lineTo(x, 6);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Update label
+    const label = document.getElementById('frame-history-label');
+    const frame = getCurrentFrame();
+    if (selectedFrameOffset === 0) {
+        label.textContent = 'LIVE';
+        label.className = 'live';
+    } else {
+        label.textContent = `Frame #${frame.frameNumber} (-${selectedFrameOffset})`;
+        label.className = 'historical';
+    }
+}
+
+// History bar interaction
+let isDraggingHistory = false;
+
+function historyBarOffset(clientX) {
+    const canvas = document.getElementById('history-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left - 10;
+    const barWidth = (rect.width - 20) / FRAME_HISTORY.length;
+    const idx = Math.floor(x / barWidth);
+    const clamped = Math.max(0, Math.min(idx, FRAME_HISTORY.length - 1));
+    return FRAME_HISTORY.length - 1 - clamped;
+}
+
+document.getElementById('frame-history-bar').addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    isDraggingHistory = true;
+
+    // Double click = return to live
+    if (e.detail === 2) {
+        selectedFrameOffset = 0;
+        if (isFrozen) toggleFreeze();
+        updateAll();
+        return;
+    }
+
+    const offset = historyBarOffset(e.clientX);
+    if (offset !== selectedFrameOffset) {
+        selectedFrameOffset = offset;
+        if (offset > 0 && !isFrozen) toggleFreeze();
+        updateAll();
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isDraggingHistory) return;
+    const offset = historyBarOffset(e.clientX);
+    if (offset !== selectedFrameOffset) {
+        selectedFrameOffset = offset;
+        if (offset > 0 && !isFrozen) toggleFreeze();
+        updateAll();
+    }
+});
+
+document.addEventListener('mouseup', () => { isDraggingHistory = false; });
+
+// Tooltip on hover
+document.getElementById('frame-history-bar').addEventListener('mousemove', (e) => {
+    if (isDraggingHistory) return;
+    const offset = historyBarOffset(e.clientX);
+    const frame = FRAME_HISTORY[FRAME_HISTORY.length - 1 - offset];
+    const tooltip = document.getElementById('frame-history-tooltip');
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX - document.getElementById('frame-history-bar').getBoundingClientRect().left) + 'px';
+    tooltip.innerHTML = `Frame #${frame.frameNumber} | ${frame.totalFrameTimeMs.toFixed(3)}ms | Pumps: ${frame.pumpIterationCount}`;
+});
+
+document.getElementById('frame-history-bar').addEventListener('mouseleave', () => {
+    document.getElementById('frame-history-tooltip').style.display = 'none';
+});
+
+// ============================================================================
+// FREEZE
+// ============================================================================
+
+function toggleFreeze() {
+    isFrozen = !isFrozen;
+    document.getElementById('freeze-btn').textContent = isFrozen ? 'Resume' : 'Freeze';
+    document.getElementById('freeze-btn').classList.toggle('active', isFrozen);
+    document.getElementById('frozen-badge').classList.toggle('visible', isFrozen);
+}
+
+// ============================================================================
+// TREE VIEW
+// ============================================================================
+
+function buildGroupHierarchy() {
+    // Build tree: TickGroup > root groups > child groups > processors
+    const rootGroups = Object.entries(GROUPS).filter(([_, g]) => !g.parent);
+    const tree = [];
+
+    function buildGroup(groupName, depth) {
+        const group = GROUPS[groupName];
+        const children = Object.entries(GROUPS).filter(([_, g]) => g.parent === groupName);
+        const procs = PROCESSORS.map((p, i) => ({ ...p, idx: i })).filter(p => p.group === groupName);
+        return { type: 'group', name: groupName, display: groupName.replace('FGroup_', ''), color: group.color, depth, children, procs };
+    }
+
+    function renderGroupNode(groupName, depth) {
+        const node = buildGroup(groupName, depth);
+        const isExpanded = expandedGroups.has(groupName);
+        const childGroups = Object.entries(GROUPS).filter(([_, g]) => g.parent === groupName).map(([n]) => n);
+        const directProcs = PROCESSORS.map((p, i) => ({ ...p, idx: i })).filter(p => p.group === groupName);
+        const totalChildren = countAllChildren(groupName);
+
+        let html = `<div class="tree-node" data-group="${groupName}" onclick="toggleGroup('${groupName}', event)">
+            <div class="tree-row">
+                <div class="tree-indent" style="width:${depth * 16}px"></div>
+                <div class="tree-expand">${isExpanded ? '▼' : '▶'}</div>
+                <div class="tree-accent" style="background:${GROUPS[groupName].color}"></div>
+                <div class="tree-name group" style="color:${GROUPS[groupName].color}">${groupName.replace('FGroup_', '')}</div>
+                <span class="tree-count">${totalChildren}</span>
+                <div class="tree-timing" style="color:${getTimingCss(getGroupTiming(groupName))}">${getGroupTiming(groupName).toFixed(3)} ms</div>
+            </div>
+        </div>`;
+
+        if (isExpanded) {
+            // Child groups first
+            for (const cg of childGroups) {
+                html += renderGroupNode(cg, depth + 1);
+            }
+            // Direct processors
+            for (const proc of directProcs) {
+                html += renderProcessorNode(proc, depth + 1, GROUPS[groupName].color);
+            }
+        }
+        return html;
+    }
+
+    return renderGroupNode;
+}
+
+function countAllChildren(groupName) {
+    const childGroups = Object.entries(GROUPS).filter(([_, g]) => g.parent === groupName).map(([n]) => n);
+    let count = PROCESSORS.filter(p => p.group === groupName).length;
+    for (const cg of childGroups) {
+        count += countAllChildren(cg);
+    }
+    return count;
+}
+
+function getGroupTiming(groupName) {
+    const frame = getCurrentFrame();
+    const childGroups = Object.entries(GROUPS).filter(([_, g]) => g.parent === groupName).map(([n]) => n);
+    let total = 0;
+    PROCESSORS.forEach((p, i) => {
+        if (p.group === groupName) total += frame.processorTimings[i].mainPassTimeMs;
+    });
+    for (const cg of childGroups) {
+        total += getGroupTiming(cg);
+    }
+    return total;
+}
+
+function getTimingCss(ms) {
+    if (ms < 0.05) return 'var(--timing-fast)';
+    if (ms < 0.15) return 'var(--timing-mid)';
+    if (ms < 0.30) return 'var(--timing-slow)';
+    return 'var(--timing-hot)';
+}
+
+function renderProcessorNode(proc, depth, groupColor) {
+    const frame = getCurrentFrame();
+    const timing = frame.processorTimings[proc.idx];
+    const isSelected = selectedProcessorIndex === proc.idx;
+    const nameColor = proc.ghost ? 'var(--ghost)' : 'var(--text-primary)';
+
+    return `<div class="tree-node ${isSelected ? 'selected' : ''}" onclick="selectProcessor(${proc.idx}, event)">
+        <div class="tree-row">
+            <div class="tree-indent" style="width:${depth * 16 + 16}px"></div>
+            <div class="tree-exec-order">#${proc.exec}</div>
+            <div class="tree-name" style="color:${nameColor}">${proc.display}</div>
+            ${proc.dirty ? '<span class="tree-badge dirty" title="Dirty marker">●</span>' : ''}
+            ${proc.ghost ? '<span class="tree-badge" style="color:var(--ghost)" title="Ghost">◇</span>' : ''}
+            <div class="tree-timing" style="color:${getTimingCss(timing.mainPassTimeMs)}">${timing.mainPassTimeMs.toFixed(3)} ms</div>
+        </div>
+    </div>`;
+}
+
+function renderTree() {
+    const frame = getCurrentFrame();
+    let html = '';
+
+    // Tick Group: Pre Physics
+    const isTPExpanded = expandedGroups.has('TG_PrePhysics');
+    html += `<div class="tree-node" onclick="toggleGroup('TG_PrePhysics', event)">
+        <div class="tree-row">
+            <div class="tree-expand">${isTPExpanded ? '▼' : '▶'}</div>
+            <div class="tree-name tick-group">Pre Physics</div>
+            <span class="tree-count">${PROCESSORS.length}</span>
+        </div>
+    </div>`;
+
+    if (isTPExpanded) {
+        const renderGroup = buildGroupHierarchy();
+
+        // Root groups
+        const rootGroups = Object.entries(GROUPS).filter(([_, g]) => !g.parent).map(([n]) => n);
+        for (const rg of rootGroups) {
+            html += renderGroup(rg, 1);
+        }
+
+        // Ungrouped
+        const ungrouped = PROCESSORS.map((p, i) => ({ ...p, idx: i })).filter(p => !p.group);
+        for (const proc of ungrouped) {
+            html += renderProcessorNode(proc, 1, null);
+        }
+    }
+
+    document.getElementById('tree-content').innerHTML = html;
+}
+
+function toggleGroup(name, e) {
+    e.stopPropagation();
+    if (expandedGroups.has(name)) expandedGroups.delete(name);
+    else expandedGroups.add(name);
+    renderTree();
+}
+
+function selectProcessor(idx, e) {
+    e.stopPropagation();
+    selectedProcessorIndex = idx;
+    renderTree();
+    renderInspector();
+}
+
+// ============================================================================
+// PUMP PANE
+// ============================================================================
+
+function renderPumpPane() {
+    const frame = getCurrentFrame();
+    const pumpCount = frame.pumpIterationCount;
+
+    let html = `<div class="pump-header">Pump This Frame${pumpCount === 0 ? ' — None' : ''}</div>`;
+
+    for (let pi = 0; pi < pumpCount; pi++) {
+        html += `<div class="pump-pass">
+            <div class="pump-pass-label">Pass ${pi + 1}:</div>`;
+
+        PROCESSORS.forEach((proc, idx) => {
+            const timing = frame.processorTimings[idx];
+            if (timing.pumpPassTimesMs.length > pi && timing.pumpPassTimesMs[pi] > 0) {
+                html += `<div class="pump-proc">
+                    <span class="name">${proc.display}</span>
+                    <span class="time" style="color:${getTimingCss(timing.pumpPassTimesMs[pi])}">${timing.pumpPassTimesMs[pi].toFixed(3)} ms</span>
+                </div>`;
+            }
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('pump-pane').innerHTML = html;
+}
+
+// ============================================================================
+// INSPECTOR
+// ============================================================================
+
+function renderInspector() {
+    const el = document.getElementById('inspector');
+
+    if (selectedProcessorIndex < 0) {
+        el.innerHTML = '<div class="insp-empty">No processor selected</div>';
+        return;
+    }
+
+    const proc = PROCESSORS[selectedProcessorIndex];
+    const frame = getCurrentFrame();
+    const timing = frame.processorTimings[selectedProcessorIndex];
+
+    let badges = '';
+    if (!proc.ghost) badges += '<span class="insp-badge active">Active</span>';
+    else badges += '<span class="insp-badge ghost">Ghost</span>';
+    if (proc.dirty) badges += '<span class="insp-badge dirty">Dirty</span>';
+
+    let html = `
+        <div class="insp-header">${proc.name}</div>
+        <div class="insp-badges">${badges}</div>
+        <hr class="insp-sep">
+
+        <div class="insp-section">
+            <div class="insp-section-title">INFO</div>
+            <div class="insp-row"><span class="label">Group</span><span class="value">${proc.group || '(ungrouped)'}</span></div>
+            <div class="insp-row"><span class="label">Tick Group</span><span class="value">Pre Physics</span></div>
+            <div class="insp-row"><span class="label">Exec Order</span><span class="value">#${proc.exec}</span></div>
+            <div class="insp-row"><span class="label">Timing</span><span class="value" style="color:${getTimingCss(timing.mainPassTimeMs)}">${timing.mainPassTimeMs.toFixed(3)} ms</span></div>
+        </div>
+        <hr class="insp-sep">`;
+
+    if (proc.dirty) {
+        html += `<div class="insp-section">
+            <div class="insp-section-title">DIRTY MARKER</div>
+            <div class="insp-row"><span class="label">Dirty This Frame</span><span class="value">${timing.wasDirty ? 'Yes' : 'No'}</span></div>
+            <div class="insp-row"><span class="label">Pump Count</span><span class="value">${timing.pumpCount}</span></div>`;
+        timing.pumpPassTimesMs.forEach((t, i) => {
+            html += `<div class="insp-row"><span class="label">Pump Pass ${i}</span><span class="value" style="color:${getTimingCss(t)}">${t.toFixed(3)} ms</span></div>`;
+        });
+        html += `</div><hr class="insp-sep">`;
+    }
+
+    if (selectedFrameOffset > 0) {
+        html += `<div class="insp-section">
+            <div class="insp-section-title" style="color:var(--pumped-orange)">VIEWING HISTORICAL FRAME</div>
+            <div class="insp-row"><span class="label">Frame</span><span class="value">#${frame.frameNumber}</span></div>
+            <div class="insp-row"><span class="label">Offset</span><span class="value">-${selectedFrameOffset}</span></div>
+            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">Double-click history bar to return to live</div>
+        </div>`;
+    }
+
+    el.innerHTML = html;
+}
+
+// ============================================================================
+// STATS
+// ============================================================================
+
+function renderStats() {
+    const frame = getCurrentFrame();
+    document.getElementById('stat-frame-time').textContent = frame.totalFrameTimeMs.toFixed(2) + ' ms';
+    document.getElementById('stat-pump-count').textContent = frame.pumpIterationCount;
+    document.getElementById('stat-dirty-count').textContent = frame.dirtyProcessorCount;
+}
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+
+function switchTab(idx, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+// ============================================================================
+// UPDATE ALL
+// ============================================================================
+
+function updateAll() {
+    renderHistoryBar();
+    renderTree();
+    renderPumpPane();
+    renderInspector();
+    renderStats();
+}
+
+// ============================================================================
+// LIVE SIMULATION (when not frozen)
+// ============================================================================
+
+let liveTimer = null;
+
+function startLiveSimulation() {
+    liveTimer = setInterval(() => {
+        if (isFrozen) return;
+
+        // Shift history and add a new frame
+        FRAME_HISTORY.shift();
+        const lastFrame = FRAME_HISTORY[FRAME_HISTORY.length - 1];
+        const newFrame = {
+            frameNumber: lastFrame.frameNumber + 1,
+            totalFrameTimeMs: 0.3 + Math.sin(lastFrame.frameNumber * 0.05) * 0.15 + Math.random() * 0.2,
+            pumpIterationCount: Math.random() > 0.6 ? (Math.random() > 0.8 ? 2 : 1) : 0,
+            dirtyProcessorCount: Math.floor(Math.random() * 4),
+            processorTimings: PROCESSORS.map((p, i) => {
+                const base = p.ghost ? 0.001 : (0.01 + Math.random() * 0.04);
+                const pumpTimes = [];
+                const pc = Math.random() > 0.6 ? (Math.random() > 0.8 ? 2 : 1) : 0;
+                if (p.dirty && pc > 0) {
+                    for (let pi = 0; pi < pc; pi++) pumpTimes.push(0.005 + Math.random() * 0.02);
+                }
+                return {
+                    mainPassTimeMs: base,
+                    pumpPassTimesMs: pumpTimes,
+                    wasDirty: p.dirty && pumpTimes.length > 0,
+                    pumpCount: pumpTimes.length
+                };
+            })
+        };
+        // Apply spike to total
+        if (Math.random() > 0.95) newFrame.totalFrameTimeMs += 0.8;
+        FRAME_HISTORY.push(newFrame);
+
+        updateAll();
+    }, 100); // ~10 fps simulation
+}
+
+// ============================================================================
+// INIT
+// ============================================================================
+
+window.addEventListener('resize', () => renderHistoryBar());
+updateAll();
+startLiveSimulation();
+</script>
+</body>
+</html>

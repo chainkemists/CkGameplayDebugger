@@ -180,6 +180,8 @@ auto
 			Info.PumpPassTimesMs = Timing.PumpPassTimesMs;
 			Info.WasDirtyThisFrame = Timing.WasDirtyThisFrame;
 			Info.PumpCountThisFrame = Timing.PumpCountThisFrame;
+			Info.MainPassEntityCount = Timing.MainPassEntityCount;
+			Info.PumpPassEntityCounts = Timing.PumpPassEntityCounts;
 		}
 
 		constexpr auto MaxHistoryFrames = 300;
@@ -706,6 +708,8 @@ auto
 		Proc.PumpPassTimesMs = Timing.PumpPassTimesMs;
 		Proc.WasDirtyThisFrame = Timing.WasDirtyThisFrame;
 		Proc.PumpCountThisFrame = Timing.PumpCountThisFrame;
+		Proc.MainPassEntityCount = Timing.MainPassEntityCount;
+		Proc.PumpPassEntityCounts = Timing.PumpPassEntityCounts;
 	}
 #endif
 }
@@ -814,6 +818,8 @@ auto
 			Proc.PumpPassTimesMs = Timing.PumpPassTimesMs;
 			Proc.WasDirtyThisFrame = Timing.WasDirtyThisFrame;
 			Proc.PumpCountThisFrame = Timing.PumpCountThisFrame;
+			Proc.MainPassEntityCount = Timing.MainPassEntityCount;
+			Proc.PumpPassEntityCounts = Timing.PumpPassEntityCounts;
 		}
 	}
 

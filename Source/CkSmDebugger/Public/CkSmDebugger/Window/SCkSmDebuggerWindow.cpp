@@ -1154,15 +1154,15 @@ auto
                             auto DstName = FCkSmLayoutParams::ComputeDisplayName(Trans.TargetStateName, Depth);
 
                             Info += FString::Printf(TEXT("TRANSITION\n%s \x2500\x25B6 %s\n\n"), *SrcName, *DstName);
-                            Info += FString::Printf(TEXT("Conditions [%d/%d]%s\n"),
+                            Info += FString::Printf(TEXT("Conditions [%d/%d]  %s\n"),
                                 Trans.SatisfiedCount, Trans.TotalCount,
-                                Trans.AreAllConditionsSatisfied ? TEXT("  READY") : TEXT(""));
+                                CkSmDebugger::GetTransitionResultLabel(Trans.TransitionResult));
 
                             for (auto& Cond : Trans.Conditions)
                             {
                                 auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                 Info += FString::Printf(TEXT("  %s %s\n"),
-                                    Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"), *CName);
+                                    CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
                             }
 
                             return FText::FromString(Info);
@@ -1206,17 +1206,17 @@ auto
                                 if (NOT HasTrans) { Info += TEXT("TRANSITIONS\n"); HasTrans = true; }
 
                                 auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
-                                Info += FString::Printf(TEXT("  \x2500\x25B6 %s  [%d/%d]%s\n"),
+                                Info += FString::Printf(TEXT("  \x2500\x25B6 %s  [%d/%d]  %s\n"),
                                     *DstName,
                                     Transition.SatisfiedCount,
                                     Transition.TotalCount,
-                                    Transition.AreAllConditionsSatisfied ? TEXT(" READY") : TEXT(""));
+                                    CkSmDebugger::GetTransitionResultLabel(Transition.TransitionResult));
 
                                 for (auto& Cond : Transition.Conditions)
                                 {
                                     auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                     Info += FString::Printf(TEXT("      %s %s\n"),
-                                        Cond.IsSatisfied ? TEXT("[+]") : TEXT("[-]"), *CName);
+                                        CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
                                 }
                             }
 

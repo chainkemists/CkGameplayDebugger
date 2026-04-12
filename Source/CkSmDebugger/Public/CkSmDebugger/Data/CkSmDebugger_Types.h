@@ -1,12 +1,12 @@
 #pragma once
 
-#include "CkStateMachine/CkStateMachine_Fragment_Data.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Fragment_Data.h"
 
 #include "CkEcs/Handle/CkHandle.h"
 
 #include "CoreMinimal.h"
 
-#include "CkStateMachine/EntityScripts/CkSmState_EntityScript.h"
+#include "CkStateMachine/State/EntityScripts/CkSmState_EntityScript.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ struct FCkSmDebugger_ConditionInfo
 {
     FCk_Handle Handle;
     FString ClassName;
-    bool IsSatisfied = false;
+    ECk_SmConditionResult Result = ECk_SmConditionResult::Undetermined;
     ECk_SmConditionMode Mode = ECk_SmConditionMode::Polled;
     ECk_SmConditionResetBehavior ResetBehavior = ECk_SmConditionResetBehavior::ResetEveryFrame;
 };
@@ -81,6 +81,7 @@ struct FCkSmDebugger_TransitionInfo
 
     TArray<FCkSmDebugger_ConditionInfo> Conditions;
     bool AreAllConditionsSatisfied = false;
+    ECk_SmTransitionResult TransitionResult = ECk_SmTransitionResult::Undetermined;
     int32 SatisfiedCount = 0;
     int32 TotalCount = 0;
 
@@ -277,6 +278,34 @@ inline auto
     case ECk_SmTaskResult::Succeeded: return FLinearColor(0.263f, 0.627f, 0.278f);  // #43A047 green
     case ECk_SmTaskResult::Failed:    return FLinearColor(0.937f, 0.325f, 0.314f);  // #EF5350 red
     default:                          return FLinearColor(0.565f, 0.565f, 0.565f);  // grey
+    }
+}
+
+inline auto
+    GetConditionResultLabel(
+        ECk_SmConditionResult InResult)
+    -> const TCHAR*
+{
+    switch (InResult)
+    {
+    case ECk_SmConditionResult::Pass:         return TEXT("[+]");
+    case ECk_SmConditionResult::Fail:         return TEXT("[-]");
+    case ECk_SmConditionResult::Undetermined: return TEXT("[?]");
+    default:                                  return TEXT("[?]");
+    }
+}
+
+inline auto
+    GetTransitionResultLabel(
+        ECk_SmTransitionResult InResult)
+    -> const TCHAR*
+{
+    switch (InResult)
+    {
+    case ECk_SmTransitionResult::Pass:         return TEXT("PASS");
+    case ECk_SmTransitionResult::Fail:         return TEXT("FAIL");
+    case ECk_SmTransitionResult::Undetermined: return TEXT("...");
+    default:                                   return TEXT("...");
     }
 }
 

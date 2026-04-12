@@ -23,6 +23,7 @@ public class CkSmDebugger : CkModuleRules
 
             "CkCore",
             "CkEcs",
+            "CkRecord",
             "CkStateMachine",
 
             "CkDebuggerCommon",

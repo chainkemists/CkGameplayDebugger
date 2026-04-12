@@ -12,14 +12,14 @@
 
 #include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 
-#include "CkStateMachine/CkStateMachine_Debug_Fragment.h"
-#include "CkStateMachine/CkStateMachine_Fragment.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 #if CK_BUILD_SM_GRAPH_WALK
-#include "CkStateMachine/CkStateMachine_Debug_GraphWalk_Fragment.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_GraphWalk_Fragment.h"
 #endif
-#include "CkStateMachine/CkStateMachine_Utils.h"
-#include "CkStateMachine/EntityScripts/CkSmState_EntityScript.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Utils.h"
+#include "CkStateMachine/State/EntityScripts/CkSmState_EntityScript.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -190,13 +190,14 @@ auto
         if (NOT SourceIndex)
         { continue; }
 
+        auto TransitionIndex = 0;
         for (const auto& TransDef : StateDef.Transitions)
         {
             auto TransInfo = FCkSmDebugger_TransitionInfo{};
             TransInfo.SourceStateIndex = *SourceIndex;
             TransInfo.SourceStateClass = StateClass;
             TransInfo.SourceStateName = SmInfo.States[*SourceIndex].StateName;
-            TransInfo.Order = TransDef.Order;
+            TransInfo.Order = TransitionIndex++;
             TransInfo.TargetStateClass = TransDef.TargetStateClass;
 
             if (IsValid(TransDef.TargetStateClass))
@@ -322,13 +323,14 @@ auto
         if (NOT SourceIndex)
         { continue; }
 
+        auto TransitionIndex = 0;
         for (const auto& CachedTransition : CachedState.Transitions)
         {
             auto TransInfo = FCkSmDebugger_TransitionInfo{};
             TransInfo.SourceStateIndex = *SourceIndex;
             TransInfo.SourceStateClass = StateClass;
             TransInfo.SourceStateName = SmInfo.States[*SourceIndex].StateName;
-            TransInfo.Order = CachedTransition.Order;
+            TransInfo.Order = TransitionIndex++;
             TransInfo.TargetStateClass = CachedTransition.TargetStateClass;
 
             if (IsValid(CachedTransition.TargetStateClass))
@@ -346,13 +348,14 @@ auto
                 CondInfo.ClassName = CachedCondition.ClassName;
                 CondInfo.Mode = CachedCondition.Mode;
                 CondInfo.ResetBehavior = CachedCondition.ResetBehavior;
-                CondInfo.IsSatisfied = false;
+                CondInfo.Result = ECk_SmConditionResult::Undetermined;
                 TransInfo.Conditions.Add(MoveTemp(CondInfo));
             }
 
             TransInfo.TotalCount = TransInfo.Conditions.Num();
             TransInfo.SatisfiedCount = 0;
             TransInfo.AreAllConditionsSatisfied = false;
+            TransInfo.TransitionResult = ECk_SmTransitionResult::Undetermined;
 
             SmInfo.Transitions.Add(MoveTemp(TransInfo));
         }
@@ -380,7 +383,6 @@ auto
         ViewerEntry.FromStateName = HistoryEntry.FromStateName;
         ViewerEntry.ToStateName = HistoryEntry.ToStateName;
         ViewerEntry.FrameNumber = HistoryEntry.FrameNumber;
-        ViewerEntry.TransitionOrder = HistoryEntry.TransitionOrder;
         ViewerEntry.ConditionNames = HistoryEntry.TransitionConditionNames;
         ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistoryEntry.RealTimeSeconds);
 
@@ -537,7 +539,6 @@ auto
                 ViewerEntry.FromStateName = HistEntry.FromStateName;
                 ViewerEntry.ToStateName = HistEntry.ToStateName;
                 ViewerEntry.FrameNumber = HistEntry.FrameNumber;
-                ViewerEntry.TransitionOrder = HistEntry.TransitionOrder;
                 ViewerEntry.ConditionNames = HistEntry.TransitionConditionNames;
                 ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistEntry.RealTimeSeconds);
 
@@ -701,6 +702,7 @@ auto
     auto StateChildren = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(InStateHandle);
 
     auto TaskIndex = 0;
+    auto TransitionIndex = 0;
 
     for (const auto& ChildHandle : StateChildren)
     {
@@ -709,7 +711,7 @@ auto
         {
             const auto& TransParams = ChildHandle.Get<ck::FFragment_SmTransition_Params>();
             auto TargetClass = TransParams.Get_TargetStateClass();
-            auto Order = TransParams.Get_Order();
+            auto Order = TransitionIndex++;
 
             auto* MatchingTransition = static_cast<FCkSmDebugger_TransitionInfo*>(nullptr);
 
@@ -740,11 +742,11 @@ auto
                 { continue; }
 
                 const auto& CondCurrent = CondHandle.Get<ck::FFragment_SmCondition_Current>();
-                auto IsSatisfied = CondCurrent.Get_IsSatisfied();
+                const auto CondResult = CondCurrent.Get_Result();
 
                 ++TotalCount;
 
-                if (IsSatisfied)
+                if (CondResult == ECk_SmConditionResult::Pass)
                 {
                     ++SatisfiedCount;
                 }
@@ -752,7 +754,7 @@ auto
                 if (ConditionIndex < MatchingTransition->Conditions.Num())
                 {
                     MatchingTransition->Conditions[ConditionIndex].Handle = CondHandle;
-                    MatchingTransition->Conditions[ConditionIndex].IsSatisfied = IsSatisfied;
+                    MatchingTransition->Conditions[ConditionIndex].Result = CondResult;
                 }
 
                 ++ConditionIndex;
@@ -761,6 +763,17 @@ auto
             MatchingTransition->TotalCount = TotalCount;
             MatchingTransition->SatisfiedCount = SatisfiedCount;
             MatchingTransition->AreAllConditionsSatisfied = (TotalCount > 0 && SatisfiedCount == TotalCount);
+
+            // Read authoritative transition result from FFragment_SmTransition_Current
+            if (ChildHandle.Has<ck::FFragment_SmTransition_Current>())
+            {
+                MatchingTransition->TransitionResult =
+                    ChildHandle.Get<ck::FFragment_SmTransition_Current>().Get_Result();
+            }
+            else
+            {
+                MatchingTransition->TransitionResult = ECk_SmTransitionResult::Undetermined;
+            }
         }
 
         // Overlay live task results

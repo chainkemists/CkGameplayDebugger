@@ -1,6 +1,7 @@
 #include "CkSmDebugger/Data/CkSmDebugger_DataCollector.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkCore/Object/CkObject_Utils.h"
 
 #include "HAL/PlatformTime.h"
 
@@ -20,22 +21,6 @@
 #endif
 #include "CkStateMachine/StateMachine/CkStateMachine_Utils.h"
 #include "CkStateMachine/State/EntityScripts/CkSmState_EntityScript.h"
-
-// --------------------------------------------------------------------------------------------------------------------
-
-static auto
-    GetCleanClassName(
-        const UClass* InClass)
-    -> FString
-{
-    if (NOT IsValid(InClass))
-    { return TEXT("(unknown)"); }
-
-    auto Name = InClass->GetName();
-    Name.RemoveFromStart(TEXT("BP_"));
-    Name.RemoveFromEnd(TEXT("_C"));
-    return Name;
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -202,7 +187,7 @@ auto
 
             if (IsValid(TransDef.TargetStateClass))
             {
-                TransInfo.TargetStateName = GetCleanClassName(TransDef.TargetStateClass);
+                TransInfo.TargetStateName = UCk_Utils_Object_UE::Get_CleanClassName(TransDef.TargetStateClass);
             }
 
             auto* TargetIndex = StateClassToIndex.Find(TransDef.TargetStateClass);
@@ -335,7 +320,7 @@ auto
 
             if (IsValid(CachedTransition.TargetStateClass))
             {
-                TransInfo.TargetStateName = GetCleanClassName(CachedTransition.TargetStateClass);
+                TransInfo.TargetStateName = UCk_Utils_Object_UE::Get_CleanClassName(CachedTransition.TargetStateClass);
             }
 
             auto* TargetIndex = StateClassToIndex.Find(CachedTransition.TargetStateClass);

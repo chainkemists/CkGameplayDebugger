@@ -16,7 +16,6 @@ struct FCkSmDebugger_ConditionInfo
     FString ClassName;
     ECk_SmConditionResult Result = ECk_SmConditionResult::Undetermined;
     ECk_SmConditionMode Mode = ECk_SmConditionMode::Polled;
-    ECk_SmConditionResetBehavior ResetBehavior = ECk_SmConditionResetBehavior::ResetEveryFrame;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -107,6 +106,7 @@ struct FCkSmDebugger_HistoryEntry
 {
     FString FromStateName;
     FString ToStateName;
+    FString SubSmParentStateName;
     uint64 FrameNumber = 0;
     int32 TransitionOrder = -1;
     TArray<FString> ConditionNames;

@@ -278,6 +278,166 @@ namespace
 			return SNew(STextBlock).Text(FText::FromString(InNode->DisplayName));
 		}
 	}
+
+	// Breakdown pane — group header row: accent bar + bold name + running count + aggregate timing.
+	// Mirrors DoBuildGroupRowContent exactly but accepts explicit params so pump-pass aggregates
+	// (which aren't pre-computed on FCkSchedulerDebugger_GroupInfo) can be passed directly.
+	auto DoBuildBreakdownGroupHeader(
+		const FString&       InDisplayName,
+		const FLinearColor&  InAccentColor,
+		int32                InRunningCount,
+		double               InAggregateTimeMs)
+		-> TSharedRef<SWidget>
+	{
+		const auto AggregateText = InAggregateTimeMs > 0.0
+			? FString::Printf(TEXT("%.2f ms"), InAggregateTimeMs)
+			: FString{};
+
+		return SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(SBox)
+						.WidthOverride(FCkSchedulerDebuggerStyle::Node_AccentWidth)
+						.HeightOverride(20.0f)
+						[
+							SNew(SBorder)
+								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+								.ColorAndOpacity(InAccentColor)
+						]
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 1.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(InDisplayName))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+						.ColorAndOpacity(InAccentColor)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::AsNumber(InRunningCount))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+				]
+
+			+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(SSpacer)
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(AggregateText))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+				];
+	}
+
+	// Breakdown pane — processor row: #ExecOrder + name + dirty dot + entity count + heat timing.
+	// Mirrors DoBuildProcessorRowContent exactly but accepts explicit time/entity values so the same
+	// layout can be reused for both the main pass and each individual pump pass.
+	auto DoBuildBreakdownProcessorRow(
+		const FCkSchedulerDebugger_ProcessorInfo& InProc,
+		double                                    InTimeMs,
+		int32                                     InEntityCount)
+		-> TSharedRef<SWidget>
+	{
+		const auto ExecOrderText = FString::Printf(TEXT("#%d"), InProc.ExecutionOrder);
+		const auto TimingText    = FString::Printf(TEXT("%.3f ms"), InTimeMs);
+		const auto EntityText    = FString::Printf(TEXT("%d"), InEntityCount);
+		const auto bIdle         = InEntityCount == 0;
+		const auto NameColor     = bIdle ? FCkSchedulerDebuggerStyle::Color_Ghost : FCkSchedulerDebuggerStyle::Color_Text_Primary;
+		const auto TimingColor   = bIdle ? FCkSchedulerDebuggerStyle::Color_Ghost : FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeMs);
+
+		auto Row = SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(0.0f, 1.0f, FCkSchedulerDebuggerStyle::Padding_Small, 1.0f)
+				[
+					SNew(SBox)
+						.WidthOverride(30.0f)
+						[
+							SNew(STextBlock)
+								.Text(FText::FromString(ExecOrderText))
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.Justification(ETextJustify::Right)
+						]
+				]
+
+			+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.VAlign(VAlign_Center)
+				.Padding(2.0f, 0.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(InProc.DisplayName))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.ColorAndOpacity(NameColor)
+				];
+
+		if (InProc.HasDirtyMarker)
+		{
+			Row->AddSlot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(2.0f, 0.0f)
+				[
+					SNew(STextBlock)
+						.Text(FText::FromString(FString(TEXT("\u25CF"))))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+						.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
+				];
+		}
+
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(SBox)
+					.WidthOverride(40.0f)
+					[
+						SNew(STextBlock)
+							.Text(FText::FromString(EntityText))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+							.Justification(ETextJustify::Right)
+							.ToolTipText(FText::FromString(TEXT("Entity count")))
+					]
+			];
+
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(TimingText))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.ColorAndOpacity(TimingColor)
+			];
+
+		return Row;
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -513,44 +673,135 @@ auto
 
 	auto NewContent = SNew(SVerticalBox);
 
-	// ---- MAIN PASS section: show all processors that ticked, sorted by timing (descending)
+	const auto& Groups = _ViewModel->Get_DataCollector().Get_Groups();
+
+	// Sort groups by their pipeline execution order so the breakdown mirrors the tree view.
+	auto GroupOrder = TArray<int32>{};
+	for (auto GroupIdx = 0; GroupIdx < Groups.Num(); ++GroupIdx)
 	{
-		auto MainPassIndices = TArray<int32>{};
-		auto MainPassTotalMs = 0.0;
-		for (auto ProcIdx = 0; ProcIdx < Procs.Num(); ++ProcIdx)
-		{
-			const auto& Proc = Procs[ProcIdx];
-			if (Proc.MainPassTimeMs > 0.0 && NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
-			{
-				if (NOT _BreakdownFilterString.IsEmpty()
-					&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
-				{ continue; }
+		GroupOrder.Add(GroupIdx);
+	}
+	GroupOrder.Sort([&Groups](int32 A, int32 B)
+	{
+		return Groups[A].StartNodeIndex < Groups[B].StartNodeIndex;
+	});
 
-				MainPassIndices.Add(ProcIdx);
-				MainPassTotalMs += Proc.MainPassTimeMs;
-			}
+	// Collect member processor indices from a group that have a non-zero value from InGetTime,
+	// pass the breakdown filter, and are not ghost/boundary nodes. Result is sorted by ExecutionOrder.
+	const auto CollectRunningMembers = [&](
+		int32 InGroupIdx,
+		TFunctionRef<double(const FCkSchedulerDebugger_ProcessorInfo&)> InGetTime)
+		-> TArray<int32>
+	{
+		auto Result = TArray<int32>{};
+		for (const auto MemberProcIdx : Groups[InGroupIdx].MemberIndices)
+		{
+			if (NOT Procs.IsValidIndex(MemberProcIdx)) { continue; }
+			const auto& Proc = Procs[MemberProcIdx];
+			if (Proc.IsGroupStart || Proc.IsGroupEnd || Proc.IsGhost) { continue; }
+			if (InGetTime(Proc) <= 0.0) { continue; }
+			if (NOT _BreakdownFilterString.IsEmpty()
+				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+			{ continue; }
+			Result.Add(MemberProcIdx);
 		}
-
-		MainPassIndices.Sort([&Procs](int32 A, int32 B)
+		Result.Sort([&Procs](int32 A, int32 B)
 		{
-			return Procs[A].MainPassTimeMs > Procs[B].MainPassTimeMs;
+			return Procs[A].ExecutionOrder < Procs[B].ExecutionOrder;
 		});
+		return Result;
+	};
+
+	// Section header: styled like a tick group row — bold label, count badge, total timing.
+	const auto AddSectionHeader = [&](
+		const FString&      InLabel,
+		int32               InCount,
+		double              InTotalMs,
+		const FLinearColor& InColor)
+	{
+		NewContent->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 4.0f, 0.0f, 2.0f)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+							.Text(FText::FromString(InLabel))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+							.ColorAndOpacity(InColor)
+					]
+
+				+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+					[
+						SNew(SBorder)
+							.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+							.BorderBackgroundColor(InColor.CopyWithNewOpacity(0.3f))
+							.Padding(FMargin(4.0f, 1.0f))
+							[
+								SNew(STextBlock)
+									.Text(FText::AsNumber(InCount))
+									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+									.ColorAndOpacity(InColor)
+							]
+					]
+
+				+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(SSpacer)
+					]
+
+				+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+					[
+						SNew(STextBlock)
+							.Text(FText::FromString(InTotalMs > 0.0
+								? FString::Printf(TEXT("%.3f ms"), InTotalMs)
+								: FString{}))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+					]
+			];
+	};
+
+	// Helper: emit all running processors for a group as clickable tree-view-style rows.
+	const auto AddGroupRows = [&](
+		int32                   InGroupIdx,
+		const TArray<int32>&    InRunningMembers,
+		TFunctionRef<double(const FCkSchedulerDebugger_ProcessorInfo&)> InGetTime,
+		TFunctionRef<int32(const FCkSchedulerDebugger_ProcessorInfo&)>  InGetCount)
+	{
+		const auto& Group    = Groups[InGroupIdx];
+		auto        AggrMs   = 0.0;
+		for (const auto MIdx : InRunningMembers)
+		{
+			AggrMs += InGetTime(Procs[MIdx]);
+		}
 
 		NewContent->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, 0.0f)
+			.Padding(0.0f, 1.0f, 0.0f, 0.0f)
 			[
-				SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("Main Pass (%d) %.3f ms"),
-						MainPassIndices.Num(), MainPassTotalMs)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Active)
+				DoBuildBreakdownGroupHeader(
+					Group.DisplayName, Group.AccentColor,
+					InRunningMembers.Num(), AggrMs)
 			];
 
-		for (const auto ProcIdx : MainPassIndices)
+		for (const auto MemberProcIdx : InRunningMembers)
 		{
-			const auto& Proc = Procs[ProcIdx];
-			auto CapturedIdx = ProcIdx;
+			const auto& Proc       = Procs[MemberProcIdx];
+			const auto  TimeMs     = InGetTime(Proc);
+			const auto  EntityCnt  = InGetCount(Proc);
+			auto        CapturedIdx = MemberProcIdx;
 
 			NewContent->AddSlot()
 				.AutoHeight()
@@ -568,51 +819,40 @@ auto
 							return FReply::Handled();
 						})
 						[
-							SNew(SHorizontalBox)
-
-							+ SHorizontalBox::Slot()
-								.FillWidth(1.0f)
-								.VAlign(VAlign_Center)
-								[
-									SNew(STextBlock)
-										.Text(FText::FromString(Proc.DisplayName))
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
-										.AutoWrapText(true)
-								]
-
-							+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-								[
-									SNew(SBox)
-										.WidthOverride(35.0f)
-										[
-											SNew(STextBlock)
-												.Text(FText::FromString(FString::Printf(TEXT("%d"),
-													Proc.MainPassEntityCount)))
-												.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-												.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-												.Justification(ETextJustify::Right)
-										]
-								]
-
-							+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-								[
-									SNew(STextBlock)
-										.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
-											Proc.MainPassTimeMs)))
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Get_TimingColor(
-											Proc.MainPassTimeMs))
-								]
+							DoBuildBreakdownProcessorRow(Proc, TimeMs, EntityCnt)
 						]
 				];
 		}
+	};
+
+	// ---- MAIN PASS section
+	{
+		auto TotalMs    = 0.0;
+		auto TotalCount = 0;
+		for (const auto& Proc : Procs)
+		{
+			if (Proc.MainPassTimeMs > 0.0 && NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
+			{
+				if (_BreakdownFilterString.IsEmpty()
+					|| Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+				{
+					TotalMs += Proc.MainPassTimeMs;
+					TotalCount++;
+				}
+			}
+		}
+		AddSectionHeader(TEXT("Main Pass"), TotalCount, TotalMs, FCkSchedulerDebuggerStyle::Color_Active);
+	}
+
+	for (const auto GroupIdx : GroupOrder)
+	{
+		const auto RunningMembers = CollectRunningMembers(GroupIdx,
+			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; });
+		if (RunningMembers.IsEmpty()) { continue; }
+
+		AddGroupRows(GroupIdx, RunningMembers,
+			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; },
+			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassEntityCount; });
 	}
 
 	if (PumpCount == 0)
@@ -624,92 +864,56 @@ auto
 	// ---- Per-pass breakdown (collapsed to summary when > 5 passes)
 
 	const auto ShowAllPasses = PumpCount <= 5;
-	const auto PassesToShow = ShowAllPasses ? PumpCount : 3;
+	const auto PassesToShow  = ShowAllPasses ? PumpCount : 3;
 
 	for (auto PassIdx = 0; PassIdx < PassesToShow; ++PassIdx)
 	{
-		NewContent->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 2.0f, 0.0f, 0.0f)
-			[
-				SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("Pass %d:"), PassIdx + 1)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Pumped)
-			];
-
-		for (auto ProcIdx = 0; ProcIdx < Procs.Num(); ++ProcIdx)
+		// Section header for this pass
 		{
-			const auto& Proc = Procs[ProcIdx];
-			if (NOT Proc.PumpPassTimesMs.IsValidIndex(PassIdx) || Proc.PumpPassTimesMs[PassIdx] <= 0.0)
-			{ continue; }
-			if (NOT _BreakdownFilterString.IsEmpty()
-				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
-			{ continue; }
+			auto PassTotalMs = 0.0;
+			auto PassCount   = 0;
+			for (const auto& Proc : Procs)
+			{
+				if (Proc.PumpPassTimesMs.IsValidIndex(PassIdx)
+					&& Proc.PumpPassTimesMs[PassIdx] > 0.0
+					&& NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
+				{
+					if (_BreakdownFilterString.IsEmpty()
+						|| Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+					{
+						PassTotalMs += Proc.PumpPassTimesMs[PassIdx];
+						PassCount++;
+					}
+				}
+			}
+			AddSectionHeader(
+				FString::Printf(TEXT("Pass %d"), PassIdx + 1),
+				PassCount, PassTotalMs,
+				FCkSchedulerDebuggerStyle::Color_Pumped);
+		}
 
-			auto CapturedProcIdx = ProcIdx;
+		for (const auto GroupIdx : GroupOrder)
+		{
+			const auto PassIdxCopy    = PassIdx;
+			const auto RunningMembers = CollectRunningMembers(GroupIdx,
+				[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+				{
+					return P.PumpPassTimesMs.IsValidIndex(PassIdxCopy)
+						? P.PumpPassTimesMs[PassIdxCopy] : 0.0;
+				});
+			if (RunningMembers.IsEmpty()) { continue; }
 
-			NewContent->AddSlot()
-				.AutoHeight()
-				.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-						.ButtonStyle(FCoreStyle::Get(), "NoBorder")
-						.ContentPadding(FMargin(0.0f, 1.0f))
-						.OnClicked_Lambda([this, CapturedProcIdx]() -> FReply
-						{
-							if (_ViewModel.IsValid())
-							{
-								_ViewModel->Set_SelectedProcessorIndex(CapturedProcIdx);
-							}
-							return FReply::Handled();
-						})
-						[
-							SNew(SHorizontalBox)
-
-							+ SHorizontalBox::Slot()
-								.FillWidth(1.0f)
-								.VAlign(VAlign_Center)
-								[
-									SNew(STextBlock)
-										.Text(FText::FromString(Proc.DisplayName))
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
-										.AutoWrapText(true)
-								]
-
-							+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-								[
-									SNew(SBox)
-										.WidthOverride(35.0f)
-										[
-											SNew(STextBlock)
-												.Text(FText::FromString(FString::Printf(TEXT("%d"),
-													Proc.PumpPassEntityCounts.IsValidIndex(PassIdx)
-														? Proc.PumpPassEntityCounts[PassIdx] : 0)))
-												.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-												.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-												.Justification(ETextJustify::Right)
-										]
-								]
-
-							+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-								[
-									SNew(STextBlock)
-										.Text(FText::FromString(FString::Printf(TEXT("%.3f ms"),
-											Proc.PumpPassTimesMs[PassIdx])))
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-										.ColorAndOpacity(FCkSchedulerDebuggerStyle::Get_TimingColor(
-											Proc.PumpPassTimesMs[PassIdx]))
-								]
-						]
-				];
+			AddGroupRows(GroupIdx, RunningMembers,
+				[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+				{
+					return P.PumpPassTimesMs.IsValidIndex(PassIdxCopy)
+						? P.PumpPassTimesMs[PassIdxCopy] : 0.0;
+				},
+				[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+				{
+					return P.PumpPassEntityCounts.IsValidIndex(PassIdxCopy)
+						? P.PumpPassEntityCounts[PassIdxCopy] : 0;
+				});
 		}
 	}
 
@@ -970,34 +1174,80 @@ auto
 	{ return; }
 
 	const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
+	const auto& Groups = _ViewModel->Get_DataCollector().Get_Groups();
+
+	// ----------------------------------------------------------------------------------------------------------------
+	// Sort-key extraction for any tree node (Processor, Group, TickGroup).
+	//
+	// A Group node's execution key is the ExecutionOrder of its start ghost node (the first entry in the final
+	// topological order that belongs to the group). This matches the on-disk SchedulerOrder.txt dump, where the
+	// group appears at the position of its start ghost. Groups also carry an AggregateTimeMs for Timing mode.
+	//
+	// TickGroup nodes fall back to INT32_MIN so Pre/PostPhysics stay in their natural (already-ordered) positions
+	// at the root level.
+	// ----------------------------------------------------------------------------------------------------------------
+
+	auto GetExecOrderKey = [&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode) -> int32
+	{
+		switch (InNode->Type)
+		{
+		case ECkSchedulerDebugger_TreeNodeType::Processor:
+		{
+			const auto Idx = InNode->ProcessorIndex;
+			return Procs.IsValidIndex(Idx) ? Procs[Idx].ExecutionOrder : MAX_int32;
+		}
+		case ECkSchedulerDebugger_TreeNodeType::Group:
+		{
+			const auto GroupIdx = InNode->GroupIndex;
+			if (NOT Groups.IsValidIndex(GroupIdx))
+			{ return MAX_int32; }
+			const auto StartNodeIdx = Groups[GroupIdx].StartNodeIndex;
+			return Procs.IsValidIndex(StartNodeIdx) ? Procs[StartNodeIdx].ExecutionOrder : MAX_int32;
+		}
+		default:
+			return MIN_int32;
+		}
+	};
+
+	auto GetTimingKey = [&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode) -> double
+	{
+		switch (InNode->Type)
+		{
+		case ECkSchedulerDebugger_TreeNodeType::Processor:
+		{
+			const auto Idx = InNode->ProcessorIndex;
+			return Procs.IsValidIndex(Idx) ? Procs[Idx].MainPassTimeMs : 0.0;
+		}
+		case ECkSchedulerDebugger_TreeNodeType::Group:
+		{
+			const auto GroupIdx = InNode->GroupIndex;
+			return Groups.IsValidIndex(GroupIdx) ? Groups[GroupIdx].AggregateTimeMs : 0.0;
+		}
+		default:
+			return 0.0;
+		}
+	};
 
 	auto SortChildren = [&](TArray<TSharedPtr<FCkSchedulerDebugger_TreeNode>>& InChildren)
 	{
 		InChildren.Sort([&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& A,
 			const TSharedPtr<FCkSchedulerDebugger_TreeNode>& B)
 		{
-			if (A->Type != ECkSchedulerDebugger_TreeNodeType::Processor
-				|| B->Type != ECkSchedulerDebugger_TreeNodeType::Processor)
-			{
-				return false;
-			}
-
-			const auto IdxA = A->ProcessorIndex;
-			const auto IdxB = B->ProcessorIndex;
-			if (NOT Procs.IsValidIndex(IdxA) || NOT Procs.IsValidIndex(IdxB))
-			{ return false; }
+			// Groups and Processors can be siblings at the same level only within a valid tree; regardless, we always
+			// produce a strict weak ordering by extracting a key per node-type so the comparator never returns
+			// (false, false) for distinct nodes (which would leave them in undefined insertion order).
 
 			switch (_SortMode)
 			{
 			case ECkSchedulerDebugger_SortMode::Name:
-				return Procs[IdxA].DisplayName < Procs[IdxB].DisplayName;
+				return A->DisplayName < B->DisplayName;
 
 			case ECkSchedulerDebugger_SortMode::Timing:
-				return Procs[IdxA].MainPassTimeMs > Procs[IdxB].MainPassTimeMs;
+				return GetTimingKey(A) > GetTimingKey(B);
 
 			case ECkSchedulerDebugger_SortMode::ExecutionOrder:
 			default:
-				return Procs[IdxA].ExecutionOrder < Procs[IdxB].ExecutionOrder;
+				return GetExecOrderKey(A) < GetExecOrderKey(B);
 			}
 		});
 	};

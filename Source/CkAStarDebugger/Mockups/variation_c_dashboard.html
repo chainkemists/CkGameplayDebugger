@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>A* Debugger — Variation C: Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', Consolas, monospace; font-size: 13px; }
+
+.toolbar { background: #16213e; padding: 6px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #2a2a4e; }
+.toolbar select, .toolbar button { background: #1a1a2e; color: #e0e0e0; border: 1px solid #4a5568; padding: 4px 8px; border-radius: 3px; font-size: 12px; cursor: pointer; }
+.toolbar button:hover { background: #2d3748; }
+.toolbar .label { color: #8892a0; font-size: 11px; }
+.toolbar .status-badge { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-progress { background: rgba(59,130,246,0.2); color: #3b82f6; }
+.badge-complete { background: rgba(34,197,94,0.2); color: #22c55e; }
+
+.dashboard { display: grid; grid-template-columns: 1fr 320px; grid-template-rows: 1fr 180px; height: calc(100vh - 38px); gap: 1px; background: #2a2a4e; }
+
+.grid-panel { background: #0d0d1a; position: relative; overflow: hidden; grid-row: 1; grid-column: 1; }
+.grid-canvas { width: 100%; height: 100%; }
+
+.info-panel { background: #16213e; grid-row: 1; grid-column: 2; overflow-y: auto; }
+
+.heatmap-panel { background: #16213e; grid-row: 2; grid-column: 1; padding: 12px; overflow: hidden; }
+.heatmap-panel h3 { color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+.history-panel { background: #16213e; grid-row: 2; grid-column: 2; padding: 12px; overflow-y: auto; }
+.history-panel h3 { color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+
+/* Info panel tabs */
+.tab-bar { display: flex; border-bottom: 1px solid #2a2a4e; }
+.tab { flex: 1; text-align: center; padding: 8px; cursor: pointer; color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
+.tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+.tab:hover { color: #e0e0e0; }
+.tab-content { padding: 12px; }
+.tab-content[hidden] { display: none; }
+
+.section { margin-bottom: 16px; }
+.section h4 { color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.stat-row { display: flex; justify-content: space-between; padding: 2px 0; }
+.stat-label { color: #8892a0; }
+.stat-value { font-weight: 600; }
+.complete { color: #22c55e; }
+.in-progress { color: #3b82f6; }
+
+.meter { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.meter-bar { flex: 1; height: 8px; background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+.meter-label { width: 40px; text-align: right; font-size: 11px; color: #8892a0; }
+
+.mini-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.mini-stat { background: #1a1a2e; border-radius: 4px; padding: 8px; text-align: center; }
+.mini-stat .ms-value { font-size: 18px; font-weight: 700; }
+.mini-stat .ms-label { font-size: 10px; color: #8892a0; text-transform: uppercase; }
+
+.history-entry { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-bottom: 3px; background: #1a1a2e; border-radius: 4px; font-size: 12px; }
+.h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.h-info { flex: 1; }
+.h-meta { color: #8892a0; font-size: 10px; }
+
+/* Heatmap */
+.heatmap-canvas { width: 100%; height: calc(100% - 30px); }
+
+.legend-row { display: flex; gap: 12px; margin-top: 4px; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #8892a0; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+    <span class="label">Entity:</span>
+    <select id="entitySel">
+        <option>AStarTest #1 — 50x50 Grid</option>
+        <option>AStarTest #2 — 10x10 Grid</option>
+    </select>
+    <span class="status-badge badge-progress" id="toolbarBadge">InProgress</span>
+    <div style="flex:1"></div>
+    <button onclick="togglePause()">⏸ Pause</button>
+    <button onclick="stepOnce()">⏭ Step</button>
+    <button onclick="resetSearch()">↻ Reset</button>
+    <span class="label">|</span>
+    <button onclick="toggleHeatmap()">🌡 Heatmap</button>
+</div>
+
+<div class="dashboard">
+    <div class="grid-panel">
+        <canvas class="grid-canvas" id="gridCanvas"></canvas>
+    </div>
+
+    <div class="info-panel">
+        <div class="tab-bar">
+            <div class="tab active" onclick="switchTab('stats',this)">Stats</div>
+            <div class="tab" onclick="switchTab('cell',this)">Cell</div>
+            <div class="tab" onclick="switchTab('legend',this)">Legend</div>
+        </div>
+        <div class="tab-content" id="tab-stats">
+            <div class="mini-grid" style="margin-bottom:12px">
+                <div class="mini-stat"><div class="ms-value in-progress" id="msIter">0</div><div class="ms-label">Iterations</div></div>
+                <div class="mini-stat"><div class="ms-value" id="msOpen">0</div><div class="ms-label">Open</div></div>
+                <div class="mini-stat"><div class="ms-value" id="msClosed">0</div><div class="ms-label">Closed</div></div>
+                <div class="mini-stat"><div class="ms-value" id="msPath">—</div><div class="ms-label">Path</div></div>
+            </div>
+            <div class="section">
+                <h4>Budget Usage</h4>
+                <div class="meter">
+                    <div class="meter-bar"><div class="meter-fill" id="budgetFill" style="width:0%;background:#3b82f6"></div></div>
+                    <span class="meter-label" id="budgetPct">0%</span>
+                </div>
+            </div>
+            <div class="section">
+                <h4>Exploration</h4>
+                <div class="meter">
+                    <div class="meter-bar"><div class="meter-fill" id="exploreFill" style="width:0%;background:#8b5cf6"></div></div>
+                    <span class="meter-label" id="explorePct">0%</span>
+                </div>
+            </div>
+            <div class="section">
+                <h4>Details</h4>
+                <div class="stat-row"><span class="stat-label">Grid</span><span class="stat-value">50 x 50</span></div>
+                <div class="stat-row"><span class="stat-label">Blocked</span><span class="stat-value" id="blockedVal">300</span></div>
+                <div class="stat-row"><span class="stat-label">Cost</span><span class="stat-value" id="costVal">—</span></div>
+                <div class="stat-row"><span class="stat-label">Time</span><span class="stat-value" id="timeVal">0 us</span></div>
+                <div class="stat-row"><span class="stat-label">Threshold</span><span class="stat-value">disabled</span></div>
+            </div>
+        </div>
+        <div class="tab-content" id="tab-cell" hidden>
+            <div class="section">
+                <h4>Selected Cell</h4>
+                <div id="cellInfo" style="color:#8892a0">Click a cell on the grid to inspect it.</div>
+            </div>
+        </div>
+        <div class="tab-content" id="tab-legend" hidden>
+            <div class="section">
+                <h4>Cell Colors</h4>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    <div class="legend-item"><div class="legend-swatch" style="background:#06b6d4"></div> Start Node</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> Goal Node</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#1e4d8c"></div> Open Set (frontier)</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#2d3748"></div> Closed Set (visited)</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> Final Path</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#3d1111"></div> Blocked Cell</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24"></div> Currently Expanding</div>
+                    <div class="legend-item"><div class="legend-swatch" style="background:#1a1a2e"></div> Unexplored</div>
+                </div>
+            </div>
+            <div class="section">
+                <h4>Heatmap Mode</h4>
+                <div style="color:#8892a0;font-size:11px">Click 🌡 Heatmap to overlay g-score gradient on the grid. Brighter = higher cost from start.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="heatmap-panel">
+        <h3>Frame Performance</h3>
+        <canvas class="heatmap-canvas" id="perfCanvas"></canvas>
+        <div class="legend-row">
+            <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div> Iterations</div>
+            <div class="legend-item"><div class="legend-swatch" style="background:#8b5cf6"></div> Open Set</div>
+            <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b;opacity:0.5"></div> Budget Limit</div>
+        </div>
+    </div>
+
+    <div class="history-panel">
+        <h3>Search History</h3>
+        <div class="history-entry"><div class="h-dot" style="background:#22c55e"></div><div class="h-info"><div style="font-weight:600">Complete</div><div class="h-meta">F#1204 · 18.0 cost · 312 iter · 89us</div></div></div>
+        <div class="history-entry"><div class="h-dot" style="background:#22c55e"></div><div class="h-info"><div style="font-weight:600">Complete</div><div class="h-meta">F#1180 · 18.0 cost · 312 iter · 91us</div></div></div>
+        <div class="history-entry"><div class="h-dot" style="background:#ef4444"></div><div class="h-info"><div style="font-weight:600;color:#ef4444">Failed</div><div class="h-meta">F#1150 · no path · 2500 iter · 420us</div></div></div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gridCanvas');
+const ctx = canvas.getContext('2d');
+const perfCanvas = document.getElementById('perfCanvas');
+const pctx = perfCanvas.getContext('2d');
+let cellSize = 14, gap = 1, gridW = 50, gridH = 50;
+let offsetX = 10, offsetY = 10, paused = false, showHeatmap = false;
+const blocked = new Set(), closed = new Set(), open = new Set(), path = [];
+const start = 0, goal = gridW*gridH-1;
+let perfData = [];
+
+for(let i=0;i<300;i++){const c=Math.floor(Math.random()*gridW*gridH);if(c!==start&&c!==goal)blocked.add(c);}
+
+let frontier=[{node:start,g:0}],cameFrom=new Map(),gScore=new Map([[start,0]]);
+function expand(){if(frontier.length===0)return;frontier.sort((a,b)=>(a.g+h(a.node))-(b.g+h(b.node)));const cur=frontier.shift();closed.add(cur.node);open.delete(cur.node);if(cur.node===goal){rp();return;}for(const n of nbrs(cur.node)){if(closed.has(n)||blocked.has(n))continue;const ng=cur.g+1;if(!gScore.has(n)||ng<gScore.get(n)){gScore.set(n,ng);cameFrom.set(n,cur.node);frontier.push({node:n,g:ng});open.add(n);}}}
+function nbrs(n){const x=n%gridW,y=Math.floor(n/gridW),r=[];if(x>0)r.push(n-1);if(x<gridW-1)r.push(n+1);if(y>0)r.push(n-gridW);if(y<gridH-1)r.push(n+gridW);return r;}
+function h(n){return Math.abs(n%gridW-goal%gridW)+Math.abs(Math.floor(n/gridW)-Math.floor(goal/gridW));}
+function rp(){path.length=0;let c=goal;while(c!==undefined){path.push(c);c=cameFrom.get(c);}path.reverse();}
+
+function drawGrid(){
+    canvas.width=canvas.parentElement.clientWidth;canvas.height=canvas.parentElement.clientHeight;
+    ctx.fillStyle='#0d0d1a';ctx.fillRect(0,0,canvas.width,canvas.height);
+    const maxG = Math.max(...Array.from(gScore.values()), 1);
+    for(let y=0;y<gridH;y++)for(let x=0;x<gridW;x++){
+        const idx=y*gridW+x,px=offsetX+x*(cellSize+gap),py=offsetY+y*(cellSize+gap);
+        if(px+cellSize<0||py+cellSize<0||px>canvas.width||py>canvas.height)continue;
+        let color='#1a1a2e';
+        if(showHeatmap && gScore.has(idx) && !blocked.has(idx)){
+            const t=gScore.get(idx)/maxG;
+            const r=Math.round(30+t*200),g2=Math.round(30+t*50),b=Math.round(80-t*40);
+            color=`rgb(${r},${g2},${b})`;
+        } else {
+            if(blocked.has(idx))color='#3d1111';else if(idx===start)color='#06b6d4';else if(idx===goal)color='#f59e0b';
+            else if(path.includes(idx))color='#22c55e';else if(open.has(idx))color='#1e4d8c';else if(closed.has(idx))color='#2d3748';
+        }
+        ctx.fillStyle=color;ctx.fillRect(px,py,cellSize,cellSize);
+    }
+    if(!showHeatmap&&path.length>1){ctx.strokeStyle='#22c55e';ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<path.length;i++){const x2=(path[i]%gridW)*(cellSize+gap)+offsetX+cellSize/2,y2=Math.floor(path[i]/gridW)*(cellSize+gap)+offsetY+cellSize/2;if(i===0)ctx.moveTo(x2,y2);else ctx.lineTo(x2,y2);}ctx.stroke();}
+}
+
+function drawPerf(){
+    perfCanvas.width=perfCanvas.parentElement.clientWidth;perfCanvas.height=perfCanvas.parentElement.clientHeight-30;
+    pctx.fillStyle='#16213e';pctx.fillRect(0,0,perfCanvas.width,perfCanvas.height);
+    const maxVal=Math.max(64,...perfData.map(d=>d.iter));
+    const barW=Math.max(2,perfCanvas.width/80);
+    const startIdx=Math.max(0,perfData.length-80);
+    for(let i=startIdx;i<perfData.length;i++){
+        const x=(i-startIdx)*barW;
+        const hI=perfData[i].iter/maxVal*perfCanvas.height*0.8;
+        const hO=perfData[i].open/Math.max(1,maxVal*3)*perfCanvas.height*0.8;
+        pctx.fillStyle='rgba(59,130,246,0.6)';pctx.fillRect(x,perfCanvas.height-hI,barW-1,hI);
+        pctx.fillStyle='rgba(139,92,246,0.4)';pctx.fillRect(x,perfCanvas.height-hO,barW-1,hO);
+    }
+    pctx.strokeStyle='rgba(245,158,11,0.3)';pctx.setLineDash([4,4]);pctx.beginPath();
+    pctx.moveTo(0,perfCanvas.height*0.2);pctx.lineTo(perfCanvas.width,perfCanvas.height*0.2);pctx.stroke();pctx.setLineDash([]);
+}
+
+function updateStats(){
+    document.getElementById('msIter').textContent=closed.size;
+    document.getElementById('msOpen').textContent=open.size;
+    document.getElementById('msClosed').textContent=closed.size;
+    const reachable=gridW*gridH-blocked.size;
+    const pct=Math.round(closed.size/reachable*100);
+    document.getElementById('exploreFill').style.width=pct+'%';
+    document.getElementById('explorePct').textContent=pct+'%';
+    const bPct=Math.min(100,Math.round(pct*2.5));
+    document.getElementById('budgetFill').style.width=bPct+'%';
+    document.getElementById('budgetPct').textContent=bPct+'%';
+    document.getElementById('budgetFill').style.background=bPct>90?'#ef4444':bPct>70?'#f59e0b':'#3b82f6';
+    if(path.length>0){document.getElementById('msPath').textContent=path.length;document.getElementById('costVal').textContent=(path.length-1)+'.0';
+    document.getElementById('toolbarBadge').textContent='Complete';document.getElementById('toolbarBadge').className='status-badge badge-complete';}
+}
+
+function animate(){
+    if(!paused&&path.length===0){for(let i=0;i<16;i++)expand();perfData.push({iter:16,open:open.size});}
+    drawGrid();drawPerf();updateStats();requestAnimationFrame(animate);
+}
+
+function switchTab(id,el){document.querySelectorAll('.tab-content').forEach(t=>t.hidden=true);document.getElementById('tab-'+id).hidden=false;
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+function togglePause(){paused=!paused;}
+function stepOnce(){paused=true;for(let i=0;i<16;i++)expand();perfData.push({iter:16,open:open.size});}
+function resetSearch(){closed.clear();open.clear();path.length=0;frontier=[{node:start,g:0}];cameFrom=new Map();gScore=new Map([[start,0]]);paused=false;perfData=[];
+document.getElementById('toolbarBadge').textContent='InProgress';document.getElementById('toolbarBadge').className='status-badge badge-progress';
+document.getElementById('msPath').textContent='—';document.getElementById('costVal').textContent='—';}
+function toggleHeatmap(){showHeatmap=!showHeatmap;}
+
+let dragging=false,dx,dy;
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('mousedown',e=>{if(e.button===2){dragging=true;dx=e.clientX-offsetX;dy=e.clientY-offsetY;}});
+canvas.addEventListener('mousemove',e=>{if(dragging){offsetX=e.clientX-dx;offsetY=e.clientY-dy;}});
+canvas.addEventListener('mouseup',e=>{if(e.button===2)dragging=false;});
+canvas.addEventListener('wheel',e=>{e.preventDefault();cellSize=Math.max(4,Math.min(48,cellSize+(e.deltaY>0?-2:2)));});
+
+canvas.addEventListener('click',e=>{
+    const rect=canvas.getBoundingClientRect(),mx=e.clientX-rect.left-offsetX,my=e.clientY-rect.top-offsetY;
+    const cx=Math.floor(mx/(cellSize+gap)),cy=Math.floor(my/(cellSize+gap));
+    if(cx>=0&&cx<gridW&&cy>=0&&cy<gridH){
+        const idx=cy*gridW+cx,g=gScore.has(idx)?gScore.get(idx).toFixed(1):'—',f=gScore.has(idx)?(gScore.get(idx)+h(idx)).toFixed(1):'—';
+        const parent=cameFrom.has(idx)?cameFrom.get(idx):'none';
+        const state=blocked.has(idx)?'Blocked':path.includes(idx)?'Path':closed.has(idx)?'Closed':open.has(idx)?'Open':'Empty';
+        document.getElementById('cellInfo').innerHTML=
+            `<div style="font-weight:600;color:#f59e0b;margin-bottom:8px">Cell (${cx}, ${cy}) — #${idx}</div>`+
+            `<div class="stat-row"><span class="stat-label">State</span><span class="stat-value">${state}</span></div>`+
+            `<div class="stat-row"><span class="stat-label">G-Score</span><span class="stat-value">${g}</span></div>`+
+            `<div class="stat-row"><span class="stat-label">F-Score</span><span class="stat-value">${f}</span></div>`+
+            `<div class="stat-row"><span class="stat-label">Parent</span><span class="stat-value">${parent}</span></div>`;
+        switchTab('cell',document.querySelectorAll('.tab')[1]);
+    }
+});
+
+animate();
+</script>
+</body>
+</html>

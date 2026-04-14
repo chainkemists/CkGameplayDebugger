@@ -332,7 +332,6 @@ auto
                 auto CondInfo = FCkSmDebugger_ConditionInfo{};
                 CondInfo.ClassName = CachedCondition.ClassName;
                 CondInfo.Mode = CachedCondition.Mode;
-                CondInfo.ResetBehavior = CachedCondition.ResetBehavior;
                 CondInfo.Result = ECk_SmConditionResult::Undetermined;
                 TransInfo.Conditions.Add(MoveTemp(CondInfo));
             }
@@ -347,7 +346,8 @@ auto
     }
 
     // Recursively merge sub-SM states into the parent SmInfo
-    MergeSubStateMachines(SmInfo, StateClassToIndex);
+    auto SubSmHistories = TArray<FCkSmDebugger_HistoryEntry>{};
+    MergeSubStateMachines(SmInfo, StateClassToIndex, SubSmHistories);
 
     // Overlay live condition satisfaction for the current state's transitions
     auto CurrentStateHandle = Current.Get_CurrentStateHandle();
@@ -367,6 +367,7 @@ auto
         auto ViewerEntry = FCkSmDebugger_HistoryEntry{};
         ViewerEntry.FromStateName = HistoryEntry.FromStateName;
         ViewerEntry.ToStateName = HistoryEntry.ToStateName;
+        ViewerEntry.SubSmParentStateName = HistoryEntry.SubSmParentStateName;
         ViewerEntry.FrameNumber = HistoryEntry.FrameNumber;
         ViewerEntry.ConditionNames = HistoryEntry.TransitionConditionNames;
         ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistoryEntry.RealTimeSeconds);
@@ -449,6 +450,16 @@ auto
         {
             SmInfo.States[*FirstToIndex].HasBeenVisited = true;
         }
+    }
+
+    // Merge sub-SM history entries and sort chronologically
+    if (NOT SubSmHistories.IsEmpty())
+    {
+        SmInfo.History.Append(MoveTemp(SubSmHistories));
+        SmInfo.History.Sort([](const FCkSmDebugger_HistoryEntry& A, const FCkSmDebugger_HistoryEntry& B)
+        {
+            return A.RealTimeSeconds < B.RealTimeSeconds;
+        });
     }
 
     // Build CurrentRun from live history
@@ -608,6 +619,7 @@ auto
     MergeSubStateMachines(
         FCkSmDebugger_SmInfo& InOutSmInfo,
         TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
+        TArray<FCkSmDebugger_HistoryEntry>& OutSubSmHistories,
         int32 InDepth,
         int32 InScanFrom)
     -> void
@@ -663,13 +675,20 @@ auto
                 SubTransition.IsSubSmTransition = true;
                 InOutSmInfo.Transitions.Add(MoveTemp(SubTransition));
             }
+
+            // Collect sub-SM history for later merge (after parent dwell-time computation)
+            for (auto& SubEntry : SubSmInfo.History)
+            {
+                SubEntry.SubSmParentStateName = State.StateName;
+                OutSubSmHistories.Add(MoveTemp(SubEntry));
+            }
         }
     }
 
     // Recurse for nested sub-SMs — only scan newly added states to avoid re-merging
     if (InOutSmInfo.States.Num() > OriginalStateCount)
     {
-        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, InDepth + 1, OriginalStateCount);
+        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, OutSubSmHistories, InDepth + 1, OriginalStateCount);
     }
 }
 

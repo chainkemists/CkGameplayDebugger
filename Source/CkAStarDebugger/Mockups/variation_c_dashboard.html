@@ -20,21 +20,13 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', Consolas, m
 .grid-panel { background: #0d0d1a; position: relative; overflow: hidden; grid-row: 1; grid-column: 1; }
 .grid-canvas { width: 100%; height: 100%; }
 
-.info-panel { background: #16213e; grid-row: 1; grid-column: 2; overflow-y: auto; }
+.info-panel { background: #16213e; grid-row: 1; grid-column: 2; overflow-y: auto; padding: 12px; }
 
 .heatmap-panel { background: #16213e; grid-row: 2; grid-column: 1; padding: 12px; overflow: hidden; }
 .heatmap-panel h3 { color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
 
 .history-panel { background: #16213e; grid-row: 2; grid-column: 2; padding: 12px; overflow-y: auto; }
 .history-panel h3 { color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-
-/* Info panel tabs */
-.tab-bar { display: flex; border-bottom: 1px solid #2a2a4e; }
-.tab { flex: 1; text-align: center; padding: 8px; cursor: pointer; color: #8892a0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid transparent; }
-.tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-.tab:hover { color: #e0e0e0; }
-.tab-content { padding: 12px; }
-.tab-content[hidden] { display: none; }
 
 .section { margin-bottom: 16px; }
 .section h4 { color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
@@ -59,12 +51,17 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', Consolas, m
 .h-info { flex: 1; }
 .h-meta { color: #8892a0; font-size: 10px; }
 
-/* Heatmap */
 .heatmap-canvas { width: 100%; height: calc(100% - 30px); }
 
 .legend-row { display: flex; gap: 12px; margin-top: 4px; }
 .legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #8892a0; }
 .legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+.cell-detail { background: #1a1a2e; border-radius: 4px; padding: 8px; }
+.cell-detail .cd-title { color: #f59e0b; font-weight: 600; margin-bottom: 4px; }
+.cell-detail .cd-placeholder { color: #4a5568; font-style: italic; }
+
+.legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 </style>
 </head>
 <body>
@@ -90,64 +87,60 @@ body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', Consolas, m
     </div>
 
     <div class="info-panel">
-        <div class="tab-bar">
-            <div class="tab active" onclick="switchTab('stats',this)">Stats</div>
-            <div class="tab" onclick="switchTab('cell',this)">Cell</div>
-            <div class="tab" onclick="switchTab('legend',this)">Legend</div>
+        <!-- Stats summary -->
+        <div class="mini-grid" style="margin-bottom:12px">
+            <div class="mini-stat"><div class="ms-value in-progress" id="msIter">0</div><div class="ms-label">Iterations</div></div>
+            <div class="mini-stat"><div class="ms-value" id="msOpen">0</div><div class="ms-label">Open</div></div>
+            <div class="mini-stat"><div class="ms-value" id="msClosed">0</div><div class="ms-label">Closed</div></div>
+            <div class="mini-stat"><div class="ms-value" id="msPath">—</div><div class="ms-label">Path</div></div>
         </div>
-        <div class="tab-content" id="tab-stats">
-            <div class="mini-grid" style="margin-bottom:12px">
-                <div class="mini-stat"><div class="ms-value in-progress" id="msIter">0</div><div class="ms-label">Iterations</div></div>
-                <div class="mini-stat"><div class="ms-value" id="msOpen">0</div><div class="ms-label">Open</div></div>
-                <div class="mini-stat"><div class="ms-value" id="msClosed">0</div><div class="ms-label">Closed</div></div>
-                <div class="mini-stat"><div class="ms-value" id="msPath">—</div><div class="ms-label">Path</div></div>
-            </div>
-            <div class="section">
-                <h4>Budget Usage</h4>
-                <div class="meter">
-                    <div class="meter-bar"><div class="meter-fill" id="budgetFill" style="width:0%;background:#3b82f6"></div></div>
-                    <span class="meter-label" id="budgetPct">0%</span>
-                </div>
-            </div>
-            <div class="section">
-                <h4>Exploration</h4>
-                <div class="meter">
-                    <div class="meter-bar"><div class="meter-fill" id="exploreFill" style="width:0%;background:#8b5cf6"></div></div>
-                    <span class="meter-label" id="explorePct">0%</span>
-                </div>
-            </div>
-            <div class="section">
-                <h4>Details</h4>
-                <div class="stat-row"><span class="stat-label">Grid</span><span class="stat-value">50 x 50</span></div>
-                <div class="stat-row"><span class="stat-label">Blocked</span><span class="stat-value" id="blockedVal">300</span></div>
-                <div class="stat-row"><span class="stat-label">Cost</span><span class="stat-value" id="costVal">—</span></div>
-                <div class="stat-row"><span class="stat-label">Time</span><span class="stat-value" id="timeVal">0 us</span></div>
-                <div class="stat-row"><span class="stat-label">Threshold</span><span class="stat-value">disabled</span></div>
+
+        <!-- Budget -->
+        <div class="section">
+            <h4>Budget Usage</h4>
+            <div class="meter">
+                <div class="meter-bar"><div class="meter-fill" id="budgetFill" style="width:0%;background:#3b82f6"></div></div>
+                <span class="meter-label" id="budgetPct">0%</span>
             </div>
         </div>
-        <div class="tab-content" id="tab-cell" hidden>
-            <div class="section">
-                <h4>Selected Cell</h4>
-                <div id="cellInfo" style="color:#8892a0">Click a cell on the grid to inspect it.</div>
+
+        <!-- Exploration -->
+        <div class="section">
+            <h4>Exploration</h4>
+            <div class="meter">
+                <div class="meter-bar"><div class="meter-fill" id="exploreFill" style="width:0%;background:#8b5cf6"></div></div>
+                <span class="meter-label" id="explorePct">0%</span>
             </div>
         </div>
-        <div class="tab-content" id="tab-legend" hidden>
-            <div class="section">
-                <h4>Cell Colors</h4>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                    <div class="legend-item"><div class="legend-swatch" style="background:#06b6d4"></div> Start Node</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> Goal Node</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#1e4d8c"></div> Open Set (frontier)</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#2d3748"></div> Closed Set (visited)</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> Final Path</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#3d1111"></div> Blocked Cell</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#fbbf24"></div> Currently Expanding</div>
-                    <div class="legend-item"><div class="legend-swatch" style="background:#1a1a2e"></div> Unexplored</div>
-                </div>
+
+        <!-- Details -->
+        <div class="section">
+            <h4>Details</h4>
+            <div class="stat-row"><span class="stat-label">Grid</span><span class="stat-value">50 x 50</span></div>
+            <div class="stat-row"><span class="stat-label">Blocked</span><span class="stat-value" id="blockedVal">300</span></div>
+            <div class="stat-row"><span class="stat-label">Cost</span><span class="stat-value" id="costVal">—</span></div>
+            <div class="stat-row"><span class="stat-label">Time</span><span class="stat-value" id="timeVal">0 us</span></div>
+            <div class="stat-row"><span class="stat-label">Threshold</span><span class="stat-value">disabled</span></div>
+        </div>
+
+        <!-- Selected Cell -->
+        <div class="section">
+            <h4>Selected Cell</h4>
+            <div class="cell-detail" id="cellDetail">
+                <div class="cd-placeholder">Click a cell on the grid to inspect it</div>
             </div>
-            <div class="section">
-                <h4>Heatmap Mode</h4>
-                <div style="color:#8892a0;font-size:11px">Click 🌡 Heatmap to overlay g-score gradient on the grid. Brighter = higher cost from start.</div>
+        </div>
+
+        <!-- Legend -->
+        <div class="section">
+            <h4>Legend</h4>
+            <div class="legend-grid">
+                <div class="legend-item"><div class="legend-swatch" style="background:#06b6d4"></div> Start</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> Goal</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:#1e4d8c"></div> Open Set</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:#2d3748"></div> Closed Set</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:#22c55e"></div> Path</div>
+                <div class="legend-item"><div class="legend-swatch" style="background:#3d1111"></div> Blocked</div>
             </div>
         </div>
     </div>
@@ -249,13 +242,12 @@ function animate(){
     drawGrid();drawPerf();updateStats();requestAnimationFrame(animate);
 }
 
-function switchTab(id,el){document.querySelectorAll('.tab-content').forEach(t=>t.hidden=true);document.getElementById('tab-'+id).hidden=false;
-document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
 function togglePause(){paused=!paused;}
 function stepOnce(){paused=true;for(let i=0;i<16;i++)expand();perfData.push({iter:16,open:open.size});}
 function resetSearch(){closed.clear();open.clear();path.length=0;frontier=[{node:start,g:0}];cameFrom=new Map();gScore=new Map([[start,0]]);paused=false;perfData=[];
 document.getElementById('toolbarBadge').textContent='InProgress';document.getElementById('toolbarBadge').className='status-badge badge-progress';
-document.getElementById('msPath').textContent='—';document.getElementById('costVal').textContent='—';}
+document.getElementById('msPath').textContent='—';document.getElementById('costVal').textContent='—';
+document.getElementById('cellDetail').innerHTML='<div class="cd-placeholder">Click a cell on the grid to inspect it</div>';}
 function toggleHeatmap(){showHeatmap=!showHeatmap;}
 
 let dragging=false,dx,dy;
@@ -272,13 +264,12 @@ canvas.addEventListener('click',e=>{
         const idx=cy*gridW+cx,g=gScore.has(idx)?gScore.get(idx).toFixed(1):'—',f=gScore.has(idx)?(gScore.get(idx)+h(idx)).toFixed(1):'—';
         const parent=cameFrom.has(idx)?cameFrom.get(idx):'none';
         const state=blocked.has(idx)?'Blocked':path.includes(idx)?'Path':closed.has(idx)?'Closed':open.has(idx)?'Open':'Empty';
-        document.getElementById('cellInfo').innerHTML=
-            `<div style="font-weight:600;color:#f59e0b;margin-bottom:8px">Cell (${cx}, ${cy}) — #${idx}</div>`+
+        document.getElementById('cellDetail').innerHTML=
+            `<div class="cd-title">Cell (${cx}, ${cy}) — #${idx}</div>`+
             `<div class="stat-row"><span class="stat-label">State</span><span class="stat-value">${state}</span></div>`+
             `<div class="stat-row"><span class="stat-label">G-Score</span><span class="stat-value">${g}</span></div>`+
             `<div class="stat-row"><span class="stat-label">F-Score</span><span class="stat-value">${f}</span></div>`+
             `<div class="stat-row"><span class="stat-label">Parent</span><span class="stat-value">${parent}</span></div>`;
-        switchTab('cell',document.querySelectorAll('.tab')[1]);
     }
 });
 

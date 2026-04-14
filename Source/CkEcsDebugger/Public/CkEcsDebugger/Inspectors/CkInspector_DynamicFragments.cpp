@@ -248,10 +248,12 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         {
             const auto* HandlePtr = StructProp->ContainerPtrToValuePtr<FCk_Handle>(StructMemory);
             const auto HandleValue = *HandlePtr;
-            const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(HandleValue);
-            const auto DisplayStr = DebugName.IsNone()
-                ? (ck::IsValid(HandleValue) ? *ck::Format_UE(TEXT("[{}]"), HandleValue) : TEXT("(Invalid)"))
-                : DebugName.ToString();
+            const auto DisplayStr = [&]() -> FString
+            {
+                if (ck::Is_NOT_Valid(HandleValue)) { return TEXT("(Invalid)"); }
+                const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(HandleValue);
+                return DebugName.IsNone() ? *ck::Format_UE(TEXT("[{}]"), HandleValue) : DebugName.ToString();
+            }();
 
             auto WeakSelectionModel = SelectionModel;
 

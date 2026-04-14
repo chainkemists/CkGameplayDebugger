@@ -233,8 +233,10 @@ auto
                                                 .Text_Lambda([this, InItem]()
                                                 {
                                                     auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                                    return FText::FromString(
-                                                        FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D));
+                                                    auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
+                                                    if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                                    { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                                    return FText::FromString(Name);
                                                 })
                                                 .ColorAndOpacity(ToColor)
                                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
@@ -270,8 +272,10 @@ auto
                                                 .Text_Lambda([this, InItem]()
                                                 {
                                                     auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                                    return FText::FromString(
-                                                        FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D));
+                                                    auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
+                                                    if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                                    { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                                    return FText::FromString(Name);
                                                 })
                                                 .ColorAndOpacity(FromColor)
                                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
@@ -385,8 +389,10 @@ auto
                                         .Text_Lambda([this, InItem]()
                                         {
                                             auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            return FText::FromString(
-                                                FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D));
+                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
+                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                            return FText::FromString(Name);
                                         })
                                         .ColorAndOpacity(ToColor)
                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
@@ -421,8 +427,10 @@ auto
                                         .Text_Lambda([this, InItem]()
                                         {
                                             auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            return FText::FromString(
-                                                FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D));
+                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
+                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                            return FText::FromString(Name);
                                         })
                                         .ColorAndOpacity(FromColor)
                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
@@ -535,8 +543,10 @@ auto
                                         .Text_Lambda([this, InItem]()
                                         {
                                             auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            return FText::FromString(
-                                                FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D));
+                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
+                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                            return FText::FromString(Name);
                                         })
                                         .ColorAndOpacity(ToColor)
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
@@ -571,8 +581,10 @@ auto
                                         .Text_Lambda([this, InItem]()
                                         {
                                             auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            return FText::FromString(
-                                                FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D));
+                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
+                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
+                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
+                                            return FText::FromString(Name);
                                         })
                                         .ColorAndOpacity(FromColor)
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))

@@ -575,27 +575,117 @@ auto
 		const FName& InProcessorName)
 	-> FString
 {
-	auto NameStr = InProcessorName.ToString();
+	// The canonical name comes from entt::type_name and looks like:
+	//   "class ck::FProcessor_Inventory_HandleRequests"
+	//   "class ck::TProcessor_AttributeModifier_EndPlayAll_CurrentMinMax<struct ck::TFragment_ByteAttributeModifier>"
+	//   "class ck::TProcessor_Attribute_Replicate_All<struct ck::TFragment_ByteAttribute,struct FCk_RepData_ByteAttributes>"
+	//   "class ck::TProcessor_SceneNode_Update<struct ck::FTag_SceneNode_Layer0>"
+	//
+	// Goal:
+	//   Inventory: HandleRequests
+	//   AttributeModifier_EndPlayAll: CurrentMinMax<Byte>
+	//   Attribute_Replicate: All<Byte>
+	//   SceneNode: Update<Layer0>
 
-	NameStr.RemoveFromStart(TEXT("FProcessor_"));
-	NameStr.RemoveFromStart(TEXT("F"));
+	auto StripNamespaceDecorations = [](FString& InOut)
+	{
+		InOut.RemoveFromStart(TEXT("class "));
+		InOut.RemoveFromStart(TEXT("struct "));
+		InOut.RemoveFromStart(TEXT("ck::"));
+	};
+
+	auto SimplifyTemplateArg = [&](FString InArg) -> FString
+	{
+		InArg.TrimStartAndEndInline();
+		StripNamespaceDecorations(InArg);
+		InArg.RemoveFromStart(TEXT("TFragment_"));
+		InArg.RemoveFromStart(TEXT("FFragment_"));
+		InArg.RemoveFromStart(TEXT("FTag_"));
+		InArg.RemoveFromStart(TEXT("FCk_"));
+
+		// Strip common noisy suffixes so e.g. ByteAttributeModifier → Byte, FloatAttribute → Float.
+		const auto TrySuffixStrip = [&](const TCHAR* Suffix) -> bool
+		{
+			if (InArg.EndsWith(Suffix))
+			{
+				InArg.LeftChopInline(FCString::Strlen(Suffix));
+				return true;
+			}
+			return false;
+		};
+
+		if (NOT TrySuffixStrip(TEXT("AttributeModifier"))
+			&& NOT TrySuffixStrip(TEXT("Attribute")))
+		{
+			// For names like "SceneNode_Layer0", keep only the final _-separated segment.
+			int32 UnderscoreIdx = INDEX_NONE;
+			if (InArg.FindLastChar(TCHAR('_'), UnderscoreIdx))
+			{
+				InArg = InArg.Mid(UnderscoreIdx + 1);
+			}
+		}
+
+		return InArg;
+	};
+
+	auto NameStr = InProcessorName.ToString();
+	StripNamespaceDecorations(NameStr);
+
+	// Split off the first template argument (if present) so the main name is free of angle brackets.
+	auto MainName     = NameStr;
+	auto TemplateArg  = FString{};
+	int32 TemplateOpen = INDEX_NONE;
+	if (NameStr.FindChar(TCHAR('<'), TemplateOpen))
+	{
+		MainName = NameStr.Left(TemplateOpen);
+
+		auto ArgsStr = NameStr.Mid(TemplateOpen + 1);
+		if (ArgsStr.EndsWith(TEXT(">")))
+		{ ArgsStr.LeftChopInline(1); }
+
+		// Only surface the first argument; the rest (e.g. FCk_RepData_*) is redundant for display.
+		int32 CommaIdx = INDEX_NONE;
+		if (ArgsStr.FindChar(TCHAR(','), CommaIdx))
+		{
+			ArgsStr = ArgsStr.Left(CommaIdx);
+		}
+
+		TemplateArg = SimplifyTemplateArg(MoveTemp(ArgsStr));
+	}
+
+	MainName.RemoveFromStart(TEXT("FProcessor_"));
+	MainName.RemoveFromStart(TEXT("TProcessor_"));
+	MainName.RemoveFromStart(TEXT("F"));
 
 	TArray<FString> Segments;
-	NameStr.ParseIntoArray(Segments, TEXT("_"));
+	MainName.ParseIntoArray(Segments, TEXT("_"));
 
+	auto Display = FString{};
 	if (Segments.Num() >= 2)
 	{
-		return FString::Printf(TEXT("%s: %s"),
-			*Segments[Segments.Num() - 2],
-			*Segments[Segments.Num() - 1]);
+		// Join all but the last segment with '_' as the Category, and the final segment as the Action.
+		// For two-segment names this yields "Inventory: HandleRequests"; for three-plus-segment names
+		// it yields "AttributeModifier_EndPlayAll: CurrentMinMax" — which preserves the full category
+		// path rather than collapsing to a misleading suffix-only pair.
+		const auto Category = FString::Join(
+			TArrayView<const FString>(Segments.GetData(), Segments.Num() - 1), TEXT("_"));
+		Display = FString::Printf(TEXT("%s: %s"), *Category, *Segments.Last());
 	}
-
-	if (Segments.Num() == 1)
+	else if (Segments.Num() == 1)
 	{
-		return Segments[0];
+		Display = Segments[0];
+	}
+	else
+	{
+		Display = MainName;
 	}
 
-	return NameStr;
+	if (NOT TemplateArg.IsEmpty())
+	{
+		Display = FString::Printf(TEXT("%s<%s>"), *Display, *TemplateArg);
+	}
+
+	return Display;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

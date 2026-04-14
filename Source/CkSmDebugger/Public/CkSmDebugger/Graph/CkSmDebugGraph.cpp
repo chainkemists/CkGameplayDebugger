@@ -22,6 +22,13 @@ auto
 
     Nodes.Empty();
 
+    // Clear sub-SM cache when switching to a different SM so stale topology doesn't leak across
+    if (InSmInfo.Handle != _CachedSubSmOwner)
+    {
+        _CachedSubSmData.Reset();
+        _CachedSubSmOwner = InSmInfo.Handle;
+    }
+
     // ================================================================================================================
     // Pre-pass: Inject cached sub-SM data for parent states whose sub-SM is not currently running.
     // This keeps compound blocks always visible regardless of sub-SM lifecycle.

@@ -128,6 +128,9 @@ private:
     // Cached transition info for the connection policy to read
     TArray<FCkSmDebugger_TransitionInfo> _TransitionData;
 
+    // Tracks which SM the cache belongs to — cleared when SM switches
+    FCk_Handle_StateMachine _CachedSubSmOwner;
+
     // Cached sub-SM topology — persists across rebuilds so compound blocks remain
     // visible even when the sub-SM entity is not running
     struct FCachedSubSmData

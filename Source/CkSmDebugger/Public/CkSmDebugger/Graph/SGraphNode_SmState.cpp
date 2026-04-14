@@ -283,18 +283,6 @@ auto
     if (NOT _StateNode)
     { return; }
 
-    if (_StateNode->Get_IsCurrentState())
-    {
-        auto DwellStr = FString::Printf(
-            TEXT("100.0%%\nActive for %.2f secs"),
-            _StateNode->Get_DwellTimeSeconds());
-
-        OutPopups.Emplace(
-            nullptr,
-            FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder,
-            DwellStr);
-    }
-
 }
 
 // --------------------------------------------------------------------------------------------------------------------

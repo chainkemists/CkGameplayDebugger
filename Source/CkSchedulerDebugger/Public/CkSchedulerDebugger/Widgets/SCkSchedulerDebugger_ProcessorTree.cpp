@@ -1,6 +1,7 @@
 #include "SCkSchedulerDebugger_ProcessorTree.h"
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -726,7 +727,7 @@ auto
 			if (InGetTime(Proc) <= 0.0) { continue; }
 			if (_BreakdownHideIdle && InGetCount(Proc) == 0) { continue; }
 			if (NOT _BreakdownFilterString.IsEmpty()
-				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+				&& NOT ck::fuzzy::Match(_BreakdownFilterString, Proc.DisplayName, {}).Get_IsMatch())
 			{ continue; }
 			Result.Add(MemberProcIdx);
 		}
@@ -859,7 +860,7 @@ auto
 			if (Proc.MainPassTimeMs > 0.0 && NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
 			{
 				if (_BreakdownFilterString.IsEmpty()
-					|| Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+					|| ck::fuzzy::Match(_BreakdownFilterString, Proc.DisplayName, {}).Get_IsMatch())
 				{
 					TotalMs += Proc.MainPassTimeMs;
 					TotalCount++;
@@ -905,7 +906,7 @@ auto
 					&& NOT Proc.IsGroupStart && NOT Proc.IsGroupEnd && NOT Proc.IsGhost)
 				{
 					if (_BreakdownFilterString.IsEmpty()
-						|| Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+						|| ck::fuzzy::Match(_BreakdownFilterString, Proc.DisplayName, {}).Get_IsMatch())
 					{
 						PassTotalMs += Proc.PumpPassTimesMs[PassIdx];
 						PassCount++;
@@ -982,7 +983,7 @@ auto
 		if (Proc.PumpCountThisFrame > 0 && Proc.HasDirtyMarker)
 		{
 			if (NOT _BreakdownFilterString.IsEmpty()
-				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
+				&& NOT ck::fuzzy::Match(_BreakdownFilterString, Proc.DisplayName, {}).Get_IsMatch())
 			{ continue; }
 
 			MarkerGroups.FindOrAdd(Proc.DirtyMarkerHash).Add(ProcIdx);
@@ -1311,7 +1312,9 @@ auto
 		const FString& InFilter) const
 	-> bool
 {
-	return InNode.DisplayName.Contains(InFilter, ESearchCase::IgnoreCase);
+	if (InFilter.IsEmpty())
+	{ return true; }
+	return ck::fuzzy::Match(InFilter, InNode.DisplayName, {}).Get_IsMatch();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

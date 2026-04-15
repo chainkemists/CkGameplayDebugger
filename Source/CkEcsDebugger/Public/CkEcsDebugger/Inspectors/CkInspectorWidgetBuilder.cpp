@@ -1,6 +1,7 @@
 #include "CkInspectorWidgetBuilder.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
@@ -196,7 +197,7 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
 
     for (const auto& RowDef : Rows)
     {
-        if (HasFilter && NOT RowDef.Label.ToString().Contains(InFilter, ESearchCase::IgnoreCase))
+        if (HasFilter && NOT ck::fuzzy::Match(InFilter, RowDef.Label.ToString(), {}).Get_IsMatch())
         { continue; }
 
         if (RowDef.IsHeader)

@@ -1,6 +1,7 @@
 #include "CkUIDebugger/Window/SCkUIDebuggerWindow.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
 #include "CkUI/Layout/CkUI_PrimaryGameLayout.h"
 #include "CkUI/Layout/CkUI_LayerStack.h"
@@ -847,7 +848,7 @@ auto
     if (_SearchFilter.IsEmpty())
     { return true; }
 
-    return InLayerTag.Contains(_SearchFilter, ESearchCase::IgnoreCase);
+    return ck::fuzzy::Match(_SearchFilter, InLayerTag, {}).Get_IsMatch();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

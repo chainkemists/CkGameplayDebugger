@@ -32,6 +32,13 @@ public:
 	auto Get_FrameSnapshots() const -> const TArray<FCkSchedulerDebugger_FrameSnapshotInfo>&;
 	auto Get_FrameSnapshotCount() const -> int32;
 
+	/**
+	 * True if the frame at history index InSnapshotIdx contains a processor whose
+	 * display name contains InFilter (case-insensitive). Indices match Get_FrameSnapshots().
+	 * Returns false when InFilter is empty or index is out of range.
+	 */
+	auto FrameContainsProcessor(int32 InSnapshotIdx, const FString& InFilter) const -> bool;
+
 	/** Overwrites processor timing data with a historical frame. InOffset=0 means latest, 1=one frame back, etc. */
 	auto ApplyFrameSnapshot(int32 InOffset) -> void;
 

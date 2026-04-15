@@ -1,10 +1,13 @@
 #include "CkSchedulerDebugger_DataCollector.h"
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 #include "CkEcs/Scheduler/CkProcessorScheduler.h"
 #include "CkEcs/Scheduler/CkSchedulerDebugData.h"
+
+// --------------------------------------------------------------------------------------------------------------------
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -184,7 +187,7 @@ auto
 			Info.PumpPassEntityCounts = Timing.PumpPassEntityCounts;
 		}
 
-		constexpr auto MaxHistoryFrames = 300;
+		constexpr auto MaxHistoryFrames = 3000;
 		const auto HistoryStart = FMath::Max(0, FrameHistory.Num() - MaxHistoryFrames);
 		for (auto FrameIdx = HistoryStart; FrameIdx < FrameHistory.Num(); ++FrameIdx)
 		{
@@ -820,6 +823,51 @@ auto
 	-> int32
 {
 	return _FrameSnapshots.Num();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_DataCollector::
+	FrameContainsProcessor(
+		int32 InSnapshotIdx,
+		const FString& InFilter) const
+	-> bool
+{
+#if !UE_BUILD_SHIPPING
+	if (InFilter.IsEmpty())
+	{ return false; }
+
+	if (_CachedSchedulerHistories.Num() == 0)
+	{ return false; }
+
+	// _FrameSnapshots is built from _CachedSchedulerHistories[0] 1:1, so indices align.
+	const auto& PrimaryHistory = _CachedSchedulerHistories[0].Snapshots;
+	if (NOT PrimaryHistory.IsValidIndex(InSnapshotIdx))
+	{ return false; }
+
+	const auto& Timings = PrimaryHistory[InSnapshotIdx].ProcessorTimings;
+	for (const auto& Timing : Timings)
+	{
+		// Only match processors that processed at least 1 entity this frame
+		// (main pass or any pump pass). Processors with 0 entities are skipped
+		// even if they have non-zero timing overhead.
+		auto EntityCount = Timing.MainPassEntityCount;
+		for (const auto PumpCount : Timing.PumpPassEntityCounts)
+		{
+			EntityCount += PumpCount;
+		}
+		if (EntityCount <= 0)
+		{ continue; }
+
+		const auto Name = Timing.ProcessorName.ToString();
+		if (ck::fuzzy::Match(InFilter, Name, {}).Get_IsMatch())
+		{
+			return true;
+		}
+	}
+#endif
+	return false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

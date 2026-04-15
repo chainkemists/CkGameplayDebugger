@@ -6,6 +6,8 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Layout/SBox.h"
 
+class SCkSchedulerDebugger_FrameHistoryBar;
+
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkSchedulerDebuggerWindow : public SCompoundWidget
@@ -36,10 +38,11 @@ private:
 	TArray<TSharedPtr<ICkSchedulerDebuggerPage>> _Pages;
 	int32 _ActivePageIndex = 0;
 	TSharedPtr<SBox> _ContentContainer;
+	TSharedPtr<SCkSchedulerDebugger_FrameHistoryBar> _FrameHistoryBar;
 
 	TArray<TSharedPtr<FString>> _WorldOptions;
 	int32 _SelectedWorldIndex = 0;
-	int32 _FrameHistoryMaxSize = 300;
+	int32 _FrameHistoryMaxSize = 3000;
 	TWeakObjectPtr<UWorld> _CurrentWorld;
 };
 

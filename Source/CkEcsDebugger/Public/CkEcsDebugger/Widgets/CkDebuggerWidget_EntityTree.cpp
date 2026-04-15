@@ -9,6 +9,7 @@
 #include "Styling/AppStyle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkEcs/Net/CkNet_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -665,7 +666,7 @@ auto SCkDebuggerWidget_EntityTree::DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeN
     { return true; }
 
     const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(InNode->Entity);
-    return DebugName.ToString().Contains(CurrentFilter, ESearchCase::IgnoreCase);
+    return ck::fuzzy::Match(CurrentFilter, DebugName.ToString(), {}).Get_IsMatch();
 }
 
 auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_Handle>& InNewSelection) -> void

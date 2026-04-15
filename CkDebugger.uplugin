@@ -85,6 +85,16 @@
 				"Mac",
 				"Linux"
 			]
+		},
+		{
+			"Name": "CkGoapDebugger",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
 		}
 	],
 	"Plugins": [

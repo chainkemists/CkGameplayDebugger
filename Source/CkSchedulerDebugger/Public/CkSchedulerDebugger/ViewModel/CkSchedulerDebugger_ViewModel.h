@@ -27,6 +27,11 @@ public:
 	auto Get_SelectedFrameOffset() const -> int32;
 	auto Set_SelectedFrameOffset(int32 InOffset) -> void;
 
+	auto Get_SelectedFrameNumber() const -> uint64;
+	auto CycleSelectedFrame(int32 InDirection) -> void;
+	auto GoToOldestFrame() -> void;
+	auto GoToLiveFrame() -> void;
+
 	auto Get_DataCollector() const -> const FCkSchedulerDebugger_DataCollector&;
 
 	auto Set_FrameHistoryMaxSize(UWorld* InWorld, int32 InMaxFrames) -> void;
@@ -40,6 +45,7 @@ private:
 	FCkSchedulerDebugger_DataCollector _DataCollector;
 	int32 _SelectedProcessorIndex = INDEX_NONE;
 	int32 _SelectedFrameOffset = 0;
+	uint64 _SelectedFrameNumber = 0;
 	bool _IsFrozen = false;
 	bool _WasFrozenBeforeFrameScrub = false;
 };

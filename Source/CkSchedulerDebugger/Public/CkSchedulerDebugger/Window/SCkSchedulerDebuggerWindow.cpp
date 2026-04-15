@@ -13,6 +13,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Input/SSearchBox.h"
 #include "Widgets/SBoxPanel.h"
 
 #include "Engine/World.h"
@@ -94,8 +95,70 @@ auto
 
 				+ SVerticalBox::Slot()
 					.AutoHeight()
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
 					[
-						SNew(SCkSchedulerDebugger_FrameHistoryBar)
+						SNew(SHorizontalBox)
+
+						+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							.Padding(0.0f, 2.0f, FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
+							[
+								SNew(SButton)
+									.ToolTipText(FText::FromString(TEXT("Previous frame (older) — Left Arrow")))
+									.OnClicked_Lambda([this]() -> FReply
+									{
+										_ViewModel->CycleSelectedFrame(+1);
+										return FReply::Handled();
+									})
+									[
+										SNew(STextBlock)
+											.Text(FText::FromString(TEXT("<")))
+											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+									]
+							]
+
+						+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							.Padding(0.0f, 2.0f, FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
+							[
+								SNew(SButton)
+									.ToolTipText(FText::FromString(TEXT("Next frame (newer) — Right Arrow")))
+									.OnClicked_Lambda([this]() -> FReply
+									{
+										_ViewModel->CycleSelectedFrame(-1);
+										return FReply::Handled();
+									})
+									[
+										SNew(STextBlock)
+											.Text(FText::FromString(TEXT(">")))
+											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+									]
+							]
+
+						+ SHorizontalBox::Slot()
+							.FillWidth(1.0f)
+							.VAlign(VAlign_Center)
+							.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
+							[
+								SNew(SSearchBox)
+									.HintText(FText::FromString(TEXT("Highlight frames with processor...")))
+									.ToolTipText(FText::FromString(TEXT("Outlines history bars whose frames ran a processor matching this text")))
+									.OnTextChanged_Lambda([this](const FText& InText)
+									{
+										if (_FrameHistoryBar.IsValid())
+										{
+											_FrameHistoryBar->Set_HighlightFilter(InText.ToString());
+										}
+									})
+							]
+					]
+
+				+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SAssignNew(_FrameHistoryBar, SCkSchedulerDebugger_FrameHistoryBar)
 							.ViewModel(_ViewModel)
 					]
 

@@ -74,7 +74,8 @@ auto
 		int32 InOffset)
 	-> void
 {
-	const auto MaxOffset = FMath::Max(0, _DataCollector.Get_FrameSnapshotCount() - 1);
+	const auto& Snapshots = _DataCollector.Get_FrameSnapshots();
+	const auto MaxOffset = FMath::Max(0, Snapshots.Num() - 1);
 	const auto ClampedOffset = FMath::Clamp(InOffset, 0, MaxOffset);
 
 	if (ClampedOffset == _SelectedFrameOffset)
@@ -95,13 +96,63 @@ auto
 
 	_SelectedFrameOffset = ClampedOffset;
 
+	// Track the absolute frame number of the selected frame so the selection
+	// sticks to that frame even as the history buffer scrolls (buffer is evicted
+	// oldest-first, so an unchanged offset would otherwise point to a different frame).
 	if (_SelectedFrameOffset > 0)
 	{
+		const auto SnapshotIdx = Snapshots.Num() - 1 - _SelectedFrameOffset;
+		_SelectedFrameNumber = Snapshots.IsValidIndex(SnapshotIdx)
+			? Snapshots[SnapshotIdx].FrameNumber
+			: 0;
+
 		_DataCollector.ApplyFrameSnapshot(_SelectedFrameOffset);
+	}
+	else
+	{
+		_SelectedFrameNumber = 0;
 	}
 
 	OnFrameSelectionChanged.Broadcast(_SelectedFrameOffset);
 	OnDataRefreshed.Broadcast();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebugger_ViewModel::
+	Get_SelectedFrameNumber() const
+	-> uint64
+{
+	return _SelectedFrameNumber;
+}
+
+auto
+	FCkSchedulerDebugger_ViewModel::
+	CycleSelectedFrame(
+		int32 InDirection)
+	-> void
+{
+	// Positive direction moves toward older frames (larger offset),
+	// negative moves toward newer frames (smaller offset, toward LIVE).
+	Set_SelectedFrameOffset(_SelectedFrameOffset + InDirection);
+}
+
+auto
+	FCkSchedulerDebugger_ViewModel::
+	GoToOldestFrame()
+	-> void
+{
+	const auto MaxOffset = FMath::Max(0, _DataCollector.Get_FrameSnapshotCount() - 1);
+	Set_SelectedFrameOffset(MaxOffset);
+}
+
+auto
+	FCkSchedulerDebugger_ViewModel::
+	GoToLiveFrame()
+	-> void
+{
+	Set_SelectedFrameOffset(0);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

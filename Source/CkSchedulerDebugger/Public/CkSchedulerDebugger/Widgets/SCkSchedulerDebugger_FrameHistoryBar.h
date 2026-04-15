@@ -40,9 +40,14 @@ public:
 	virtual auto OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
 	virtual auto OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
 	virtual auto OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
+	virtual auto OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
 
 	virtual auto IsInteractable() const -> bool override { return true; }
 	virtual auto SupportsKeyboardFocus() const -> bool override { return true; }
+
+	// ---- Highlight filter: frames whose processors match this string are
+	// outlined in the history bar. Empty string disables highlighting.
+	auto Set_HighlightFilter(const FString& InFilter) -> void;
 
 private:
 	auto DoComputeFrameOffsetFromPosition(const FGeometry& InGeometry, float InLocalX) const -> int32;
@@ -58,6 +63,9 @@ private:
 	bool _IsPanning = false;
 	float _PanStartX = 0.0f;
 	float _PanStartScrollX = 0.0f;
+
+	// ---- Highlight filter
+	FString _HighlightFilter;
 
 	// ---- Layout
 	mutable float _ScrollOffsetX = 0.0f;

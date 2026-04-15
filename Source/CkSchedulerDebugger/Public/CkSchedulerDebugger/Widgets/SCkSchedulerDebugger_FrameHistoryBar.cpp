@@ -105,17 +105,36 @@ auto
 	const auto LastVisibleIdx = FMath::Min(BarCount - 1,
 		FMath::CeilToInt32((_ScrollOffsetX + VisibleWidth) / BarStride));
 
+	const auto HasHighlight = NOT _HighlightFilter.IsEmpty();
+
 	for (auto Idx = FirstVisibleIdx; Idx <= LastVisibleIdx; ++Idx)
 	{
 		const auto& Snapshot = Snapshots[Idx];
 		const auto Offset = BarCount - 1 - Idx;
 		const auto IsSelected = (Offset == SelectedOffset);
+		const auto IsHighlighted = HasHighlight && DataCollector.FrameContainsProcessor(Idx, _HighlightFilter);
 
 		const auto NormalizedHeight = FMath::Clamp(
 			static_cast<float>(Snapshot.TotalFrameTimeMs / MaxTimeMs), 0.02f, 1.0f);
 		const auto BarHeight = NormalizedHeight * BarAreaHeight;
 		const auto BarX = BarLeftPad + RightAlignOffset + static_cast<float>(Idx) * BarStride - _ScrollOffsetX;
 		const auto BarY = GeometrySize.Y - 4.0f - BarHeight;
+
+		// ---- Highlight background (processor-name search match)
+		if (IsHighlighted)
+		{
+			const auto HighlightGeometry = AllottedGeometry.MakeChild(
+				FVector2D{BarWidth + 4.0f, GeometrySize.Y},
+				FSlateLayoutTransform{FVector2D{BarX - 2.0f, 0.0f}});
+
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				LayerId + 1,
+				HighlightGeometry.ToPaintGeometry(),
+				WhiteBrush,
+				ESlateDrawEffect::None,
+				FLinearColor(1.0f, 0.85f, 0.2f, 0.35f));
+		}
 
 		// ---- Selection highlight background
 		if (IsSelected)
@@ -220,8 +239,16 @@ auto
 		}
 		else
 		{
+			// Use the absolute FrameNumber captured at selection time (stable across
+			// buffer scrolling), falling back to snapshot lookup if unavailable.
 			const auto SelIdx = BarCount - 1 - SelectedOffset;
-			if (Snapshots.IsValidIndex(SelIdx))
+			const auto StableFrameNumber = _ViewModel->Get_SelectedFrameNumber();
+			if (StableFrameNumber != 0)
+			{
+				LabelText = FString::Printf(TEXT("Frame #%llu (-%d)"),
+					StableFrameNumber, SelectedOffset);
+			}
+			else if (Snapshots.IsValidIndex(SelIdx))
 			{
 				LabelText = FString::Printf(TEXT("Frame #%llu (-%d)"),
 					Snapshots[SelIdx].FrameNumber, SelectedOffset);
@@ -391,7 +418,9 @@ auto
 			_ViewModel->Set_SelectedFrameOffset(Offset);
 		}
 
-		return FReply::Handled().CaptureMouse(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)));
+		return FReply::Handled()
+			.CaptureMouse(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)))
+			.SetUserFocus(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)), EFocusCause::Mouse);
 	}
 
 	// ---- Right-click: pan
@@ -401,7 +430,9 @@ auto
 		_PanStartX = LocalPosition.X;
 		_PanStartScrollX = _ScrollOffsetX;
 
-		return FReply::Handled().CaptureMouse(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)));
+		return FReply::Handled()
+			.CaptureMouse(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)))
+			.SetUserFocus(SharedThis(const_cast<SCkSchedulerDebugger_FrameHistoryBar*>(this)), EFocusCause::Mouse);
 	}
 
 	return FReply::Unhandled();
@@ -482,6 +513,57 @@ auto
 	}
 
 	return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_FrameHistoryBar::
+	OnKeyDown(
+		const FGeometry& MyGeometry,
+		const FKeyEvent& InKeyEvent)
+	-> FReply
+{
+	if (NOT _ViewModel.IsValid())
+	{ return FReply::Unhandled(); }
+
+	const auto Key = InKeyEvent.GetKey();
+
+	// Left arrow = older frame (larger offset), Right arrow = newer (smaller offset)
+	if (Key == EKeys::Left)
+	{
+		_ViewModel->CycleSelectedFrame(+1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Right)
+	{
+		_ViewModel->CycleSelectedFrame(-1);
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Home)
+	{
+		_ViewModel->GoToOldestFrame();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::End)
+	{
+		_ViewModel->GoToLiveFrame();
+		return FReply::Handled();
+	}
+
+	return FReply::Unhandled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_FrameHistoryBar::
+	Set_HighlightFilter(
+		const FString& InFilter)
+	-> void
+{
+	_HighlightFilter = InFilter;
+	Invalidate(EInvalidateWidgetReason::Paint);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

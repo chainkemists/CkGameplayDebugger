@@ -12,6 +12,7 @@
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -568,6 +569,27 @@ auto
 												]
 
 											+ SHorizontalBox::Slot()
+												.AutoWidth()
+												.VAlign(VAlign_Center)
+												.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+												[
+													SNew(SCheckBox)
+														.IsChecked_Lambda([this]() -> ECheckBoxState
+														{
+															return _BreakdownHideIdle
+																? ECheckBoxState::Checked
+																: ECheckBoxState::Unchecked;
+														})
+														.OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+														{
+															_BreakdownHideIdle = (InState == ECheckBoxState::Checked);
+															_LastPumpDataHash = 0;
+															DoOnDataRefreshed();
+														})
+														.ToolTipText(FText::FromString(TEXT("Hide idle processors (zero entity count)")))
+												]
+
+											+ SHorizontalBox::Slot()
 												.FillWidth(1.0f)
 												[
 													SNew(SSearchBox)
@@ -663,6 +685,7 @@ auto
 		PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_ViewModel->Get_SelectedFrameOffset()));
 	}
 	PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_BreakdownFilterString));
+	PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_BreakdownHideIdle));
 
 	if (PumpDataHash == _LastPumpDataHash)
 	{ return; }
@@ -690,7 +713,8 @@ auto
 	// pass the breakdown filter, and are not ghost/boundary nodes. Result is sorted by ExecutionOrder.
 	const auto CollectRunningMembers = [&](
 		int32 InGroupIdx,
-		TFunctionRef<double(const FCkSchedulerDebugger_ProcessorInfo&)> InGetTime)
+		TFunctionRef<double(const FCkSchedulerDebugger_ProcessorInfo&)> InGetTime,
+		TFunctionRef<int32(const FCkSchedulerDebugger_ProcessorInfo&)>  InGetCount)
 		-> TArray<int32>
 	{
 		auto Result = TArray<int32>{};
@@ -700,6 +724,7 @@ auto
 			const auto& Proc = Procs[MemberProcIdx];
 			if (Proc.IsGroupStart || Proc.IsGroupEnd || Proc.IsGhost) { continue; }
 			if (InGetTime(Proc) <= 0.0) { continue; }
+			if (_BreakdownHideIdle && InGetCount(Proc) == 0) { continue; }
 			if (NOT _BreakdownFilterString.IsEmpty()
 				&& NOT Proc.DisplayName.Contains(_BreakdownFilterString, ESearchCase::IgnoreCase))
 			{ continue; }
@@ -847,7 +872,8 @@ auto
 	for (const auto GroupIdx : GroupOrder)
 	{
 		const auto RunningMembers = CollectRunningMembers(GroupIdx,
-			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; });
+			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; },
+			[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassEntityCount; });
 		if (RunningMembers.IsEmpty()) { continue; }
 
 		AddGroupRows(GroupIdx, RunningMembers,
@@ -900,6 +926,11 @@ auto
 				{
 					return P.PumpPassTimesMs.IsValidIndex(PassIdxCopy)
 						? P.PumpPassTimesMs[PassIdxCopy] : 0.0;
+				},
+				[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+				{
+					return P.PumpPassEntityCounts.IsValidIndex(PassIdxCopy)
+						? P.PumpPassEntityCounts[PassIdxCopy] : 0;
 				});
 			if (RunningMembers.IsEmpty()) { continue; }
 

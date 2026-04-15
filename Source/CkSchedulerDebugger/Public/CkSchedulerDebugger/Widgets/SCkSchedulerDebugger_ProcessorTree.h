@@ -56,6 +56,7 @@ private:
 
 	FString _FilterString;
 	FString _BreakdownFilterString;
+	bool _BreakdownHideIdle = false;
 	ECkSchedulerDebugger_SortMode _SortMode = ECkSchedulerDebugger_SortMode::ExecutionOrder;
 	TSharedPtr<SBox> _PumpContainer;
 

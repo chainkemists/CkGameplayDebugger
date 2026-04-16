@@ -50,6 +50,7 @@ public:
     auto Set_IsParentStateActive(bool InValue) -> void { _IsParentStateActive = InValue; }
     auto Get_HasBeenVisited() const -> bool { return _HasBeenVisited; }
     auto Get_DwellTimeSeconds() const -> float { return _DwellTimeSeconds; }
+    auto Get_HasOverride() const -> bool { return _HasOverride; }
     auto Get_HasBreakpoint() const -> bool { return _HasEntryBreakpoint || _HasExitBreakpoint; }
     auto Get_HasEntryBreakpoint() const -> bool { return _HasEntryBreakpoint; }
     auto Get_HasExitBreakpoint() const -> bool { return _HasExitBreakpoint; }
@@ -102,6 +103,9 @@ private:
 
     UPROPERTY()
     bool _IsBreakpointHit = false;
+
+    UPROPERTY()
+    bool _HasOverride = false;
 
     UPROPERTY()
     int32 _StateIndex = -1;

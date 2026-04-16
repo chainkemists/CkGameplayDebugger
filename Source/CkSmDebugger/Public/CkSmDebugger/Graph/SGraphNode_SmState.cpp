@@ -182,6 +182,25 @@ auto
                                                 ]
                                         ]
 
+                                    // Override label — small purple "OVERRIDE" tag under
+                                    // the state name. Visible only when the state's script
+                                    // class differs from its declared class.
+                                    + SVerticalBox::Slot()
+                                        .AutoHeight()
+                                        .Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(FText::FromString(TEXT("OVERRIDE")))
+                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                                                .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_Override))
+                                                .Visibility_Lambda([StateNodePtr = _StateNode]()
+                                                {
+                                                    return (StateNodePtr && StateNodePtr->Get_HasOverride())
+                                                        ? EVisibility::SelfHitTestInvisible
+                                                        : EVisibility::Collapsed;
+                                                })
+                                        ]
+
                                     // Task rows (shown when node has tasks)
                                     + SVerticalBox::Slot()
                                         .AutoHeight()

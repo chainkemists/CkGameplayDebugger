@@ -41,6 +41,7 @@ private:
     TSharedPtr<SListView<FHistoryItemPtr>> _ListView;
     TArray<FHistoryItemPtr> _Items;
     FDelegateHandle _SmDataRefreshedHandle;
+    FDelegateHandle _SmListChangedHandle;
     int32 _LastHistoryCount = 0;
 };
 

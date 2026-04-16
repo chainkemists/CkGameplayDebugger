@@ -3,6 +3,7 @@
 #include "CkSmDebugger/Data/CkSmDebugger_DataCollector.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_Timeline.h"
+#include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 
 #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
@@ -31,10 +32,49 @@
 
 SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
 {
+    if (_OnEndPieHandle.IsValid())
+    { FEditorDelegates::EndPIE.Remove(_OnEndPieHandle); }
+
+    if (_OnBeginPieHandle.IsValid())
+    { FEditorDelegates::BeginPIE.Remove(_OnBeginPieHandle); }
+
     if (_Graph && UObjectInitialized())
     {
         _Graph->RemoveFromRoot();
         _Graph = nullptr;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    HandleWorldTornDown()
+    -> void
+{
+    _CachedWorld.Reset();
+    _SelectedTransitionIndex = -1;
+    _SelectedHistoryEntry.Reset();
+    _LastCurrentStateIdx = -1;
+
+    // Preview walker uses the PIE world — tear down its entity too.
+    if (_PreviewPane.IsValid())
+    { _PreviewPane->Set_WorldContext(TWeakObjectPtr<UWorld>()); }
+
+    _SmSelectorItems.Empty();
+    _SmSelectorHandles.Empty();
+
+    if (_ViewModel.IsValid())
+    { _ViewModel->Reset_ForWorldChange(); }
+
+    if (_DataCollector.IsValid())
+    { _DataCollector->Reset(); }
+
+    if (ck::IsValid(_Graph))
+    {
+        _Graph->ForceRebuild();
+        _Graph->Nodes.Empty();
+        _Graph->NotifyGraphChanged();
     }
 }
 
@@ -48,6 +88,23 @@ auto
 {
     _ViewModel = MakeShared<FCkSmDebugger_ViewModel>();
     _DataCollector = MakeShared<FCkSmDebugger_DataCollector>();
+
+    // Create the preview pane eagerly so its picker can live in the main toolbar
+    // (keeps the preview graph top aligned with the live graph top on the left).
+    _PreviewPane = SNew(SCkSmDebugger_PreviewPane);
+
+    // PIE lifecycle — tear down cached world/graph/history on stop so the next PIE session
+    // re-links cleanly without requiring the user to close and reopen the debugger.
+    _OnEndPieHandle = FEditorDelegates::EndPIE.AddLambda([this](bool /*bIsSimulating*/)
+    {
+        HandleWorldTornDown();
+    });
+
+    _OnBeginPieHandle = FEditorDelegates::BeginPIE.AddLambda([this](bool /*bIsSimulating*/)
+    {
+        // Ensure we start the new session from an empty slate — Tick will repopulate.
+        HandleWorldTornDown();
+    });
 
     // Create the debug graph — prevent GC
     _Graph = NewObject<UCkSmDebugGraph>(GetTransientPackage());
@@ -114,10 +171,18 @@ auto
                     BuildToolbar()
                 ]
 
-            // Main content area
+            // Main content area — wrapped in a horizontal splitter so the preview
+            // pane can slide in on the right at 50% width without disturbing the
+            // existing vertical layout on the left.
             + SVerticalBox::Slot()
                 .FillHeight(1.0f)
                 [
+                    SAssignNew(_RootSplitter, SSplitter)
+                        .Orientation(Orient_Horizontal)
+
+                        + SSplitter::Slot()
+                            .Value(1.0f)
+                            [
                     SNew(SSplitter)
                         .Orientation(Orient_Vertical)
 
@@ -164,6 +229,7 @@ auto
                                                 ]
                                     ]
                             ]
+                            ]
                 ]
     ];
 
@@ -195,7 +261,7 @@ auto
 
         for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
         {
-            if (It->WorldType == EWorldType::PIE && IsValid(It->World()))
+            if (It->WorldType == EWorldType::PIE && ck::IsValid(It->World()) && It->World()->HasBegunPlay())
             {
                 FoundWorld = It->World();
                 break;
@@ -205,14 +271,20 @@ auto
         _CachedWorld = FoundWorld;
     }
 
-    if (NOT _CachedWorld)
+    // Keep the preview pane in sync with the current PIE world so its walker can
+    // spawn a throwaway SM entity to discover the graph when a class is picked.
+    if (_PreviewPane.IsValid())
+    { _PreviewPane->Set_WorldContext(_CachedWorld); }
+
+    auto* World = _CachedWorld.Get();
+    if (ck::Is_NOT_Valid(World))
     { return; }
 
     // Collect data from ECS
-    _DataCollector->Collect(_CachedWorld);
+    _DataCollector->Collect(World);
 
     // Tick ViewModel — broadcasts delegates to sub-widgets
-    _ViewModel->Tick(_CachedWorld, InDeltaTime);
+    _ViewModel->Tick(World, InDeltaTime);
 
     // Refresh SM selector combo
     RefreshSmSelector();
@@ -439,8 +511,9 @@ auto
                         if (_Graph)
                         {
                             auto& Depth = _Graph->LayoutParams.NameDepth;
-                            if (Depth > 1) { --Depth; }
-                            else { Depth = 0; }
+                            const auto MaxDepth = _Graph->Get_MaxNameDepth();
+                            // Cycle: Full(0) → MaxDepth → … → 2 → 1 → Full(0)
+                            Depth = (Depth == 0) ? MaxDepth : (Depth - 1);
                             _Graph->ForceRebuild();
                         }
                         return FReply::Handled();
@@ -473,7 +546,9 @@ auto
                         if (_Graph)
                         {
                             auto& Depth = _Graph->LayoutParams.NameDepth;
-                            Depth = (Depth == 0) ? 0 : Depth + 1;
+                            const auto MaxDepth = _Graph->Get_MaxNameDepth();
+                            // Cycle: Full(0) → 1 → 2 → … → MaxDepth → Full(0)
+                            Depth = (Depth >= MaxDepth) ? 0 : (Depth + 1);
                             _Graph->ForceRebuild();
                         }
                         return FReply::Handled();
@@ -926,6 +1001,44 @@ auto
                     })
             ]
 
+        // Preview — toggles a right-side pane for statically previewing any SM asset
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(2.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                    .Text_Lambda([this]()
+                    {
+                        return _IsPreviewOpen
+                            ? FText::FromString(TEXT("Close Preview"))
+                            : FText::FromString(TEXT("Preview"));
+                    })
+                    .OnClicked_Lambda([this]()
+                    {
+                        _IsPreviewOpen = NOT _IsPreviewOpen;
+
+                        if (NOT _RootSplitter.IsValid())
+                        { return FReply::Handled(); }
+
+                        if (_IsPreviewOpen && _PreviewPane.IsValid())
+                        {
+                            // Even 50/50 split with the live view on the left
+                            _RootSplitter->AddSlot()
+                                .Value(1.0f)
+                                [
+                                    _PreviewPane.ToSharedRef()
+                                ];
+                        }
+                        else if (_RootSplitter->GetChildren()->Num() > 1)
+                        {
+                            _RootSplitter->RemoveAt(_RootSplitter->GetChildren()->Num() - 1);
+                        }
+
+                        return FReply::Handled();
+                    })
+            ]
+
         // Test
         + SHorizontalBox::Slot()
             .AutoWidth()
@@ -967,6 +1080,24 @@ auto
                 SNullWidget::NullWidget
             ]
 
+        // ── Preview picker (inline, only visible when the preview pane is open) ──
+        // Sharing the main toolbar row keeps the preview graph top aligned with
+        // the live graph top on the left. Occupies the right half via FillWidth(1).
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            .Padding(2.0f)
+            [
+                SNew(SBox)
+                    .Visibility_Lambda([this]()
+                    {
+                        return _IsPreviewOpen ? EVisibility::Visible : EVisibility::Collapsed;
+                    })
+                    [
+                        _PreviewPane->BuildPickerRow()
+                    ]
+            ]
+
         // ── Breakpoint status (right-aligned) ───────────────────────────
 
         + SHorizontalBox::Slot()
@@ -1005,7 +1136,22 @@ auto
 
     auto& AllSms = _ViewModel->Get_AllStateMachines();
 
-    if (_SmSelectorItems.Num() != AllSms.Num())
+    // Identity diff — count-based diff missed cross-PIE handle churn where Num() happened
+    // to stay equal. Compare handle-by-handle so a new PIE session always triggers refresh.
+    auto NeedsRepopulate = _SmSelectorHandles.Num() != AllSms.Num();
+    if (NOT NeedsRepopulate)
+    {
+        for (auto i = 0; i < AllSms.Num(); ++i)
+        {
+            if (_SmSelectorHandles[i] != AllSms[i].Handle)
+            {
+                NeedsRepopulate = true;
+                break;
+            }
+        }
+    }
+
+    if (NeedsRepopulate)
     {
         _SmSelectorItems.Empty(AllSms.Num());
         _SmSelectorHandles.Empty(AllSms.Num());

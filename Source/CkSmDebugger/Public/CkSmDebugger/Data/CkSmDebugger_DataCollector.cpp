@@ -86,6 +86,22 @@ auto
 
 auto
     FCkSmDebugger_DataCollector::
+    Reset()
+    -> void
+{
+    _StateMachines.Reset();
+    _IsPieDebugPaused = false;
+    _WasPausedLastTick = false;
+    _PauseStartTime = 0.0;
+    _CompletedPauseIntervals.Reset();
+    _BreakpointHitWallTimes.Reset();
+    _LastObservedRunCounter = -1;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
     CollectStateMachineByHandle(
         FCk_Handle_StateMachine InSmHandle)
     -> FCkSmDebugger_SmInfo

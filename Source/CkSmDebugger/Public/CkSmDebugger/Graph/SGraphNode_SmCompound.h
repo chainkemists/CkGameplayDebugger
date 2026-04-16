@@ -34,8 +34,26 @@ public:
         const FWidgetStyle& InWidgetStyle,
         bool bParentEnabled) const -> int32 override;
 
+    // Dragging the compound translates every grouped child by the same delta
+    virtual auto MoveTo(
+        const FVector2f& InNewPosition,
+        FNodeSet& InNodeFilter,
+        bool bMarkDirty = true) -> void override;
+
+    // SWidget — drives automatic resize when children move
+    virtual auto Tick(
+        const FGeometry& AllottedGeometry,
+        const double InCurrentTime,
+        const float InDeltaTime) -> void override;
+
 private:
+    auto RecomputeBoundsFromChildren() -> bool;
+
     UCkSmDebugNode_Compound* _CompoundNode = nullptr;
+
+    // Last anchored position — used by MoveTo to compute translation delta for children
+    FVector2D _LastKnownPosition = FVector2D::ZeroVector;
+    bool _HasLastKnownPosition = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

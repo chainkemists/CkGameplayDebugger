@@ -1,5 +1,6 @@
 #include "SGraphNode_GoapAction.h"
 #include "CkGoapDebugNode_Action.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
@@ -34,7 +35,6 @@ auto
 
 	const auto InPlan = _ActionNode->Get_InPlan();
 	const auto PlanStep = _ActionNode->Get_PlanStepIndex();
-	const auto NodeOpacity = InPlan ? 1.0f : 0.45f;
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
@@ -43,14 +43,13 @@ auto
 	.VAlign(VAlign_Center)
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("Graph.StateNode.Body"))
+		.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.Body")))
 		.Padding(0.0f)
 		.BorderBackgroundColor(this, &SGraphNode_GoapAction::GetBorderBackgroundColor)
-		.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, NodeOpacity))
 		[
 			SNew(SOverlay)
 
-			// Hidden pin area for connection geometry
+			// Hidden pin overlay — fills entire node for connection geometry
 			+ SOverlay::Slot()
 			.HAlign(HAlign_Fill)
 			.VAlign(VAlign_Fill)
@@ -60,61 +59,63 @@ auto
 
 			// Visual content
 			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
 			[
-				SNew(SVerticalBox)
-
-				// Header: name + cost
-				+ SVerticalBox::Slot()
-				.AutoHeight()
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill")))
+				.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f))
+				.Padding(FMargin(6.0f, 4.0f))
+				.Visibility(EVisibility::SelfHitTestInvisible)
 				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("Graph.StateNode.ColorSpill"))
-					.BorderBackgroundColor(FLinearColor(0.08f, 0.10f, 0.15f))
-					.Padding(FMargin(8.0f, 4.0f))
+					SNew(SVerticalBox)
+
+					// Header: step badge + name + cost
+					+ SVerticalBox::Slot()
+					.AutoHeight()
 					[
 						SNew(SHorizontalBox)
 
-						// Plan step badge
+						// Step badge (only for plan nodes)
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
 						[
 							SNew(SBox)
-							.WidthOverride(InPlan ? 20.0f : 0.0f)
-							.HeightOverride(InPlan ? 20.0f : 0.0f)
+							.WidthOverride(InPlan ? 8.0f : 0.0f)
+							.HeightOverride(InPlan ? 8.0f : 0.0f)
+							.Visibility(InPlan ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
 							[
 								SNew(SBorder)
-								.BorderImage(FAppStyle::GetBrush("GenericWhiteBox"))
-								.BorderBackgroundColor(FLinearColor(0.23f, 0.51f, 0.96f))
-								.Padding(FMargin(0.0f))
-								.HAlign(HAlign_Center)
-								.VAlign(VAlign_Center)
-								.Visibility(InPlan ? EVisibility::Visible : EVisibility::Collapsed)
-								[
-									SNew(STextBlock)
-									.Text(FText::AsNumber(PlanStep + 1))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-									.ColorAndOpacity(FLinearColor::White)
-								]
+								.BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+								.BorderBackgroundColor(InPlan
+									? FLinearColor(0.15f, 0.45f, 0.85f)
+									: FLinearColor(0.3f, 0.3f, 0.3f))
 							]
 						]
 
 						// Action name
 						+ SHorizontalBox::Slot()
-						.FillWidth(1.0f)
+						.AutoWidth()
 						.VAlign(VAlign_Center)
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString(_ActionNode->Get_DisplayName()))
 							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-							.ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.9f))
+							.ColorAndOpacity_Lambda([this, InPlan]()
+							{
+								auto Color = FLinearColor(0.9f, 0.9f, 0.9f);
+								if (NOT InPlan) { Color.A = 0.4f; }
+								return FSlateColor(Color);
+							})
 						]
 
 						// Cost badge
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
+						.Padding(6.0f, 0.0f, 0.0f, 0.0f)
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
@@ -122,16 +123,16 @@ auto
 							.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
 						]
 					]
-				]
 
-				// Ports or compact effects summary
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(FMargin(8.0f, 4.0f, 8.0f, 6.0f))
-				[
-					_ActionNode->Get_IsPlanChainNode()
-						? CreateCompactEffectsSummary()
-						: CreatePortRows()
+					// Ports: preconditions (left) + effects (right)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, 3.0f, 0.0f, 0.0f)
+					[
+						_ActionNode->Get_IsPlanChainNode()
+							? CreateCompactEffectsSummary()
+							: CreatePortRows()
+					]
 				]
 			]
 		]
@@ -149,44 +150,37 @@ auto
 {
 	auto PortBox = SNew(SHorizontalBox);
 
-	// Preconditions (left column)
+	// Preconditions (left)
 	auto PreBox = SNew(SVerticalBox);
 	for (const auto& [Key, Value] : _ActionNode->Get_Preconditions())
 	{
-		const auto Satisfied = Value;
-		const auto DotColor = Satisfied ? FLinearColor(0.13f, 0.77f, 0.37f) : FLinearColor(0.94f, 0.27f, 0.27f);
+		const auto DotColor = Value
+			? FLinearColor(0.13f, 0.77f, 0.37f)
+			: FLinearColor(0.94f, 0.27f, 0.27f);
 
 		PreBox->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 1.0f)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 3.0f, 0.0f)
 			[
 				SNew(SImage)
-				.Image(FAppStyle::GetBrush("GenericWhiteBox"))
+				.Image(FAppStyle::GetBrush("WhiteBrush"))
 				.ColorAndOpacity(DotColor)
-				.DesiredSizeOverride(FVector2D(7.0f, 7.0f))
+				.DesiredSizeOverride(FVector2D(5.0f, 5.0f))
 			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(Key.ToString()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-				.ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
+				.ColorAndOpacity(FLinearColor(0.55f, 0.55f, 0.55f))
 			]
 		];
 	}
 
-	// Spacer
-	auto Spacer = SNew(SSpacer).Size(FVector2D(16.0f, 0.0f));
-
-	// Effects (right column)
+	// Effects (right)
 	auto EffBox = SNew(SVerticalBox);
 	for (const auto& [Key, Value] : _ActionNode->Get_Effects())
 	{
@@ -195,32 +189,26 @@ auto
 		.Padding(0.0f, 1.0f)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(Key.ToString()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-				.ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
+				.ColorAndOpacity(FLinearColor(0.55f, 0.55f, 0.55f))
 			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(3.0f, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SImage)
-				.Image(FAppStyle::GetBrush("GenericWhiteBox"))
-				.ColorAndOpacity(FLinearColor(0.23f, 0.51f, 0.96f))
-				.DesiredSizeOverride(FVector2D(7.0f, 7.0f))
+				.Image(FAppStyle::GetBrush("WhiteBrush"))
+				.ColorAndOpacity(FLinearColor(0.15f, 0.45f, 0.85f))
+				.DesiredSizeOverride(FVector2D(5.0f, 5.0f))
 			]
 		];
 	}
 
 	PortBox->AddSlot().AutoWidth()[PreBox];
-	PortBox->AddSlot().FillWidth(1.0f)[Spacer];
+	PortBox->AddSlot().FillWidth(1.0f)[SNew(SSpacer).Size(FVector2D(12.0f, 0.0f))];
 	PortBox->AddSlot().AutoWidth()[EffBox];
 
 	return PortBox;
@@ -242,7 +230,7 @@ auto
 
 	return SNew(STextBlock)
 		.Text(FText::FromString(EffectsText))
-		.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+		.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
 		.ColorAndOpacity(FLinearColor(0.13f, 0.77f, 0.37f));
 }
 
@@ -274,7 +262,7 @@ auto
 		{
 			auto PinWidget = SNew(SGraphPin, Pin);
 			PinWidget->SetOwner(SharedThis(this));
-			PinWidget->SetVisibility(EVisibility::HitTestInvisible);
+			PinWidget->SetVisibility(EVisibility::Collapsed);
 			RightNodeBox->AddSlot().AutoHeight().HAlign(HAlign_Fill).VAlign(VAlign_Fill)[PinWidget];
 			OutputPins.Add(PinWidget);
 		}
@@ -287,7 +275,7 @@ auto
 	-> void
 {
 	PinToAdd->SetOwner(SharedThis(this));
-	PinToAdd->SetVisibility(EVisibility::HitTestInvisible);
+	PinToAdd->SetVisibility(EVisibility::Collapsed);
 	RightNodeBox->AddSlot().AutoHeight()[PinToAdd];
 
 	if (PinToAdd->GetDirection() == EGPD_Input)

@@ -57,12 +57,13 @@ auto
 	.VAlign(VAlign_Center)
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("Graph.StateNode.Body"))
+		.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.Body")))
 		.Padding(0.0f)
 		.BorderBackgroundColor(BorderColor)
 		[
 			SNew(SOverlay)
 
+			// Hidden pin overlay
 			+ SOverlay::Slot()
 			.HAlign(HAlign_Fill)
 			.VAlign(VAlign_Fill)
@@ -70,12 +71,16 @@ auto
 				SAssignNew(RightNodeBox, SVerticalBox)
 			]
 
+			// Visual content
 			+ SOverlay::Slot()
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("Graph.StateNode.ColorSpill"))
-				.BorderBackgroundColor(FLinearColor(0.05f, 0.08f, 0.12f))
-				.Padding(FMargin(16.0f, 8.0f))
+				.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill")))
+				.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f))
+				.Padding(FMargin(12.0f, 6.0f))
+				.Visibility(EVisibility::SelfHitTestInvisible)
 				[
 					SNew(SVerticalBox)
 
@@ -125,7 +130,7 @@ auto
 	{
 		auto PinWidget = SNew(SGraphPin, Pin);
 		PinWidget->SetOwner(SharedThis(this));
-		PinWidget->SetVisibility(EVisibility::HitTestInvisible);
+		PinWidget->SetVisibility(EVisibility::Collapsed);
 		RightNodeBox->AddSlot().AutoHeight().HAlign(HAlign_Fill).VAlign(VAlign_Fill)[PinWidget];
 		InputPins.Add(PinWidget);
 	}
@@ -137,7 +142,7 @@ auto
 	-> void
 {
 	PinToAdd->SetOwner(SharedThis(this));
-	PinToAdd->SetVisibility(EVisibility::HitTestInvisible);
+	PinToAdd->SetVisibility(EVisibility::Collapsed);
 	RightNodeBox->AddSlot().AutoHeight()[PinToAdd];
 	InputPins.Add(PinToAdd);
 }

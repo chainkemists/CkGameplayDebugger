@@ -53,7 +53,7 @@ auto
 	[
 		SNew(SBorder)
 		.BorderImage(Theme.GetBodyBrush())
-		.Padding(0.0f)
+		.Padding(Theme.GetBodyPadding())
 		.BorderBackgroundColor(this, &SGraphNode_GoapAction::GetBorderBackgroundColor)
 		.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
 		[

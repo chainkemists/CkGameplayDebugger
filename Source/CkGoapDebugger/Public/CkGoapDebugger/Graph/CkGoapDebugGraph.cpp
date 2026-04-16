@@ -3,6 +3,8 @@
 #include "CkGoapDebugNode_Goal.h"
 #include "CkGoapDebugGraphSchema.h"
 
+#include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
+
 // ====================================================================================================================
 
 auto
@@ -193,104 +195,77 @@ auto
 	PerformLayout()
 	-> void
 {
-	TMap<FString, TArray<int32>> EffectProviders;
-	for (auto Index = 0; Index < _ActionNodes.Num(); ++Index)
+	// Build layout nodes + edges for the shared Sugiyama layout
+	auto LayoutNodes = TArray<FCkDebugGraphLayoutNode>{};
+	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
-		auto* Node = _ActionNodes[Index].Get();
-		for (const auto& [Key, Value] : Node->Get_Effects())
+		LayoutNodes.Add({Idx});
+	}
+
+	// Build effect→provider map for edge construction
+	TMap<FString, TArray<int32>> EffectProviders;
+	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
+	{
+		for (const auto& [Key, Value] : _ActionNodes[Idx].Get()->Get_Effects())
 		{
-			EffectProviders.FindOrAdd(Key.ToString()).Add(Index);
+			EffectProviders.FindOrAdd(Key.ToString()).Add(Idx);
 		}
 	}
 
-	TMap<int32, int32> LayerMap;
-	TSet<int32> Visiting;
-
-	TFunction<int32(int32)> ComputeLayer = [&](int32 Idx) -> int32
+	auto LayoutEdges = TArray<FCkDebugGraphLayoutEdge>{};
+	for (auto TargetIdx = 0; TargetIdx < _ActionNodes.Num(); ++TargetIdx)
 	{
-		if (const auto* Found = LayerMap.Find(Idx)) { return *Found; }
-		if (Visiting.Contains(Idx)) { return 0; }
-		Visiting.Add(Idx);
-
-		auto MaxDep = -1;
-		auto* Node = _ActionNodes[Idx].Get();
-		for (const auto& [PreKey, PreVal] : Node->Get_Preconditions())
+		for (const auto& [PreKey, PreVal] : _ActionNodes[TargetIdx].Get()->Get_Preconditions())
 		{
 			const auto* Providers = EffectProviders.Find(PreKey.ToString());
 			if (Providers == nullptr) { continue; }
-			for (const auto ProvIdx : *Providers)
+			for (const auto SourceIdx : *Providers)
 			{
-				if (ProvIdx != Idx)
+				if (SourceIdx != TargetIdx)
 				{
-					MaxDep = FMath::Max(MaxDep, ComputeLayer(ProvIdx));
+					LayoutEdges.Add({SourceIdx, TargetIdx});
 				}
 			}
 		}
-
-		Visiting.Remove(Idx);
-		const auto Layer = MaxDep + 1;
-		LayerMap.Add(Idx, Layer);
-		return Layer;
-	};
-
-	for (auto Index = 0; Index < _ActionNodes.Num(); ++Index)
-	{
-		ComputeLayer(Index);
 	}
 
-	auto MaxLayer = 0;
-	TMap<int32, TArray<int32>> Buckets;
-	for (const auto& [Idx, Layer] : LayerMap)
+	auto LayoutParams = FCkDebugGraphLayoutParams{};
+	LayoutParams.SpacingX = SpacingX;
+	LayoutParams.SpacingY = SpacingY;
+	LayoutParams.CrossingReductionPasses = 4;
+	LayoutParams.IsDirectedBFS = true;
+	LayoutParams.InitialNodeIndex = 0;
+
+	auto Result = FCkDebugGraphLayout::ComputeLayout(LayoutNodes, LayoutEdges, LayoutParams);
+
+	// Apply positions from layout result
+	auto MaxX = 0;
+	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
-		Buckets.FindOrAdd(Layer).Add(Idx);
-		MaxLayer = FMath::Max(MaxLayer, Layer);
-	}
-
-	constexpr auto NodeWidth = 220;
-	constexpr auto NodeBaseHeight = 80;
-	constexpr auto HGap = 80;
-	constexpr auto VGap = 30;
-	constexpr auto StartX = 50;
-	constexpr auto StartY = 50;
-
-	for (auto Layer = 0; Layer <= MaxLayer; ++Layer)
-	{
-		const auto* Bucket = Buckets.Find(Layer);
-		if (Bucket == nullptr) { continue; }
-
-		const auto X = StartX + Layer * (NodeWidth + HGap);
-		auto Y = StartY;
-
-		for (const auto Idx : *Bucket)
+		auto* Node = _ActionNodes[Idx].Get();
+		if (const auto* Pos = Result.Positions.Find(Idx))
 		{
-			auto* Node = _ActionNodes[Idx].Get();
-			const auto PreCount = Node->Get_Preconditions().Num();
-			const auto EffCount = Node->Get_Effects().Num();
-			const auto PortCount = FMath::Max(PreCount, EffCount);
-			const auto NodeHeight = NodeBaseHeight + PortCount * 16;
-
-			Node->NodePosX = X;
-			Node->NodePosY = Y;
-
-			Y += NodeHeight + VGap;
+			Node->NodePosX = Pos->X;
+			Node->NodePosY = Pos->Y;
+			MaxX = FMath::Max(MaxX, Pos->X);
 		}
 	}
 
+	// Position goal node to the right of all action nodes
 	if (_GoalNode != nullptr)
 	{
-		_GoalNode->NodePosX = StartX + (MaxLayer + 1) * (NodeWidth + HGap);
-		_GoalNode->NodePosY = StartY + 120;
+		_GoalNode->NodePosX = MaxX + SpacingX;
+		_GoalNode->NodePosY = SpacingY;
 	}
 
 	// Position plan chain nodes: flat horizontal row above the main graph
-	constexpr auto PlanChainY = -150;
-	constexpr auto PlanChainNodeWidth = 180;
-	constexpr auto PlanChainHGap = 40;
+	constexpr auto PlanChainY = -200;
+	const auto PlanChainHGap = SpacingX / 2;
 
 	for (auto Idx = 0; Idx < _PlanChainNodes.Num(); ++Idx)
 	{
 		auto* Node = _PlanChainNodes[Idx].Get();
-		Node->NodePosX = StartX + Idx * (PlanChainNodeWidth + PlanChainHGap);
+		Node->NodePosX = Idx * (SpacingX);
 		Node->NodePosY = PlanChainY;
 	}
 }
@@ -342,6 +317,8 @@ auto
 {
 	auto Hash = uint32{0};
 	Hash = HashCombine(Hash, GetTypeHash(NameDepth));
+	Hash = HashCombine(Hash, GetTypeHash(SpacingX));
+	Hash = HashCombine(Hash, GetTypeHash(SpacingY));
 	Hash = HashCombine(Hash, GetTypeHash(InInfo.Actions.Num()));
 	Hash = HashCombine(Hash, GetTypeHash(InInfo.Goals.Num()));
 

@@ -270,6 +270,7 @@ auto
     _SelectedTransitionIndex = -1;
     _SelectedHistoryEntry.Reset();
     _LastCurrentStateIdx = -1;
+    _AutoSelectActiveState = true;
     _LastDetailSig = FDetailSignature{};
 
     // Preview walker uses the PIE world — tear down its entity too.
@@ -347,6 +348,7 @@ auto
                 {
                     _ViewModel->Set_SelectedNodeIndex(StateNode->Get_StateIndex());
                     _SelectedTransitionIndex = -1;
+                    _AutoSelectActiveState = false;
                     return;
                 }
 
@@ -354,12 +356,14 @@ auto
                 {
                     _SelectedTransitionIndex = TransNode->Get_TransitionIndex();
                     _ViewModel->Set_SelectedNodeIndex(-1);
+                    _AutoSelectActiveState = false;
                     return;
                 }
             }
 
             _ViewModel->Set_SelectedNodeIndex(-1);
             _SelectedTransitionIndex = -1;
+            _AutoSelectActiveState = true;
         });
 
     _GraphEditor = SNew(SGraphEditor)
@@ -500,6 +504,26 @@ auto
 
     // Tick ViewModel — broadcasts delegates to sub-widgets
     _ViewModel->Tick(World, InDeltaTime);
+
+    // Auto-select the current active state when the user hasn't explicitly
+    // picked something — saves them a click to populate the detail panel.
+    if (_AutoSelectActiveState
+        && NOT _SelectedHistoryEntry.IsValid()
+        && _SelectedTransitionIndex < 0)
+    {
+        if (auto SmInfo = _ViewModel->Get_CurrentSmInfo())
+        {
+            auto ActiveIdx = -1;
+            for (auto i = 0; i < SmInfo->States.Num(); ++i)
+            {
+                if (SmInfo->States[i].IsCurrentState)
+                { ActiveIdx = i; break; }
+            }
+
+            if (ActiveIdx >= 0 && _ViewModel->Get_SelectedNodeIndex() != ActiveIdx)
+            { _ViewModel->Set_SelectedNodeIndex(ActiveIdx); }
+        }
+    }
 
     // Refresh SM selector combo
     RefreshSmSelector();

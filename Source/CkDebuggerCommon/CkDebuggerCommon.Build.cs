@@ -9,6 +9,7 @@ public class CkDebuggerCommon : CkModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "DeveloperSettings",
 
             "Slate",
             "SlateCore",

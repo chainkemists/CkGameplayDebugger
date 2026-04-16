@@ -54,6 +54,7 @@ auto
 	{
 		auto* ActionNode = NewObject<UCkGoapDebugNode_Action>(this);
 		ActionNode->PopulateFromActionInfo(InInfo.Actions[Index], Index);
+		ActionNode->Set_DisplayName(ComputeDisplayName(InInfo.Actions[Index].ClassName, NameDepth));
 		ActionNode->CreateNewGuid();
 		ActionNode->AllocateDefaultPins();
 
@@ -262,11 +263,39 @@ auto
 
 auto
 	UCkGoapDebugGraph::
+	ComputeDisplayName(const FString& InClassName, int32 InDepth)
+	-> FString
+{
+	auto Name = InClassName;
+	if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
+
+	TArray<FString> Segments;
+	Name.ParseIntoArray(Segments, TEXT("_"), true);
+
+	if (InDepth <= 0 || InDepth >= Segments.Num())
+	{
+		return FString::Join(Segments, TEXT("."));
+	}
+
+	auto Result = FString{};
+	for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
+	{
+		if (Result.Len() > 0) { Result += TEXT("."); }
+		Result += Segments[i];
+	}
+	return Result;
+}
+
+// ====================================================================================================================
+
+auto
+	UCkGoapDebugGraph::
 	ComputeTopologyHash(
 		const FCkGoapDebugger_GoapInfo& InInfo) const
 	-> uint32
 {
 	auto Hash = uint32{0};
+	Hash = HashCombine(Hash, GetTypeHash(NameDepth));
 	Hash = HashCombine(Hash, GetTypeHash(InInfo.Actions.Num()));
 	Hash = HashCombine(Hash, GetTypeHash(InInfo.Goals.Num()));
 

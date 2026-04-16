@@ -13,6 +13,7 @@
 #include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Images/SImage.h"
+#include "Styling/AppStyle.h"
 
 // ====================================================================================================================
 
@@ -170,6 +171,70 @@ auto
 			_StatusBadge->SetColorAndOpacity(CkGoapDebuggerStyle::TextMuted);
 		}
 	}
+
+	// Update plan history list
+	if (_HistoryListBox.IsValid())
+	{
+		const auto* History = _ViewModel->Get_PlanHistory(_ViewModel->Get_SelectedEntityHandle());
+		const auto HistoryCount = History ? History->Num() : 0;
+
+		if (HistoryCount != _LastHistoryCount)
+		{
+			_LastHistoryCount = HistoryCount;
+			_HistoryListBox->ClearChildren();
+
+			if (History != nullptr)
+			{
+				for (auto Idx = History->Num() - 1; Idx >= 0; --Idx)
+				{
+					const auto& Entry = (*History)[Idx];
+					const auto StatusColor = CkGoapDebuggerStyle::GetStatusColor(Entry.FinalStatus);
+					const auto StatusText = CkGoapDebuggerStyle::GetStatusString(Entry.FinalStatus);
+
+					_HistoryListBox->AddSlot()
+					.AutoHeight()
+					.Padding(8.0f, 2.0f)
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						[
+							SNew(SImage)
+							.Image(FAppStyle::GetBrush("GenericWhiteBox"))
+							.ColorAndOpacity(StatusColor)
+							.DesiredSizeOverride(FVector2D(8.0f, 8.0f))
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(FString::Printf(TEXT("%s — %d actions, cost %.0f"),
+								*StatusText, Entry.PlanLength, Entry.PlanCost)))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(FString::Printf(TEXT("F#%lld"), Entry.FrameNumber)))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+							.ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.4f))
+						]
+					];
+				}
+			}
+
+			if (HistoryCount == 0)
+			{
+				_HistoryListBox->AddSlot()
+				.AutoHeight()
+				.Padding(8.0f, 8.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(TEXT("No plan history yet")))
+					.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+				];
+			}
+		}
+	}
 }
 
 // ====================================================================================================================
@@ -319,6 +384,26 @@ auto
 					return FReply::Handled();
 				})
 			]
+
+			// H Spacing
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("H"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", 8)).ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f)) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Max(100,_Graph->SpacingX-50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingX):TEXT("300")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",9)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Min(800,_Graph->SpacingX+50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
+
+			// V Spacing
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("V"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", 8)).ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f)) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Max(40,_Graph->SpacingY-20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingY):TEXT("100")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",9)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Min(400,_Graph->SpacingY+20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 

@@ -50,6 +50,7 @@ private:
 
 	TWeakObjectPtr<UWorld> _CachedWorld;
 	int32 _SelectedHistoryIndex = -1;
+	int32 _LastHistoryCount = -1;
 };
 
 // ====================================================================================================================

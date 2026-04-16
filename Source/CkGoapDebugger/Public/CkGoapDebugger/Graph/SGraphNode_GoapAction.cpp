@@ -34,7 +34,7 @@ auto
 
 	const auto InPlan = _ActionNode->Get_InPlan();
 	const auto PlanStep = _ActionNode->Get_PlanStepIndex();
-	const auto NodeOpacity = InPlan ? 1.0f : 0.25f;
+	const auto NodeOpacity = InPlan ? 1.0f : 0.45f;
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
@@ -69,7 +69,7 @@ auto
 				[
 					SNew(SBorder)
 					.BorderImage(FAppStyle::GetBrush("Graph.StateNode.ColorSpill"))
-					.BorderBackgroundColor(FLinearColor(0.05f, 0.08f, 0.12f))
+					.BorderBackgroundColor(FLinearColor(0.08f, 0.10f, 0.15f))
 					.Padding(FMargin(8.0f, 4.0f))
 					[
 						SNew(SHorizontalBox)
@@ -255,10 +255,10 @@ auto
 {
 	if (_ActionNode->Get_InPlan())
 	{
-		return FLinearColor(0.23f, 0.51f, 0.96f);
+		return FLinearColor(0.15f, 0.45f, 0.85f);
 	}
 
-	return FLinearColor(0.1f, 0.14f, 0.2f);
+	return FLinearColor(0.25f, 0.25f, 0.28f);
 }
 
 // ====================================================================================================================

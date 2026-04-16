@@ -30,6 +30,8 @@ public:
 
 	// Layout parameters — exposed to toolbar
 	int32 NameDepth = 1;
+	int32 SpacingX = 300;
+	int32 SpacingY = 100;
 
 	// Name display helper: "UCk_GoapTest_Action_PickUpWeapon_C" → depth 1: "PickUpWeapon", depth 2: "Action.PickUpWeapon"
 	static auto ComputeDisplayName(const FString& InClassName, int32 InDepth) -> FString;

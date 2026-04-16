@@ -40,6 +40,8 @@ public:
 	auto Get_InPlan() const -> bool { return _InPlan; }
 	auto Get_PlanStepIndex() const -> int32 { return _PlanStepIndex; }
 	auto Get_ActionIndex() const -> int32 { return _ActionIndex; }
+	auto Get_IsPlanChainNode() const -> bool { return _IsPlanChainNode; }
+	auto Set_IsPlanChainNode(bool InValue) -> void { _IsPlanChainNode = InValue; }
 	auto Get_ActionClass() const -> TSubclassOf<UCk_GoapAction_EntityScript> { return _ActionClass; }
 
 private:
@@ -63,6 +65,8 @@ private:
 
 	UPROPERTY()
 	int32 _ActionIndex = -1;
+
+	bool _IsPlanChainNode = false;
 };
 
 // ====================================================================================================================

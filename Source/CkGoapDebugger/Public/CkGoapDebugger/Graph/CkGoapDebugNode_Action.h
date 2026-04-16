@@ -32,6 +32,8 @@ public:
 
 	// Accessors
 	auto Get_ActionName() const -> const FString& { return _ActionName; }
+	auto Get_DisplayName() const -> const FString& { return _DisplayName; }
+	auto Set_DisplayName(const FString& InName) -> void { _DisplayName = InName; }
 	auto Get_Cost() const -> float { return _Cost; }
 	auto Get_Preconditions() const -> const TMap<FGameplayTag, bool>& { return _Preconditions; }
 	auto Get_Effects() const -> const TMap<FGameplayTag, bool>& { return _Effects; }
@@ -43,6 +45,8 @@ public:
 private:
 	UPROPERTY()
 	FString _ActionName;
+
+	FString _DisplayName;
 
 	UPROPERTY()
 	float _Cost = 1.0f;

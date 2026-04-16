@@ -106,7 +106,7 @@ auto
 						.VAlign(VAlign_Center)
 						[
 							SNew(STextBlock)
-							.Text(FText::FromString(_ActionNode->Get_ActionName()))
+							.Text(FText::FromString(_ActionNode->Get_DisplayName()))
 							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 							.ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.9f))
 						]

@@ -1,6 +1,9 @@
 #include "SGraphNode_GoapGoal.h"
 #include "CkGoapDebugNode_Goal.h"
 
+#include "CkDebuggerCommon/Graph/CkDebugNodeTheme.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -19,8 +22,6 @@ auto
 	UpdateGraphNode();
 }
 
-// ====================================================================================================================
-
 auto
 	SGraphNode_GoapGoal::
 	UpdateGraphNode()
@@ -31,95 +32,67 @@ auto
 	RightNodeBox.Reset();
 	LeftNodeBox.Reset();
 
-	constexpr auto AmberColor = FLinearColor(0.96f, 0.62f, 0.04f);
+	const auto Theme = UCkDebuggerSettings::GetTheme();
 	const auto IsActive = _GoalNode->Get_IsActiveGoal();
-	const auto BorderColor = IsActive ? AmberColor : FLinearColor(0.3f, 0.3f, 0.3f);
+	const auto BorderColor = IsActive ? Theme.SelectedBorder : Theme.InactiveBorder;
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
 	auto ConditionsList = SNew(SVerticalBox);
 	for (const auto& [Key, Value] : _GoalNode->Get_Conditions())
 	{
-		ConditionsList->AddSlot()
-		.AutoHeight()
-		.Padding(0.0f, 1.0f)
+		ConditionsList->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(Key.ToString()))
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-			.ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.6f))
+			.ColorAndOpacity(Theme.PortLabel)
 			.Justification(ETextJustify::Center)
 		];
 	}
 
 	this->GetOrAddSlot(ENodeZone::Center)
-	.HAlign(HAlign_Center)
-	.VAlign(VAlign_Center)
+	.HAlign(HAlign_Center).VAlign(VAlign_Center)
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.Body")))
+		.BorderImage(Theme.GetBodyBrush())
 		.Padding(0.0f)
 		.BorderBackgroundColor(BorderColor)
 		[
 			SNew(SOverlay)
-
-			// Hidden pin overlay
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			[
-				SAssignNew(RightNodeBox, SVerticalBox)
-			]
-
-			// Visual content
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
+			+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Fill)
+			[ SAssignNew(RightNodeBox, SVerticalBox) ]
+			+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill")))
-				.BorderBackgroundColor(FLinearColor(0.02f, 0.02f, 0.03f))
+				.BorderImage(Theme.GetContentBrush())
+				.BorderBackgroundColor(Theme.ActiveFill)
 				.Padding(FMargin(12.0f, 6.0f))
 				.Visibility(EVisibility::SelfHitTestInvisible)
 				[
 					SNew(SVerticalBox)
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("\u2B22 %s"), *_GoalNode->Get_GoalName())))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-						.ColorAndOpacity(AmberColor)
+						.ColorAndOpacity(Theme.SelectedBorder)
 					]
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.HAlign(HAlign_Center)
-					.Padding(0.0f, 2.0f, 0.0f, 0.0f)
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.0f, 2.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("P:%d"), _GoalNode->Get_Priority())))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.5f))
+						.ColorAndOpacity(Theme.InactiveText)
 					]
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-					[
-						ConditionsList
-					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+					[ ConditionsList ]
 				]
 			]
 		]
 	];
-
 	CreatePinWidgets();
 }
-
-// ====================================================================================================================
 
 auto
 	SGraphNode_GoapGoal::
@@ -146,5 +119,3 @@ auto
 	RightNodeBox->AddSlot().AutoHeight()[PinToAdd];
 	InputPins.Add(PinToAdd);
 }
-
-// ====================================================================================================================

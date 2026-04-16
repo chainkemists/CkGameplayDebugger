@@ -2,6 +2,8 @@
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugNode_Action.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+
 // ====================================================================================================================
 
 FCkGoapDebugConnectionPolicy::FCkGoapDebugConnectionPolicy(
@@ -28,18 +30,20 @@ auto
 {
 	FCkDebugConnectionPolicyBase::DetermineWiringStyle(InOutputPin, InInputPin, OutParams);
 
+	const auto Theme = UCkDebuggerSettings::GetTheme();
+
 	auto* SourceNode = InOutputPin ? Cast<UCkGoapDebugNode_Action>(InOutputPin->GetOwningNode()) : nullptr;
 	auto* TargetNode = InInputPin ? Cast<UCkGoapDebugNode_Action>(InInputPin->GetOwningNode()) : nullptr;
 
 	if (SourceNode && TargetNode && SourceNode->Get_InPlan() && TargetNode->Get_InPlan())
 	{
-		OutParams.WireColor = FLinearColor(0.13f, 0.77f, 0.37f);
-		OutParams.WireThickness = 3.0f;
+		OutParams.WireColor = Theme.ActiveEdge;
+		OutParams.WireThickness = Theme.ActiveEdgeThickness;
 	}
 	else
 	{
-		OutParams.WireColor = FLinearColor(0.1f, 0.14f, 0.2f);
-		OutParams.WireThickness = 1.0f;
+		OutParams.WireColor = Theme.InactiveEdge;
+		OutParams.WireThickness = Theme.InactiveEdgeThickness;
 	}
 }
 

@@ -1,7 +1,9 @@
 #include "CkGoapDebugger_Module.h"
 
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
 
+#include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -15,37 +17,54 @@ const FName FCkGoapDebuggerModule::_TabId{TEXT("CkGoapDebugger")};
 
 // ====================================================================================================================
 
+static FAutoConsoleCommand CmdGoapDebugger(
+	TEXT("ck.GoapDebugger"),
+	TEXT("Opens (1) or closes (0) the CK GOAP Debugger. Usage: ck.GoapDebugger [0/1]"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& InArgs)
+	{
+		auto& Module = FCkGoapDebuggerModule::Get();
+
+		if (InArgs.IsEmpty())
+		{
+			Module.ToggleDebugger();
+			return;
+		}
+
+		const auto Value = FCString::Atoi(*InArgs[0]);
+		if (Value == 1) { Module.OpenDebugger(); }
+		else if (Value == 0) { Module.CloseDebugger(); }
+		else { Module.ToggleDebugger(); }
+	})
+);
+
+// ====================================================================================================================
+
 void FCkGoapDebuggerModule::StartupModule()
 {
+	_NodeFactory = MakeShared<FCkGoapDebugGraphFactory>();
+	FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		_TabId,
 		FOnSpawnTab::CreateRaw(this, &FCkGoapDebuggerModule::OnSpawnDebuggerTab))
-		.SetDisplayName(LOCTEXT("TabTitle", "GOAP Debugger"))
-		.SetTooltipText(LOCTEXT("TabTooltip", "Open the GOAP planner debugger"))
+		.SetDisplayName(LOCTEXT("TabTitle", "CK GOAP Debugger"))
+		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK GOAP planner debugger window"))
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
-
-	// Console command
-	static auto CVar = IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("ck.GoapDebugger"),
-		TEXT("Toggle the GOAP debugger window. Usage: ck.GoapDebugger [0/1]"),
-		FConsoleCommandWithArgsDelegate::CreateLambda([this](const TArray<FString>& InArgs)
-		{
-			if (InArgs.Num() > 0)
-			{
-				if (InArgs[0] == TEXT("0")) { CloseDebugger(); }
-				else { OpenDebugger(); }
-			}
-			else
-			{
-				ToggleDebugger();
-			}
-		}),
-		ECVF_Default);
 }
 
 void FCkGoapDebuggerModule::ShutdownModule()
 {
-	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);
+	if (FGlobalTabmanager::Get()->HasTabSpawner(_TabId))
+	{
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);
+	}
+
+	if (_NodeFactory.IsValid())
+	{
+		FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
+		_NodeFactory.Reset();
+	}
+
 	_Window.Reset();
 	_Tab.Reset();
 }
@@ -68,7 +87,9 @@ auto
 	if (_Tab.IsValid())
 	{
 		_Tab->RequestCloseTab();
+		_Tab.Reset();
 	}
+	_Window.Reset();
 }
 
 auto
@@ -76,14 +97,8 @@ auto
 	ToggleDebugger()
 	-> void
 {
-	if (IsDebuggerOpen())
-	{
-		CloseDebugger();
-	}
-	else
-	{
-		OpenDebugger();
-	}
+	if (IsDebuggerOpen()) { CloseDebugger(); }
+	else { OpenDebugger(); }
 }
 
 auto
@@ -91,7 +106,7 @@ auto
 	IsDebuggerOpen() const
 	-> bool
 {
-	return _Tab.IsValid() && _Tab->IsForeground();
+	return _Window.IsValid() && _Tab.IsValid();
 }
 
 // ====================================================================================================================
@@ -105,6 +120,7 @@ auto
 
 	_Tab = SNew(SDockTab)
 		.TabRole(ETabRole::NomadTab)
+		.Label(FText::FromString(TEXT("CK GOAP Debugger")))
 		.OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
 		{
 			_Window.Reset();

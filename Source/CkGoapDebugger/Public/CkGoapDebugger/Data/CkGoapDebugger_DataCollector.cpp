@@ -1,7 +1,7 @@
+#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
 #include "CkGoap/EntityScripts/CkGoapGoal_EntityScript.h"
-
-#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
 #include "CkCore/Macros/CkMacros.h"
 

@@ -44,7 +44,7 @@ public:
 
 private:
 	auto RebuildTopology(const FCkGoapDebugger_GoapInfo& InInfo) -> void;
-	auto UpdateRuntimeState(const FCkGoapDebugger_GoapInfo& InInfo) -> void;
+	auto UpdateRuntimeState(const FCkGoapDebugger_GoapInfo& InInfo) -> bool;
 	auto ComputeTopologyHash(const FCkGoapDebugger_GoapInfo& InInfo) const -> uint32;
 	auto PerformLayout() -> void;
 

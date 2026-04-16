@@ -4,11 +4,15 @@
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_Timeline.h"
 #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
+#include "CkSmDebugger/CkSmDebuggerStyle.h"
 
 #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
 #include "CkSmDebugger/Graph/CkSmDebugNode_State.h"
 #include "CkSmDebugger/Graph/CkSmDebugNode_Transition.h"
+
+#include "Widgets/Layout/SBorder.h"
+#include "Styling/AppStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
@@ -27,6 +31,216 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+// Detail panel — small widget helpers
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    inline const FLinearColor Color_Detail_SectionHeader = FLinearColor(0.82f, 0.86f, 0.96f);
+    inline const FLinearColor Color_Detail_Label         = FLinearColor(0.58f, 0.60f, 0.67f);
+    inline const FLinearColor Color_Detail_Value         = FLinearColor(0.88f, 0.90f, 0.92f);
+    inline const FLinearColor Color_Detail_ClassName     = FLinearColor(0.56f, 0.64f, 0.78f);
+    inline const FLinearColor Color_Detail_Separator     = FLinearColor(0.18f, 0.20f, 0.27f, 1.0f);
+    inline const FLinearColor Color_Detail_Bullet        = FLinearColor(0.85f, 0.55f, 0.25f);
+    inline const FLinearColor Color_Detail_Arrow         = FLinearColor(0.56f, 0.64f, 0.78f);
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Section header: bold title + 1px underline.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeSectionHeader(const FString& InText) -> TSharedRef<SWidget>
+    {
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(InText))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_SectionHeader))
+            ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+            [
+                SNew(SBox).HeightOverride(1.0f)
+                [
+                    SNew(SBorder)
+                        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                        .BorderBackgroundColor(Color_Detail_Separator)
+                ]
+            ];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Colored pill used for status chips (ACTIVE, RUNNING, SATISFIED, etc).
+    // Background is a 22%-alpha fill of the accent color; text is the full accent.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakePill(const FString& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+            .BorderBackgroundColor(FLinearColor(InColor.R, InColor.G, InColor.B, 0.22f))
+            .Padding(FMargin(6.0f, 1.0f))
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(InText))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .ColorAndOpacity(FSlateColor(InColor))
+            ];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Monospace-ish class name text (dim accent color).
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeClassName(const FString& InText) -> TSharedRef<SWidget>
+    {
+        return SNew(STextBlock)
+            .Text(FText::FromString(InText))
+            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+            .ColorAndOpacity(FSlateColor(Color_Detail_ClassName));
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Right-aligned key / value row. `KeyText` is provided via a lambda so values
+    // that change every frame (dwell time, yes/no flags) update live.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeKeyValue(const FString& InKey, TAttribute<FText> InValue) -> TSharedRef<SWidget>
+    {
+        return SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SBox).MinDesiredWidth(64.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(InKey))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                ]
+            ]
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(InValue)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+            ];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Task result pill, updating live to reflect the current task state.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeTaskResultPill(TAttribute<ECk_SmTaskResult> InResult) -> TSharedRef<SWidget>
+    {
+        auto TextAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda([InResult]()
+        {
+            switch (InResult.Get())
+            {
+            case ECk_SmTaskResult::Succeeded: return FText::FromString(TEXT("SUCCEEDED"));
+            case ECk_SmTaskResult::Failed:    return FText::FromString(TEXT("FAILED"));
+            default:                          return FText::FromString(TEXT("RUNNING"));
+            }
+        }));
+
+        auto ColorAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
+        {
+            switch (InResult.Get())
+            {
+            case ECk_SmTaskResult::Succeeded: return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskSucceeded);
+            case ECk_SmTaskResult::Failed:    return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskFailed);
+            default:                          return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskRunning);
+            }
+        }));
+
+        auto BgColorAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
+        {
+            auto Base = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
+            switch (InResult.Get())
+            {
+            case ECk_SmTaskResult::Succeeded: Base = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
+            case ECk_SmTaskResult::Failed:    Base = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
+            default: break;
+            }
+            return FSlateColor(FLinearColor(Base.R, Base.G, Base.B, 0.22f));
+        }));
+
+        return SNew(SBorder)
+            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+            .BorderBackgroundColor(BgColorAttr)
+            .Padding(FMargin(6.0f, 1.0f))
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(TextAttr)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .ColorAndOpacity(ColorAttr)
+            ];
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Condition result pill (Pass / Fail / Undetermined) — static snapshot.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeConditionPill(ECk_SmConditionResult InResult) -> TSharedRef<SWidget>
+    {
+        auto Label   = FString{TEXT("?")};
+        auto Color   = FCkSmDebuggerStyle::Color_Sm_ConditionUnknown;
+        switch (InResult)
+        {
+        case ECk_SmConditionResult::Pass:         Label = TEXT("PASS"); Color = FCkSmDebuggerStyle::Color_Sm_ConditionSatisfied;   break;
+        case ECk_SmConditionResult::Fail:         Label = TEXT("FAIL"); Color = FCkSmDebuggerStyle::Color_Sm_ConditionUnsatisfied; break;
+        default: break;
+        }
+        return MakePill(Label, Color);
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Condition result pill — updates its label/color live from a TAttribute.
+    // -----------------------------------------------------------------------------------------------------------------
+    auto MakeConditionPillLive(TAttribute<ECk_SmConditionResult> InResult) -> TSharedRef<SWidget>
+    {
+        auto TextAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda([InResult]()
+        {
+            switch (InResult.Get())
+            {
+            case ECk_SmConditionResult::Pass: return FText::FromString(TEXT("PASS"));
+            case ECk_SmConditionResult::Fail: return FText::FromString(TEXT("FAIL"));
+            default:                          return FText::FromString(TEXT("?"));
+            }
+        }));
+
+        auto ResolveColor = [InResult]() -> FLinearColor
+        {
+            switch (InResult.Get())
+            {
+            case ECk_SmConditionResult::Pass: return FCkSmDebuggerStyle::Color_Sm_ConditionSatisfied;
+            case ECk_SmConditionResult::Fail: return FCkSmDebuggerStyle::Color_Sm_ConditionUnsatisfied;
+            default:                          return FCkSmDebuggerStyle::Color_Sm_ConditionUnknown;
+            }
+        };
+
+        auto FgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([ResolveColor]()
+        {
+            return FSlateColor(ResolveColor());
+        }));
+        auto BgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([ResolveColor]()
+        {
+            auto C = ResolveColor();
+            return FSlateColor(FLinearColor(C.R, C.G, C.B, 0.22f));
+        }));
+
+        return SNew(SBorder)
+            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+            .BorderBackgroundColor(BgAttr)
+            .Padding(FMargin(6.0f, 1.0f))
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(TextAttr)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .ColorAndOpacity(FgAttr)
+            ];
+    }
+
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -56,6 +270,7 @@ auto
     _SelectedTransitionIndex = -1;
     _SelectedHistoryEntry.Reset();
     _LastCurrentStateIdx = -1;
+    _LastDetailSig = FDetailSignature{};
 
     // Preview walker uses the PIE world — tear down its entity too.
     if (_PreviewPane.IsValid())
@@ -353,6 +568,9 @@ auto
         }
         _LastCurrentStateIdx = CurrentStateIdx;
     }
+
+    // Detail panel: swap content when selection signature changes.
+    RefreshDetailContent();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1169,7 +1387,9 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-// Detail panel
+// Detail panel — structured widget-based layout.
+// Content is rebuilt only when the selection signature changes; live values
+// (dwell time, yes/no flags, task results) update inside via attribute lambdas.
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -1177,218 +1397,638 @@ auto
     BuildDetailPanel()
     -> TSharedRef<SWidget>
 {
-    auto DimColor = FLinearColor(0.5f, 0.5f, 0.55f);
-    auto SepColor = FLinearColor(0.25f, 0.25f, 0.33f, 0.5f);
-
     return SNew(SBorder)
         .BorderBackgroundColor(FLinearColor(0.08f, 0.08f, 0.12f))
-        .Padding(FMargin(6.0f))
+        .Padding(FMargin(8.0f))
         [
             SNew(SScrollBox)
             + SScrollBox::Slot()
-            .Padding(4.0f)
+                .Padding(2.0f)
+                [
+                    SAssignNew(_DetailContentBox, SBox)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("No selection")))
+                            .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                    ]
+                ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    RefreshDetailContent()
+    -> void
+{
+    if (NOT _DetailContentBox.IsValid())
+    { return; }
+
+    // Compute current selection signature
+    auto Sig = FDetailSignature{};
+    if (_ViewModel.IsValid())
+    {
+        auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+        Sig.SmInfo = static_cast<const void*>(SmInfo);
+        Sig.HistoryEntry = static_cast<const void*>(_SelectedHistoryEntry.Get());
+        Sig.NodeIdx = _ViewModel->Get_SelectedNodeIndex();
+        Sig.TransitionIdx = _SelectedTransitionIndex;
+
+        if (SmInfo && Sig.NodeIdx >= 0 && Sig.NodeIdx < SmInfo->States.Num())
+        {
+            Sig.TaskCount = SmInfo->States[Sig.NodeIdx].Tasks.Num();
+            for (auto& Tr : SmInfo->Transitions)
+            {
+                if (Tr.SourceStateIndex == Sig.NodeIdx)
+                { Sig.TransitionCount++; }
+            }
+        }
+    }
+
+    if (Sig == _LastDetailSig)
+    { return; }
+
+    _LastDetailSig = Sig;
+    _DetailContentBox->SetContent(BuildDetailContent());
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    BuildDetailContent()
+    -> TSharedRef<SWidget>
+{
+    auto MakeNoSelection = []()
+    {
+        return StaticCastSharedRef<SWidget>(
+            SNew(STextBlock)
+                .Text(FText::FromString(TEXT("No selection")))
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9)));
+    };
+
+    if (NOT _ViewModel.IsValid())
+    { return MakeNoSelection(); }
+
+    auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo)
+    { return MakeNoSelection(); }
+
+    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    auto Root = SNew(SVerticalBox);
+
+    // ───────────────────────────────────────────────────────────────────
+    // Case 1: history entry selected
+    // ───────────────────────────────────────────────────────────────────
+    if (_SelectedHistoryEntry.IsValid())
+    {
+        auto& Entry = *_SelectedHistoryEntry;
+        auto ToName   = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName,   Depth);
+        auto FromName = FCkSmLayoutParams::ComputeDisplayName(Entry.FromStateName, Depth);
+
+        // Find state indices
+        auto ToIdx = -1;
+        auto FromIdx = -1;
+        for (auto i = 0; i < SmInfo->States.Num(); ++i)
+        {
+            if (SmInfo->States[i].StateName == Entry.ToStateName)   { ToIdx = i; }
+            if (SmInfo->States[i].StateName == Entry.FromStateName) { FromIdx = i; }
+        }
+
+        // --- ARRIVED AT ---
+        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("ARRIVED AT")) ];
+        Root->AddSlot().AutoHeight()
+        [
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\x25CF")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(ToName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+        ];
+
+        if (ToIdx >= 0)
+        {
+            auto& ToState = SmInfo->States[ToIdx];
+            for (auto& Task : ToState.Tasks)
+            {
+                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                auto IconChar = FString{TEXT("\x25CF")};
+                auto IconColor = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
+                switch (Task.LastResult)
+                {
+                case ECk_SmTaskResult::Succeeded: IconChar = TEXT("\x2713"); IconColor = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
+                case ECk_SmTaskResult::Failed:    IconChar = TEXT("\x2717"); IconColor = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
+                default: break;
+                }
+                Root->AddSlot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(IconChar))
+                                .ColorAndOpacity(FSlateColor(IconColor))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TName))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        ]
+                ];
+            }
+        }
+
+        // --- CAME FROM ---
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
+        Root->AddSlot().AutoHeight()
+        [
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\x25CB")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(FromName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+        ];
+
+        if (FromIdx >= 0)
+        {
+            auto& FromState = SmInfo->States[FromIdx];
+            for (auto& Task : FromState.Tasks)
+            {
+                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                Root->AddSlot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                ];
+            }
+        }
+
+        // --- TASKS AT TRANSITION ---
+        if (Entry.TaskSnapshots.Num() > 0)
+        {
+            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TASKS AT TRANSITION")) ];
+            for (auto& Snap : Entry.TaskSnapshots)
+            {
+                auto TName = FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth);
+                auto Label = FString{TEXT("RUNNING")};
+                auto Color = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
+                switch (Snap.Result)
+                {
+                case ECk_SmTaskResult::Succeeded: Label = TEXT("SUCCEEDED"); Color = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
+                case ECk_SmTaskResult::Failed:    Label = TEXT("FAILED");    Color = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
+                default: break;
+                }
+                Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TName))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            MakePill(Label, Color)
+                        ]
+                ];
+            }
+        }
+
+        // --- TRANSITION conditions ---
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TRANSITION")) ];
+        if (Entry.ConditionNames.Num() > 0)
+        {
+            for (auto& CondName : Entry.ConditionNames)
+            {
+                auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                        [
+                            MakeConditionPill(ECk_SmConditionResult::Pass)
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(CName))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        ]
+                ];
+            }
+        }
+        else
+        {
+            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
-                    .Text_Lambda([this]()
-                    {
-                        if (NOT _ViewModel.IsValid())
-                        { return FText::FromString(TEXT("No selection")); }
+                    .Text(FText::FromString(TEXT("(unconditional)")))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+            ];
+        }
 
-                        auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-                        if (NOT SmInfo)
-                        { return FText::FromString(TEXT("No selection")); }
-
-                        auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                        auto Info = FString{};
-
-                        // ── History entry selected ──────────────────────
-                        if (_SelectedHistoryEntry.IsValid())
-                        {
-                            auto& Entry = *_SelectedHistoryEntry;
-                            auto ToName = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName, Depth);
-                            auto FromName = FCkSmLayoutParams::ComputeDisplayName(Entry.FromStateName, Depth);
-
-                            // Find state indices
-                            auto ToIdx = -1;
-                            auto FromIdx = -1;
-                            for (auto i = 0; i < SmInfo->States.Num(); ++i)
-                            {
-                                if (SmInfo->States[i].StateName == Entry.ToStateName) { ToIdx = i; }
-                                if (SmInfo->States[i].StateName == Entry.FromStateName) { FromIdx = i; }
-                            }
-
-                            // --- Arrived At ---
-                            Info += FString::Printf(TEXT("ARRIVED AT\n"));
-                            Info += FString::Printf(TEXT("\x25CF %s\n"), *ToName);
-                            if (ToIdx >= 0 && ToIdx < SmInfo->States.Num())
-                            {
-                                auto& ToState = SmInfo->States[ToIdx];
-                                for (auto& Task : ToState.Tasks)
-                                {
-                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
-                                    auto Icon = TEXT("\x25CF");
-                                    switch (Task.LastResult)
-                                    {
-                                    case ECk_SmTaskResult::Succeeded: Icon = TEXT("\x2713"); break;
-                                    case ECk_SmTaskResult::Failed:    Icon = TEXT("\x2717"); break;
-                                    default: break;
-                                    }
-                                    Info += FString::Printf(TEXT("    %s %s\n"), *TName, Icon);
-                                }
-                            }
-
-                            Info += TEXT("\n");
-
-                            // --- Came From ---
-                            Info += FString::Printf(TEXT("CAME FROM\n"));
-                            Info += FString::Printf(TEXT("\x25CB %s\n"), *FromName);
-                            if (FromIdx >= 0 && FromIdx < SmInfo->States.Num())
-                            {
-                                auto& FromState = SmInfo->States[FromIdx];
-                                for (auto& Task : FromState.Tasks)
-                                {
-                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
-                                    Info += FString::Printf(TEXT("    %s\n"), *TName);
-                                }
-                            }
-
-                            // --- Task snapshots at transition time ---
-                            if (Entry.TaskSnapshots.Num() > 0)
-                            {
-                                Info += TEXT("\nTASKS AT TRANSITION\n");
-                                for (auto& Snap : Entry.TaskSnapshots)
-                                {
-                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth);
-                                    auto ResultStr = TEXT("Running");
-                                    switch (Snap.Result)
-                                    {
-                                    case ECk_SmTaskResult::Succeeded: ResultStr = TEXT("Succeeded"); break;
-                                    case ECk_SmTaskResult::Failed:    ResultStr = TEXT("Failed"); break;
-                                    default: break;
-                                    }
-                                    Info += FString::Printf(TEXT("    %s  %s\n"), *TName, ResultStr);
-                                }
-                            }
-
-                            Info += TEXT("\n");
-
-                            // --- Transition conditions ---
-                            Info += TEXT("TRANSITION\n");
-                            if (Entry.ConditionNames.Num() > 0)
-                            {
-                                for (auto& CondName : Entry.ConditionNames)
-                                {
-                                    auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
-                                    Info += FString::Printf(TEXT("    [+] %s\n"), *CName);
-                                }
-                            }
-                            else
-                            {
-                                Info += TEXT("    (unconditional)\n");
-                            }
-
-                            Info += FString::Printf(TEXT("\nFrame [%llu]\n"), Entry.FrameNumber);
-
-                            return FText::FromString(Info);
-                        }
-
-                        // ── Transition selected in graph ───────────────
-                        if (_SelectedTransitionIndex >= 0 && _SelectedTransitionIndex < SmInfo->Transitions.Num())
-                        {
-                            auto& Trans = SmInfo->Transitions[_SelectedTransitionIndex];
-                            auto SrcName = FCkSmLayoutParams::ComputeDisplayName(Trans.SourceStateName, Depth);
-                            auto DstName = FCkSmLayoutParams::ComputeDisplayName(Trans.TargetStateName, Depth);
-
-                            Info += FString::Printf(TEXT("TRANSITION\n%s \x2500\x25B6 %s\n\n"), *SrcName, *DstName);
-                            Info += FString::Printf(TEXT("Conditions [%d/%d]  %s\n"),
-                                Trans.SatisfiedCount, Trans.TotalCount,
-                                CkSmDebugger::GetTransitionResultLabel(Trans.TransitionResult));
-
-                            for (auto& Cond : Trans.Conditions)
-                            {
-                                auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
-                                Info += FString::Printf(TEXT("  %s %s\n"),
-                                    CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
-                                Info += FString::Printf(TEXT("        Class: %s\n"),
-                                    IsValid(Cond.ScriptClass) ? *Cond.ScriptClass->GetName() : TEXT("(unknown)"));
-                            }
-
-                            return FText::FromString(Info);
-                        }
-
-                        // ── State selected in graph ────────────────────
-                        auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-                        if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
-                        {
-                            auto& State = SmInfo->States[SelectedIdx];
-                            auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
-
-                            Info += FString::Printf(TEXT("STATE\n\x25CF %s\n"), *DisplayName);
-                            Info += FString::Printf(TEXT("Class: %s\n"),
-                                IsValid(State.ScriptClass) ? *State.ScriptClass->GetName() : TEXT("(unknown)"));
-                            if (IsValid(State.RequestedScriptClass) && State.RequestedScriptClass != State.ScriptClass)
-                            {
-                                Info += FString::Printf(TEXT("  (overrides: %s)\n"), *State.RequestedScriptClass->GetName());
-                            }
-                            Info += TEXT("\n");
-                            Info += FString::Printf(TEXT("Current: %s\n"), State.IsCurrentState ? TEXT("Yes") : TEXT("No"));
-                            Info += FString::Printf(TEXT("Dwell: %.2fs\n"), State.DwellTimeSeconds);
-                            Info += FString::Printf(TEXT("Visited: %s\n\n"), State.HasBeenVisited ? TEXT("Yes") : TEXT("No"));
-
-                            if (State.Tasks.Num() > 0)
-                            {
-                                Info += TEXT("TASKS\n");
-                                for (auto& Task : State.Tasks)
-                                {
-                                    auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
-                                    auto ResultStr = TEXT("Running");
-                                    switch (Task.LastResult)
-                                    {
-                                    case ECk_SmTaskResult::Succeeded: ResultStr = TEXT("Succeeded"); break;
-                                    case ECk_SmTaskResult::Failed:    ResultStr = TEXT("Failed"); break;
-                                    default: break;
-                                    }
-                                    Info += FString::Printf(TEXT("    %s  %s\n"), *TName, ResultStr);
-                                    Info += FString::Printf(TEXT("        Class: %s\n"),
-                                        IsValid(Task.ScriptClass) ? *Task.ScriptClass->GetName() : TEXT("(unknown)"));
-                                }
-                                Info += TEXT("\n");
-                            }
-
-                            // Outgoing transitions
-                            auto HasTrans = false;
-                            for (auto& Transition : SmInfo->Transitions)
-                            {
-                                if (Transition.SourceStateIndex != SelectedIdx) { continue; }
-                                if (NOT HasTrans) { Info += TEXT("TRANSITIONS\n"); HasTrans = true; }
-
-                                auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
-                                Info += FString::Printf(TEXT("  \x2500\x25B6 %s  [%d/%d]  %s\n"),
-                                    *DstName,
-                                    Transition.SatisfiedCount,
-                                    Transition.TotalCount,
-                                    CkSmDebugger::GetTransitionResultLabel(Transition.TransitionResult));
-
-                                for (auto& Cond : Transition.Conditions)
-                                {
-                                    auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
-                                    Info += FString::Printf(TEXT("      %s %s\n"),
-                                        CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
-                                    Info += FString::Printf(TEXT("            Class: %s\n"),
-                                        IsValid(Cond.ScriptClass) ? *Cond.ScriptClass->GetName() : TEXT("(unknown)"));
-                                }
-                            }
-
-                            return FText::FromString(Info);
-                        }
-
-                        return FText::FromString(TEXT("No selection"));
-                    })
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FLinearColor(0.75f, 0.75f, 0.78f))
-                    .AutoWrapText(true)
-            ]
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+                .Text(FText::FromString(FString::Printf(TEXT("Frame [%llu]"), Entry.FrameNumber)))
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
         ];
+
+        return Root;
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Case 2: transition selected in graph
+    // ───────────────────────────────────────────────────────────────────
+    if (_SelectedTransitionIndex >= 0 && _SelectedTransitionIndex < SmInfo->Transitions.Num())
+    {
+        auto TransIdx = _SelectedTransitionIndex;
+
+        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("TRANSITION")) ];
+
+        auto SrcName = FCkSmLayoutParams::ComputeDisplayName(SmInfo->Transitions[TransIdx].SourceStateName, Depth);
+        auto DstName = FCkSmLayoutParams::ComputeDisplayName(SmInfo->Transitions[TransIdx].TargetStateName, Depth);
+
+        Root->AddSlot().AutoHeight()
+        [
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(SrcName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\x2500\x25B6")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Arrow))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(DstName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+        ];
+
+        // Live count + result pill
+        auto CountAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TransIdx]()
+            {
+                auto VM = ViewModelWeak.Pin();
+                if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                auto* Info = VM->Get_CurrentSmInfo();
+                if (NOT Info || TransIdx >= Info->Transitions.Num()) { return FText::GetEmpty(); }
+                auto& T = Info->Transitions[TransIdx];
+                return FText::FromString(FString::Printf(TEXT("%d/%d conditions satisfied"), T.SatisfiedCount, T.TotalCount));
+            }));
+
+        Root->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+                .Text(CountAttr)
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+        ];
+
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CONDITIONS")) ];
+
+        auto& Trans = SmInfo->Transitions[TransIdx];
+        for (auto i = 0; i < Trans.Conditions.Num(); ++i)
+        {
+            auto& Cond = Trans.Conditions[i];
+            auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+            auto ClassStr = IsValid(Cond.ScriptClass) ? Cond.ScriptClass->GetName() : FString(TEXT("(unknown)"));
+
+            auto CondIdx = i;
+            auto ResultAttr = TAttribute<ECk_SmConditionResult>::Create(TAttribute<ECk_SmConditionResult>::FGetter::CreateLambda(
+                [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TransIdx, CondIdx]()
+                {
+                    auto VM = ViewModelWeak.Pin();
+                    if (NOT VM.IsValid()) { return ECk_SmConditionResult::Undetermined; }
+                    auto* Info = VM->Get_CurrentSmInfo();
+                    if (NOT Info || TransIdx >= Info->Transitions.Num()) { return ECk_SmConditionResult::Undetermined; }
+                    auto& Tr = Info->Transitions[TransIdx];
+                    if (CondIdx >= Tr.Conditions.Num()) { return ECk_SmConditionResult::Undetermined; }
+                    return Tr.Conditions[CondIdx].Result;
+                }));
+
+            Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+            [
+                SNew(SVerticalBox)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                            [
+                                MakeConditionPillLive(ResultAttr)
+                            ]
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                            [
+                                SNew(STextBlock)
+                                    .Text(FText::FromString(CName))
+                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            ]
+                    ]
+                    + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)
+                    [
+                        MakeClassName(ClassStr)
+                    ]
+            ];
+        }
+
+        return Root;
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Case 3: state selected in graph
+    // ───────────────────────────────────────────────────────────────────
+    auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
+    if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
+    {
+        auto& State = SmInfo->States[SelectedIdx];
+        auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
+        auto ClassStr = IsValid(State.ScriptClass) ? State.ScriptClass->GetName() : FString(TEXT("(unknown)"));
+        auto HasOverride = IsValid(State.RequestedScriptClass) && State.RequestedScriptClass != State.ScriptClass;
+        auto OverrideStr = HasOverride ? State.RequestedScriptClass->GetName() : FString{};
+
+        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("STATE")) ];
+
+        // Name row — bullet + name + ACTIVE pill
+        {
+            auto NameRow = SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\x25CF")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(DisplayName))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                ];
+
+            auto StateIdx = SelectedIdx;
+            auto VisibilityAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+                [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), StateIdx]()
+                {
+                    auto VM = ViewModelWeak.Pin();
+                    if (NOT VM.IsValid()) { return EVisibility::Collapsed; }
+                    auto* Info = VM->Get_CurrentSmInfo();
+                    if (NOT Info || StateIdx >= Info->States.Num()) { return EVisibility::Collapsed; }
+                    return Info->States[StateIdx].IsCurrentState ? EVisibility::Visible : EVisibility::Collapsed;
+                }));
+
+            NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SBox)
+                    .Visibility(VisibilityAttr)
+                    [
+                        MakePill(TEXT("ACTIVE"), FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder)
+                    ]
+            ];
+
+            Root->AddSlot().AutoHeight() [ NameRow ];
+        }
+
+        // Class name + override info
+        Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f) [ MakeClassName(ClassStr) ];
+
+        if (HasOverride)
+        {
+            Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f)
+            [
+                SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                    [
+                        MakePill(TEXT("OVERRIDE"), FCkSmDebuggerStyle::Color_Sm_Override)
+                    ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [
+                        MakeClassName(OverrideStr)
+                    ]
+            ];
+        }
+
+        Root->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+        [
+            MakeKeyValue(TEXT("Dwell"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+                [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx]()
+                {
+                    auto VM = ViewModelWeak.Pin();
+                    if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                    auto* Info = VM->Get_CurrentSmInfo();
+                    if (NOT Info || SelectedIdx >= Info->States.Num()) { return FText::GetEmpty(); }
+                    return FText::FromString(FString::Printf(TEXT("%.2fs"), Info->States[SelectedIdx].DwellTimeSeconds));
+                })))
+        ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+        [
+            MakeKeyValue(TEXT("Visited"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+                [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx]()
+                {
+                    auto VM = ViewModelWeak.Pin();
+                    if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                    auto* Info = VM->Get_CurrentSmInfo();
+                    if (NOT Info || SelectedIdx >= Info->States.Num()) { return FText::GetEmpty(); }
+                    return FText::FromString(Info->States[SelectedIdx].HasBeenVisited ? TEXT("Yes") : TEXT("No"));
+                })))
+        ];
+
+        // --- TASKS ---
+        if (State.Tasks.Num() > 0)
+        {
+            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TASKS")) ];
+            for (auto TaskIdx = 0; TaskIdx < State.Tasks.Num(); ++TaskIdx)
+            {
+                auto& Task = State.Tasks[TaskIdx];
+                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                auto TaskClassStr = IsValid(Task.ScriptClass) ? Task.ScriptClass->GetName() : FString(TEXT("(unknown)"));
+
+                auto ResultAttr = TAttribute<ECk_SmTaskResult>::Create(TAttribute<ECk_SmTaskResult>::FGetter::CreateLambda(
+                    [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx, TaskIdx]()
+                    {
+                        auto VM = ViewModelWeak.Pin();
+                        if (NOT VM.IsValid()) { return ECk_SmTaskResult::Running; }
+                        auto* Info = VM->Get_CurrentSmInfo();
+                        if (NOT Info || SelectedIdx >= Info->States.Num()) { return ECk_SmTaskResult::Running; }
+                        auto& St = Info->States[SelectedIdx];
+                        if (TaskIdx >= St.Tasks.Num()) { return ECk_SmTaskResult::Running; }
+                        return St.Tasks[TaskIdx].LastResult;
+                    }));
+
+                Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+                [
+                    SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()
+                        [
+                            SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+                                [
+                                    SNew(STextBlock)
+                                        .Text(FText::FromString(TName))
+                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                ]
+                                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                                [
+                                    MakeTaskResultPill(ResultAttr)
+                                ]
+                        ]
+                        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)
+                        [
+                            MakeClassName(TaskClassStr)
+                        ]
+                ];
+            }
+        }
+
+        // --- TRANSITIONS (outgoing) ---
+        auto HasAnyOutgoing = false;
+        for (auto& Transition : SmInfo->Transitions)
+        {
+            if (Transition.SourceStateIndex == SelectedIdx) { HasAnyOutgoing = true; break; }
+        }
+        if (HasAnyOutgoing)
+        {
+            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TRANSITIONS")) ];
+
+            for (auto TrIdx = 0; TrIdx < SmInfo->Transitions.Num(); ++TrIdx)
+            {
+                auto& Transition = SmInfo->Transitions[TrIdx];
+                if (Transition.SourceStateIndex != SelectedIdx) { continue; }
+
+                auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
+
+                auto TargetIdx = TrIdx;
+                auto CountAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+                    [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TargetIdx]()
+                    {
+                        auto VM = ViewModelWeak.Pin();
+                        if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                        auto* Info = VM->Get_CurrentSmInfo();
+                        if (NOT Info || TargetIdx >= Info->Transitions.Num()) { return FText::GetEmpty(); }
+                        auto& T = Info->Transitions[TargetIdx];
+                        return FText::FromString(FString::Printf(TEXT("%d/%d"), T.SatisfiedCount, T.TotalCount));
+                    }));
+
+                Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+                [
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("\x2500\x25B6")))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Arrow))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(DstName))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(CountAttr)
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        ]
+                ];
+
+                for (auto CondIdx = 0; CondIdx < Transition.Conditions.Num(); ++CondIdx)
+                {
+                    auto& Cond = Transition.Conditions[CondIdx];
+                    auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+                    auto CondClassStr = IsValid(Cond.ScriptClass) ? Cond.ScriptClass->GetName() : FString(TEXT("(unknown)"));
+
+                    auto CondResultAttr = TAttribute<ECk_SmConditionResult>::Create(TAttribute<ECk_SmConditionResult>::FGetter::CreateLambda(
+                        [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TargetIdx, CondIdx]()
+                        {
+                            auto VM = ViewModelWeak.Pin();
+                            if (NOT VM.IsValid()) { return ECk_SmConditionResult::Undetermined; }
+                            auto* Info = VM->Get_CurrentSmInfo();
+                            if (NOT Info || TargetIdx >= Info->Transitions.Num()) { return ECk_SmConditionResult::Undetermined; }
+                            auto& Tr = Info->Transitions[TargetIdx];
+                            if (CondIdx >= Tr.Conditions.Num()) { return ECk_SmConditionResult::Undetermined; }
+                            return Tr.Conditions[CondIdx].Result;
+                        }));
+
+                    Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SVerticalBox)
+                            + SVerticalBox::Slot().AutoHeight()
+                            [
+                                SNew(SHorizontalBox)
+                                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                                    [
+                                        MakeConditionPillLive(CondResultAttr)
+                                    ]
+                                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text(FText::FromString(CName))
+                                            .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                    ]
+                            ]
+                            + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)
+                            [
+                                MakeClassName(CondClassStr)
+                            ]
+                    ];
+                }
+            }
+        }
+
+        return Root;
+    }
+
+    return MakeNoSelection();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

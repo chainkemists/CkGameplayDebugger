@@ -25,7 +25,11 @@ auto
 	}
 	else
 	{
-		UpdateRuntimeState(InInfo);
+		const auto PlanChanged = UpdateRuntimeState(InInfo);
+		if (PlanChanged)
+		{
+			NotifyGraphChanged();
+		}
 	}
 }
 
@@ -132,13 +136,22 @@ auto
 	UCkGoapDebugGraph::
 	UpdateRuntimeState(
 		const FCkGoapDebugger_GoapInfo& InInfo)
-	-> void
+	-> bool
 {
+	auto Changed = false;
+
 	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
 		auto* Node = _ActionNodes[Idx].Get();
 		const auto PlanIdx = InInfo.PlanActionNames.IndexOfByKey(Node->Get_ActionName());
-		Node->UpdatePlanState(PlanIdx != INDEX_NONE, PlanIdx);
+		const auto NewInPlan = PlanIdx != INDEX_NONE;
+
+		if (Node->Get_InPlan() != NewInPlan || Node->Get_PlanStepIndex() != PlanIdx)
+		{
+			Changed = true;
+		}
+
+		Node->UpdatePlanState(NewInPlan, PlanIdx);
 	}
 
 	if (_GoalNode != nullptr)
@@ -147,11 +160,14 @@ auto
 		{
 			if (Goal.ClassName == _GoalNode->Get_GoalName())
 			{
+				if (_GoalNode->Get_IsActiveGoal() != Goal.IsActiveGoal) { Changed = true; }
 				_GoalNode->Set_IsActiveGoal(Goal.IsActiveGoal);
 				break;
 			}
 		}
 	}
+
+	return Changed;
 }
 
 // ====================================================================================================================

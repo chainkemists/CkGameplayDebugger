@@ -27,6 +27,8 @@ public class CkGoapDebugger : CkModuleRules
 			"CkAStar",
 			"CkGoap",
 			"CkDebuggerCommon",
+
+			"GraphEditor",
 		});
 
 		if (Target.bBuildEditor)

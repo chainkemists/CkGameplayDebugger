@@ -124,12 +124,14 @@ auto
 					]
 				]
 
-				// Ports: preconditions (left) and effects (right)
+				// Ports or compact effects summary
 				+ SVerticalBox::Slot()
 				.AutoHeight()
 				.Padding(FMargin(8.0f, 4.0f, 8.0f, 6.0f))
 				[
-					CreatePortRows()
+					_ActionNode->Get_IsPlanChainNode()
+						? CreateCompactEffectsSummary()
+						: CreatePortRows()
 				]
 			]
 		]
@@ -222,6 +224,26 @@ auto
 	PortBox->AddSlot().AutoWidth()[EffBox];
 
 	return PortBox;
+}
+
+// ====================================================================================================================
+
+auto
+	SGraphNode_GoapAction::
+	CreateCompactEffectsSummary()
+	-> TSharedRef<SWidget>
+{
+	auto EffectsText = FString{};
+	for (const auto& [Key, Value] : _ActionNode->Get_Effects())
+	{
+		if (EffectsText.Len() > 0) { EffectsText += TEXT(", "); }
+		EffectsText += FString::Printf(TEXT("+%s"), *Key.ToString());
+	}
+
+	return SNew(STextBlock)
+		.Text(FText::FromString(EffectsText))
+		.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+		.ColorAndOpacity(FLinearColor(0.13f, 0.77f, 0.37f));
 }
 
 // ====================================================================================================================

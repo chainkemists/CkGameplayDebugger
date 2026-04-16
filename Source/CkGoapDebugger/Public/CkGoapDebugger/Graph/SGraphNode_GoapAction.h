@@ -24,6 +24,7 @@ public:
 private:
 	auto GetBorderBackgroundColor() const -> FSlateColor;
 	auto CreatePortRows() -> TSharedRef<SWidget>;
+	auto CreateCompactEffectsSummary() -> TSharedRef<SWidget>;
 
 	UCkGoapDebugNode_Action* _ActionNode = nullptr;
 };

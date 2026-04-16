@@ -57,6 +57,23 @@ auto
 			BuildToolbar()
 		]
 
+		// Plan strip: horizontal row of compact action cards
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBorder)
+			.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
+			.Padding(FMargin(8.0f, 4.0f))
+			[
+				SNew(SScrollBox)
+				.Orientation(Orient_Horizontal)
+				+ SScrollBox::Slot()
+				[
+					SAssignNew(_PlanStripBox, SHorizontalBox)
+				]
+			]
+		]
+
 		// Main content: SSplitter horizontal
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
@@ -156,6 +173,9 @@ auto
 	{
 		_Graph->UpdateFromGoapInfo(*Info);
 	}
+
+	// Update plan strip
+	RebuildPlanStrip();
 
 	// Update status badge
 	if (_StatusBadge.IsValid())
@@ -490,6 +510,143 @@ auto
 				SAssignNew(_HistoryListBox, SVerticalBox)
 			]
 		];
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
+	RebuildPlanStrip()
+	-> void
+{
+	if (NOT _PlanStripBox.IsValid()) { return; }
+
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	const auto StepCount = Info ? Info->PlanActionNames.Num() : 0;
+
+	if (StepCount == _LastPlanStepCount) { return; }
+	_LastPlanStepCount = StepCount;
+
+	_PlanStripBox->ClearChildren();
+
+	if (Info == nullptr || StepCount == 0)
+	{
+		_PlanStripBox->AddSlot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(4.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("No plan")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+			.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+		];
+		return;
+	}
+
+	for (auto StepIdx = 0; StepIdx < StepCount; ++StepIdx)
+	{
+		// Arrow between cards
+		if (StepIdx > 0)
+		{
+			_PlanStripBox->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(2.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("\x2192")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+				.ColorAndOpacity(FLinearColor(0.15f, 0.45f, 0.85f, 0.5f))
+			];
+		}
+
+		const auto& ActionName = Info->PlanActionNames[StepIdx];
+		const auto DisplayName = _Graph
+			? UCkGoapDebugGraph::ComputeDisplayName(ActionName, _Graph->NameDepth)
+			: ActionName;
+
+		// Find cost
+		auto Cost = 0.0f;
+		for (const auto& A : Info->Actions)
+		{
+			if (A.ClassName == ActionName) { Cost = A.Cost; break; }
+		}
+
+		_PlanStripBox->AddSlot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(2.0f, 0.0f)
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("Graph.StateNode.Body"))
+			.BorderBackgroundColor(FLinearColor(0.15f, 0.45f, 0.85f))
+			.Padding(FMargin(0.0f))
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("Graph.StateNode.ColorSpill"))
+				.BorderBackgroundColor(FLinearColor(0.06f, 0.08f, 0.12f))
+				.Padding(FMargin(8.0f, 4.0f))
+				[
+					SNew(SHorizontalBox)
+
+					// Step number
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+					[
+						SNew(SBox)
+						.WidthOverride(18.0f)
+						.HeightOverride(18.0f)
+						.HAlign(HAlign_Center)
+						.VAlign(VAlign_Center)
+						[
+							SNew(STextBlock)
+							.Text(FText::AsNumber(StepIdx + 1))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+							.ColorAndOpacity(FLinearColor(0.15f, 0.45f, 0.85f))
+						]
+					]
+
+					// Name
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(DisplayName))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+						.ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.9f))
+					]
+
+					// Cost
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Cost)))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
+					]
+				]
+			]
+		];
+	}
+
+	// Total cost at the end
+	_PlanStripBox->AddSlot()
+	.AutoWidth()
+	.VAlign(VAlign_Center)
+	.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+	[
+		SNew(STextBlock)
+		.Text(FText::FromString(FString::Printf(TEXT("= %.0f"), Info->PlanCost)))
+		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+		.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
+	];
 }
 
 // ====================================================================================================================

@@ -39,7 +39,6 @@ auto
 {
 	Nodes.Empty();
 	_ActionNodes.Empty();
-	_PlanChainNodes.Empty();
 	_GoalNode = nullptr;
 
 	// Build effect→provider map
@@ -121,39 +120,6 @@ auto
 				}
 			}
 			break;
-		}
-	}
-
-	// Create plan chain: duplicate nodes for the flat plan sequence at the top
-	for (auto StepIdx = 0; StepIdx < InInfo.PlanActionNames.Num(); ++StepIdx)
-	{
-		const auto& ActionName = InInfo.PlanActionNames[StepIdx];
-
-		// Find the action info for this plan step
-		const FCkGoapDebugger_ActionInfo* ActionInfo = nullptr;
-		for (const auto& A : InInfo.Actions)
-		{
-			if (A.ClassName == ActionName) { ActionInfo = &A; break; }
-		}
-		if (ActionInfo == nullptr) { continue; }
-
-		auto* ChainNode = NewObject<UCkGoapDebugNode_Action>(this);
-		ChainNode->PopulateFromActionInfo(*ActionInfo, StepIdx);
-		ChainNode->Set_DisplayName(ComputeDisplayName(ActionName, NameDepth));
-		ChainNode->Set_IsPlanChainNode(true);
-		ChainNode->UpdatePlanState(true, StepIdx);
-		ChainNode->CreateNewGuid();
-		ChainNode->AllocateDefaultPins();
-		AddNode(ChainNode, false, false);
-		_PlanChainNodes.Add(ChainNode);
-
-		// Chain edge: connect previous chain node → this chain node
-		if (StepIdx > 0)
-		{
-			auto* PrevNode = _PlanChainNodes[StepIdx - 1].Get();
-			auto* PrevOut = PrevNode->FindPin(TEXT("Out"), EGPD_Output);
-			auto* CurrIn = ChainNode->FindPin(TEXT("In"), EGPD_Input);
-			if (PrevOut && CurrIn) { PrevOut->MakeLinkTo(CurrIn); }
 		}
 	}
 
@@ -258,16 +224,6 @@ auto
 		_GoalNode->NodePosY = SpacingY;
 	}
 
-	// Position plan chain nodes: flat horizontal row above the main graph
-	constexpr auto PlanChainY = -200;
-	const auto PlanChainHGap = SpacingX / 2;
-
-	for (auto Idx = 0; Idx < _PlanChainNodes.Num(); ++Idx)
-	{
-		auto* Node = _PlanChainNodes[Idx].Get();
-		Node->NodePosX = Idx * (SpacingX);
-		Node->NodePosY = PlanChainY;
-	}
 }
 
 // ====================================================================================================================

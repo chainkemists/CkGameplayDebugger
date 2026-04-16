@@ -57,10 +57,6 @@ private:
 	UPROPERTY()
 	TArray<TObjectPtr<UCkGoapDebugNode_Action>> _ActionNodes;
 
-	// Plan chain: duplicate nodes shown as a flat horizontal sequence at the top
-	UPROPERTY()
-	TArray<TObjectPtr<UCkGoapDebugNode_Action>> _PlanChainNodes;
-
 	UPROPERTY()
 	TObjectPtr<UCkGoapDebugNode_Goal> _GoalNode;
 };

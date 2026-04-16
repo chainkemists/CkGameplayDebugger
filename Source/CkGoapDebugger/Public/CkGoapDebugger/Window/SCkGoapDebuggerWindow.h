@@ -28,8 +28,7 @@ private:
 	auto RefreshEntitySelector() -> void;
 	auto OnGraphSelectionChanged(const TSet<UObject*>& InSelection) -> void;
 	auto BuildTimelineAndHistory() -> TSharedRef<SWidget>;
-	auto BuildHistory() -> void;
-	auto UpdateTimeline() -> void;
+	auto RebuildPlanStrip() -> void;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -46,7 +45,8 @@ private:
 	TSharedPtr<STextBlock> _StatusBadge;
 
 	TSharedPtr<SVerticalBox> _HistoryListBox;
-	TSharedPtr<SBox> _TimelineBox;
+	TSharedPtr<SHorizontalBox> _PlanStripBox;
+	int32 _LastPlanStepCount = -1;
 
 	TWeakObjectPtr<UWorld> _CachedWorld;
 	int32 _SelectedHistoryIndex = -1;

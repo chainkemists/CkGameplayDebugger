@@ -62,6 +62,9 @@ namespace FCkSmDebuggerStyle
     // Entry node
     inline const FLinearColor Color_Sm_EntryText              = FLinearColor(0.7f, 0.7f, 0.7f);
 
+    // Overridden state — inline "OVERRIDE" label under the state name
+    inline const FLinearColor Color_Sm_Override               = FLinearColor(0.72f, 0.42f, 0.95f);
+
     // General text
     inline const FLinearColor Color_Text_Primary   = FLinearColor(0.85f, 0.85f, 0.85f);
     inline const FLinearColor Color_Text_Secondary  = FLinearColor(0.5f, 0.5f, 0.55f);

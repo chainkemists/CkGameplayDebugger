@@ -5,6 +5,7 @@
 
 #include "HAL/PlatformTime.h"
 
+#include "CkEcs/ContextOwner/CkContextOwner_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/EntityScript/CkEntityScript_Fragment.h"
@@ -226,7 +227,7 @@ auto
     -> FCkSmDebugger_SmInfo
 {
     auto SmInfo = FCkSmDebugger_SmInfo{};
-    SmInfo.Handle = ck::StaticCast<FCk_Handle_StateMachine>(InSmHandle);
+    SmInfo.Handle = UCk_Utils_StateMachine_UE::CastChecked(InSmHandle);
 
     const auto& Current = InSmHandle.Get<ck::FFragment_Sm_Current>();
     SmInfo.RunStatus = Current.Get_RunStatus();
@@ -238,10 +239,7 @@ auto
         SmInfo.InitialStateClass = InSmHandle.Get<ck::FFragment_Sm_Params>().Get_InitialStateClass();
     }
 
-    if (InSmHandle.Has<ck::FFragment_Sm_Context>())
-    {
-        SmInfo.GameEntity = InSmHandle.Get<ck::FFragment_Sm_Context>().Get_GameEntityHandle();
-    }
+    SmInfo.GameEntity = UCk_Utils_ContextOwner_UE::Get_ContextOwner(InSmHandle);
 
     if (ck::IsValid(SmInfo.GameEntity))
     {

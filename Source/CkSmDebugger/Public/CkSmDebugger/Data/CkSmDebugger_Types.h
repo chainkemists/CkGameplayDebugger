@@ -6,7 +6,9 @@
 
 #include "CoreMinimal.h"
 
+#include "CkStateMachine/Condition/EntityScripts/CkSmCondition_EntityScript.h"
 #include "CkStateMachine/State/EntityScripts/CkSmState_EntityScript.h"
+#include "CkStateMachine/Task/EntityScripts/CkSmTask_EntityScript.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -14,6 +16,7 @@ struct FCkSmDebugger_ConditionInfo
 {
     FCk_Handle Handle;
     FString ClassName;
+    TSubclassOf<UCk_SmCondition_EntityScript> ScriptClass;
     ECk_SmConditionResult Result = ECk_SmConditionResult::Undetermined;
     ECk_SmConditionMode Mode = ECk_SmConditionMode::Polled;
 };
@@ -24,6 +27,7 @@ struct FCkSmDebugger_TaskInfo
 {
     FCk_Handle Handle;
     FString ClassName;
+    TSubclassOf<UCk_SmTask_EntityScript> ScriptClass;
     ECk_SmTaskMode Mode = ECk_SmTaskMode::EnterExitOnly;
     ECk_SmTaskResult LastResult = ECk_SmTaskResult::Running;
 
@@ -38,6 +42,8 @@ struct FCkSmDebugger_StateInfo
 {
     FCk_Handle Handle;
     TSubclassOf<UCk_SmState_EntityScript> StateClass;
+    TSubclassOf<UCk_SmState_EntityScript> ScriptClass;
+    TSubclassOf<UCk_SmState_EntityScript> RequestedScriptClass;
     FString StateName;
     bool IsCurrentState = false;
 

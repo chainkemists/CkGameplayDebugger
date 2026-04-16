@@ -1309,6 +1309,8 @@ auto
                                 auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                 Info += FString::Printf(TEXT("  %s %s\n"),
                                     CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
+                                Info += FString::Printf(TEXT("        Class: %s\n"),
+                                    IsValid(Cond.ScriptClass) ? *Cond.ScriptClass->GetName() : TEXT("(unknown)"));
                             }
 
                             return FText::FromString(Info);
@@ -1321,7 +1323,14 @@ auto
                             auto& State = SmInfo->States[SelectedIdx];
                             auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
 
-                            Info += FString::Printf(TEXT("STATE\n\x25CF %s\n\n"), *DisplayName);
+                            Info += FString::Printf(TEXT("STATE\n\x25CF %s\n"), *DisplayName);
+                            Info += FString::Printf(TEXT("Class: %s\n"),
+                                IsValid(State.ScriptClass) ? *State.ScriptClass->GetName() : TEXT("(unknown)"));
+                            if (IsValid(State.RequestedScriptClass) && State.RequestedScriptClass != State.ScriptClass)
+                            {
+                                Info += FString::Printf(TEXT("  (overrides: %s)\n"), *State.RequestedScriptClass->GetName());
+                            }
+                            Info += TEXT("\n");
                             Info += FString::Printf(TEXT("Current: %s\n"), State.IsCurrentState ? TEXT("Yes") : TEXT("No"));
                             Info += FString::Printf(TEXT("Dwell: %.2fs\n"), State.DwellTimeSeconds);
                             Info += FString::Printf(TEXT("Visited: %s\n\n"), State.HasBeenVisited ? TEXT("Yes") : TEXT("No"));
@@ -1340,6 +1349,8 @@ auto
                                     default: break;
                                     }
                                     Info += FString::Printf(TEXT("    %s  %s\n"), *TName, ResultStr);
+                                    Info += FString::Printf(TEXT("        Class: %s\n"),
+                                        IsValid(Task.ScriptClass) ? *Task.ScriptClass->GetName() : TEXT("(unknown)"));
                                 }
                                 Info += TEXT("\n");
                             }
@@ -1363,6 +1374,8 @@ auto
                                     auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                                     Info += FString::Printf(TEXT("      %s %s\n"),
                                         CkSmDebugger::GetConditionResultLabel(Cond.Result), *CName);
+                                    Info += FString::Printf(TEXT("            Class: %s\n"),
+                                        IsValid(Cond.ScriptClass) ? *Cond.ScriptClass->GetName() : TEXT("(unknown)"));
                                 }
                             }
 

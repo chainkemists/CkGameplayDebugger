@@ -34,7 +34,7 @@ auto
 
     // Track PIE debug pause state for logical time computation
     {
-        auto IsPausedNow = UCk_Utils_EditorOnly_UE::Get_IsDebugPauseExecution();
+        const auto IsPausedNow = UCk_Utils_EditorOnly_UE::Get_IsDebugPauseExecution();
 
         if (IsPausedNow && NOT _WasPausedLastTick)
         {
@@ -49,12 +49,12 @@ auto
         _IsPieDebugPaused = IsPausedNow;
     }
 
-    if (NOT IsValid(InWorld))
+    if (ck::Is_NOT_Valid(InWorld))
     { return; }
 
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
 
-    if (NOT ck::IsValid(TransientEntity))
+    if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
 
     TransientEntity.View<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>().ForEach(
@@ -106,7 +106,7 @@ auto
         FCk_Handle_StateMachine InSmHandle)
     -> FCkSmDebugger_SmInfo
 {
-    if (NOT ck::IsValid(InSmHandle))
+    if (ck::Is_NOT_Valid(InSmHandle))
     {
         return FCkSmDebugger_SmInfo{};
     }
@@ -127,7 +127,7 @@ auto
 {
     auto SmInfo = FCkSmDebugger_SmInfo{};
 
-    if (NOT ck::IsValid(InParentSmHandle))
+    if (ck::Is_NOT_Valid(InParentSmHandle))
     { return SmInfo; }
 
     auto ParentHandle = static_cast<FCk_Handle>(InParentSmHandle);
@@ -285,6 +285,8 @@ auto
     {
         auto StateInfo = FCkSmDebugger_StateInfo{};
         StateInfo.StateClass = StateClass;
+        StateInfo.ScriptClass = CachedState.ScriptClass;
+        StateInfo.RequestedScriptClass = CachedState.RequestedScriptClass;
         StateInfo.StateName = CachedState.StateName;
         StateInfo.IsCurrentState = (StateClass == SmInfo.CurrentStateClass);
 
@@ -293,6 +295,7 @@ auto
         {
             auto TaskInfo = FCkSmDebugger_TaskInfo{};
             TaskInfo.ClassName = CachedTask.ClassName;
+            TaskInfo.ScriptClass = CachedTask.ScriptClass;
             TaskInfo.Mode = CachedTask.Mode;
             TaskInfo.HasSubStateMachine = CachedTask.HasSubStateMachine;
             TaskInfo.SubSmHandle = CachedTask.SubSmHandle;
@@ -347,6 +350,7 @@ auto
             {
                 auto CondInfo = FCkSmDebugger_ConditionInfo{};
                 CondInfo.ClassName = CachedCondition.ClassName;
+                CondInfo.ScriptClass = CachedCondition.ScriptClass;
                 CondInfo.Mode = CachedCondition.Mode;
                 CondInfo.Result = ECk_SmConditionResult::Undetermined;
                 TransInfo.Conditions.Add(MoveTemp(CondInfo));
@@ -659,7 +663,7 @@ auto
             if (NOT Task.HasSubStateMachine)
             { continue; }
 
-            if (NOT ck::IsValid(static_cast<FCk_Handle>(Task.SubSmHandle)))
+            if (ck::Is_NOT_Valid(static_cast<FCk_Handle>(Task.SubSmHandle)))
             { continue; }
 
             // Collect the sub-SM as an independent SmInfo
@@ -799,12 +803,15 @@ auto
         // Overlay live task results
         if (ChildHandle.Has<ck::FFragment_SmTask_Current>())
         {
-            auto& CurrentState = InOutSmInfo.States[InCurrentStateIndex];
-
-            if (TaskIndex < CurrentState.Tasks.Num())
+            if (InOutSmInfo.States.IsValidIndex(InCurrentStateIndex))
             {
-                CurrentState.Tasks[TaskIndex].Handle = ChildHandle;
-                CurrentState.Tasks[TaskIndex].LastResult = ChildHandle.Get<ck::FFragment_SmTask_Current>().Get_LastResult();
+                auto& CurrentState = InOutSmInfo.States[InCurrentStateIndex];
+
+                if (TaskIndex < CurrentState.Tasks.Num())
+                {
+                    CurrentState.Tasks[TaskIndex].Handle = ChildHandle;
+                    CurrentState.Tasks[TaskIndex].LastResult = ChildHandle.Get<ck::FFragment_SmTask_Current>().Get_LastResult();
+                }
             }
 
             ++TaskIndex;

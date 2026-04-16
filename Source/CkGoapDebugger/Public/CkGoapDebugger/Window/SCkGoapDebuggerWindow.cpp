@@ -14,6 +14,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/AppStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
 
 // ====================================================================================================================
 
@@ -57,23 +58,6 @@ auto
 			BuildToolbar()
 		]
 
-		// Plan strip: horizontal row of compact action cards
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(SBorder)
-			.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
-			.Padding(FMargin(8.0f, 4.0f))
-			[
-				SNew(SScrollBox)
-				.Orientation(Orient_Horizontal)
-				+ SScrollBox::Slot()
-				[
-					SAssignNew(_PlanStripBox, SHorizontalBox)
-				]
-			]
-		]
-
 		// Main content: SSplitter horizontal
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
@@ -81,23 +65,39 @@ auto
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
 
-			// Left column: graph + timeline
+			// Left column: graph + plan strip + history
 			+ SSplitter::Slot()
 			.Value(0.7f)
 			[
-				SNew(SSplitter)
-				.Orientation(Orient_Vertical)
+				SNew(SVerticalBox)
 
-				// Graph editor
-				+ SSplitter::Slot()
-				.Value(0.7f)
+				// Graph editor (fills remaining space)
+				+ SVerticalBox::Slot()
+				.FillHeight(1.0f)
 				[
 					_GraphEditor.ToSharedRef()
 				]
 
-				// Timeline + History
-				+ SSplitter::Slot()
-				.Value(0.3f)
+				// Plan strip between graph and history
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SBorder)
+					.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
+					.Padding(FMargin(8.0f, 4.0f))
+					[
+						SNew(SScrollBox)
+						.Orientation(Orient_Horizontal)
+						+ SScrollBox::Slot()
+						[
+							SAssignNew(_PlanStripBox, SHorizontalBox)
+						]
+					]
+				]
+
+				// History
+				+ SVerticalBox::Slot()
+				.MaxHeight(200.0f)
 				[
 					BuildTimelineAndHistory()
 				]
@@ -544,20 +544,18 @@ auto
 		return;
 	}
 
+	const auto Theme = UCkDebuggerSettings::GetTheme();
+
 	for (auto StepIdx = 0; StepIdx < StepCount; ++StepIdx)
 	{
-		// Arrow between cards
 		if (StepIdx > 0)
 		{
-			_PlanStripBox->AddSlot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(2.0f, 0.0f)
+			_PlanStripBox->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("\x2192")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
-				.ColorAndOpacity(FLinearColor(0.15f, 0.45f, 0.85f, 0.5f))
+				.ColorAndOpacity(FLinearColor(Theme.ActiveEdge.R, Theme.ActiveEdge.G, Theme.ActiveEdge.B, 0.5f))
 			];
 		}
 
@@ -566,70 +564,48 @@ auto
 			? UCkGoapDebugGraph::ComputeDisplayName(ActionName, _Graph->NameDepth)
 			: ActionName;
 
-		// Find cost
 		auto Cost = 0.0f;
 		for (const auto& A : Info->Actions)
 		{
 			if (A.ClassName == ActionName) { Cost = A.Cost; break; }
 		}
 
-		_PlanStripBox->AddSlot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(2.0f, 0.0f)
+		_PlanStripBox->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
 		[
 			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("Graph.StateNode.Body"))
-			.BorderBackgroundColor(FLinearColor(0.15f, 0.45f, 0.85f))
+			.BorderImage(Theme.GetBodyBrush())
+			.BorderBackgroundColor(Theme.ActiveBorder)
 			.Padding(FMargin(0.0f))
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("Graph.StateNode.ColorSpill"))
-				.BorderBackgroundColor(FLinearColor(0.06f, 0.08f, 0.12f))
+				.BorderImage(Theme.GetContentBrush())
+				.BorderBackgroundColor(Theme.ActiveFill)
 				.Padding(FMargin(8.0f, 4.0f))
 				[
 					SNew(SHorizontalBox)
-
-					// Step number
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
 					[
-						SNew(SBox)
-						.WidthOverride(18.0f)
-						.HeightOverride(18.0f)
-						.HAlign(HAlign_Center)
-						.VAlign(VAlign_Center)
+						SNew(SBox).WidthOverride(18.0f).HeightOverride(18.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
 						[
 							SNew(STextBlock)
 							.Text(FText::AsNumber(StepIdx + 1))
 							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-							.ColorAndOpacity(FLinearColor(0.15f, 0.45f, 0.85f))
+							.ColorAndOpacity(Theme.ActiveBorder)
 						]
 					]
-
-					// Name
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(DisplayName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-						.ColorAndOpacity(FLinearColor(0.9f, 0.9f, 0.9f))
+						.ColorAndOpacity(Theme.ActiveText)
 					]
-
-					// Cost
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Cost)))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
+						.ColorAndOpacity(Theme.CostText)
 					]
 				]
 			]

@@ -265,13 +265,18 @@ auto
 {
 	for (auto* Pin : GraphNode->Pins)
 	{
+		auto PinWidget = SNew(SGraphPin, Pin);
+		PinWidget->SetOwner(SharedThis(this));
+		PinWidget->SetVisibility(EVisibility::HitTestInvisible);
+		RightNodeBox->AddSlot().AutoHeight().HAlign(HAlign_Fill).VAlign(VAlign_Fill)[PinWidget];
+
 		if (Pin->Direction == EGPD_Output)
 		{
-			auto PinWidget = SNew(SGraphPin, Pin);
-			PinWidget->SetOwner(SharedThis(this));
-			PinWidget->SetVisibility(EVisibility::HitTestInvisible);
-			RightNodeBox->AddSlot().AutoHeight().HAlign(HAlign_Fill).VAlign(VAlign_Fill)[PinWidget];
 			OutputPins.Add(PinWidget);
+		}
+		else
+		{
+			InputPins.Add(PinWidget);
 		}
 	}
 }

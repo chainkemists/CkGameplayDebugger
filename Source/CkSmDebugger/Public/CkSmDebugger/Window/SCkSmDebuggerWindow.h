@@ -77,6 +77,11 @@ private:
     // Breakpoint tracking — detect state transitions to trigger pause
     int32 _LastCurrentStateIdx = -1;
 
+    // When true, the detail panel follows the current active state automatically.
+    // Cleared when the user explicitly picks a different state/transition in the
+    // graph, and restored when they click empty graph space.
+    bool _AutoSelectActiveState = true;
+
     // Detail panel — swappable content driven by selection changes.
     // Content is rebuilt only when the structural selection changes (new state,
     // transition, or history entry; or task/transition counts change).

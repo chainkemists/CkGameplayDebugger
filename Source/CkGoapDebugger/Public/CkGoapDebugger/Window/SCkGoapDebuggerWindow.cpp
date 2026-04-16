@@ -2,13 +2,18 @@
 
 #include "SCkGoapDebugger_PlanView.h"
 #include "SCkGoapDebugger_WorldStatePanel.h"
-#include "SCkGoapDebugger_GoalPanel.h"
 #include "SCkGoapDebugger_StatsPanel.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraphSchema.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugNode_Action.h"
 
+#include "GraphEditor.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Input/STextComboBox.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Images/SImage.h"
 
 // ====================================================================================================================
 
@@ -24,6 +29,23 @@ auto
 		RefreshEntitySelector();
 	});
 
+	// Create the graph
+	_Graph = NewObject<UCkGoapDebugGraph>(GetTransientPackage());
+	_Graph->AddToRoot();
+	_Graph->Schema = UCkGoapDebugGraphSchema::StaticClass();
+
+	// Create graph editor
+	SGraphEditor::FGraphEditorEvents GraphEvents;
+	GraphEvents.OnSelectionChanged = SGraphEditor::FOnSelectionChanged::CreateRaw(
+		this, &SCkGoapDebuggerWindow::OnGraphSelectionChanged);
+
+	_GraphEditor = SNew(SGraphEditor)
+		.GraphToEdit(_Graph)
+		.IsEditable(false)
+		.GraphEvents(GraphEvents);
+
+	// Layout: Mockup D
+	// toolbar → plan chain → SSplitter(H): [left-col(graph+timeline) | right-col(worldstate+details)]
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -31,61 +53,83 @@ auto
 		// Toolbar
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(4.0f)
 		[
 			BuildToolbar()
 		]
 
-		// Main content
+		// Plan chain
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SAssignNew(_PlanView, SCkGoapDebugger_PlanView)
+			.ViewModel(_ViewModel)
+		]
+
+		// Main content: SSplitter horizontal
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
 
-			// Left panel: Plan + World State
+			// Left column: graph + timeline
 			+ SSplitter::Slot()
-			.Value(0.55f)
+			.Value(0.7f)
 			[
-				SNew(SVerticalBox)
+				SNew(SSplitter)
+				.Orientation(Orient_Vertical)
 
-				+ SVerticalBox::Slot()
-				.FillHeight(0.5f)
+				// Graph editor
+				+ SSplitter::Slot()
+				.Value(0.7f)
 				[
-					SAssignNew(_PlanView, SCkGoapDebugger_PlanView)
-					.ViewModel(_ViewModel)
+					_GraphEditor.ToSharedRef()
 				]
 
-				+ SVerticalBox::Slot()
-				.FillHeight(0.5f)
+				// Timeline + History
+				+ SSplitter::Slot()
+				.Value(0.3f)
+				[
+					BuildTimelineAndHistory()
+				]
+			]
+
+			// Right column: world state + details
+			+ SSplitter::Slot()
+			.Value(0.3f)
+			[
+				SNew(SSplitter)
+				.Orientation(Orient_Vertical)
+
+				// World State
+				+ SSplitter::Slot()
+				.Value(0.5f)
 				[
 					SAssignNew(_WorldStatePanel, SCkGoapDebugger_WorldStatePanel)
 					.ViewModel(_ViewModel)
 				]
-			]
 
-			// Right panel: Goals + Stats
-			+ SSplitter::Slot()
-			.Value(0.45f)
-			[
-				SNew(SVerticalBox)
-
-				+ SVerticalBox::Slot()
-				.FillHeight(0.5f)
+				// Action Details
+				+ SSplitter::Slot()
+				.Value(0.5f)
 				[
-					SAssignNew(_GoalPanel, SCkGoapDebugger_GoalPanel)
-					.ViewModel(_ViewModel)
-				]
-
-				+ SVerticalBox::Slot()
-				.FillHeight(0.5f)
-				[
-					SAssignNew(_StatsPanel, SCkGoapDebugger_StatsPanel)
+					SAssignNew(_ActionDetailPanel, SCkGoapDebugger_StatsPanel)
 					.ViewModel(_ViewModel)
 				]
 			]
 		]
 	];
+}
+
+// ====================================================================================================================
+
+SCkGoapDebuggerWindow::~SCkGoapDebuggerWindow()
+{
+	if (_Graph != nullptr)
+	{
+		_Graph->RemoveFromRoot();
+		_Graph = nullptr;
+	}
 }
 
 // ====================================================================================================================
@@ -114,16 +158,20 @@ auto
 	_CachedWorld = PieWorld;
 	_ViewModel->Tick(PieWorld, InDeltaTime);
 
+	// Update graph from current data
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	if (Info != nullptr)
+	{
+		_Graph->UpdateFromGoapInfo(*Info);
+	}
+
 	// Update status badge
 	if (_StatusBadge.IsValid())
 	{
-		const auto* Info = _ViewModel->Get_CurrentGoapInfo();
 		if (Info != nullptr)
 		{
-			const auto StatusColor = CkGoapDebuggerStyle::GetStatusColor(Info->PlanStatus);
-			const auto StatusText = CkGoapDebuggerStyle::GetStatusString(Info->PlanStatus);
-			_StatusBadge->SetText(FText::FromString(StatusText));
-			_StatusBadge->SetColorAndOpacity(StatusColor);
+			_StatusBadge->SetText(FText::FromString(CkGoapDebuggerStyle::GetStatusString(Info->PlanStatus)));
+			_StatusBadge->SetColorAndOpacity(CkGoapDebuggerStyle::GetStatusColor(Info->PlanStatus));
 		}
 		else
 		{
@@ -137,63 +185,110 @@ auto
 
 auto
 	SCkGoapDebuggerWindow::
+	OnGraphSelectionChanged(const TSet<UObject*>& InSelection)
+	-> void
+{
+	if (InSelection.Num() == 0)
+	{
+		_ActionDetailPanel->ClearSelection();
+		return;
+	}
+
+	for (auto* Obj : InSelection)
+	{
+		auto* ActionNode = Cast<UCkGoapDebugNode_Action>(Obj);
+		if (ActionNode == nullptr) { continue; }
+
+		const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+		if (Info == nullptr) { break; }
+
+		for (const auto& Action : Info->Actions)
+		{
+			if (Action.ClassName == ActionNode->Get_ActionName())
+			{
+				_ActionDetailPanel->SetSelectedAction(&Action, ActionNode->Get_PlanStepIndex());
+				return;
+			}
+		}
+	}
+
+	_ActionDetailPanel->ClearSelection();
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
 	BuildToolbar()
 	-> TSharedRef<SWidget>
 {
-	return SNew(SHorizontalBox)
-
-		// Entity selector
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(4.0f, 0.0f)
+	return SNew(SBorder)
+		.BorderBackgroundColor(FLinearColor(0.06f, 0.08f, 0.13f))
+		.Padding(FMargin(8.0f, 6.0f))
 		[
-			SAssignNew(_EntitySelector, STextComboBox)
-			.OptionsSource(&_EntitySelectorItems)
-			.OnSelectionChanged_Lambda([this](TSharedPtr<FString> InSelected, ESelectInfo::Type)
-			{
-				if (InSelected.IsValid())
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("Entity:")))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			[
+				SAssignNew(_EntitySelector, STextComboBox)
+				.OptionsSource(&_EntitySelectorItems)
+				.OnSelectionChanged_Lambda([this](TSharedPtr<FString> InSel, ESelectInfo::Type)
 				{
-					const auto Index = _EntitySelectorItems.IndexOfByKey(InSelected);
-					if (_EntitySelectorHandles.IsValidIndex(Index))
+					if (InSel.IsValid())
 					{
-						_ViewModel->Set_SelectedEntityHandle(_EntitySelectorHandles[Index]);
+						const auto Idx = _EntitySelectorItems.IndexOfByKey(InSel);
+						if (_EntitySelectorHandles.IsValidIndex(Idx))
+						{
+							_ViewModel->Set_SelectedEntityHandle(_EntitySelectorHandles[Idx]);
+							_Graph->ForceRebuild();
+						}
 					}
-				}
-			})
-		]
+				})
+			]
 
-		// Status badge
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(8.0f, 0.0f)
-		[
-			SAssignNew(_StatusBadge, STextBlock)
-			.Text(FText::FromString(TEXT("Idle")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-		]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+			[
+				SAssignNew(_StatusBadge, STextBlock)
+				.Text(FText::FromString(TEXT("Idle")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+			]
 
-		// Spacer
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.0f)
+			+ SHorizontalBox::Slot().FillWidth(1.0f)
 
-		// Pause button
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(4.0f, 0.0f)
-		[
-			SNew(SButton)
-			.Text_Lambda([this]()
-			{
-				return _ViewModel->Get_Paused()
-					? FText::FromString(TEXT("Resume"))
-					: FText::FromString(TEXT("Pause"));
-			})
-			.OnClicked_Lambda([this]()
-			{
-				_ViewModel->Set_Paused(NOT _ViewModel->Get_Paused());
-				return FReply::Handled();
-			})
+			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Zoom to Fit")))
+				.OnClicked_Lambda([this]()
+				{
+					if (_GraphEditor.IsValid()) { _GraphEditor->ZoomToFit(false); }
+					return FReply::Handled();
+				})
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text_Lambda([this]()
+				{
+					return _ViewModel->Get_Paused()
+						? FText::FromString(TEXT("Resume"))
+						: FText::FromString(TEXT("Pause"));
+				})
+				.OnClicked_Lambda([this]()
+				{
+					_ViewModel->Set_Paused(NOT _ViewModel->Get_Paused());
+					return FReply::Handled();
+				})
+			]
 		];
 }
 
@@ -221,6 +316,36 @@ auto
 			_EntitySelector->SetSelectedItem(_EntitySelectorItems[0]);
 		}
 	}
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
+	BuildTimelineAndHistory()
+	-> TSharedRef<SWidget>
+{
+	return SNew(SVerticalBox)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(CkGoapDebuggerStyle::PanelPadding, 6.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("Plan History")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+		]
+
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
+			[
+				SAssignNew(_HistoryListBox, SVerticalBox)
+			]
+		];
 }
 
 // ====================================================================================================================

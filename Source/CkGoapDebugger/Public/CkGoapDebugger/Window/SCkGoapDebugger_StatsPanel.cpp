@@ -1,33 +1,9 @@
 #include "SCkGoapDebugger_StatsPanel.h"
-
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 
 #include "Widgets/Layout/SScrollBox.h"
-
-// ====================================================================================================================
-
-namespace
-{
-	auto MakeStatRow(const FString& InLabel, TSharedPtr<STextBlock>& OutText) -> TSharedRef<SWidget>
-	{
-		return SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(InLabel))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-				.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				SAssignNew(OutText, STextBlock)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
-			];
-	}
-}
+#include "Widgets/Images/SImage.h"
+#include "Styling/CoreStyle.h"
 
 // ====================================================================================================================
 
@@ -40,223 +16,316 @@ auto
 
 	ChildSlot
 	[
-		SNew(SScrollBox)
-		+ SScrollBox::Slot()
+		SNew(SVerticalBox)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f)
 		[
-			SNew(SVerticalBox)
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("Action Details")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
+			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+		]
 
-			// Header
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f)
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Search Stats")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-				.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-			]
-
-			// Stats rows
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Iterations"), _IterationsText) ]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Open Set"), _OpenSetText) ]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Closed Set"), _ClosedSetText) ]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Plan Length"), _PlanLengthText) ]
-
-			// Budget
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f, CkGoapDebuggerStyle::PanelPadding, 2.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Budget")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-				.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-			]
-
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				[
-					SAssignNew(_BudgetBar, SProgressBar)
-					.FillColorAndOpacity(CkGoapDebuggerStyle::BudgetNormal)
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-				[
-					SAssignNew(_BudgetText, STextBlock)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-				]
-			]
-
-			// Entity info
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f, CkGoapDebuggerStyle::PanelPadding, 2.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Entity")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-				.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-			]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Actions"), _ActionsCountText) ]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("Goals"), _GoalsCountText) ]
-
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-			[ MakeStatRow(TEXT("World State Keys"), _WorldStateCountText) ]
-
-			// Plan history
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f, CkGoapDebuggerStyle::PanelPadding, 2.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Plan History")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-				.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-			]
-
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				SAssignNew(_HistoryBox, SVerticalBox)
+				SAssignNew(_ContentBox, SVerticalBox)
 			]
 		]
 	];
+
+	ClearSelection();
 }
 
 // ====================================================================================================================
 
 auto
 	SCkGoapDebugger_StatsPanel::
-	Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime)
+	SetSelectedAction(const FCkGoapDebugger_ActionInfo* InAction, int32 InPlanStepIndex)
 	-> void
 {
-	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-	RefreshFromGoapInfo(_ViewModel->Get_CurrentGoapInfo());
+	_SelectedAction = InAction;
+	_PlanStepIndex = InPlanStepIndex;
+	RebuildContent();
+}
+
+auto
+	SCkGoapDebugger_StatsPanel::
+	ClearSelection()
+	-> void
+{
+	_SelectedAction = nullptr;
+	_PlanStepIndex = -1;
+	RebuildContent();
 }
 
 // ====================================================================================================================
 
 auto
 	SCkGoapDebugger_StatsPanel::
-	RefreshFromGoapInfo(const FCkGoapDebugger_GoapInfo* InInfo)
+	RebuildContent()
 	-> void
 {
-	if (InInfo == nullptr)
+	_ContentBox->ClearChildren();
+
+	if (_SelectedAction == nullptr)
 	{
-		_IterationsText->SetText(FText::FromString(TEXT("-")));
-		_OpenSetText->SetText(FText::FromString(TEXT("-")));
-		_ClosedSetText->SetText(FText::FromString(TEXT("-")));
-		_PlanLengthText->SetText(FText::FromString(TEXT("-")));
-		_BudgetBar->SetPercent(0.0f);
-		_BudgetText->SetText(FText::FromString(TEXT("-")));
-		_ActionsCountText->SetText(FText::FromString(TEXT("-")));
-		_GoalsCountText->SetText(FText::FromString(TEXT("-")));
-		_WorldStateCountText->SetText(FText::FromString(TEXT("-")));
-		return;
+		_ContentBox->AddSlot().AutoHeight()
+		[
+			BuildNoSelectionContent()
+		];
 	}
-
-	_IterationsText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->IterationsThisFrame)));
-	_OpenSetText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->OpenSetSize)));
-	_ClosedSetText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->ClosedSetSize)));
-	_PlanLengthText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->PlanActionNames.Num())));
-
-	// Budget
-	const auto BudgetPercent = FMath::Clamp(InInfo->BudgetUsagePercent / 100.0f, 0.0f, 1.0f);
-	_BudgetBar->SetPercent(BudgetPercent);
-
-	auto BudgetColor = CkGoapDebuggerStyle::BudgetNormal;
-	if (InInfo->BudgetUsagePercent > 100.0f) { BudgetColor = CkGoapDebuggerStyle::BudgetOver; }
-	else if (InInfo->BudgetUsagePercent > 80.0f) { BudgetColor = CkGoapDebuggerStyle::BudgetWarning; }
-	_BudgetBar->SetFillColorAndOpacity(BudgetColor);
-
-	_BudgetText->SetText(FText::FromString(
-		FString::Printf(TEXT("%.0f%%"), InInfo->BudgetUsagePercent)));
-	_BudgetText->SetColorAndOpacity(BudgetColor);
-
-	// Entity info
-	_ActionsCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->Actions.Num())));
-	_GoalsCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->Goals.Num())));
-	_WorldStateCountText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo->WorldState.Num())));
-
-	// Plan history
-	const auto* History = _ViewModel->Get_PlanHistory(_ViewModel->Get_SelectedEntityHandle());
-	const auto HistoryCount = History != nullptr ? History->Num() : 0;
-
-	if (HistoryCount != _LastHistoryCount)
+	else
 	{
-		_LastHistoryCount = HistoryCount;
-		_HistoryBox->ClearChildren();
+		_ContentBox->AddSlot().AutoHeight()
+		[
+			BuildActionContent()
+		];
+	}
+}
 
-		if (History == nullptr || History->Num() == 0)
-		{
-			_HistoryBox->AddSlot()
-			.AutoHeight()
-			.Padding(CkGoapDebuggerStyle::PanelPadding, 2.0f)
+// ====================================================================================================================
+
+auto
+	SCkGoapDebugger_StatsPanel::
+	BuildNoSelectionContent()
+	-> TSharedRef<SWidget>
+{
+	return SNew(SBox)
+		.Padding(FMargin(CkGoapDebuggerStyle::PanelPadding, 24.0f))
+		.HAlign(HAlign_Center)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("Click a node to inspect")))
+			.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+		];
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebugger_StatsPanel::
+	BuildActionContent()
+	-> TSharedRef<SWidget>
+{
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	const auto& A = *_SelectedAction;
+	const auto P = CkGoapDebuggerStyle::PanelPadding;
+
+	auto Box = SNew(SVerticalBox);
+
+	// Name + step badge + cost
+	Box->AddSlot().AutoHeight().Padding(P, 4.0f)
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("No history")))
+				.Text(FText::FromString(A.ClassName))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(_PlanStepIndex >= 0
+					? FText::FromString(FString::Printf(TEXT("Step %d"), _PlanStepIndex + 1))
+					: FText::GetEmpty())
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(FLinearColor(0.23f, 0.51f, 0.96f))
+				.Visibility(_PlanStepIndex >= 0 ? EVisibility::Visible : EVisibility::Collapsed)
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(FString::Printf(TEXT("Cost: %.0f"), A.Cost)))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 11))
+			.ColorAndOpacity(CkGoapDebuggerStyle::PlanCostText)
+		]
+	];
+
+	// Preconditions
+	Box->AddSlot().AutoHeight().Padding(P, 8.0f, P, 2.0f)
+	[
+		SNew(STextBlock)
+		.Text(FText::FromString(TEXT("PRECONDITIONS")))
+		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+		.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+	];
+	for (const auto& [Key, Value] : A.Preconditions)
+	{
+		const auto Satisfied = Info != nullptr ? Info->WorldState.Contains(Key) && Info->WorldState[Key] == Value : false;
+		Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Satisfied ? TEXT("\u2713") : TEXT("\u2717")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
+				.ColorAndOpacity(Satisfied ? CkGoapDebuggerStyle::WorldStateTrue : CkGoapDebuggerStyle::WorldStateFalse)
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Key.ToString()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Value ? TEXT("= true") : TEXT("= false")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+			]
+		];
+	}
+
+	// Effects
+	Box->AddSlot().AutoHeight().Padding(P, 8.0f, P, 2.0f)
+	[
+		SNew(STextBlock)
+		.Text(FText::FromString(TEXT("EFFECTS")))
+		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+		.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+	];
+	for (const auto& [Key, Value] : A.Effects)
+	{
+		Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("\u2192")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
+				.ColorAndOpacity(FLinearColor(0.23f, 0.51f, 0.96f))
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Key.ToString()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Value ? TEXT("= true") : TEXT("= false")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+			]
+		];
+	}
+
+	// Contributing goals
+	if (Info != nullptr)
+	{
+		Box->AddSlot().AutoHeight().Padding(P, 8.0f, P, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("CONTRIBUTING GOALS")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+		];
+
+		auto FoundGoal = false;
+		for (const auto& Goal : Info->Goals)
+		{
+			auto Contributes = false;
+			for (const auto& [GKey, GVal] : Goal.Conditions)
+			{
+				if (A.Effects.Contains(GKey)) { Contributes = true; break; }
+			}
+			if (NOT Contributes) { continue; }
+			FoundGoal = true;
+
+			Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Goal.ClassName))
+					.ColorAndOpacity(CkGoapDebuggerStyle::PlanCostText)
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("P:%d"), Goal.Priority)))
+					.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+				]
+			];
+		}
+
+		if (NOT FoundGoal)
+		{
+			Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+			[
+				SNew(STextBlock).Text(FText::FromString(TEXT("None")))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
 			];
 		}
-		else
+
+		// Alternatives
+		Box->AddSlot().AutoHeight().Padding(P, 8.0f, P, 2.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("ALTERNATIVE ACTIONS")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
+		];
+		auto FoundAlt = false;
+		for (const auto& Other : Info->Actions)
 		{
-			// Show newest first, limit to 10
-			const auto StartIndex = FMath::Max(0, History->Num() - 10);
-			for (auto Index = History->Num() - 1; Index >= StartIndex; --Index)
+			if (Other.ClassName == A.ClassName) { continue; }
+			auto Overlaps = false;
+			for (const auto& [EKey, EVal] : Other.Effects)
 			{
-				const auto& Entry = (*History)[Index];
-				const auto StatusColor = CkGoapDebuggerStyle::GetStatusColor(Entry.FinalStatus);
-				const auto StatusText = CkGoapDebuggerStyle::GetStatusString(Entry.FinalStatus);
-
-				_HistoryBox->AddSlot()
-				.AutoHeight()
-				.Padding(CkGoapDebuggerStyle::PanelPadding, 1.0f)
-				[
-					SNew(SHorizontalBox)
-
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-					[
-						SNew(SImage)
-						.Image(FCoreStyle::Get().GetBrush("GenericWhiteBox"))
-						.ColorAndOpacity(StatusColor)
-						.DesiredSizeOverride(FVector2D{6.0f, 6.0f})
-					]
-
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("%s  %d actions  %.1f cost"),
-							*StatusText, Entry.PlanLength, Entry.PlanCost)))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
-					]
-				];
+				if (A.Effects.Contains(EKey)) { Overlaps = true; break; }
 			}
+			if (NOT Overlaps) { continue; }
+			FoundAlt = true;
+
+			Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Other.ClassName))
+					.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Other.Cost)))
+					.ColorAndOpacity(CkGoapDebuggerStyle::PlanCostText)
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				]
+			];
+		}
+		if (NOT FoundAlt)
+		{
+			Box->AddSlot().AutoHeight().Padding(P, 1.0f)
+			[
+				SNew(STextBlock).Text(FText::FromString(TEXT("None")))
+				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
+			];
 		}
 	}
+
+	return Box;
 }
 
 // ====================================================================================================================

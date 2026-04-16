@@ -6,6 +6,8 @@
 // ====================================================================================================================
 
 class SCkGoapDebuggerWindow;
+class SDockTab;
+struct FGraphPanelNodeFactory;
 
 // ====================================================================================================================
 
@@ -28,6 +30,7 @@ private:
 private:
 	TSharedPtr<SCkGoapDebuggerWindow> _Window;
 	TSharedPtr<SDockTab> _Tab;
+	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
 	static const FName _TabId;
 };

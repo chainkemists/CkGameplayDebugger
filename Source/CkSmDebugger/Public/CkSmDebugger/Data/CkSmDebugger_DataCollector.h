@@ -19,6 +19,11 @@ public:
     Collect(
         UWorld* InWorld) -> void;
 
+    // Drop all cached SM data + pause bookkeeping — call when the PIE world ends
+    // so the next session doesn't observe stale handles.
+    auto
+    Reset() -> void;
+
     auto
     Get_AllStateMachines() const -> const TArray<FCkSmDebugger_SmInfo>&;
 

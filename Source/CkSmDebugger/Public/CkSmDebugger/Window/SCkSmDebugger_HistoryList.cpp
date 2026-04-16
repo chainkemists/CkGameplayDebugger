@@ -38,6 +38,20 @@ auto
             {
                 RebuildList();
             });
+
+        // On world change the selected SM goes away and OnSmDataRefreshed stops firing,
+        // so we also listen to the list-level change to drop stale history rows.
+        _SmListChangedHandle = _ViewModel->OnSmListChanged.AddLambda(
+            [this](const TArray<FCkSmDebugger_SmInfo>& InList)
+            {
+                if (InList.Num() == 0 && _Items.Num() > 0)
+                {
+                    _Items.Empty();
+                    _LastHistoryCount = 0;
+                    if (_ListView.IsValid())
+                    { _ListView->RequestListRefresh(); }
+                }
+            });
     }
 }
 

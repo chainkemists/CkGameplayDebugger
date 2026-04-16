@@ -4,6 +4,33 @@
 
 auto
     FCkSmDebugger_ViewModel::
+    Reset_ForWorldChange()
+    -> void
+{
+    _DataCollector.Reset();
+    _SelectedSmHandle = FCk_Handle_StateMachine{};
+    _HasSelectedSm = false;
+    _CurrentSmInfo = FCkSmDebugger_SmInfo{};
+    _HasSmInfo = false;
+    _SelectedNodeIndex = -1;
+
+    _ViewMode = ECkSmDebugger_ViewMode::Live;
+    _ScrubState = FCkSmDebugger_ScrubState{};
+    _ScrubSnapshot = FCkSmDebugger_ScrubSnapshot{};
+    _ScrubHighlightSource = -1;
+    _ScrubHighlightTarget = -1;
+    _NeedsRelayout = true;
+
+    // Broadcast empties so every listener drops stale data in one pass
+    OnSmListChanged.Broadcast(_DataCollector.Get_AllStateMachines());
+    OnSelectedNodeChanged.Broadcast(_SelectedNodeIndex);
+    OnViewModeChanged.Broadcast(_ViewMode);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_ViewModel::
     Tick(
         UWorld* InWorld,
         float InDeltaTime)

@@ -9,6 +9,29 @@
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 
 // --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCkSmDebugGraph::
+    Get_MaxNameDepth() const
+    -> int32
+{
+    auto MaxSegments = 1;
+    for (const auto& NodePtr : Nodes)
+    {
+        const auto* StateNode = Cast<UCkSmDebugNode_State>(NodePtr.Get());
+        if (ck::Is_NOT_Valid(StateNode)) { continue; }
+
+        auto Name = StateNode->Get_StateName();
+        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
+
+        TArray<FString> Segments;
+        Name.ParseIntoArray(Segments, TEXT("_"), true);
+        MaxSegments = FMath::Max(MaxSegments, Segments.Num());
+    }
+    return MaxSegments;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // Real data
 // --------------------------------------------------------------------------------------------------------------------
 

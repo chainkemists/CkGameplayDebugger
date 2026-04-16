@@ -10,7 +10,9 @@ class FCkSmDebugger_DataCollector;
 class UCkSmDebugGraph;
 class SCkSmDebugger_HistoryList;
 class SCkSmDebugger_Timeline;
+class SCkSmDebugger_PreviewPane;
 class SGraphEditor;
+class SSplitter;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -51,8 +53,19 @@ private:
     TArray<FCk_Handle_StateMachine> _SmSelectorHandles;
     TSharedPtr<STextBlock> _SmSelectorLabel;
 
-    UWorld* _CachedWorld = nullptr;
+    TWeakObjectPtr<UWorld> _CachedWorld;
     bool _IsTestMode = false;
+    bool _IsPreviewOpen = false;
+
+    // Right-side preview pane (50/50 split) — toggled via the PREVIEW toolbar button
+    TSharedPtr<SCkSmDebugger_PreviewPane> _PreviewPane;
+    TSharedPtr<SSplitter> _RootSplitter;
+
+    // Editor delegate handles — unsubscribed in destructor
+    FDelegateHandle _OnEndPieHandle;
+    FDelegateHandle _OnBeginPieHandle;
+
+    auto HandleWorldTornDown() -> void;
 
     // Selection — transition selection tracked locally (not in ViewModel)
     int32 _SelectedTransitionIndex = -1;  // index into SmInfo.Transitions, -1 = none

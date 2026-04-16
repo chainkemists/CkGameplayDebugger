@@ -83,6 +83,10 @@ public:
     // Force a full rebuild on the next UpdateFromSmInfo call
     auto ForceRebuild() -> void { _TopologyHash = 0; }
 
+    // Largest segment count across all state names — used to bound NameDepth cycling.
+    // Returns at least 1 so cycling always has a non-zero leaf depth available.
+    auto Get_MaxNameDepth() const -> int32;
+
     // Find a state node by its state index (returns nullptr if not found)
     auto FindStateNode(int32 InStateIndex) const -> UCkSmDebugNode_State*;
 

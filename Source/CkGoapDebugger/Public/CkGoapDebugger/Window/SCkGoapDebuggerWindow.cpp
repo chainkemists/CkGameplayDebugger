@@ -1,6 +1,5 @@
 #include "SCkGoapDebuggerWindow.h"
 
-#include "SCkGoapDebugger_PlanView.h"
 #include "SCkGoapDebugger_WorldStatePanel.h"
 #include "SCkGoapDebugger_StatsPanel.h"
 
@@ -41,7 +40,7 @@ auto
 
 	_GraphEditor = SNew(SGraphEditor)
 		.GraphToEdit(_Graph)
-		.IsEditable(false)
+		.IsEditable(true)
 		.GraphEvents(GraphEvents);
 
 	// Layout: Mockup D
@@ -55,14 +54,6 @@ auto
 		.AutoHeight()
 		[
 			BuildToolbar()
-		]
-
-		// Plan chain
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SAssignNew(_PlanView, SCkGoapDebugger_PlanView)
-			.ViewModel(_ViewModel)
 		]
 
 		// Main content: SSplitter horizontal
@@ -259,6 +250,74 @@ auto
 				SAssignNew(_StatusBadge, STextBlock)
 				.Text(FText::FromString(TEXT("Idle")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("Name")))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("\x25C0")))
+				.OnClicked_Lambda([this]()
+				{
+					if (_Graph)
+					{
+						auto& Depth = _Graph->NameDepth;
+						if (Depth > 1) { --Depth; }
+						else { Depth = 0; }
+						_Graph->ForceRebuild();
+					}
+					return FReply::Handled();
+				})
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this]()
+				{
+					if (NOT _Graph) { return FText::FromString(TEXT("1")); }
+					auto D = _Graph->NameDepth;
+					return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
+				})
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(FLinearColor(0.85f, 0.85f, 0.85f))
+				.Justification(ETextJustify::Center)
+				.MinDesiredWidth(24.0f)
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("\x25B6")))
+				.OnClicked_Lambda([this]()
+				{
+					if (_Graph)
+					{
+						auto& Depth = _Graph->NameDepth;
+						if (Depth == 0) { Depth = 1; }
+						else { ++Depth; }
+						_Graph->ForceRebuild();
+					}
+					return FReply::Handled();
+				})
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Relayout")))
+				.OnClicked_Lambda([this]()
+				{
+					if (_Graph) { _Graph->ForceRebuild(); }
+					return FReply::Handled();
+				})
 			]
 
 			+ SHorizontalBox::Slot().FillWidth(1.0f)

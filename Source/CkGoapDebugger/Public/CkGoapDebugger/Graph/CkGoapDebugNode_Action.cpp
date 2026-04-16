@@ -16,7 +16,7 @@ auto
 	GetNodeTitle(ENodeTitleType::Type InTitleType) const
 	-> FText
 {
-	return FText::FromString(_ActionName);
+	return FText::FromString(_DisplayName.IsEmpty() ? _ActionName : _DisplayName);
 }
 
 auto

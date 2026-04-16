@@ -6,7 +6,6 @@
 // ====================================================================================================================
 
 class UCkGoapDebugGraph;
-class SCkGoapDebugger_PlanView;
 class SCkGoapDebugger_WorldStatePanel;
 class SCkGoapDebugger_StatsPanel;
 class SGraphEditor;
@@ -38,7 +37,6 @@ private:
 	TObjectPtr<UCkGoapDebugGraph> _Graph;
 	TSharedPtr<SGraphEditor> _GraphEditor;
 
-	TSharedPtr<SCkGoapDebugger_PlanView> _PlanView;
 	TSharedPtr<SCkGoapDebugger_WorldStatePanel> _WorldStatePanel;
 	TSharedPtr<SCkGoapDebugger_StatsPanel> _ActionDetailPanel;
 

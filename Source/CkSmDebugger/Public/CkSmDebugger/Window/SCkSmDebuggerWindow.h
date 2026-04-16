@@ -13,6 +13,7 @@ class SCkSmDebugger_Timeline;
 class SCkSmDebugger_PreviewPane;
 class SGraphEditor;
 class SSplitter;
+class SBox;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -35,6 +36,8 @@ public:
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto BuildDetailPanel() -> TSharedRef<SWidget>;
+    auto BuildDetailContent() -> TSharedRef<SWidget>;
+    auto RefreshDetailContent() -> void;
     auto RefreshSmSelector() -> void;
 
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
@@ -73,6 +76,34 @@ private:
 
     // Breakpoint tracking — detect state transitions to trigger pause
     int32 _LastCurrentStateIdx = -1;
+
+    // Detail panel — swappable content driven by selection changes.
+    // Content is rebuilt only when the structural selection changes (new state,
+    // transition, or history entry; or task/transition counts change).
+    // Live values inside the content use Text_Lambda to update per frame.
+    TSharedPtr<SBox> _DetailContentBox;
+
+    struct FDetailSignature
+    {
+        const void* SmInfo = nullptr;
+        const void* HistoryEntry = nullptr;
+        int32 NodeIdx = -1;
+        int32 TransitionIdx = -1;
+        int32 TaskCount = 0;
+        int32 TransitionCount = 0;
+
+        auto operator==(const FDetailSignature& Other) const -> bool
+        {
+            return SmInfo == Other.SmInfo
+                && HistoryEntry == Other.HistoryEntry
+                && NodeIdx == Other.NodeIdx
+                && TransitionIdx == Other.TransitionIdx
+                && TaskCount == Other.TaskCount
+                && TransitionCount == Other.TransitionCount;
+        }
+        auto operator!=(const FDetailSignature& Other) const -> bool { return !(*this == Other); }
+    };
+    FDetailSignature _LastDetailSig;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

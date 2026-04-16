@@ -84,6 +84,12 @@ auto FCkInspector_IntegerAttributes::BuildAttributeGrid(const FCk_Handle& Entity
                     Result += ck::Format_UE(TEXT("  / {}"), MaxVal);
                 }
 
+                const auto PreClamp = UCk_Utils_IntegerAttribute_UE::Get_PreClampFinalValue(Attr);
+                if (PreClamp > Final)
+                { Result += ck::Format_UE(TEXT(" (preclamp max: {})"), PreClamp); }
+                else if (PreClamp < Final)
+                { Result += ck::Format_UE(TEXT(" (preclamp min: {})"), PreClamp); }
+
                 return FText::FromString(Result);
             },
             FCkDebuggerStyle::Color_Attribute,

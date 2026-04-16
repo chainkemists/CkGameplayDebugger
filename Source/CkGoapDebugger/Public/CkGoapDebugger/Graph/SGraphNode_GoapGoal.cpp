@@ -130,7 +130,7 @@ auto
 	{
 		auto PinWidget = SNew(SGraphPin, Pin);
 		PinWidget->SetOwner(SharedThis(this));
-		PinWidget->SetVisibility(EVisibility::Collapsed);
+		PinWidget->SetVisibility(EVisibility::HitTestInvisible);
 		RightNodeBox->AddSlot().AutoHeight().HAlign(HAlign_Fill).VAlign(VAlign_Fill)[PinWidget];
 		InputPins.Add(PinWidget);
 	}
@@ -142,7 +142,7 @@ auto
 	-> void
 {
 	PinToAdd->SetOwner(SharedThis(this));
-	PinToAdd->SetVisibility(EVisibility::Collapsed);
+	PinToAdd->SetVisibility(EVisibility::HitTestInvisible);
 	RightNodeBox->AddSlot().AutoHeight()[PinToAdd];
 	InputPins.Add(PinToAdd);
 }

@@ -30,6 +30,8 @@ struct CKDEBUGGERCOMMON_API FCkDebugNodeTheme
 	FLinearColor ActiveBorder = FLinearColor(0.15f, 0.45f, 0.85f);
 	FLinearColor InactiveBorder = FLinearColor(0.25f, 0.25f, 0.28f);
 	FLinearColor SelectedBorder = FLinearColor(0.96f, 0.62f, 0.04f);
+	FLinearColor GoalBorder = FLinearColor(0.85f, 0.65f, 0.1f);
+	FLinearColor GoalText = FLinearColor(0.95f, 0.75f, 0.15f);
 
 	// Node fill / background
 	FLinearColor ActiveFill = FLinearColor(0.02f, 0.02f, 0.03f);
@@ -74,9 +76,19 @@ struct CKDEBUGGERCOMMON_API FCkDebugNodeTheme
 	{
 		if (Style == ECkDebugNodeThemeStyle::Flat)
 		{
-			return FAppStyle::GetBrush(TEXT("WhiteBrush"));
+			return FAppStyle::GetBrush(TEXT("NoBorder"));
 		}
 		return FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill"));
+	}
+
+	auto
+	GetBodyPadding() const -> FMargin
+	{
+		if (Style == ECkDebugNodeThemeStyle::Flat)
+		{
+			return FMargin(1.5f);
+		}
+		return FMargin(0.0f);
 	}
 
 	// ----------------------------------------------------------------------------------------------------------------

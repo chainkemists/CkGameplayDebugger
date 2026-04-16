@@ -34,7 +34,7 @@ auto
 
 	const auto Theme = UCkDebuggerSettings::GetTheme();
 	const auto IsActive = _GoalNode->Get_IsActiveGoal();
-	const auto BorderColor = IsActive ? Theme.SelectedBorder : Theme.InactiveBorder;
+	const auto BorderColor = IsActive ? Theme.GoalBorder : Theme.InactiveBorder;
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
@@ -56,7 +56,7 @@ auto
 	[
 		SNew(SBorder)
 		.BorderImage(Theme.GetBodyBrush())
-		.Padding(0.0f)
+		.Padding(Theme.GetBodyPadding())
 		.BorderBackgroundColor(BorderColor)
 		[
 			SNew(SOverlay)
@@ -74,9 +74,9 @@ auto
 					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("\u2B22 %s"), *_GoalNode->Get_GoalName())))
+						.Text(FText::FromString(FString::Printf(TEXT("[GOAL] %s"), *_GoalNode->Get_GoalName())))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-						.ColorAndOpacity(Theme.SelectedBorder)
+						.ColorAndOpacity(Theme.GoalText)
 					]
 					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.0f, 2.0f, 0.0f, 0.0f)
 					[

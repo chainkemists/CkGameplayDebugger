@@ -26,10 +26,12 @@ public:
 
 private:
 	auto OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+	auto OnSpawnStyleTestTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 
 private:
 	TSharedPtr<SCkGoapDebuggerWindow> _Window;
 	TSharedPtr<SDockTab> _Tab;
+	TSharedPtr<SDockTab> _StyleTestTab;
 	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
 	static const FName _TabId;

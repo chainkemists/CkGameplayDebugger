@@ -33,7 +33,8 @@ public class CkSmDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "PropertyEditor"
             });
         }
     }

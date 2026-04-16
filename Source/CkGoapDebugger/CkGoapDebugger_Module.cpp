@@ -1,6 +1,7 @@
 #include "CkGoapDebugger_Module.h"
 
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_StyleTest.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
 
 #include "EdGraphUtilities.h"
@@ -50,6 +51,13 @@ void FCkGoapDebuggerModule::StartupModule()
 		.SetDisplayName(LOCTEXT("TabTitle", "CK GOAP Debugger"))
 		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK GOAP planner debugger window"))
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+		FName(TEXT("CkGoapStyleTest")),
+		FOnSpawnTab::CreateRaw(this, &FCkGoapDebuggerModule::OnSpawnStyleTestTab))
+		.SetDisplayName(LOCTEXT("StyleTestTitle", "GOAP Node Styles"))
+		.SetTooltipText(LOCTEXT("StyleTestTooltip", "Compare different node rendering styles"))
+		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
 }
 
 void FCkGoapDebuggerModule::ShutdownModule()
@@ -58,6 +66,11 @@ void FCkGoapDebuggerModule::ShutdownModule()
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);
 	}
+	if (FGlobalTabmanager::Get()->HasTabSpawner(FName(TEXT("CkGoapStyleTest"))))
+	{
+		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(FName(TEXT("CkGoapStyleTest")));
+	}
+	_StyleTestTab.Reset();
 
 	if (_NodeFactory.IsValid())
 	{
@@ -134,6 +147,33 @@ auto
 }
 
 // ====================================================================================================================
+
+auto
+	FCkGoapDebuggerModule::
+	OnSpawnStyleTestTab(const FSpawnTabArgs& InArgs)
+	-> TSharedRef<SDockTab>
+{
+	_StyleTestTab = SNew(SDockTab)
+		.TabRole(ETabRole::NomadTab)
+		.Label(FText::FromString(TEXT("GOAP Node Styles")))
+		.OnTabClosed_Lambda([this](TSharedRef<SDockTab>) { _StyleTestTab.Reset(); })
+		[
+			SNew(SCkGoapDebugger_StyleTest)
+		];
+
+	return _StyleTestTab.ToSharedRef();
+}
+
+// ====================================================================================================================
+
+static FAutoConsoleCommand CmdGoapStyleTest(
+	TEXT("ck.GoapStyleTest"),
+	TEXT("Opens the GOAP node style comparison window"),
+	FConsoleCommandDelegate::CreateLambda([]()
+	{
+		FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("CkGoapStyleTest")));
+	})
+);
 
 #undef LOCTEXT_NAMESPACE
 

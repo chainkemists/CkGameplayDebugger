@@ -17,6 +17,13 @@
 struct FCkDebugGraphLayoutNode
 {
 	int32 Index = INDEX_NONE;
+
+	// Optional — width hint in layout units for this node. When any node in
+	// the graph provides a positive width, the layout switches from uniform
+	// columns (R * SpacingX) to per-column sizing where each column is at
+	// least as wide as its widest node and columns are separated by
+	// SpacingX. Leaving all widths at 0 preserves the legacy behavior.
+	int32 EstimatedWidth = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

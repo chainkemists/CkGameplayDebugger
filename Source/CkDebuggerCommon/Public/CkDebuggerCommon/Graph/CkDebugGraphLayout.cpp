@@ -207,6 +207,45 @@ auto
 	// Phase 4: Coordinate assignment
 	// ================================================================================================================
 
+	// Per-column width: if any caller node provided a width hint, compute the
+	// widest node in each column and use (max_width + SpacingX) as the gap
+	// between column centers-of-origin. This guarantees wide nodes never
+	// overlap into the next column — classic pain point with Sugiyama layers.
+	// When no width hints are present, fall back to uniform SpacingX spacing.
+
+	auto ColumnMaxWidth = TArray<int32>{};
+	ColumnMaxWidth.SetNumZeroed(MaxRank + 1);
+	auto HasAnyWidth = false;
+	for (auto i = 0; i < NodeCount; ++i)
+	{
+		const auto W = InNodes[i].EstimatedWidth;
+		if (W <= 0) { continue; }
+		HasAnyWidth = true;
+		const auto Rank = Ranks[i];
+		if (Rank >= 0 && Rank <= MaxRank)
+		{
+			ColumnMaxWidth[Rank] = FMath::Max(ColumnMaxWidth[Rank], W);
+		}
+	}
+
+	// Column start X positions: col0 at 0, colR at colR-1 + width[R-1] + SpacingX.
+	auto ColumnX = TArray<int32>{};
+	ColumnX.SetNumZeroed(MaxRank + 1);
+	if (HasAnyWidth)
+	{
+		for (auto R = 1; R <= MaxRank; ++R)
+		{
+			ColumnX[R] = ColumnX[R - 1] + ColumnMaxWidth[R - 1] + InParams.SpacingX;
+		}
+	}
+	else
+	{
+		for (auto R = 0; R <= MaxRank; ++R)
+		{
+			ColumnX[R] = R * InParams.SpacingX;
+		}
+	}
+
 	for (auto R = 0; R <= MaxRank; ++R)
 	{
 		auto& Layer = RankLayers[R];
@@ -222,7 +261,7 @@ auto
 				auto ExternalIdx = InNodes[Orig].Index;
 
 				Result.Positions.Add(ExternalIdx, FIntPoint(
-					R * InParams.SpacingX,
+					ColumnX[R],
 					S * InParams.SpacingY - TotalHeight / 2));
 			}
 		}

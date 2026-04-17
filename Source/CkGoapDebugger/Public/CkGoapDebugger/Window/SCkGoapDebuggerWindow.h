@@ -29,6 +29,7 @@ private:
 	auto OnGraphSelectionChanged(const TSet<UObject*>& InSelection) -> void;
 	auto BuildTimelineAndHistory() -> TSharedRef<SWidget>;
 	auto RebuildPlanStrip() -> void;
+	auto RebuildDiagnosticsBanner() -> void;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -46,11 +47,15 @@ private:
 
 	TSharedPtr<SVerticalBox> _HistoryListBox;
 	TSharedPtr<SHorizontalBox> _PlanStripBox;
-	int32 _LastPlanStepCount = -1;
+	uint32 _LastPlanStripHash = 0;
+
+	TSharedPtr<SVerticalBox> _DiagnosticsBanner;
+	uint32 _LastDiagnosticsHash = 0;
 
 	TWeakObjectPtr<UWorld> _CachedWorld;
 	int32 _SelectedHistoryIndex = -1;
 	int32 _LastHistoryCount = -1;
+	uint32 _LastHistoryHash = 0;
 };
 
 // ====================================================================================================================

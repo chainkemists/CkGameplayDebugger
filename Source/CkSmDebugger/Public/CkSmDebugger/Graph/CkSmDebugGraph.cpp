@@ -131,8 +131,9 @@ auto
         {
             auto InjectedState = CachedState;
             InjectedState.IsCurrentState = false;
-            InjectedState.HasBeenVisited = false;
-            InjectedState.DwellTimeSeconds = 0.0;
+            // Preserve cached HasBeenVisited / DwellTimeSeconds — they hold the
+            // last-known values from when the sub-SM was live, which is exactly
+            // what the "Was active for…" popup wants to show.
             InjectedState.IsSubSmNode = true;
             InjectedState.SubSmParentStateIndex = i;
             InjectedState.SubSmParentStateName = SmInfo.States[i].StateName;
@@ -621,8 +622,9 @@ auto
         {
             auto InjectedState = CachedState;
             InjectedState.IsCurrentState = false;
-            InjectedState.HasBeenVisited = false;
-            InjectedState.DwellTimeSeconds = 0.0;
+            // Preserve cached HasBeenVisited / DwellTimeSeconds — they hold the
+            // last-known values from when the sub-SM was live, which is exactly
+            // what the "Was active for…" popup wants to show.
             InjectedState.IsSubSmNode = true;
             InjectedState.SubSmParentStateIndex = i;
             InjectedState.SubSmParentStateName = SmInfo.States[i].StateName;
@@ -857,7 +859,8 @@ auto
     TickLiveFlash(
         float InDeltaTime,
         int32 InPrevStateIdx,
-        int32 InCurrentStateIdx)
+        int32 InCurrentStateIdx,
+        const TSet<FString>& InPreviousStateNames)
     -> void
 {
     // On state change: find the transition that fired and flash it
@@ -877,17 +880,17 @@ auto
         }
     }
 
-    // Mark previous state (the state we just left) with a grey outline.
-    // InPrevStateIdx reflects the last-known state from the previous tick.
+    // Mark previous states by name. The set carries one entry per hierarchy
+    // level (outer SM + each sub-SM) — the most recent FromStateName at that
+    // level. Exclude nodes that are themselves currently active so a recent
+    // self-loop doesn't light up the current state.
     for (auto Node : Nodes)
     {
         if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
         {
-            auto Idx = StateNode->Get_StateIndex();
             StateNode->Set_IsPreviousState(
-                InPrevStateIdx >= 0
-                && Idx == InPrevStateIdx
-                && InPrevStateIdx != InCurrentStateIdx);
+                InPreviousStateNames.Contains(StateNode->Get_StateName())
+                && NOT StateNode->Get_IsCurrentState());
         }
     }
 

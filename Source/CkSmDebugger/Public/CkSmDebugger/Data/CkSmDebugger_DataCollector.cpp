@@ -223,7 +223,8 @@ auto
 auto
     FCkSmDebugger_DataCollector::
     CollectStateMachine(
-        const FCk_Handle& InSmHandle)
+        const FCk_Handle& InSmHandle,
+        double InBirthRealTimeSeconds)
     -> FCkSmDebugger_SmInfo
 {
     auto SmInfo = FCkSmDebugger_SmInfo{};
@@ -365,7 +366,7 @@ auto
 
     // Recursively merge sub-SM states into the parent SmInfo
     auto SubSmHistories = TArray<FCkSmDebugger_HistoryEntry>{};
-    MergeSubStateMachines(SmInfo, StateClassToIndex, SubSmHistories);
+    MergeSubStateMachines(SmInfo, StateClassToIndex, SubSmHistories, InSmHandle);
 
     // Overlay live condition satisfaction for the current state's transitions
     auto CurrentStateHandle = Current.Get_CurrentStateHandle();
@@ -404,10 +405,44 @@ auto
     // Compute dwell times using logical time
     auto Now = ComputeLogicalTime(FPlatformTime::Seconds());
 
-    // Current state: live dwell from debug fragment timestamp
+    // Current state: live dwell since we most recently entered it.
+    // Walk the backend history backwards to find the latest transition where
+    // ToStateClass == CurrentStateClass — that's when this visit began. The
+    // debug fragment's CurrentStateEnteredAtRealTime can accumulate across
+    // repeated entries in some paths, so we prefer the history timestamp and
+    // fall back to the fragment only when there is no matching entry yet.
     if (SmInfo.CurrentStateIndex >= 0)
     {
-        auto EnteredAt = ComputeLogicalTime(Debug.Get_CurrentStateEnteredAtRealTime());
+        auto EnteredAt = 0.0;
+
+        const auto& BackendHistory = Debug.Get_History();
+        for (auto HistIdx = BackendHistory.Num() - 1; HistIdx >= 0; --HistIdx)
+        {
+            if (BackendHistory[HistIdx].ToStateClass == SmInfo.CurrentStateClass)
+            {
+                EnteredAt = ComputeLogicalTime(BackendHistory[HistIdx].RealTimeSeconds);
+                break;
+            }
+        }
+
+        if (EnteredAt <= 0.0)
+        { EnteredAt = ComputeLogicalTime(Debug.Get_CurrentStateEnteredAtRealTime()); }
+
+        // For sub-SMs still on their initial state, the backend has no matching
+        // history entry yet — fall back to the birth time supplied by the parent.
+        if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
+        { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
+
+        // Birth time is an authoritative lower bound for sub-SMs — when a parent
+        // state re-enters and re-boots its sub-SM, Debug.Get_CurrentStateEnteredAtRealTime
+        // can carry a stale value from a previous incarnation (same initial state class),
+        // producing massively inflated dwells. Clamp to the most recent birth.
+        if (InBirthRealTimeSeconds > 0.0)
+        {
+            auto BirthLogical = ComputeLogicalTime(InBirthRealTimeSeconds);
+            if (EnteredAt < BirthLogical)
+            { EnteredAt = BirthLogical; }
+        }
 
         if (EnteredAt > 0.0)
         {
@@ -417,12 +452,19 @@ auto
         }
     }
 
-    // Past states: walk history backwards to find last dwell per state
+    // Past states: walk history backwards to find each state's most recent dwell.
+    // For each first-seen FromStateClass (== most recent exit of that state),
+    // locate the matching entry timestamp by searching backwards for the last
+    // prior entry whose ToStateClass matches. Searching (instead of blindly
+    // reading HistIdx-1) is needed because the history chain can have gaps
+    // when sub-SMs stop/start — the neighbouring entry's ToStateClass is not
+    // guaranteed to match.
     auto VisitedStateClasses = TSet<TSubclassOf<UCk_SmState_EntityScript>>{};
 
-    for (auto HistIdx = SmInfo.History.Num() - 1; HistIdx >= 1; --HistIdx)
+    const auto& BackendHistoryForPast = Debug.Get_History();
+    for (auto HistIdx = BackendHistoryForPast.Num() - 1; HistIdx >= 0; --HistIdx)
     {
-        const auto& Entry = Debug.Get_History()[HistIdx];
+        const auto& Entry = BackendHistoryForPast[HistIdx];
         auto FromClass = Entry.FromStateClass;
 
         if (VisitedStateClasses.Contains(FromClass))
@@ -440,15 +482,43 @@ auto
         if (StateInfo.IsCurrentDwellLive)
         { continue; }
 
-        // Find when this state was entered (the previous history entry's timestamp)
-        auto EnteredAt = 0.0;
+        // Sub-SM states already have their dwell computed from the sub-SM's own fresh
+        // backend history (see the recursive CollectStateMachine call in MergeSubStateMachines).
+        // The outer SM's history accumulates *persisted* sub-SM transitions across all
+        // parent re-entries, so processing sub-SM classes here would overwrite the fresh
+        // dwell with a stale timestamp from a previous incarnation.
+        if (StateInfo.IsSubSmNode)
+        { continue; }
 
-        if (HistIdx > 0)
+        // Find the most recent prior entry where this state was entered.
+        auto EnteredAt = 0.0;
+        for (auto PrevIdx = HistIdx - 1; PrevIdx >= 0; --PrevIdx)
         {
-            EnteredAt = ComputeLogicalTime(Debug.Get_History()[HistIdx - 1].RealTimeSeconds);
+            if (BackendHistoryForPast[PrevIdx].ToStateClass == FromClass)
+            {
+                EnteredAt = ComputeLogicalTime(BackendHistoryForPast[PrevIdx].RealTimeSeconds);
+                break;
+            }
         }
 
+        // Sub-SM initial states never appear as ToStateClass in their own
+        // history — their enter time is the birth time supplied by the parent.
+        if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
+        { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
+
         auto ExitedAt = ComputeLogicalTime(Entry.RealTimeSeconds);
+
+        // Sub-SM re-entry: discard history rows whose exit timestamp predates the
+        // current incarnation's birth — those belong to a previous sub-SM run and
+        // would otherwise mix old timing into the freshly-rebooted sub-SM.
+        if (InBirthRealTimeSeconds > 0.0)
+        {
+            auto BirthLogical = ComputeLogicalTime(InBirthRealTimeSeconds);
+            if (ExitedAt < BirthLogical)
+            { continue; }
+            if (EnteredAt < BirthLogical)
+            { EnteredAt = BirthLogical; }
+        }
 
         if (EnteredAt > 0.0 && ExitedAt > EnteredAt)
         {
@@ -638,6 +708,7 @@ auto
         FCkSmDebugger_SmInfo& InOutSmInfo,
         TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
         TArray<FCkSmDebugger_HistoryEntry>& OutSubSmHistories,
+        const FCk_Handle& InParentHandle,
         int32 InDepth,
         int32 InScanFrom)
     -> void
@@ -664,8 +735,31 @@ auto
             if (ck::Is_NOT_Valid(static_cast<FCk_Handle>(Task.SubSmHandle)))
             { continue; }
 
+            // The parent records a "(start)" marker in its own history when a
+            // sub-SM boots — find the most recent one so we can hand the birth
+            // time down. The sub-SM's own history never contains this marker,
+            // so its initial state's first dwell can only be reconstructed via
+            // the parent. Walk backwards so repeated start/stop cycles pick up
+            // the most recent birth.
+            auto SubSmBirthRealTime = 0.0;
+            if (ck::IsValid(InParentHandle) && InParentHandle.Has<ck::FFragment_Sm_Debug>())
+            {
+                const auto& ParentDebug = InParentHandle.Get<ck::FFragment_Sm_Debug>();
+                const auto& ParentHistory = ParentDebug.Get_History();
+                for (auto Idx = ParentHistory.Num() - 1; Idx >= 0; --Idx)
+                {
+                    const auto& ParentEntry = ParentHistory[Idx];
+                    if (ck::Is_NOT_Valid(ParentEntry.FromStateClass)
+                        && ParentEntry.ToStateClass == Task.SubSmInitialStateClass)
+                    {
+                        SubSmBirthRealTime = ParentEntry.RealTimeSeconds;
+                        break;
+                    }
+                }
+            }
+
             // Collect the sub-SM as an independent SmInfo
-            auto SubSmInfo = CollectStateMachine(static_cast<FCk_Handle>(Task.SubSmHandle));
+            auto SubSmInfo = CollectStateMachine(static_cast<FCk_Handle>(Task.SubSmHandle), SubSmBirthRealTime);
 
             if (SubSmInfo.States.Num() == 0)
             { continue; }
@@ -706,7 +800,11 @@ auto
     // Recurse for nested sub-SMs — only scan newly added states to avoid re-merging
     if (InOutSmInfo.States.Num() > OriginalStateCount)
     {
-        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, OutSubSmHistories, InDepth + 1, OriginalStateCount);
+        // Nested sub-SMs within newly-added states: we don't have their owning
+        // handle at this depth, so birth-time lookup is skipped (the sub-SM's
+        // own CollectStateMachine call above already handles its direct
+        // sub-SMs with the correct parent handle).
+        MergeSubStateMachines(InOutSmInfo, InOutStateClassToIndex, OutSubSmHistories, FCk_Handle{}, InDepth + 1, OriginalStateCount);
     }
 }
 
@@ -837,7 +935,7 @@ auto
             auto Segment = FCkSmDebugger_TimelineSegment{};
             Segment.StateName = InInitialStateName;
             Segment.StartTime = 0.0;
-            Segment.EndTime = 0.0;
+            Segment.EndTime = InNow - InRunStartTime;
             Segment.Color = CkSmDebugger::ComputeStateColor(InInitialStateName);
             Segments.Add(MoveTemp(Segment));
         }
@@ -868,8 +966,9 @@ auto
         }
         else
         {
-            // Last entry: open-ended (still active or run ended)
-            Segment.EndTime = 0.0;
+            // Last entry is the currently-active state — extend to "now" so the
+            // swim-lane bar keeps growing while the state is being dwelt in.
+            Segment.EndTime = InNow > InRunStartTime ? InNow - InRunStartTime : Segment.StartTime;
         }
 
         Segment.Color = CkSmDebugger::ComputeStateColor(Segment.StateName);

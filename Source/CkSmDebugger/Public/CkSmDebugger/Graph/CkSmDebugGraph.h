@@ -116,7 +116,7 @@ public:
     // Highlight: scrub mode (history click) and live flash (transition just fired)
     auto ApplyScrubHighlight(int32 InActiveStateIdx, int32 InExitedStateIdx) -> void;
     auto ClearScrubHighlight() -> void;
-    auto TickLiveFlash(float InDeltaTime, int32 InPrevStateIdx, int32 InCurrentStateIdx) -> void;
+    auto TickLiveFlash(float InDeltaTime, int32 InPrevStateIdx, int32 InCurrentStateIdx, const TSet<FString>& InPreviousStateNames) -> void;
 
 private:
     auto
@@ -144,6 +144,7 @@ private:
         TArray<FCkSmDebugger_TransitionInfo> Transitions;
     };
     TMap<int32, FCachedSubSmData> _CachedSubSmData;
+
 };
 
 // --------------------------------------------------------------------------------------------------------------------

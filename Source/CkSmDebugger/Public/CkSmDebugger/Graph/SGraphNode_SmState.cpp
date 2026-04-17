@@ -307,6 +307,14 @@ auto
         auto DwellStr = FString::Printf(TEXT("Active for %.2f secs"), _StateNode->Get_DwellTimeSeconds());
         OutPopups.Emplace(nullptr, FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder, DwellStr);
     }
+    else if (_StateNode->Get_IsPreviousState())
+    {
+        auto DwellStr = FString::Printf(TEXT("Was active for %.2f secs"), _StateNode->Get_DwellTimeSeconds());
+        // Muted tint so it reads as a historical note next to the live active popup.
+        auto Base = FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder;
+        auto Muted = FLinearColor(Base.R * 0.55f, Base.G * 0.55f, Base.B * 0.55f, 0.75f);
+        OutPopups.Emplace(nullptr, Muted, DwellStr);
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

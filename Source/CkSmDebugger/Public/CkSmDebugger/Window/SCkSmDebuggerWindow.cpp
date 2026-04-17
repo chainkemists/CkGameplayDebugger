@@ -545,7 +545,32 @@ auto
         else
         {
             _Graph->ClearScrubHighlight();
-            _Graph->TickLiveFlash(InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex);
+
+            // Compute one "previous state" per hierarchy level (outer SM +
+            // each sub-SM) by walking history backwards and keeping the first
+            // FromStateName we see for each distinct SubSmParentStateName.
+            // Name-based matching survives graph rebuilds (sub-SM live/cached
+            // swaps invalidate indices but not state names).
+            auto PreviousStateNames = TSet<FString>{};
+            auto SeenLevels = TSet<FString>{};
+            for (auto HistIdx = SmInfo->History.Num() - 1; HistIdx >= 0; --HistIdx)
+            {
+                const auto& Entry = SmInfo->History[HistIdx];
+                if (SeenLevels.Contains(Entry.SubSmParentStateName)) { continue; }
+                // Skip boot/start markers (empty or literal "(start)" From) without marking
+                // the level seen — otherwise a recent boot marker blocks us from finding a
+                // real previous state at that hierarchy level. The backend stamps
+                // FromStateName = "(start)" on sub-SM initial-state entries (see
+                // CkStateMachine_Debug_Processor.cpp DoHandleRequest).
+                if (Entry.FromStateName.IsEmpty()
+                    || Entry.FromStateName == TEXT("(start)"))
+                { continue; }
+
+                SeenLevels.Add(Entry.SubSmParentStateName);
+                PreviousStateNames.Add(Entry.FromStateName);
+            }
+
+            _Graph->TickLiveFlash(InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
         }
 
         // ----- Breakpoint detection: pause PIE on state entry/exit -----

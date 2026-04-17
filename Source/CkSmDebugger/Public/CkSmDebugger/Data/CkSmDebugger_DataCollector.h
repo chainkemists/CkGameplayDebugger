@@ -42,13 +42,15 @@ public:
 private:
     auto
     CollectStateMachine(
-        const FCk_Handle& InSmHandle) -> FCkSmDebugger_SmInfo;
+        const FCk_Handle& InSmHandle,
+        double InBirthRealTimeSeconds = 0.0) -> FCkSmDebugger_SmInfo;
 
     auto
     MergeSubStateMachines(
         FCkSmDebugger_SmInfo& InOutSmInfo,
         TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
         TArray<FCkSmDebugger_HistoryEntry>& OutSubSmHistories,
+        const FCk_Handle& InParentHandle = FCk_Handle{},
         int32 InDepth = 0,
         int32 InScanFrom = 0) -> void;
 

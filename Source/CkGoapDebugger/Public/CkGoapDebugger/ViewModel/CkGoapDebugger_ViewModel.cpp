@@ -47,6 +47,15 @@ auto
 	}
 
 	_SelectedEntityHandle = InHandle;
+
+	// Scrub state is entity-scoped — switching entities drops us back to live.
+	if (_ViewMode == ECk_GoapDebugger_ViewMode::Scrub)
+	{
+		_ViewMode = ECk_GoapDebugger_ViewMode::Live;
+		_ScrubHistoryIndex = -1;
+		OnViewModeChanged.Broadcast(_ViewMode);
+	}
+
 	OnSelectedEntityChanged.Broadcast(InHandle);
 }
 
@@ -57,6 +66,19 @@ auto
 	Get_CurrentGoapInfo() const
 	-> const FCkGoapDebugger_GoapInfo*
 {
+	// Scrub mode: return the frozen snapshot from the history entry instead
+	// of the live data. The whole UI (graph, world state, details) reads
+	// through this getter, so flipping it here rehydrates everything.
+	if (_ViewMode == ECk_GoapDebugger_ViewMode::Scrub)
+	{
+		const auto* History = _DataCollector.Get_PlanHistory().Find(GetTypeHash(_SelectedEntityHandle));
+		if (History != nullptr && History->IsValidIndex(_ScrubHistoryIndex))
+		{
+			return &(*History)[_ScrubHistoryIndex].Snapshot;
+		}
+		// Scrub index invalid (history trimmed, entity changed, etc.) — fall through to live.
+	}
+
 	for (const auto& Info : _DataCollector.Get_AllGoapEntities())
 	{
 		if (Info.Handle == _SelectedEntityHandle)
@@ -93,6 +115,35 @@ auto
 
 	_IsPaused = InPaused;
 	OnPausedChanged.Broadcast(InPaused);
+}
+
+// ====================================================================================================================
+
+auto
+	FCkGoapDebugger_ViewModel::
+	Set_ViewMode(ECk_GoapDebugger_ViewMode InMode)
+	-> void
+{
+	if (_ViewMode == InMode) { return; }
+	_ViewMode = InMode;
+	if (_ViewMode == ECk_GoapDebugger_ViewMode::Live)
+	{
+		_ScrubHistoryIndex = -1;
+	}
+	OnViewModeChanged.Broadcast(_ViewMode);
+}
+
+auto
+	FCkGoapDebugger_ViewModel::
+	Set_ScrubHistoryIndex(int32 InIndex)
+	-> void
+{
+	_ScrubHistoryIndex = InIndex;
+	if (InIndex >= 0 && _ViewMode != ECk_GoapDebugger_ViewMode::Scrub)
+	{
+		_ViewMode = ECk_GoapDebugger_ViewMode::Scrub;
+		OnViewModeChanged.Broadcast(_ViewMode);
+	}
 }
 
 // ====================================================================================================================

@@ -65,6 +65,11 @@ namespace FCkSmDebuggerStyle
     // Overridden state — inline "OVERRIDE" label under the state name
     inline const FLinearColor Color_Sm_Override               = FLinearColor(0.72f, 0.42f, 0.95f);
 
+    // Event-driven vs polled / ticking — inline "EVENT-DRIVEN" / "TICK" labels and detail-panel pills
+    inline const FLinearColor Color_Sm_EventDriven            = FLinearColor(0.95f, 0.75f, 0.25f);
+    inline const FLinearColor Color_Sm_Polled                 = FLinearColor(0.60f, 0.60f, 0.65f);
+    inline const FLinearColor Color_Sm_TaskTick               = FLinearColor(0.85f, 0.55f, 0.25f);
+
     // General text
     inline const FLinearColor Color_Text_Primary   = FLinearColor(0.85f, 0.85f, 0.85f);
     inline const FLinearColor Color_Text_Secondary  = FLinearColor(0.5f, 0.5f, 0.55f);

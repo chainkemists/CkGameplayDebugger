@@ -51,11 +51,23 @@ auto
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
-	const auto CurrentCount = Info != nullptr ? Info->WorldState.Num() : 0;
 
-	if (CurrentCount != _LastWorldStateCount)
+	// Hash content (keys + values) so flips of existing keys trigger a rebuild.
+	// Commutative XOR so map iteration order doesn't fake a change.
+	// The previous count-only check missed value changes entirely.
+	auto Hash = uint32{0};
+	if (Info != nullptr)
 	{
-		_LastWorldStateCount = CurrentCount;
+		for (const auto& [Key, Value] : Info->WorldState)
+		{
+			const auto PairHash = HashCombine(GetTypeHash(Key), Value ? 1u : 0u);
+			Hash ^= PairHash;
+		}
+	}
+
+	if (Hash != _LastWorldStateHash)
+	{
+		_LastWorldStateHash = Hash;
 		RebuildWorldState();
 	}
 }

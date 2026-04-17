@@ -21,7 +21,7 @@ private:
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 	TSharedPtr<SVerticalBox> _StateListBox;
-	int32 _LastWorldStateCount = -1;
+	uint32 _LastWorldStateHash = 0;
 };
 
 // ====================================================================================================================

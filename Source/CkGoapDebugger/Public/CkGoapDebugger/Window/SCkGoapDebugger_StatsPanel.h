@@ -18,6 +18,7 @@ public:
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
+	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 	auto SetSelectedAction(const FCkGoapDebugger_ActionInfo* InAction, int32 InPlanStepIndex) -> void;
 	auto ClearSelection() -> void;
@@ -25,14 +26,21 @@ public:
 private:
 	auto RebuildContent() -> void;
 	auto BuildNoSelectionContent() -> TSharedRef<SWidget>;
-	auto BuildActionContent() -> TSharedRef<SWidget>;
+	auto BuildActionContent(const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 	TSharedPtr<SVerticalBox> _ContentBox;
 
-	const FCkGoapDebugger_ActionInfo* _SelectedAction = nullptr;
+	// Store the action's class name (stable across data-collector rebuilds)
+	// rather than a raw pointer (the DataCollector resets _GoapEntities every
+	// tick, which would dangle any FCkGoapDebugger_ActionInfo* captured here).
+	FString _SelectedActionName;
 	int32 _PlanStepIndex = -1;
+
+	// Content hash of the last rendered action info; re-renders only when
+	// world state / plan index / action data changes.
+	uint32 _LastContentHash = 0;
 };
 
 // ====================================================================================================================

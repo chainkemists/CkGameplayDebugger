@@ -201,6 +201,26 @@ auto
                                                 })
                                         ]
 
+                                    // Event-driven label — gold "EVENT-DRIVEN" tag visible only
+                                    // when all outgoing conditions are EventDriven and no task ticks.
+                                    + SVerticalBox::Slot()
+                                        .AutoHeight()
+                                        .Padding(0.0f, 1.0f, 0.0f, 0.0f)
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
+                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                                                .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_EventDriven))
+                                                .Visibility_Lambda([StateNodePtr = _StateNode]()
+                                                {
+                                                    return (StateNodePtr
+                                                            && StateNodePtr->Get_HasCompleteData()
+                                                            && StateNodePtr->Get_IsFullyEventDriven())
+                                                        ? EVisibility::SelfHitTestInvisible
+                                                        : EVisibility::Collapsed;
+                                                })
+                                        ]
+
                                     // Task rows (shown when node has tasks)
                                     + SVerticalBox::Slot()
                                         .AutoHeight()
@@ -786,6 +806,32 @@ auto
                                 if (StateNodePtr && NOT StateNodePtr->Get_IsCurrentState())
                                 { Color.A *= 0.4f; }
                                 return FSlateColor(Color);
+                            })
+                    ]
+
+                // "TICK" tag — visible only for tasks in Tick mode
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("TICK")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                            .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
+                            {
+                                auto Color = FCkSmDebuggerStyle::Color_Sm_TaskTick;
+                                if (StateNodePtr && NOT StateNodePtr->Get_IsCurrentState())
+                                { Color.A *= 0.45f; }
+                                return FSlateColor(Color);
+                            })
+                            .Visibility_Lambda([StateNodePtr = _StateNode, TaskIdx]()
+                            {
+                                if (NOT StateNodePtr || TaskIdx >= StateNodePtr->Get_Tasks().Num())
+                                { return EVisibility::Collapsed; }
+                                return (StateNodePtr->Get_Tasks()[TaskIdx].Mode == ECk_SmTaskMode::Tick)
+                                    ? EVisibility::SelfHitTestInvisible
+                                    : EVisibility::Collapsed;
                             })
                     ]
             ];

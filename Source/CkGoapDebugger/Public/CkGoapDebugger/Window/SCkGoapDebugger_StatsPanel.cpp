@@ -49,8 +49,11 @@ auto
 	SetSelectedAction(const FCkGoapDebugger_ActionInfo* InAction, int32 InPlanStepIndex)
 	-> void
 {
-	_SelectedAction = InAction;
+	// Capture by name, not pointer — the DataCollector rebuilds its entity
+	// list every tick and the pointer would dangle.
+	_SelectedActionName = InAction != nullptr ? InAction->ClassName : FString{};
 	_PlanStepIndex = InPlanStepIndex;
+	_LastContentHash = 0;  // force rebuild
 	RebuildContent();
 }
 
@@ -59,9 +62,60 @@ auto
 	ClearSelection()
 	-> void
 {
-	_SelectedAction = nullptr;
+	_SelectedActionName.Reset();
 	_PlanStepIndex = -1;
+	_LastContentHash = 0;
 	RebuildContent();
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebugger_StatsPanel::
+	Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime)
+	-> void
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	// Re-resolve the selected action fresh every tick. Rebuild the panel only
+	// when something observable to the panel changed (current world state,
+	// plan index, or the action's own cost/pre/eff). Checksum avoids per-frame
+	// Slate churn.
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	const FCkGoapDebugger_ActionInfo* Action = nullptr;
+
+	if (Info != nullptr && NOT _SelectedActionName.IsEmpty())
+	{
+		for (const auto& A : Info->Actions)
+		{
+			if (A.ClassName == _SelectedActionName) { Action = &A; break; }
+		}
+	}
+
+	auto Hash = uint32{0};
+	Hash = HashCombine(Hash, GetTypeHash(_SelectedActionName));
+	Hash = HashCombine(Hash, GetTypeHash(_PlanStepIndex));
+	if (Action != nullptr)
+	{
+		Hash = HashCombine(Hash, GetTypeHash(Action->Cost));
+		Hash = HashCombine(Hash, GetTypeHash(Action->Preconditions.Num()));
+		Hash = HashCombine(Hash, GetTypeHash(Action->Effects.Num()));
+	}
+	if (Info != nullptr)
+	{
+		// World state affects the precondition-satisfied ticks/crosses.
+		for (const auto& [Key, Value] : Info->WorldState)
+		{
+			const auto Pair = HashCombine(GetTypeHash(Key), Value ? 1u : 0u);
+			Hash ^= Pair;
+		}
+	}
+
+	if (Hash != _LastContentHash)
+	{
+		_LastContentHash = Hash;
+		RebuildContent();
+	}
 }
 
 // ====================================================================================================================
@@ -73,7 +127,17 @@ auto
 {
 	_ContentBox->ClearChildren();
 
-	if (_SelectedAction == nullptr)
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	const FCkGoapDebugger_ActionInfo* Action = nullptr;
+	if (Info != nullptr && NOT _SelectedActionName.IsEmpty())
+	{
+		for (const auto& A : Info->Actions)
+		{
+			if (A.ClassName == _SelectedActionName) { Action = &A; break; }
+		}
+	}
+
+	if (Action == nullptr)
 	{
 		_ContentBox->AddSlot().AutoHeight()
 		[
@@ -84,7 +148,7 @@ auto
 	{
 		_ContentBox->AddSlot().AutoHeight()
 		[
-			BuildActionContent()
+			BuildActionContent(*Action)
 		];
 	}
 }
@@ -110,11 +174,11 @@ auto
 
 auto
 	SCkGoapDebugger_StatsPanel::
-	BuildActionContent()
+	BuildActionContent(const FCkGoapDebugger_ActionInfo& InAction)
 	-> TSharedRef<SWidget>
 {
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
-	const auto& A = *_SelectedAction;
+	const auto& A = InAction;
 	const auto P = CkGoapDebuggerStyle::PanelPadding;
 
 	auto Box = SNew(SVerticalBox);

@@ -25,6 +25,8 @@ public:
 		const FCkGoapDebugger_GoalInfo& InGoal) -> void;
 
 	auto Get_GoalName() const -> const FString& { return _GoalName; }
+	auto Get_DisplayName() const -> const FString& { return _DisplayName; }
+	auto Set_DisplayName(const FString& InName) -> void { _DisplayName = InName; }
 	auto Get_Priority() const -> int32 { return _Priority; }
 	auto Get_Conditions() const -> const TMap<FGameplayTag, bool>& { return _Conditions; }
 	auto Get_IsActiveGoal() const -> bool { return _IsActiveGoal; }
@@ -33,6 +35,9 @@ public:
 private:
 	UPROPERTY()
 	FString _GoalName;
+
+	UPROPERTY()
+	FString _DisplayName;
 
 	UPROPERTY()
 	int32 _Priority = 0;

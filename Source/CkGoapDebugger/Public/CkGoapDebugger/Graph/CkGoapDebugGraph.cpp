@@ -103,6 +103,7 @@ auto
 		{
 			_GoalNode = NewObject<UCkGoapDebugNode_Goal>(this);
 			_GoalNode->PopulateFromGoalInfo(Goal);
+			_GoalNode->Set_DisplayName(ComputeDisplayName(Goal.ClassName, NameDepth));
 			_GoalNode->CreateNewGuid();
 			_GoalNode->AllocateDefaultPins();
 			AddNode(_GoalNode, false, false);
@@ -177,11 +178,32 @@ auto
 	PerformLayout()
 	-> void
 {
+	// Estimate a node's width from the longest string it will render:
+	// its display name, each precondition tag, each effect tag. ~7.5px/char
+	// at the default font, plus 48px for dot/badge/padding.
+	const auto EstimateWidth = [](const UCkGoapDebugNode_Action* InNode) -> int32
+	{
+		if (InNode == nullptr) { return 0; }
+		auto MaxChars = InNode->Get_DisplayName().Len();
+		for (const auto& [Key, Value] : InNode->Get_Preconditions())
+		{
+			MaxChars = FMath::Max(MaxChars, Key.ToString().Len());
+		}
+		for (const auto& [Key, Value] : InNode->Get_Effects())
+		{
+			MaxChars = FMath::Max(MaxChars, Key.ToString().Len());
+		}
+		return static_cast<int32>(MaxChars * 7.5f) + 48;
+	};
+
 	// Build layout nodes + edges for the shared Sugiyama layout
 	auto LayoutNodes = TArray<FCkDebugGraphLayoutNode>{};
 	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
-		LayoutNodes.Add({Idx});
+		auto Layout = FCkDebugGraphLayoutNode{};
+		Layout.Index = Idx;
+		Layout.EstimatedWidth = EstimateWidth(_ActionNodes[Idx].Get());
+		LayoutNodes.Add(Layout);
 	}
 
 	// Build effect→provider map for edge construction
@@ -211,6 +233,9 @@ auto
 		}
 	}
 
+	// SpacingX is the minimum inter-column gap. Per-node EstimatedWidth above
+	// ensures each column is at least as wide as its widest member, so wide
+	// nodes never overflow into the next layer.
 	auto LayoutParams = FCkDebugGraphLayoutParams{};
 	LayoutParams.SpacingX = SpacingX;
 	LayoutParams.SpacingY = SpacingY;
@@ -220,8 +245,11 @@ auto
 
 	auto Result = FCkDebugGraphLayout::ComputeLayout(LayoutNodes, LayoutEdges, LayoutParams);
 
-	// Apply positions from layout result
+	// Apply positions from layout result. Track the rightmost column's origin
+	// AND the width of the widest node in that column so the goal can be
+	// placed just past them.
 	auto MaxX = 0;
+	auto MaxXNodeWidth = 0;
 	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
 		auto* Node = _ActionNodes[Idx].Get();
@@ -229,14 +257,23 @@ auto
 		{
 			Node->NodePosX = Pos->X;
 			Node->NodePosY = Pos->Y;
-			MaxX = FMath::Max(MaxX, Pos->X);
+			if (Pos->X > MaxX)
+			{
+				MaxX = Pos->X;
+				MaxXNodeWidth = LayoutNodes[Idx].EstimatedWidth;
+			}
+			else if (Pos->X == MaxX)
+			{
+				MaxXNodeWidth = FMath::Max(MaxXNodeWidth, LayoutNodes[Idx].EstimatedWidth);
+			}
 		}
 	}
 
-	// Position goal node to the right of all action nodes
+	// Position goal node to the right of all action nodes, past the widest
+	// node in the final column plus one SpacingX gutter.
 	if (_GoalNode != nullptr)
 	{
-		_GoalNode->NodePosX = MaxX + SpacingX;
+		_GoalNode->NodePosX = MaxX + MaxXNodeWidth + SpacingX;
 		_GoalNode->NodePosY = SpacingY;
 	}
 
@@ -299,6 +336,29 @@ auto
 		Hash = HashCombine(Hash, GetTypeHash(Action.ClassName));
 		Hash = HashCombine(Hash, GetTypeHash(Action.Preconditions.Num()));
 		Hash = HashCombine(Hash, GetTypeHash(Action.Effects.Num()));
+	}
+
+	// Include the active goal's identity so a goal swap rebuilds the topology
+	// (the goal node is rebuilt only in RebuildTopology, not UpdateRuntimeState,
+	// so we must treat the active goal as topology).
+	for (const auto& Goal : InInfo.Goals)
+	{
+		if (Goal.IsActiveGoal)
+		{
+			Hash = HashCombine(Hash, GetTypeHash(Goal.ClassName));
+			break;
+		}
+	}
+
+	// Include the plan contents as topology. The SGraphNode widget reads
+	// InPlan / PlanStepIndex into static SBox sizes at construction time
+	// (see SGraphNode_GoapAction::UpdateGraphNode) — mutating the UObject's
+	// _InPlan bit alone doesn't re-render those. Force a full rebuild when
+	// the plan composition shifts so fresh widgets pick up the new state.
+	Hash = HashCombine(Hash, GetTypeHash(InInfo.PlanActionNames.Num()));
+	for (const auto& Name : InInfo.PlanActionNames)
+	{
+		Hash = HashCombine(Hash, GetTypeHash(Name));
 	}
 
 	return Hash;

@@ -74,7 +74,10 @@ auto
 					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("[GOAL] %s"), *_GoalNode->Get_GoalName())))
+						.Text(FText::FromString(FString::Printf(TEXT("[GOAL] %s"),
+							*(_GoalNode->Get_DisplayName().IsEmpty()
+								? _GoalNode->Get_GoalName()
+								: _GoalNode->Get_DisplayName()))))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
 						.ColorAndOpacity(Theme.GoalText)
 					]

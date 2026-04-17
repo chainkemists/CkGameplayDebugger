@@ -292,6 +292,12 @@ auto
         _Graph->Nodes.Empty();
         _Graph->NotifyGraphChanged();
     }
+
+    // Force the detail panel to repaint its "No selection" state now. Both the
+    // pre- and post-reset signatures are default-initialized, so RefreshDetailContent's
+    // signature early-exit would otherwise leave the previous widget in place.
+    if (_DetailContentBox.IsValid())
+    { _DetailContentBox->SetContent(BuildDetailContent()); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

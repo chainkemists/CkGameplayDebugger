@@ -337,10 +337,39 @@ auto
     for (auto i = 0; i < ParentCount; ++i)
     { ParentGlobalToLayout.Add(ParentStateIndices[i], i); }
 
-    // Build layout nodes (using layout indices 0..N-1)
+    // Build layout nodes (using layout indices 0..N-1). Feed each node's
+    // estimated width to the shared layout so compound blocks (sub-SMs) and
+    // wide state names don't overlap into the next column.
     auto LayoutNodesInput = TArray<FCkDebugGraphLayoutNode>{};
     for (auto i = 0; i < ParentCount; ++i)
-    { LayoutNodesInput.Add({ i }); }
+    {
+        auto Layout = FCkDebugGraphLayoutNode{};
+        Layout.Index = i;
+
+        // Default width: max(140, stateName.Len() * 7.5 + 40) — matches the
+        // approximate node-width constant used elsewhere in this file.
+        auto Width = 140;
+        const auto ParentIdx = ParentStateIndices[i];
+        if (ParentIdx >= 0 && ParentIdx < StateCount)
+        {
+            const auto NameLen = SmInfo.States[ParentIdx].StateName.Len();
+            Width = FMath::Max(Width, static_cast<int32>(NameLen * 7.5f) + 40);
+        }
+
+        // If this parent state owns a compound block (sub-SM), use the pre-
+        // computed block width instead — it's already the visual footprint.
+        for (const auto& Block : CompoundBlocks)
+        {
+            if (Block.ParentStateIndex == ParentIdx)
+            {
+                Width = FMath::Max(Width, static_cast<int32>(Block.Width));
+                break;
+            }
+        }
+
+        Layout.EstimatedWidth = Width;
+        LayoutNodesInput.Add(Layout);
+    }
 
     // Build layout edges from parent-level transitions
     auto LayoutEdgesInput = TArray<FCkDebugGraphLayoutEdge>{};

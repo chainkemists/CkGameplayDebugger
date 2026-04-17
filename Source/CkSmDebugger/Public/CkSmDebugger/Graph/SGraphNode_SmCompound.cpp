@@ -231,8 +231,10 @@ auto
             SNew(SBox)
                 .WidthOverride(CompoundWidth)
                 .HeightOverride(CompoundHeight)
+                .Visibility(EVisibility::HitTestInvisible)
                 [
                     SNew(SOverlay)
+                        .Visibility(EVisibility::HitTestInvisible)
 
                     // Hidden pin area for connection geometry
                     + SOverlay::Slot()

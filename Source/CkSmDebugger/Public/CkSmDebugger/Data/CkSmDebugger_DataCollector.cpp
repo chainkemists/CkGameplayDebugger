@@ -156,12 +156,15 @@ auto
     {
         auto StateInfo = FCkSmDebugger_StateInfo{};
         StateInfo.StateClass = StateClass;
+        StateInfo.ScriptClass = StateDef.ScriptClass;
+        StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
         StateInfo.StateName = StateDef.StateName;
 
         for (const auto& TaskDef : StateDef.Tasks)
         {
             auto TaskInfo = FCkSmDebugger_TaskInfo{};
             TaskInfo.ClassName = TaskDef.ClassName;
+            TaskInfo.ScriptClass = TaskDef.ScriptClass;
             TaskInfo.Mode = TaskDef.Mode;
             TaskInfo.HasSubStateMachine = TaskDef.HasSubStateMachine;
             TaskInfo.SubSmInitialStateClass = TaskDef.SubSmInitialStateClass;
@@ -209,6 +212,18 @@ auto
 
             auto* TargetIndex = StateClassToIndex.Find(TransDef.TargetStateClass);
             TransInfo.TargetStateIndex = TargetIndex ? *TargetIndex : -1;
+
+            for (const auto& CondDef : TransDef.Conditions)
+            {
+                auto CondInfo = FCkSmDebugger_ConditionInfo{};
+                CondInfo.ClassName = CondDef.ClassName;
+                CondInfo.ScriptClass = CondDef.ScriptClass;
+                CondInfo.Mode = CondDef.Mode;
+                CondInfo.Result = ECk_SmConditionResult::Undetermined;
+                TransInfo.Conditions.Add(MoveTemp(CondInfo));
+            }
+
+            TransInfo.TotalCount = TransInfo.Conditions.Num();
 
             SmInfo.Transitions.Add(MoveTemp(TransInfo));
         }
@@ -363,6 +378,118 @@ auto
             SmInfo.Transitions.Add(MoveTemp(TransInfo));
         }
     }
+
+#if CK_BUILD_SM_GRAPH_WALK
+    // Hydrate missing / placeholder entries from the graph-walk definition, if available.
+    //
+    // The runtime cache populates a state's ScriptClass / Tasks / Transitions lazily
+    // (only when the state becomes current). Target states of outgoing transitions
+    // get placeholder entries (StateClass + StateName only). The graph walker, gated
+    // on CK_BUILD_SM_GRAPH_WALK, walks all reachable states up-front and records the
+    // full static structure — including conditions and their modes. Using it here
+    // means the debugger can show event-driven / override / tick indicators for
+    // every state from the first frame, not only after they've been visited.
+    if (InSmHandle.Has<ck::FFragment_Sm_Debug_GraphDefinition>())
+    {
+        const auto& GraphDef = InSmHandle.Get<ck::FFragment_Sm_Debug_GraphDefinition>();
+        if (GraphDef.Get_IsComplete())
+        {
+            // Add states present in GraphDef but not yet in SmInfo.States.
+            for (const auto& [StateClass, StateDef] : GraphDef.Get_StateDefinitions())
+            {
+                if (NOT ck::IsValid(StateClass)) { continue; }
+                if (StateClassToIndex.Contains(StateClass)) { continue; }
+
+                auto StateInfo = FCkSmDebugger_StateInfo{};
+                StateInfo.StateClass = StateClass;
+                StateInfo.ScriptClass = StateDef.ScriptClass;
+                StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
+                StateInfo.StateName = StateDef.StateName;
+                StateInfo.IsCurrentState = false;
+
+                auto Index = SmInfo.States.Num();
+                StateClassToIndex.Add(StateClass, Index);
+                SmInfo.States.Add(MoveTemp(StateInfo));
+            }
+
+            // Hydrate placeholder states and synthesize transitions for states that
+            // haven't been visited yet (no CachedState.Transitions populated).
+            for (const auto& [StateClass, StateDef] : GraphDef.Get_StateDefinitions())
+            {
+                auto* SourceIndex = StateClassToIndex.Find(StateClass);
+                if (NOT SourceIndex) { continue; }
+
+                auto& State = SmInfo.States[*SourceIndex];
+
+                if (NOT IsValid(State.ScriptClass))
+                {
+                    State.ScriptClass = StateDef.ScriptClass;
+                    State.RequestedScriptClass = StateDef.RequestedScriptClass;
+                }
+
+                if (State.Tasks.IsEmpty() && NOT StateDef.Tasks.IsEmpty())
+                {
+                    for (const auto& TaskDef : StateDef.Tasks)
+                    {
+                        auto TaskInfo = FCkSmDebugger_TaskInfo{};
+                        TaskInfo.ClassName = TaskDef.ClassName;
+                        TaskInfo.Mode = TaskDef.Mode;
+                        TaskInfo.HasSubStateMachine = TaskDef.HasSubStateMachine;
+                        TaskInfo.SubSmInitialStateClass = TaskDef.SubSmInitialStateClass;
+                        if (TaskDef.HasSubStateMachine) { State.HasSubStateMachine = true; }
+                        State.Tasks.Add(MoveTemp(TaskInfo));
+                    }
+                }
+
+                // Only synthesize transitions if this state has none in SmInfo yet —
+                // otherwise the cache path already provided them (with live data).
+                auto AlreadyHasTransitions = false;
+                for (const auto& ExistingTrans : SmInfo.Transitions)
+                {
+                    if (ExistingTrans.SourceStateIndex == *SourceIndex)
+                    { AlreadyHasTransitions = true; break; }
+                }
+                if (AlreadyHasTransitions) { continue; }
+
+                auto TransitionIndex = 0;
+                for (const auto& TransDef : StateDef.Transitions)
+                {
+                    auto TransInfo = FCkSmDebugger_TransitionInfo{};
+                    TransInfo.SourceStateIndex = *SourceIndex;
+                    TransInfo.SourceStateClass = StateClass;
+                    TransInfo.SourceStateName = State.StateName;
+                    TransInfo.Order = TransitionIndex++;
+                    TransInfo.TargetStateClass = TransDef.TargetStateClass;
+
+                    if (IsValid(TransDef.TargetStateClass))
+                    {
+                        TransInfo.TargetStateName = UCk_Utils_Object_UE::Get_CleanClassName(TransDef.TargetStateClass);
+                    }
+
+                    auto* TargetIdx = StateClassToIndex.Find(TransDef.TargetStateClass);
+                    TransInfo.TargetStateIndex = TargetIdx ? *TargetIdx : -1;
+
+                    for (const auto& CondDef : TransDef.Conditions)
+                    {
+                        auto CondInfo = FCkSmDebugger_ConditionInfo{};
+                        CondInfo.ClassName = CondDef.ClassName;
+                        CondInfo.ScriptClass = CondDef.ScriptClass;
+                        CondInfo.Mode = CondDef.Mode;
+                        CondInfo.Result = ECk_SmConditionResult::Undetermined;
+                        TransInfo.Conditions.Add(MoveTemp(CondInfo));
+                    }
+
+                    TransInfo.TotalCount = TransInfo.Conditions.Num();
+                    TransInfo.SatisfiedCount = 0;
+                    TransInfo.AreAllConditionsSatisfied = false;
+                    TransInfo.TransitionResult = ECk_SmTransitionResult::Undetermined;
+
+                    SmInfo.Transitions.Add(MoveTemp(TransInfo));
+                }
+            }
+        }
+    }
+#endif
 
     // Recursively merge sub-SM states into the parent SmInfo
     auto SubSmHistories = TArray<FCkSmDebugger_HistoryEntry>{};

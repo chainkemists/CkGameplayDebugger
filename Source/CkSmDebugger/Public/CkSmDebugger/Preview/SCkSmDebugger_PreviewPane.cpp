@@ -332,12 +332,15 @@ auto
     {
         auto StateInfo = FCkSmDebugger_StateInfo{};
         StateInfo.StateClass = StateClass;
+        StateInfo.ScriptClass = StateDef.ScriptClass;
+        StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
         StateInfo.StateName  = StateDef.StateName;
 
         for (const auto& TaskDef : StateDef.Tasks)
         {
             auto TaskInfo = FCkSmDebugger_TaskInfo{};
             TaskInfo.ClassName             = TaskDef.ClassName;
+            TaskInfo.ScriptClass           = TaskDef.ScriptClass;
             TaskInfo.Mode                  = TaskDef.Mode;
             TaskInfo.HasSubStateMachine    = TaskDef.HasSubStateMachine;
             TaskInfo.SubSmInitialStateClass = TaskDef.SubSmInitialStateClass;
@@ -366,6 +369,8 @@ auto
 
             auto StateInfo = FCkSmDebugger_StateInfo{};
             StateInfo.StateClass           = StateClass;
+            StateInfo.ScriptClass          = StateDef.ScriptClass;
+            StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
             StateInfo.StateName            = StateDef.StateName;
             StateInfo.IsSubSmNode          = true;
             StateInfo.SubSmParentStateIndex = ParentIndex;
@@ -376,6 +381,7 @@ auto
             {
                 auto TaskInfo = FCkSmDebugger_TaskInfo{};
                 TaskInfo.ClassName             = TaskDef.ClassName;
+                TaskInfo.ScriptClass           = TaskDef.ScriptClass;
                 TaskInfo.Mode                  = TaskDef.Mode;
                 TaskInfo.HasSubStateMachine    = TaskDef.HasSubStateMachine;
                 TaskInfo.SubSmInitialStateClass = TaskDef.SubSmInitialStateClass;
@@ -411,6 +417,17 @@ auto
             const auto* TargetIndex = StateClassToIndex.Find(TransDef.TargetStateClass);
             TransInfo.TargetStateIndex = TargetIndex ? *TargetIndex : -1;
 
+            for (const auto& CondDef : TransDef.Conditions)
+            {
+                auto CondInfo = FCkSmDebugger_ConditionInfo{};
+                CondInfo.ClassName = CondDef.ClassName;
+                CondInfo.ScriptClass = CondDef.ScriptClass;
+                CondInfo.Mode = CondDef.Mode;
+                CondInfo.Result = ECk_SmConditionResult::Undetermined;
+                TransInfo.Conditions.Add(MoveTemp(CondInfo));
+            }
+            TransInfo.TotalCount = TransInfo.Conditions.Num();
+
             SmInfo.Transitions.Add(MoveTemp(TransInfo));
         }
     }
@@ -440,6 +457,17 @@ auto
 
                 const auto* TargetIndex = StateClassToIndex.Find(TransDef.TargetStateClass);
                 TransInfo.TargetStateIndex = TargetIndex ? *TargetIndex : -1;
+
+                for (const auto& CondDef : TransDef.Conditions)
+                {
+                    auto CondInfo = FCkSmDebugger_ConditionInfo{};
+                    CondInfo.ClassName = CondDef.ClassName;
+                    CondInfo.ScriptClass = CondDef.ScriptClass;
+                    CondInfo.Mode = CondDef.Mode;
+                    CondInfo.Result = ECk_SmConditionResult::Undetermined;
+                    TransInfo.Conditions.Add(MoveTemp(CondInfo));
+                }
+                TransInfo.TotalCount = TransInfo.Conditions.Num();
 
                 SmInfo.Transitions.Add(MoveTemp(TransInfo));
             }

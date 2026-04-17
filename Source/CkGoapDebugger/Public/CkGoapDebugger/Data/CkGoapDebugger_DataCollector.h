@@ -30,6 +30,8 @@ private:
 	TArray<FCkGoapDebugger_GoapInfo> _GoapEntities;
 	TMap<uint32, TArray<FCkGoapDebugger_HistoryEntry>> _PlanHistory;
 	TMap<uint32, ECk_GoapPlanStatus> _LastKnownStatus;
+	TMap<uint32, int32> _LastKnownAttemptCount;
+	TMap<uint32, int32> _LastRecordedAttemptCount;
 };
 
 // ====================================================================================================================

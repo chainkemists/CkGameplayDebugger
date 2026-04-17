@@ -11,6 +11,7 @@
 
 #include "CkGoap/CkGoap_Fragment.h"
 #include "CkAStar/CkAStar_Fragment.h"
+#include "CkLabel/CkLabel_Utils.h"
 
 #include "HAL/PlatformTime.h"
 #include "Engine/World.h"
@@ -54,7 +55,19 @@ auto
 {
 	auto Info = FCkGoapDebugger_GoapInfo{};
 	Info.Handle = InHandle;
-	Info.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InHandle).ToString();
+
+	// Prefer the CkLabel role tag for display — it's the canonical identity
+	// and what gym stations tag their GOAP entities with. Fall back to the
+	// low-level DebugName when no label is set (most runtime entities).
+	if (UCk_Utils_GameplayLabel_UE::Has(InHandle))
+	{
+		const auto Label = UCk_Utils_GameplayLabel_UE::Get_Label(InHandle);
+		Info.DebugName = Label.IsValid() ? Label.ToString() : TEXT("<unnamed>");
+	}
+	else
+	{
+		Info.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InHandle).ToString();
+	}
 
 	// Current state
 	if (InHandle.Has<ck::FFragment_Goap_Current>())
@@ -62,6 +75,7 @@ auto
 		const auto& Current = InHandle.Get<ck::FFragment_Goap_Current>();
 		Info.PlanStatus = Current.Get_PlanStatus();
 		Info.PlanCost = Current.Get_PlanCost();
+		Info.PlanAttemptCount = Current.Get_PlanAttemptCount();
 
 		for (const auto& ActionClass : Current.Get_Plan())
 		{
@@ -132,6 +146,34 @@ auto
 		Info.BudgetMicroseconds = Params.Get_BudgetMicroseconds();
 	}
 
+	// Diagnostics — surface cycle detection + unreachability analysis from
+	// the framework so the debugger can show a clear error banner.
+	if (InHandle.Has<ck::FFragment_Goap_Diagnostics>())
+	{
+		const auto& Diag = InHandle.Get<ck::FFragment_Goap_Diagnostics>();
+
+		for (const auto& Cycle : Diag.Get_DependencyCycles())
+		{
+			auto CycleInfo = FCkGoapDebugger_CycleInfo{};
+			for (const auto& Cls : Cycle.Get_ActionsInCycle())
+			{
+				CycleInfo.ActionNames.Add(ck::IsValid(Cls) ? Cls->GetName() : TEXT("<invalid>"));
+			}
+			CycleInfo.CycleConditions = Cycle.Get_CycleConditions();
+			Info.Diagnostics.DependencyCycles.Add(MoveTemp(CycleInfo));
+		}
+
+		for (const auto& Pair : Diag.Get_LastUnreachableGoalConditions())
+		{
+			Info.Diagnostics.UnreachableGoalConditions.Add({Pair.Get_Key(), Pair.Get_Value()});
+		}
+
+		if (ck::IsValid(Diag.Get_LastFailedGoalClass()))
+		{
+			Info.Diagnostics.LastFailedGoalName = Diag.Get_LastFailedGoalClass()->GetName();
+		}
+	}
+
 	TrackPlanCompletion(Info);
 	_GoapEntities.Add(MoveTemp(Info));
 }
@@ -145,13 +187,23 @@ auto
 	-> void
 {
 	const auto EntityHash = GetTypeHash(InInfo.Handle);
-	const auto* LastStatus = _LastKnownStatus.Find(EntityHash);
-	const auto WasPlanning = LastStatus != nullptr && *LastStatus == ECk_GoapPlanStatus::Planning;
+
+	// Record a plan history entry when the CURRENT attempt resolves to a
+	// terminal status. We track the last attempt number we recorded and
+	// fire exactly once per attempt.
+	//
+	// Why this scheme: the framework increments _PlanAttemptCount inside
+	// Request_Plan at the same instant it flips status to Planning. A naive
+	// "record when count just advanced AND status is terminal" check loses
+	// the completion — at count-advance the status is Planning, and by the
+	// time status becomes PlanFound the count has not moved again. So we
+	// wait for terminal status and tag the record to the current attempt.
 	const auto IsTerminal = InInfo.PlanStatus == ECk_GoapPlanStatus::PlanFound
 		|| InInfo.PlanStatus == ECk_GoapPlanStatus::PlanFailed
 		|| InInfo.PlanStatus == ECk_GoapPlanStatus::CostThresholdReached;
 
-	if (WasPlanning && IsTerminal)
+	const auto LastRecorded = _LastRecordedAttemptCount.FindRef(EntityHash);
+	if (IsTerminal && InInfo.PlanAttemptCount > LastRecorded && InInfo.PlanAttemptCount > 0)
 	{
 		auto Entry = FCkGoapDebugger_HistoryEntry{};
 		Entry.WallTime = FPlatformTime::Seconds();
@@ -159,12 +211,19 @@ auto
 		Entry.FinalStatus = InInfo.PlanStatus;
 		Entry.PlanLength = InInfo.PlanActionNames.Num();
 		Entry.PlanCost = InInfo.PlanCost;
+		Entry.TotalIterations = InInfo.IterationsThisFrame;
+		Entry.TotalTimeMicroseconds = InInfo.TimeThisFrameMicroseconds;
+		// Freeze the full info so scrub mode can rehydrate the UI at this frame.
+		Entry.Snapshot = InInfo;
 
 		auto& History = _PlanHistory.FindOrAdd(EntityHash);
 		History.Add(MoveTemp(Entry));
+
+		_LastRecordedAttemptCount.FindOrAdd(EntityHash) = InInfo.PlanAttemptCount;
 	}
 
 	_LastKnownStatus.FindOrAdd(EntityHash) = InInfo.PlanStatus;
+	_LastKnownAttemptCount.FindOrAdd(EntityHash) = InInfo.PlanAttemptCount;
 }
 
 // ====================================================================================================================

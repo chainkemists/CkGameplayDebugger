@@ -37,6 +37,28 @@ struct FCkGoapDebugger_GoalInfo
 };
 
 // ====================================================================================================================
+// DIAGNOSTIC SNAPSHOT — Surfaces FFragment_Goap_Diagnostics into the debugger
+// ====================================================================================================================
+
+struct FCkGoapDebugger_CycleInfo
+{
+	TArray<FString> ActionNames;
+	TArray<FGameplayTag> CycleConditions;
+};
+
+struct FCkGoapDebugger_Diagnostics
+{
+	TArray<FCkGoapDebugger_CycleInfo> DependencyCycles;
+	TArray<TPair<FGameplayTag, bool>> UnreachableGoalConditions;
+	FString LastFailedGoalName;
+
+	auto HasAnyWarning() const -> bool
+	{
+		return DependencyCycles.Num() > 0 || UnreachableGoalConditions.Num() > 0;
+	}
+};
+
+// ====================================================================================================================
 // GOAP INFO — Per-entity snapshot for the debugger
 // ====================================================================================================================
 
@@ -59,6 +81,10 @@ struct FCkGoapDebugger_GoapInfo
 	TArray<FString> PlanActionNames;
 	float PlanCost = 0.0f;
 
+	// Framework-incremented counter. Used by the data collector to spot a new
+	// plan attempt even when Planning → terminal happens in a single frame.
+	int32 PlanAttemptCount = 0;
+
 	// A* search stats
 	int32 OpenSetSize = 0;
 	int32 ClosedSetSize = 0;
@@ -66,11 +92,22 @@ struct FCkGoapDebugger_GoapInfo
 	int64 TimeThisFrameMicroseconds = 0;
 	float BudgetUsagePercent = 0.0f;
 	int64 BudgetMicroseconds = 0;
+
+	// Framework-emitted diagnostics (graph cycles, unreachable conditions).
+	FCkGoapDebugger_Diagnostics Diagnostics;
 };
 
 // ====================================================================================================================
-// HISTORY ENTRY — Plan completion event
+// HISTORY ENTRY — Plan completion event + full snapshot
 // ====================================================================================================================
+//
+// The snapshot field holds a frozen FCkGoapDebugger_GoapInfo (world state,
+// plan, diagnostics, active goal) captured at the moment the plan completed.
+// The debugger's scrub mode rehydrates the entire UI from this snapshot so
+// the user can click a history entry and see exactly what the planner saw.
+//
+// Note: this does cost memory — each entry holds a copy of the whole info
+// struct. For long-running sessions we rely on a bounded ring (caller decides).
 
 struct FCkGoapDebugger_HistoryEntry
 {
@@ -81,6 +118,10 @@ struct FCkGoapDebugger_HistoryEntry
 	float PlanCost = 0.0f;
 	int32 TotalIterations = 0;
 	int64 TotalTimeMicroseconds = 0;
+
+	// Full snapshot of the entity at the moment the plan completed. Used by
+	// scrub mode to rebuild the graph / world-state / details panels.
+	FCkGoapDebugger_GoapInfo Snapshot;
 };
 
 // ====================================================================================================================

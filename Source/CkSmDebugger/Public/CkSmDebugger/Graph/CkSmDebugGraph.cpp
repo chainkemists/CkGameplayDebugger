@@ -585,6 +585,35 @@ auto
         { TransOutputPin->MakeLinkTo(TargetInputPin); }
     }
 
+    // Compute "fully event-driven" per state (all outgoing transition conditions
+    // are EventDriven AND no task ticks). Tasks-only flag is computed inside the
+    // state node during PopulateFromStateInfo; this pass folds in transition data.
+    for (auto StateIdx = 0; StateIdx < StateNodes.Num(); ++StateIdx)
+    {
+        auto* Node = StateNodes[StateIdx];
+        if (ck::Is_NOT_Valid(Node)) { continue; }
+
+        if (NOT Node->Get_HasCompleteData())
+        {
+            Node->Set_IsFullyEventDriven(false);
+            continue;
+        }
+
+        auto AllOutgoingEventDriven = true;
+        for (const auto& Trans : SmInfo.Transitions)
+        {
+            if (Trans.SourceStateIndex != StateIdx) { continue; }
+            for (const auto& Cond : Trans.Conditions)
+            {
+                if (Cond.Mode != ECk_SmConditionMode::EventDriven)
+                { AllOutgoingEventDriven = false; break; }
+            }
+            if (NOT AllOutgoingEventDriven) { break; }
+        }
+
+        Node->Set_IsFullyEventDriven(NOT Node->Get_HasAnyTickingTask() && AllOutgoingEventDriven);
+    }
+
     _TopologyHash = ComputeTopologyHash(SmInfo);
 
     SetSuppressNotifications(false);
@@ -656,7 +685,29 @@ auto
         {
             auto Idx = StateNode->Get_StateIndex();
             if (Idx >= 0 && Idx < SmInfo.States.Num())
-            { StateNode->UpdateRuntimeData(SmInfo.States[Idx]); }
+            {
+                StateNode->UpdateRuntimeData(SmInfo.States[Idx]);
+
+                if (NOT StateNode->Get_HasCompleteData())
+                {
+                    StateNode->Set_IsFullyEventDriven(false);
+                }
+                else
+                {
+                    auto AllOutgoingEventDriven = true;
+                    for (const auto& Trans : SmInfo.Transitions)
+                    {
+                        if (Trans.SourceStateIndex != Idx) { continue; }
+                        for (const auto& Cond : Trans.Conditions)
+                        {
+                            if (Cond.Mode != ECk_SmConditionMode::EventDriven)
+                            { AllOutgoingEventDriven = false; break; }
+                        }
+                        if (NOT AllOutgoingEventDriven) { break; }
+                    }
+                    StateNode->Set_IsFullyEventDriven(NOT StateNode->Get_HasAnyTickingTask() && AllOutgoingEventDriven);
+                }
+            }
         }
         else if (auto TransitionNode = Cast<UCkSmDebugNode_Transition>(Node))
         {

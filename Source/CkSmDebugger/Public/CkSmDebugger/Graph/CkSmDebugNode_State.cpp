@@ -44,9 +44,13 @@ auto
     _HasEntryBreakpoint = InState.HasEntryBreakpoint;
     _HasExitBreakpoint = InState.HasExitBreakpoint;
     _IsBreakpointHit = InState.IsBreakpointHit;
-    _HasOverride = IsValid(InState.RequestedScriptClass)
+    _HasCompleteData = IsValid(InState.ScriptClass);
+    _HasOverride = _HasCompleteData
+        && IsValid(InState.RequestedScriptClass)
         && InState.RequestedScriptClass != InState.ScriptClass;
     _Tasks = InState.Tasks;
+    _HasAnyTickingTask = _Tasks.ContainsByPredicate(
+        [](const FCkSmDebugger_TaskInfo& T){ return T.Mode == ECk_SmTaskMode::Tick; });
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -63,9 +67,13 @@ auto
     // Breakpoints are NOT overwritten here — they are toggled by the UI and
     // persist until the graph is rebuilt. The data collector doesn't track them yet.
     _IsBreakpointHit = InState.IsBreakpointHit;
-    _HasOverride = IsValid(InState.RequestedScriptClass)
+    _HasCompleteData = IsValid(InState.ScriptClass);
+    _HasOverride = _HasCompleteData
+        && IsValid(InState.RequestedScriptClass)
         && InState.RequestedScriptClass != InState.ScriptClass;
     _Tasks = InState.Tasks;
+    _HasAnyTickingTask = _Tasks.ContainsByPredicate(
+        [](const FCkSmDebugger_TaskInfo& T){ return T.Mode == ECk_SmTaskMode::Tick; });
 }
 
 // --------------------------------------------------------------------------------------------------------------------

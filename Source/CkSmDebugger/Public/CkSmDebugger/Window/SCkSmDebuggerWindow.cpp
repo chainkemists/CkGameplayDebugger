@@ -1775,12 +1775,27 @@ auto
                 return FText::FromString(FString::Printf(TEXT("%d/%d conditions satisfied"), T.SatisfiedCount, T.TotalCount));
             }));
 
+        auto TransSelHasPolled = SmInfo->Transitions[TransIdx].Conditions.ContainsByPredicate(
+            [](const FCkSmDebugger_ConditionInfo& C){ return C.Mode != ECk_SmConditionMode::EventDriven; });
+        auto TransSelModeLabel = TransSelHasPolled ? FString{TEXT("POLLED")} : FString{TEXT("EVENT-DRIVEN")};
+        auto TransSelModeColor = TransSelHasPolled
+            ? FCkSmDebuggerStyle::Color_Sm_Polled
+            : FCkSmDebuggerStyle::Color_Sm_EventDriven;
+
         Root->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
         [
-            SNew(STextBlock)
-                .Text(CountAttr)
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(CountAttr)
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+                [
+                    MakePill(TransSelModeLabel, TransSelModeColor)
+                ]
         ];
 
         Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CONDITIONS")) ];
@@ -1805,6 +1820,12 @@ auto
                     return Tr.Conditions[CondIdx].Result;
                 }));
 
+            auto CondIsEventDriven = (Cond.Mode == ECk_SmConditionMode::EventDriven);
+            auto CondModeLabel = CondIsEventDriven ? FString{TEXT("E")} : FString{TEXT("P")};
+            auto CondModeColor = CondIsEventDriven
+                ? FCkSmDebuggerStyle::Color_Sm_EventDriven
+                : FCkSmDebuggerStyle::Color_Sm_Polled;
+
             Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
             [
                 SNew(SVerticalBox)
@@ -1814,6 +1835,10 @@ auto
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                             [
                                 MakeConditionPillLive(ResultAttr)
+                            ]
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                            [
+                                MakePill(CondModeLabel, CondModeColor)
                             ]
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                             [
@@ -1885,6 +1910,51 @@ auto
                     ]
             ];
 
+            // Event-driven / tick / polled summary pills — only meaningful when the
+            // runtime has cached real data for this state (ScriptClass is valid).
+            // Unvisited target states get placeholder entries with no tasks/conditions,
+            // which would otherwise read as vacuously "event-driven".
+            auto HasCompleteData = IsValid(State.ScriptClass);
+            auto HasAnyTickTask = State.Tasks.ContainsByPredicate(
+                [](const FCkSmDebugger_TaskInfo& T){ return T.Mode == ECk_SmTaskMode::Tick; });
+            auto HasAnyPolledCondition = false;
+            for (const auto& Trans : SmInfo->Transitions)
+            {
+                if (Trans.SourceStateIndex != SelectedIdx) { continue; }
+                for (const auto& Cond : Trans.Conditions)
+                {
+                    if (Cond.Mode != ECk_SmConditionMode::EventDriven)
+                    { HasAnyPolledCondition = true; break; }
+                }
+                if (HasAnyPolledCondition) { break; }
+            }
+            auto IsFullyEventDriven = HasCompleteData && NOT HasAnyTickTask && NOT HasAnyPolledCondition;
+
+            if (IsFullyEventDriven)
+            {
+                NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                [
+                    MakePill(TEXT("EVENT-DRIVEN"), FCkSmDebuggerStyle::Color_Sm_EventDriven)
+                ];
+            }
+            else if (HasCompleteData)
+            {
+                if (HasAnyTickTask)
+                {
+                    NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        MakePill(TEXT("TICKS"), FCkSmDebuggerStyle::Color_Sm_TaskTick)
+                    ];
+                }
+                if (HasAnyPolledCondition)
+                {
+                    NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                    [
+                        MakePill(TEXT("POLLED"), FCkSmDebuggerStyle::Color_Sm_Polled)
+                    ];
+                }
+            }
+
             Root->AddSlot().AutoHeight() [ NameRow ];
         }
 
@@ -1954,6 +2024,10 @@ auto
                         return St.Tasks[TaskIdx].LastResult;
                     }));
 
+                auto IsTickMode = (Task.Mode == ECk_SmTaskMode::Tick);
+                auto ModeLabel = IsTickMode ? FString{TEXT("TICK")} : FString{TEXT("ENTER/EXIT")};
+                auto ModeColor = IsTickMode ? FCkSmDebuggerStyle::Color_Sm_TaskTick : FCkSmDebuggerStyle::Color_Sm_Polled;
+
                 Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
                 [
                     SNew(SVerticalBox)
@@ -1966,6 +2040,10 @@ auto
                                         .Text(FText::FromString(TName))
                                         .ColorAndOpacity(FSlateColor(Color_Detail_Value))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                ]
+                                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                                [
+                                    MakePill(ModeLabel, ModeColor)
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                                 [
@@ -2009,6 +2087,13 @@ auto
                         return FText::FromString(FString::Printf(TEXT("%d/%d"), T.SatisfiedCount, T.TotalCount));
                     }));
 
+                auto TransHasPolled = Transition.Conditions.ContainsByPredicate(
+                    [](const FCkSmDebugger_ConditionInfo& C){ return C.Mode != ECk_SmConditionMode::EventDriven; });
+                auto TransModeLabel = TransHasPolled ? FString{TEXT("POLLED")} : FString{TEXT("EVENT-DRIVEN")};
+                auto TransModeColor = TransHasPolled
+                    ? FCkSmDebuggerStyle::Color_Sm_Polled
+                    : FCkSmDebuggerStyle::Color_Sm_EventDriven;
+
                 Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
                 [
                     SNew(SHorizontalBox)
@@ -2033,6 +2118,10 @@ auto
                                 .ColorAndOpacity(FSlateColor(Color_Detail_Label))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
+                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            MakePill(TransModeLabel, TransModeColor)
+                        ]
                 ];
 
                 for (auto CondIdx = 0; CondIdx < Transition.Conditions.Num(); ++CondIdx)
@@ -2053,6 +2142,12 @@ auto
                             return Tr.Conditions[CondIdx].Result;
                         }));
 
+                    auto CondIsEventDriven = (Cond.Mode == ECk_SmConditionMode::EventDriven);
+                    auto CondModeLabel = CondIsEventDriven ? FString{TEXT("E")} : FString{TEXT("P")};
+                    auto CondModeColor = CondIsEventDriven
+                        ? FCkSmDebuggerStyle::Color_Sm_EventDriven
+                        : FCkSmDebuggerStyle::Color_Sm_Polled;
+
                     Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f)
                     [
                         SNew(SVerticalBox)
@@ -2062,6 +2157,10 @@ auto
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                                     [
                                         MakeConditionPillLive(CondResultAttr)
+                                    ]
+                                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                                    [
+                                        MakePill(CondModeLabel, CondModeColor)
                                     ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                                     [

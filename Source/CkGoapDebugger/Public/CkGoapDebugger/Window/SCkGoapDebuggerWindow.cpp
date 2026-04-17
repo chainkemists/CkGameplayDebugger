@@ -58,6 +58,14 @@ auto
 			BuildToolbar()
 		]
 
+		// Diagnostics banner — framework-emitted graph/plan errors.
+		// Hidden while empty; rebuilt each tick when diagnostics change.
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SAssignNew(_DiagnosticsBanner, SVerticalBox)
+		]
+
 		// Main content: SSplitter horizontal
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
@@ -65,52 +73,57 @@ auto
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
 
-			// Left column: graph + plan strip + history
+			// Left column: SSplitter V(graph+strip, history) — user-resizable.
 			+ SSplitter::Slot()
 			.Value(0.7f)
 			[
-				SNew(SVerticalBox)
+				SNew(SSplitter)
+				.Orientation(Orient_Vertical)
 
-				// Graph editor (fills remaining space)
-				+ SVerticalBox::Slot()
-				.FillHeight(1.0f)
+				// Top: graph + plan strip
+				+ SSplitter::Slot()
+				.Value(0.75f)
 				[
-					_GraphEditor.ToSharedRef()
-				]
+					SNew(SVerticalBox)
 
-				// Plan strip between graph and history
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
-					SNew(SBorder)
-					.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
-					.Padding(FMargin(8.0f, 4.0f))
+					+ SVerticalBox::Slot()
+					.FillHeight(1.0f)
 					[
-						SNew(SScrollBox)
-						.Orientation(Orient_Horizontal)
-						+ SScrollBox::Slot()
+						_GraphEditor.ToSharedRef()
+					]
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(SBorder)
+						.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
+						.Padding(FMargin(8.0f, 4.0f))
 						[
-							SAssignNew(_PlanStripBox, SHorizontalBox)
+							SNew(SScrollBox)
+							.Orientation(Orient_Horizontal)
+							+ SScrollBox::Slot()
+							[
+								SAssignNew(_PlanStripBox, SHorizontalBox)
+							]
 						]
 					]
 				]
 
-				// History
-				+ SVerticalBox::Slot()
-				.MaxHeight(200.0f)
+				// Bottom: history fills remaining, resizable.
+				+ SSplitter::Slot()
+				.Value(0.25f)
 				[
 					BuildTimelineAndHistory()
 				]
 			]
 
-			// Right column: world state + details
+			// Right column: world state + details (already a resizable splitter)
 			+ SSplitter::Slot()
 			.Value(0.3f)
 			[
 				SNew(SSplitter)
 				.Orientation(Orient_Vertical)
 
-				// World State
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
@@ -118,7 +131,6 @@ auto
 					.ViewModel(_ViewModel)
 				]
 
-				// Action Details
 				+ SSplitter::Slot()
 				.Value(0.5f)
 				[
@@ -177,6 +189,9 @@ auto
 	// Update plan strip
 	RebuildPlanStrip();
 
+	// Update diagnostics banner (no-op when unchanged)
+	RebuildDiagnosticsBanner();
+
 	// Update status badge
 	if (_StatusBadge.IsValid())
 	{
@@ -192,14 +207,22 @@ auto
 		}
 	}
 
-	// Update plan history list
+	// Update plan history list. Rebuild when count OR scrub selection changes
+	// so the highlight on the currently-scrubbed row stays accurate.
 	if (_HistoryListBox.IsValid())
 	{
 		const auto* History = _ViewModel->Get_PlanHistory(_ViewModel->Get_SelectedEntityHandle());
 		const auto HistoryCount = History ? History->Num() : 0;
+		const auto ScrubIdx = _ViewModel->Get_ScrubHistoryIndex();
+		const auto IsScrub = _ViewModel->Get_ViewMode() == ECk_GoapDebugger_ViewMode::Scrub;
 
-		if (HistoryCount != _LastHistoryCount)
+		auto HistoryHash = uint32{0};
+		HistoryHash = HashCombine(HistoryHash, GetTypeHash(HistoryCount));
+		HistoryHash = HashCombine(HistoryHash, GetTypeHash(IsScrub ? ScrubIdx : -1));
+
+		if (HistoryHash != _LastHistoryHash)
 		{
+			_LastHistoryHash = HistoryHash;
 			_LastHistoryCount = HistoryCount;
 			_HistoryListBox->ClearChildren();
 
@@ -210,33 +233,121 @@ auto
 					const auto& Entry = (*History)[Idx];
 					const auto StatusColor = CkGoapDebuggerStyle::GetStatusColor(Entry.FinalStatus);
 					const auto StatusText = CkGoapDebuggerStyle::GetStatusString(Entry.FinalStatus);
+					const auto IsSelected = IsScrub && ScrubIdx == Idx;
+					const auto RowBgColor = IsSelected
+						? FLinearColor(0.16f, 0.26f, 0.42f)
+						: FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+					// Build the plan chain text: Action1 → Action2 → ... → [Goal]
+					// We display the condensed name per the current NameDepth so
+					// long action/goal class names stay readable.
+					const auto& Snap = Entry.Snapshot;
+					auto ChainText = FString{};
+					for (auto StepIdx = 0; StepIdx < Snap.PlanActionNames.Num(); ++StepIdx)
+					{
+						if (StepIdx > 0) { ChainText += TEXT(" \u2192 "); }
+						ChainText += _Graph
+							? UCkGoapDebugGraph::ComputeDisplayName(Snap.PlanActionNames[StepIdx], _Graph->NameDepth)
+							: Snap.PlanActionNames[StepIdx];
+					}
+					auto GoalText = FString{};
+					for (const auto& Goal : Snap.Goals)
+					{
+						if (Goal.IsActiveGoal)
+						{
+							const auto GoalName = _Graph
+								? UCkGoapDebugGraph::ComputeDisplayName(Goal.ClassName, _Graph->NameDepth)
+								: Goal.ClassName;
+							GoalText = FString::Printf(TEXT("[%s]"), *GoalName);
+							break;
+						}
+					}
+					if (ChainText.IsEmpty()) { ChainText = TEXT("(no plan)"); }
+
+					const auto ClickedIdx = Idx;
 					_HistoryListBox->AddSlot()
 					.AutoHeight()
-					.Padding(8.0f, 2.0f)
+					.Padding(2.0f, 1.0f)
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+						// Row as a button so it's keyboard + mouse reachable.
+						SNew(SButton)
+						.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
+						.ContentPadding(FMargin(6.0f, 2.0f))
+						.OnClicked_Lambda([this, ClickedIdx]()
+						{
+							_ViewModel->Set_ScrubHistoryIndex(ClickedIdx);
+							if (_Graph) { _Graph->ForceRebuild(); }
+							return FReply::Handled();
+						})
 						[
-							SNew(SImage)
-							.Image(FAppStyle::GetBrush("GenericWhiteBox"))
-							.ColorAndOpacity(StatusColor)
-							.DesiredSizeOverride(FVector2D(8.0f, 8.0f))
-						]
-						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(FString::Printf(TEXT("%s — %d actions, cost %.0f"),
-								*StatusText, Entry.PlanLength, Entry.PlanCost)))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-							.ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
-						]
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(FString::Printf(TEXT("F#%lld"), Entry.FrameNumber)))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-							.ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.4f))
+							SNew(SBorder)
+							.BorderImage(FAppStyle::GetBrush("GenericWhiteBox"))
+							.BorderBackgroundColor(RowBgColor)
+							.Padding(FMargin(6.0f, 2.0f))
+							[
+								// Horizontal scroll so long plan chains stay readable
+								// even when the history pane is narrow. The meta
+								// row (status dot, action count, frame) sits on top.
+								SNew(SVerticalBox)
+
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									SNew(SHorizontalBox)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+									[
+										SNew(SImage)
+										.Image(FAppStyle::GetBrush("GenericWhiteBox"))
+										.ColorAndOpacity(StatusColor)
+										.DesiredSizeOverride(FVector2D(8.0f, 8.0f))
+									]
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 8.0f, 0.0f)
+									[
+										SNew(STextBlock)
+										.Text(FText::FromString(FString::Printf(TEXT("%s — %d steps, cost %.0f"),
+											*StatusText, Entry.PlanLength, Entry.PlanCost)))
+										.Font(FCoreStyle::GetDefaultFontStyle(IsSelected ? "Bold" : "Regular", 9))
+										.ColorAndOpacity(IsSelected
+											? FLinearColor(1.0f, 1.0f, 1.0f)
+											: FLinearColor(0.7f, 0.7f, 0.7f))
+									]
+									+ SHorizontalBox::Slot().FillWidth(1.0f)
+									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+									[
+										SNew(STextBlock)
+										.Text(FText::FromString(FString::Printf(TEXT("F#%lld"), Entry.FrameNumber)))
+										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+										.ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.4f))
+									]
+								]
+
+								// Plan chain + goal on its own row, horizontally
+								// scrollable for long chains.
+								+ SVerticalBox::Slot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
+								[
+									SNew(SScrollBox)
+									.Orientation(Orient_Horizontal)
+									+ SScrollBox::Slot()
+									[
+										SNew(SHorizontalBox)
+										+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+										[
+											SNew(STextBlock)
+											.Text(FText::FromString(ChainText))
+											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+											.ColorAndOpacity(IsSelected
+												? FLinearColor(0.90f, 0.90f, 0.98f)
+												: FLinearColor(0.62f, 0.62f, 0.72f))
+										]
+										+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10.0f, 0.0f, 0.0f, 0.0f)
+										[
+											SNew(STextBlock)
+											.Text(FText::FromString(GoalText))
+											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+											.ColorAndOpacity(FLinearColor(0.96f, 0.78f, 0.18f))
+										]
+									]
+								]
+							]
 						]
 					];
 				}
@@ -427,6 +538,28 @@ auto
 
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 
+			// Back to Live — matches SM debugger. Visible only in Scrub mode.
+			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Back to Live")))
+				.Visibility_Lambda([this]()
+				{
+					return (_ViewModel.IsValid() && _ViewModel->Get_ViewMode() == ECk_GoapDebugger_ViewMode::Scrub)
+						? EVisibility::Visible
+						: EVisibility::Collapsed;
+				})
+				.OnClicked_Lambda([this]()
+				{
+					if (_ViewModel.IsValid())
+					{
+						_ViewModel->Set_ViewMode(ECk_GoapDebugger_ViewMode::Live);
+						if (_Graph) { _Graph->ForceRebuild(); }
+					}
+					return FReply::Handled();
+				})
+			]
+
 			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
 			[
 				SNew(SButton)
@@ -524,8 +657,29 @@ auto
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
 	const auto StepCount = Info ? Info->PlanActionNames.Num() : 0;
 
-	if (StepCount == _LastPlanStepCount) { return; }
-	_LastPlanStepCount = StepCount;
+	// Content hash: plan contents can change without changing step count
+	// (e.g. same-length plan for a different goal). Include each action name
+	// + its cost, total cost, status, and the current NameDepth so toolbar
+	// name-depth changes also retrigger a rebuild.
+	auto NewHash = uint32{0};
+	NewHash = HashCombine(NewHash, GetTypeHash(StepCount));
+	if (Info != nullptr)
+	{
+		NewHash = HashCombine(NewHash, GetTypeHash(static_cast<int32>(Info->PlanStatus)));
+		NewHash = HashCombine(NewHash, GetTypeHash(Info->PlanCost));
+		for (const auto& Name : Info->PlanActionNames)
+		{
+			NewHash = HashCombine(NewHash, GetTypeHash(Name));
+			for (const auto& A : Info->Actions)
+			{
+				if (A.ClassName == Name) { NewHash = HashCombine(NewHash, GetTypeHash(A.Cost)); break; }
+			}
+		}
+	}
+	NewHash = HashCombine(NewHash, GetTypeHash(_Graph ? _Graph->NameDepth : 0));
+
+	if (NewHash == _LastPlanStripHash) { return; }
+	_LastPlanStripHash = NewHash;
 
 	_PlanStripBox->ClearChildren();
 
@@ -622,6 +776,106 @@ auto
 		.Text(FText::FromString(FString::Printf(TEXT("= %.0f"), Info->PlanCost)))
 		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 		.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
+	];
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
+	RebuildDiagnosticsBanner()
+	-> void
+{
+	if (NOT _DiagnosticsBanner.IsValid()) { return; }
+
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	const auto& Diag = Info ? Info->Diagnostics : FCkGoapDebugger_Diagnostics{};
+
+	// Quick hash to avoid rebuilding every frame when nothing changed.
+	auto Hash = uint32{0};
+	Hash = HashCombine(Hash, GetTypeHash(Diag.DependencyCycles.Num()));
+	Hash = HashCombine(Hash, GetTypeHash(Diag.UnreachableGoalConditions.Num()));
+	Hash = HashCombine(Hash, GetTypeHash(Diag.LastFailedGoalName));
+	for (const auto& Cycle : Diag.DependencyCycles)
+	{
+		for (const auto& N : Cycle.ActionNames) { Hash = HashCombine(Hash, GetTypeHash(N)); }
+	}
+	for (const auto& C : Diag.UnreachableGoalConditions)
+	{
+		Hash = HashCombine(Hash, GetTypeHash(C.Key));
+		Hash = HashCombine(Hash, GetTypeHash(C.Value));
+	}
+
+	if (Hash == _LastDiagnosticsHash) { return; }
+	_LastDiagnosticsHash = Hash;
+
+	_DiagnosticsBanner->ClearChildren();
+
+	if (NOT Diag.HasAnyWarning()) { return; }
+
+	const auto WarnBg   = FLinearColor(0.35f, 0.10f, 0.10f);
+	const auto WarnText = FLinearColor(1.00f, 0.85f, 0.80f);
+	const auto HeaderText = FLinearColor(1.00f, 0.55f, 0.30f);
+
+	auto BuildRow = [&](const FString& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
+	{
+		return SNew(STextBlock)
+			.Text(FText::FromString(InText))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+			.ColorAndOpacity(InColor)
+			.AutoWrapText(true);
+	};
+
+	auto Content = SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("\u26A0  GOAP Graph Diagnostics")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+			.ColorAndOpacity(HeaderText)
+		];
+
+	for (const auto& Cycle : Diag.DependencyCycles)
+	{
+		auto ActionList = FString::Join(Cycle.ActionNames, TEXT(", "));
+		auto CondList = FString{};
+		for (const auto& T : Cycle.CycleConditions)
+		{
+			if (CondList.Len() > 0) { CondList += TEXT(", "); }
+			CondList += T.ToString();
+		}
+		const auto Line = FString::Printf(
+			TEXT("Dependency cycle: %s  —  conditions [%s] cannot be produced unless seeded by the initial world state."),
+			*ActionList, *CondList);
+		Content->AddSlot().AutoHeight().Padding(0.0f, 2.0f)[ BuildRow(Line, WarnText) ];
+	}
+
+	if (Diag.UnreachableGoalConditions.Num() > 0)
+	{
+		auto CondList = FString{};
+		for (const auto& C : Diag.UnreachableGoalConditions)
+		{
+			if (CondList.Len() > 0) { CondList += TEXT(", "); }
+			CondList += FString::Printf(TEXT("%s=%s"),
+				*C.Key.ToString(), C.Value ? TEXT("true") : TEXT("false"));
+		}
+		const auto GoalText = Diag.LastFailedGoalName.IsEmpty()
+			? FString(TEXT("last goal"))
+			: FString::Printf(TEXT("goal [%s]"), *Diag.LastFailedGoalName);
+		const auto Line = FString::Printf(
+			TEXT("Unreachable from current world state: %s requires [%s]. Planner returned PlanFailed."),
+			*GoalText, *CondList);
+		Content->AddSlot().AutoHeight().Padding(0.0f, 2.0f)[ BuildRow(Line, WarnText) ];
+	}
+
+	_DiagnosticsBanner->AddSlot().AutoHeight()
+	[
+		SNew(SBorder)
+		.BorderBackgroundColor(WarnBg)
+		.Padding(FMargin(12.0f, 8.0f))
+		[
+			Content
+		]
 	];
 }
 

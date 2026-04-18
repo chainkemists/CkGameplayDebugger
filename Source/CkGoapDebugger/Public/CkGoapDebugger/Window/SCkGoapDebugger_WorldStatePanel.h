@@ -3,6 +3,9 @@
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 #include "Widgets/SCompoundWidget.h"
 
+class SCheckBox;
+class SEditableTextBox;
+
 // ====================================================================================================================
 
 class SCkGoapDebugger_WorldStatePanel : public SCompoundWidget
@@ -16,12 +19,29 @@ public:
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 private:
+	struct FChangeRecord
+	{
+		bool NewValue = false;
+		double ChangeTime = 0.0;
+	};
+
 	auto RebuildWorldState() -> void;
+	auto OnSearchTextChanged(const FText& InText) -> void;
+	auto OnShowOnlyTrueChanged(ECheckBoxState InState) -> void;
+	auto GetRowBackground(FGameplayTag InKey) const -> FSlateColor;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 	TSharedPtr<SVerticalBox> _StateListBox;
+	TSharedPtr<SEditableTextBox> _SearchBox;
+	TSharedPtr<SCheckBox> _ShowOnlyTrueCheckBox;
+
 	uint32 _LastWorldStateHash = 0;
+	FString _SearchFilter;
+	bool _ShowOnlyTrue = false;
+
+	TMap<FGameplayTag, bool> _PrevValues;
+	TMap<FGameplayTag, FChangeRecord> _TagChanges;
 };
 
 // ====================================================================================================================

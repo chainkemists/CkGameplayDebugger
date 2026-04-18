@@ -10,6 +10,7 @@ class SCkGoapDebugger_WorldStatePanel;
 class SCkGoapDebugger_StatsPanel;
 class SCkGoapDebugger_FailureAnalysisPanel;
 class SGraphEditor;
+class SWidgetSwitcher;
 
 // ====================================================================================================================
 
@@ -29,6 +30,7 @@ private:
 	auto RefreshEntitySelector() -> void;
 	auto OnGraphSelectionChanged(const TSet<UObject*>& InSelection) -> void;
 	auto BuildTimelineAndHistory() -> TSharedRef<SWidget>;
+	auto BuildBottomTabs() -> TSharedRef<SWidget>;
 	auto RebuildPlanStrip() -> void;
 	auto RebuildDiagnosticsBanner() -> void;
 
@@ -53,6 +55,9 @@ private:
 
 	TSharedPtr<SVerticalBox> _DiagnosticsBanner;
 	uint32 _LastDiagnosticsHash = 0;
+
+	TSharedPtr<SWidgetSwitcher> _BottomTabSwitcher;
+	int32 _BottomTabIndex = 0;
 
 	TWeakObjectPtr<UWorld> _CachedWorld;
 	int32 _SelectedHistoryIndex = -1;

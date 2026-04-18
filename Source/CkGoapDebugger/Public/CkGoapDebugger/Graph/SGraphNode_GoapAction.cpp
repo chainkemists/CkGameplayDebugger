@@ -155,11 +155,11 @@ auto
 
 	auto PortBox = SNew(SHorizontalBox);
 
-	// Preconditions (left)
+	// Preconditions (left) — render as "Tag OP Value".
 	auto PreBox = SNew(SVerticalBox);
-	for (const auto& [Key, Value] : _ActionNode->Get_Preconditions())
+	for (const auto& Pre : _ActionNode->Get_Preconditions())
 	{
-		const auto DotColor = Value ? Theme.PreconditionSatisfied : Theme.PreconditionUnsatisfied;
+		const auto Label = Pre.AsString();
 
 		PreBox->AddSlot()
 		.AutoHeight()
@@ -170,23 +170,25 @@ auto
 			[
 				SNew(SImage)
 				.Image(FAppStyle::GetBrush("WhiteBrush"))
-				.ColorAndOpacity(DotColor)
+				.ColorAndOpacity(Theme.PreconditionSatisfied)
 				.DesiredSizeOverride(FVector2D(5.0f, 5.0f))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Key.ToString()))
+				.Text(FText::FromString(Label))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
 				.ColorAndOpacity(Theme.PortLabel)
 			]
 		];
 	}
 
-	// Effects (right)
+	// Effects (right) — render as "Tag OP Value".
 	auto EffBox = SNew(SVerticalBox);
-	for (const auto& [Key, Value] : _ActionNode->Get_Effects())
+	for (const auto& Eff : _ActionNode->Get_Effects())
 	{
+		const auto Label = Eff.AsString();
+
 		EffBox->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 1.0f)
@@ -196,7 +198,7 @@ auto
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Key.ToString()))
+				.Text(FText::FromString(Label))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
 				.ColorAndOpacity(Theme.PortLabel)
 			]
@@ -227,10 +229,10 @@ auto
 	const auto Theme = UCkDebuggerSettings::GetTheme();
 
 	auto EffectsText = FString{};
-	for (const auto& [Key, Value] : _ActionNode->Get_Effects())
+	for (const auto& Eff : _ActionNode->Get_Effects())
 	{
 		if (EffectsText.Len() > 0) { EffectsText += TEXT(", "); }
-		EffectsText += FString::Printf(TEXT("+%s"), *Key.ToString());
+		EffectsText += Eff.AsString();
 	}
 
 	return SNew(STextBlock)

@@ -17,6 +17,130 @@
 #include "Engine/World.h"
 
 // ====================================================================================================================
+// LOCAL HELPERS — boolean GOAP semantics
+// ====================================================================================================================
+// "Effect helps precondition": same key AND same required value. That's the
+// whole rule — there's no direction (Set vs Add), no operator (==, >=, <=).
+// ====================================================================================================================
+
+namespace
+{
+	auto EffectHelpsCondition(
+		const FCkGoapDebugger_Effect& InEffect,
+		const FCkGoapDebugger_Condition& InCondition)
+		-> bool
+	{
+		return InEffect.Key == InCondition.Key && InEffect.Value == InCondition.Value;
+	}
+
+	// Regressive reachability walker — builds a flat DFS of condition →
+	// candidate actions → their preconditions → ... bounded by depth and a
+	// visited-set of action class names in the current path.
+	struct FPlanTreeBuilder
+	{
+		const FCkGoapDebugger_GoapInfo* Info = nullptr;
+		TArray<FCkGoapDebugger_PlanTreeNode>* Out = nullptr;
+		int32* DeepUnreachableOut = nullptr;
+		TArray<FString> ActionStack;
+
+		static constexpr int32 MaxDepth = 10;
+
+		auto FindCurrentValue(const FGameplayTag& InKey, bool& OutValue) const -> bool
+		{
+			for (const auto& E : Info->WorldState)
+			{
+				if (E.Key == InKey) { OutValue = E.Value; return true; }
+			}
+			return false;
+		}
+
+		auto VisitCondition(const FCkGoapDebugger_Condition& InCond, int32 InDepth) -> void
+		{
+			auto Node = FCkGoapDebugger_PlanTreeNode{};
+			Node.Depth = InDepth;
+			Node.Kind = ECkGoapDebugger_TreeNodeKind::Condition;
+			Node.Condition = InCond;
+			Node.HasCurrentValue = FindCurrentValue(InCond.Key, Node.CurrentValue);
+			Node.IsSatisfiedByWorldState = Node.HasCurrentValue && Node.CurrentValue == InCond.Value;
+
+			auto Candidates = TArray<const FCkGoapDebugger_ActionInfo*>{};
+			for (const auto& Action : Info->Actions)
+			{
+				for (const auto& Effect : Action.Effects)
+				{
+					if (EffectHelpsCondition(Effect, InCond))
+					{
+						Candidates.Add(&Action);
+						break;
+					}
+				}
+			}
+			Candidates.Sort([](const FCkGoapDebugger_ActionInfo& A, const FCkGoapDebugger_ActionInfo& B)
+			{
+				return A.Cost < B.Cost;
+			});
+
+			Node.CandidateActionCount = Candidates.Num();
+			Node.IsUnreachable = NOT Node.IsSatisfiedByWorldState && Candidates.Num() == 0;
+
+			if (Node.IsUnreachable && DeepUnreachableOut != nullptr)
+			{
+				++(*DeepUnreachableOut);
+			}
+
+			Out->Add(Node);
+
+			if (Node.IsSatisfiedByWorldState || Candidates.Num() == 0) { return; }
+
+			if (InDepth >= MaxDepth)
+			{
+				auto Limit = FCkGoapDebugger_PlanTreeNode{};
+				Limit.Depth = InDepth + 1;
+				Limit.Kind = ECkGoapDebugger_TreeNodeKind::Action;
+				Limit.Note = TEXT("(depth limit — chain continues but not shown)");
+				Out->Add(Limit);
+				return;
+			}
+
+			for (const auto* C : Candidates)
+			{
+				VisitAction(*C, InDepth + 1);
+			}
+		}
+
+		auto VisitAction(const FCkGoapDebugger_ActionInfo& InAction, int32 InDepth) -> void
+		{
+			auto Node = FCkGoapDebugger_PlanTreeNode{};
+			Node.Depth = InDepth;
+			Node.Kind = ECkGoapDebugger_TreeNodeKind::Action;
+			Node.ActionClassName = InAction.ClassName;
+			Node.ActionCost = InAction.Cost;
+
+			if (ActionStack.Contains(InAction.ClassName))
+			{
+				Node.Note = TEXT("(cycle — action already on current chain)");
+				Out->Add(Node);
+				return;
+			}
+
+			if (InAction.Preconditions.Num() == 0)
+			{
+				Node.Note = TEXT("(no preconditions — always fireable)");
+			}
+
+			Out->Add(Node);
+
+			ActionStack.Push(InAction.ClassName);
+			for (const auto& Pre : InAction.Preconditions)
+			{
+				VisitCondition(Pre, InDepth + 1);
+			}
+			ActionStack.Pop();
+		}
+	};
+}
+
+// ====================================================================================================================
 
 auto
 	FCkGoapDebugger_DataCollector::
@@ -56,9 +180,6 @@ auto
 	auto Info = FCkGoapDebugger_GoapInfo{};
 	Info.Handle = InHandle;
 
-	// Prefer the CkLabel role tag for display — it's the canonical identity
-	// and what gym stations tag their GOAP entities with. Fall back to the
-	// low-level DebugName when no label is set (most runtime entities).
 	if (UCk_Utils_GameplayLabel_UE::Has(InHandle))
 	{
 		const auto Label = UCk_Utils_GameplayLabel_UE::Get_Label(InHandle);
@@ -69,7 +190,6 @@ auto
 		Info.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InHandle).ToString();
 	}
 
-	// Current state
 	if (InHandle.Has<ck::FFragment_Goap_Current>())
 	{
 		const auto& Current = InHandle.Get<ck::FFragment_Goap_Current>();
@@ -86,14 +206,41 @@ auto
 		}
 	}
 
-	// World state
-	if (InHandle.Has<ck::FFragment_Goap_WorldState>())
+	const auto* KeyRegistry = InHandle.Has<ck::FFragment_Goap_KeyRegistry>()
+		? &InHandle.Get<ck::FFragment_Goap_KeyRegistry>().Get_Registry()
+		: nullptr;
+
+	const auto ConditionFromRaw = [&](const ck::goap::FWorldStateCondition& C) -> FCkGoapDebugger_Condition
 	{
-		const auto& WS = InHandle.Get<ck::FFragment_Goap_WorldState>();
-		Info.WorldState = WS.Get_WorldState().GetValues();
+		auto Out = FCkGoapDebugger_Condition{};
+		Out.Key = KeyRegistry ? KeyRegistry->GetTag(C.Key) : FGameplayTag{};
+		Out.Value = C.Value;
+		return Out;
+	};
+
+	const auto EffectFromRaw = [&](const ck::goap::FWorldStateEffect& E) -> FCkGoapDebugger_Effect
+	{
+		auto Out = FCkGoapDebugger_Effect{};
+		Out.Key = KeyRegistry ? KeyRegistry->GetTag(E.Key) : FGameplayTag{};
+		Out.Value = E.Value;
+		return Out;
+	};
+
+	// World state — iterate registered keys and emit every one with its bool
+	// value. Unlike the typed layout there's no "Unused" — every registered
+	// key always has a bool (default false).
+	if (InHandle.Has<ck::FFragment_Goap_WorldState>() && KeyRegistry != nullptr)
+	{
+		const auto& WS = InHandle.Get<ck::FFragment_Goap_WorldState>().Get_WorldState();
+		for (auto KeyIdx = int32{0}; KeyIdx < KeyRegistry->Num(); ++KeyIdx)
+		{
+			auto Entry = FCkGoapDebugger_WorldStateEntry{};
+			Entry.Key = KeyRegistry->GetTag(KeyIdx);
+			Entry.Value = WS.Get(KeyIdx);
+			Info.WorldState.Add(MoveTemp(Entry));
+		}
 	}
 
-	// Actions
 	if (InHandle.Has<ck::FFragment_Goap_Actions>())
 	{
 		const auto& Actions = InHandle.Get<ck::FFragment_Goap_Actions>();
@@ -103,14 +250,13 @@ auto
 			ActionInfo.ActionClass = ActionDef.ActionClass;
 			ActionInfo.ClassName = ck::IsValid(ActionDef.ActionClass)
 				? ActionDef.ActionClass->GetName() : TEXT("Invalid");
-			ActionInfo.Preconditions = ActionDef.Preconditions.GetValues();
-			ActionInfo.Effects = ActionDef.Effects.GetValues();
 			ActionInfo.Cost = ActionDef.Cost;
+			for (const auto& Pre : ActionDef.Preconditions) { ActionInfo.Preconditions.Add(ConditionFromRaw(Pre)); }
+			for (const auto& Eff : ActionDef.Effects)        { ActionInfo.Effects.Add(EffectFromRaw(Eff)); }
 			Info.Actions.Add(MoveTemp(ActionInfo));
 		}
 	}
 
-	// Goals
 	if (InHandle.Has<ck::FFragment_Goap_Goals>())
 	{
 		const auto& Goals = InHandle.Get<ck::FFragment_Goap_Goals>();
@@ -122,14 +268,13 @@ auto
 			GoalInfo.GoalClass = GoalDef.GoalClass;
 			GoalInfo.ClassName = ck::IsValid(GoalDef.GoalClass)
 				? GoalDef.GoalClass->GetName() : TEXT("Invalid");
-			GoalInfo.Conditions = GoalDef.Conditions.GetValues();
 			GoalInfo.Priority = GoalDef.Priority;
 			GoalInfo.IsActiveGoal = GoalDef.GoalClass == Current.Get_ActiveGoalClass();
+			for (const auto& C : GoalDef.Conditions) { GoalInfo.Conditions.Add(ConditionFromRaw(C)); }
 			Info.Goals.Add(MoveTemp(GoalInfo));
 		}
 	}
 
-	// A* debug stats
 	if (InHandle.Has<ck::FFragment_AStar_Debug>())
 	{
 		const auto& Debug = InHandle.Get<ck::FFragment_AStar_Debug>();
@@ -146,8 +291,6 @@ auto
 		Info.BudgetMicroseconds = Params.Get_BudgetMicroseconds();
 	}
 
-	// Diagnostics — surface cycle detection + unreachability analysis from
-	// the framework so the debugger can show a clear error banner.
 	if (InHandle.Has<ck::FFragment_Goap_Diagnostics>())
 	{
 		const auto& Diag = InHandle.Get<ck::FFragment_Goap_Diagnostics>();
@@ -165,7 +308,10 @@ auto
 
 		for (const auto& Pair : Diag.Get_LastUnreachableGoalConditions())
 		{
-			Info.Diagnostics.UnreachableGoalConditions.Add({Pair.Get_Key(), Pair.Get_Value()});
+			auto Cond = FCkGoapDebugger_Condition{};
+			Cond.Key = Pair.Get_Key();
+			Cond.Value = Pair.Get_Value();
+			Info.Diagnostics.UnreachableGoalConditions.Add(MoveTemp(Cond));
 		}
 
 		if (ck::IsValid(Diag.Get_LastFailedGoalClass()))
@@ -174,7 +320,87 @@ auto
 		}
 	}
 
+	// Failure analysis — per goal condition status + plan tree.
+	{
+		const auto* GoalToAnalyze = static_cast<const FCkGoapDebugger_GoalInfo*>(nullptr);
+		for (const auto& Goal : Info.Goals)
+		{
+			if (Goal.IsActiveGoal) { GoalToAnalyze = &Goal; break; }
+		}
+		if (GoalToAnalyze == nullptr)
+		{
+			for (const auto& Goal : Info.Goals)
+			{
+				if (GoalToAnalyze == nullptr || Goal.Priority > GoalToAnalyze->Priority)
+				{
+					GoalToAnalyze = &Goal;
+				}
+			}
+		}
+
+		if (GoalToAnalyze != nullptr)
+		{
+			Info.FailureAnalysis.HasActiveGoal = GoalToAnalyze->IsActiveGoal;
+			Info.FailureAnalysis.ActiveGoalClassName = GoalToAnalyze->ClassName;
+
+			for (const auto& Cond : GoalToAnalyze->Conditions)
+			{
+				auto Analysis = FCkGoapDebugger_ConditionAnalysis{};
+				Analysis.Condition = Cond;
+
+				for (const auto& Entry : Info.WorldState)
+				{
+					if (Entry.Key == Cond.Key)
+					{
+						Analysis.HasCurrentValue = true;
+						Analysis.CurrentValue = Entry.Value;
+						break;
+					}
+				}
+
+				Analysis.IsSatisfiedByWorldState = Analysis.HasCurrentValue && Analysis.CurrentValue == Cond.Value;
+
+				for (const auto& Action : Info.Actions)
+				{
+					for (const auto& Effect : Action.Effects)
+					{
+						if (EffectHelpsCondition(Effect, Cond))
+						{
+							Analysis.RelevantActionClassNames.Add(Action.ClassName);
+							break;
+						}
+					}
+				}
+
+				Analysis.IsUnreachable =
+					NOT Analysis.IsSatisfiedByWorldState
+					&& Analysis.RelevantActionClassNames.Num() == 0;
+
+				if (NOT Analysis.IsSatisfiedByWorldState)
+				{
+					++Info.FailureAnalysis.UnsatisfiedConditionCount;
+				}
+				if (Analysis.IsUnreachable)
+				{
+					++Info.FailureAnalysis.UnreachableConditionCount;
+				}
+
+				Info.FailureAnalysis.ConditionAnalyses.Add(MoveTemp(Analysis));
+			}
+
+			auto Builder = FPlanTreeBuilder{};
+			Builder.Info = &Info;
+			Builder.Out = &Info.FailureAnalysis.PlanTree;
+			Builder.DeepUnreachableOut = &Info.FailureAnalysis.DeepUnreachableNodeCount;
+			for (const auto& Cond : GoalToAnalyze->Conditions)
+			{
+				Builder.VisitCondition(Cond, 0);
+			}
+		}
+	}
+
 	TrackPlanCompletion(Info);
+	TrackSearchProgress(Info);
 	_GoapEntities.Add(MoveTemp(Info));
 }
 
@@ -188,16 +414,6 @@ auto
 {
 	const auto EntityHash = GetTypeHash(InInfo.Handle);
 
-	// Record a plan history entry when the CURRENT attempt resolves to a
-	// terminal status. We track the last attempt number we recorded and
-	// fire exactly once per attempt.
-	//
-	// Why this scheme: the framework increments _PlanAttemptCount inside
-	// Request_Plan at the same instant it flips status to Planning. A naive
-	// "record when count just advanced AND status is terminal" check loses
-	// the completion — at count-advance the status is Planning, and by the
-	// time status becomes PlanFound the count has not moved again. So we
-	// wait for terminal status and tag the record to the current attempt.
 	const auto IsTerminal = InInfo.PlanStatus == ECk_GoapPlanStatus::PlanFound
 		|| InInfo.PlanStatus == ECk_GoapPlanStatus::PlanFailed
 		|| InInfo.PlanStatus == ECk_GoapPlanStatus::CostThresholdReached;
@@ -213,7 +429,6 @@ auto
 		Entry.PlanCost = InInfo.PlanCost;
 		Entry.TotalIterations = InInfo.IterationsThisFrame;
 		Entry.TotalTimeMicroseconds = InInfo.TimeThisFrameMicroseconds;
-		// Freeze the full info so scrub mode can rehydrate the UI at this frame.
 		Entry.Snapshot = InInfo;
 
 		auto& History = _PlanHistory.FindOrAdd(EntityHash);
@@ -227,3 +442,37 @@ auto
 }
 
 // ====================================================================================================================
+
+auto
+	FCkGoapDebugger_DataCollector::
+	TrackSearchProgress(
+		const FCkGoapDebugger_GoapInfo& InInfo)
+	-> void
+{
+	const auto EntityHash = GetTypeHash(InInfo.Handle);
+	auto& Log = _SearchLog.FindOrAdd(EntityHash);
+
+	const auto PreviousAttempt = _LastKnownAttemptCount.FindRef(EntityHash);
+	if (InInfo.PlanAttemptCount != PreviousAttempt)
+	{
+		Log.Reset();
+	}
+
+	if (InInfo.PlanStatus == ECk_GoapPlanStatus::Planning && InInfo.IterationsThisFrame > 0)
+	{
+		auto Snap = FCkGoapDebugger_SearchSnapshot{};
+		Snap.FrameNumber = GFrameNumber;
+		Snap.IterationsThisFrame = InInfo.IterationsThisFrame;
+		Snap.OpenSetSize = InInfo.OpenSetSize;
+		Snap.ClosedSetSize = InInfo.ClosedSetSize;
+		Snap.TimeThisFrameMicroseconds = InInfo.TimeThisFrameMicroseconds;
+		Snap.BudgetUsagePercent = InInfo.BudgetUsagePercent;
+		Snap.Status = InInfo.PlanStatus;
+		Log.Add(MoveTemp(Snap));
+
+		if (Log.Num() > SearchLog_MaxEntries)
+		{
+			Log.RemoveAt(0, Log.Num() - SearchLog_MaxEntries);
+		}
+	}
+}

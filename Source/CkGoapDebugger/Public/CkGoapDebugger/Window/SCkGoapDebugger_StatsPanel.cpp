@@ -104,9 +104,10 @@ auto
 	if (Info != nullptr)
 	{
 		// World state affects the precondition-satisfied ticks/crosses.
-		for (const auto& [Key, Value] : Info->WorldState)
+		for (const auto& Entry : Info->WorldState)
 		{
-			const auto Pair = HashCombine(GetTypeHash(Key), Value ? 1u : 0u);
+			auto Pair = GetTypeHash(Entry.Key);
+			Pair = HashCombine(Pair, GetTypeHash(Entry.Value));
 			Hash ^= Pair;
 		}
 	}
@@ -225,9 +226,20 @@ auto
 		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
 		.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
 	];
-	for (const auto& [Key, Value] : A.Preconditions)
+	// Precondition satisfaction check against the live world state.
+	const auto CheckSatisfied = [&](const FCkGoapDebugger_Condition& C) -> bool
 	{
-		const auto Satisfied = Info != nullptr ? Info->WorldState.Contains(Key) && Info->WorldState[Key] == Value : false;
+		if (Info == nullptr) { return false; }
+		for (const auto& Entry : Info->WorldState)
+		{
+			if (Entry.Key == C.Key) { return Entry.Value == C.Value; }
+		}
+		return false;
+	};
+
+	for (const auto& Pre : A.Preconditions)
+	{
+		const auto Satisfied = CheckSatisfied(Pre);
 		Box->AddSlot().AutoHeight().Padding(P, 1.0f)
 		[
 			SNew(SHorizontalBox)
@@ -241,14 +253,15 @@ auto
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Key.ToString()))
+				.Text(FText::FromString(Pre.Key.ToString()))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Value ? TEXT("= true") : TEXT("= false")))
+				.Text(FText::FromString(FString::Printf(TEXT("= %s"),
+					Pre.Value ? TEXT("true") : TEXT("false"))))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
 			]
@@ -263,7 +276,7 @@ auto
 		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
 		.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
 	];
-	for (const auto& [Key, Value] : A.Effects)
+	for (const auto& Eff : A.Effects)
 	{
 		Box->AddSlot().AutoHeight().Padding(P, 1.0f)
 		[
@@ -278,14 +291,15 @@ auto
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Key.ToString()))
+				.Text(FText::FromString(Eff.Key.ToString()))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Value ? TEXT("= true") : TEXT("= false")))
+				.Text(FText::FromString(FString::Printf(TEXT(":= %s"),
+					Eff.Value ? TEXT("true") : TEXT("false"))))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
 			]
@@ -304,12 +318,18 @@ auto
 		];
 
 		auto FoundGoal = false;
+		const auto HasEffectOnKey = [&](FGameplayTag InKey) -> bool
+		{
+			for (const auto& E : A.Effects) { if (E.Key == InKey) { return true; } }
+			return false;
+		};
+
 		for (const auto& Goal : Info->Goals)
 		{
 			auto Contributes = false;
-			for (const auto& [GKey, GVal] : Goal.Conditions)
+			for (const auto& C : Goal.Conditions)
 			{
-				if (A.Effects.Contains(GKey)) { Contributes = true; break; }
+				if (HasEffectOnKey(C.Key)) { Contributes = true; break; }
 			}
 			if (NOT Contributes) { continue; }
 			FoundGoal = true;
@@ -354,9 +374,9 @@ auto
 		{
 			if (Other.ClassName == A.ClassName) { continue; }
 			auto Overlaps = false;
-			for (const auto& [EKey, EVal] : Other.Effects)
+			for (const auto& OE : Other.Effects)
 			{
-				if (A.Effects.Contains(EKey)) { Overlaps = true; break; }
+				if (HasEffectOnKey(OE.Key)) { Overlaps = true; break; }
 			}
 			if (NOT Overlaps) { continue; }
 			FoundAlt = true;

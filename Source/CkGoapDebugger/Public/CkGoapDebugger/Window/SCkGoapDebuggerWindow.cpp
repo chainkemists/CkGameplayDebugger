@@ -2,6 +2,7 @@
 
 #include "SCkGoapDebugger_WorldStatePanel.h"
 #include "SCkGoapDebugger_StatsPanel.h"
+#include "SCkGoapDebugger_FailureAnalysisPanel.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
@@ -125,14 +126,21 @@ auto
 				.Orientation(Orient_Vertical)
 
 				+ SSplitter::Slot()
-				.Value(0.5f)
+				.Value(0.33f)
 				[
 					SAssignNew(_WorldStatePanel, SCkGoapDebugger_WorldStatePanel)
 					.ViewModel(_ViewModel)
 				]
 
 				+ SSplitter::Slot()
-				.Value(0.5f)
+				.Value(0.34f)
+				[
+					SAssignNew(_FailureAnalysisPanel, SCkGoapDebugger_FailureAnalysisPanel)
+					.ViewModel(_ViewModel)
+				]
+
+				+ SSplitter::Slot()
+				.Value(0.33f)
 				[
 					SAssignNew(_ActionDetailPanel, SCkGoapDebugger_StatsPanel)
 					.ViewModel(_ViewModel)
@@ -856,8 +864,7 @@ auto
 		for (const auto& C : Diag.UnreachableGoalConditions)
 		{
 			if (CondList.Len() > 0) { CondList += TEXT(", "); }
-			CondList += FString::Printf(TEXT("%s=%s"),
-				*C.Key.ToString(), C.Value ? TEXT("true") : TEXT("false"));
+			CondList += C.AsString();
 		}
 		const auto GoalText = Diag.LastFailedGoalName.IsEmpty()
 			? FString(TEXT("last goal"))

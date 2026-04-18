@@ -39,12 +39,13 @@ auto
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
 	auto ConditionsList = SNew(SVerticalBox);
-	for (const auto& [Key, Value] : _GoalNode->Get_Conditions())
+	for (const auto& C : _GoalNode->Get_Conditions())
 	{
+		const auto Label = C.AsString();
 		ConditionsList->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Key.ToString()))
+			.Text(FText::FromString(Label))
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 			.ColorAndOpacity(Theme.PortLabel)
 			.Justification(ETextJustify::Center)

@@ -6,6 +6,26 @@
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 
 // ====================================================================================================================
+// Mirror of the planner's EffectHelpsConstraint rule, on debugger-side types.
+// An edge Source -> Target means "Source's effect on this key can actually
+// satisfy / progress Target's precondition on this key" — NOT just "both
+// mention the same key." Without this check the graph was drawing edges
+// like BuildBarracks -> BuildMill because both touch Wood, even though
+// BuildBarracks *consumes* wood (Sub) and BuildMill *requires* it (>=).
+// ====================================================================================================================
+
+namespace
+{
+	auto EffectHelpsPrecondition(
+		const FCkGoapDebugger_Effect& InEffect,
+		const FCkGoapDebugger_Condition& InCondition)
+		-> bool
+	{
+		return InEffect.Key == InCondition.Key && InEffect.Value == InCondition.Value;
+	}
+}
+
+// ====================================================================================================================
 
 auto
 	UCkGoapDebugGraph::
@@ -45,15 +65,10 @@ auto
 	_ActionNodes.Empty();
 	_GoalNode = nullptr;
 
-	// Build effect→provider map
-	TMap<FString, TArray<int32>> EffectProviders;
-	for (auto Index = 0; Index < InInfo.Actions.Num(); ++Index)
-	{
-		for (const auto& [Key, Value] : InInfo.Actions[Index].Effects)
-		{
-			EffectProviders.FindOrAdd(Key.ToString()).Add(Index);
-		}
-	}
+	// (Effect→provider map removed — see the edge-building loop below. We
+	// can't pre-index by key alone because "source provides target's
+	// precondition on this key" depends on Set/Add/Sub direction vs
+	// Equal/GE/LE, not just shared key.)
 
 	// Create action nodes
 	for (auto Index = 0; Index < InInfo.Actions.Num(); ++Index)
@@ -71,27 +86,39 @@ auto
 		_ActionNodes.Add(ActionNode);
 	}
 
-	// Create edges: effect→precondition connections
+	// Create edges: effect→precondition connections, filtered by whether the
+	// source action's effect can actually help the target action's
+	// precondition (direction-aware — Set vs Add/Sub matters).
+	//
+	// Dedup edges so that a source with multiple effects that all help the
+	// same target precondition produces only one arrow.
 	for (auto TargetIdx = 0; TargetIdx < InInfo.Actions.Num(); ++TargetIdx)
 	{
 		auto* TargetNode = _ActionNodes[TargetIdx].Get();
 		auto* InputPin = TargetNode->FindPin(TEXT("In"), EGPD_Input);
 		if (InputPin == nullptr) { continue; }
 
-		for (const auto& [PreKey, PreValue] : InInfo.Actions[TargetIdx].Preconditions)
-		{
-			const auto KeyStr = PreKey.ToString();
-			const auto* Providers = EffectProviders.Find(KeyStr);
-			if (Providers == nullptr) { continue; }
+		auto LinkedSources = TSet<int32>{};
 
-			for (const auto SourceIdx : *Providers)
+		for (const auto& Pre : InInfo.Actions[TargetIdx].Preconditions)
+		{
+			for (auto SourceIdx = 0; SourceIdx < InInfo.Actions.Num(); ++SourceIdx)
 			{
 				if (SourceIdx == TargetIdx) { continue; }
-				auto* SourceNode = _ActionNodes[SourceIdx].Get();
-				auto* OutputPin = SourceNode->FindPin(TEXT("Out"), EGPD_Output);
-				if (OutputPin == nullptr) { continue; }
+				if (LinkedSources.Contains(SourceIdx)) { continue; }
 
-				OutputPin->MakeLinkTo(InputPin);
+				for (const auto& Eff : InInfo.Actions[SourceIdx].Effects)
+				{
+					if (NOT EffectHelpsPrecondition(Eff, Pre)) { continue; }
+
+					auto* SourceNode = _ActionNodes[SourceIdx].Get();
+					auto* OutputPin = SourceNode->FindPin(TEXT("Out"), EGPD_Output);
+					if (OutputPin == nullptr) { break; }
+
+					OutputPin->MakeLinkTo(InputPin);
+					LinkedSources.Add(SourceIdx);
+					break;
+				}
 			}
 		}
 	}
@@ -185,13 +212,13 @@ auto
 	{
 		if (InNode == nullptr) { return 0; }
 		auto MaxChars = InNode->Get_DisplayName().Len();
-		for (const auto& [Key, Value] : InNode->Get_Preconditions())
+		for (const auto& Pre : InNode->Get_Preconditions())
 		{
-			MaxChars = FMath::Max(MaxChars, Key.ToString().Len());
+			MaxChars = FMath::Max(MaxChars, Pre.Key.ToString().Len());
 		}
-		for (const auto& [Key, Value] : InNode->Get_Effects())
+		for (const auto& Eff : InNode->Get_Effects())
 		{
-			MaxChars = FMath::Max(MaxChars, Key.ToString().Len());
+			MaxChars = FMath::Max(MaxChars, Eff.Key.ToString().Len());
 		}
 		return static_cast<int32>(MaxChars * 7.5f) + 48;
 	};
@@ -210,18 +237,18 @@ auto
 	TMap<FString, TArray<int32>> EffectProviders;
 	for (auto Idx = 0; Idx < _ActionNodes.Num(); ++Idx)
 	{
-		for (const auto& [Key, Value] : _ActionNodes[Idx].Get()->Get_Effects())
+		for (const auto& E : _ActionNodes[Idx].Get()->Get_Effects())
 		{
-			EffectProviders.FindOrAdd(Key.ToString()).Add(Idx);
+			EffectProviders.FindOrAdd(E.Key.ToString()).Add(Idx);
 		}
 	}
 
 	auto LayoutEdges = TArray<FCkDebugGraphLayoutEdge>{};
 	for (auto TargetIdx = 0; TargetIdx < _ActionNodes.Num(); ++TargetIdx)
 	{
-		for (const auto& [PreKey, PreVal] : _ActionNodes[TargetIdx].Get()->Get_Preconditions())
+		for (const auto& Pre : _ActionNodes[TargetIdx].Get()->Get_Preconditions())
 		{
-			const auto* Providers = EffectProviders.Find(PreKey.ToString());
+			const auto* Providers = EffectProviders.Find(Pre.Key.ToString());
 			if (Providers == nullptr) { continue; }
 			for (const auto SourceIdx : *Providers)
 			{

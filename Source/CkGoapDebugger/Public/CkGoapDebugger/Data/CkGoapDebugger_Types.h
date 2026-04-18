@@ -11,33 +11,65 @@ class UCk_GoapAction_EntityScript;
 class UCk_GoapGoal_EntityScript;
 
 // ====================================================================================================================
-// ACTION INFO — Debugger snapshot of a registered action
+// DISPLAY TYPES — debugger-side copies sized for rendering
+// ====================================================================================================================
+
+struct FCkGoapDebugger_Condition
+{
+	FGameplayTag Key;
+	bool Value = false;
+
+	auto AsString() const -> FString
+	{
+		return FString::Printf(TEXT("%s = %s"),
+			*Key.ToString(),
+			Value ? TEXT("true") : TEXT("false"));
+	}
+};
+
+struct FCkGoapDebugger_Effect
+{
+	FGameplayTag Key;
+	bool Value = false;
+
+	auto AsString() const -> FString
+	{
+		return FString::Printf(TEXT("%s := %s"),
+			*Key.ToString(),
+			Value ? TEXT("true") : TEXT("false"));
+	}
+};
+
+struct FCkGoapDebugger_WorldStateEntry
+{
+	FGameplayTag Key;
+	bool Value = false;
+};
+
+// ====================================================================================================================
+// ACTION / GOAL INFO
 // ====================================================================================================================
 
 struct FCkGoapDebugger_ActionInfo
 {
 	TSubclassOf<UCk_GoapAction_EntityScript> ActionClass;
 	FString ClassName;
-	TMap<FGameplayTag, bool> Preconditions;
-	TMap<FGameplayTag, bool> Effects;
+	TArray<FCkGoapDebugger_Condition> Preconditions;
+	TArray<FCkGoapDebugger_Effect>    Effects;
 	float Cost = 1.0f;
 };
-
-// ====================================================================================================================
-// GOAL INFO — Debugger snapshot of a registered goal
-// ====================================================================================================================
 
 struct FCkGoapDebugger_GoalInfo
 {
 	TSubclassOf<UCk_GoapGoal_EntityScript> GoalClass;
 	FString ClassName;
-	TMap<FGameplayTag, bool> Conditions;
+	TArray<FCkGoapDebugger_Condition> Conditions;
 	int32 Priority = 0;
 	bool IsActiveGoal = false;
 };
 
 // ====================================================================================================================
-// DIAGNOSTIC SNAPSHOT — Surfaces FFragment_Goap_Diagnostics into the debugger
+// DIAGNOSTICS
 // ====================================================================================================================
 
 struct FCkGoapDebugger_CycleInfo
@@ -49,7 +81,7 @@ struct FCkGoapDebugger_CycleInfo
 struct FCkGoapDebugger_Diagnostics
 {
 	TArray<FCkGoapDebugger_CycleInfo> DependencyCycles;
-	TArray<TPair<FGameplayTag, bool>> UnreachableGoalConditions;
+	TArray<FCkGoapDebugger_Condition> UnreachableGoalConditions;
 	FString LastFailedGoalName;
 
 	auto HasAnyWarning() const -> bool
@@ -59,7 +91,62 @@ struct FCkGoapDebugger_Diagnostics
 };
 
 // ====================================================================================================================
-// GOAP INFO — Per-entity snapshot for the debugger
+// FAILURE ANALYSIS
+// ====================================================================================================================
+
+struct FCkGoapDebugger_ConditionAnalysis
+{
+	FCkGoapDebugger_Condition Condition;
+
+	bool HasCurrentValue = false;
+	bool CurrentValue = false;
+
+	bool IsSatisfiedByWorldState = false;
+	bool IsUnreachable = false;
+
+	TArray<FString> RelevantActionClassNames;
+};
+
+enum class ECkGoapDebugger_TreeNodeKind : uint8
+{
+	Condition,
+	Action,
+};
+
+struct FCkGoapDebugger_PlanTreeNode
+{
+	int32 Depth = 0;
+	ECkGoapDebugger_TreeNodeKind Kind = ECkGoapDebugger_TreeNodeKind::Condition;
+
+	// Condition-kind fields
+	FCkGoapDebugger_Condition Condition;
+	bool HasCurrentValue = false;
+	bool CurrentValue = false;
+	bool IsSatisfiedByWorldState = false;
+	bool IsUnreachable = false;
+	int32 CandidateActionCount = 0;
+
+	// Action-kind fields
+	FString ActionClassName;
+	float ActionCost = 0.0f;
+
+	// Dimmed annotation suffix, e.g. "(cycle)", "(depth limit)".
+	FString Note;
+};
+
+struct FCkGoapDebugger_FailureAnalysis
+{
+	bool HasActiveGoal = false;
+	FString ActiveGoalClassName;
+	TArray<FCkGoapDebugger_ConditionAnalysis> ConditionAnalyses;
+	TArray<FCkGoapDebugger_PlanTreeNode> PlanTree;
+	int32 UnreachableConditionCount = 0;
+	int32 UnsatisfiedConditionCount = 0;
+	int32 DeepUnreachableNodeCount = 0;
+};
+
+// ====================================================================================================================
+// GOAP INFO — Per-entity snapshot
 // ====================================================================================================================
 
 struct FCkGoapDebugger_GoapInfo
@@ -68,24 +155,16 @@ struct FCkGoapDebugger_GoapInfo
 	FString DebugName;
 	ECk_GoapPlanStatus PlanStatus = ECk_GoapPlanStatus::Idle;
 
-	// World state
-	TMap<FGameplayTag, bool> WorldState;
+	TArray<FCkGoapDebugger_WorldStateEntry> WorldState;
 
-	// Registered actions
 	TArray<FCkGoapDebugger_ActionInfo> Actions;
+	TArray<FCkGoapDebugger_GoalInfo>   Goals;
 
-	// Registered goals
-	TArray<FCkGoapDebugger_GoalInfo> Goals;
-
-	// Current plan (execution order)
 	TArray<FString> PlanActionNames;
 	float PlanCost = 0.0f;
 
-	// Framework-incremented counter. Used by the data collector to spot a new
-	// plan attempt even when Planning → terminal happens in a single frame.
 	int32 PlanAttemptCount = 0;
 
-	// A* search stats
 	int32 OpenSetSize = 0;
 	int32 ClosedSetSize = 0;
 	int32 IterationsThisFrame = 0;
@@ -93,21 +172,11 @@ struct FCkGoapDebugger_GoapInfo
 	float BudgetUsagePercent = 0.0f;
 	int64 BudgetMicroseconds = 0;
 
-	// Framework-emitted diagnostics (graph cycles, unreachable conditions).
 	FCkGoapDebugger_Diagnostics Diagnostics;
+	FCkGoapDebugger_FailureAnalysis FailureAnalysis;
 };
 
 // ====================================================================================================================
-// HISTORY ENTRY — Plan completion event + full snapshot
-// ====================================================================================================================
-//
-// The snapshot field holds a frozen FCkGoapDebugger_GoapInfo (world state,
-// plan, diagnostics, active goal) captured at the moment the plan completed.
-// The debugger's scrub mode rehydrates the entire UI from this snapshot so
-// the user can click a history entry and see exactly what the planner saw.
-//
-// Note: this does cost memory — each entry holds a copy of the whole info
-// struct. For long-running sessions we rely on a bounded ring (caller decides).
 
 struct FCkGoapDebugger_HistoryEntry
 {
@@ -119,9 +188,18 @@ struct FCkGoapDebugger_HistoryEntry
 	int32 TotalIterations = 0;
 	int64 TotalTimeMicroseconds = 0;
 
-	// Full snapshot of the entity at the moment the plan completed. Used by
-	// scrub mode to rebuild the graph / world-state / details panels.
 	FCkGoapDebugger_GoapInfo Snapshot;
+};
+
+struct FCkGoapDebugger_SearchSnapshot
+{
+	int64 FrameNumber = 0;
+	int32 IterationsThisFrame = 0;
+	int32 OpenSetSize = 0;
+	int32 ClosedSetSize = 0;
+	int64 TimeThisFrameMicroseconds = 0;
+	float BudgetUsagePercent = 0.0f;
+	ECk_GoapPlanStatus Status = ECk_GoapPlanStatus::Idle;
 };
 
 // ====================================================================================================================

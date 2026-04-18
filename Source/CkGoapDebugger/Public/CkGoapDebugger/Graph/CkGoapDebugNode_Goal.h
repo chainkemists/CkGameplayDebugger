@@ -28,7 +28,7 @@ public:
 	auto Get_DisplayName() const -> const FString& { return _DisplayName; }
 	auto Set_DisplayName(const FString& InName) -> void { _DisplayName = InName; }
 	auto Get_Priority() const -> int32 { return _Priority; }
-	auto Get_Conditions() const -> const TMap<FGameplayTag, bool>& { return _Conditions; }
+	auto Get_Conditions() const -> const TArray<FCkGoapDebugger_Condition>& { return _Conditions; }
 	auto Get_IsActiveGoal() const -> bool { return _IsActiveGoal; }
 	auto Set_IsActiveGoal(bool InValue) -> void { _IsActiveGoal = InValue; }
 
@@ -42,7 +42,7 @@ private:
 	UPROPERTY()
 	int32 _Priority = 0;
 
-	TMap<FGameplayTag, bool> _Conditions;
+	TArray<FCkGoapDebugger_Condition> _Conditions;
 
 	UPROPERTY()
 	bool _IsActiveGoal = false;

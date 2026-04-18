@@ -13,6 +13,7 @@
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/Images/SImage.h"
 #include "Styling/AppStyle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
@@ -81,32 +82,23 @@ auto
 				SNew(SSplitter)
 				.Orientation(Orient_Vertical)
 
-				// Top: graph + plan strip
+				// Top: graph + tabbed strip (Plan | Action Details)
 				+ SSplitter::Slot()
 				.Value(0.75f)
 				[
-					SNew(SVerticalBox)
+					SNew(SSplitter)
+					.Orientation(Orient_Vertical)
 
-					+ SVerticalBox::Slot()
-					.FillHeight(1.0f)
+					+ SSplitter::Slot()
+					.Value(0.78f)
 					[
 						_GraphEditor.ToSharedRef()
 					]
 
-					+ SVerticalBox::Slot()
-					.AutoHeight()
+					+ SSplitter::Slot()
+					.Value(0.22f)
 					[
-						SNew(SBorder)
-						.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
-						.Padding(FMargin(8.0f, 4.0f))
-						[
-							SNew(SScrollBox)
-							.Orientation(Orient_Horizontal)
-							+ SScrollBox::Slot()
-							[
-								SAssignNew(_PlanStripBox, SHorizontalBox)
-							]
-						]
+						BuildBottomTabs()
 					]
 				]
 
@@ -118,7 +110,8 @@ auto
 				]
 			]
 
-			// Right column: world state + details (already a resizable splitter)
+			// Right column: world state + failure analysis. Action Details
+			// moved to the tabbed area below the graph.
 			+ SSplitter::Slot()
 			.Value(0.3f)
 			[
@@ -126,23 +119,16 @@ auto
 				.Orientation(Orient_Vertical)
 
 				+ SSplitter::Slot()
-				.Value(0.33f)
+				.Value(0.5f)
 				[
 					SAssignNew(_WorldStatePanel, SCkGoapDebugger_WorldStatePanel)
 					.ViewModel(_ViewModel)
 				]
 
 				+ SSplitter::Slot()
-				.Value(0.34f)
+				.Value(0.5f)
 				[
 					SAssignNew(_FailureAnalysisPanel, SCkGoapDebugger_FailureAnalysisPanel)
-					.ViewModel(_ViewModel)
-				]
-
-				+ SSplitter::Slot()
-				.Value(0.33f)
-				[
-					SAssignNew(_ActionDetailPanel, SCkGoapDebugger_StatsPanel)
 					.ViewModel(_ViewModel)
 				]
 			]
@@ -154,11 +140,13 @@ auto
 
 SCkGoapDebuggerWindow::~SCkGoapDebuggerWindow()
 {
-	if (_Graph != nullptr)
+	// At engine shutdown the UObject array may already be torn down by the
+	// time this Slate widget is destroyed. Skip RemoveFromRoot in that case.
+	if (_Graph != nullptr && UObjectInitialized())
 	{
 		_Graph->RemoveFromRoot();
-		_Graph = nullptr;
 	}
+	_Graph = nullptr;
 }
 
 // ====================================================================================================================
@@ -402,12 +390,117 @@ auto
 			if (Action.ClassName == ActionNode->Get_ActionName())
 			{
 				_ActionDetailPanel->SetSelectedAction(&Action, ActionNode->Get_PlanStepIndex());
+				// Surface the details tab so the selection is visible.
+				if (_BottomTabSwitcher.IsValid())
+				{
+					_BottomTabIndex = 1;
+					_BottomTabSwitcher->SetActiveWidgetIndex(1);
+				}
 				return;
 			}
 		}
 	}
 
 	_ActionDetailPanel->ClearSelection();
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
+	BuildBottomTabs()
+	-> TSharedRef<SWidget>
+{
+	SAssignNew(_ActionDetailPanel, SCkGoapDebugger_StatsPanel)
+		.ViewModel(_ViewModel);
+
+	auto TabButton = [this](int32 InIndex, const FString& InLabel) -> TSharedRef<SWidget>
+	{
+		return SNew(SButton)
+			.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
+			.ContentPadding(FMargin(10.0f, 4.0f))
+			.OnClicked_Lambda([this, InIndex]()
+			{
+				_BottomTabIndex = InIndex;
+				if (_BottomTabSwitcher.IsValid())
+				{
+					_BottomTabSwitcher->SetActiveWidgetIndex(InIndex);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("GenericWhiteBox"))
+				.BorderBackgroundColor_Lambda([this, InIndex]()
+				{
+					return _BottomTabIndex == InIndex
+						? FLinearColor(0.16f, 0.26f, 0.42f)
+						: FLinearColor(0.06f, 0.08f, 0.13f);
+				})
+				.Padding(FMargin(8.0f, 3.0f))
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(InLabel))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+					.ColorAndOpacity_Lambda([this, InIndex]()
+					{
+						return _BottomTabIndex == InIndex
+							? FLinearColor(1.0f, 1.0f, 1.0f)
+							: FLinearColor(0.7f, 0.7f, 0.72f);
+					})
+				]
+			];
+	};
+
+	return SNew(SVerticalBox)
+
+		// Tab headers
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBorder)
+			.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
+			.Padding(FMargin(4.0f, 2.0f))
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				[ TabButton(0, TEXT("Plan")) ]
+
+				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
+				[ TabButton(1, TEXT("Action Details")) ]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f)
+			]
+		]
+
+		// Tab content
+		+ SVerticalBox::Slot()
+		.FillHeight(1.0f)
+		[
+			SAssignNew(_BottomTabSwitcher, SWidgetSwitcher)
+			.WidgetIndex(0)
+
+			+ SWidgetSwitcher::Slot()
+			[
+				SNew(SBorder)
+				.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
+				.Padding(FMargin(8.0f, 4.0f))
+				[
+					SNew(SScrollBox)
+					.Orientation(Orient_Horizontal)
+					+ SScrollBox::Slot()
+					[
+						SAssignNew(_PlanStripBox, SHorizontalBox)
+					]
+				]
+			]
+
+			+ SWidgetSwitcher::Slot()
+			[
+				_ActionDetailPanel.ToSharedRef()
+			]
+		];
 }
 
 // ====================================================================================================================

@@ -255,17 +255,10 @@ auto
         SmInfo.InitialStateClass = InSmHandle.Get<ck::FFragment_Sm_Params>().Get_InitialStateClass();
     }
 
-    SmInfo.GameEntity = UCk_Utils_ContextOwner_UE::Get_ContextOwner(InSmHandle);
-
-    if (ck::IsValid(SmInfo.GameEntity))
-    {
-        SmInfo.DebugName = UCk_Utils_Handle_UE::Get_DebugName(SmInfo.GameEntity).ToString();
-    }
-
-    if (SmInfo.DebugName.IsEmpty())
-    {
-        SmInfo.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InSmHandle).ToString();
-    }
+    // FFragment_Sm_Context was removed — SM now lives on the game entity
+    // directly rather than referencing one. Fall through to resolving the
+    // debug name off the SM handle itself.
+    SmInfo.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InSmHandle).ToString();
 
     if (SmInfo.DebugName.IsEmpty())
     {
@@ -386,7 +379,7 @@ auto
     // (only when the state becomes current). Target states of outgoing transitions
     // get placeholder entries (StateClass + StateName only). The graph walker, gated
     // on CK_BUILD_SM_GRAPH_WALK, walks all reachable states up-front and records the
-    // full static structure â€” including conditions and their modes. Using it here
+    // full static structure — including conditions and their modes. Using it here
     // means the debugger can show event-driven / override / tick indicators for
     // every state from the first frame, not only after they've been visited.
     if (InSmHandle.Has<ck::FFragment_Sm_Debug_GraphDefinition>())
@@ -441,7 +434,7 @@ auto
                     }
                 }
 
-                // Only synthesize transitions if this state has none in SmInfo yet â€”
+                // Only synthesize transitions if this state has none in SmInfo yet —
                 // otherwise the cache path already provided them (with live data).
                 auto AlreadyHasTransitions = false;
                 for (const auto& ExistingTrans : SmInfo.Transitions)
@@ -534,7 +527,7 @@ auto
 
     // Current state: live dwell since we most recently entered it.
     // Walk the backend history backwards to find the latest transition where
-    // ToStateClass == CurrentStateClass â€” that's when this visit began. The
+    // ToStateClass == CurrentStateClass — that's when this visit began. The
     // debug fragment's CurrentStateEnteredAtRealTime can accumulate across
     // repeated entries in some paths, so we prefer the history timestamp and
     // fall back to the fragment only when there is no matching entry yet.
@@ -556,11 +549,11 @@ auto
         { EnteredAt = ComputeLogicalTime(Debug.Get_CurrentStateEnteredAtRealTime()); }
 
         // For sub-SMs still on their initial state, the backend has no matching
-        // history entry yet â€” fall back to the birth time supplied by the parent.
+        // history entry yet — fall back to the birth time supplied by the parent.
         if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
         { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
 
-        // Birth time is an authoritative lower bound for sub-SMs â€” when a parent
+        // Birth time is an authoritative lower bound for sub-SMs — when a parent
         // state re-enters and re-boots its sub-SM, Debug.Get_CurrentStateEnteredAtRealTime
         // can carry a stale value from a previous incarnation (same initial state class),
         // producing massively inflated dwells. Clamp to the most recent birth.
@@ -584,7 +577,7 @@ auto
     // locate the matching entry timestamp by searching backwards for the last
     // prior entry whose ToStateClass matches. Searching (instead of blindly
     // reading HistIdx-1) is needed because the history chain can have gaps
-    // when sub-SMs stop/start â€” the neighbouring entry's ToStateClass is not
+    // when sub-SMs stop/start — the neighbouring entry's ToStateClass is not
     // guaranteed to match.
     auto VisitedStateClasses = TSet<TSubclassOf<UCk_SmState_EntityScript>>{};
 
@@ -629,14 +622,14 @@ auto
         }
 
         // Sub-SM initial states never appear as ToStateClass in their own
-        // history â€” their enter time is the birth time supplied by the parent.
+        // history — their enter time is the birth time supplied by the parent.
         if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
         { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
 
         auto ExitedAt = ComputeLogicalTime(Entry.RealTimeSeconds);
 
         // Sub-SM re-entry: discard history rows whose exit timestamp predates the
-        // current incarnation's birth â€” those belong to a previous sub-SM run and
+        // current incarnation's birth — those belong to a previous sub-SM run and
         // would otherwise mix old timing into the freshly-rebooted sub-SM.
         if (InBirthRealTimeSeconds > 0.0)
         {
@@ -863,7 +856,7 @@ auto
             { continue; }
 
             // The parent records a "(start)" marker in its own history when a
-            // sub-SM boots â€” find the most recent one so we can hand the birth
+            // sub-SM boots — find the most recent one so we can hand the birth
             // time down. The sub-SM's own history never contains this marker,
             // so its initial state's first dwell can only be reconstructed via
             // the parent. Walk backwards so repeated start/stop cycles pick up
@@ -924,7 +917,7 @@ auto
         }
     }
 
-    // Recurse for nested sub-SMs â€” only scan newly added states to avoid re-merging
+    // Recurse for nested sub-SMs — only scan newly added states to avoid re-merging
     if (InOutSmInfo.States.Num() > OriginalStateCount)
     {
         // Nested sub-SMs within newly-added states: we don't have their owning
@@ -1093,7 +1086,7 @@ auto
         }
         else
         {
-            // Last entry is the currently-active state â€” extend to "now" so the
+            // Last entry is the currently-active state — extend to "now" so the
             // swim-lane bar keeps growing while the state is being dwelt in.
             Segment.EndTime = InNow > InRunStartTime ? InNow - InRunStartTime : Segment.StartTime;
         }

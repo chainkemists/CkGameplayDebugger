@@ -35,8 +35,8 @@ public:
 	auto Get_DisplayName() const -> const FString& { return _DisplayName; }
 	auto Set_DisplayName(const FString& InName) -> void { _DisplayName = InName; }
 	auto Get_Cost() const -> float { return _Cost; }
-	auto Get_Preconditions() const -> const TMap<FGameplayTag, bool>& { return _Preconditions; }
-	auto Get_Effects() const -> const TMap<FGameplayTag, bool>& { return _Effects; }
+	auto Get_Preconditions() const -> const TArray<FCkGoapDebugger_Condition>& { return _Preconditions; }
+	auto Get_Effects() const -> const TArray<FCkGoapDebugger_Effect>& { return _Effects; }
 	auto Get_InPlan() const -> bool { return _InPlan; }
 	auto Get_PlanStepIndex() const -> int32 { return _PlanStepIndex; }
 	auto Get_ActionIndex() const -> int32 { return _ActionIndex; }
@@ -53,8 +53,8 @@ private:
 	UPROPERTY()
 	float _Cost = 1.0f;
 
-	TMap<FGameplayTag, bool> _Preconditions;
-	TMap<FGameplayTag, bool> _Effects;
+	TArray<FCkGoapDebugger_Condition> _Preconditions;
+	TArray<FCkGoapDebugger_Effect>    _Effects;
 	TSubclassOf<UCk_GoapAction_EntityScript> _ActionClass;
 
 	UPROPERTY()

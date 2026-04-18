@@ -101,6 +101,15 @@ auto
 	return _DataCollector.Get_PlanHistory().Find(EntityHash);
 }
 
+auto
+	FCkGoapDebugger_ViewModel::
+	Get_SearchLog(FCk_Handle InHandle) const
+	-> const TArray<FCkGoapDebugger_SearchSnapshot>*
+{
+	const auto EntityHash = GetTypeHash(InHandle);
+	return _DataCollector.Get_SearchLog().Find(EntityHash);
+}
+
 // ====================================================================================================================
 
 auto

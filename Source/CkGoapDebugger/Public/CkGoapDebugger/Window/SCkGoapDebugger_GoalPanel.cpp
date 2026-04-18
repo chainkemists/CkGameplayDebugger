@@ -143,11 +143,10 @@ auto
 				.Text_Lambda([Conditions = Goal.Conditions]()
 				{
 					auto Text = FString{};
-					for (const auto& [Key, Value] : Conditions)
+					for (const auto& C : Conditions)
 					{
 						if (NOT Text.IsEmpty()) { Text += TEXT(", "); }
-						Text += FString::Printf(TEXT("%s=%s"),
-							*Key.ToString(), Value ? TEXT("T") : TEXT("F"));
+						Text += C.AsString();
 					}
 					return FText::FromString(Text.IsEmpty() ? TEXT("(no conditions)") : Text);
 				})

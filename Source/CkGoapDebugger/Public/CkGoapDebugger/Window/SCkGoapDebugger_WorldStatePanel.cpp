@@ -54,13 +54,13 @@ auto
 
 	// Hash content (keys + values) so flips of existing keys trigger a rebuild.
 	// Commutative XOR so map iteration order doesn't fake a change.
-	// The previous count-only check missed value changes entirely.
 	auto Hash = uint32{0};
 	if (Info != nullptr)
 	{
-		for (const auto& [Key, Value] : Info->WorldState)
+		for (const auto& Entry : Info->WorldState)
 		{
-			const auto PairHash = HashCombine(GetTypeHash(Key), Value ? 1u : 0u);
+			auto PairHash = GetTypeHash(Entry.Key);
+			PairHash = HashCombine(PairHash, GetTypeHash(Entry.Value));
 			Hash ^= PairHash;
 		}
 	}
@@ -95,21 +95,19 @@ auto
 		return;
 	}
 
-	// Sort keys alphabetically
-	auto SortedKeys = TArray<FGameplayTag>{};
-	Info->WorldState.GetKeys(SortedKeys);
-	SortedKeys.Sort([](const FGameplayTag& A, const FGameplayTag& B)
+	// Sort entries by key for stable display.
+	auto Sorted = Info->WorldState;
+	Sorted.Sort([](const FCkGoapDebugger_WorldStateEntry& A, const FCkGoapDebugger_WorldStateEntry& B)
 	{
-		return A.ToString() < B.ToString();
+		return A.Key.ToString() < B.Key.ToString();
 	});
 
-	for (const auto& Key : SortedKeys)
+	for (const auto& Entry : Sorted)
 	{
-		const auto Value = Info->WorldState[Key];
-		const auto ValueColor = Value
+		const auto ValueColor = Entry.Value
 			? CkGoapDebuggerStyle::WorldStateTrue
 			: CkGoapDebuggerStyle::WorldStateFalse;
-		const auto ValueText = Value ? TEXT("true") : TEXT("false");
+		const auto ValueText = Entry.Value ? FString(TEXT("true")) : FString(TEXT("false"));
 
 		_StateListBox->AddSlot()
 		.AutoHeight()
@@ -122,7 +120,7 @@ auto
 			.VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Key.ToString()))
+				.Text(FText::FromString(Entry.Key.ToString()))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
 			]

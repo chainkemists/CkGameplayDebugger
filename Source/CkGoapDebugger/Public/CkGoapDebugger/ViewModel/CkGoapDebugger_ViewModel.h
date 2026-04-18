@@ -43,6 +43,9 @@ public:
 	auto
 	Get_PlanHistory(FCk_Handle InHandle) const -> const TArray<FCkGoapDebugger_HistoryEntry>*;
 
+	auto
+	Get_SearchLog(FCk_Handle InHandle) const -> const TArray<FCkGoapDebugger_SearchSnapshot>*;
+
 	// ----------------------------------------------------------------------------------------------------------------
 	// PAUSE
 	// ----------------------------------------------------------------------------------------------------------------

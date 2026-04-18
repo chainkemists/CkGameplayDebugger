@@ -8,6 +8,7 @@
 class UCkGoapDebugGraph;
 class SCkGoapDebugger_WorldStatePanel;
 class SCkGoapDebugger_StatsPanel;
+class SCkGoapDebugger_FailureAnalysisPanel;
 class SGraphEditor;
 
 // ====================================================================================================================
@@ -39,6 +40,7 @@ private:
 
 	TSharedPtr<SCkGoapDebugger_WorldStatePanel> _WorldStatePanel;
 	TSharedPtr<SCkGoapDebugger_StatsPanel> _ActionDetailPanel;
+	TSharedPtr<SCkGoapDebugger_FailureAnalysisPanel> _FailureAnalysisPanel;
 
 	TArray<TSharedPtr<FString>> _EntitySelectorItems;
 	TArray<FCk_Handle> _EntitySelectorHandles;

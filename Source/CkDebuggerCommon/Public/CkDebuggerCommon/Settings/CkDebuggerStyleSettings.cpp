@@ -44,24 +44,56 @@ UCkDebuggerStyleSettings::UCkDebuggerStyleSettings()
 	CategoryAge      = DoRgb(0xb4, 0x6f, 0xd0);
 	CategoryTrade    = DoRgb(0xd4, 0xb1, 0x5f);
 
-	// Typography — intentionally smaller than the mockup's CSS pixel sizes
-	// because UE Slate renders bolds that read larger at equivalent points.
-	FontSizeH2    = 13;
-	FontSizeH3    = 11;
+	// Typography — smaller than mockup CSS sizes; Slate renders bolds heavier.
+	FontSizeH2    = 12;
+	FontSizeH3    = 10;
 	FontSizeH4    = 9;
-	FontSizeBody  = 10;
+	FontSizeBody  = 9;
 	FontSizeSmall = 9;
 	FontSizeMicro = 8;
 
-	// Graph nodes — opaque fills give the "depth" look the grey nodes had in
-	// the screenshot. Translucent tints read as flat.
+	// Pane headings — consistent grey, same size across every pane.
+	PaneHeadingFontSize = 9;
+	PaneHeadingColor    = TextDim;
+
+	// Plan strip typography
+	PlanStrip_TitleFontSize      = 9;
+	PlanStrip_MetaFontSize       = 9;
+	PlanStrip_GoalLabelFontSize  = 9;
+	PlanStrip_GoalNameFontSize   = 10;
+	PlanStrip_StepNameFontSize   = 10;
+	PlanStrip_StepCostFontSize   = 9;
+	PlanStrip_StepStateFontSize  = 7;
+
+	// Plan step pills — opaque fills so they have depth instead of reading as
+	// a flat wash of saturated color.
+	PlanStep_Fill_Pending   = Bg2;
+	PlanStep_Border_Pending = Border;
+	PlanStep_Badge_Pending  = Bg3;
+
+	PlanStep_Fill_Active   = DoRgb(0x2a, 0x22, 0x0a);  // opaque dark amber
+	PlanStep_Border_Active = Accent;
+	PlanStep_Badge_Active  = Accent;
+
+	PlanStep_Fill_Done   = DoRgb(0x10, 0x22, 0x17);    // opaque dark green
+	PlanStep_Border_Done = Ok;
+	PlanStep_Badge_Done  = Ok;
+
+	PlanStrip_GoalFill   = DoRgb(0x2a, 0x22, 0x0a);
+	PlanStrip_GoalBorder = Accent;
+
+	// Graph nodes — opaque fills match the plan-step convention.
 	NodeFill_Inactive    = Bg2;
 	NodeBorder_Inactive  = Border;
-	NodeFill_InPlan      = DoRgb(0x14, 0x23, 0x35);   // opaque dark info blue
+	NodeFill_InPlan      = DoRgb(0x14, 0x23, 0x35);    // opaque dark info blue
 	NodeBorder_InPlan    = Info;
-	NodeFill_Goal        = DoRgb(0x2a, 0x22, 0x0a);   // opaque dark amber
+	NodeFill_Goal        = DoRgb(0x2a, 0x22, 0x0a);    // opaque dark amber
 	NodeBorder_Goal      = Accent;
 	NodeFill_GoalInactive= DoRgb(0x15, 0x13, 0x08);
+
+	NodeTitleFontSize = 10;
+	NodeCostFontSize  = 9;
+	NodeMetaFontSize  = 9;
 
 	NodeBorderThickness = 1.5f;
 	NodeInactiveOpacity = 0.55f;

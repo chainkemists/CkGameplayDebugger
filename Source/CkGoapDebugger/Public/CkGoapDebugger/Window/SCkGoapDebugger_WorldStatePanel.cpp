@@ -22,25 +22,16 @@ auto
 {
 	_ViewModel = InArgs._ViewModel;
 
+	// The outer InspectorPanel owns the heading, so this panel no longer
+	// renders its own "World State" title — would duplicate and inconsistent.
 	ChildSlot
 	[
 		SNew(SVerticalBox)
 
-		// Header
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f, CkGoapDebuggerStyle::PanelPadding, 2.0f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(TEXT("World State")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-		]
-
 		// Search + toggle
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(CkGoapDebuggerStyle::PanelPadding, 2.0f, CkGoapDebuggerStyle::PanelPadding, 6.0f)
+		.Padding(CkGoapDebuggerStyle::PanelPadding, 6.0f, CkGoapDebuggerStyle::PanelPadding, 6.0f)
 		[
 			SNew(SHorizontalBox)
 

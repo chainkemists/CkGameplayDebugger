@@ -16,28 +16,14 @@ auto
 {
 	_ViewModel = InArgs._ViewModel;
 
+	// The outer InspectorPanel owns the heading — this panel just renders
+	// its content to stay consistent with the other inspector bodies.
 	ChildSlot
 	[
-		SNew(SVerticalBox)
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(CkGoapDebuggerStyle::PanelPadding, 8.0f)
+		SNew(SScrollBox)
+		+ SScrollBox::Slot()
 		[
-			SNew(STextBlock)
-			.Text(FText::FromString(TEXT("Failure Analysis")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-		]
-
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				SAssignNew(_ContentBox, SVerticalBox)
-			]
+			SAssignNew(_ContentBox, SVerticalBox)
 		]
 	];
 }

@@ -1,25 +1,24 @@
 #pragma once
 
-#include "CoreMinimal.h"
-#include "Engine/DeveloperSettings.h"
+#include "CkSettings/UserSettings/CkUserSettings.h"
 
 #include "CkDebuggerStyleSettings.generated.h"
 
 // ====================================================================================================================
 // Editor-time tunables for the Ck debugger UI (GOAP, SM, future).
-// Displayed in Project Settings under "CkFoundation → GOAP".
+// Displayed in Editor Preferences under "CkGameplayDebugger → GOAP".
 // All values are read live via GetDefault<UCkDebuggerStyleSettings>().
 // ====================================================================================================================
 
-UCLASS(Config = CkFoundation, DefaultConfig, meta = (DisplayName = "GOAP Debugger"))
-class CKDEBUGGERCOMMON_API UCkDebuggerStyleSettings : public UDeveloperSettings
+UCLASS(meta = (DisplayName = "GOAP"))
+class CKDEBUGGERCOMMON_API UCkDebuggerStyleSettings : public UCk_Plugin_UserSettings_UE
 {
 	GENERATED_BODY()
 
 public:
 	UCkDebuggerStyleSettings();
 
-	virtual auto GetCategoryName() const -> FName override { return TEXT("CkFoundation"); }
+	virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 	virtual auto GetSectionName()  const -> FName override { return TEXT("GOAP"); }
 
 	// ----- Palette: Backgrounds -----
@@ -87,7 +86,8 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Palette|Categories")
 	FLinearColor CategoryTrade;
 
-	// ----- Typography -----
+	// ----- Typography ---------------------------------------------------------
+	// Global scale. Per-widget sizes below override these where needed.
 	UPROPERTY(Config, EditAnywhere, Category = "Typography", meta = (ClampMin = 6, ClampMax = 24))
 	int32 FontSizeH2;
 
@@ -106,10 +106,73 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Typography", meta = (ClampMin = 6, ClampMax = 24))
 	int32 FontSizeMicro;
 
-	// ----- Graph Nodes -----
-	// Split fill/border pairs rather than single "tint + alpha" so the user
-	// gets direct control over the final rendered look without fighting alpha
-	// blending. Defaults give flat-looking nodes opacity / depth.
+	// ----- Pane Headings ------------------------------------------------------
+	// Every pane header (World State, Action Details, Failure Analysis, Plan
+	// History, plan strip "PLAN", goal name, node titles, node meta rows) is
+	// a separate tunable so nothing sneaks through with a hardcoded size/color.
+	UPROPERTY(Config, EditAnywhere, Category = "Pane Headings", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PaneHeadingFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Pane Headings")
+	FLinearColor PaneHeadingColor;
+
+	// ----- Plan Strip ---------------------------------------------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_TitleFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_MetaFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_GoalLabelFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_GoalNameFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_StepNameFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_StepCostFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip", meta = (ClampMin = 6, ClampMax = 24))
+	int32 PlanStrip_StepStateFontSize;
+
+	// Step pill color trios. Opaque fills, not tints.
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Pending Step")
+	FLinearColor PlanStep_Fill_Pending;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Pending Step")
+	FLinearColor PlanStep_Border_Pending;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Pending Step")
+	FLinearColor PlanStep_Badge_Pending;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
+	FLinearColor PlanStep_Fill_Active;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
+	FLinearColor PlanStep_Border_Active;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
+	FLinearColor PlanStep_Badge_Active;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Done Step")
+	FLinearColor PlanStep_Fill_Done;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Done Step")
+	FLinearColor PlanStep_Border_Done;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Done Step")
+	FLinearColor PlanStep_Badge_Done;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Goal Pill")
+	FLinearColor PlanStrip_GoalFill;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Goal Pill")
+	FLinearColor PlanStrip_GoalBorder;
+
+	// ----- Graph Nodes --------------------------------------------------------
 	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes|Inactive")
 	FLinearColor NodeFill_Inactive;
 
@@ -130,6 +193,15 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes|Goal")
 	FLinearColor NodeFill_GoalInactive;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes|Typography", meta = (ClampMin = 6, ClampMax = 24))
+	int32 NodeTitleFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes|Typography", meta = (ClampMin = 6, ClampMax = 24))
+	int32 NodeCostFontSize;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes|Typography", meta = (ClampMin = 6, ClampMax = 24))
+	int32 NodeMetaFontSize;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Graph Nodes", meta = (ClampMin = 0.5, ClampMax = 5))
 	float NodeBorderThickness;

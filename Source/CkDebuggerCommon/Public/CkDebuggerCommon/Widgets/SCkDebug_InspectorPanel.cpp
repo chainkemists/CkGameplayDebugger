@@ -83,8 +83,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(_Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 

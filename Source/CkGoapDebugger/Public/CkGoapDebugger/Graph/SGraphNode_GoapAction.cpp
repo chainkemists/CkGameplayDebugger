@@ -71,7 +71,7 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::AsNumber(PlanStep + 1))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeMetaFontSize()))
 						.ColorAndOpacity(FSlateColor(CkDebugStyle::BgRoot()))
 					]
 				]
@@ -84,7 +84,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(_ActionNode->Get_DisplayName()))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
 			.ColorAndOpacity(FSlateColor(TextColor))
 		];
 
@@ -95,7 +95,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeCostFontSize()))
 			.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 		];
 
@@ -163,7 +163,7 @@ auto
 	CreatePortRows()
 	-> TSharedRef<SWidget>
 {
-	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
+	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize());
 
 	// Preconditions column (left-aligned, red marker).
 	auto PreBox = SNew(SVerticalBox);
@@ -264,7 +264,7 @@ auto
 
 	return SNew(STextBlock)
 		.Text(FText::FromString(EffectsText))
-		.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+		.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize()))
 		.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok()));
 }
 

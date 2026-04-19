@@ -53,7 +53,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(C.AsString()))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize()))
 			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 		];
 	}
@@ -100,7 +100,7 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), _GoalNode->Get_Priority())))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeMetaFontSize()))
 						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 						.TransformPolicy(ETextTransformPolicy::ToUpper)
 					]
@@ -112,7 +112,7 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(GoalDisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
 						.ColorAndOpacity(FSlateColor(TitleColor))
 					]
 

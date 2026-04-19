@@ -45,8 +45,8 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("PLAN")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_TitleFontSize()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
 					.TransformPolicy(ETextTransformPolicy::ToUpper)
 				]
 
@@ -57,7 +57,7 @@ auto
 				[
 					SAssignNew(_MetaText, STextBlock)
 					.Text(FText::FromString(TEXT("no plan")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::PlanStrip_MetaFontSize()))
 					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				]
 
@@ -70,7 +70,7 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Goal:")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::PlanStrip_GoalLabelFontSize()))
 					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				]
 
@@ -81,7 +81,7 @@ auto
 				[
 					SAssignNew(_GoalNameText, STextBlock)
 					.Text(FText::FromString(TEXT("—")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_GoalNameFontSize()))
 					.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 				]
 			]
@@ -255,15 +255,15 @@ auto
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 	const auto FilledBrush  = CkDebugStyle::GetFilledBrush();
 
-	const auto BorderColor = bActive ? CkDebugStyle::Accent()
-	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok(), 0.55f)
-	                                 : CkDebugStyle::Border();
-	const auto FillColor   = bActive ? CkDebugStyle::OverlayOf(CkDebugStyle::Accent(), 0.10f)
-	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok(),     0.08f)
-	                                 : CkDebugStyle::Bg2();
-	const auto BadgeColor  = bActive ? CkDebugStyle::Accent()
-	                       : bDone   ? CkDebugStyle::Ok()
-	                                 : CkDebugStyle::Bg3();
+	const auto BorderColor = bActive ? CkDebugStyle::PlanStep_Border_Active()
+	                       : bDone   ? CkDebugStyle::PlanStep_Border_Done()
+	                                 : CkDebugStyle::PlanStep_Border_Pending();
+	const auto FillColor   = bActive ? CkDebugStyle::PlanStep_Fill_Active()
+	                       : bDone   ? CkDebugStyle::PlanStep_Fill_Done()
+	                                 : CkDebugStyle::PlanStep_Fill_Pending();
+	const auto BadgeColor  = bActive ? CkDebugStyle::PlanStep_Badge_Active()
+	                       : bDone   ? CkDebugStyle::PlanStep_Badge_Done()
+	                                 : CkDebugStyle::PlanStep_Badge_Pending();
 	const auto BadgeTextColor = bActive || bDone ? CkDebugStyle::BgRoot() : CkDebugStyle::TextDim();
 	const auto StateText = bDone   ? FString(TEXT("done"))
 	                    : bActive  ? FString(TEXT("executing"))
@@ -333,7 +333,7 @@ auto
 							[
 								SNew(STextBlock)
 								.Text(FText::FromString(InActionName))
-								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepNameFontSize()))
 								.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 							]
 
@@ -349,7 +349,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), InCost)))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepCostFontSize()))
 									.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 								]
 
@@ -360,7 +360,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(StateText))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepStateFontSize()))
 									.ColorAndOpacity(FSlateColor(StateColor))
 									.TransformPolicy(ETextTransformPolicy::ToUpper)
 								]
@@ -416,12 +416,12 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Accent()))
-			.Padding(FMargin(1.5f))
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalBorder()))
+			.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 			[
 				SNew(SBorder)
 				.BorderImage(RoundedBrush)
-				.BorderBackgroundColor(FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Accent(), 0.14f)))
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalFill()))
 				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 				[
 					SNew(SVerticalBox)

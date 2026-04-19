@@ -16,6 +16,9 @@ public class CkDebuggerCommon : CkModuleRules
             "GraphEditor",
             "EditorStyle",
             "AppFramework",
+
+            // For UCk_Plugin_UserSettings_UE base class.
+            "CkSettings",
         });
     }
 }

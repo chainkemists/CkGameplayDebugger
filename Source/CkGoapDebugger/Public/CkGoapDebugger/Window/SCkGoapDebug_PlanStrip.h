@@ -5,6 +5,7 @@
 
 class SHorizontalBox;
 class STextBlock;
+class UCkGoapDebugGraph;
 
 // ====================================================================================================================
 
@@ -21,8 +22,11 @@ DECLARE_DELEGATE_OneParam(FOnCkGoapDebug_PlanStepClicked, FString /*ClassName*/)
 class CKGOAPDEBUGGER_API SCkGoapDebug_PlanStrip : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SCkGoapDebug_PlanStrip) {}
+	SLATE_BEGIN_ARGS(SCkGoapDebug_PlanStrip)
+		: _Graph(nullptr)
+	{}
 		SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
+		SLATE_ARGUMENT(UCkGoapDebugGraph*, Graph)
 		SLATE_EVENT(FOnCkGoapDebug_PlanStepClicked, OnStepClicked)
 	SLATE_END_ARGS()
 
@@ -32,12 +36,13 @@ public:
 private:
 	auto RebuildStrip() -> void;
 	auto ComputeHash() const -> uint32;
-	auto BuildStepPill(int32 InStepIdx, const FString& InActionName, float InCost, bool bDone, bool bActive) -> TSharedRef<SWidget>;
+	auto BuildStepPill(int32 InStepIdx, const FString& InClassName, const FString& InDisplayName, float InCost, bool bDone, bool bActive) -> TSharedRef<SWidget>;
 	auto BuildArrow(bool bDone, bool bActive) -> TSharedRef<SWidget>;
 	auto BuildGoalPill(const FCkGoapDebugger_GoalInfo& InGoal) -> TSharedRef<SWidget>;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
+	TWeakObjectPtr<UCkGoapDebugGraph> _Graph;
 	FOnCkGoapDebug_PlanStepClicked _OnStepClicked;
 
 	TSharedPtr<SHorizontalBox> _FlowBox;

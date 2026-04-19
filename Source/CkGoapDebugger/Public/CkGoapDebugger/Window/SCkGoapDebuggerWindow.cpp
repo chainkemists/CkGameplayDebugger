@@ -109,6 +109,7 @@ auto
 				[
 					SAssignNew(_PlanStrip, SCkGoapDebug_PlanStrip)
 					.ViewModel(_ViewModel)
+					.Graph(_Graph)
 					.OnStepClicked(FOnCkGoapDebug_PlanStepClicked::CreateSP(this, &SCkGoapDebuggerWindow::OnPlanStepClicked))
 				]
 			]

@@ -22,8 +22,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -36,8 +36,8 @@ auto
 			[
 				SAssignNew(_CountBadge, STextBlock)
 				.Text(InArgs._CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 	}
 
@@ -50,7 +50,7 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 			[
 				HeaderRow

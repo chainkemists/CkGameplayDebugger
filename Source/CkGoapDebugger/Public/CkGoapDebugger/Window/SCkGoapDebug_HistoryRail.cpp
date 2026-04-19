@@ -97,8 +97,8 @@ auto
 		_Rail->AddChild(
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("No plan history yet")))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
 			.Margin(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 		);
 		return;

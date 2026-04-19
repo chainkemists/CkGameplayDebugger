@@ -33,12 +33,10 @@ auto
 	LeftNodeBox.Reset();
 
 	const auto IsActive = _GoalNode->Get_IsActiveGoal();
-	const auto BorderColor = IsActive ? CkDebugStyle::Accent : CkDebugStyle::BorderStrong;
-	const auto FillColor = IsActive
-		? CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.14f)
-		: CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.04f);
-	const auto TitleColor = IsActive ? CkDebugStyle::Accent : CkDebugStyle::TextDim;
-	const auto Alpha = IsActive ? 1.0f : 0.7f;
+	const auto BorderColor = IsActive ? CkDebugStyle::NodeBorder_Goal() : CkDebugStyle::BorderStrong();
+	const auto FillColor   = IsActive ? CkDebugStyle::NodeFill_Goal()   : CkDebugStyle::NodeFill_GoalInactive();
+	const auto TitleColor  = IsActive ? CkDebugStyle::Accent()          : CkDebugStyle::TextDim();
+	const auto Alpha       = IsActive ? 1.0f                            : CkDebugStyle::NodeInactiveOpacity();
 
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
@@ -55,8 +53,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(C.AsString()))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 		];
 	}
 
@@ -84,7 +82,7 @@ auto
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)
 			.BorderBackgroundColor(FSlateColor(BorderColor))
-			.Padding(FMargin(1.5f))
+			.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 			.Visibility(EVisibility::SelfHitTestInvisible)
 			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
 			[
@@ -102,8 +100,8 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), _GoalNode->Get_Priority())))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 						.TransformPolicy(ETextTransformPolicy::ToUpper)
 					]
 
@@ -114,7 +112,7 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(GoalDisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
 						.ColorAndOpacity(FSlateColor(TitleColor))
 					]
 

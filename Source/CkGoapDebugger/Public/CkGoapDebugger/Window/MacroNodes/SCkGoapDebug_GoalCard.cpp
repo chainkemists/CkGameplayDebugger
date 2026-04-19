@@ -1,5 +1,6 @@
 #include "SCkGoapDebug_GoalCard.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 
 #include "Widgets/Layout/SBorder.h"
@@ -24,27 +25,21 @@ auto
 	}
 
 	const auto IsActive = G.IsActiveGoal;
-	const auto BorderColor = IsActive
-		? FLinearColor(0.74f, 0.52f, 0.14f)
-		: FLinearColor(0.30f, 0.26f, 0.12f);
-	const auto FillColor = IsActive
-		? FLinearColor(0.12f, 0.10f, 0.04f)
-		: FLinearColor(0.08f, 0.07f, 0.03f);
-	const auto TitleColor = IsActive
-		? FLinearColor(0.96f, 0.78f, 0.18f)
-		: FLinearColor(0.74f, 0.60f, 0.14f);
+	const auto BorderColor = IsActive ? CkDebugStyle::NodeBorder_Goal() : CkDebugStyle::BorderStrong();
+	const auto FillColor   = IsActive ? CkDebugStyle::NodeFill_Goal()   : CkDebugStyle::NodeFill_GoalInactive();
+	const auto TitleColor  = IsActive ? CkDebugStyle::Accent()          : CkDebugStyle::TextDim();
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
+		.BorderImage(CkDebugStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(BorderColor))
-		.Padding(FMargin(1.0f))
+		.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 		[
 			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
+			.BorderImage(CkDebugStyle::GetFilledBrush())
 			.BorderBackgroundColor(FSlateColor(FillColor))
-			.Padding(FMargin(10.0f, 6.0f))
+			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 			[
 				SNew(SVerticalBox)
 
@@ -59,30 +54,30 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(G.ClassName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
 						.ColorAndOpacity(FSlateColor(TitleColor))
 					]
 
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SCkDebug_CountBadge)
 						.ValueText(FText::AsNumber(G.Priority))
 						.SuffixText(FText::FromString(TEXT("priority")))
-						.ValueColor(FLinearColor(0.96f, 0.78f, 0.18f))
+						.ValueColor(CkDebugStyle::Accent())
 					]
 				]
 
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(0.0f, 3.0f, 0.0f, 0.0f)
+				.Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(Conds))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.74f, 0.60f, 0.14f)))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 					.AutoWrapText(true)
 				]
 			]

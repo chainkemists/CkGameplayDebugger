@@ -157,7 +157,21 @@ auto
 	_FlowBox->ClearChildren();
 
 	const auto* Info = _ViewModel.IsValid() ? _ViewModel->Get_CurrentGoapInfo() : nullptr;
-	if (Info == nullptr || Info->PlanActionNames.Num() == 0)
+
+	// Resolve the goal up front so the satisfied-goal branch can render it.
+	const FCkGoapDebugger_GoalInfo* ActiveGoalEarly = nullptr;
+	if (Info != nullptr)
+	{
+		for (const auto& G : Info->Goals) { if (G.IsActiveGoal) { ActiveGoalEarly = &G; break; } }
+		if (ActiveGoalEarly == nullptr && Info->Goals.Num() > 0) { ActiveGoalEarly = &Info->Goals[0]; }
+	}
+
+	const auto bTrivialSuccess = Info != nullptr
+		&& Info->PlanStatus == ECk_GoapPlanStatus::PlanFound
+		&& Info->PlanActionNames.Num() == 0
+		&& ActiveGoalEarly != nullptr;
+
+	if (Info == nullptr || (Info->PlanActionNames.Num() == 0 && !bTrivialSuccess))
 	{
 		if (_MetaText.IsValid())     { _MetaText->SetText(FText::FromString(TEXT("no plan"))); }
 		if (_GoalNameText.IsValid()) { _GoalNameText->SetText(FText::FromString(TEXT("—"))); }
@@ -172,6 +186,31 @@ auto
 				.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeBody()))
 				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
+		return;
+	}
+
+	// Trivial success — goal already satisfied, no actions needed. Show just
+	// the goal pill plus a "0 actions · goal already satisfied" meta line.
+	if (bTrivialSuccess)
+	{
+		if (_MetaText.IsValid())
+		{
+			_MetaText->SetText(FText::FromString(TEXT("· 0 actions · goal already satisfied")));
+		}
+		if (_GoalNameText.IsValid())
+		{
+			_GoalNameText->SetText(FText::FromString(ActiveGoalEarly->ClassName));
+		}
+
+		_FlowBox->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(CkDebugStyle::SpaceM, 0.0f, CkDebugStyle::SpaceL, 0.0f))
+			[
+				BuildGoalPill(*ActiveGoalEarly)
+			];
+
+		_FlowBox->AddSlot().AutoWidth()[ SNew(SBox).WidthOverride(CkDebugStyle::SpaceXL) ];
 		return;
 	}
 

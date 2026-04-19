@@ -175,12 +175,20 @@ auto
 				FLinearColor(0.80f, 0.92f, 1.00f)
 			};
 		case ECk_GoapPlanStatus::PlanFound:
+		{
+			const auto bTrivial = Info->PlanActionNames.Num() == 0;
 			return {
-				TEXT("Plan found"),
-				TEXT(""),
+				bTrivial
+					? TEXT("Plan found — goal already satisfied (0 actions)")
+					: TEXT("Plan found"),
+				bTrivial
+					? TEXT("The active goal's conditions are already true in the current world state, "
+					       "so no actions are required. This is a valid plan — just an empty one.")
+					: TEXT(""),
 				FLinearColor(0.06f, 0.22f, 0.10f),
 				FLinearColor(0.82f, 1.00f, 0.86f)
 			};
+		}
 		case ECk_GoapPlanStatus::PlanFailed:
 			return {
 				TEXT("Plan FAILED — open set exhausted (genuine infeasibility)"),

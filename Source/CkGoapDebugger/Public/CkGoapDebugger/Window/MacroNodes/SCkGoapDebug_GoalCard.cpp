@@ -53,7 +53,7 @@ auto
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(G.ClassName))
+						.Text(FText::FromString(InArgs._DisplayName.IsEmpty() ? G.ClassName : InArgs._DisplayName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
 						.ColorAndOpacity(FSlateColor(TitleColor))
 					]

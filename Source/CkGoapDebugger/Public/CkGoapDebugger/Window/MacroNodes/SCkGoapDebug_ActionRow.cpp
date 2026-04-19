@@ -72,7 +72,7 @@ auto
 					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(InArgs._Action.ClassName))
+						.Text(FText::FromString(InArgs._DisplayName.IsEmpty() ? InArgs._Action.ClassName : InArgs._DisplayName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
 						.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 					]

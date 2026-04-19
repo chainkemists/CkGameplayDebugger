@@ -13,6 +13,8 @@ class CKGOAPDEBUGGER_API SCkGoapDebug_GoalCard : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SCkGoapDebug_GoalCard) {}
 		SLATE_ARGUMENT(FCkGoapDebugger_GoalInfo, Goal)
+		// Optional display-name override; falls back to Goal.ClassName when empty.
+		SLATE_ARGUMENT(FString, DisplayName)
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;

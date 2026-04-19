@@ -5,6 +5,7 @@
 
 class SHorizontalBox;
 class SScrollBox;
+class UCkGoapDebugGraph;
 
 // ====================================================================================================================
 
@@ -21,8 +22,11 @@ DECLARE_DELEGATE_OneParam(FOnCkGoapDebugMacroActionClicked, FString /*ActionClas
 class CKGOAPDEBUGGER_API SCkGoapDebug_MacroNodesPanel : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SCkGoapDebug_MacroNodesPanel) {}
+	SLATE_BEGIN_ARGS(SCkGoapDebug_MacroNodesPanel)
+		: _Graph(nullptr)
+	{}
 		SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
+		SLATE_ARGUMENT(UCkGoapDebugGraph*, Graph)
 		SLATE_EVENT(FOnCkGoapDebugMacroActionClicked, OnActionClicked)
 	SLATE_END_ARGS()
 
@@ -35,6 +39,7 @@ private:
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
+	TWeakObjectPtr<UCkGoapDebugGraph> _Graph;
 	FOnCkGoapDebugMacroActionClicked _OnActionClicked;
 
 	TSharedPtr<SHorizontalBox> _ColumnsBox;

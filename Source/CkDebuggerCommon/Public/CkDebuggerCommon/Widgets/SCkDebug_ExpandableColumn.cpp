@@ -23,7 +23,8 @@ auto
 	// args on this widget are ignored so the macro tab stays in sync with
 	// the shared palette.
 
-	auto HeaderRow = SNew(SHorizontalBox)
+	// Title row: title fills, chevron on the right.
+	auto TitleRow = SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
@@ -34,14 +35,34 @@ auto
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
 			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
+		]
+
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			SAssignNew(_ChevronText, STextBlock)
+			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+		];
+
+	// Pill (gate tag, etc.) drops to its own row below the title so long
+	// pill text can't push the title into ellipsis.
+	auto HeaderStack = SNew(SVerticalBox)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			TitleRow
 		];
 
 	if (!InArgs._PillText.IsEmpty())
 	{
-		HeaderRow->AddSlot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		HeaderStack->AddSlot()
+			.AutoHeight()
+			.HAlign(HAlign_Left)
+			.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
 			[
 				SNew(SBorder)
 				.BorderImage(CkDebugStyle::GetRoundedBrush())
@@ -55,16 +76,6 @@ auto
 				]
 			];
 	}
-
-	HeaderRow->AddSlot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		[
-			SAssignNew(_ChevronText, STextBlock)
-			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
-		];
 
 	ChildSlot
 	[
@@ -89,7 +100,7 @@ auto
 					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 					.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 					[
-						HeaderRow
+						HeaderStack
 					]
 				]
 			]

@@ -150,14 +150,16 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Pending Step")
 	FLinearColor PlanStep_Badge_Pending = FLinearColor(FColor(0x1b, 0x22, 0x30, 255));
 
+	// Active (currently-executing) step uses a teal family so it reads as
+	// distinct from goals (amber Accent) and the rest of the plan (Info blue).
 	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
-	FLinearColor PlanStep_Fill_Active = FLinearColor(FColor(0x2a, 0x22, 0x0a, 255));
+	FLinearColor PlanStep_Fill_Active = FLinearColor(FColor(0x0a, 0x28, 0x22, 255));
 
 	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
-	FLinearColor PlanStep_Border_Active = FLinearColor(FColor(0xf5, 0xc8, 0x42, 255));
+	FLinearColor PlanStep_Border_Active = FLinearColor(FColor(0x5f, 0xd4, 0xb3, 255));
 
 	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Active Step")
-	FLinearColor PlanStep_Badge_Active = FLinearColor(FColor(0xf5, 0xc8, 0x42, 255));
+	FLinearColor PlanStep_Badge_Active = FLinearColor(FColor(0x5f, 0xd4, 0xb3, 255));
 
 	UPROPERTY(Config, EditAnywhere, Category = "Plan Strip|Done Step")
 	FLinearColor PlanStep_Fill_Done = FLinearColor(FColor(0x10, 0x22, 0x17, 255));

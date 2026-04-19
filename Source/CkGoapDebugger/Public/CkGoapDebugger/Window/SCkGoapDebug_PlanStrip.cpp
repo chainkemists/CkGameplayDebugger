@@ -310,7 +310,9 @@ auto
 	const auto StateText = bDone   ? FString(TEXT("done"))
 	                    : bActive  ? FString(TEXT("executing"))
 	                              : FString(TEXT("pending"));
-	const auto StateColor = bActive ? CkDebugStyle::Accent()
+	// StateColor follows the pill border so "EXECUTING" never looks amber
+	// (which belongs to goals) or green (which belongs to the done state).
+	const auto StateColor = bActive ? CkDebugStyle::PlanStep_Border_Active()
 	                       : bDone   ? CkDebugStyle::Ok()
 	                                 : CkDebugStyle::TextMute();
 

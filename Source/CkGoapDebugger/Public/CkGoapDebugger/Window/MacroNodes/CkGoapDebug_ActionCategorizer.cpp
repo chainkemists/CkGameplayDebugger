@@ -83,36 +83,13 @@ auto
 
 namespace
 {
-	// A precondition key is considered an age gate if the tag's leaf name
-	// matches the shape `IsIn<Anything>Age` — captures `IsInDarkAge`,
-	// `IsInFeudalAge`, etc. without hardcoding the specific ages.
-	auto DoIsAgeGateKey(const FName& InKey) -> bool
-	{
-		const auto Str = InKey.ToString();
-		// Leaf = portion after the last '.'
-		int32 DotIdx = INDEX_NONE;
-		auto Leaf = Str;
-		if (Str.FindLastChar(TEXT('.'), DotIdx)) { Leaf = Str.RightChop(DotIdx + 1); }
-		return Leaf.StartsWith(TEXT("IsIn")) && Leaf.EndsWith(TEXT("Age"));
-	}
-
-	auto DoLabelForAgeGate(const FName& InKey) -> FString
+	// Leaf name of a fully-qualified tag: "Goap.WS.Empire.IsInFeudalAge" -> "IsInFeudalAge".
+	auto DoLeafName(const FName& InKey) -> FString
 	{
 		auto Str = InKey.ToString();
 		int32 DotIdx = INDEX_NONE;
-		auto Leaf = Str;
-		if (Str.FindLastChar(TEXT('.'), DotIdx)) { Leaf = Str.RightChop(DotIdx + 1); }
-		// "IsInFeudalAge" -> "Feudal Age"
-		if (Leaf.StartsWith(TEXT("IsIn")))
-		{
-			Leaf.RightChopInline(4);
-			if (Leaf.EndsWith(TEXT("Age")))
-			{
-				Leaf.LeftChopInline(3);
-				return Leaf + TEXT(" Age");
-			}
-		}
-		return Leaf;
+		if (Str.FindLastChar(TEXT('.'), DotIdx)) { return Str.RightChop(DotIdx + 1); }
+		return Str;
 	}
 }
 
@@ -120,34 +97,50 @@ auto
 	FCkGoapDebug_ActionCategorizer::
 	DiscoverTiers(
 		const TArray<FCkGoapDebugger_ActionInfo>& InActions,
-		const TArray<FCkGoapDebugger_GoalInfo>& InGoals)
+		const TArray<FCkGoapDebugger_GoalInfo>& /*InGoals*/)
 	-> TArray<FCkGoapDebug_Tier>
 {
-	// Collect all age-gate tag keys that appear as a precondition on any
-	// action or as a condition on any goal.
-	auto GateKeys = TSet<FName>{};
+	// Generic tier discovery, no domain vocabulary assumptions:
+	//
+	//   1. Collect tags that appear as BOTH a precondition AND an effect
+	//      anywhere in the action set. These are the only tags that can
+	//      represent a progression step (a fixed transient resource flag
+	//      like "HasEnoughWood" is handled below).
+	//
+	//   2. Gate = candidate tag produced by EXACTLY ONE action. This is
+	//      the key signal: single-producer tags are one-way unlocks
+	//      (BuildBarracks, AdvanceToFeudalAge), while multi-producer tags
+	//      (GatherWood + GatherWoodFromCamp both setting HasEnoughWood)
+	//      are transient resource flags and shouldn't define tiers.
+	//
+	//   3. Build a DAG between gates: A -> B when an action has Effect=B
+	//      and Precondition=A, with both A and B gates.
+	//
+	//   4. Longest-path depth from topological sort assigns each gate a
+	//      tier index. Gates at the same depth share a tier index but
+	//      become separate adjacent columns.
+	//
+	//   5. Tier 0 is always "Base" — actions with no gate preconditions.
+
+	// 1 + 2. Collect candidates with single producer.
+	auto EffProducerCount = TMap<FName, int32>{};
+	auto PreTags = TSet<FName>{};
 	for (const auto& A : InActions)
 	{
-		for (const auto& P : A.Preconditions)
-		{
-			if (DoIsAgeGateKey(P.Key.GetTagName())) { GateKeys.Add(P.Key.GetTagName()); }
-		}
-		for (const auto& E : A.Effects)
-		{
-			if (DoIsAgeGateKey(E.Key.GetTagName())) { GateKeys.Add(E.Key.GetTagName()); }
-		}
+		for (const auto& P : A.Preconditions) { PreTags.Add(P.Key.GetTagName()); }
+		for (const auto& E : A.Effects)       { EffProducerCount.FindOrAdd(E.Key.GetTagName(), 0)++; }
 	}
-	for (const auto& G : InGoals)
+
+	auto GateKeys = TSet<FName>{};
+	for (const auto& Pair : EffProducerCount)
 	{
-		for (const auto& C : G.Conditions)
+		if (Pair.Value == 1 && PreTags.Contains(Pair.Key))
 		{
-			if (DoIsAgeGateKey(C.Key.GetTagName())) { GateKeys.Add(C.Key.GetTagName()); }
+			GateKeys.Add(Pair.Key);
 		}
 	}
 
-	// Order gates by dependency depth: a gate A depends on B if there is an
-	// action with Effect A whose Preconditions include B (also an age gate).
-	// Topo sort: start with gates that have no age-gate predecessors.
+	// 3. Build gate-to-gate DAG.
 	auto EdgesFromPredecessor = TMap<FName, TArray<FName>>{};
 	for (const auto& A : InActions)
 	{
@@ -166,7 +159,6 @@ auto
 		}
 	}
 
-	// Compute in-degree for each gate
 	auto InDegree = TMap<FName, int32>{};
 	for (const auto& K : GateKeys) { InDegree.FindOrAdd(K, 0); }
 	for (const auto& Pair : EdgesFromPredecessor)
@@ -174,47 +166,65 @@ auto
 		for (const auto& To : Pair.Value) { InDegree.FindOrAdd(To)++; }
 	}
 
+	// 4. Topological sort with longest-path depth assignment.
 	auto Queue = TArray<FName>{};
+	auto GateDepth = TMap<FName, int32>{};
 	for (const auto& Pair : InDegree)
 	{
-		if (Pair.Value == 0) { Queue.Add(Pair.Key); }
+		if (Pair.Value == 0) { Queue.Add(Pair.Key); GateDepth.Add(Pair.Key, 0); }
 	}
-	// Stable sort for determinism when multiple roots exist.
 	Queue.Sort([](const FName& A, const FName& B) { return A.Compare(B) < 0; });
 
-	auto Ordered = TArray<FName>{};
 	auto Head = 0;
 	while (Head < Queue.Num())
 	{
 		const auto K = Queue[Head++];
-		Ordered.Add(K);
+		const auto KDepth = GateDepth.FindOrAdd(K, 0);
 		if (const auto* Successors = EdgesFromPredecessor.Find(K))
 		{
 			for (const auto& S : *Successors)
 			{
+				auto& SDepth = GateDepth.FindOrAdd(S, 0);
+				SDepth = FMath::Max(SDepth, KDepth + 1);
 				auto& D = InDegree.FindOrAdd(S);
 				if (--D == 0) { Queue.Add(S); }
 			}
 		}
 	}
-	// If any cycles leave nodes unvisited, append them at the end to avoid
-	// losing data in the UI.
+	// Cycles leave nodes unvisited — drop them into the last known depth so
+	// the UI still shows them rather than silently hiding.
 	for (const auto& K : GateKeys)
 	{
-		if (NOT Ordered.Contains(K)) { Ordered.Add(K); }
+		if (NOT GateDepth.Contains(K)) { GateDepth.Add(K, 0); }
 	}
 
+	// 5. Emit tiers. Tier 0 = "Base"; depth-N gates become tiers in depth
+	//    order. Gates sharing a depth are sorted lexicographically for
+	//    deterministic column order.
 	auto Result = TArray<FCkGoapDebug_Tier>{};
-	// Tier 0 is always "no gate required".
-	Result.Add({0, TEXT("Base (no gate)"), NAME_None});
-	for (auto i = 0; i < Ordered.Num(); ++i)
+	Result.Add({0, TEXT("Base"), NAME_None});
+
+	auto MaxDepth = 0;
+	for (const auto& Pair : GateDepth) { MaxDepth = FMath::Max(MaxDepth, Pair.Value); }
+
+	for (auto D = 0; D <= MaxDepth; ++D)
 	{
-		auto T = FCkGoapDebug_Tier{};
-		T.Index = i + 1;
-		T.GateTagKey = Ordered[i];
-		T.Label = DoLabelForAgeGate(Ordered[i]);
-		Result.Add(T);
+		auto GatesAtDepth = TArray<FName>{};
+		for (const auto& Pair : GateDepth)
+		{
+			if (Pair.Value == D) { GatesAtDepth.Add(Pair.Key); }
+		}
+		GatesAtDepth.Sort([](const FName& A, const FName& B) { return A.Compare(B) < 0; });
+		for (const auto& Gate : GatesAtDepth)
+		{
+			FCkGoapDebug_Tier T;
+			T.Index = Result.Num();
+			T.GateTagKey = Gate;
+			T.Label = DoLeafName(Gate);
+			Result.Add(T);
+		}
 	}
+
 	return Result;
 }
 

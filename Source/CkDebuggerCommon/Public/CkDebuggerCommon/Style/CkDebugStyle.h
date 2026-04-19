@@ -63,6 +63,31 @@ namespace CkDebugStyle
 	CKDEBUGGERCOMMON_API auto FontSizeSmall() -> int32;
 	CKDEBUGGERCOMMON_API auto FontSizeMicro() -> int32;
 
+	// ----- Pane headings ------------------------------------------------------
+	CKDEBUGGERCOMMON_API auto PaneHeadingFontSize() -> int32;
+	CKDEBUGGERCOMMON_API auto PaneHeadingColor()    -> FLinearColor;
+
+	// ----- Plan strip ---------------------------------------------------------
+	CKDEBUGGERCOMMON_API auto PlanStrip_TitleFontSize()     -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_MetaFontSize()      -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_GoalLabelFontSize() -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_GoalNameFontSize()  -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_StepNameFontSize()  -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_StepCostFontSize()  -> int32;
+	CKDEBUGGERCOMMON_API auto PlanStrip_StepStateFontSize() -> int32;
+
+	CKDEBUGGERCOMMON_API auto PlanStep_Fill_Pending()   -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Border_Pending() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Badge_Pending()  -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Fill_Active()    -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Border_Active()  -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Badge_Active()   -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Fill_Done()      -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Border_Done()    -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStep_Badge_Done()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStrip_GoalFill()      -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PlanStrip_GoalBorder()    -> FLinearColor;
+
 	// ----- Graph node visuals -------------------------------------------------
 	CKDEBUGGERCOMMON_API auto NodeFill_Inactive()     -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto NodeBorder_Inactive()   -> FLinearColor;
@@ -71,6 +96,9 @@ namespace CkDebugStyle
 	CKDEBUGGERCOMMON_API auto NodeFill_Goal()         -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto NodeBorder_Goal()       -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto NodeFill_GoalInactive() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto NodeTitleFontSize()     -> int32;
+	CKDEBUGGERCOMMON_API auto NodeCostFontSize()      -> int32;
+	CKDEBUGGERCOMMON_API auto NodeMetaFontSize()      -> int32;
 	CKDEBUGGERCOMMON_API auto NodeBorderThickness()   -> float;
 	CKDEBUGGERCOMMON_API auto NodeInactiveOpacity()   -> float;
 

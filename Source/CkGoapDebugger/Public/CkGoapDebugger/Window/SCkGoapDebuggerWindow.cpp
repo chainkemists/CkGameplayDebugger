@@ -3,18 +3,29 @@
 #include "SCkGoapDebugger_WorldStatePanel.h"
 #include "SCkGoapDebugger_StatsPanel.h"
 #include "SCkGoapDebugger_FailureAnalysisPanel.h"
+#include "SCkGoapDebug_PlanStrip.h"
+#include "SCkGoapDebug_HistoryRail.h"
+#include "MacroNodes/SCkGoapDebug_MacroNodesPanel.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraphSchema.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugNode_Action.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+
 #include "GraphEditor.h"
 #include "Widgets/Layout/SSplitter.h"
-#include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
-#include "Widgets/Images/SImage.h"
+#include "Widgets/Input/STextComboBox.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
 
@@ -32,12 +43,10 @@ auto
 		RefreshEntitySelector();
 	});
 
-	// Create the graph
 	_Graph = NewObject<UCkGoapDebugGraph>(GetTransientPackage());
 	_Graph->AddToRoot();
 	_Graph->Schema = UCkGoapDebugGraphSchema::StaticClass();
 
-	// Create graph editor
 	SGraphEditor::FGraphEditorEvents GraphEvents;
 	GraphEvents.OnSelectionChanged = SGraphEditor::FOnSelectionChanged::CreateRaw(
 		this, &SCkGoapDebuggerWindow::OnGraphSelectionChanged);
@@ -47,90 +56,67 @@ auto
 		.IsEditable(true)
 		.GraphEvents(GraphEvents);
 
-	// Layout: Mockup D
-	// toolbar → plan chain → SSplitter(H): [left-col(graph+timeline) | right-col(worldstate+details)]
+	// Layout (mockup 5):
+	//   toolbar
+	//   diagnostics banner
+	//   H-split: [ history rail | center (tabs + viewport + plan strip) | inspector stack ]
 	ChildSlot
 	[
 		SNew(SVerticalBox)
 
-		// Toolbar
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
 			BuildToolbar()
 		]
 
-		// Diagnostics banner — framework-emitted graph/plan errors.
-		// Hidden while empty; rebuilt each tick when diagnostics change.
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
 			SAssignNew(_DiagnosticsBanner, SVerticalBox)
 		]
 
-		// Main content: SSplitter horizontal
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
 			SNew(SSplitter)
 			.Orientation(Orient_Horizontal)
 
-			// Left column: SSplitter V(graph+strip, history) — user-resizable.
+			// LEFT RAIL — Plan History
 			+ SSplitter::Slot()
-			.Value(0.7f)
+			.Value(0.18f)
 			[
-				SNew(SSplitter)
-				.Orientation(Orient_Vertical)
+				SAssignNew(_HistoryRail, SCkGoapDebug_HistoryRail)
+				.ViewModel(_ViewModel)
+				.Graph(_Graph)
+			]
 
-				// Top: graph + tabbed strip (Plan | Action Details)
-				+ SSplitter::Slot()
-				.Value(0.75f)
+			// CENTER — top tabs (Graph | Macro) + hero plan strip
+			+ SSplitter::Slot()
+			.Value(0.55f)
+			[
+				SNew(SVerticalBox)
+
+				+ SVerticalBox::Slot()
+				.FillHeight(1.0f)
 				[
-					SNew(SSplitter)
-					.Orientation(Orient_Vertical)
-
-					+ SSplitter::Slot()
-					.Value(0.78f)
-					[
-						_GraphEditor.ToSharedRef()
-					]
-
-					+ SSplitter::Slot()
-					.Value(0.22f)
-					[
-						BuildBottomTabs()
-					]
+					BuildTopTabs()
 				]
 
-				// Bottom: history fills remaining, resizable.
-				+ SSplitter::Slot()
-				.Value(0.25f)
+				+ SVerticalBox::Slot()
+				.AutoHeight()
 				[
-					BuildTimelineAndHistory()
+					SAssignNew(_PlanStrip, SCkGoapDebug_PlanStrip)
+					.ViewModel(_ViewModel)
+					.OnStepClicked(FOnCkGoapDebug_PlanStepClicked::CreateSP(this, &SCkGoapDebuggerWindow::OnPlanStepClicked))
 				]
 			]
 
-			// Right column: world state + failure analysis. Action Details
-			// moved to the tabbed area below the graph.
+			// RIGHT RAIL — stacked inspectors (World State / Action Details / Failure Analysis)
 			+ SSplitter::Slot()
-			.Value(0.3f)
+			.Value(0.27f)
 			[
-				SNew(SSplitter)
-				.Orientation(Orient_Vertical)
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					SAssignNew(_WorldStatePanel, SCkGoapDebugger_WorldStatePanel)
-					.ViewModel(_ViewModel)
-				]
-
-				+ SSplitter::Slot()
-				.Value(0.5f)
-				[
-					SAssignNew(_FailureAnalysisPanel, SCkGoapDebugger_FailureAnalysisPanel)
-					.ViewModel(_ViewModel)
-				]
+				BuildRightInspectorStack()
 			]
 		]
 	];
@@ -182,13 +168,9 @@ auto
 		_Graph->UpdateFromGoapInfo(*Info);
 	}
 
-	// Update plan strip
-	RebuildPlanStrip();
-
-	// Update diagnostics banner (no-op when unchanged)
 	RebuildDiagnosticsBanner();
 
-	// Update status badge
+	// Status badge
 	if (_StatusBadge.IsValid())
 	{
 		if (Info != nullptr)
@@ -199,167 +181,7 @@ auto
 		else
 		{
 			_StatusBadge->SetText(FText::FromString(TEXT("No Entity")));
-			_StatusBadge->SetColorAndOpacity(CkGoapDebuggerStyle::TextMuted);
-		}
-	}
-
-	// Update plan history list. Rebuild when count OR scrub selection changes
-	// so the highlight on the currently-scrubbed row stays accurate.
-	if (_HistoryListBox.IsValid())
-	{
-		const auto* History = _ViewModel->Get_PlanHistory(_ViewModel->Get_SelectedEntityHandle());
-		const auto HistoryCount = History ? History->Num() : 0;
-		const auto ScrubIdx = _ViewModel->Get_ScrubHistoryIndex();
-		const auto IsScrub = _ViewModel->Get_ViewMode() == ECk_GoapDebugger_ViewMode::Scrub;
-
-		auto HistoryHash = uint32{0};
-		HistoryHash = HashCombine(HistoryHash, GetTypeHash(HistoryCount));
-		HistoryHash = HashCombine(HistoryHash, GetTypeHash(IsScrub ? ScrubIdx : -1));
-
-		if (HistoryHash != _LastHistoryHash)
-		{
-			_LastHistoryHash = HistoryHash;
-			_LastHistoryCount = HistoryCount;
-			_HistoryListBox->ClearChildren();
-
-			if (History != nullptr)
-			{
-				for (auto Idx = History->Num() - 1; Idx >= 0; --Idx)
-				{
-					const auto& Entry = (*History)[Idx];
-					const auto StatusColor = CkGoapDebuggerStyle::GetStatusColor(Entry.FinalStatus);
-					const auto StatusText = CkGoapDebuggerStyle::GetStatusString(Entry.FinalStatus);
-					const auto IsSelected = IsScrub && ScrubIdx == Idx;
-					const auto RowBgColor = IsSelected
-						? FLinearColor(0.16f, 0.26f, 0.42f)
-						: FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-					// Build the plan chain text: Action1 → Action2 → ... → [Goal]
-					// We display the condensed name per the current NameDepth so
-					// long action/goal class names stay readable.
-					const auto& Snap = Entry.Snapshot;
-					auto ChainText = FString{};
-					for (auto StepIdx = 0; StepIdx < Snap.PlanActionNames.Num(); ++StepIdx)
-					{
-						if (StepIdx > 0) { ChainText += TEXT(" \u2192 "); }
-						ChainText += _Graph
-							? UCkGoapDebugGraph::ComputeDisplayName(Snap.PlanActionNames[StepIdx], _Graph->NameDepth)
-							: Snap.PlanActionNames[StepIdx];
-					}
-					auto GoalText = FString{};
-					for (const auto& Goal : Snap.Goals)
-					{
-						if (Goal.IsActiveGoal)
-						{
-							const auto GoalName = _Graph
-								? UCkGoapDebugGraph::ComputeDisplayName(Goal.ClassName, _Graph->NameDepth)
-								: Goal.ClassName;
-							GoalText = FString::Printf(TEXT("[%s]"), *GoalName);
-							break;
-						}
-					}
-					if (ChainText.IsEmpty()) { ChainText = TEXT("(no plan)"); }
-
-					const auto ClickedIdx = Idx;
-					_HistoryListBox->AddSlot()
-					.AutoHeight()
-					.Padding(2.0f, 1.0f)
-					[
-						// Row as a button so it's keyboard + mouse reachable.
-						SNew(SButton)
-						.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
-						.ContentPadding(FMargin(6.0f, 2.0f))
-						.OnClicked_Lambda([this, ClickedIdx]()
-						{
-							_ViewModel->Set_ScrubHistoryIndex(ClickedIdx);
-							if (_Graph) { _Graph->ForceRebuild(); }
-							return FReply::Handled();
-						})
-						[
-							SNew(SBorder)
-							.BorderImage(FAppStyle::GetBrush("GenericWhiteBox"))
-							.BorderBackgroundColor(RowBgColor)
-							.Padding(FMargin(6.0f, 2.0f))
-							[
-								// Horizontal scroll so long plan chains stay readable
-								// even when the history pane is narrow. The meta
-								// row (status dot, action count, frame) sits on top.
-								SNew(SVerticalBox)
-
-								+ SVerticalBox::Slot().AutoHeight()
-								[
-									SNew(SHorizontalBox)
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-									[
-										SNew(SImage)
-										.Image(FAppStyle::GetBrush("GenericWhiteBox"))
-										.ColorAndOpacity(StatusColor)
-										.DesiredSizeOverride(FVector2D(8.0f, 8.0f))
-									]
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 8.0f, 0.0f)
-									[
-										SNew(STextBlock)
-										.Text(FText::FromString(FString::Printf(TEXT("%s — %d steps, cost %.0f"),
-											*StatusText, Entry.PlanLength, Entry.PlanCost)))
-										.Font(FCoreStyle::GetDefaultFontStyle(IsSelected ? "Bold" : "Regular", 9))
-										.ColorAndOpacity(IsSelected
-											? FLinearColor(1.0f, 1.0f, 1.0f)
-											: FLinearColor(0.7f, 0.7f, 0.7f))
-									]
-									+ SHorizontalBox::Slot().FillWidth(1.0f)
-									+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-									[
-										SNew(STextBlock)
-										.Text(FText::FromString(FString::Printf(TEXT("F#%lld"), Entry.FrameNumber)))
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-										.ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.4f))
-									]
-								]
-
-								// Plan chain + goal on its own row, horizontally
-								// scrollable for long chains.
-								+ SVerticalBox::Slot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
-								[
-									SNew(SScrollBox)
-									.Orientation(Orient_Horizontal)
-									+ SScrollBox::Slot()
-									[
-										SNew(SHorizontalBox)
-										+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-										[
-											SNew(STextBlock)
-											.Text(FText::FromString(ChainText))
-											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-											.ColorAndOpacity(IsSelected
-												? FLinearColor(0.90f, 0.90f, 0.98f)
-												: FLinearColor(0.62f, 0.62f, 0.72f))
-										]
-										+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10.0f, 0.0f, 0.0f, 0.0f)
-										[
-											SNew(STextBlock)
-											.Text(FText::FromString(GoalText))
-											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-											.ColorAndOpacity(FLinearColor(0.96f, 0.78f, 0.18f))
-										]
-									]
-								]
-							]
-						]
-					];
-				}
-			}
-
-			if (HistoryCount == 0)
-			{
-				_HistoryListBox->AddSlot()
-				.AutoHeight()
-				.Padding(8.0f, 8.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(TEXT("No plan history yet")))
-					.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
-				];
-			}
+			_StatusBadge->SetColorAndOpacity(FSlateColor(CkDebugStyle::TextMute));
 		}
 	}
 }
@@ -390,12 +212,6 @@ auto
 			if (Action.ClassName == ActionNode->Get_ActionName())
 			{
 				_ActionDetailPanel->SetSelectedAction(&Action, ActionNode->Get_PlanStepIndex());
-				// Surface the details tab so the selection is visible.
-				if (_BottomTabSwitcher.IsValid())
-				{
-					_BottomTabIndex = 1;
-					_BottomTabSwitcher->SetActiveWidgetIndex(1);
-				}
 				return;
 			}
 		}
@@ -404,49 +220,146 @@ auto
 	_ActionDetailPanel->ClearSelection();
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkGoapDebuggerWindow::
+	OnMacroActionClicked(FString InClassName)
+	-> void
+{
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	if (Info == nullptr || !_ActionDetailPanel.IsValid()) { return; }
+
+	for (const auto& Action : Info->Actions)
+	{
+		if (Action.ClassName == InClassName)
+		{
+			_ActionDetailPanel->SetSelectedAction(&Action, INDEX_NONE);
+			return;
+		}
+	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkGoapDebuggerWindow::
+	OnPlanStepClicked(FString InClassName)
+	-> void
+{
+	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
+	if (Info == nullptr || !_ActionDetailPanel.IsValid()) { return; }
+
+	auto StepIdx = -1;
+	for (auto i = 0; i < Info->PlanActionNames.Num(); ++i)
+	{
+		if (Info->PlanActionNames[i] == InClassName) { StepIdx = i; break; }
+	}
+
+	for (const auto& Action : Info->Actions)
+	{
+		if (Action.ClassName == InClassName)
+		{
+			_ActionDetailPanel->SetSelectedAction(&Action, StepIdx);
+			return;
+		}
+	}
+}
+
 // ====================================================================================================================
 
 auto
 	SCkGoapDebuggerWindow::
-	BuildBottomTabs()
+	BuildRightInspectorStack()
 	-> TSharedRef<SWidget>
 {
+	SAssignNew(_WorldStatePanel, SCkGoapDebugger_WorldStatePanel)
+		.ViewModel(_ViewModel);
+
 	SAssignNew(_ActionDetailPanel, SCkGoapDebugger_StatsPanel)
 		.ViewModel(_ViewModel);
+
+	SAssignNew(_FailureAnalysisPanel, SCkGoapDebugger_FailureAnalysisPanel)
+		.ViewModel(_ViewModel);
+
+	return SNew(SSplitter)
+		.Orientation(Orient_Vertical)
+
+		+ SSplitter::Slot()
+		.Value(0.34f)
+		[
+			SNew(SCkDebug_InspectorPanel)
+			.Title(FText::FromString(TEXT("World State")))
+			.Body()
+			[
+				_WorldStatePanel.ToSharedRef()
+			]
+		]
+
+		+ SSplitter::Slot()
+		.Value(0.40f)
+		[
+			SNew(SCkDebug_InspectorPanel)
+			.Title(FText::FromString(TEXT("Action Details")))
+			.Body()
+			[
+				_ActionDetailPanel.ToSharedRef()
+			]
+		]
+
+		+ SSplitter::Slot()
+		.Value(0.26f)
+		[
+			SNew(SCkDebug_InspectorPanel)
+			.Title(FText::FromString(TEXT("Failure Analysis")))
+			.Body()
+			[
+				_FailureAnalysisPanel.ToSharedRef()
+			]
+		];
+}
+
+// ====================================================================================================================
+
+auto
+	SCkGoapDebuggerWindow::
+	BuildTopTabs()
+	-> TSharedRef<SWidget>
+{
+	SAssignNew(_MacroNodesPanel, SCkGoapDebug_MacroNodesPanel)
+		.ViewModel(_ViewModel)
+		.OnActionClicked(FOnCkGoapDebugMacroActionClicked::CreateSP(this, &SCkGoapDebuggerWindow::OnMacroActionClicked));
 
 	auto TabButton = [this](int32 InIndex, const FString& InLabel) -> TSharedRef<SWidget>
 	{
 		return SNew(SButton)
 			.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
-			.ContentPadding(FMargin(10.0f, 4.0f))
+			.ContentPadding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceS))
 			.OnClicked_Lambda([this, InIndex]()
 			{
-				_BottomTabIndex = InIndex;
-				if (_BottomTabSwitcher.IsValid())
-				{
-					_BottomTabSwitcher->SetActiveWidgetIndex(InIndex);
-				}
+				_TopTabIndex = InIndex;
+				if (_TopTabSwitcher.IsValid()) { _TopTabSwitcher->SetActiveWidgetIndex(InIndex); }
 				return FReply::Handled();
 			})
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush("GenericWhiteBox"))
+				.BorderImage(CkDebugStyle::GetFilledBrush())
 				.BorderBackgroundColor_Lambda([this, InIndex]()
 				{
-					return _BottomTabIndex == InIndex
-						? FLinearColor(0.16f, 0.26f, 0.42f)
-						: FLinearColor(0.06f, 0.08f, 0.13f);
+					return _TopTabIndex == InIndex
+						? FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.16f))
+						: FSlateColor(FLinearColor::Transparent);
 				})
-				.Padding(FMargin(8.0f, 3.0f))
+				.Padding(FMargin(CkDebugStyle::SpaceM, 3.0f))
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(InLabel))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
 					.ColorAndOpacity_Lambda([this, InIndex]()
 					{
-						return _BottomTabIndex == InIndex
-							? FLinearColor(1.0f, 1.0f, 1.0f)
-							: FLinearColor(0.7f, 0.7f, 0.72f);
+						return _TopTabIndex == InIndex
+							? FSlateColor(CkDebugStyle::Text)
+							: FSlateColor(CkDebugStyle::TextDim);
 					})
 				]
 			];
@@ -454,51 +367,35 @@ auto
 
 	return SNew(SVerticalBox)
 
-		// Tab headers
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		[
 			SNew(SBorder)
-			.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
-			.Padding(FMargin(4.0f, 2.0f))
+			.BorderImage(CkDebugStyle::GetFilledBrush())
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+			.Padding(FMargin(CkDebugStyle::SpaceL, 2.0f))
 			[
 				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
-				[ TabButton(0, TEXT("Plan")) ]
-
-				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f)
-				[ TabButton(1, TEXT("Action Details")) ]
-
+				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f) [ TabButton(0, TEXT("Graph")) ]
+				+ SHorizontalBox::Slot().AutoWidth().Padding(2.0f, 0.0f) [ TabButton(1, TEXT("Macro")) ]
 				+ SHorizontalBox::Slot().FillWidth(1.0f)
 			]
 		]
 
-		// Tab content
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
-			SAssignNew(_BottomTabSwitcher, SWidgetSwitcher)
+			SAssignNew(_TopTabSwitcher, SWidgetSwitcher)
 			.WidgetIndex(0)
 
 			+ SWidgetSwitcher::Slot()
 			[
-				SNew(SBorder)
-				.BorderBackgroundColor(FLinearColor(0.04f, 0.06f, 0.10f))
-				.Padding(FMargin(8.0f, 4.0f))
-				[
-					SNew(SScrollBox)
-					.Orientation(Orient_Horizontal)
-					+ SScrollBox::Slot()
-					[
-						SAssignNew(_PlanStripBox, SHorizontalBox)
-					]
-				]
+				_GraphEditor.ToSharedRef()
 			]
 
 			+ SWidgetSwitcher::Slot()
 			[
-				_ActionDetailPanel.ToSharedRef()
+				_MacroNodesPanel.ToSharedRef()
 			]
 		];
 }
@@ -511,20 +408,21 @@ auto
 	-> TSharedRef<SWidget>
 {
 	return SNew(SBorder)
-		.BorderBackgroundColor(FLinearColor(0.06f, 0.08f, 0.13f))
-		.Padding(FMargin(8.0f, 6.0f))
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+		.Padding(FMargin(CkDebugStyle::SpaceXL, CkDebugStyle::SpaceM))
 		[
 			SNew(SHorizontalBox)
 
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceS, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Entity:")))
-				.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f)
 			[
 				SAssignNew(_EntitySelector, STextComboBox)
 				.OptionsSource(&_EntitySelectorItems)
@@ -542,19 +440,19 @@ auto
 				})
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f)
 			[
 				SAssignNew(_StatusBadge, STextBlock)
 				.Text(FText::FromString(TEXT("Idle")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Name")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-				.ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
 			]
 
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -579,12 +477,12 @@ auto
 				SNew(STextBlock)
 				.Text_Lambda([this]()
 				{
-					if (NOT _Graph) { return FText::FromString(TEXT("1")); }
+					if (!_Graph) { return FText::FromString(TEXT("1")); }
 					auto D = _Graph->NameDepth;
 					return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
 				})
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FLinearColor(0.85f, 0.85f, 0.85f))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::Text))
 				.Justification(ETextJustify::Center)
 				.MinDesiredWidth(24.0f)
 			]
@@ -606,7 +504,7 @@ auto
 				})
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Relayout")))
@@ -618,29 +516,28 @@ auto
 			]
 
 			// H Spacing
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
-			[ SNew(STextBlock).Text(FText::FromString(TEXT("H"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", 8)).ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f)) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("H"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro)).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute)) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Max(100,_Graph->SpacingX-50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingX):TEXT("300")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",9)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingX):TEXT("300")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Min(800,_Graph->SpacingX+50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 
 			// V Spacing
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f, 0.0f, 0.0f)
-			[ SNew(STextBlock).Text(FText::FromString(TEXT("V"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", 8)).ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f)) ]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("V"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro)).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute)) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Max(40,_Graph->SpacingY-20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingY):TEXT("100")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",9)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingY):TEXT("100")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Min(400,_Graph->SpacingY+20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 
 			+ SHorizontalBox::Slot().FillWidth(1.0f)
 
-			// Back to Live — matches SM debugger. Visible only in Scrub mode.
-			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Back to Live")))
@@ -661,7 +558,7 @@ auto
 				})
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f)
 			[
 				SNew(SButton)
 				.Text(FText::FromString(TEXT("Zoom to Fit")))
@@ -672,7 +569,7 @@ auto
 				})
 			]
 
-			+ SHorizontalBox::Slot().AutoWidth().Padding(4.0f, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f)
 			[
 				SNew(SButton)
 				.Text_Lambda([this]()
@@ -683,7 +580,7 @@ auto
 				})
 				.OnClicked_Lambda([this]()
 				{
-					_ViewModel->Set_Paused(NOT _ViewModel->Get_Paused());
+					_ViewModel->Set_Paused(!_ViewModel->Get_Paused());
 					return FReply::Handled();
 				})
 			]
@@ -720,179 +617,14 @@ auto
 
 auto
 	SCkGoapDebuggerWindow::
-	BuildTimelineAndHistory()
-	-> TSharedRef<SWidget>
-{
-	return SNew(SVerticalBox)
-
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(CkGoapDebuggerStyle::PanelPadding, 6.0f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(TEXT("Plan History")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-			.ColorAndOpacity(CkGoapDebuggerStyle::SectionHeader)
-		]
-
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		[
-			SNew(SScrollBox)
-			+ SScrollBox::Slot()
-			[
-				SAssignNew(_HistoryListBox, SVerticalBox)
-			]
-		];
-}
-
-// ====================================================================================================================
-
-auto
-	SCkGoapDebuggerWindow::
-	RebuildPlanStrip()
-	-> void
-{
-	if (NOT _PlanStripBox.IsValid()) { return; }
-
-	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
-	const auto StepCount = Info ? Info->PlanActionNames.Num() : 0;
-
-	// Content hash: plan contents can change without changing step count
-	// (e.g. same-length plan for a different goal). Include each action name
-	// + its cost, total cost, status, and the current NameDepth so toolbar
-	// name-depth changes also retrigger a rebuild.
-	auto NewHash = uint32{0};
-	NewHash = HashCombine(NewHash, GetTypeHash(StepCount));
-	if (Info != nullptr)
-	{
-		NewHash = HashCombine(NewHash, GetTypeHash(static_cast<int32>(Info->PlanStatus)));
-		NewHash = HashCombine(NewHash, GetTypeHash(Info->PlanCost));
-		for (const auto& Name : Info->PlanActionNames)
-		{
-			NewHash = HashCombine(NewHash, GetTypeHash(Name));
-			for (const auto& A : Info->Actions)
-			{
-				if (A.ClassName == Name) { NewHash = HashCombine(NewHash, GetTypeHash(A.Cost)); break; }
-			}
-		}
-	}
-	NewHash = HashCombine(NewHash, GetTypeHash(_Graph ? _Graph->NameDepth : 0));
-
-	if (NewHash == _LastPlanStripHash) { return; }
-	_LastPlanStripHash = NewHash;
-
-	_PlanStripBox->ClearChildren();
-
-	if (Info == nullptr || StepCount == 0)
-	{
-		_PlanStripBox->AddSlot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(4.0f, 0.0f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(TEXT("No plan")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-			.ColorAndOpacity(CkGoapDebuggerStyle::TextMuted)
-		];
-		return;
-	}
-
-	const auto Theme = UCkDebuggerSettings::GetTheme();
-
-	for (auto StepIdx = 0; StepIdx < StepCount; ++StepIdx)
-	{
-		if (StepIdx > 0)
-		{
-			_PlanStripBox->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("\x2192")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
-				.ColorAndOpacity(FLinearColor(Theme.ActiveEdge.R, Theme.ActiveEdge.G, Theme.ActiveEdge.B, 0.5f))
-			];
-		}
-
-		const auto& ActionName = Info->PlanActionNames[StepIdx];
-		const auto DisplayName = _Graph
-			? UCkGoapDebugGraph::ComputeDisplayName(ActionName, _Graph->NameDepth)
-			: ActionName;
-
-		auto Cost = 0.0f;
-		for (const auto& A : Info->Actions)
-		{
-			if (A.ClassName == ActionName) { Cost = A.Cost; break; }
-		}
-
-		_PlanStripBox->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
-		[
-			SNew(SBorder)
-			.BorderImage(Theme.GetBodyBrush())
-			.BorderBackgroundColor(Theme.ActiveBorder)
-			.Padding(FMargin(0.0f))
-			[
-				SNew(SBorder)
-				.BorderImage(Theme.GetContentBrush())
-				.BorderBackgroundColor(Theme.ActiveFill)
-				.Padding(FMargin(8.0f, 4.0f))
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-					[
-						SNew(SBox).WidthOverride(18.0f).HeightOverride(18.0f).HAlign(HAlign_Center).VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(FText::AsNumber(StepIdx + 1))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-							.ColorAndOpacity(Theme.ActiveBorder)
-						]
-					]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(DisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-						.ColorAndOpacity(Theme.ActiveText)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Cost)))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(Theme.CostText)
-					]
-				]
-			]
-		];
-	}
-
-	// Total cost at the end
-	_PlanStripBox->AddSlot()
-	.AutoWidth()
-	.VAlign(VAlign_Center)
-	.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-	[
-		SNew(STextBlock)
-		.Text(FText::FromString(FString::Printf(TEXT("= %.0f"), Info->PlanCost)))
-		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-		.ColorAndOpacity(FLinearColor(0.96f, 0.62f, 0.04f))
-	];
-}
-
-// ====================================================================================================================
-
-auto
-	SCkGoapDebuggerWindow::
 	RebuildDiagnosticsBanner()
 	-> void
 {
-	if (NOT _DiagnosticsBanner.IsValid()) { return; }
+	if (!_DiagnosticsBanner.IsValid()) { return; }
 
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
 	const auto& Diag = Info ? Info->Diagnostics : FCkGoapDebugger_Diagnostics{};
 
-	// Quick hash to avoid rebuilding every frame when nothing changed.
 	auto Hash = uint32{0};
 	Hash = HashCombine(Hash, GetTypeHash(Diag.DependencyCycles.Num()));
 	Hash = HashCombine(Hash, GetTypeHash(Diag.UnreachableGoalConditions.Num()));
@@ -911,29 +643,28 @@ auto
 	_LastDiagnosticsHash = Hash;
 
 	_DiagnosticsBanner->ClearChildren();
+	if (!Diag.HasAnyWarning()) { return; }
 
-	if (NOT Diag.HasAnyWarning()) { return; }
-
-	const auto WarnBg   = FLinearColor(0.35f, 0.10f, 0.10f);
-	const auto WarnText = FLinearColor(1.00f, 0.85f, 0.80f);
-	const auto HeaderText = FLinearColor(1.00f, 0.55f, 0.30f);
+	const auto WarnBg     = CkDebugStyle::OverlayOf(CkDebugStyle::Err, 0.22f);
+	const auto WarnText   = CkDebugStyle::OverlayOf(CkDebugStyle::Warn, 0.95f);
+	const auto HeaderText = CkDebugStyle::Warn;
 
 	auto BuildRow = [&](const FString& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
 	{
 		return SNew(STextBlock)
 			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-			.ColorAndOpacity(InColor)
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
+			.ColorAndOpacity(FSlateColor(InColor))
 			.AutoWrapText(true);
 	};
 
 	auto Content = SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("\u26A0  GOAP Graph Diagnostics")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-			.ColorAndOpacity(HeaderText)
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
+			.ColorAndOpacity(FSlateColor(HeaderText))
 		];
 
 	for (const auto& Cycle : Diag.DependencyCycles)
@@ -971,8 +702,9 @@ auto
 	_DiagnosticsBanner->AddSlot().AutoHeight()
 	[
 		SNew(SBorder)
-		.BorderBackgroundColor(WarnBg)
-		.Padding(FMargin(12.0f, 8.0f))
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(WarnBg))
+		.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 		[
 			Content
 		]

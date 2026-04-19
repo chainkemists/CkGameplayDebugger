@@ -20,13 +20,14 @@ auto
 	_ViewModel = InArgs._ViewModel;
 	_OnStepClicked = InArgs._OnStepClicked;
 
-	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
+	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
 	ChildSlot
 	[
+		// No outer fill — editor chrome shows through. The pills provide all
+		// the visual contrast.
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+		.BorderImage(FAppStyle::GetBrush(TEXT("NoBorder")))
 		.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM, CkDebugStyle::SpaceL, CkDebugStyle::SpaceL))
 		[
 			SNew(SVerticalBox)
@@ -251,7 +252,7 @@ auto
 		bool bActive)
 	-> TSharedRef<SWidget>
 {
-	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
+	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 	const auto FilledBrush  = CkDebugStyle::GetFilledBrush();
 
 	const auto BorderColor = bActive ? CkDebugStyle::Accent
@@ -401,7 +402,7 @@ auto
 	BuildGoalPill(const FCkGoapDebugger_GoalInfo& InGoal)
 	-> TSharedRef<SWidget>
 {
-	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
+	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
 	auto CondStr = FString{};
 	for (auto i = 0; i < InGoal.Conditions.Num(); ++i)

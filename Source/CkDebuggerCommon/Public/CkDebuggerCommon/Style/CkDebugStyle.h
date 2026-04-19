@@ -10,27 +10,36 @@
 
 namespace CkDebugStyle
 {
+	// Palette color helper — the FLinearColor(FColor) ctor performs the
+	// sRGB → linear conversion Slate expects. Writing raw 0..1 linear values
+	// by hand makes them display way too bright, so every palette entry
+	// goes through FColor byte components that match the HTML mockup hexes.
+	inline auto Rgb(uint8 R, uint8 G, uint8 B) -> FLinearColor
+	{
+		return FLinearColor(FColor(R, G, B, 255));
+	}
+
 	// ----- Backgrounds -----
-	inline const auto BgRoot       = FLinearColor(0.043f, 0.055f, 0.075f);   // #0b0e13 — outer shell
-	inline const auto Bg1          = FLinearColor(0.067f, 0.083f, 0.110f);   // #11151c — panel base
-	inline const auto Bg2          = FLinearColor(0.086f, 0.106f, 0.141f);   // #161b24 — sunken row / inset
-	inline const auto Bg3          = FLinearColor(0.106f, 0.133f, 0.188f);   // #1b2230 — floating elements
+	inline const auto BgRoot       = Rgb(0x0b, 0x0e, 0x13);   // outer shell
+	inline const auto Bg1          = Rgb(0x11, 0x15, 0x1c);   // panel base
+	inline const auto Bg2          = Rgb(0x16, 0x1b, 0x24);   // sunken row / inset
+	inline const auto Bg3          = Rgb(0x1b, 0x22, 0x30);   // floating elements
 
 	// ----- Borders / dividers -----
-	inline const auto Border       = FLinearColor(0.137f, 0.165f, 0.220f);   // #232a38
-	inline const auto BorderStrong = FLinearColor(0.196f, 0.224f, 0.290f);   // #32394a
+	inline const auto Border       = Rgb(0x23, 0x2a, 0x38);
+	inline const auto BorderStrong = Rgb(0x32, 0x39, 0x4a);
 
 	// ----- Text -----
-	inline const auto Text         = FLinearColor(0.898f, 0.906f, 0.929f);   // #e5e7ed — primary
-	inline const auto TextDim      = FLinearColor(0.541f, 0.572f, 0.643f);   // #8a92a4 — secondary
-	inline const auto TextMute     = FLinearColor(0.353f, 0.384f, 0.467f);   // #5a6277 — placeholder / meta
+	inline const auto Text         = Rgb(0xe5, 0xe7, 0xed);
+	inline const auto TextDim      = Rgb(0x8a, 0x92, 0xa4);
+	inline const auto TextMute     = Rgb(0x5a, 0x62, 0x77);
 
 	// ----- Semantic colors -----
-	inline const auto Accent       = FLinearColor(0.961f, 0.784f, 0.259f);   // #f5c842 — primary focus / goal
-	inline const auto Ok           = FLinearColor(0.333f, 0.769f, 0.478f);   // #55c47a — success / satisfied
-	inline const auto Err          = FLinearColor(0.839f, 0.353f, 0.353f);   // #d65a5a — failure / unmet
-	inline const auto Warn         = FLinearColor(0.902f, 0.647f, 0.271f);   // #e6a545 — caution / needed
-	inline const auto Info         = FLinearColor(0.373f, 0.702f, 0.831f);   // #5fb3d4 — selection / current
+	inline const auto Accent       = Rgb(0xf5, 0xc8, 0x42);   // primary focus / goal
+	inline const auto Ok           = Rgb(0x55, 0xc4, 0x7a);   // success / satisfied
+	inline const auto Err          = Rgb(0xd6, 0x5a, 0x5a);   // failure / unmet
+	inline const auto Warn         = Rgb(0xe6, 0xa5, 0x45);   // caution / needed
+	inline const auto Info         = Rgb(0x5f, 0xb3, 0xd4);   // selection / current
 
 	// ----- Translucent overlays (for banners, selected rows) -----
 	inline auto OverlayOf(const FLinearColor& InBase, float InAlpha) -> FLinearColor
@@ -39,12 +48,12 @@ namespace CkDebugStyle
 	}
 
 	// ----- Category colors (shared enum so SM and other debuggers can reuse) -----
-	inline const auto CategoryGather   = FLinearColor(0.31f, 0.66f, 0.31f);
-	inline const auto CategoryBuild    = FLinearColor(0.76f, 0.54f, 0.16f);
-	inline const auto CategoryResearch = FLinearColor(0.37f, 0.70f, 0.83f);
-	inline const auto CategoryTrain    = FLinearColor(0.78f, 0.30f, 0.30f);
-	inline const auto CategoryAge      = FLinearColor(0.71f, 0.44f, 0.82f);
-	inline const auto CategoryTrade    = FLinearColor(0.83f, 0.69f, 0.37f);
+	inline const auto CategoryGather   = Rgb(0x4e, 0xa8, 0x4e);
+	inline const auto CategoryBuild    = Rgb(0xc2, 0x8a, 0x2a);
+	inline const auto CategoryResearch = Rgb(0x5f, 0xb3, 0xd4);
+	inline const auto CategoryTrain    = Rgb(0xc7, 0x4c, 0x4c);
+	inline const auto CategoryAge      = Rgb(0xb4, 0x6f, 0xd0);
+	inline const auto CategoryTrade    = Rgb(0xd4, 0xb1, 0x5f);
 
 	// ----- Spacing -----
 	constexpr auto SpaceXS  = 2.0f;
@@ -65,6 +74,14 @@ namespace CkDebugStyle
 	// ----- Common brushes (cached lookups) -----
 	CKDEBUGGERCOMMON_API auto GetFilledBrush() -> const FSlateBrush*; // solid white, tintable
 	CKDEBUGGERCOMMON_API auto GetRoundedBrush() -> const FSlateBrush*; // rounded selection / pill
+}
+
+// ----- Tone → color helper (forward-declared in each widget header that needs it) -----
+enum class ECkDebug_Tone : uint8;
+
+namespace CkDebugStyle
+{
+	CKDEBUGGERCOMMON_API auto GetToneColor(ECkDebug_Tone InTone) -> FLinearColor;
 }
 
 // ====================================================================================================================

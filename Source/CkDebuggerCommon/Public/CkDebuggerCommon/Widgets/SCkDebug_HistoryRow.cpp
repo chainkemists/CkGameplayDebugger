@@ -12,24 +12,6 @@
 
 // ====================================================================================================================
 
-namespace
-{
-	auto DoGetToneColor(ECkDebug_Tone InTone) -> FLinearColor
-	{
-		switch (InTone)
-		{
-			case ECkDebug_Tone::Info:   return CkDebugStyle::Info;
-			case ECkDebug_Tone::Ok:     return CkDebugStyle::Ok;
-			case ECkDebug_Tone::Warn:   return CkDebugStyle::Warn;
-			case ECkDebug_Tone::Err:    return CkDebugStyle::Err;
-			case ECkDebug_Tone::Accent: return CkDebugStyle::Accent;
-			default:                    return CkDebugStyle::TextDim;
-		}
-	}
-}
-
-// ====================================================================================================================
-
 auto
 	SCkDebug_HistoryRow::
 	Construct(const FArguments& InArgs)
@@ -37,7 +19,7 @@ auto
 {
 	_OnClicked = InArgs._OnClicked;
 
-	const auto ToneColor = DoGetToneColor(InArgs._Tone);
+	const auto ToneColor = CkDebugStyle::GetToneColor(InArgs._Tone);
 	const auto BgColor = InArgs._IsSelected
 		? CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.10f)
 		: FLinearColor::Transparent;

@@ -10,30 +10,12 @@
 
 // ====================================================================================================================
 
-namespace
-{
-	auto DoGetToneColor(ECkDebug_Tone InTone) -> FLinearColor
-	{
-		switch (InTone)
-		{
-			case ECkDebug_Tone::Info:   return CkDebugStyle::Info;
-			case ECkDebug_Tone::Ok:     return CkDebugStyle::Ok;
-			case ECkDebug_Tone::Warn:   return CkDebugStyle::Warn;
-			case ECkDebug_Tone::Err:    return CkDebugStyle::Err;
-			case ECkDebug_Tone::Accent: return CkDebugStyle::Accent;
-			default:                    return CkDebugStyle::TextDim;
-		}
-	}
-}
-
-// ====================================================================================================================
-
 auto
 	SCkDebug_StatusPill::
 	Construct(const FArguments& InArgs)
 	-> void
 {
-	const auto ToneColor = DoGetToneColor(InArgs._Tone);
+	const auto ToneColor = CkDebugStyle::GetToneColor(InArgs._Tone);
 	auto BgColor = ToneColor; BgColor.A = 0.16f;
 	auto BorderColor = ToneColor; BorderColor.A = 0.38f;
 

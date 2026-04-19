@@ -330,6 +330,7 @@ auto
 {
 	SAssignNew(_MacroNodesPanel, SCkGoapDebug_MacroNodesPanel)
 		.ViewModel(_ViewModel)
+		.Graph(_Graph)
 		.OnActionClicked(FOnCkGoapDebugMacroActionClicked::CreateSP(this, &SCkGoapDebuggerWindow::OnMacroActionClicked));
 
 	auto TabButton = [this](int32 InIndex, const FString& InLabel) -> TSharedRef<SWidget>

@@ -4,6 +4,8 @@
 #include "SCkGoapDebug_ActionRow.h"
 #include "SCkGoapDebug_GoalCard.h"
 
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ExpandableColumn.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_LabeledGroup.h"
@@ -21,6 +23,7 @@ auto
 	-> void
 {
 	_ViewModel = InArgs._ViewModel;
+	_Graph = InArgs._Graph;
 	_OnActionClicked = InArgs._OnActionClicked;
 
 	ChildSlot
@@ -95,6 +98,8 @@ auto
 		Hash = HashCombine(Hash, GetTypeHash(G.IsActiveGoal));
 		Hash = HashCombine(Hash, GetTypeHash(G.Priority));
 	}
+	// Toolbar Name-depth also affects rendered labels.
+	if (const auto* G = _Graph.Get()) { Hash = HashCombine(Hash, GetTypeHash(G->NameDepth)); }
 	return Hash;
 }
 
@@ -122,6 +127,14 @@ auto
 		];
 		return;
 	}
+
+	// Condense names via the toolbar's Name-depth control so labels match
+	// the graph and plan strip.
+	auto* Graph = _Graph.Get();
+	const auto Condense = [Graph](const FString& InClassName) -> FString
+	{
+		return Graph ? UCkGoapDebugGraph::ComputeDisplayName(InClassName, Graph->NameDepth) : InClassName;
+	};
 
 	const auto Tiers = FCkGoapDebug_ActionCategorizer::DiscoverTiers(Info->Actions, Info->Goals);
 
@@ -175,6 +188,7 @@ auto
 					SNew(SCkGoapDebug_ActionRow)
 					.Action(*A)
 					.Category(Cat)
+					.DisplayName(Condense(A->ClassName))
 					.OnClicked_Lambda([this](FString InName)
 					{
 						_OnActionClicked.ExecuteIfBound(InName);
@@ -249,6 +263,7 @@ auto
 			[
 				SNew(SCkGoapDebug_GoalCard)
 				.Goal(G)
+				.DisplayName(Condense(G.ClassName))
 			]
 		];
 	}

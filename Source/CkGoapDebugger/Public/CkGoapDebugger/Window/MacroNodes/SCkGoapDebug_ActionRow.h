@@ -22,6 +22,8 @@ public:
 	SLATE_BEGIN_ARGS(SCkGoapDebug_ActionRow) {}
 		SLATE_ARGUMENT(FCkGoapDebugger_ActionInfo, Action)
 		SLATE_ARGUMENT(ECkGoapDebug_ActionCategory, Category)
+		// Optional display-name override; falls back to ClassName when empty.
+		SLATE_ARGUMENT(FString, DisplayName)
 		SLATE_EVENT(FOnCkGoapDebugActionRowClicked, OnClicked)
 	SLATE_END_ARGS()
 

@@ -1,5 +1,7 @@
 #include "SCkGoapDebug_PlanStrip.h"
 
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
 #include "Widgets/Input/SButton.h"
@@ -18,6 +20,7 @@ auto
 	-> void
 {
 	_ViewModel = InArgs._ViewModel;
+	_Graph = InArgs._Graph;
 	_OnStepClicked = InArgs._OnStepClicked;
 
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
@@ -116,6 +119,8 @@ auto
 	Hash = HashCombine(Hash, GetTypeHash(Info->PlanActionNames.Num()));
 	Hash = HashCombine(Hash, GetTypeHash(Info->PlanCost));
 	Hash = HashCombine(Hash, GetTypeHash(static_cast<uint8>(Info->PlanStatus)));
+	// Rebuild when the toolbar's Name depth changes so pill labels follow it.
+	if (const auto* G = _Graph.Get()) { Hash = HashCombine(Hash, GetTypeHash(G->NameDepth)); }
 	for (const auto& Name : Info->PlanActionNames)
 	{
 		Hash = HashCombine(Hash, GetTypeHash(Name));
@@ -199,7 +204,11 @@ auto
 		}
 		if (_GoalNameText.IsValid())
 		{
-			_GoalNameText->SetText(FText::FromString(ActiveGoalEarly->ClassName));
+			auto* G = _Graph.Get();
+			const auto Display = G
+				? UCkGoapDebugGraph::ComputeDisplayName(ActiveGoalEarly->ClassName, G->NameDepth)
+				: ActiveGoalEarly->ClassName;
+			_GoalNameText->SetText(FText::FromString(Display));
 		}
 
 		_FlowBox->AddSlot()
@@ -231,9 +240,18 @@ auto
 			StepCount, StepCount == 1 ? TEXT("") : TEXT("s"),
 			Info->PlanCost, ActiveIdx + 1, StepCount)));
 	}
+	// Condense names via the toolbar's Name-depth control, same as the graph
+	// and history rail. Falls through to the raw class name when no graph is
+	// bound.
+	auto* Graph = _Graph.Get();
+	const auto Condense = [Graph](const FString& InClassName) -> FString
+	{
+		return Graph ? UCkGoapDebugGraph::ComputeDisplayName(InClassName, Graph->NameDepth) : InClassName;
+	};
+
 	if (_GoalNameText.IsValid())
 	{
-		_GoalNameText->SetText(FText::FromString(ActiveGoal ? ActiveGoal->ClassName : FString(TEXT("—"))));
+		_GoalNameText->SetText(FText::FromString(ActiveGoal ? Condense(ActiveGoal->ClassName) : FString(TEXT("—"))));
 	}
 
 	// Step pills + arrows.
@@ -253,7 +271,7 @@ auto
 			.VAlign(VAlign_Center)
 			.Padding(i == 0 ? FMargin(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f) : FMargin(0.0f))
 			[
-				BuildStepPill(i, Info->PlanActionNames[i], Cost, bDone, bActive)
+				BuildStepPill(i, Info->PlanActionNames[i], Condense(Info->PlanActionNames[i]), Cost, bDone, bActive)
 			];
 
 		// Arrow after each step pill (including the last, which points at the goal).
@@ -288,7 +306,8 @@ auto
 	SCkGoapDebug_PlanStrip::
 	BuildStepPill(
 		int32 InStepIdx,
-		const FString& InActionName,
+		const FString& InClassName,
+		const FString& InDisplayName,
 		float InCost,
 		bool bDone,
 		bool bActive)
@@ -316,7 +335,7 @@ auto
 	                       : bDone   ? CkDebugStyle::Ok()
 	                                 : CkDebugStyle::TextMute();
 
-	const auto ClassNameCaptured = InActionName;
+	const auto ClassNameCaptured = InClassName;
 	return SNew(SBox)
 		.MinDesiredWidth(150.0f)
 		[
@@ -380,7 +399,7 @@ auto
 							.AutoHeight()
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(InActionName))
+								.Text(FText::FromString(InDisplayName))
 								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepNameFontSize()))
 								.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 							]
@@ -459,6 +478,11 @@ auto
 		CondStr += InGoal.Conditions[i].AsString();
 	}
 
+	auto* Graph = _Graph.Get();
+	const auto GoalDisplay = Graph
+		? UCkGoapDebugGraph::ComputeDisplayName(InGoal.ClassName, Graph->NameDepth)
+		: InGoal.ClassName;
+
 	return SNew(SBox)
 		.MinDesiredWidth(200.0f)
 		[
@@ -489,8 +513,8 @@ auto
 					.Padding(0.0f, 1.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(InGoal.ClassName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+						.Text(FText::FromString(GoalDisplay))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_GoalNameFontSize()))
 						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 					]
 

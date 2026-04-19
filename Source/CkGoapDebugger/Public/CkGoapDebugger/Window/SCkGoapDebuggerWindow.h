@@ -9,8 +9,14 @@ class UCkGoapDebugGraph;
 class SCkGoapDebugger_WorldStatePanel;
 class SCkGoapDebugger_StatsPanel;
 class SCkGoapDebugger_FailureAnalysisPanel;
+class SCkGoapDebug_MacroNodesPanel;
+class SCkGoapDebug_PlanStrip;
+class SCkGoapDebug_HistoryRail;
 class SGraphEditor;
 class SWidgetSwitcher;
+class STextComboBox;
+class STextBlock;
+class SVerticalBox;
 
 // ====================================================================================================================
 
@@ -27,11 +33,12 @@ public:
 
 private:
 	auto BuildToolbar() -> TSharedRef<SWidget>;
+	auto BuildTopTabs() -> TSharedRef<SWidget>;
+	auto BuildRightInspectorStack() -> TSharedRef<SWidget>;
 	auto RefreshEntitySelector() -> void;
 	auto OnGraphSelectionChanged(const TSet<UObject*>& InSelection) -> void;
-	auto BuildTimelineAndHistory() -> TSharedRef<SWidget>;
-	auto BuildBottomTabs() -> TSharedRef<SWidget>;
-	auto RebuildPlanStrip() -> void;
+	auto OnMacroActionClicked(FString InClassName) -> void;
+	auto OnPlanStepClicked(FString InClassName) -> void;
 	auto RebuildDiagnosticsBanner() -> void;
 
 private:
@@ -43,26 +50,22 @@ private:
 	TSharedPtr<SCkGoapDebugger_WorldStatePanel> _WorldStatePanel;
 	TSharedPtr<SCkGoapDebugger_StatsPanel> _ActionDetailPanel;
 	TSharedPtr<SCkGoapDebugger_FailureAnalysisPanel> _FailureAnalysisPanel;
+	TSharedPtr<SCkGoapDebug_MacroNodesPanel> _MacroNodesPanel;
+	TSharedPtr<SCkGoapDebug_PlanStrip> _PlanStrip;
+	TSharedPtr<SCkGoapDebug_HistoryRail> _HistoryRail;
 
 	TArray<TSharedPtr<FString>> _EntitySelectorItems;
 	TArray<FCk_Handle> _EntitySelectorHandles;
 	TSharedPtr<STextComboBox> _EntitySelector;
 	TSharedPtr<STextBlock> _StatusBadge;
 
-	TSharedPtr<SVerticalBox> _HistoryListBox;
-	TSharedPtr<SHorizontalBox> _PlanStripBox;
-	uint32 _LastPlanStripHash = 0;
-
 	TSharedPtr<SVerticalBox> _DiagnosticsBanner;
 	uint32 _LastDiagnosticsHash = 0;
 
-	TSharedPtr<SWidgetSwitcher> _BottomTabSwitcher;
-	int32 _BottomTabIndex = 0;
+	TSharedPtr<SWidgetSwitcher> _TopTabSwitcher;
+	int32 _TopTabIndex = 0;
 
 	TWeakObjectPtr<UWorld> _CachedWorld;
-	int32 _SelectedHistoryIndex = -1;
-	int32 _LastHistoryCount = -1;
-	uint32 _LastHistoryHash = 0;
 };
 
 // ====================================================================================================================

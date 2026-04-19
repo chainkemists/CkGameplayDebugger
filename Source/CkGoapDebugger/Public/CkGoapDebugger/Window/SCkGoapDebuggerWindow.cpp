@@ -91,20 +91,21 @@ auto
 				.Graph(_Graph)
 			]
 
-			// CENTER — top tabs (Graph | Macro) + hero plan strip
+			// CENTER — top tabs (Graph | Macro) + resizable hero plan strip
 			+ SSplitter::Slot()
 			.Value(0.55f)
 			[
-				SNew(SVerticalBox)
+				SNew(SSplitter)
+				.Orientation(Orient_Vertical)
 
-				+ SVerticalBox::Slot()
-				.FillHeight(1.0f)
+				+ SSplitter::Slot()
+				.Value(0.78f)
 				[
 					BuildTopTabs()
 				]
 
-				+ SVerticalBox::Slot()
-				.AutoHeight()
+				+ SSplitter::Slot()
+				.Value(0.22f)
 				[
 					SAssignNew(_PlanStrip, SCkGoapDebug_PlanStrip)
 					.ViewModel(_ViewModel)

@@ -1,5 +1,7 @@
 #include "SCkDebug_ExpandableColumn.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -17,6 +19,10 @@ auto
 	_IsExpanded = InArgs._StartExpanded;
 	_OnExpansionChanged = InArgs._OnExpansionChanged;
 
+	// Backgrounds / colors / fonts pull from CkDebugStyle — FLinearColor
+	// args on this widget are ignored so the macro tab stays in sync with
+	// the shared palette.
+
 	auto HeaderRow = SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
@@ -25,8 +31,9 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-			.ColorAndOpacity(FSlateColor(InArgs._TitleColor))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
 	if (!InArgs._PillText.IsEmpty())
@@ -34,17 +41,17 @@ auto
 		HeaderRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(8.0f, 0.0f, 8.0f, 0.0f)
+			.Padding(CkDebugStyle::SpaceM, 0.0f, CkDebugStyle::SpaceM, 0.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("RoundedSelection_16x")))
-				.BorderBackgroundColor(FSlateColor(FLinearColor(0.16f, 0.19f, 0.25f)))
-				.Padding(FMargin(6.0f, 1.0f))
+				.BorderImage(CkDebugStyle::GetRoundedBrush())
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg3()))
+				.Padding(FMargin(CkDebugStyle::SpaceM, 1.0f))
 				[
 					SNew(STextBlock)
 					.Text(InArgs._PillText)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.54f, 0.57f, 0.65f)))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				]
 			];
 	}
@@ -55,15 +62,15 @@ auto
 		[
 			SAssignNew(_ChevronText, STextBlock)
 			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.42f, 0.44f, 0.50f)))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 		];
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-		.BorderBackgroundColor(FSlateColor(InArgs._BorderColor))
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Border()))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SVerticalBox)
@@ -78,9 +85,9 @@ auto
 				.OnClicked(this, &SCkDebug_ExpandableColumn::OnHeaderClicked)
 				[
 					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-					.BorderBackgroundColor(FSlateColor(InArgs._HeaderBackgroundColor))
-					.Padding(FMargin(12.0f, 8.0f))
+					.BorderImage(CkDebugStyle::GetFilledBrush())
+					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+					.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 					[
 						HeaderRow
 					]
@@ -92,9 +99,9 @@ auto
 			.FillHeight(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-				.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
-				.Padding(FMargin(8.0f, 6.0f))
+				.BorderImage(CkDebugStyle::GetFilledBrush())
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg2()))
+				.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 				[
 					SAssignNew(_BodySwitcher, SWidgetSwitcher)
 					.WidgetIndex(_IsExpanded ? 0 : 1)

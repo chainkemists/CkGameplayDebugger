@@ -2,6 +2,8 @@
 
 #include "SCkDebug_CategoryDot.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -14,9 +16,13 @@ auto
 	Construct(const FArguments& InArgs)
 	-> void
 {
+	// Backgrounds / text color / fonts all pull from CkDebugStyle — the
+	// FLinearColor args on this widget are ignored so the macro tab can't
+	// drift from the shared palette.
+
 	auto Header = SNew(SHorizontalBox);
 
-	const auto HasDot = InArgs._DotColor.A > 0.0f || InArgs._DotColor != FLinearColor::Transparent;
+	const auto HasDot = InArgs._DotColor.A > 0.0f;
 	if (HasDot)
 	{
 		Header->AddSlot()
@@ -36,8 +42,9 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Label)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-			.ColorAndOpacity(FSlateColor(InArgs._LabelColor))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
 	if (!InArgs._CountText.IsEmpty())
@@ -48,16 +55,16 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-				.ColorAndOpacity(FSlateColor(FLinearColor(0.45f, 0.48f, 0.55f)))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 	}
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-		.BorderBackgroundColor(FSlateColor(InArgs._BorderColor))
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Border()))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SVerticalBox)
@@ -67,9 +74,9 @@ auto
 			.AutoHeight()
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-				.BorderBackgroundColor(FSlateColor(InArgs._HeaderBackgroundColor))
-				.Padding(FMargin(8.0f, 4.0f))
+				.BorderImage(CkDebugStyle::GetFilledBrush())
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+				.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 				[
 					Header
 				]
@@ -80,9 +87,9 @@ auto
 			.FillHeight(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-				.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
-				.Padding(FMargin(6.0f, 4.0f))
+				.BorderImage(CkDebugStyle::GetFilledBrush())
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg2()))
+				.Padding(FMargin(CkDebugStyle::SpaceS, CkDebugStyle::SpaceS))
 				[
 					SAssignNew(_Body, SVerticalBox)
 				]

@@ -212,7 +212,7 @@ auto
 		_FlowBox->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(i == 0 ? FMargin(CkDebugStyle::SpaceM, 10.0f, 0.0f, 0.0f) : FMargin(0.0f, 10.0f, 0.0f, 0.0f))
+			.Padding(i == 0 ? FMargin(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f) : FMargin(0.0f))
 			[
 				BuildStepPill(i, Info->PlanActionNames[i], Cost, bDone, bActive)
 			];
@@ -221,7 +221,6 @@ auto
 		_FlowBox->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(FMargin(0.0f, 10.0f, 0.0f, 0.0f))
 			[
 				BuildArrow(bDone, bActive)
 			];
@@ -233,11 +232,15 @@ auto
 		_FlowBox->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(FMargin(CkDebugStyle::SpaceS, 10.0f, CkDebugStyle::SpaceM, 0.0f))
+			.Padding(FMargin(CkDebugStyle::SpaceS, 0.0f, CkDebugStyle::SpaceL, 0.0f))
 			[
 				BuildGoalPill(*ActiveGoal)
 			];
 	}
+
+	// Trailing spacer so the goal pill's right edge always has breathing
+	// room; without it, horizontal scroll looks glued to the pane border.
+	_FlowBox->AddSlot().AutoWidth()[ SNew(SBox).WidthOverride(CkDebugStyle::SpaceXL) ];
 }
 
 // ====================================================================================================================
@@ -274,7 +277,7 @@ auto
 
 	const auto ClassNameCaptured = InActionName;
 	return SNew(SBox)
-		.MinDesiredWidth(130.0f)
+		.MinDesiredWidth(150.0f)
 		[
 			SNew(SButton)
 			.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
@@ -285,51 +288,55 @@ auto
 				return FReply::Handled();
 			})
 			[
-				SNew(SOverlay)
-
-				// Step-number badge floats above the pill's top-left.
-				+ SOverlay::Slot()
-				.HAlign(HAlign_Left)
-				.VAlign(VAlign_Top)
-				.Padding(FMargin(CkDebugStyle::SpaceM, -9.0f, 0.0f, 0.0f))
-				[
-					SNew(SBox)
-					.WidthOverride(18.0f)
-					.HeightOverride(18.0f)
-					[
-						SNew(SBorder)
-						.BorderImage(RoundedBrush)
-						.BorderBackgroundColor(FSlateColor(BadgeColor))
-						.HAlign(HAlign_Center)
-						.VAlign(VAlign_Center)
-						.Padding(FMargin(0.0f))
-						[
-							SNew(STextBlock)
-							.Text(FText::AsNumber(InStepIdx + 1))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
-							.ColorAndOpacity(FSlateColor(BadgeTextColor))
-						]
-					]
-				]
-
-				// Pill body
-				+ SOverlay::Slot()
+				// Border + fill nested the same way graph nodes do.
+				SNew(SBorder)
+				.BorderImage(RoundedBrush)
+				.BorderBackgroundColor(FSlateColor(BorderColor))
+				.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 				[
 					SNew(SBorder)
 					.BorderImage(RoundedBrush)
-					.BorderBackgroundColor(FSlateColor(BorderColor))
-					.Padding(FMargin(1.0f))
+					.BorderBackgroundColor(FSlateColor(FillColor))
+					.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 					[
-						SNew(SBorder)
-						.BorderImage(RoundedBrush)
-						.BorderBackgroundColor(FSlateColor(FillColor))
-						.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+						SNew(SHorizontalBox)
+
+						// Number badge — inline leading column, not a floating
+						// overlay. Floating overlays were being clipped by the
+						// enclosing button's content rect.
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+						[
+							SNew(SBox)
+							.WidthOverride(18.0f)
+							.HeightOverride(18.0f)
+							[
+								SNew(SBorder)
+								.BorderImage(RoundedBrush)
+								.BorderBackgroundColor(FSlateColor(BadgeColor))
+								.HAlign(HAlign_Center)
+								.VAlign(VAlign_Center)
+								.Padding(FMargin(0.0f))
+								[
+									SNew(STextBlock)
+									.Text(FText::AsNumber(InStepIdx + 1))
+									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+									.ColorAndOpacity(FSlateColor(BadgeTextColor))
+								]
+							]
+						]
+
+						// Name + sub
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
 						[
 							SNew(SVerticalBox)
 
 							+ SVerticalBox::Slot()
 							.AutoHeight()
-							.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
 							[
 								SNew(STextBlock)
 								.Text(FText::FromString(InActionName))

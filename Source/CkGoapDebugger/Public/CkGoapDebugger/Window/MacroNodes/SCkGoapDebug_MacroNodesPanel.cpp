@@ -4,6 +4,7 @@
 #include "SCkGoapDebug_ActionRow.h"
 #include "SCkGoapDebug_GoalCard.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ExpandableColumn.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_LabeledGroup.h"
 
@@ -195,8 +196,8 @@ auto
 		const auto AvgCost = ActionCount > 0 ? TotalCost / ActionCount : 0.0f;
 		auto CollapsedSummary = SNew(STextBlock)
 			.Text(FText::FromString(FString::Printf(TEXT("%d actions hidden · avg cost %.1f"), ActionCount, AvgCost)))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.54f, 0.57f, 0.65f)));
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()));
 
 		const auto TierIdx = Tier.Index;
 		const auto StartExpanded = NOT _CollapsedTiers.Contains(TierIdx);

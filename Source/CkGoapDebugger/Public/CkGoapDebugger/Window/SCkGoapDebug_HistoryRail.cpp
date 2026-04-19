@@ -135,7 +135,12 @@ auto
 				break;
 			}
 		}
-		if (ChainText.IsEmpty()) { ChainText = TEXT("(no plan)"); }
+		if (ChainText.IsEmpty())
+		{
+			ChainText = Entry.FinalStatus == ECk_GoapPlanStatus::PlanFound
+				? TEXT("(goal already satisfied)")
+				: TEXT("(no plan)");
+		}
 		ChainText += GoalText;
 
 		const auto ClickedIdx = Idx;

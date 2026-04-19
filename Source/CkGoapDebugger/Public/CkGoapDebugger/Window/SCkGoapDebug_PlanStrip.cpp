@@ -1,6 +1,7 @@
 #include "SCkGoapDebug_PlanStrip.h"
 
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+#include "CkGoapDebugger/Window/SCkGoapDebug_ActionPill.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
@@ -313,130 +314,40 @@ auto
 		bool bActive)
 	-> TSharedRef<SWidget>
 {
-	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
-	const auto FilledBrush  = CkDebugStyle::GetFilledBrush();
+	const auto Variant = bActive ? ECkGoapDebug_ActionPillVariant::Active
+	                   : bDone   ? ECkGoapDebug_ActionPillVariant::Done
+	                             : ECkGoapDebug_ActionPillVariant::Pending;
 
-	const auto BorderColor = bActive ? CkDebugStyle::PlanStep_Border_Active()
-	                       : bDone   ? CkDebugStyle::PlanStep_Border_Done()
-	                                 : CkDebugStyle::PlanStep_Border_Pending();
-	const auto FillColor   = bActive ? CkDebugStyle::PlanStep_Fill_Active()
-	                       : bDone   ? CkDebugStyle::PlanStep_Fill_Done()
-	                                 : CkDebugStyle::PlanStep_Fill_Pending();
-	const auto BadgeColor  = bActive ? CkDebugStyle::PlanStep_Badge_Active()
-	                       : bDone   ? CkDebugStyle::PlanStep_Badge_Done()
-	                                 : CkDebugStyle::PlanStep_Badge_Pending();
-	const auto BadgeTextColor = bActive || bDone ? CkDebugStyle::BgRoot() : CkDebugStyle::TextDim();
+	// State row — the one piece unique to plan-strip pills; graph nodes
+	// replace this slot with pre/eff rows instead.
 	const auto StateText = bDone   ? FString(TEXT("done"))
 	                    : bActive  ? FString(TEXT("executing"))
 	                              : FString(TEXT("pending"));
-	// StateColor follows the pill border so "EXECUTING" never looks amber
-	// (which belongs to goals) or green (which belongs to the done state).
 	const auto StateColor = bActive ? CkDebugStyle::PlanStep_Border_Active()
 	                       : bDone   ? CkDebugStyle::Ok()
 	                                 : CkDebugStyle::TextMute();
 
+	auto StateRow = SNew(STextBlock)
+		.Text(FText::FromString(StateText))
+		.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepStateFontSize()))
+		.ColorAndOpacity(FSlateColor(StateColor))
+		.TransformPolicy(ETextTransformPolicy::ToUpper);
+
 	const auto ClassNameCaptured = InClassName;
-	return SNew(SBox)
+	return SNew(SCkGoapDebug_ActionPill)
+		.Variant(Variant)
+		.StepIndex(InStepIdx)
+		.Title(FText::FromString(InDisplayName))
+		.CostValue(InCost)
+		// Pending step borrows the Inactive variant's opacity dimming —
+		// force full opacity here since plan-strip pills are always visible.
+		.OpacityOverride(1.0f)
 		.MinDesiredWidth(150.0f)
-		[
-			SNew(SButton)
-			.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
-			.ContentPadding(FMargin(0.0f))
-			.OnClicked_Lambda([this, ClassNameCaptured]()
-			{
-				_OnStepClicked.ExecuteIfBound(ClassNameCaptured);
-				return FReply::Handled();
-			})
-			[
-				// Border + fill nested the same way graph nodes do.
-				SNew(SBorder)
-				.BorderImage(RoundedBrush)
-				.BorderBackgroundColor(FSlateColor(BorderColor))
-				.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
-				[
-					SNew(SBorder)
-					.BorderImage(RoundedBrush)
-					.BorderBackgroundColor(FSlateColor(FillColor))
-					.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
-					[
-						SNew(SHorizontalBox)
-
-						// Number badge — inline leading column, not a floating
-						// overlay. Floating overlays were being clipped by the
-						// enclosing button's content rect.
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
-						[
-							SNew(SBox)
-							.WidthOverride(18.0f)
-							.HeightOverride(18.0f)
-							[
-								SNew(SBorder)
-								.BorderImage(RoundedBrush)
-								.BorderBackgroundColor(FSlateColor(BadgeColor))
-								.HAlign(HAlign_Center)
-								.VAlign(VAlign_Center)
-								.Padding(FMargin(0.0f))
-								[
-									SNew(STextBlock)
-									.Text(FText::AsNumber(InStepIdx + 1))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
-									.ColorAndOpacity(FSlateColor(BadgeTextColor))
-								]
-							]
-						]
-
-						// Name + sub
-						+ SHorizontalBox::Slot()
-						.FillWidth(1.0f)
-						.VAlign(VAlign_Center)
-						[
-							SNew(SVerticalBox)
-
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							[
-								SNew(STextBlock)
-								.Text(FText::FromString(InDisplayName))
-								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepNameFontSize()))
-								.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
-							]
-
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f)
-							[
-								SNew(SHorizontalBox)
-
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), InCost)))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepCostFontSize()))
-									.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
-								]
-
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(StateText))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_StepStateFontSize()))
-									.ColorAndOpacity(FSlateColor(StateColor))
-									.TransformPolicy(ETextTransformPolicy::ToUpper)
-								]
-							]
-						]
-					]
-				]
-			]
-		];
+		.OnClicked(FOnCkGoapDebug_ActionPillClicked::CreateLambda([this, ClassNameCaptured]()
+		{
+			_OnStepClicked.ExecuteIfBound(ClassNameCaptured);
+		}))
+		.BodyContent() [ StateRow ];
 }
 
 // ====================================================================================================================

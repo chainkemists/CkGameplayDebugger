@@ -40,7 +40,7 @@ auto
 	const auto TitleColor = IsActive ? CkDebugStyle::Accent : CkDebugStyle::TextDim;
 	const auto Alpha = IsActive ? 1.0f : 0.7f;
 
-	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
+	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 

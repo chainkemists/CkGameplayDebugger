@@ -1,5 +1,7 @@
 #include "CkGoapDebug_ActionCategorizer.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
 // ====================================================================================================================
 
 auto
@@ -50,13 +52,13 @@ auto
 {
 	switch (InCat)
 	{
-		case ECkGoapDebug_ActionCategory::Gather:   return FLinearColor(0.31f, 0.66f, 0.31f);
-		case ECkGoapDebug_ActionCategory::Build:    return FLinearColor(0.76f, 0.54f, 0.16f);
-		case ECkGoapDebug_ActionCategory::Research: return FLinearColor(0.37f, 0.70f, 0.83f);
-		case ECkGoapDebug_ActionCategory::Train:    return FLinearColor(0.78f, 0.30f, 0.30f);
-		case ECkGoapDebug_ActionCategory::Age:      return FLinearColor(0.71f, 0.44f, 0.82f);
-		case ECkGoapDebug_ActionCategory::Trade:    return FLinearColor(0.83f, 0.69f, 0.37f);
-		default:                                    return FLinearColor(0.50f, 0.50f, 0.55f);
+		case ECkGoapDebug_ActionCategory::Gather:   return CkDebugStyle::CategoryGather;
+		case ECkGoapDebug_ActionCategory::Build:    return CkDebugStyle::CategoryBuild;
+		case ECkGoapDebug_ActionCategory::Research: return CkDebugStyle::CategoryResearch;
+		case ECkGoapDebug_ActionCategory::Train:    return CkDebugStyle::CategoryTrain;
+		case ECkGoapDebug_ActionCategory::Age:      return CkDebugStyle::CategoryAge;
+		case ECkGoapDebug_ActionCategory::Trade:    return CkDebugStyle::CategoryTrade;
+		default:                                    return CkDebugStyle::TextMute;
 	}
 }
 

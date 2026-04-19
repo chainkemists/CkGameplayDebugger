@@ -51,9 +51,11 @@ auto
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		[
+			// Body uses the NoBorder brush so the editor panel background
+			// shows through — layered tints on top of editor chrome read as
+			// washed-out gray.
 			SAssignNew(_BodyBorder, SBorder)
-			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+			.BorderImage(FAppStyle::GetBrush(TEXT("NoBorder")))
 			.Padding(FMargin(0.0f))
 			.Visibility(_IsExpanded ? EVisibility::Visible : EVisibility::Collapsed)
 			[

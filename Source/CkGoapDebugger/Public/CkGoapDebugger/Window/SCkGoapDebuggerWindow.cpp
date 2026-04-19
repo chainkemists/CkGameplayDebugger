@@ -407,9 +407,11 @@ auto
 	BuildToolbar()
 	-> TSharedRef<SWidget>
 {
+	// Toolbar renders directly against the editor panel background — no
+	// explicit fill, or it turns into a gray layer-cake when nested inside
+	// the editor chrome.
 	return SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+		.BorderImage(FAppStyle::GetBrush(TEXT("NoBorder")))
 		.Padding(FMargin(CkDebugStyle::SpaceXL, CkDebugStyle::SpaceM))
 		[
 			SNew(SHorizontalBox)

@@ -46,7 +46,7 @@ auto
 	const auto TextColor = InPlan ? CkDebugStyle::Text : CkDebugStyle::TextDim;
 	const auto Alpha = InPlan ? 1.0f : 0.55f;
 
-	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
+	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 

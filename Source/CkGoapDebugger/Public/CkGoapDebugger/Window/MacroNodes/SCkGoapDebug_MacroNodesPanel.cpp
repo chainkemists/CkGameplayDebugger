@@ -218,7 +218,7 @@ auto
 
 		auto PillText = Tier.GateTagKey.IsNone()
 			? FText::FromString(TEXT("no gate"))
-			: FText::FromString(FString::Printf(TEXT("gate: %s"), *Tier.GateTagKey.ToString()));
+			: FText::FromString(FString::Printf(TEXT("gate: %s"), *Condense(Tier.GateTagKey.ToString())));
 
 		auto Column = SNew(SCkDebug_ExpandableColumn)
 			.Title(FText::FromString(Tier.Label))

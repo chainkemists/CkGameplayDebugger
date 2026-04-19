@@ -1,6 +1,7 @@
 #include "SGraphNode_GoapAction.h"
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+#include "CkGoapDebugger/Window/SCkGoapDebug_ActionPill.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
@@ -39,65 +40,11 @@ auto
 	const auto InPlan = _ActionNode->Get_InPlan();
 	const auto PlanStep = _ActionNode->Get_PlanStepIndex();
 
-	const auto BorderColor = InPlan ? CkDebugStyle::NodeBorder_InPlan() : CkDebugStyle::NodeBorder_Inactive();
-	const auto FillColor   = InPlan ? CkDebugStyle::NodeFill_InPlan()   : CkDebugStyle::NodeFill_Inactive();
-	const auto TextColor   = InPlan ? CkDebugStyle::Text()              : CkDebugStyle::TextDim();
-	const auto Alpha       = InPlan ? 1.0f                              : CkDebugStyle::NodeInactiveOpacity();
-
-	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
-
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
-	// Header row — optional numbered step badge, action name, cost right-aligned.
-	auto HeaderRow = SNew(SHorizontalBox);
-
-	if (InPlan && PlanStep >= 0)
-	{
-		HeaderRow->AddSlot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
-			[
-				SNew(SBox)
-				.WidthOverride(18.0f)
-				.HeightOverride(18.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(RoundedBrush)
-					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Info()))
-					.HAlign(HAlign_Center)
-					.VAlign(VAlign_Center)
-					.Padding(FMargin(0.0f))
-					[
-						SNew(STextBlock)
-						.Text(FText::AsNumber(PlanStep + 1))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeMetaFontSize()))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::BgRoot()))
-					]
-				]
-			];
-	}
-
-	HeaderRow->AddSlot()
-		.FillWidth(1.0f)
-		.VAlign(VAlign_Center)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(_ActionNode->Get_DisplayName()))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
-			.ColorAndOpacity(FSlateColor(TextColor))
-		];
-
-	HeaderRow->AddSlot()
-		.AutoWidth()
-		.VAlign(VAlign_Center)
-		.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeCostFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
-		];
+	const auto Variant = InPlan
+		? ECkGoapDebug_ActionPillVariant::InPlan
+		: ECkGoapDebug_ActionPillVariant::Inactive;
 
 	const auto Body = _ActionNode->Get_IsPlanChainNode()
 		? CreateCompactEffectsSummary()
@@ -117,39 +64,17 @@ auto
 			SAssignNew(RightNodeBox, SVerticalBox)
 		]
 
-		// Visual frame: rounded border color + rounded fill with padded content.
+		// Shared action-pill — identical visual core to plan-strip step pills.
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Fill)
 		.VAlign(VAlign_Fill)
 		[
-			SNew(SBorder)
-			.BorderImage(RoundedBrush)
-			.BorderBackgroundColor(FSlateColor(BorderColor))
-			.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
-			.Visibility(EVisibility::SelfHitTestInvisible)
-			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
-			[
-				SNew(SBorder)
-				.BorderImage(RoundedBrush)
-				.BorderBackgroundColor(FSlateColor(FillColor))
-				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
-				[
-					SNew(SVerticalBox)
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					[
-						HeaderRow
-					]
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
-					[
-						Body
-					]
-				]
-			]
+			SNew(SCkGoapDebug_ActionPill)
+			.Variant(Variant)
+			.StepIndex(InPlan ? PlanStep : -1)
+			.Title(FText::FromString(_ActionNode->Get_DisplayName()))
+			.CostValue(_ActionNode->Get_Cost())
+			.BodyContent() [ Body ]
 		]
 	];
 

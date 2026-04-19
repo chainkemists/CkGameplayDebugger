@@ -181,7 +181,7 @@ auto
 		else
 		{
 			_StatusBadge->SetText(FText::FromString(TEXT("No Entity")));
-			_StatusBadge->SetColorAndOpacity(FSlateColor(CkDebugStyle::TextMute));
+			_StatusBadge->SetColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
 		}
 	}
 }
@@ -347,19 +347,19 @@ auto
 				.BorderBackgroundColor_Lambda([this, InIndex]()
 				{
 					return _TopTabIndex == InIndex
-						? FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.16f))
+						? FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Info(), 0.16f))
 						: FSlateColor(FLinearColor::Transparent);
 				})
 				.Padding(FMargin(CkDebugStyle::SpaceM, 3.0f))
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(InLabel))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
 					.ColorAndOpacity_Lambda([this, InIndex]()
 					{
 						return _TopTabIndex == InIndex
-							? FSlateColor(CkDebugStyle::Text)
-							: FSlateColor(CkDebugStyle::TextDim);
+							? FSlateColor(CkDebugStyle::Text())
+							: FSlateColor(CkDebugStyle::TextDim());
 					})
 				]
 			];
@@ -372,7 +372,7 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 			.Padding(FMargin(CkDebugStyle::SpaceL, 2.0f))
 			[
 				SNew(SHorizontalBox)
@@ -420,8 +420,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Entity:")))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
 			]
 
 			+ SHorizontalBox::Slot().AutoWidth().Padding(CkDebugStyle::SpaceS, 0.0f)
@@ -446,15 +446,15 @@ auto
 			[
 				SAssignNew(_StatusBadge, STextBlock)
 				.Text(FText::FromString(TEXT("Idle")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
 			]
 
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Name")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			]
 
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -483,8 +483,8 @@ auto
 					auto D = _Graph->NameDepth;
 					return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
 				})
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Text))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 				.Justification(ETextJustify::Center)
 				.MinDesiredWidth(24.0f)
 			]
@@ -519,21 +519,21 @@ auto
 
 			// H Spacing
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-			[ SNew(STextBlock).Text(FText::FromString(TEXT("H"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro)).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute)) ]
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("H"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro())).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute())) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Max(100,_Graph->SpacingX-50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingX):TEXT("300")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingX):TEXT("300")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall())).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingX=FMath::Min(800,_Graph->SpacingX+50);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 
 			// V Spacing
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceS, 0.0f, 0.0f, 0.0f)
-			[ SNew(STextBlock).Text(FText::FromString(TEXT("V"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro)).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute)) ]
+			[ SNew(STextBlock).Text(FText::FromString(TEXT("V"))).Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro())).ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute())) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("-"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Max(40,_Graph->SpacingY-20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingY):TEXT("100")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall)).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
+			[ SNew(STextBlock).Text_Lambda([this](){ return FText::FromString(_Graph?FString::Printf(TEXT("%d"),_Graph->SpacingY):TEXT("100")); }).Font(FCoreStyle::GetDefaultFontStyle("Bold",CkDebugStyle::FontSizeSmall())).Justification(ETextJustify::Center).MinDesiredWidth(32.0f) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[ SNew(SButton).Text(FText::FromString(TEXT("+"))).OnClicked_Lambda([this]() { if(_Graph){_Graph->SpacingY=FMath::Min(400,_Graph->SpacingY+20);_Graph->ForceRebuild();} return FReply::Handled(); }) ]
 
@@ -647,15 +647,15 @@ auto
 	_DiagnosticsBanner->ClearChildren();
 	if (!Diag.HasAnyWarning()) { return; }
 
-	const auto WarnBg     = CkDebugStyle::OverlayOf(CkDebugStyle::Err, 0.22f);
-	const auto WarnText   = CkDebugStyle::OverlayOf(CkDebugStyle::Warn, 0.95f);
-	const auto HeaderText = CkDebugStyle::Warn;
+	const auto WarnBg     = CkDebugStyle::OverlayOf(CkDebugStyle::Err(), 0.22f);
+	const auto WarnText   = CkDebugStyle::OverlayOf(CkDebugStyle::Warn(), 0.95f);
+	const auto HeaderText = CkDebugStyle::Warn();
 
 	auto BuildRow = [&](const FString& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
 	{
 		return SNew(STextBlock)
 			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
 			.ColorAndOpacity(FSlateColor(InColor))
 			.AutoWrapText(true);
 	};
@@ -665,7 +665,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("\u26A0  GOAP Graph Diagnostics")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
 			.ColorAndOpacity(FSlateColor(HeaderText))
 		];
 

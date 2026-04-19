@@ -45,7 +45,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Text)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
 			.ColorAndOpacity(FSlateColor(ToneColor))
 		];
 

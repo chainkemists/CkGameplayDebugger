@@ -31,7 +31,7 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 			[
 				_HeaderRow.ToSharedRef()
@@ -83,8 +83,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(_Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -97,8 +97,8 @@ auto
 			[
 				SAssignNew(_CountBadge, STextBlock)
 				.Text(_CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 	}
 
@@ -123,8 +123,8 @@ auto
 		[
 			SAssignNew(_ChevronText, STextBlock)
 			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeH4))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 		];
 }
 

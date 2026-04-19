@@ -45,8 +45,8 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("PLAN")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Text))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 					.TransformPolicy(ETextTransformPolicy::ToUpper)
 				]
 
@@ -57,8 +57,8 @@ auto
 				[
 					SAssignNew(_MetaText, STextBlock)
 					.Text(FText::FromString(TEXT("no plan")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				]
 
 				+ SHorizontalBox::Slot()
@@ -70,8 +70,8 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Goal:")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				]
 
 				+ SHorizontalBox::Slot()
@@ -81,8 +81,8 @@ auto
 				[
 					SAssignNew(_GoalNameText, STextBlock)
 					.Text(FText::FromString(TEXT("—")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 				]
 			]
 
@@ -169,8 +169,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("(no plan)")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeBody))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeBody()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 		return;
 	}
@@ -255,22 +255,22 @@ auto
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 	const auto FilledBrush  = CkDebugStyle::GetFilledBrush();
 
-	const auto BorderColor = bActive ? CkDebugStyle::Accent
-	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok, 0.55f)
-	                                 : CkDebugStyle::Border;
-	const auto FillColor   = bActive ? CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.10f)
-	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok,     0.08f)
-	                                 : CkDebugStyle::Bg2;
-	const auto BadgeColor  = bActive ? CkDebugStyle::Accent
-	                       : bDone   ? CkDebugStyle::Ok
-	                                 : CkDebugStyle::Bg3;
-	const auto BadgeTextColor = bActive || bDone ? CkDebugStyle::BgRoot : CkDebugStyle::TextDim;
+	const auto BorderColor = bActive ? CkDebugStyle::Accent()
+	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok(), 0.55f)
+	                                 : CkDebugStyle::Border();
+	const auto FillColor   = bActive ? CkDebugStyle::OverlayOf(CkDebugStyle::Accent(), 0.10f)
+	                       : bDone   ? CkDebugStyle::OverlayOf(CkDebugStyle::Ok(),     0.08f)
+	                                 : CkDebugStyle::Bg2();
+	const auto BadgeColor  = bActive ? CkDebugStyle::Accent()
+	                       : bDone   ? CkDebugStyle::Ok()
+	                                 : CkDebugStyle::Bg3();
+	const auto BadgeTextColor = bActive || bDone ? CkDebugStyle::BgRoot() : CkDebugStyle::TextDim();
 	const auto StateText = bDone   ? FString(TEXT("done"))
 	                    : bActive  ? FString(TEXT("executing"))
 	                              : FString(TEXT("pending"));
-	const auto StateColor = bActive ? CkDebugStyle::Accent
-	                       : bDone   ? CkDebugStyle::Ok
-	                                 : CkDebugStyle::TextMute;
+	const auto StateColor = bActive ? CkDebugStyle::Accent()
+	                       : bDone   ? CkDebugStyle::Ok()
+	                                 : CkDebugStyle::TextMute();
 
 	const auto ClassNameCaptured = InActionName;
 	return SNew(SBox)
@@ -306,7 +306,7 @@ auto
 						[
 							SNew(STextBlock)
 							.Text(FText::AsNumber(InStepIdx + 1))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
 							.ColorAndOpacity(FSlateColor(BadgeTextColor))
 						]
 					]
@@ -333,8 +333,8 @@ auto
 							[
 								SNew(STextBlock)
 								.Text(FText::FromString(InActionName))
-								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
-								.ColorAndOpacity(FSlateColor(CkDebugStyle::Text))
+								.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+								.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 							]
 
 							+ SVerticalBox::Slot()
@@ -349,8 +349,8 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), InCost)))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
-									.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+									.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 								]
 
 								+ SHorizontalBox::Slot()
@@ -360,7 +360,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(StateText))
-									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro))
+									.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
 									.ColorAndOpacity(FSlateColor(StateColor))
 									.TransformPolicy(ETextTransformPolicy::ToUpper)
 								]
@@ -379,9 +379,9 @@ auto
 	BuildArrow(bool bDone, bool bActive)
 	-> TSharedRef<SWidget>
 {
-	const auto Color = bDone   ? CkDebugStyle::Ok
-	                : bActive  ? CkDebugStyle::Accent
-	                          : CkDebugStyle::TextMute;
+	const auto Color = bDone   ? CkDebugStyle::Ok()
+	                : bActive  ? CkDebugStyle::Accent()
+	                          : CkDebugStyle::TextMute();
 
 	return SNew(SBox)
 		.WidthOverride(24.0f)
@@ -390,7 +390,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("\u2794")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeH3))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeH3()))
 			.ColorAndOpacity(FSlateColor(Color))
 		];
 }
@@ -416,12 +416,12 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Accent))
+			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Accent()))
 			.Padding(FMargin(1.5f))
 			[
 				SNew(SBorder)
 				.BorderImage(RoundedBrush)
-				.BorderBackgroundColor(FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.14f)))
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::OverlayOf(CkDebugStyle::Accent(), 0.14f)))
 				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 				[
 					SNew(SVerticalBox)
@@ -431,8 +431,8 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), InGoal.Priority)))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 						.TransformPolicy(ETextTransformPolicy::ToUpper)
 					]
 
@@ -442,8 +442,8 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(InGoal.ClassName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 					]
 
 					+ SVerticalBox::Slot()
@@ -452,8 +452,8 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(CondStr))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 					]
 				]
 			]

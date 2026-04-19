@@ -156,8 +156,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("Click a node in the graph or macro view to inspect")))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeBody))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeBody()))
 			.Justification(ETextJustify::Center)
 			.AutoWrapText(true)
 		];
@@ -201,8 +201,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(CategoryLabel)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 				.TransformPolicy(ETextTransformPolicy::ToUpper)
 			]
 		]
@@ -213,8 +213,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(A.ClassName))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH2))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Text))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH2()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 			.AutoWrapText(true)
 		]
 
@@ -230,8 +230,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString::Printf(TEXT("cost $%.0f"), A.Cost)))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 			]
 
 			+ SHorizontalBox::Slot()
@@ -241,8 +241,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString::Printf(TEXT("· %d pre · %d eff"), A.Preconditions.Num(), A.Effects.Num())))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			]
 		];
 
@@ -260,7 +260,7 @@ auto
 
 	auto HeaderBlock = SNew(SBorder)
 		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1))
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 		.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceL))
 		[
 			Header
@@ -301,8 +301,8 @@ auto
 				.KeyText(FText::FromString(Pre.Key.ToString()))
 				.ValueText(FText::FromString(Pre.Value ? TEXT("true") : TEXT("false")))
 				.ShowMarker(true)
-				.MarkerColor(CkDebugStyle::Err)
-				.BackgroundColor(CkDebugStyle::Bg2)
+				.MarkerColor(CkDebugStyle::Err())
+				.BackgroundColor(CkDebugStyle::Bg2())
 			]
 
 			+ SHorizontalBox::Slot()
@@ -344,10 +344,10 @@ auto
 				.KeyText(FText::FromString(Eff.Key.ToString()))
 				.ValueText(FText::FromString(FString::Printf(TEXT(":= %s"), Eff.Value ? TEXT("true") : TEXT("false"))))
 				.Tone(ECkDebug_KeyValueTone::Custom)
-				.CustomValueColor(CkDebugStyle::Ok)
+				.CustomValueColor(CkDebugStyle::Ok())
 				.ShowMarker(true)
-				.MarkerColor(CkDebugStyle::Ok)
-				.BackgroundColor(CkDebugStyle::Bg2)
+				.MarkerColor(CkDebugStyle::Ok())
+				.BackgroundColor(CkDebugStyle::Bg2())
 			];
 	}
 
@@ -386,8 +386,8 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("(no downstream consumers)")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+					.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 				];
 		}
 		else
@@ -402,8 +402,8 @@ auto
 						.KeyText(FText::FromString(Other->ClassName))
 						.ValueText(FText::FromString(FString::Printf(TEXT("$%.0f"), Other->Cost)))
 						.Tone(ECkDebug_KeyValueTone::Custom)
-						.CustomValueColor(CkDebugStyle::Accent)
-						.BackgroundColor(CkDebugStyle::Bg2)
+						.CustomValueColor(CkDebugStyle::Accent())
+						.BackgroundColor(CkDebugStyle::Bg2())
 					];
 			}
 		}
@@ -447,8 +447,8 @@ auto
 						.KeyText(FText::FromString(Goal->ClassName))
 						.ValueText(FText::FromString(FString::Printf(TEXT("P:%d"), Goal->Priority)))
 						.Tone(ECkDebug_KeyValueTone::Custom)
-						.CustomValueColor(CkDebugStyle::Accent)
-						.BackgroundColor(CkDebugStyle::Bg2)
+						.CustomValueColor(CkDebugStyle::Accent())
+						.BackgroundColor(CkDebugStyle::Bg2())
 					];
 			}
 		}

@@ -1,5 +1,7 @@
 #include "SCkDebug_CountBadge.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -41,12 +43,12 @@ auto
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush(TEXT("RoundedSelection_16x")))
+		.BorderImage(CkDebugStyle::GetRoundedBrush())
 		.BorderBackgroundColor(FSlateColor(InArgs._BorderColor))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush(TEXT("RoundedSelection_16x")))
+			.BorderImage(CkDebugStyle::GetRoundedBrush())
 			.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
 			.Padding(FMargin(6.0f, 1.0f))
 			[

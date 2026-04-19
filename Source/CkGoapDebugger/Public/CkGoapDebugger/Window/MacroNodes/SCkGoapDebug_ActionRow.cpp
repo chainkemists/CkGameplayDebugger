@@ -1,5 +1,6 @@
 #include "SCkGoapDebug_ActionRow.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 
@@ -50,9 +51,9 @@ auto
 			.FillWidth(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(FAppStyle::GetBrush(TEXT("GenericWhiteBox")))
-				.BorderBackgroundColor(FSlateColor(FLinearColor(0.09f, 0.11f, 0.15f)))
-				.Padding(FMargin(8.0f, 4.0f))
+				.BorderImage(CkDebugStyle::GetFilledBrush())
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg2()))
+				.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 				[
 					SNew(SHorizontalBox)
 
@@ -72,8 +73,8 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(InArgs._Action.ClassName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-						.ColorAndOpacity(FSlateColor(FLinearColor(0.88f, 0.88f, 0.92f)))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
 					]
 
 					+ SHorizontalBox::Slot()
@@ -93,7 +94,7 @@ auto
 					[
 						SNew(SCkDebug_CountBadge)
 						.ValueText(FText::FromString(FString::Printf(TEXT("$%.0f"), InArgs._Action.Cost)))
-						.ValueColor(FLinearColor(0.96f, 0.62f, 0.04f))
+						.ValueColor(CkDebugStyle::Accent())
 					]
 				]
 			]

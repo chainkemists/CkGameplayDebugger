@@ -1,13 +1,13 @@
 #include "SGraphNode_GoapGoal.h"
 #include "CkGoapDebugNode_Goal.h"
 
-#include "CkDebuggerCommon/Graph/CkDebugNodeTheme.h"
-#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Styling/AppStyle.h"
 
 // ====================================================================================================================
@@ -32,69 +32,103 @@ auto
 	RightNodeBox.Reset();
 	LeftNodeBox.Reset();
 
-	const auto Theme = UCkDebuggerSettings::GetTheme();
 	const auto IsActive = _GoalNode->Get_IsActiveGoal();
-	const auto BorderColor = IsActive ? Theme.GoalBorder : Theme.InactiveBorder;
+	const auto BorderColor = IsActive ? CkDebugStyle::Accent : CkDebugStyle::BorderStrong;
+	const auto FillColor = IsActive
+		? CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.14f)
+		: CkDebugStyle::OverlayOf(CkDebugStyle::Accent, 0.04f);
+	const auto TitleColor = IsActive ? CkDebugStyle::Accent : CkDebugStyle::TextDim;
+	const auto Alpha = IsActive ? 1.0f : 0.7f;
+
+	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
+	// Conditions list — mono font, single column, centered.
 	auto ConditionsList = SNew(SVerticalBox);
 	for (const auto& C : _GoalNode->Get_Conditions())
 	{
-		const auto Label = C.AsString();
-		ConditionsList->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
+		ConditionsList->AddSlot()
+		.AutoHeight()
+		.Padding(0.0f, 1.0f)
+		.HAlign(HAlign_Center)
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Label))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-			.ColorAndOpacity(Theme.PortLabel)
-			.Justification(ETextJustify::Center)
+			.Text(FText::FromString(C.AsString()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
 		];
 	}
 
+	const auto GoalDisplayName = _GoalNode->Get_DisplayName().IsEmpty()
+		? _GoalNode->Get_GoalName()
+		: _GoalNode->Get_DisplayName();
+
 	this->GetOrAddSlot(ENodeZone::Center)
-	.HAlign(HAlign_Center).VAlign(VAlign_Center)
+	.HAlign(HAlign_Center)
+	.VAlign(VAlign_Center)
 	[
-		SNew(SBorder)
-		.BorderImage(Theme.GetBodyBrush())
-		.Padding(Theme.GetBodyPadding())
-		.BorderBackgroundColor(BorderColor)
+		SNew(SOverlay)
+
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
 		[
-			SNew(SOverlay)
-			+ SOverlay::Slot().HAlign(HAlign_Fill).VAlign(VAlign_Fill)
-			[ SAssignNew(RightNodeBox, SVerticalBox) ]
-			+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Center)
+			SAssignNew(RightNodeBox, SVerticalBox)
+		]
+
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
+		[
+			SNew(SBorder)
+			.BorderImage(RoundedBrush)
+			.BorderBackgroundColor(FSlateColor(BorderColor))
+			.Padding(FMargin(1.5f))
+			.Visibility(EVisibility::SelfHitTestInvisible)
+			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
 			[
 				SNew(SBorder)
-				.BorderImage(Theme.GetContentBrush())
-				.BorderBackgroundColor(Theme.ActiveFill)
-				.Padding(FMargin(12.0f, 6.0f))
-				.Visibility(EVisibility::SelfHitTestInvisible)
+				.BorderImage(RoundedBrush)
+				.BorderBackgroundColor(FSlateColor(FillColor))
+				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 				[
 					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+
+					// Target pill: "● GOAL · priority N"
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("[GOAL] %s"),
-							*(_GoalNode->Get_DisplayName().IsEmpty()
-								? _GoalNode->Get_GoalName()
-								: _GoalNode->Get_DisplayName()))))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-						.ColorAndOpacity(Theme.GoalText)
+						.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), _GoalNode->Get_Priority())))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+						.TransformPolicy(ETextTransformPolicy::ToUpper)
 					]
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.0f, 2.0f, 0.0f, 0.0f)
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.HAlign(HAlign_Center)
+					.Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("P:%d"), _GoalNode->Get_Priority())))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity(Theme.InactiveText)
+						.Text(FText::FromString(GoalDisplayName))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3))
+						.ColorAndOpacity(FSlateColor(TitleColor))
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
-					[ ConditionsList ]
+
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0.0f, CkDebugStyle::SpaceM, 0.0f, 0.0f)
+					[
+						ConditionsList
+					]
 				]
 			]
 		]
 	];
+
 	CreatePinWidgets();
 }
 
@@ -123,3 +157,5 @@ auto
 	RightNodeBox->AddSlot().AutoHeight()[PinToAdd];
 	InputPins.Add(PinToAdd);
 }
+
+// ====================================================================================================================

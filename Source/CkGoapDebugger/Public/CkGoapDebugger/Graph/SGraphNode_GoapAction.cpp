@@ -2,14 +2,14 @@
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 
-#include "CkDebuggerCommon/Graph/CkDebugNodeTheme.h"
-#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Styling/AppStyle.h"
 
 // ====================================================================================================================
@@ -36,105 +36,119 @@ auto
 	RightNodeBox.Reset();
 	LeftNodeBox.Reset();
 
-	const auto Theme = UCkDebuggerSettings::GetTheme();
 	const auto InPlan = _ActionNode->Get_InPlan();
 	const auto PlanStep = _ActionNode->Get_PlanStepIndex();
 
-	const auto BorderColor = InPlan ? Theme.ActiveBorder : Theme.InactiveBorder;
-	const auto FillColor = InPlan ? Theme.ActiveFill : Theme.InactiveFill;
-	const auto TextColor = InPlan ? Theme.ActiveText : Theme.InactiveText;
-	const auto Alpha = InPlan ? 1.0f : Theme.InactiveAlpha;
+	const auto BorderColor = InPlan ? CkDebugStyle::Info : CkDebugStyle::Border;
+	const auto FillColor = InPlan
+		? CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.14f)
+		: CkDebugStyle::Bg2;
+	const auto TextColor = InPlan ? CkDebugStyle::Text : CkDebugStyle::TextDim;
+	const auto Alpha = InPlan ? 1.0f : 0.55f;
+
+	const auto RoundedBrush = FAppStyle::GetBrush(TEXT("RoundedSelection_16x"));
 
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
+
+	// Header row — optional numbered step badge, action name, cost right-aligned.
+	auto HeaderRow = SNew(SHorizontalBox);
+
+	if (InPlan && PlanStep >= 0)
+	{
+		HeaderRow->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+			[
+				SNew(SBox)
+				.WidthOverride(18.0f)
+				.HeightOverride(18.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(RoundedBrush)
+					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Info))
+					.HAlign(HAlign_Center)
+					.VAlign(VAlign_Center)
+					.Padding(FMargin(0.0f))
+					[
+						SNew(STextBlock)
+						.Text(FText::AsNumber(PlanStep + 1))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::BgRoot))
+					]
+				]
+			];
+	}
+
+	HeaderRow->AddSlot()
+		.FillWidth(1.0f)
+		.VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(_ActionNode->Get_DisplayName()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
+			.ColorAndOpacity(FSlateColor(TextColor))
+		];
+
+	HeaderRow->AddSlot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+		];
+
+	const auto Body = _ActionNode->Get_IsPlanChainNode()
+		? CreateCompactEffectsSummary()
+		: CreatePortRows();
 
 	this->GetOrAddSlot(ENodeZone::Center)
 	.HAlign(HAlign_Fill)
 	.VAlign(VAlign_Center)
 	[
-		SNew(SBorder)
-		.BorderImage(Theme.GetBodyBrush())
-		.Padding(Theme.GetBodyPadding())
-		.BorderBackgroundColor(this, &SGraphNode_GoapAction::GetBorderBackgroundColor)
-		.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
+		SNew(SOverlay)
+
+		// Hidden pin overlay for connection geometry.
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
 		[
-			SNew(SOverlay)
+			SAssignNew(RightNodeBox, SVerticalBox)
+		]
 
-			// Hidden pin overlay for connection geometry
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			[
-				SAssignNew(RightNodeBox, SVerticalBox)
-			]
-
-			// Visual content
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
+		// Visual frame: rounded border color + rounded fill with padded content.
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
+		[
+			SNew(SBorder)
+			.BorderImage(RoundedBrush)
+			.BorderBackgroundColor(FSlateColor(BorderColor))
+			.Padding(FMargin(1.5f))
+			.Visibility(EVisibility::SelfHitTestInvisible)
+			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
 			[
 				SNew(SBorder)
-				.BorderImage(Theme.GetContentBrush())
-				.BorderBackgroundColor(FillColor)
-				.Padding(FMargin(6.0f, 4.0f))
-				.Visibility(EVisibility::SelfHitTestInvisible)
+				.BorderImage(RoundedBrush)
+				.BorderBackgroundColor(FSlateColor(FillColor))
+				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 				[
 					SNew(SVerticalBox)
 
-					// Header: step badge + name + cost
 					+ SVerticalBox::Slot()
 					.AutoHeight()
 					[
-						SNew(SHorizontalBox)
-
-						// Step indicator
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-						[
-							SNew(SBox)
-							.WidthOverride(InPlan ? 8.0f : 0.0f)
-							.HeightOverride(InPlan ? 8.0f : 0.0f)
-							.Visibility(InPlan ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
-							[
-								SNew(SBorder)
-								.BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-								.BorderBackgroundColor(Theme.ActiveBorder)
-							]
-						]
-
-						// Action name
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(_ActionNode->Get_DisplayName()))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-							.ColorAndOpacity(TextColor)
-						]
-
-						// Cost
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(6.0f, 0.0f, 0.0f, 0.0f)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-							.ColorAndOpacity(Theme.CostText)
-						]
+						HeaderRow
 					]
 
-					// Ports
 					+ SVerticalBox::Slot()
 					.AutoHeight()
-					.Padding(0.0f, 3.0f, 0.0f, 0.0f)
+					.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
 					[
-						_ActionNode->Get_IsPlanChainNode()
-							? CreateCompactEffectsSummary()
-							: CreatePortRows()
+						Body
 					]
 				]
 			]
@@ -151,72 +165,89 @@ auto
 	CreatePortRows()
 	-> TSharedRef<SWidget>
 {
-	const auto Theme = UCkDebuggerSettings::GetTheme();
+	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall);
 
-	auto PortBox = SNew(SHorizontalBox);
-
-	// Preconditions (left) — render as "Tag OP Value".
+	// Preconditions column (left-aligned, red marker).
 	auto PreBox = SNew(SVerticalBox);
 	for (const auto& Pre : _ActionNode->Get_Preconditions())
 	{
-		const auto Label = Pre.AsString();
-
 		PreBox->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 1.0f)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 3.0f, 0.0f)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, 4.0f, 0.0f)
 			[
-				SNew(SImage)
-				.Image(FAppStyle::GetBrush("WhiteBrush"))
-				.ColorAndOpacity(Theme.PreconditionSatisfied)
-				.DesiredSizeOverride(FVector2D(5.0f, 5.0f))
+				SNew(SBox)
+				.WidthOverride(6.0f)
+				.HeightOverride(6.0f)
+				[
+					SNew(SImage)
+					.Image(CkDebugStyle::GetFilledBrush())
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Err))
+				]
 			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Label))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-				.ColorAndOpacity(Theme.PortLabel)
+				.Text(FText::FromString(Pre.AsString()))
+				.Font(MonoFont)
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
 			]
 		];
 	}
 
-	// Effects (right) — render as "Tag OP Value".
+	// Effects column (right-aligned, green marker).
 	auto EffBox = SNew(SVerticalBox);
 	for (const auto& Eff : _ActionNode->Get_Effects())
 	{
-		const auto Label = Eff.AsString();
-
 		EffBox->AddSlot()
 		.AutoHeight()
 		.Padding(0.0f, 1.0f)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().FillWidth(1.0f)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Label))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-				.ColorAndOpacity(Theme.PortLabel)
+				.Text(FText::FromString(Eff.AsString()))
+				.Font(MonoFont)
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
 			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(3.0f, 0.0f, 0.0f, 0.0f)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(4.0f, 0.0f, 0.0f, 0.0f)
 			[
-				SNew(SImage)
-				.Image(FAppStyle::GetBrush("WhiteBrush"))
-				.ColorAndOpacity(Theme.EffectPort)
-				.DesiredSizeOverride(FVector2D(5.0f, 5.0f))
+				SNew(SBox)
+				.WidthOverride(6.0f)
+				.HeightOverride(6.0f)
+				[
+					SNew(SImage)
+					.Image(CkDebugStyle::GetFilledBrush())
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok))
+				]
 			]
 		];
 	}
 
-	PortBox->AddSlot().AutoWidth()[PreBox];
-	PortBox->AddSlot().FillWidth(1.0f)[SNew(SSpacer).Size(FVector2D(12.0f, 0.0f))];
-	PortBox->AddSlot().AutoWidth()[EffBox];
-
-	return PortBox;
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth()           [ PreBox ]
+		+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(CkDebugStyle::SpaceL, 0.0f)[ SNew(SBox) ]
+		+ SHorizontalBox::Slot().AutoWidth()           [ EffBox ];
 }
 
 // ====================================================================================================================
@@ -226,8 +257,6 @@ auto
 	CreateCompactEffectsSummary()
 	-> TSharedRef<SWidget>
 {
-	const auto Theme = UCkDebuggerSettings::GetTheme();
-
 	auto EffectsText = FString{};
 	for (const auto& Eff : _ActionNode->Get_Effects())
 	{
@@ -237,8 +266,8 @@ auto
 
 	return SNew(STextBlock)
 		.Text(FText::FromString(EffectsText))
-		.Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-		.ColorAndOpacity(Theme.PreconditionSatisfied);
+		.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
+		.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok));
 }
 
 // ====================================================================================================================
@@ -248,14 +277,7 @@ auto
 	GetBorderBackgroundColor() const
 	-> FSlateColor
 {
-	const auto Theme = UCkDebuggerSettings::GetTheme();
-
-	if (_ActionNode->Get_InPlan())
-	{
-		return Theme.ActiveBorder;
-	}
-
-	return Theme.InactiveBorder;
+	return FSlateColor(_ActionNode->Get_InPlan() ? CkDebugStyle::Info : CkDebugStyle::Border);
 }
 
 // ====================================================================================================================

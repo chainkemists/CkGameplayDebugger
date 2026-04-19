@@ -21,9 +21,9 @@ auto
 
 	const auto ToneColor = CkDebugStyle::GetToneColor(InArgs._Tone);
 	const auto BgColor = InArgs._IsSelected
-		? CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.10f)
+		? CkDebugStyle::OverlayOf(CkDebugStyle::Info(), 0.10f)
 		: FLinearColor::Transparent;
-	const auto LeftBorderColor = InArgs._IsSelected ? CkDebugStyle::Info : FLinearColor::Transparent;
+	const auto LeftBorderColor = InArgs._IsSelected ? CkDebugStyle::Info() : FLinearColor::Transparent;
 
 	auto TopRow = SNew(SHorizontalBox)
 
@@ -48,8 +48,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._TitleText)
-			.Font(FCoreStyle::GetDefaultFontStyle(InArgs._IsSelected ? "Bold" : "Regular", CkDebugStyle::FontSizeBody))
-			.ColorAndOpacity(FSlateColor(InArgs._IsSelected ? CkDebugStyle::Text : CkDebugStyle::TextDim))
+			.Font(FCoreStyle::GetDefaultFontStyle(InArgs._IsSelected ? "Bold" : "Regular", CkDebugStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(InArgs._IsSelected ? CkDebugStyle::Text() : CkDebugStyle::TextDim()))
 		];
 
 	if (!InArgs._RightText.IsEmpty())
@@ -61,8 +61,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._RightText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 	}
 
@@ -82,8 +82,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._SubtitleText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 				.AutoWrapText(true)
 			];
 	}

@@ -20,8 +20,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Label)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -34,8 +34,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 			];
 	}
 

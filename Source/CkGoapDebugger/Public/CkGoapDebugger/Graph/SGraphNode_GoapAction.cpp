@@ -39,12 +39,10 @@ auto
 	const auto InPlan = _ActionNode->Get_InPlan();
 	const auto PlanStep = _ActionNode->Get_PlanStepIndex();
 
-	const auto BorderColor = InPlan ? CkDebugStyle::Info : CkDebugStyle::Border;
-	const auto FillColor = InPlan
-		? CkDebugStyle::OverlayOf(CkDebugStyle::Info, 0.14f)
-		: CkDebugStyle::Bg2;
-	const auto TextColor = InPlan ? CkDebugStyle::Text : CkDebugStyle::TextDim;
-	const auto Alpha = InPlan ? 1.0f : 0.55f;
+	const auto BorderColor = InPlan ? CkDebugStyle::NodeBorder_InPlan() : CkDebugStyle::NodeBorder_Inactive();
+	const auto FillColor   = InPlan ? CkDebugStyle::NodeFill_InPlan()   : CkDebugStyle::NodeFill_Inactive();
+	const auto TextColor   = InPlan ? CkDebugStyle::Text()              : CkDebugStyle::TextDim();
+	const auto Alpha       = InPlan ? 1.0f                              : CkDebugStyle::NodeInactiveOpacity();
 
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
@@ -66,15 +64,15 @@ auto
 				[
 					SNew(SBorder)
 					.BorderImage(RoundedBrush)
-					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Info))
+					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Info()))
 					.HAlign(HAlign_Center)
 					.VAlign(VAlign_Center)
 					.Padding(FMargin(0.0f))
 					[
 						SNew(STextBlock)
 						.Text(FText::AsNumber(PlanStep + 1))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::BgRoot))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::BgRoot()))
 					]
 				]
 			];
@@ -86,7 +84,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(_ActionNode->Get_DisplayName()))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
 			.ColorAndOpacity(FSlateColor(TextColor))
 		];
 
@@ -97,8 +95,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), _ActionNode->Get_Cost())))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
 		];
 
 	const auto Body = _ActionNode->Get_IsPlanChainNode()
@@ -127,7 +125,7 @@ auto
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)
 			.BorderBackgroundColor(FSlateColor(BorderColor))
-			.Padding(FMargin(1.5f))
+			.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 			.Visibility(EVisibility::SelfHitTestInvisible)
 			.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
 			[
@@ -165,7 +163,7 @@ auto
 	CreatePortRows()
 	-> TSharedRef<SWidget>
 {
-	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall);
+	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
 
 	// Preconditions column (left-aligned, red marker).
 	auto PreBox = SNew(SVerticalBox);
@@ -188,7 +186,7 @@ auto
 				[
 					SNew(SImage)
 					.Image(CkDebugStyle::GetFilledBrush())
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Err))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Err()))
 				]
 			]
 
@@ -199,7 +197,7 @@ auto
 				SNew(STextBlock)
 				.Text(FText::FromString(Pre.AsString()))
 				.Font(MonoFont)
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			]
 		];
 	}
@@ -224,7 +222,7 @@ auto
 				SNew(STextBlock)
 				.Text(FText::FromString(Eff.AsString()))
 				.Font(MonoFont)
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 			]
 
 			+ SHorizontalBox::Slot()
@@ -238,7 +236,7 @@ auto
 				[
 					SNew(SImage)
 					.Image(CkDebugStyle::GetFilledBrush())
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok))
+					.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok()))
 				]
 			]
 		];
@@ -266,8 +264,8 @@ auto
 
 	return SNew(STextBlock)
 		.Text(FText::FromString(EffectsText))
-		.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall))
-		.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok));
+		.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+		.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok()));
 }
 
 // ====================================================================================================================
@@ -277,7 +275,7 @@ auto
 	GetBorderBackgroundColor() const
 	-> FSlateColor
 {
-	return FSlateColor(_ActionNode->Get_InPlan() ? CkDebugStyle::Info : CkDebugStyle::Border);
+	return FSlateColor(_ActionNode->Get_InPlan() ? CkDebugStyle::NodeBorder_InPlan() : CkDebugStyle::NodeBorder_Inactive());
 }
 
 // ====================================================================================================================

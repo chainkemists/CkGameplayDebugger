@@ -52,13 +52,13 @@ auto
 {
 	switch (InCat)
 	{
-		case ECkGoapDebug_ActionCategory::Gather:   return CkDebugStyle::CategoryGather;
-		case ECkGoapDebug_ActionCategory::Build:    return CkDebugStyle::CategoryBuild;
-		case ECkGoapDebug_ActionCategory::Research: return CkDebugStyle::CategoryResearch;
-		case ECkGoapDebug_ActionCategory::Train:    return CkDebugStyle::CategoryTrain;
-		case ECkGoapDebug_ActionCategory::Age:      return CkDebugStyle::CategoryAge;
-		case ECkGoapDebug_ActionCategory::Trade:    return CkDebugStyle::CategoryTrade;
-		default:                                    return CkDebugStyle::TextMute;
+		case ECkGoapDebug_ActionCategory::Gather:   return CkDebugStyle::CategoryGather();
+		case ECkGoapDebug_ActionCategory::Build:    return CkDebugStyle::CategoryBuild();
+		case ECkGoapDebug_ActionCategory::Research: return CkDebugStyle::CategoryResearch();
+		case ECkGoapDebug_ActionCategory::Train:    return CkDebugStyle::CategoryTrain();
+		case ECkGoapDebug_ActionCategory::Age:      return CkDebugStyle::CategoryAge();
+		case ECkGoapDebug_ActionCategory::Trade:    return CkDebugStyle::CategoryTrade();
+		default:                                    return CkDebugStyle::TextMute();
 	}
 }
 

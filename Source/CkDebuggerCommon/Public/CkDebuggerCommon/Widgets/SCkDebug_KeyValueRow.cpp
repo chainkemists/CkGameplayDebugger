@@ -15,18 +15,18 @@ auto
 	Construct(const FArguments& InArgs)
 	-> void
 {
-	auto ValueColor = CkDebugStyle::Text;
+	auto ValueColor = CkDebugStyle::Text();
 	if (InArgs._Tone == ECkDebug_KeyValueTone::Bool)
 	{
 		const auto ValStr = InArgs._ValueText.ToString();
-		ValueColor = ValStr == TEXT("true") ? CkDebugStyle::Ok : CkDebugStyle::Err;
+		ValueColor = ValStr == TEXT("true") ? CkDebugStyle::Ok() : CkDebugStyle::Err();
 	}
 	else
 	{
 		ValueColor = InArgs._CustomValueColor;
 	}
 
-	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall);
+	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
 
 	auto Row = SNew(SHorizontalBox);
 
@@ -55,7 +55,7 @@ auto
 			SNew(STextBlock)
 			.Text(InArgs._KeyText)
 			.Font(MonoFont)
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
 		];
 
 	if (!InArgs._ValueText.IsEmpty())
@@ -67,7 +67,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._ValueText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
 				.ColorAndOpacity(FSlateColor(ValueColor))
 			];
 	}

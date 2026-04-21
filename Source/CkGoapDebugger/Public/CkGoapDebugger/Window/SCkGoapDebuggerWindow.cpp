@@ -15,6 +15,8 @@
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "GraphEditor.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -31,11 +33,15 @@
 
 // ====================================================================================================================
 
+const FName SCkGoapDebuggerWindow::WindowId = FName(TEXT("GoapDebugger"));
+
 auto
 	SCkGoapDebuggerWindow::
 	Construct(const FArguments& InArgs)
 	-> void
 {
+	Register_WithGate();
+
 	_ViewModel = MakeShared<FCkGoapDebugger_ViewModel>();
 
 	_ViewModel->OnGoapListChanged.AddLambda([this](const auto&)
@@ -145,6 +151,11 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	// Gate: skip the whole data-collection + graph-update chain when the
+	// window is hidden / paused / rate-capped. Huge editor-CPU win.
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+	{ return; }
 
 	// Find PIE world
 	auto* PieWorld = static_cast<UWorld*>(nullptr);
@@ -588,6 +599,15 @@ auto
 					_ViewModel->Set_Paused(!_ViewModel->Get_Paused());
 					return FReply::Handled();
 				})
+			]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SCkDebugger_RefreshControls)
+					.WindowId(SCkGoapDebuggerWindow::WindowId)
 			]
 		];
 }

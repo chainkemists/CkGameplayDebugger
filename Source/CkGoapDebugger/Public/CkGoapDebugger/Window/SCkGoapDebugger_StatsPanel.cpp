@@ -14,6 +14,8 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/CoreStyle.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 // ====================================================================================================================
 
@@ -70,6 +72,9 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkGoapDebuggerWindow::WindowId))
+	{ return; }
 
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
 	const FCkGoapDebugger_ActionInfo* Action = nullptr;

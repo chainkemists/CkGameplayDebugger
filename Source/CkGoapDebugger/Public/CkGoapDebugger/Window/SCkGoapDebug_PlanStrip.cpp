@@ -1,7 +1,7 @@
 #include "SCkGoapDebug_PlanStrip.h"
 
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
-#include "CkGoapDebugger/Window/SCkGoapDebug_ActionPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
@@ -12,6 +12,8 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 // ====================================================================================================================
 
@@ -143,6 +145,9 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkGoapDebuggerWindow::WindowId))
+	{ return; }
 
 	const auto H = ComputeHash();
 	if (H != _LastHash)
@@ -314,9 +319,9 @@ auto
 		bool bActive)
 	-> TSharedRef<SWidget>
 {
-	const auto Variant = bActive ? ECkGoapDebug_ActionPillVariant::Active
-	                   : bDone   ? ECkGoapDebug_ActionPillVariant::Done
-	                             : ECkGoapDebug_ActionPillVariant::Pending;
+	const auto Variant = bActive ? ECkDebug_NodePillVariant::Active
+	                   : bDone   ? ECkDebug_NodePillVariant::Done
+	                             : ECkDebug_NodePillVariant::Pending;
 
 	// State row — the one piece unique to plan-strip pills; graph nodes
 	// replace this slot with pre/eff rows instead.
@@ -334,7 +339,7 @@ auto
 		.TransformPolicy(ETextTransformPolicy::ToUpper);
 
 	const auto ClassNameCaptured = InClassName;
-	return SNew(SCkGoapDebug_ActionPill)
+	return SNew(SCkDebug_NodePill)
 		.Variant(Variant)
 		.StepIndex(InStepIdx)
 		.Title(FText::FromString(InDisplayName))
@@ -343,7 +348,7 @@ auto
 		// force full opacity here since plan-strip pills are always visible.
 		.OpacityOverride(1.0f)
 		.MinDesiredWidth(150.0f)
-		.OnClicked(FOnCkGoapDebug_ActionPillClicked::CreateLambda([this, ClassNameCaptured]()
+		.OnClicked(FOnCkDebug_NodePillClicked::CreateLambda([this, ClassNameCaptured]()
 		{
 			_OnStepClicked.ExecuteIfBound(ClassNameCaptured);
 		}))

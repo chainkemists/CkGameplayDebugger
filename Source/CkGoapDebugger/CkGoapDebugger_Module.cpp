@@ -143,6 +143,9 @@ auto
 			_Window.ToSharedRef()
 		];
 
+	// Hand the window a weak ref to its tab so the refresh gate can query visibility.
+	_Window->Set_OwningTab(_Tab);
+
 	return _Tab.ToSharedRef();
 }
 

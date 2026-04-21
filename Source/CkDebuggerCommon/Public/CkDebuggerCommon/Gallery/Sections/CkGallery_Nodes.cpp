@@ -8,6 +8,7 @@
 #include "CkCore/Public/CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
+#include "CkGallery_SectionUtils.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
@@ -19,16 +20,10 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+using ck::gallery::Caption;
+
 namespace
 {
-	auto Caption(const FString& InText) -> TSharedRef<SWidget>
-	{
-		return SNew(STextBlock)
-			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
-	}
-
 	// Body row that looks like a real graph-action precondition/effect summary.
 	auto MakeSamplePillBody(const FString& InPre, const FString& InEff) -> TSharedRef<SWidget>
 	{

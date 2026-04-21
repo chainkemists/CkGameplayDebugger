@@ -4,6 +4,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
+#include "CkGallery_SectionUtils.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
@@ -14,6 +15,8 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+using ck::gallery::Caption;
 
 namespace
 {
@@ -48,14 +51,6 @@ namespace
 	auto MakeColumn() -> TSharedRef<SVerticalBox>
 	{
 		return SNew(SVerticalBox);
-	}
-
-	auto Caption(const FString& InText) -> TSharedRef<SWidget>
-	{
-		return SNew(STextBlock)
-			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
 	}
 }
 

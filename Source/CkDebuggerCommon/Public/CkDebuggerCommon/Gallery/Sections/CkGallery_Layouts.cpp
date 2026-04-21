@@ -4,6 +4,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
+#include "CkGallery_SectionUtils.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ExpandableColumn.h"
@@ -18,16 +19,10 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 
+using ck::gallery::Caption;
+
 namespace
 {
-	auto Caption(const FString& InText) -> TSharedRef<SWidget>
-	{
-		return SNew(STextBlock)
-			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
-	}
-
 	auto MakeSampleKV(const FString& K, const FString& V, ECkDebug_KeyValueTone InTone, const FLinearColor& InColor) -> TSharedRef<SWidget>
 	{
 		return SNew(SCkDebug_KeyValueRow)

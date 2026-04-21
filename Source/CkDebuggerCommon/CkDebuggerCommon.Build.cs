@@ -11,6 +11,7 @@ public class CkDebuggerCommon : CkModuleRules
             "Engine",
             "DeveloperSettings",
 
+            "InputCore",     // EKeys symbols referenced by templated SListView/SComboBox instantiations
             "Slate",
             "SlateCore",
             "GraphEditor",
@@ -18,7 +19,18 @@ public class CkDebuggerCommon : CkModuleRules
             "AppFramework",
 
             // For UCk_Plugin_UserSettings_UE base class.
+            "CkCore",
             "CkSettings",
         });
+
+        if (Target.bBuildEditor)
+        {
+            PublicDependencyModuleNames.AddRange(new string[]
+            {
+                "UnrealEd",
+                "WorkspaceMenuStructure",
+                "ToolMenus",
+            });
+        }
     }
 }

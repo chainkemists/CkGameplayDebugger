@@ -41,12 +41,60 @@ namespace CkDebugStyle
 	CKDEBUGGERCOMMON_API auto Text()         -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto TextDim()      -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto TextMute()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto TextStrong()   -> FLinearColor;
 
 	CKDEBUGGERCOMMON_API auto Accent()       -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto Ok()           -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto Err()          -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto Warn()         -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto Info()         -> FLinearColor;
+
+	// ----- Selection & Hover --------------------------------------------------
+	CKDEBUGGERCOMMON_API auto Selection()         -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto SelectionInactive() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Hover()             -> FLinearColor;
+
+	// ----- Domain (ECS / component semantics) --------------------------------
+	CKDEBUGGERCOMMON_API auto None()               -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto EntityId()           -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Transform()          -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Network()            -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Relationship()       -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Attribute()          -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Reference()          -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PickMarker_Default() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto PickMarker_Hover()   -> FLinearColor;
+
+	// ----- Value-type colors -------------------------------------------------
+	CKDEBUGGERCOMMON_API auto Value_Bool_True()  -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Bool_False() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Numeric()    -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_String()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Math()       -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Tag()        -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Enum()       -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Object()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Value_Handle()     -> FLinearColor;
+
+	// ----- State colors ------------------------------------------------------
+	CKDEBUGGERCOMMON_API auto State_Enabled()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto State_Disabled()    -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto State_Overlapping() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto State_Config()      -> FLinearColor;
+
+	// ----- Status colors (objective / task progress) -------------------------
+	CKDEBUGGERCOMMON_API auto Status_NotStarted() -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Status_Active()     -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Status_Completed()  -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Status_Failed()     -> FLinearColor;
+
+	// ----- Graph canvas colors -----------------------------------------------
+	CKDEBUGGERCOMMON_API auto Graph_Background()         -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Graph_Edge()               -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Graph_Node_Center()        -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Graph_Node_Default()       -> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Graph_Node_Border_Default()-> FLinearColor;
+	CKDEBUGGERCOMMON_API auto Graph_Node_Border_Center() -> FLinearColor;
 
 	CKDEBUGGERCOMMON_API auto CategoryGather()   -> FLinearColor;
 	CKDEBUGGERCOMMON_API auto CategoryBuild()    -> FLinearColor;

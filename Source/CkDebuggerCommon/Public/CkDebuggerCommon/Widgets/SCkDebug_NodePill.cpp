@@ -95,6 +95,12 @@ auto
 	const auto AccentColor  = InArgs._AccentColor;
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
+	// ---- Header presence: if none of badge / title / cost are populated, the
+	//      whole header row is skipped. Callers that render their own title
+	//      inside BodyContent pass Title(FText::GetEmpty()) + ShowCost(false)
+	//      + StepIndex(-1) to get a body-only pill without empty-header padding.
+	const auto ShowHeader = ShowBadge || !InArgs._Title.IsEmpty() || InArgs._ShowCost;
+
 	// ---- Header row: [badge?] title [cost?] --------------------------------
 	auto HeaderRow = SNew(SHorizontalBox);
 
@@ -150,19 +156,22 @@ auto
 	}
 
 	// ---- Header + optional body stacked vertically --------------------------
-	auto PillBody = SNew(SVerticalBox)
+	auto PillBody = SNew(SVerticalBox);
 
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			HeaderRow
-		];
+	if (ShowHeader)
+	{
+		PillBody->AddSlot()
+			.AutoHeight()
+			[
+				HeaderRow
+			];
+	}
 
 	if (InArgs._BodyContent.Widget != SNullWidget::NullWidget)
 	{
 		PillBody->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+			.Padding(0.0f, ShowHeader ? CkDebugStyle::SpaceS : 0.0f, 0.0f, 0.0f)
 			[
 				InArgs._BodyContent.Widget
 			];

@@ -28,9 +28,6 @@ private:
     using FHistoryItemPtr = TSharedPtr<FCkSmDebugger_HistoryEntry>;
 
     auto GenerateRow(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
-    auto GenerateRow_ArrowCards(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable, int32 InIndex) -> TSharedRef<ITableRow>;
-    auto GenerateRow_ClassicArrows(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable, int32 InIndex) -> TSharedRef<ITableRow>;
-    auto GenerateRow_CompactBlocks(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable, int32 InIndex) -> TSharedRef<ITableRow>;
     auto BuildTaskChips(const TArray<FCkSmDebugger_HistoryTaskSnapshot>& InSnapshots, bool InShortNames) -> TSharedRef<SWidget>;
     auto OnSelectionChanged(FHistoryItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
     auto RebuildList() -> void;

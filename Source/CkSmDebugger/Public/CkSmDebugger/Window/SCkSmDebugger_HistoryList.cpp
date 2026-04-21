@@ -4,10 +4,16 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Images/SImage.h"
 
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -77,47 +83,108 @@ auto
         const TSharedRef<STableViewBase>& InOwnerTable)
     -> TSharedRef<ITableRow>
 {
-    auto ItemIndex = _Items.IndexOfByKey(InItem);
-    auto Style = _Graph
-        ? _Graph->LayoutParams.HistoryStyle
-        : ECkSmDebugger_HistoryStyle::ClassicArrows;
+    // Single-line layout — maximises rows-per-screen for transition history:
+    //
+    //   #Frame  +Delta  ToState ◀── FromState  via cond1, cond2       [chips]
+    //   └dim ──┘└accent┘└────── bold ────────┘└──── dim ────┘
+    //
+    // The SCkDebug_HistoryRow primitive doesn't fit this exact layout (it's a
+    // title + right-text + subtitle-below shape), so the row is assembled
+    // manually from the shared style tokens instead.
 
-    switch (Style)
+    const auto Depth   = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    const auto Index   = _Items.IndexOfByKey(InItem);
+    const auto FromName = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, Depth);
+    const auto ToName   = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName,   Depth);
+
+    const auto FrameStr = FString::Printf(TEXT("#%llu"), InItem->FrameNumber);
+    auto DeltaStr = FString{};
+    if (Index + 1 < _Items.Num())
     {
-    case ECkSmDebugger_HistoryStyle::ArrowCards:
-        return GenerateRow_ArrowCards(InItem, InOwnerTable, ItemIndex);
-    case ECkSmDebugger_HistoryStyle::CompactBlocks:
-        return GenerateRow_CompactBlocks(InItem, InOwnerTable, ItemIndex);
-    case ECkSmDebugger_HistoryStyle::ClassicArrows:
-    default:
-        return GenerateRow_ClassicArrows(InItem, InOwnerTable, ItemIndex);
+        const auto Delta = InItem->FrameNumber - _Items[Index + 1]->FrameNumber;
+        DeltaStr = FString::Printf(TEXT("+%llu"), Delta);
     }
-}
 
-// --------------------------------------------------------------------------------------------------------------------
-// Shared: task chips widget
-// --------------------------------------------------------------------------------------------------------------------
-// Shared helpers
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace
-{
-    auto FormatConditions(
-        const TArray<FString>& InNames,
-        int32 InNameDepth)
-        -> FString
+    auto CondStr = FString{};
     {
-        if (InNames.Num() == 0)
-        { return FString{}; }
-
         auto Parts = TArray<FString>{};
-        for (const auto& Name : InNames)
-        { Parts.Add(FCkSmLayoutParams::ComputeDisplayName(Name, InNameDepth)); }
-
-        return FString::Join(Parts, TEXT(", "));
+        for (const auto& Name : InItem->ConditionNames)
+        { Parts.Add(FCkSmLayoutParams::ComputeDisplayName(Name, Depth)); }
+        CondStr = Parts.Num() > 0
+            ? FString::Printf(TEXT("via %s"), *FString::Join(Parts, TEXT(", ")))
+            : FString(TEXT("(unconditional)"));
     }
+
+    const auto TitleStr = FString::Printf(TEXT("%s  \u25C0\u2500  %s"), *ToName, *FromName);
+
+    const auto MonoSmall = FCoreStyle::GetDefaultFontStyle("Mono", CkDebugStyle::FontSizeSmall());
+    const auto BoldBody  = FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody());
+    const auto RegSmall  = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
+
+    auto Line = SNew(SHorizontalBox)
+
+        // Frame number — mono, dim.
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(FrameStr))
+            .Font(MonoSmall)
+            .ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+        ]
+
+        // Delta from previous transition — mono, accent colour (the important
+        // signal when scanning the list for spikes / long gaps).
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(DeltaStr))
+            .Font(MonoSmall)
+            .ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
+            .Visibility(DeltaStr.IsEmpty() ? EVisibility::Collapsed : EVisibility::SelfHitTestInvisible)
+        ]
+
+        // Transition title — bold.
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(TitleStr))
+            .Font(BoldBody)
+            .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+        ]
+
+        // Conditions — dim, regular.
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+            .Text(FText::FromString(CondStr))
+            .Font(RegSmall)
+            .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+        ]
+
+        // Spacer so chips go to the right edge.
+        + SHorizontalBox::Slot().FillWidth(1.0f)
+        [ SNew(SSpacer) ]
+
+        // Task chips — on the same line, right-aligned.
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+        [ BuildTaskChips(InItem->TaskSnapshots, true) ];
+
+    return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
+        .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
+        [
+            SNew(SBorder)
+            .BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
+            .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+            [ Line ]
+        ];
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+// Task chips
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -130,14 +197,13 @@ auto
     if (InSnapshots.Num() == 0)
     { return SNullWidget::NullWidget; }
 
-    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    const auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
     auto Box = SNew(SHorizontalBox);
 
     for (const auto& Snap : InSnapshots)
     {
-        auto ResultColor = CkSmDebugger::GetTaskResultColor(Snap.Result);
+        const auto ResultColor = CkSmDebugger::GetTaskResultColor(Snap.Result);
         auto Icon = FString{};
-
         switch (Snap.Result)
         {
         case ECk_SmTaskResult::Running:   Icon = TEXT("\x25CF"); break;
@@ -145,495 +211,27 @@ auto
         case ECk_SmTaskResult::Failed:    Icon = TEXT("\x2717"); break;
         }
 
-        auto DisplayName = InShortNames
+        const auto DisplayName = InShortNames
             ? FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth)
             : Snap.TaskName;
-
-        auto ChipText = FString::Printf(TEXT("%s %s"), *DisplayName, *Icon);
 
         Box->AddSlot()
             .AutoWidth()
             .Padding(2.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
-                SNew(SBorder)
-                    .BorderBackgroundColor(FLinearColor(ResultColor.R, ResultColor.G, ResultColor.B, 0.15f))
-                    .Padding(FMargin(4.0f, 1.0f))
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(ChipText))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                            .ColorAndOpacity(ResultColor)
-                    ]
+                SNew(SCkDebug_CountBadge)
+                    .ValueText(FText::FromString(DisplayName))
+                    .SuffixText(FText::FromString(Icon))
+                    .ValueColor(ResultColor)
+                    .SuffixColor(ResultColor)
+                    .BorderColor(FLinearColor(ResultColor.R, ResultColor.G, ResultColor.B, 0.4f))
             ];
     }
 
     return Box;
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-// Style: Arrow Cards (two-line)
-//
-//   [449251 +47]  Chase  ◀──  Idle
-//                via CanSee, InRange  [TimedWork ✓] [LogOnly ●]
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSmDebugger_HistoryList::
-    GenerateRow_ArrowCards(
-        FHistoryItemPtr InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable,
-        int32 InIndex)
-    -> TSharedRef<ITableRow>
-{
-    auto FromColor = CkSmDebugger::ComputeStateColor(InItem->FromStateName);
-    auto ToColor = CkSmDebugger::ComputeStateColor(InItem->ToStateName);
-    auto ZebraTint = (InIndex % 2 == 0)
-        ? FLinearColor(1.0f, 1.0f, 1.0f, 0.03f)
-        : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-    auto CondStr = FormatConditions(InItem->ConditionNames, Depth);
-    if (NOT CondStr.IsEmpty())
-    { CondStr = TEXT("via ") + CondStr; }
-
-    auto FrameStr = FString::Printf(TEXT("[%llu"), InItem->FrameNumber);
-    if (InIndex + 1 < _Items.Num())
-    {
-        auto Delta = InItem->FrameNumber - _Items[InIndex + 1]->FrameNumber;
-        FrameStr += FString::Printf(TEXT(" +%llu"), Delta);
-    }
-    FrameStr += TEXT("]");
-
-    return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
-        .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
-        [
-            SNew(SBorder)
-                .BorderBackgroundColor(ZebraTint)
-                .Padding(FMargin(4.0f, 3.0f))
-                [
-                    SNew(SVerticalBox)
-
-                    // Top line: [frame +delta]  To  ◀──  From
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SNew(SHorizontalBox)
-
-                            // Frame + delta
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                [
-                                    SNew(SBox)
-                                        .MinDesiredWidth(90.0f)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(FrameStr))
-                                                .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                        ]
-                                ]
-
-                            // To (arrived at)
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                [
-                                    SNew(SBox)
-                                        .MinDesiredWidth(90.0f)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text_Lambda([this, InItem]()
-                                                {
-                                                    auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                                    auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
-                                                    if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                                    { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                                    return FText::FromString(Name);
-                                                })
-                                                .ColorAndOpacity(ToColor)
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                        ]
-                                ]
-
-                            // Arrow (left-pointing)
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                .Padding(2.0f, 0.0f)
-                                [
-                                    SNew(SBox)
-                                        .MinDesiredWidth(32.0f)
-                                        .HAlign(HAlign_Center)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(TEXT("\x25C0\x2500\x2500")))
-                                                .ColorAndOpacity(FLinearColor(0.45f, 0.45f, 0.5f))
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                        ]
-                                ]
-
-                            // From (came from)
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                [
-                                    SNew(SBox)
-                                        .MinDesiredWidth(90.0f)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text_Lambda([this, InItem]()
-                                                {
-                                                    auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                                    auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
-                                                    if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                                    { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                                    return FText::FromString(Name);
-                                                })
-                                                .ColorAndOpacity(FromColor)
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                        ]
-                                ]
-
-                            + SHorizontalBox::Slot()
-                                .FillWidth(1.0f)
-                                [ SNullWidget::NullWidget ]
-                        ]
-
-                    // Bottom line: conditions + task chips
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        .Padding(90.0f, 1.0f, 0.0f, 0.0f)
-                        [
-                            SNew(SHorizontalBox)
-
-                            // Conditions
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(CondStr.IsEmpty() ? TEXT("(unconditional)") : CondStr))
-                                        .ColorAndOpacity(FLinearColor(0.45f, 0.45f, 0.5f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                ]
-
-                            // Task chips (right after conditions)
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                .VAlign(VAlign_Center)
-                                .Padding(6.0f, 0.0f, 0.0f, 0.0f)
-                                [
-                                    BuildTaskChips(InItem->TaskSnapshots, true)
-                                ]
-                        ]
-                ]
-        ];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// Style: Classic Arrows (single-line)
-//
-//   [449251 +47]  Chase  ◀─  Idle   via CanSee, InRange  [TW ✓] [LO ●]
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSmDebugger_HistoryList::
-    GenerateRow_ClassicArrows(
-        FHistoryItemPtr InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable,
-        int32 InIndex)
-    -> TSharedRef<ITableRow>
-{
-    auto FromColor = CkSmDebugger::ComputeStateColor(InItem->FromStateName);
-    auto ToColor = CkSmDebugger::ComputeStateColor(InItem->ToStateName);
-    auto ZebraTint = (InIndex % 2 == 0)
-        ? FLinearColor(1.0f, 1.0f, 1.0f, 0.03f)
-        : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-    auto CondStr = FormatConditions(InItem->ConditionNames, Depth);
-    if (NOT CondStr.IsEmpty())
-    { CondStr = TEXT("via ") + CondStr; }
-
-    // Compute delta frames from the previous (older) transition.
-    // _Items is reverse-chronological, so the older entry is at InIndex+1.
-    auto FrameStr = FString::Printf(TEXT("[%llu"), InItem->FrameNumber);
-    if (InIndex + 1 < _Items.Num())
-    {
-        auto Delta = InItem->FrameNumber - _Items[InIndex + 1]->FrameNumber;
-        FrameStr += FString::Printf(TEXT(" +%llu"), Delta);
-    }
-    FrameStr += TEXT("]");
-
-    return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
-        .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
-        [
-            SNew(SBorder)
-                .BorderBackgroundColor(ZebraTint)
-                .Padding(FMargin(4.0f, 2.0f))
-                [
-                    SNew(SHorizontalBox)
-
-                    // Frame + delta
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(90.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(FrameStr))
-                                        .ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.45f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                ]
-                        ]
-
-                    // To (arrived at)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(90.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text_Lambda([this, InItem]()
-                                        {
-                                            auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
-                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                            return FText::FromString(Name);
-                                        })
-                                        .ColorAndOpacity(ToColor)
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                ]
-                        ]
-
-                    // Arrow (left-pointing)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(28.0f)
-                                .HAlign(HAlign_Center)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(TEXT("\x25C0\x2500")))
-                                        .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                ]
-                        ]
-
-                    // From (came from)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(90.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text_Lambda([this, InItem]()
-                                        {
-                                            auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
-                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                            return FText::FromString(Name);
-                                        })
-                                        .ColorAndOpacity(FromColor)
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                ]
-                        ]
-
-                    // Conditions
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(CondStr))
-                                .ColorAndOpacity(FLinearColor(0.45f, 0.45f, 0.5f))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                        ]
-
-                    // Task chips (right after conditions)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(6.0f, 0.0f, 0.0f, 0.0f)
-                        [
-                            BuildTaskChips(InItem->TaskSnapshots, true)
-                        ]
-                ]
-        ];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// Style: Compact Blocks (ultra-dense)
-//
-//   [449251 +47] Chase ◂ Idle  CanSee  [● ✓]
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkSmDebugger_HistoryList::
-    GenerateRow_CompactBlocks(
-        FHistoryItemPtr InItem,
-        const TSharedRef<STableViewBase>& InOwnerTable,
-        int32 InIndex)
-    -> TSharedRef<ITableRow>
-{
-    auto FromColor = CkSmDebugger::ComputeStateColor(InItem->FromStateName);
-    auto ToColor = CkSmDebugger::ComputeStateColor(InItem->ToStateName);
-    auto ZebraTint = (InIndex % 2 == 0)
-        ? FLinearColor(1.0f, 1.0f, 1.0f, 0.03f)
-        : FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-
-    // Compact task result icons: ● ✓ ✗
-    auto TaskIcons = FString{};
-    for (const auto& Snap : InItem->TaskSnapshots)
-    {
-        switch (Snap.Result)
-        {
-        case ECk_SmTaskResult::Running:   TaskIcons += TEXT("\x25CF"); break;
-        case ECk_SmTaskResult::Succeeded: TaskIcons += TEXT("\x2713"); break;
-        case ECk_SmTaskResult::Failed:    TaskIcons += TEXT("\x2717"); break;
-        }
-    }
-
-    auto CondBrief = FString{};
-    if (InItem->ConditionNames.Num() > 0)
-    { CondBrief = FCkSmLayoutParams::ComputeDisplayName(InItem->ConditionNames[0], Depth); }
-
-    auto FrameStr = FString::Printf(TEXT("[%llu"), InItem->FrameNumber);
-    if (InIndex + 1 < _Items.Num())
-    {
-        auto Delta = InItem->FrameNumber - _Items[InIndex + 1]->FrameNumber;
-        FrameStr += FString::Printf(TEXT(" +%llu"), Delta);
-    }
-    FrameStr += TEXT("]");
-
-    return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
-        .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
-        [
-            SNew(SBorder)
-                .BorderBackgroundColor(ZebraTint)
-                .Padding(FMargin(4.0f, 1.0f))
-                [
-                    SNew(SHorizontalBox)
-
-                    // Frame + delta
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(80.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(FrameStr))
-                                        .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
-                                ]
-                        ]
-
-                    // To (arrived at)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(70.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text_Lambda([this, InItem]()
-                                        {
-                                            auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName, D);
-                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                            return FText::FromString(Name);
-                                        })
-                                        .ColorAndOpacity(ToColor)
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                ]
-                        ]
-
-                    // ◂
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(16.0f)
-                                .HAlign(HAlign_Center)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(TEXT("\x25C2")))
-                                        .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                ]
-                        ]
-
-                    // From (came from)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(70.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text_Lambda([this, InItem]()
-                                        {
-                                            auto D = _Graph ? _Graph->LayoutParams.NameDepth : 1;
-                                            auto Name = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, D);
-                                            if (NOT InItem->SubSmParentStateName.IsEmpty())
-                                            { Name = FCkSmLayoutParams::ComputeDisplayName(InItem->SubSmParentStateName, D) + TEXT(":") + Name; }
-                                            return FText::FromString(Name);
-                                        })
-                                        .ColorAndOpacity(FromColor)
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                ]
-                        ]
-
-                    // Brief condition
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBox)
-                                .MinDesiredWidth(70.0f)
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(CondBrief))
-                                        .ColorAndOpacity(FLinearColor(0.4f, 0.4f, 0.45f))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-                                ]
-                        ]
-
-                    // Task icons (right after condition)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(TaskIcons))
-                                .ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.65f))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                        ]
-                ]
-        ];
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 // Selection

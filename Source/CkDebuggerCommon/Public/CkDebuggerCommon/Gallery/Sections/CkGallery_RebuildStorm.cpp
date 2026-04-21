@@ -18,6 +18,7 @@
 #include "CkCore/Public/CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
+#include "CkGallery_SectionUtils.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
@@ -33,6 +34,8 @@
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+using ck::gallery::Caption;
 
 namespace
 {
@@ -97,14 +100,6 @@ namespace
 			case ECkGallery_StormFix::DataOnly:       return TEXT("Data-only (TAttribute<FText>, no rebuild)");
 			default:                                  return TEXT("?");
 		}
-	}
-
-	auto Caption(const FString& InText) -> TSharedRef<SWidget>
-	{
-		return SNew(STextBlock)
-			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
 	}
 }
 

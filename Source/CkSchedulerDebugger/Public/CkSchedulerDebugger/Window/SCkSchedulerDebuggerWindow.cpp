@@ -2,9 +2,10 @@
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
-#include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Timeline.h"
-#include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_Combined.h"
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
+
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -53,12 +54,16 @@ namespace
 
 // --------------------------------------------------------------------------------------------------------------------
 
+const FName SCkSchedulerDebuggerWindow::WindowId = FName(TEXT("SchedulerDebugger"));
+
 auto
 	SCkSchedulerDebuggerWindow::
 	Construct(
 		const FArguments& InArgs)
 	-> void
 {
+	Register_WithGate();
+
 	_ViewModel = MakeShared<FCkSchedulerDebugger_ViewModel>();
 
 	_WorldOptions.Add(MakeShared<FString>(TEXT("Game World")));
@@ -66,8 +71,6 @@ auto
 	_WorldOptions.Add(MakeShared<FString>(TEXT("PIE World")));
 
 	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_TreeView>());
-	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_Timeline>());
-	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_Combined>());
 
 	_ContentContainer = SNew(SBox);
 
@@ -190,6 +193,13 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	// Honour per-window refresh settings. This gate short-circuits the whole
+	// data-collection + OnDataRefreshed broadcast chain when the window is
+	// hidden, paused, or rate-capped — which is the single biggest lever
+	// against editor CPU cost for the Scheduler debugger.
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+	{ return; }
 
 	auto World = DoFindBestWorld();
 	_CurrentWorld = World;
@@ -340,6 +350,15 @@ auto
 								})
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 						]
+				]
+
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Large, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SCkDebugger_RefreshControls)
+						.WindowId(SCkSchedulerDebuggerWindow::WindowId)
 				]
 		];
 }

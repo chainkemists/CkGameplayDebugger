@@ -3,7 +3,7 @@
 #include "CkAStarDebugger/Data/CkAStarDebugger_Types.h"
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -17,14 +17,19 @@ class SCkAStarDebugger_SearchHistory;
 // Composes grid view, stats panel, search history, and toolbar.
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkAStarDebuggerWindow : public SCompoundWidget
+class SCkAStarDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
+    static const FName WindowId;
+
     SLATE_BEGIN_ARGS(SCkAStarDebuggerWindow) {}
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+    virtual auto Get_WindowId() const -> FName override { return WindowId; }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK A* Debugger")); }
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;

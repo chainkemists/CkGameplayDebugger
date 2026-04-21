@@ -7,6 +7,9 @@
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
 #include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -21,12 +24,16 @@
 // Construction
 // ====================================================================================================================
 
+const FName SCkAStarDebuggerWindow::WindowId = FName(TEXT("AStarDebugger"));
+
 auto
     SCkAStarDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
 {
+    Register_WithGate();
+
     _ViewModel = MakeShared<FCkAStarDebugger_ViewModel>();
 
     // Layout:
@@ -100,6 +107,9 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+    { return; }
 
     {
         auto FoundWorld = static_cast<UWorld*>(nullptr);
@@ -229,6 +239,16 @@ auto
                         }
                         return FReply::Handled();
                     })
+            ]
+
+        // Refresh-mode + rate-cap controls
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(12.0f, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebugger_RefreshControls)
+                    .WindowId(SCkAStarDebuggerWindow::WindowId)
             ];
 }
 

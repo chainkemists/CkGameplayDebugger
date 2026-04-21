@@ -19,38 +19,36 @@
 
 namespace
 {
+	// --------------------------------------------------------------------------------------------------------------------
+	// Processor row — all dynamic values bound via lambdas that read live from
+	// the data collector at paint time. Widget is built ONCE per tree structure
+	// change; timing + count + badges update automatically without rebuild.
+	// --------------------------------------------------------------------------------------------------------------------
 	auto DoBuildProcessorRowContent(
 		const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode,
 		const TSharedPtr<FCkSchedulerDebugger_ViewModel>& InViewModel)
 		-> TSharedRef<SWidget>
 	{
-		auto ExecOrderText = FString{};
-		auto TimingText = FString{};
-		auto EntityCountText = FString{};
-		auto TimingColor = FCkSchedulerDebuggerStyle::Color_Heat_Fast;
-		auto IsGhost = false;
-		auto IsDirty = false;
-		auto IsParallel = false;
+		const auto WeakVM = TWeakPtr<FCkSchedulerDebugger_ViewModel>(InViewModel);
+		const auto ProcIdx = InNode ? InNode->ProcessorIndex : INDEX_NONE;
+		const auto NodeName = InNode ? InNode->DisplayName : FString{};
 
-		if (InViewModel.IsValid() && InNode->ProcessorIndex != INDEX_NONE)
+		// Helper to safely fetch the proc for this row. Callers must null-check.
+		const auto LookupProc = [WeakVM, ProcIdx]() -> const FCkSchedulerDebugger_ProcessorInfo*
 		{
-			const auto& Procs = InViewModel->Get_DataCollector().Get_Processors();
-			if (Procs.IsValidIndex(InNode->ProcessorIndex))
+			if (const auto VM = WeakVM.Pin())
 			{
-				const auto& Proc = Procs[InNode->ProcessorIndex];
-				ExecOrderText = FString::Printf(TEXT("#%d"), Proc.ExecutionOrder);
-				TimingText = FString::Printf(TEXT("%.3f ms"), Proc.MainPassTimeMs);
-				TimingColor = FCkSchedulerDebuggerStyle::Get_TimingColor(Proc.MainPassTimeMs);
-				IsGhost = Proc.IsGhost;
-				IsDirty = Proc.HasDirtyMarker;
-				IsParallel = Proc.IsParallel;
-				EntityCountText = FString::Printf(TEXT("%d"), Proc.MainPassEntityCount);
+				if (ProcIdx != INDEX_NONE)
+				{
+					const auto& Procs = VM->Get_DataCollector().Get_Processors();
+					if (Procs.IsValidIndex(ProcIdx))
+					{
+						return &Procs[ProcIdx];
+					}
+				}
 			}
-		}
-
-		const auto NameColor = IsGhost
-			? FCkSchedulerDebuggerStyle::Color_Ghost
-			: FCkSchedulerDebuggerStyle::Color_Text_Primary;
+			return nullptr;
+		};
 
 		auto Row = SNew(SHorizontalBox)
 
@@ -63,7 +61,12 @@ namespace
 						.WidthOverride(30.0f)
 						[
 							SNew(STextBlock)
-								.Text(FText::FromString(ExecOrderText))
+								.Text_Lambda([LookupProc]()
+								{
+									const auto* Proc = LookupProc();
+									return Proc ? FText::FromString(FString::Printf(TEXT("#%d"), Proc->ExecutionOrder))
+									            : FText::GetEmpty();
+								})
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
 								.Justification(ETextJustify::Right)
@@ -76,41 +79,55 @@ namespace
 				.Padding(2.0f, 0.0f)
 				[
 					SNew(STextBlock)
-						.Text(FText::FromString(InNode->DisplayName))
+						.Text(FText::FromString(NodeName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity(NameColor)
+						.ColorAndOpacity_Lambda([LookupProc]() -> FSlateColor
+						{
+							const auto* Proc = LookupProc();
+							const auto IsGhost = Proc && Proc->IsGhost;
+							return FSlateColor(IsGhost
+								? FCkSchedulerDebuggerStyle::Color_Ghost
+								: FCkSchedulerDebuggerStyle::Color_Text_Primary);
+						})
 				];
 
-		if (IsDirty)
-		{
-			Row->AddSlot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(2.0f, 0.0f)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(FString(TEXT("\u25CF"))))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
-						.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
-				];
-		}
+		// Dirty marker — always in the tree; visibility controlled via attribute.
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(2.0f, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(FString(TEXT("\u25CF"))))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+					.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
+					.Visibility_Lambda([LookupProc]()
+					{
+						const auto* Proc = LookupProc();
+						return (Proc && Proc->HasDirtyMarker) ? EVisibility::Visible : EVisibility::Collapsed;
+					})
+			];
 
-		if (IsParallel)
-		{
-			Row->AddSlot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(2.0f, 0.0f)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(FString(TEXT("\u25C6"))))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Parallel)
-						.ToolTipText(FText::FromString(TEXT("Parallel processor")))
-				];
-		}
+		// Parallel marker — same pattern.
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(2.0f, 0.0f)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(FString(TEXT("\u25C6"))))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Parallel)
+					.ToolTipText(FText::FromString(TEXT("Parallel processor")))
+					.Visibility_Lambda([LookupProc]()
+					{
+						const auto* Proc = LookupProc();
+						return (Proc && Proc->IsParallel) ? EVisibility::Visible : EVisibility::Collapsed;
+					})
+			];
 
+		// Entity count — bound.
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
@@ -120,7 +137,11 @@ namespace
 					.WidthOverride(40.0f)
 					[
 						SNew(STextBlock)
-							.Text(FText::FromString(EntityCountText))
+							.Text_Lambda([LookupProc]()
+							{
+								const auto* Proc = LookupProc();
+								return Proc ? FText::AsNumber(Proc->MainPassEntityCount) : FText::GetEmpty();
+							})
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
 							.Justification(ETextJustify::Right)
@@ -128,39 +149,60 @@ namespace
 					]
 			];
 
+		// Timing — bound text + bound heat color.
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 			[
 				SNew(STextBlock)
-					.Text(FText::FromString(TimingText))
+					.Text_Lambda([LookupProc]()
+					{
+						const auto* Proc = LookupProc();
+						return Proc ? FText::FromString(FString::Printf(TEXT("%.3f ms"), Proc->MainPassTimeMs))
+						            : FText::GetEmpty();
+					})
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(TimingColor)
+					.ColorAndOpacity_Lambda([LookupProc]() -> FSlateColor
+					{
+						const auto* Proc = LookupProc();
+						return FSlateColor(Proc
+							? FCkSchedulerDebuggerStyle::Get_TimingColor(Proc->MainPassTimeMs)
+							: FCkSchedulerDebuggerStyle::Color_Heat_Fast);
+					})
 			];
 
 		return Row;
 	}
 
+	// --------------------------------------------------------------------------------------------------------------------
+	// Group row — accent color + aggregate timing bound via lambdas.
+	// --------------------------------------------------------------------------------------------------------------------
 	auto DoBuildGroupRowContent(
 		const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode,
 		const TSharedPtr<FCkSchedulerDebugger_ViewModel>& InViewModel)
 		-> TSharedRef<SWidget>
 	{
-		auto AccentColor = FCkSchedulerDebuggerStyle::Color_Group_Default;
-		auto AggregateText = FString{};
-		auto ChildCount = InNode->Children.Num();
+		const auto WeakVM = TWeakPtr<FCkSchedulerDebugger_ViewModel>(InViewModel);
+		const auto GroupIdx = InNode ? InNode->GroupIndex : INDEX_NONE;
+		const auto NodeName = InNode ? InNode->DisplayName : FString{};
+		const auto ChildCount = InNode ? InNode->Children.Num() : 0;
 
-		if (InViewModel.IsValid() && InNode->GroupIndex != INDEX_NONE)
+		const auto LookupGroup = [WeakVM, GroupIdx]() -> const FCkSchedulerDebugger_GroupInfo*
 		{
-			const auto& Groups = InViewModel->Get_DataCollector().Get_Groups();
-			if (Groups.IsValidIndex(InNode->GroupIndex))
+			if (const auto VM = WeakVM.Pin())
 			{
-				AccentColor = Groups[InNode->GroupIndex].AccentColor;
-				AggregateText = FString::Printf(TEXT("%.2f ms"),
-					Groups[InNode->GroupIndex].AggregateTimeMs);
+				if (GroupIdx != INDEX_NONE)
+				{
+					const auto& Groups = VM->Get_DataCollector().Get_Groups();
+					if (Groups.IsValidIndex(GroupIdx))
+					{
+						return &Groups[GroupIdx];
+					}
+				}
 			}
-		}
+			return nullptr;
+		};
 
 		return SNew(SHorizontalBox)
 
@@ -173,7 +215,11 @@ namespace
 						[
 							SNew(SBorder)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.ColorAndOpacity(AccentColor)
+								.ColorAndOpacity_Lambda([LookupGroup]() -> FLinearColor
+								{
+									const auto* Group = LookupGroup();
+									return Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Color_Group_Default;
+								})
 						]
 				]
 
@@ -183,9 +229,13 @@ namespace
 				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 1.0f)
 				[
 					SNew(STextBlock)
-						.Text(FText::FromString(InNode->DisplayName))
+						.Text(FText::FromString(NodeName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-						.ColorAndOpacity(AccentColor)
+						.ColorAndOpacity_Lambda([LookupGroup]() -> FSlateColor
+						{
+							const auto* Group = LookupGroup();
+							return FSlateColor(Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Color_Group_Default);
+						})
 				]
 
 			+ SHorizontalBox::Slot()
@@ -211,7 +261,12 @@ namespace
 				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 				[
 					SNew(STextBlock)
-						.Text(FText::FromString(AggregateText))
+						.Text_Lambda([LookupGroup]()
+						{
+							const auto* Group = LookupGroup();
+							return Group ? FText::FromString(FString::Printf(TEXT("%.2f ms"), Group->AggregateTimeMs))
+							             : FText::GetEmpty();
+						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
 				];
@@ -642,59 +697,641 @@ auto
 	DoOnDataRefreshed()
 	-> void
 {
+	// POLICY — see SCkDebugger_WindowBase.h for the full rules. Summary:
+	//   - Widget trees built ONCE per true topology change.
+	//   - Per-frame dynamic values (timing, counts, dirty flags, pump state)
+	//     flow via TAttribute<FText>/<EVisibility> lambdas on pre-allocated rows.
+	//   - ZERO structural mutation during Tick → zero scrunch.
+
+	// Tree view: rows are TAttribute-bound, so they self-update. Only rebuild
+	// when the flat structure is empty (first call after construct).
 	if (_DisplayRoots.Num() == 0)
 	{
 		DoRebuildFlattenedTree();
-	}
-	else if (_TreeView.IsValid())
-	{
-		// RebuildList forces STreeView to discard cached row widgets and re-call DoGenerateRow
-		// for all visible items. This is necessary because row content (timing text, badges) is
-		// baked at creation time, not bound via lambdas. Without this, scrubbing to a historical
-		// frame via the frame history bar would show stale timing values.
-		_TreeView->RebuildList();
 	}
 
 	if (NOT _ViewModel.IsValid() || NOT _PumpContainer.IsValid())
 	{ return; }
 
 	const auto& Procs = _ViewModel->Get_DataCollector().Get_Processors();
-	const auto PumpCount = _ViewModel->Get_DataCollector().Get_PumpCount();
+	const auto LivePumpCount = _ViewModel->Get_DataCollector().Get_PumpCount();
 
-	// Compute a hash of the pump data so we only rebuild when content actually changes.
-	// This avoids Slate layout measurement issues (overlapping text) from rebuilding every frame,
-	// while still catching changes the old _LastPumpCount guard missed (same count, different processors).
-	// Hash includes both main-pass and pump data so the pane updates when either changes
-	// (e.g., when scrubbing to a historical frame with different timing).
-	auto PumpDataHash = GetTypeHash(PumpCount);
+	// Grow-only: once we've seen N passes we pre-allocate that many Pass
+	// sections and keep them. Per-frame variance in live PumpCount only
+	// toggles section Visibility — no structural change, no rebuild.
+	if (LivePumpCount > _MaxObservedPumpCount)
+	{
+		_MaxObservedPumpCount = LivePumpCount;
+	}
+
+	// PURE-topology hash. Per-frame state (PumpCountThisFrame, HasDirtyMarker,
+	// timing, counts) is INTENTIONALLY EXCLUDED. Those toggle on/off every
+	// few frames during gameplay; including them would trigger rebuild storms.
+	// They show live via TAttribute bindings on the pre-allocated rows.
+	auto StructuralHash = GetTypeHash(Procs.Num());
 	for (const auto& Proc : Procs)
 	{
-		PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(static_cast<int32>(Proc.MainPassTimeMs * 10000.0)));
-		if (Proc.PumpCountThisFrame > 0)
-		{
-			PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(Proc.ProcessorName));
-			PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(Proc.PumpCountThisFrame));
-			for (const auto PumpTimeMs : Proc.PumpPassTimesMs)
-			{
-				PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(static_cast<int32>(PumpTimeMs * 10000.0)));
-			}
-		}
+		// Stable-per-topology fields only.
+		StructuralHash = HashCombine(StructuralHash, GetTypeHash(Proc.ProcessorName));
+		StructuralHash = HashCombine(StructuralHash, GetTypeHash(Proc.IsGroupStart));
+		StructuralHash = HashCombine(StructuralHash, GetTypeHash(Proc.IsGroupEnd));
+		StructuralHash = HashCombine(StructuralHash, GetTypeHash(Proc.IsGhost));
+		// DirtyMarkerName is assigned at processor registration and stays put.
+		StructuralHash = HashCombine(StructuralHash, GetTypeHash(Proc.DirtyMarkerName));
 	}
-	// Also hash the selected frame offset and filter so scrubbing/searching triggers a rebuild
-	if (_ViewModel.IsValid())
-	{
-		PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_ViewModel->Get_SelectedFrameOffset()));
-	}
-	PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_BreakdownFilterString));
-	PumpDataHash = HashCombine(PumpDataHash, GetTypeHash(_BreakdownHideIdle));
+	StructuralHash = HashCombine(StructuralHash, GetTypeHash(_MaxObservedPumpCount));
+	StructuralHash = HashCombine(StructuralHash, GetTypeHash(_ViewModel->Get_SelectedFrameOffset()));
+	StructuralHash = HashCombine(StructuralHash, GetTypeHash(_BreakdownFilterString));
+	StructuralHash = HashCombine(StructuralHash, GetTypeHash(_BreakdownHideIdle));
 
-	if (PumpDataHash == _LastPumpDataHash)
+	if (StructuralHash == _LastPumpDataHash)
 	{ return; }
-	_LastPumpDataHash = PumpDataHash;
+	_LastPumpDataHash = StructuralHash;
 
-	// Build a fresh widget tree and swap it in atomically via SetContent().
-	// This avoids the SVerticalBox slot mutation layout measurement bug that causes overlapping text.
+	// Topology changed (or user event): rebuild the pre-allocated stable tree.
+	_PumpContainer->SetContent(DoBuildPumpBreakdown_StableTree());
+}
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_ProcessorTree::
+	DoBuildPumpBreakdown_StableTree()
+	-> TSharedRef<SWidget>
+{
+	const auto WeakVM = TWeakPtr<FCkSchedulerDebugger_ViewModel>(_ViewModel);
+	const auto FilterString = _BreakdownFilterString;
+	const auto HideIdle = _BreakdownHideIdle;
+	const auto MaxPasses = _MaxObservedPumpCount;
+
+	const auto& Groups = _ViewModel->Get_DataCollector().Get_Groups();
+	const auto& Procs  = _ViewModel->Get_DataCollector().Get_Processors();
+
+	auto GroupOrder = TArray<int32>{};
+	for (auto I = 0; I < Groups.Num(); ++I) { GroupOrder.Add(I); }
+	GroupOrder.Sort([&Groups](int32 A, int32 B)
+	{
+		return Groups[A].StartNodeIndex < Groups[B].StartNodeIndex;
+	});
+
+	// Shared predicate. Captured by value into every row lambda so each row
+	// makes its own filter decision at paint time.
+	const auto ProcMatchesFilter = [FilterString](const FCkSchedulerDebugger_ProcessorInfo& Proc) -> bool
+	{
+		if (Proc.IsGroupStart || Proc.IsGroupEnd || Proc.IsGhost) { return false; }
+		if (!FilterString.IsEmpty()
+			&& !ck::fuzzy::Match(FilterString, Proc.DisplayName, {}).Get_IsMatch())
+		{ return false; }
+		return true;
+	};
+
+	auto NewContent = SNew(SVerticalBox);
+
+	// ----------------------------------------------------------------------
+	// Pass-section builder — generates the Main Pass or one Pump Pass N.
+	// Every dynamic value binds to a lambda reading live from the collector.
+	// ----------------------------------------------------------------------
+	const auto AddPassSection = [&](
+		const FString& InLabel,
+		int32 InPassIdx,
+		bool InAlwaysVisible,
+		const FLinearColor& InHeaderColor,
+		TFunction<double(const FCkSchedulerDebugger_ProcessorInfo&)> InTimeGetter,
+		TFunction<int32(const FCkSchedulerDebugger_ProcessorInfo&)> InCountGetter)
+	{
+		// Pass section visibility: Main Pass is always visible; Pass N only
+		// when live PumpCount > N.
+		auto SectionVisAttr = InAlwaysVisible
+			? TAttribute<EVisibility>(EVisibility::Visible)
+			: TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+				[WeakVM, InPassIdx]() -> EVisibility
+				{
+					const auto VM = WeakVM.Pin();
+					return (VM.IsValid() && InPassIdx < VM->Get_DataCollector().Get_PumpCount())
+						? EVisibility::Visible : EVisibility::Collapsed;
+				}));
+
+		auto SectionBox = SNew(SVerticalBox).Visibility(SectionVisAttr);
+
+		// Section header — label + running count + aggregate ms (both bound live).
+		SectionBox->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 2.0f)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(InLabel))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.ColorAndOpacity(InHeaderColor)
+			]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(SBorder)
+				.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(InHeaderColor.CopyWithNewOpacity(0.3f))
+				.Padding(FMargin(4.0f, 1.0f))
+				[
+					SNew(STextBlock)
+					.Text_Lambda([WeakVM, InTimeGetter, InCountGetter, ProcMatchesFilter, HideIdle]()
+					{
+						const auto VM = WeakVM.Pin();
+						if (!VM.IsValid()) { return FText::AsNumber(0); }
+						auto Count = 0;
+						for (const auto& Proc : VM->Get_DataCollector().Get_Processors())
+						{
+							if (!ProcMatchesFilter(Proc)) { continue; }
+							if (InTimeGetter(Proc) <= 0.0) { continue; }
+							if (HideIdle && InCountGetter(Proc) == 0) { continue; }
+							++Count;
+						}
+						return FText::AsNumber(Count);
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(InHeaderColor)
+				]
+			]
+
+			+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([WeakVM, InTimeGetter, ProcMatchesFilter]()
+				{
+					const auto VM = WeakVM.Pin();
+					if (!VM.IsValid()) { return FText::GetEmpty(); }
+					auto Total = 0.0;
+					for (const auto& Proc : VM->Get_DataCollector().Get_Processors())
+					{
+						if (!ProcMatchesFilter(Proc)) { continue; }
+						const auto T = InTimeGetter(Proc);
+						if (T > 0.0) { Total += T; }
+					}
+					return Total > 0.0
+						? FText::FromString(FString::Printf(TEXT("%.3f ms"), Total))
+						: FText::GetEmpty();
+				})
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+			]
+		];
+
+		// Per-group subsections within this pass.
+		for (const auto GroupIdx : GroupOrder)
+		{
+			if (!Groups.IsValidIndex(GroupIdx)) { continue; }
+			const auto& Group = Groups[GroupIdx];
+			const auto GroupAccent = Group.AccentColor;
+			const auto GroupName = Group.DisplayName;
+			const auto GroupMemberIdxs = Group.MemberIndices;
+
+			// Group visibility: at least one member passes filter + has time > 0 this pass.
+			auto GroupVisAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+				[WeakVM, GroupMemberIdxs, InTimeGetter, InCountGetter, ProcMatchesFilter, HideIdle]() -> EVisibility
+				{
+					const auto VM = WeakVM.Pin();
+					if (!VM.IsValid()) { return EVisibility::Collapsed; }
+					const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+					for (const auto MIdx : GroupMemberIdxs)
+					{
+						if (!AllProcs.IsValidIndex(MIdx)) { continue; }
+						const auto& Proc = AllProcs[MIdx];
+						if (!ProcMatchesFilter(Proc)) { continue; }
+						if (InTimeGetter(Proc) <= 0.0) { continue; }
+						if (HideIdle && InCountGetter(Proc) == 0) { continue; }
+						return EVisibility::Visible;
+					}
+					return EVisibility::Collapsed;
+				}));
+
+			auto GroupBox = SNew(SVerticalBox).Visibility(GroupVisAttr);
+
+			// Group header with bound count + aggregate.
+			GroupBox->AddSlot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SBox)
+					.WidthOverride(FCkSchedulerDebuggerStyle::Node_AccentWidth)
+					.HeightOverride(20.0f)
+					[
+						SNew(SBorder)
+						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+						.ColorAndOpacity(GroupAccent)
+					]
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(GroupName))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+					.ColorAndOpacity(GroupAccent)
+				]
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([WeakVM, GroupMemberIdxs, InTimeGetter, InCountGetter, ProcMatchesFilter, HideIdle]()
+					{
+						const auto VM = WeakVM.Pin();
+						if (!VM.IsValid()) { return FText::AsNumber(0); }
+						auto Count = 0;
+						const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+						for (const auto MIdx : GroupMemberIdxs)
+						{
+							if (!AllProcs.IsValidIndex(MIdx)) { continue; }
+							const auto& Proc = AllProcs[MIdx];
+							if (!ProcMatchesFilter(Proc)) { continue; }
+							if (InTimeGetter(Proc) <= 0.0) { continue; }
+							if (HideIdle && InCountGetter(Proc) == 0) { continue; }
+							++Count;
+						}
+						return FText::AsNumber(Count);
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+				]
+
+				+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
+
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text_Lambda([WeakVM, GroupMemberIdxs, InTimeGetter, ProcMatchesFilter]()
+					{
+						const auto VM = WeakVM.Pin();
+						if (!VM.IsValid()) { return FText::GetEmpty(); }
+						auto Total = 0.0;
+						const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+						for (const auto MIdx : GroupMemberIdxs)
+						{
+							if (!AllProcs.IsValidIndex(MIdx)) { continue; }
+							const auto& Proc = AllProcs[MIdx];
+							if (!ProcMatchesFilter(Proc)) { continue; }
+							const auto T = InTimeGetter(Proc);
+							if (T > 0.0) { Total += T; }
+						}
+						return Total > 0.0
+							? FText::FromString(FString::Printf(TEXT("%.2f ms"), Total))
+							: FText::GetEmpty();
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+				]
+			];
+
+			// Per-member rows — pre-allocated; visibility + timing bound live.
+			for (const auto MemberIdx : GroupMemberIdxs)
+			{
+				if (!Procs.IsValidIndex(MemberIdx)) { continue; }
+				const auto& MemberProc = Procs[MemberIdx];
+				if (MemberProc.IsGroupStart || MemberProc.IsGroupEnd || MemberProc.IsGhost)
+				{ continue; }
+
+				const auto CapturedMemberIdx = MemberIdx;
+				const auto MemberName = MemberProc.DisplayName;
+
+				auto RowVisAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+					[WeakVM, CapturedMemberIdx, InTimeGetter, InCountGetter, ProcMatchesFilter, HideIdle]() -> EVisibility
+					{
+						const auto VM = WeakVM.Pin();
+						if (!VM.IsValid()) { return EVisibility::Collapsed; }
+						const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+						if (!AllProcs.IsValidIndex(CapturedMemberIdx)) { return EVisibility::Collapsed; }
+						const auto& Proc = AllProcs[CapturedMemberIdx];
+						if (!ProcMatchesFilter(Proc)) { return EVisibility::Collapsed; }
+						if (InTimeGetter(Proc) <= 0.0) { return EVisibility::Collapsed; }
+						if (HideIdle && InCountGetter(Proc) == 0) { return EVisibility::Collapsed; }
+						return EVisibility::Visible;
+					}));
+
+				GroupBox->AddSlot().AutoHeight()
+					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+					.ContentPadding(FMargin(0.0f, 1.0f))
+					.Visibility(RowVisAttr)
+					.OnClicked_Lambda([this, CapturedMemberIdx]() -> FReply
+					{
+						if (_ViewModel.IsValid())
+						{ _ViewModel->Set_SelectedProcessorIndex(CapturedMemberIdx); }
+						return FReply::Handled();
+					})
+					[
+						SNew(SHorizontalBox)
+
+						// ExecOrder (bound)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(0.0f, 1.0f, FCkSchedulerDebuggerStyle::Padding_Small, 1.0f)
+						[
+							SNew(SBox).WidthOverride(30.0f)
+							[
+								SNew(STextBlock)
+								.Text_Lambda([WeakVM, CapturedMemberIdx]()
+								{
+									const auto VM = WeakVM.Pin();
+									if (!VM.IsValid()) { return FText::GetEmpty(); }
+									const auto& Arr = VM->Get_DataCollector().Get_Processors();
+									return Arr.IsValidIndex(CapturedMemberIdx)
+										? FText::FromString(FString::Printf(TEXT("#%d"), Arr[CapturedMemberIdx].ExecutionOrder))
+										: FText::GetEmpty();
+								})
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.Justification(ETextJustify::Right)
+							]
+						]
+
+						// Name (static)
+						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(2.0f, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(MemberName))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+						]
+
+						// Entity count (bound)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+						[
+							SNew(SBox).WidthOverride(40.0f)
+							[
+								SNew(STextBlock)
+								.Text_Lambda([WeakVM, CapturedMemberIdx, InCountGetter]()
+								{
+									const auto VM = WeakVM.Pin();
+									if (!VM.IsValid()) { return FText::GetEmpty(); }
+									const auto& Arr = VM->Get_DataCollector().Get_Processors();
+									return Arr.IsValidIndex(CapturedMemberIdx)
+										? FText::AsNumber(InCountGetter(Arr[CapturedMemberIdx]))
+										: FText::GetEmpty();
+								})
+								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.Justification(ETextJustify::Right)
+							]
+						]
+
+						// Timing (bound text + bound heat color)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text_Lambda([WeakVM, CapturedMemberIdx, InTimeGetter]()
+							{
+								const auto VM = WeakVM.Pin();
+								if (!VM.IsValid()) { return FText::GetEmpty(); }
+								const auto& Arr = VM->Get_DataCollector().Get_Processors();
+								return Arr.IsValidIndex(CapturedMemberIdx)
+									? FText::FromString(FString::Printf(TEXT("%.3f ms"), InTimeGetter(Arr[CapturedMemberIdx])))
+									: FText::GetEmpty();
+							})
+							.ColorAndOpacity_Lambda([WeakVM, CapturedMemberIdx, InTimeGetter]() -> FSlateColor
+							{
+								const auto VM = WeakVM.Pin();
+								if (!VM.IsValid()) { return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
+								const auto& Arr = VM->Get_DataCollector().Get_Processors();
+								return Arr.IsValidIndex(CapturedMemberIdx)
+									? FSlateColor(FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeGetter(Arr[CapturedMemberIdx])))
+									: FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted);
+							})
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						]
+					]
+				];
+			}
+
+			SectionBox->AddSlot().AutoHeight() [ GroupBox ];
+		}
+
+		NewContent->AddSlot().AutoHeight() [ SectionBox ];
+	};
+
+	// ----------------------------------------------------------------------
+	// MAIN PASS — always visible.
+	// ----------------------------------------------------------------------
+	AddPassSection(TEXT("Main Pass"), -1, true, FCkSchedulerDebuggerStyle::Color_Active,
+		[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; },
+		[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassEntityCount; });
+
+	// ----------------------------------------------------------------------
+	// PUMP PASSES 1..MaxObservedPumpCount — each section self-hides when
+	// live PumpCount falls below its index.
+	// ----------------------------------------------------------------------
+	for (auto PassIdx = 0; PassIdx < MaxPasses; ++PassIdx)
+	{
+		const auto PassIdxCopy = PassIdx;
+		AddPassSection(
+			FString::Printf(TEXT("Pass %d"), PassIdx + 1),
+			PassIdx, false, FCkSchedulerDebuggerStyle::Color_Pumped,
+			[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+			{
+				return P.PumpPassTimesMs.IsValidIndex(PassIdxCopy)
+					? P.PumpPassTimesMs[PassIdxCopy] : 0.0;
+			},
+			[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
+			{
+				return P.PumpPassEntityCounts.IsValidIndex(PassIdxCopy)
+					? P.PumpPassEntityCounts[PassIdxCopy] : 0;
+			});
+	}
+
+	// ----------------------------------------------------------------------
+	// CYCLE ANALYSIS — pre-allocated per proc that has a DirtyMarkerName at
+	// topology time. Per-proc Visibility binds to live HasDirtyMarker.
+	// Procs are grouped by marker name (stable per topology).
+	// ----------------------------------------------------------------------
+
+	// Always-visible section header.
+	NewContent->AddSlot().AutoHeight()
+		.Padding(0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small)
+	[
+		SNew(STextBlock)
+		.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
+		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+		.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Warning)
+	];
+
+	// "No dirty processors" stub — visible when none currently dirty.
+	{
+		auto NoneVisibleAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+			[WeakVM]() -> EVisibility
+			{
+				const auto VM = WeakVM.Pin();
+				if (!VM.IsValid()) { return EVisibility::Visible; }
+				for (const auto& Proc : VM->Get_DataCollector().Get_Processors())
+				{
+					if (Proc.HasDirtyMarker) { return EVisibility::Collapsed; }
+				}
+				return EVisibility::Visible;
+			}));
+
+		NewContent->AddSlot().AutoHeight()
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("No dirty processors")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+			.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			.Visibility(NoneVisibleAttr)
+		];
+	}
+
+	// Group procs by marker name at BUILD time (stable per topology).
+	auto MarkerGroupsByName = TMap<FString, TArray<int32>>{};
+	for (auto Idx = 0; Idx < Procs.Num(); ++Idx)
+	{
+		const auto& Proc = Procs[Idx];
+		if (Proc.IsGroupStart || Proc.IsGroupEnd || Proc.IsGhost) { continue; }
+		if (Proc.DirtyMarkerName.IsNone()) { continue; }
+		if (!FilterString.IsEmpty()
+			&& !ck::fuzzy::Match(FilterString, Proc.DisplayName, {}).Get_IsMatch())
+		{ continue; }
+
+		auto Pretty = Proc.DirtyMarkerName.ToString();
+		Pretty.RemoveFromStart(TEXT("ck::"));
+		Pretty.RemoveFromStart(TEXT("FTag_"));
+		Pretty.RemoveFromStart(TEXT("F"));
+		MarkerGroupsByName.FindOrAdd(Pretty).Add(Idx);
+	}
+
+	for (const auto& [MarkerName, MemberIndices] : MarkerGroupsByName)
+	{
+		const auto CapturedMemberIndices = MemberIndices;
+		const auto CapturedMarkerName = MarkerName;
+
+		// Marker-group visibility: any captured member currently dirty.
+		auto GroupVisAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+			[WeakVM, CapturedMemberIndices]() -> EVisibility
+			{
+				const auto VM = WeakVM.Pin();
+				if (!VM.IsValid()) { return EVisibility::Collapsed; }
+				const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+				for (const auto MIdx : CapturedMemberIndices)
+				{
+					if (AllProcs.IsValidIndex(MIdx) && AllProcs[MIdx].HasDirtyMarker)
+					{ return EVisibility::Visible; }
+				}
+				return EVisibility::Collapsed;
+			}));
+
+		// Accent color: warn when all members pumped every pass, else pumped color.
+		auto ColorAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda(
+			[WeakVM, CapturedMemberIndices]() -> FSlateColor
+			{
+				const auto VM = WeakVM.Pin();
+				if (!VM.IsValid()) { return FSlateColor(FCkSchedulerDebuggerStyle::Color_Pumped); }
+				const auto PumpCount = VM->Get_DataCollector().Get_PumpCount();
+				const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+				auto AllHit = PumpCount > 0;
+				for (const auto MIdx : CapturedMemberIndices)
+				{
+					if (!AllProcs.IsValidIndex(MIdx) || AllProcs[MIdx].PumpCountThisFrame < PumpCount)
+					{ AllHit = false; break; }
+				}
+				return FSlateColor(AllHit
+					? FCkSchedulerDebuggerStyle::Color_Warning
+					: FCkSchedulerDebuggerStyle::Color_Pumped);
+			}));
+
+		auto MarkerBox = SNew(SVerticalBox).Visibility(GroupVisAttr);
+
+		// Marker header.
+		MarkerBox->AddSlot().AutoHeight()
+			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f, 0.0f, 0.0f)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(FString(TEXT("\u25CF"))))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.ColorAndOpacity(ColorAttr)
+			]
+
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(CapturedMarkerName))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				.ColorAndOpacity(ColorAttr)
+				.AutoWrapText(true)
+			]
+		];
+
+		// Per-member rows.
+		for (const auto MemberIdx : CapturedMemberIndices)
+		{
+			const auto CapturedMemberIdx = MemberIdx;
+			if (!Procs.IsValidIndex(MemberIdx)) { continue; }
+			const auto MemberName = Procs[MemberIdx].DisplayName;
+
+			auto MemberVisAttr = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+				[WeakVM, CapturedMemberIdx]() -> EVisibility
+				{
+					const auto VM = WeakVM.Pin();
+					if (!VM.IsValid()) { return EVisibility::Collapsed; }
+					const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
+					return (AllProcs.IsValidIndex(CapturedMemberIdx) && AllProcs[CapturedMemberIdx].HasDirtyMarker)
+						? EVisibility::Visible : EVisibility::Collapsed;
+				}));
+
+			MarkerBox->AddSlot().AutoHeight()
+				.Padding(FCkSchedulerDebuggerStyle::Padding_Large, 0.0f, 0.0f, 0.0f)
+			[
+				SNew(SButton)
+				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+				.ContentPadding(FMargin(0.0f, 1.0f))
+				.Visibility(MemberVisAttr)
+				.OnClicked_Lambda([this, CapturedMemberIdx]() -> FReply
+				{
+					if (_ViewModel.IsValid())
+					{ _ViewModel->Set_SelectedProcessorIndex(CapturedMemberIdx); }
+					return FReply::Handled();
+				})
+				[
+					SNew(STextBlock)
+					.Text_Lambda([WeakVM, CapturedMemberIdx, MemberName]()
+					{
+						const auto VM = WeakVM.Pin();
+						if (!VM.IsValid()) { return FText::FromString(MemberName); }
+						const auto& Arr = VM->Get_DataCollector().Get_Processors();
+						if (!Arr.IsValidIndex(CapturedMemberIdx)) { return FText::FromString(MemberName); }
+						return FText::FromString(FString::Printf(TEXT("%s (x%d)"),
+							*MemberName, Arr[CapturedMemberIdx].PumpCountThisFrame));
+					})
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+					.AutoWrapText(true)
+				]
+			];
+		}
+
+		NewContent->AddSlot().AutoHeight() [ MarkerBox ];
+	}
+
+	return NewContent;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Orphaned legacy rebuild path removed. The DoBuildPumpBreakdown_StableTree
+// above replaces everything this block used to do.
+// --------------------------------------------------------------------------------------------------------------------
+#if 0
 	auto NewContent = SNew(SVerticalBox);
 
 	const auto& Groups = _ViewModel->Get_DataCollector().Get_Groups();
@@ -1106,6 +1743,7 @@ auto
 
 	_PumpContainer->SetContent(NewContent);
 }
+#endif // 0 — legacy rebuild block (replaced by DoBuildPumpBreakdown_StableTree)
 
 // --------------------------------------------------------------------------------------------------------------------
 

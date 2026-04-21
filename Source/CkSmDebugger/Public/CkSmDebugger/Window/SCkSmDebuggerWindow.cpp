@@ -16,6 +16,9 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
 #include "GraphEditor.h"
 #include "Editor.h"
 
@@ -302,12 +305,16 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 
+const FName SCkSmDebuggerWindow::WindowId = FName(TEXT("SmDebugger"));
+
 auto
     SCkSmDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
 {
+    Register_WithGate();
+
     _ViewModel = MakeShared<FCkSmDebugger_ViewModel>();
     _DataCollector = MakeShared<FCkSmDebugger_DataCollector>();
 
@@ -478,6 +485,10 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (_IsTestMode)
+    { return; }
+
+    // Per-window refresh gate — short-circuits when hidden / paused / rate-capped.
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
     // Find PIE world — re-validate each tick since PIE can end at any time
@@ -1392,6 +1403,17 @@ auto
                     })
                     .ColorAndOpacity(FLinearColor(0.937f, 0.325f, 0.314f))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+            ]
+
+        // ── Per-window refresh controls ─────────────────────────────────
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(12.0f, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebugger_RefreshControls)
+                    .WindowId(SCkSmDebuggerWindow::WindowId)
             ];
 }
 

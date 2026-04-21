@@ -3,7 +3,7 @@
 #include "CkSmDebugger/Data/CkSmDebugger_Types.h"
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 class FCkSmDebugger_ViewModel;
 class FCkSmDebugger_DataCollector;
@@ -20,9 +20,11 @@ class SBox;
 // Composes graph editor, timeline, history list, detail panel, and toolbar.
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkSmDebuggerWindow : public SCompoundWidget
+class SCkSmDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
+    static const FName WindowId;
+
     SLATE_BEGIN_ARGS(SCkSmDebuggerWindow) {}
     SLATE_END_ARGS()
 
@@ -32,6 +34,9 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
     auto SupportsKeyboardFocus() const -> bool override { return true; }
+
+    virtual auto Get_WindowId() const -> FName override { return WindowId; }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK SM Debugger")); }
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;

@@ -134,7 +134,9 @@ Follow CkFoundation conventions (see CkFoundation/CLAUDE.md):
 
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
-- Style constants live in `FCkDebuggerStyle` — colors, padding, font sizes
+- Colors live in `CkDebugStyle::` (CkDebuggerCommon) — tunable under Project Settings → CkGameplayDebugger → GOAP. `FCkDebuggerStyle` only owns ECS-specific Slate brushes, text styles, padding + graph-node size constants.
+- Common Slate primitives live in `CkDebuggerCommon/Widgets/` — `SCkDebug_InspectorPanel` for collapsible sections, `SCkDebug_KeyValueRow` for label/value rows, `SCkDebug_SectionHeader` for subsection headers, `SCkDebug_StatusPill` for toned status labels. Prefer these over bespoke `SExpandableArea` / `STextBlock` constructions.
+- `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
 - Graph model is pure data with no rendering. Layout strategy is swappable.
 
 ## Adding a New Inspector

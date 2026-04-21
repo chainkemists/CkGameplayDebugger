@@ -11,6 +11,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityInfo)
 
 auto FCkInspector_EntityInfo::Get_ComponentName() const -> FText
@@ -32,7 +33,7 @@ auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TShar
         .AddRow(
             FText::FromString(TEXT("ID:")),
             [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), E.Get_Entity())); },
-            FCkDebuggerStyle::Color_Entity_ID)
+            CkDebugStyle::EntityId())
         .AddConditionalRow(
             FText::FromString(TEXT("Actor:")),
             [](const FCk_Handle& E)
@@ -43,7 +44,7 @@ auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TShar
             },
             [](const FCk_Handle& E)
             {
-                return UCk_Utils_OwningActor_UE::Has(E) ? FCkDebuggerStyle::Color_Text_Primary : FCkDebuggerStyle::Color_None;
+                return UCk_Utils_OwningActor_UE::Has(E) ? CkDebugStyle::Text() : CkDebugStyle::None();
             })
         .Build(Entity);
 }

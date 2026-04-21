@@ -9,6 +9,7 @@
 #include "Styling/AppStyle.h"
 #include "Rendering/DrawElements.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 // --------------------------------------------------------------------------------------------------------------------
 
 FCkEcsDebugConnectionPolicy::FCkEcsDebugConnectionPolicy(
@@ -38,7 +39,7 @@ auto
     OutParams.AssociatedPin1 = InOutputPin;
     OutParams.AssociatedPin2 = InInputPin;
     OutParams.WireThickness = 1.5f;
-    OutParams.WireColor = FCkDebuggerStyle::Color_Graph_Edge;
+    OutParams.WireColor = CkDebugStyle::Graph_Edge();
     OutParams.bDrawBubbles = false;
 
     if (NOT InInputPin || NOT InOutputPin)
@@ -50,13 +51,13 @@ auto
         switch (TargetNode->Get_EdgeType())
         {
         case ECkEcsDebugEdgeType::LifetimeOwner:
-            OutParams.WireColor = FCkDebuggerStyle::Color_Relationship;
+            OutParams.WireColor = CkDebugStyle::Relationship();
             break;
         case ECkEcsDebugEdgeType::ContextOwner:
-            OutParams.WireColor = FCkDebuggerStyle::Color_Reference;
+            OutParams.WireColor = CkDebugStyle::Reference();
             break;
         case ECkEcsDebugEdgeType::LifetimeDependent:
-            OutParams.WireColor = FCkDebuggerStyle::Color_Transform;
+            OutParams.WireColor = CkDebugStyle::Transform();
             break;
         default:
             break;
@@ -75,13 +76,13 @@ auto
                 switch (SourceNode->Get_EdgeType())
                 {
                 case ECkEcsDebugEdgeType::LifetimeOwner:
-                    OutParams.WireColor = FCkDebuggerStyle::Color_Relationship;
+                    OutParams.WireColor = CkDebugStyle::Relationship();
                     break;
                 case ECkEcsDebugEdgeType::ContextOwner:
-                    OutParams.WireColor = FCkDebuggerStyle::Color_Reference;
+                    OutParams.WireColor = CkDebugStyle::Reference();
                     break;
                 case ECkEcsDebugEdgeType::LifetimeDependent:
-                    OutParams.WireColor = FCkDebuggerStyle::Color_Transform;
+                    OutParams.WireColor = CkDebugStyle::Transform();
                     break;
                 default:
                     break;

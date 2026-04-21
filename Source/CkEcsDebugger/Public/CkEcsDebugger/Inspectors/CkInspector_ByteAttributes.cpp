@@ -12,6 +12,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ByteAttributes)
 
 auto FCkInspector_ByteAttributes::Get_ComponentName() const -> FText
@@ -92,7 +93,7 @@ auto FCkInspector_ByteAttributes::BuildAttributeGrid(const FCk_Handle& Entity, c
 
                 return FText::FromString(Result);
             },
-            FCkDebuggerStyle::Color_Attribute,
+            CkDebugStyle::Attribute(),
             [WeakSelectionModel, AttributeHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(AttributeHandle))

@@ -111,6 +111,9 @@ auto FCkUIDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSh
             _DebuggerWindow.ToSharedRef()
         ];
 
+    // Hand the window a weak ref to its tab so the refresh gate can query visibility.
+    _DebuggerWindow->Set_OwningTab(_DebuggerTab);
+
     return _DebuggerTab.ToSharedRef();
 }
 

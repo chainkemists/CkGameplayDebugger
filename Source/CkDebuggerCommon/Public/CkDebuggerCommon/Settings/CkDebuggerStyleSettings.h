@@ -52,6 +52,120 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Palette|Text")
 	FLinearColor TextMute = FLinearColor(FColor(0x5a, 0x62, 0x77, 255));
 
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Text")
+	FLinearColor TextStrong = FLinearColor(0.95f, 0.95f, 0.95f);
+
+	// ----- Palette: Selection & Hover ---------------------------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Selection")
+	FLinearColor Selection = FLinearColor(0.2f, 0.4f, 0.8f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Selection")
+	FLinearColor SelectionInactive = FLinearColor(0.15f, 0.15f, 0.2f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Selection")
+	FLinearColor Hover = FLinearColor(0.06f, 0.06f, 0.08f);
+
+	// ----- Palette: Domain (ECS / component semantics) ----------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor None = FLinearColor(0.4f, 0.4f, 0.4f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor EntityId = FLinearColor(0.51f, 0.69f, 1.0f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor Transform = FLinearColor(0.76f, 0.91f, 0.55f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor Network = FLinearColor(1.0f, 0.8f, 0.01f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor Relationship = FLinearColor(0.97f, 0.73f, 0.85f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor Attribute = FLinearColor(0.55f, 0.85f, 0.95f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor Reference = FLinearColor(0.51f, 0.69f, 1.0f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor PickMarker_Default = FLinearColor(0.35f, 0.75f, 0.95f, 0.65f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Domain")
+	FLinearColor PickMarker_Hover = FLinearColor(1.0f, 0.9f, 0.2f, 1.0f);
+
+	// ----- Palette: Value-type colors ---------------------------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Bool_True = FLinearColor(0.2f, 1.0f, 0.4f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Bool_False = FLinearColor(1.0f, 0.4f, 0.4f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Numeric = FLinearColor(0.6f, 0.9f, 0.6f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_String = FLinearColor(1.0f, 0.85f, 0.5f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Math = FLinearColor(0.7f, 0.7f, 1.0f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Tag = FLinearColor(0.8f, 0.6f, 1.0f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Enum = FLinearColor(0.5f, 0.9f, 0.9f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Object = FLinearColor(0.9f, 0.7f, 0.4f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Values")
+	FLinearColor Value_Handle = FLinearColor(0.4f, 0.8f, 1.0f);
+
+	// ----- Palette: State colors --------------------------------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|States")
+	FLinearColor State_Enabled = FLinearColor(0.0f, 1.0f, 0.5f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|States")
+	FLinearColor State_Disabled = FLinearColor(1.0f, 0.5f, 0.5f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|States")
+	FLinearColor State_Overlapping = FLinearColor(1.0f, 0.95f, 0.0f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|States")
+	FLinearColor State_Config = FLinearColor(1.0f, 0.8f, 0.01f);
+
+	// ----- Palette: Status colors (objective / task progress) --------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Status")
+	FLinearColor Status_NotStarted = FLinearColor(0.5f, 0.5f, 0.5f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Status")
+	FLinearColor Status_Active = FLinearColor(0.55f, 0.78f, 0.95f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Status")
+	FLinearColor Status_Completed = FLinearColor(0.6f, 0.85f, 0.55f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Status")
+	FLinearColor Status_Failed = FLinearColor(0.95f, 0.35f, 0.3f);
+
+	// ----- Palette: Graph canvas colors -------------------------------------
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Background = FLinearColor(FColor(0x0D, 0x0D, 0x14));
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Edge = FLinearColor(0.4f, 0.4f, 0.45f);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Node_Center = FLinearColor(FColor(0x2D, 0x2D, 0x3D));
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Node_Default = FLinearColor(FColor(0x1E, 0x1E, 0x2E));
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Node_Border_Default = FLinearColor(FColor(0x60, 0x7D, 0x8B));
+
+	UPROPERTY(Config, EditAnywhere, Category = "Palette|Graph")
+	FLinearColor Graph_Node_Border_Center = FLinearColor(FColor(0x4C, 0xAF, 0x50));
+
 	// ----- Palette: Semantic -------------------------------------------------
 	UPROPERTY(Config, EditAnywhere, Category = "Palette|Semantic")
 	FLinearColor Accent = FLinearColor(FColor(0xf5, 0xc8, 0x42, 255));

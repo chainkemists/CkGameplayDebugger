@@ -1,7 +1,7 @@
 #include "SGraphNode_GoapAction.h"
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
-#include "CkGoapDebugger/Window/SCkGoapDebug_ActionPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
@@ -43,8 +43,8 @@ auto
 	this->ContentScale.Bind(this, &SGraphNode::GetContentScale);
 
 	const auto Variant = InPlan
-		? ECkGoapDebug_ActionPillVariant::InPlan
-		: ECkGoapDebug_ActionPillVariant::Inactive;
+		? ECkDebug_NodePillVariant::InPlan
+		: ECkDebug_NodePillVariant::Inactive;
 
 	const auto Body = _ActionNode->Get_IsPlanChainNode()
 		? CreateCompactEffectsSummary()
@@ -69,7 +69,7 @@ auto
 		.HAlign(HAlign_Fill)
 		.VAlign(VAlign_Fill)
 		[
-			SNew(SCkGoapDebug_ActionPill)
+			SNew(SCkDebug_NodePill)
 			.Variant(Variant)
 			.StepIndex(InPlan ? PlanStep : -1)
 			.Title(FText::FromString(_ActionNode->Get_DisplayName()))

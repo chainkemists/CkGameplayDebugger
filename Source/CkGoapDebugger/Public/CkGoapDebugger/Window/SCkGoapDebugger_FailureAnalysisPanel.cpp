@@ -6,6 +6,8 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 // ====================================================================================================================
 
@@ -36,6 +38,9 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkGoapDebuggerWindow::WindowId))
+	{ return; }
 
 	const auto* Info = _ViewModel->Get_CurrentGoapInfo();
 

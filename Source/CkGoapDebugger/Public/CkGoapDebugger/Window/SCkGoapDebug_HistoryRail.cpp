@@ -8,6 +8,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "Widgets/Text/STextBlock.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 // ====================================================================================================================
 
@@ -60,6 +62,9 @@ auto
 	-> void
 {
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkGoapDebuggerWindow::WindowId))
+	{ return; }
 
 	if (!_ViewModel.IsValid() || !_Rail.IsValid()) { return; }
 

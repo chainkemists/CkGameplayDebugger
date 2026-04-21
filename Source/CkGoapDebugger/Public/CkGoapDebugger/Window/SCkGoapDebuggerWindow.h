@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 // ====================================================================================================================
 
@@ -20,14 +20,19 @@ class SVerticalBox;
 
 // ====================================================================================================================
 
-class SCkGoapDebuggerWindow : public SCompoundWidget
+class SCkGoapDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
+	static const FName WindowId;
+
 	SLATE_BEGIN_ARGS(SCkGoapDebuggerWindow) {}
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+	virtual auto Get_WindowId() const -> FName override { return WindowId; }
+	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK GOAP Debugger")); }
 
 	~SCkGoapDebuggerWindow();
 

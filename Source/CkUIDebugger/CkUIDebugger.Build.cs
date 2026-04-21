@@ -18,6 +18,7 @@ public class CkUIDebugger : CkModuleRules
             "CommonUI",
 
             "CkCore",
+            "CkDebuggerCommon",
             "CkEcs",
             "CkUI",
         });

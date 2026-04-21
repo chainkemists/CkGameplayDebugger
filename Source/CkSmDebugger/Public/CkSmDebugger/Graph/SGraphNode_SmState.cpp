@@ -6,6 +6,9 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
+
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
@@ -67,168 +70,178 @@ auto
     auto bUseInlineBreakpoints = (BpStyle == 22 || BpStyle == 23);
     auto bUseDiamondShape = (BpStyle == 23);
 
+    // ---- Title row: state-color icon + name + optional inline-breakpoint icons ----
+    auto TitleRow = SNew(SHorizontalBox)
+
+        // Left icon: entry breakpoint (style 22/23) or state-color square
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    [
+                        bUseInlineBreakpoints
+                        ? StaticCastSharedRef<SWidget>(
+                            SNew(SBorder)
+                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                .BorderBackgroundColor_Lambda([StateNodePtr = _StateNode, BpRed, BpHollow]()
+                                {
+                                    return (StateNodePtr && StateNodePtr->Get_HasEntryBreakpoint())
+                                        ? BpRed : BpHollow;
+                                })
+                                .RenderTransformPivot(FVector2D(0.5, 0.5))
+                                .RenderTransform(bUseDiamondShape
+                                    ? FSlateRenderTransform(FQuat2D(PI / 4.0))
+                                    : FSlateRenderTransform())
+                          )
+                        : StaticCastSharedRef<SWidget>(
+                            SNew(SBorder)
+                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                .BorderBackgroundColor(_StateNode ? _StateNode->Get_StateColor() : FLinearColor::White)
+                          )
+                    ]
+            ]
+
+        // State name
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(StateName))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
+                    .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
+                    {
+                        auto Color = FCkSmDebuggerStyle::Color_Sm_TextPrimary;
+                        if (StateNodePtr
+                            && StateNodePtr->Get_IsSubSmNode()
+                            && NOT StateNodePtr->Get_IsParentStateActive())
+                        { Color.A *= 0.35f; }
+                        return FSlateColor(Color);
+                    })
+            ]
+
+        // Right icon: exit breakpoint (style 22/23 only)
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SBox)
+                    .WidthOverride(8.0f)
+                    .HeightOverride(8.0f)
+                    .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor_Lambda([StateNodePtr = _StateNode, BpRed, BpHollow]()
+                            {
+                                return (StateNodePtr && StateNodePtr->Get_HasExitBreakpoint())
+                                    ? BpRed : BpHollow;
+                            })
+                            .RenderTransformPivot(FVector2D(0.5, 0.5))
+                            .RenderTransform(bUseDiamondShape
+                                ? FSlateRenderTransform(FQuat2D(PI / 4.0))
+                                : FSlateRenderTransform())
+                    ]
+            ];
+
+    // ---- Pill body: title row + override / event-driven labels + task rows.
+    //      Lives inside the NodePill's BodyContent slot so the rounded chrome
+    //      wraps everything. ----
+    auto PillBody = SNew(SVerticalBox)
+
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            [ TitleRow ]
+
+        // OVERRIDE label — visible only when the state's script class differs.
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 2.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("OVERRIDE")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                    .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_Override))
+                    .Visibility_Lambda([StateNodePtr = _StateNode]()
+                    {
+                        return (StateNodePtr && StateNodePtr->Get_HasOverride())
+                            ? EVisibility::SelfHitTestInvisible
+                            : EVisibility::Collapsed;
+                    })
+            ]
+
+        // EVENT-DRIVEN label — visible only when fully event-driven.
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 1.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                    .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_EventDriven))
+                    .Visibility_Lambda([StateNodePtr = _StateNode]()
+                    {
+                        return (StateNodePtr
+                                && StateNodePtr->Get_HasCompleteData()
+                                && StateNodePtr->Get_IsFullyEventDriven())
+                            ? EVisibility::SelfHitTestInvisible
+                            : EVisibility::Collapsed;
+                    })
+            ]
+
+        // Task rows below the labels.
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(0.0f, 2.0f, 0.0f, 0.0f)
+            [ CreateTaskRows() ];
+
+    // ---- Variant: InPlan when current state, Inactive otherwise — drives the
+    //      pill's border + fill colors uniformly with GOAP/ECS nodes. ----
+    const auto IsCenter = _StateNode && _StateNode->Get_IsCurrentState();
+    const auto Variant = IsCenter
+        ? ECkDebug_NodePillVariant::InPlan
+        : ECkDebug_NodePillVariant::Inactive;
+
+    // ---- Accent strip: per-state color (the original ColorSpill signal,
+    //      relocated to the pill's left-edge accent). Faded for inactive
+    //      sub-SM nodes. ----
+    auto AccentColor = _StateNode ? _StateNode->Get_StateColor() : FLinearColor::White;
+    if (_StateNode && _StateNode->Get_IsSubSmNode() && NOT _StateNode->Get_IsParentStateActive())
+    { AccentColor.A *= 0.35f; }
+
     GetOrAddSlot(ENodeZone::Center)
         .HAlign(HAlign_Fill)
         .VAlign(VAlign_Center)
         [
-            SNew(SBorder)
-                .BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.Body")))
-                .Padding(0.0f)
-                .BorderBackgroundColor(this, &SGraphNode_SmState::GetBorderBackgroundColor)
+            SNew(SOverlay)
+
+            // Pin overlay — fills entire node for connection geometry; HitTestInvisible
+            // so pins don't intercept clicks.
+            + SOverlay::Slot()
+                .HAlign(HAlign_Fill)
+                .VAlign(VAlign_Fill)
                 [
-                    SNew(SOverlay)
+                    SAssignNew(RightNodeBox, SVerticalBox)
+                        .Visibility(EVisibility::HitTestInvisible)
+                ]
 
-                    // Pin area — fills entire node for connection geometry
-                    + SOverlay::Slot()
-                        .HAlign(HAlign_Fill)
-                        .VAlign(VAlign_Fill)
-                        [
-                            SAssignNew(RightNodeBox, SVerticalBox)
-                        ]
-
-                    // Content area
-                    + SOverlay::Slot()
-                        .HAlign(HAlign_Center)
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SBorder)
-                                .BorderImage(FAppStyle::GetBrush(TEXT("Graph.StateNode.ColorSpill")))
-                                .BorderBackgroundColor(FCkSmDebuggerStyle::Color_Sm_TitleShadow)
-                                .Padding(PinPadding)
-                                .Visibility(EVisibility::SelfHitTestInvisible)
-                                [
-                                    SNew(SVerticalBox)
-
-                                    // Header row: icon + name + exit icon
-                                    + SVerticalBox::Slot()
-                                        .AutoHeight()
-                                        [
-                                            SNew(SHorizontalBox)
-
-                                            // Left icon: entry breakpoint (Style 22/23) or state color square
-                                            + SHorizontalBox::Slot()
-                                                .AutoWidth()
-                                                .VAlign(VAlign_Center)
-                                                .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                                                [
-                                                    SNew(SBox)
-                                                        .WidthOverride(8.0f)
-                                                        .HeightOverride(8.0f)
-                                                        [
-                                                            bUseInlineBreakpoints
-                                                            ? StaticCastSharedRef<SWidget>(
-                                                                SNew(SBorder)
-                                                                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                                                    .BorderBackgroundColor_Lambda([StateNodePtr = _StateNode, BpRed, BpHollow]()
-                                                                    {
-                                                                        return (StateNodePtr && StateNodePtr->Get_HasEntryBreakpoint())
-                                                                            ? BpRed : BpHollow;
-                                                                    })
-                                                                    .RenderTransformPivot(FVector2D(0.5, 0.5))
-                                                                    .RenderTransform(bUseDiamondShape
-                                                                        ? FSlateRenderTransform(FQuat2D(PI / 4.0))
-                                                                        : FSlateRenderTransform())
-                                                              )
-                                                            : StaticCastSharedRef<SWidget>(
-                                                                SNew(SBorder)
-                                                                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                                                    .BorderBackgroundColor(_StateNode ? _StateNode->Get_StateColor() : FLinearColor::White)
-                                                              )
-                                                        ]
-                                                ]
-
-                                            // State name
-                                            + SHorizontalBox::Slot()
-                                                .AutoWidth()
-                                                .VAlign(VAlign_Center)
-                                                [
-                                                    SNew(STextBlock)
-                                                        .Text(FText::FromString(StateName))
-                                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                                                        .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
-                                                        {
-                                                            auto Color = FCkSmDebuggerStyle::Color_Sm_TextPrimary;
-                                                            if (StateNodePtr
-                                                                && StateNodePtr->Get_IsSubSmNode()
-                                                                && NOT StateNodePtr->Get_IsParentStateActive())
-                                                            { Color.A *= 0.35f; }
-                                                            return FSlateColor(Color);
-                                                        })
-                                                ]
-
-                                            // Right icon: exit breakpoint (Style 22/23 only)
-                                            + SHorizontalBox::Slot()
-                                                .AutoWidth()
-                                                .VAlign(VAlign_Center)
-                                                .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                                                [
-                                                    SNew(SBox)
-                                                        .WidthOverride(8.0f)
-                                                        .HeightOverride(8.0f)
-                                                        .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
-                                                        [
-                                                            SNew(SBorder)
-                                                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                                                .BorderBackgroundColor_Lambda([StateNodePtr = _StateNode, BpRed, BpHollow]()
-                                                                {
-                                                                    return (StateNodePtr && StateNodePtr->Get_HasExitBreakpoint())
-                                                                        ? BpRed : BpHollow;
-                                                                })
-                                                                .RenderTransformPivot(FVector2D(0.5, 0.5))
-                                                                .RenderTransform(bUseDiamondShape
-                                                                    ? FSlateRenderTransform(FQuat2D(PI / 4.0))
-                                                                    : FSlateRenderTransform())
-                                                        ]
-                                                ]
-                                        ]
-
-                                    // Override label — small purple "OVERRIDE" tag under
-                                    // the state name. Visible only when the state's script
-                                    // class differs from its declared class.
-                                    + SVerticalBox::Slot()
-                                        .AutoHeight()
-                                        .Padding(0.0f, 2.0f, 0.0f, 0.0f)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(TEXT("OVERRIDE")))
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                                                .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_Override))
-                                                .Visibility_Lambda([StateNodePtr = _StateNode]()
-                                                {
-                                                    return (StateNodePtr && StateNodePtr->Get_HasOverride())
-                                                        ? EVisibility::SelfHitTestInvisible
-                                                        : EVisibility::Collapsed;
-                                                })
-                                        ]
-
-                                    // Event-driven label — gold "EVENT-DRIVEN" tag visible only
-                                    // when all outgoing conditions are EventDriven and no task ticks.
-                                    + SVerticalBox::Slot()
-                                        .AutoHeight()
-                                        .Padding(0.0f, 1.0f, 0.0f, 0.0f)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                                                .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_EventDriven))
-                                                .Visibility_Lambda([StateNodePtr = _StateNode]()
-                                                {
-                                                    return (StateNodePtr
-                                                            && StateNodePtr->Get_HasCompleteData()
-                                                            && StateNodePtr->Get_IsFullyEventDriven())
-                                                        ? EVisibility::SelfHitTestInvisible
-                                                        : EVisibility::Collapsed;
-                                                })
-                                        ]
-
-                                    // Task rows (shown when node has tasks)
-                                    + SVerticalBox::Slot()
-                                        .AutoHeight()
-                                        [
-                                            CreateTaskRows()
-                                        ]
-                                ]
-                        ]
+            // Shared rounded-pill chrome wrapping our title + labels + task rows.
+            + SOverlay::Slot()
+                .HAlign(HAlign_Fill)
+                .VAlign(VAlign_Fill)
+                [
+                    SNew(SCkDebug_NodePill)
+                        .Variant(Variant)
+                        .StepIndex(-1)
+                        .ShowCost(false)
+                        .Title(FText::GetEmpty())   // we render the title inside BodyContent
+                        .AccentColor(AccentColor)
+                        .BodyContent() [ PillBody ]
                 ]
         ];
 

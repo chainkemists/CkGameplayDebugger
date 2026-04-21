@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 class SEditableTextBox;
 class SExpandableArea;
@@ -60,9 +60,11 @@ struct FCkUIDebugger_WidgetSlot
 // slots in-place. Never destroys/recreates layer widgets at runtime.
 // --------------------------------------------------------------------------------------------------------------------
 
-class SCkUIDebuggerWindow : public SCompoundWidget
+class SCkUIDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
+    static const FName WindowId;
+
     SLATE_BEGIN_ARGS(SCkUIDebuggerWindow) {}
     SLATE_END_ARGS()
 
@@ -70,6 +72,9 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
+    virtual auto Get_WindowId() const -> FName override { return WindowId; }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK UI Debugger")); }
 
 private:
     // ---- Event Binding ----

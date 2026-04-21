@@ -2,6 +2,9 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
+
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
 #include "CkUI/Layout/CkUI_PrimaryGameLayout.h"
 #include "CkUI/Layout/CkUI_LayerStack.h"
@@ -122,12 +125,16 @@ SCkUIDebuggerWindow::~SCkUIDebuggerWindow()
 // Construct
 // --------------------------------------------------------------------------------------------------------------------
 
+const FName SCkUIDebuggerWindow::WindowId = FName(TEXT("UIDebugger"));
+
 auto
     SCkUIDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
 {
+    Register_WithGate();
+
     _SummaryText = SNew(STextBlock)
         .Font(style::Bold(10))
         .ColorAndOpacity(style::Text_Primary);
@@ -259,6 +266,13 @@ auto
                 [
                     SNew(SBox).MinDesiredWidth(200.0f) [ SearchBar ]
                 ]
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(style::Pad_M, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(SCkDebugger_RefreshControls)
+                        .WindowId(SCkUIDebuggerWindow::WindowId)
+                ]
         ];
 
     // ---- History area ----
@@ -329,6 +343,9 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+    { return; }
 
     // ---- Resolve layout subsystem (PIE may start/stop) ----
 

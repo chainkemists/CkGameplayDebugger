@@ -19,6 +19,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
 {
 public:
@@ -75,7 +76,7 @@ public:
                         SNew(STextBlock)
                         .Text(this, &SCkDebuggerEntityTreeRow::Get_EntityIDText)
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Monospace"))
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Entity_ID)
+                        .ColorAndOpacity(CkDebugStyle::EntityId())
                     ]
                 ]
             ],
@@ -104,31 +105,31 @@ private:
     auto Get_NodeTextColor() const -> FSlateColor
     {
         if (NOT Node.IsValid())
-        { return FCkDebuggerStyle::Color_Text_Primary; }
+        { return CkDebugStyle::Text(); }
 
         // Inspector-filter dim takes precedence over selection — dimmed entities still
         // read as dimmed even when clicked, so the user knows the row didn't pass the filter.
         if (NOT Node->IsFilterMatch)
-        { return FCkDebuggerStyle::Color_Text_Muted; }
+        { return CkDebugStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
-        { return FCkDebuggerStyle::Color_Text_Highlight; }
+        { return CkDebugStyle::TextStrong(); }
 
-        return FCkDebuggerStyle::Color_Text_Primary;
+        return CkDebugStyle::Text();
     }
 
     auto Get_EntityStatusColor() const -> FSlateColor
     {
         if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
-        { return FCkDebuggerStyle::Color_Error; }
+        { return CkDebugStyle::Err(); }
 
         if (NOT Node->IsFilterMatch)
-        { return FCkDebuggerStyle::Color_Text_Muted; }
+        { return CkDebugStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
-        { return FCkDebuggerStyle::Color_Selection; }
+        { return CkDebugStyle::Selection(); }
 
-        return FCkDebuggerStyle::Color_Success;
+        return CkDebugStyle::Ok();
     }
 
     auto Get_HighlightText() const -> FText

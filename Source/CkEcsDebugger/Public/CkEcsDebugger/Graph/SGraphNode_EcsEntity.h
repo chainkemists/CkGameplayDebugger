@@ -4,8 +4,9 @@
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// Slate visual for UCkEcsDebugNode_Entity — rounded-rect body with colored accent strip,
-// overlay pin for connection geometry, and center-node highlight border.
+// Slate visual for UCkEcsDebugNode_Entity. Wraps the common SCkDebug_NodePill
+// and feeds it the node's accent color + edge-type border override, plus a
+// per-frame dim tint driven by the inspector filter.
 // --------------------------------------------------------------------------------------------------------------------
 
 class UCkEcsDebugNode_Entity;
@@ -33,15 +34,10 @@ public:
 
     FOnEcsNodeDoubleClicked OnDoubleClicked;
 
-protected:
-    auto GetBorderBackgroundColor() const -> FSlateColor;
-    auto GetContentBackgroundColor() const -> FSlateColor;
-    auto GetAccentColor() const -> FSlateColor;
-    auto GetLabelColor() const -> FSlateColor;
-
 private:
     /** Returns 1.0 when matching the active filter, dim alpha when not. */
     auto Get_DimMultiplier() const -> float;
+    auto Get_DimTint() const -> FLinearColor;
 
     UCkEcsDebugNode_Entity* _EntityNode = nullptr;
 };

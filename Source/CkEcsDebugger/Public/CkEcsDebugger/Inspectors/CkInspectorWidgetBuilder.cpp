@@ -5,10 +5,15 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+
+#include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Styling/AppStyle.h"
 
 auto FCkInspectorWidgetBuilder::SetSelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> FCkInspectorWidgetBuilder&
 {
@@ -165,7 +170,7 @@ auto FCkInspectorWidgetBuilder::PopulateBadgeBox(
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(DebugName))
-                            .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+                            .ColorAndOpacity(CkDebugStyle::Selection())
                     ]
             ];
     }
@@ -188,12 +193,11 @@ auto FCkInspectorWidgetBuilder::AddHeader(const FText& InHeaderText) -> FCkInspe
 
 auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString& InFilter) -> TSharedRef<SWidget>
 {
-    auto Grid = SNew(SGridPanel)
-        .FillColumn(0, 0.5f)
-        .FillColumn(1, 0.5f);
+    auto Column = SNew(SVerticalBox);
 
     const auto HasFilter = NOT InFilter.IsEmpty();
-    int32 Row = 0;
+    auto FirstRowInSection = true;
+    auto HasAnyRowBefore = false;
 
     for (const auto& RowDef : Rows)
     {
@@ -202,103 +206,98 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
 
         if (RowDef.IsHeader)
         {
-            Grid->AddSlot(0, Row)
-                .ColumnSpan(2)
-                .Padding(FCkDebuggerStyle::Padding_Small, Row > 0 ? FCkDebuggerStyle::Padding_Medium : 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
+            Column->AddSlot()
+                .AutoHeight()
+                .Padding(0.0f, HasAnyRowBefore ? CkDebugStyle::SpaceL : 0.0f, 0.0f, 2.0f)
                 [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
-                    .Text(RowDef.Label)
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    .ToolTipText(RowDef.Label)
+                    SNew(SCkDebug_SectionHeader)
+                    .Label(RowDef.Label)
                 ];
-
-            Row++;
+            FirstRowInSection = true;
+            HasAnyRowBefore = true;
             continue;
         }
 
-        // ---- Label column: clickable button if OnClicked is set, otherwise plain text ----
-        if (RowDef.OnClicked)
-        {
-            const auto OnClicked = RowDef.OnClicked;
+        // ---- Build the row. CustomWidget wins over dynamic value text. ----
+        const auto HasCustom = RowDef.CustomWidget.IsValid();
+        const auto HasOnClicked = static_cast<bool>(RowDef.OnClicked);
+        const auto OnClicked = RowDef.OnClicked;
 
-            Grid->AddSlot(0, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .OnClicked_Lambda([OnClicked]()
-                    {
-                        OnClicked();
-                        return FReply::Handled();
-                    })
-                    .ContentPadding(0.0f)
-                    .ToolTipText(RowDef.Label)
+        TSharedRef<SWidget> RowWidget = SNullWidget::NullWidget;
+
+        if (HasCustom)
+        {
+            if (HasOnClicked)
+            {
+                RowWidget = SNew(SCkDebug_KeyValueRow)
+                    .KeyText(RowDef.Label)
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .OnKeyClicked_Lambda([OnClicked]() { OnClicked(); })
+                    .ValueWidget()
                     [
-                        SNew(STextBlock)
-                        .Text(RowDef.Label)
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
-                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    ]
-                ];
-        }
-        else
-        {
-            Grid->AddSlot(0, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    SNew(STextBlock)
-                    .Text(RowDef.Label)
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    .ToolTipText(RowDef.Label)
-                ];
-        }
-
-        // ---- Value column: pre-built widget if supplied, otherwise dynamic text ----
-        if (RowDef.CustomWidget.IsValid())
-        {
-            Grid->AddSlot(1, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    RowDef.CustomWidget.ToSharedRef()
-                ];
+                        RowDef.CustomWidget.ToSharedRef()
+                    ];
+            }
+            else
+            {
+                RowWidget = SNew(SCkDebug_KeyValueRow)
+                    .KeyText(RowDef.Label)
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .ValueWidget()
+                    [
+                        RowDef.CustomWidget.ToSharedRef()
+                    ];
+            }
         }
         else
         {
             const auto ValueGetter = RowDef.ValueGetter;
             const auto ColorGetter = RowDef.ColorGetter;
+            const auto CapturedEntity = InEntity;
 
-            Grid->AddSlot(1, Row)
-                .Padding(FCkDebuggerStyle::Padding_Small)
-                [
-                    SNew(STextBlock)
-                    .Text(TAttribute<FText>::Create([InEntity, ValueGetter]()
-                    {
-                        if (ck::Is_NOT_Valid(InEntity))
-                        { return FText::GetEmpty(); }
+            auto ValueAttr = TAttribute<FText>::Create([CapturedEntity, ValueGetter]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::GetEmpty(); }
+                if (NOT ValueGetter) { return FText::GetEmpty(); }
+                return ValueGetter(CapturedEntity);
+            });
 
-                        if (NOT ValueGetter)
-                        { return FText::GetEmpty(); }
+            auto ColorAttr = TAttribute<FLinearColor>::Create([CapturedEntity, ColorGetter]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return CkDebugStyle::None(); }
+                if (NOT ColorGetter) { return CkDebugStyle::Text(); }
+                return ColorGetter(CapturedEntity);
+            });
 
-                        return ValueGetter(InEntity);
-                    }))
-                    .ColorAndOpacity(TAttribute<FSlateColor>::Create([InEntity, ColorGetter]()
-                    {
-                        if (ck::Is_NOT_Valid(InEntity))
-                        { return FSlateColor(FCkDebuggerStyle::Color_None); }
-
-                        if (NOT ColorGetter)
-                        { return FSlateColor(FCkDebuggerStyle::Color_Text_Primary); }
-
-                        return FSlateColor(ColorGetter(InEntity));
-                    }))
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                ];
+            if (HasOnClicked)
+            {
+                RowWidget = SNew(SCkDebug_KeyValueRow)
+                    .KeyText(RowDef.Label)
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .ValueText(ValueAttr)
+                    .CustomValueColor(ColorAttr)
+                    .OnKeyClicked_Lambda([OnClicked]() { OnClicked(); });
+            }
+            else
+            {
+                RowWidget = SNew(SCkDebug_KeyValueRow)
+                    .KeyText(RowDef.Label)
+                    .Tone(ECkDebug_KeyValueTone::Custom)
+                    .ValueText(ValueAttr)
+                    .CustomValueColor(ColorAttr);
+            }
         }
 
-        Row++;
+        Column->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 1.0f)
+            [
+                RowWidget
+            ];
+
+        FirstRowInSection = false;
+        HasAnyRowBefore = true;
     }
 
-    return Grid;
+    return Column;
 }

@@ -27,6 +27,7 @@
 #include "Slate/SceneViewport.h"
 #include "Widgets/SViewport.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace
@@ -634,7 +635,7 @@ auto
 
     const auto CameraLocation  = DoGet_CameraLocation(InWorld);
     const auto CullRadiusSq    = _CullRadius * _CullRadius;
-    const auto MarkerColor     = FCkDebuggerStyle::Color_PickMarker_Default.ToFColor(true);
+    const auto MarkerColor     = CkDebugStyle::PickMarker_Default().ToFColor(true);
     const auto DepthPriority   = static_cast<uint8>(_DrawThroughWalls ? SDPG_Foreground : SDPG_World);
 
     const auto IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
@@ -710,7 +711,7 @@ auto
     { return; }
 
     const auto Center         = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(_HoveredEntity).GetLocation();
-    const auto HoverColor     = FCkDebuggerStyle::Color_PickMarker_Hover.ToFColor(true);
+    const auto HoverColor     = CkDebugStyle::PickMarker_Hover().ToFColor(true);
     const auto DepthPriority  = static_cast<uint8>(_DrawThroughWalls ? SDPG_Foreground : SDPG_World);
     constexpr auto Segments   = 16;
 
@@ -720,7 +721,7 @@ auto
 
     const auto LabelLocation = Center + FVector{0.0f, 0.0f, PickRadius + 20.0f};
     UCk_Utils_DebugDraw_UE::DrawDebugString(
-        InWorld, LabelLocation, _HoveredEntity.ToString(), FCkDebuggerStyle::Color_PickMarker_Hover, DebugDrawLifetime);
+        InWorld, LabelLocation, _HoveredEntity.ToString(), CkDebugStyle::PickMarker_Hover(), DebugDrawLifetime);
 #endif
 }
 

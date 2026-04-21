@@ -16,6 +16,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ProbeTraces)
 
 static const FLinearColor Color_Trace = FLinearColor(0.6f, 0.4f, 1.0f);
@@ -72,7 +73,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 const auto& Settings = E.Get<ck::FFragment_ProbeTrace_RayCast>();
                 return FText::FromString(Settings.Get_DirectionAndLength().ToString());
             },
-            FCkDebuggerStyle::Color_State_Config);
+            CkDebugStyle::State_Config());
     }
     else
     {
@@ -83,7 +84,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 const auto& Settings = E.Get<ck::FFragment_ProbeTrace_ShapeCast>();
                 return FText::FromString(Settings.Get_DirectionAndLength().ToString());
             },
-            FCkDebuggerStyle::Color_State_Config);
+            CkDebugStyle::State_Config());
     }
 
     // ---- Trace Policy
@@ -97,7 +98,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 : E.Get<ck::FFragment_ProbeTrace_ShapeCast>().Get_TracePolicy();
             return FText::FromString(Policy == ECk_ProbeTrace_Policy::Single ? TEXT("Single") : TEXT("Multi"));
         },
-        FCkDebuggerStyle::Color_State_Config);
+        CkDebugStyle::State_Config());
 
     // ---- Shape (ShapeCast only)
 
@@ -117,7 +118,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
                 default:                       return FText::FromString(TEXT("Unknown"));
                 }
             },
-            FCkDebuggerStyle::Color_State_Config);
+            CkDebugStyle::State_Config());
     }
 
     // ---- Filter
@@ -132,7 +133,7 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
             if (Filter.IsEmpty()) { return FText::FromString(TEXT("(Empty)")); }
             return FText::FromString(Filter.ToString());
         },
-        FCkDebuggerStyle::Color_Text_Secondary);
+        CkDebugStyle::TextDim());
 
     // ---- Overlaps — live badge box stored for in-place updates
     {

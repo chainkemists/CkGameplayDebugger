@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
@@ -14,15 +14,20 @@ class SCkDebuggerPanel_EntityList;
 class SHorizontalBox;
 class SMenuAnchor;
 
-class SCkDebuggerWindow_Main : public SCompoundWidget
+class SCkDebuggerWindow_Main : public SCkDebugger_WindowBase
 {
 public:
+    static const FName WindowId;
+
     SLATE_BEGIN_ARGS(SCkDebuggerWindow_Main) {}
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
     auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
+
+    virtual auto Get_WindowId() const -> FName override { return WindowId; }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK ECS Debugger")); }
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;

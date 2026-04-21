@@ -9,6 +9,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Variables)
 
 // =====================================================================================================================
@@ -98,7 +99,7 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
             {
                 const auto NameStr = Name.ToString();
                 const auto ValueStr = Value ? TEXT("true") : TEXT("false");
-                const auto ValueColor = Value ? FCkDebuggerStyle::Color_Value_Bool_True : FCkDebuggerStyle::Color_Value_Bool_False;
+                const auto ValueColor = Value ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False();
                 Builder.AddRow(
                     FText::FromString(NameStr),
                     [ValueStr](const FCk_Handle& E) { return FText::FromString(ValueStr); },
@@ -109,63 +110,63 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
 
     // ---- Numeric types
     AddVariableRows<ck::FFragment_Variable_Byte>(Builder, Entity, FText::FromString(TEXT("Byte")),
-        FCkDebuggerStyle::Color_Value_Numeric,
+        CkDebugStyle::Value_Numeric(),
         [](uint8 InValue) -> FString { return FString::Printf(TEXT("%d"), InValue); });
 
     AddVariableRows<ck::FFragment_Variable_Int32>(Builder, Entity, FText::FromString(TEXT("Int32")),
-        FCkDebuggerStyle::Color_Value_Numeric,
+        CkDebugStyle::Value_Numeric(),
         [](int32 InValue) -> FString { return FString::Printf(TEXT("%d"), InValue); });
 
     AddVariableRows<ck::FFragment_Variable_Int64>(Builder, Entity, FText::FromString(TEXT("Int64")),
-        FCkDebuggerStyle::Color_Value_Numeric,
+        CkDebugStyle::Value_Numeric(),
         [](int64 InValue) -> FString { return FString::Printf(TEXT("%lld"), InValue); });
 
     AddVariableRows<ck::FFragment_Variable_Float>(Builder, Entity, FText::FromString(TEXT("Float")),
-        FCkDebuggerStyle::Color_Value_Numeric,
+        CkDebugStyle::Value_Numeric(),
         [](float InValue) -> FString { return FString::Printf(TEXT("%.3f"), InValue); });
 
     // ---- String types
     AddVariableRows<ck::FFragment_Variable_Name>(Builder, Entity, FText::FromString(TEXT("Name")),
-        FCkDebuggerStyle::Color_Value_String,
+        CkDebugStyle::Value_String(),
         [](const FName& InValue) -> FString { return InValue.IsNone() ? TEXT("(None)") : InValue.ToString(); });
 
     AddVariableRows<ck::FFragment_Variable_String>(Builder, Entity, FText::FromString(TEXT("String")),
-        FCkDebuggerStyle::Color_Value_String,
+        CkDebugStyle::Value_String(),
         [](const FString& InValue) -> FString { return InValue.IsEmpty() ? TEXT("(Empty)") : InValue; });
 
     AddVariableRows<ck::FFragment_Variable_Text>(Builder, Entity, FText::FromString(TEXT("Text")),
-        FCkDebuggerStyle::Color_Value_String,
+        CkDebugStyle::Value_String(),
         [](const FText& InValue) -> FString { return InValue.IsEmpty() ? TEXT("(Empty)") : InValue.ToString(); });
 
     // ---- Math types
     AddVariableRows<ck::FFragment_Variable_Vector>(Builder, Entity, FText::FromString(TEXT("Vector")),
-        FCkDebuggerStyle::Color_Value_Math,
+        CkDebugStyle::Value_Math(),
         [](const FVector& InValue) -> FString { return InValue.ToString(); });
 
     AddVariableRows<ck::FFragment_Variable_Vector2D>(Builder, Entity, FText::FromString(TEXT("Vector2D")),
-        FCkDebuggerStyle::Color_Value_Math,
+        CkDebugStyle::Value_Math(),
         [](const FVector2D& InValue) -> FString { return InValue.ToString(); });
 
     AddVariableRows<ck::FFragment_Variable_Rotator>(Builder, Entity, FText::FromString(TEXT("Rotator")),
-        FCkDebuggerStyle::Color_Value_Math,
+        CkDebugStyle::Value_Math(),
         [](const FRotator& InValue) -> FString { return InValue.ToString(); });
 
     AddVariableRows<ck::FFragment_Variable_Transform>(Builder, Entity, FText::FromString(TEXT("Transform")),
-        FCkDebuggerStyle::Color_Value_Math,
+        CkDebugStyle::Value_Math(),
         [](const FTransform& InValue) -> FString { return InValue.ToString(); });
 
     // ---- Tag types
     AddVariableRows<ck::FFragment_Variable_GameplayTag>(Builder, Entity, FText::FromString(TEXT("GameplayTag")),
-        FCkDebuggerStyle::Color_Value_Tag,
+        CkDebugStyle::Value_Tag(),
         [](const FGameplayTag& InValue) -> FString { return InValue.IsValid() ? InValue.GetTagName().ToString() : TEXT("(None)"); });
 
     AddVariableRows<ck::FFragment_Variable_GameplayTagContainer>(Builder, Entity, FText::FromString(TEXT("TagContainer")),
-        FCkDebuggerStyle::Color_Value_Tag,
+        CkDebugStyle::Value_Tag(),
         [](const FGameplayTagContainer& InValue) -> FString { return InValue.IsEmpty() ? TEXT("(Empty)") : InValue.ToString(); });
 
     // ---- LinearColor
     AddVariableRows<ck::FFragment_Variable_LinearColor>(Builder, Entity, FText::FromString(TEXT("LinearColor")),
-        FCkDebuggerStyle::Color_Value_Math,
+        CkDebugStyle::Value_Math(),
         [](const FLinearColor& InValue) -> FString { return InValue.ToString(); });
 
     // ---- Entity (clickable to navigate)
@@ -192,7 +193,7 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
                     {
                         return FText::FromString(DisplayStr);
                     },
-                    FCkDebuggerStyle::Color_Value_Handle,
+                    CkDebugStyle::Value_Handle(),
                     [WeakSelectionModel, EntityHandle]()
                     {
                         if (WeakSelectionModel.IsValid() && ck::IsValid(EntityHandle))

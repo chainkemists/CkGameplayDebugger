@@ -6,15 +6,21 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
+
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SSeparator.h"
-#include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/SNullWidget.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 SCkDebuggerPanel_Inspector::~SCkDebuggerPanel_Inspector()
 {
     DeactivateAllInspectors();
@@ -91,7 +97,32 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 {
     SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-    auto bAnyNeedsRebuild = false;
+    // Honour the user's refresh-mode + rate-cap settings for the ECS debugger.
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkDebuggerWindow_Main::WindowId))
+    { return; }
+
+    // POLICY — NEVER rebuild widget structure from Tick.
+    //
+    // Widget trees are built exactly once per (entity selection × inspector)
+    // pair. Dynamic values flow via TAttribute<FText> bindings on the rows
+    // produced by FCkInspectorWidgetBuilder; those bindings re-evaluate every
+    // paint and pick up live data with zero structural churn. Inspectors that
+    // need per-tick updates MUST mutate in-place (e.g. FCkInspector_InteractTarget
+    // updates its existing badge boxes via PopulateBadgeBox — no SetContent).
+    //
+    // Inspectors retain RequestRebuild() as a marker for genuine structural
+    // changes (new inventory item, new interaction target). We intentionally
+    // DO NOT rebuild the panel in response — any structural mutation of a
+    // Slate widget tree during the Tick phase causes a one-frame "scrunch"
+    // where the new sub-tree hasn't been prepassed yet and parent AutoHeight
+    // slots collapse to zero. See the Gallery's "Rebuild Storm" section for
+    // a live A/B repro — only the Data-only strategy (TAttribute bindings,
+    // no structural rebuild) is scrunch-free.
+    //
+    // Structural refresh paths that ARE permitted:
+    //   - Entity re-selection (OnSelectionChanged → RebuildInspectors)
+    //   - Explicit user "Refresh" action (TODO: add toolbar button)
+    //   - Per-inspector in-place mutation of its own stable sub-containers
 
     for (const auto& Entity : _CurrentInspectedEntities)
     {
@@ -104,17 +135,11 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 
             Inspector->Tick(Entity, InDeltaTime);
 
+            // Clear the flag so stale rebuild requests don't accumulate.
+            // This is a no-op data-wise; the panel simply does not rebuild.
             if (Inspector->NeedsRebuild())
-            {
-                Inspector->ClearRebuildFlag();
-                bAnyNeedsRebuild = true;
-            }
+            { Inspector->ClearRebuildFlag(); }
         }
-    }
-
-    if (bAnyNeedsRebuild)
-    {
-        RebuildInspectors();
     }
 }
 
@@ -189,12 +214,12 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     if (ck::Is_NOT_Valid(Entity))
     {
         ScrollBox->AddSlot()
+            .HAlign(HAlign_Left)
             .Padding(FCkDebuggerStyle::Padding_Medium)
             [
-                SNew(STextBlock)
-                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
+                SNew(SCkDebug_StatusPill)
                 .Text(FText::FromString(TEXT("Invalid Entity")))
-                .ColorAndOpacity(FCkDebuggerStyle::Color_Error)
+                .Tone(ECkDebug_Tone::Err)
             ];
         return;
     }
@@ -226,7 +251,7 @@ auto SCkDebuggerPanel_Inspector::Build_NoSelectionWidget() -> TSharedRef<SWidget
                 SNew(STextBlock)
                 .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.LargeHeader"))
                 .Text(FText::FromString(TEXT("No Entity Selected")))
-                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Muted)
+                .ColorAndOpacity(CkDebugStyle::TextMute())
             ]
 
             + SVerticalBox::Slot()
@@ -237,7 +262,7 @@ auto SCkDebuggerPanel_Inspector::Build_NoSelectionWidget() -> TSharedRef<SWidget
                 SNew(STextBlock)
                 .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                 .Text(FText::FromString(TEXT("Select an entity from the list to inspect")))
-                .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                .ColorAndOpacity(CkDebugStyle::TextDim())
             ]
         ];
 }
@@ -280,8 +305,8 @@ auto SCkDebuggerPanel_Inspector::Build_ModeToggle() -> TSharedRef<SWidget>
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                         .Text(FText::FromString(TEXT("By Inspector")))
                         .ColorAndOpacity(bInspectorActive
-                            ? FCkDebuggerStyle::Color_Selection
-                            : FCkDebuggerStyle::Color_Text_Primary)
+                            ? CkDebugStyle::Selection()
+                            : CkDebugStyle::Text())
                         .Justification(ETextJustify::Center)
                     ]
                 ]
@@ -317,8 +342,8 @@ auto SCkDebuggerPanel_Inspector::Build_ModeToggle() -> TSharedRef<SWidget>
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                         .Text(FText::FromString(TEXT("By Entity")))
                         .ColorAndOpacity(bEntityActive
-                            ? FCkDebuggerStyle::Color_Selection
-                            : FCkDebuggerStyle::Color_Text_Primary)
+                            ? CkDebugStyle::Selection()
+                            : CkDebugStyle::Text())
                         .Justification(ETextJustify::Center)
                     ]
                 ]
@@ -384,19 +409,9 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                SNew(SExpandableArea)
-                .InitiallyCollapsed(false)
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
-                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
-                .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-                .HeaderContent()
-                [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-                    .Text(InName)
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
-                ]
-                .BodyContent()
+                SNew(SCkDebug_InspectorPanel)
+                .Title(InName)
+                .Body()
                 [
                     SNew(SBox)
                     .Padding(FMargin(FCkDebuggerStyle::Padding_Medium))
@@ -483,19 +498,9 @@ auto SCkDebuggerPanel_Inspector::Build_InspectorSection(
 
     _InspectorContentContainers.Add(TPair<int32, int32>(InspectorIndex, 0), ContentContainer);
 
-    return SNew(SExpandableArea)
-        .InitiallyCollapsed(false)
-        .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
-        .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-        .HeaderContent()
-        [
-            SNew(STextBlock)
-            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-            .Text(Inspector->Get_ComponentName())
-            .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
-        ]
-        .BodyContent()
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(Inspector->Get_ComponentName())
+        .Body()
         [
             BodyContent
         ];
@@ -577,35 +582,10 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByInspector(
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                SNew(SExpandableArea)
-                .InitiallyCollapsed(false)
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
-                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
-                .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-                .HeaderContent()
-                [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    [
-                        SNew(STextBlock)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-                        .Text(Inspector->Get_ComponentName())
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(STextBlock)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                        .Text(FText::FromString(ck::Format_UE(TEXT("({})"), ApplicableEntities.Num())))
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Muted)
-                    ]
-                ]
-                .BodyContent()
+                SNew(SCkDebug_InspectorPanel)
+                .Title(Inspector->Get_ComponentName())
+                .CountText(FText::FromString(ck::Format_UE(TEXT("{}"), ApplicableEntities.Num())))
+                .Body()
                 [
                     InnerBox
                 ]
@@ -669,19 +649,9 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByEntity(
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
-                SNew(SExpandableArea)
-                .InitiallyCollapsed(false)
-                .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Dark)
-                .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
-                .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-                .HeaderContent()
-                [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-                    .Text(Format_EntityDisplayName(Entity))
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Highlight)
-                ]
-                .BodyContent()
+                SNew(SCkDebug_InspectorPanel)
+                .Title(Format_EntityDisplayName(Entity))
+                .Body()
                 [
                     InnerBox
                 ]
@@ -745,10 +715,8 @@ auto SCkDebuggerPanel_Inspector::Build_EntitySubSection(
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small)
                     [
-                        SNew(STextBlock)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
-                        .Text(Section.Name)
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Secondary)
+                        SNew(SCkDebug_SectionHeader)
+                        .Label(Section.Name)
                     ]
 
                     + SVerticalBox::Slot()
@@ -778,19 +746,9 @@ auto SCkDebuggerPanel_Inspector::Build_EntitySubSection(
         _InspectorContentContainers.Add(TPair<int32, int32>(OuterIndex, InnerIndex), ContentContainer);
     }
 
-    return SNew(SExpandableArea)
-        .InitiallyCollapsed(false)
-        .BorderBackgroundColor(FCkDebuggerStyle::Color_Background_Medium)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border"))
-        .HeaderPadding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
-        .HeaderContent()
-        [
-            SNew(STextBlock)
-            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-            .Text(HeaderText)
-            .ColorAndOpacity(FCkDebuggerStyle::Color_Text_Primary)
-        ]
-        .BodyContent()
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(HeaderText)
+        .Body()
         [
             BodyContent
         ];

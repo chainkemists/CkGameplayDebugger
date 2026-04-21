@@ -12,6 +12,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Transform)
 
 auto FCkInspector_Transform::Get_ComponentName() const -> FText
@@ -34,7 +35,7 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
                 if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
             },
-            FCkDebuggerStyle::Color_Transform)
+            CkDebugStyle::Transform())
         .AddRow(
             FText::FromString(TEXT("Rotation:")),
             [](const FCk_Handle& E)
@@ -42,7 +43,7 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
                 if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
             },
-            FCkDebuggerStyle::Color_Transform)
+            CkDebugStyle::Transform())
         .AddRow(
             FText::FromString(TEXT("Scale:")),
             [](const FCk_Handle& E)
@@ -50,7 +51,7 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
                 if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
             },
-            FCkDebuggerStyle::Color_Transform)
+            CkDebugStyle::Transform())
         .Build(Entity);
 }
 

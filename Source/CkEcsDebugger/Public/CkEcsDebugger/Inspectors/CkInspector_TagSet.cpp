@@ -10,6 +10,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_TagSet)
 
 static const FLinearColor Color_Tag = FLinearColor(0.6f, 0.85f, 0.55f);
@@ -81,9 +82,9 @@ auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FStrin
             {
                 auto MutableE = E;
                 const auto TS = UCk_Utils_TagSet_UE::Cast(MutableE);
-                if (ck::Is_NOT_Valid(TS)) { return FCkDebuggerStyle::Color_None; }
+                if (ck::Is_NOT_Valid(TS)) { return CkDebugStyle::None(); }
                 return UCk_Utils_TagSet_UE::HasTagExact(TS, CapturedTag)
-                    ? Color_Tag : FCkDebuggerStyle::Color_Error;
+                    ? Color_Tag : CkDebugStyle::Err();
             });
     }
 

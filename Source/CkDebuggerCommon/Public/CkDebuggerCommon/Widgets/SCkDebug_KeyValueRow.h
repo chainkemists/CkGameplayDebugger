@@ -8,7 +8,14 @@
 //
 // Value semantics:
 //   ValueTone::Bool     — value text rendered green if "true", red otherwise.
-//   ValueTone::Custom   — value text rendered in CustomValueColor.
+//                         Only evaluated at Construct — use Custom + attribute for dynamic values.
+//   ValueTone::Custom   — value text rendered in CustomValueColor (attribute, can be dynamic).
+//
+// Advanced:
+//   OnKeyClicked — when bound, the key column renders as a clickable button tinted with
+//                  the Selection color (used by the ECS inspector for entity-navigation rows).
+//   ValueWidget  — named slot; when set, replaces the value text entirely. Use for rows
+//                  where the value column is a custom inline widget (badge box, button, etc.).
 // ====================================================================================================================
 
 enum class ECkDebug_KeyValueTone : uint8
@@ -16,6 +23,8 @@ enum class ECkDebug_KeyValueTone : uint8
 	Bool,
 	Custom,
 };
+
+DECLARE_DELEGATE(FOnCkDebugKeyValueRow_KeyClicked);
 
 class CKDEBUGGERCOMMON_API SCkDebug_KeyValueRow : public SCompoundWidget
 {
@@ -30,12 +39,14 @@ public:
 		, _BackgroundColor(FLinearColor::Transparent)
 	{}
 		SLATE_ARGUMENT(FText, KeyText)
-		SLATE_ARGUMENT(FText, ValueText)
+		SLATE_ATTRIBUTE(FText, ValueText)
 		SLATE_ARGUMENT(ECkDebug_KeyValueTone, Tone)
 		SLATE_ARGUMENT(bool, ShowMarker)
 		SLATE_ARGUMENT(FLinearColor, MarkerColor)
-		SLATE_ARGUMENT(FLinearColor, CustomValueColor)
+		SLATE_ATTRIBUTE(FLinearColor, CustomValueColor)
 		SLATE_ARGUMENT(FLinearColor, BackgroundColor)
+		SLATE_EVENT(FOnCkDebugKeyValueRow_KeyClicked, OnKeyClicked)
+		SLATE_NAMED_SLOT(FArguments, ValueWidget)
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;

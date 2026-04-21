@@ -5,6 +5,7 @@
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace
@@ -22,26 +23,26 @@ namespace
         static const auto Curated = []() -> TMap<FName, FLinearColor>
         {
             auto Map = TMap<FName, FLinearColor>{};
-            Map.Add(TEXT("FCkInspector_Transform"),         FCkDebuggerStyle::Color_Transform);
-            Map.Add(TEXT("FCkInspector_Network"),           FCkDebuggerStyle::Color_Network);
-            Map.Add(TEXT("FCkInspector_Relationships"),     FCkDebuggerStyle::Color_Relationship);
-            Map.Add(TEXT("FCkInspector_TagSet"),            FCkDebuggerStyle::Color_Value_Tag);
-            Map.Add(TEXT("FCkInspector_Inventories"),       FCkDebuggerStyle::Color_Value_Object);
-            Map.Add(TEXT("FCkInspector_AnimPlans"),         FCkDebuggerStyle::Color_Value_Math);
-            Map.Add(TEXT("FCkInspector_FloatAttributes"),   FCkDebuggerStyle::Color_Attribute);
-            Map.Add(TEXT("FCkInspector_IntegerAttributes"), FCkDebuggerStyle::Color_Attribute);
-            Map.Add(TEXT("FCkInspector_ByteAttributes"),    FCkDebuggerStyle::Color_Attribute);
-            Map.Add(TEXT("FCkInspector_Variables"),         FCkDebuggerStyle::Color_Reference);
-            Map.Add(TEXT("FCkInspector_Probes"),            FCkDebuggerStyle::Color_PickMarker_Default);
-            Map.Add(TEXT("FCkInspector_ProbeTraces"),       FCkDebuggerStyle::Color_PickMarker_Default);
-            Map.Add(TEXT("FCkInspector_EntityCollections"), FCkDebuggerStyle::Color_Value_Enum);
-            Map.Add(TEXT("FCkInspector_EntityInfo"),        FCkDebuggerStyle::Color_Entity_ID);
-            Map.Add(TEXT("FCkInspector_DynamicFragments"),  FCkDebuggerStyle::Color_Value_String);
-            Map.Add(TEXT("FCkInspector_IsmProxy"),          FCkDebuggerStyle::Color_Value_Numeric);
-            Map.Add(TEXT("FCkInspector_Objective"),         FCkDebuggerStyle::Color_State_Config);
-            Map.Add(TEXT("FCkInspector_ObjectiveOwner"),    FCkDebuggerStyle::Color_State_Config);
-            Map.Add(TEXT("FCkInspector_InteractionResolver"), FCkDebuggerStyle::Color_Value_Bool_True);
-            Map.Add(TEXT("FCkInspector_InteractTarget"),    FCkDebuggerStyle::Color_Value_Bool_True);
+            Map.Add(TEXT("FCkInspector_Transform"),         CkDebugStyle::Transform());
+            Map.Add(TEXT("FCkInspector_Network"),           CkDebugStyle::Network());
+            Map.Add(TEXT("FCkInspector_Relationships"),     CkDebugStyle::Relationship());
+            Map.Add(TEXT("FCkInspector_TagSet"),            CkDebugStyle::Value_Tag());
+            Map.Add(TEXT("FCkInspector_Inventories"),       CkDebugStyle::Value_Object());
+            Map.Add(TEXT("FCkInspector_AnimPlans"),         CkDebugStyle::Value_Math());
+            Map.Add(TEXT("FCkInspector_FloatAttributes"),   CkDebugStyle::Attribute());
+            Map.Add(TEXT("FCkInspector_IntegerAttributes"), CkDebugStyle::Attribute());
+            Map.Add(TEXT("FCkInspector_ByteAttributes"),    CkDebugStyle::Attribute());
+            Map.Add(TEXT("FCkInspector_Variables"),         CkDebugStyle::Reference());
+            Map.Add(TEXT("FCkInspector_Probes"),            CkDebugStyle::PickMarker_Default());
+            Map.Add(TEXT("FCkInspector_ProbeTraces"),       CkDebugStyle::PickMarker_Default());
+            Map.Add(TEXT("FCkInspector_EntityCollections"), CkDebugStyle::Value_Enum());
+            Map.Add(TEXT("FCkInspector_EntityInfo"),        CkDebugStyle::EntityId());
+            Map.Add(TEXT("FCkInspector_DynamicFragments"),  CkDebugStyle::Value_String());
+            Map.Add(TEXT("FCkInspector_IsmProxy"),          CkDebugStyle::Value_Numeric());
+            Map.Add(TEXT("FCkInspector_Objective"),         CkDebugStyle::State_Config());
+            Map.Add(TEXT("FCkInspector_ObjectiveOwner"),    CkDebugStyle::State_Config());
+            Map.Add(TEXT("FCkInspector_InteractionResolver"), CkDebugStyle::Value_Bool_True());
+            Map.Add(TEXT("FCkInspector_InteractTarget"),    CkDebugStyle::Value_Bool_True());
             return Map;
         }();
 

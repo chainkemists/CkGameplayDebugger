@@ -13,6 +13,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Relationships)
 
 auto FCkInspector_Relationships::Get_ComponentName() const -> FText
@@ -41,8 +42,8 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
             [](const FCk_Handle& E)
             {
                 if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(E); ck::IsValid(TeamEntity))
-                { return FCkDebuggerStyle::Color_Relationship; }
-                return FCkDebuggerStyle::Color_Error;
+                { return CkDebugStyle::Relationship(); }
+                return CkDebugStyle::Err();
             })
         .AddClickableRow(
             FText::FromString(TEXT("Context Owner:")),
@@ -55,7 +56,7 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
                 }
                 return FText::FromString(TEXT("None"));
             },
-            FCkDebuggerStyle::Color_Reference,
+            CkDebugStyle::Reference(),
             [WeakSelectionModel, Entity]()
             {
                 if (NOT WeakSelectionModel.IsValid() || NOT UCk_Utils_ContextOwner_UE::Has(Entity))
@@ -77,7 +78,7 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
                 }
                 return FText::FromString(TEXT("None"));
             },
-            FCkDebuggerStyle::Color_Reference,
+            CkDebugStyle::Reference(),
             [WeakSelectionModel, Entity]()
             {
                 if (NOT WeakSelectionModel.IsValid() || NOT Entity.Has<ck::FFragment_LifetimeOwner>())

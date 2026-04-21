@@ -18,6 +18,7 @@
 
 #include "StructUtils/InstancedStruct.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_DynamicFragments)
 
 // =====================================================================================================================
@@ -72,7 +73,7 @@ namespace
     struct FPropertyDisplay
     {
         FString Value;
-        FLinearColor Color = FCkDebuggerStyle::Color_Text_Primary;
+        FLinearColor Color = CkDebugStyle::Text();
     };
 
     auto FormatProperty(
@@ -86,7 +87,7 @@ namespace
         if (const auto* BoolProp = CastField<FBoolProperty>(InProperty))
         {
             const auto BoolValue = BoolProp->GetPropertyValue(ValuePtr);
-            return { BoolValue ? TEXT("true") : TEXT("false"), BoolValue ? FCkDebuggerStyle::Color_Value_Bool_True : FCkDebuggerStyle::Color_Value_Bool_False };
+            return { BoolValue ? TEXT("true") : TEXT("false"), BoolValue ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False() };
         }
 
         // ---- Enum (FEnumProperty or FByteProperty with enum)
@@ -97,7 +98,7 @@ namespace
             auto NumericValue = int64{};
             EnumProp->GetUnderlyingProperty()->GetValue_InContainer(InContainer, &NumericValue);
             const auto DisplayName = Enum->GetDisplayNameTextByValue(NumericValue).ToString();
-            return { DisplayName, FCkDebuggerStyle::Color_Value_Enum };
+            return { DisplayName, CkDebugStyle::Value_Enum() };
         }
 
         if (const auto* ByteProp = CastField<FByteProperty>(InProperty);
@@ -105,7 +106,7 @@ namespace
         {
             const auto ByteValue = *static_cast<const uint8*>(ValuePtr);
             const auto DisplayName = ByteProp->Enum->GetDisplayNameTextByValue(ByteValue).ToString();
-            return { DisplayName, FCkDebuggerStyle::Color_Value_Enum };
+            return { DisplayName, CkDebugStyle::Value_Enum() };
         }
 
         // ---- Numeric (int, float, double)
@@ -114,7 +115,7 @@ namespace
         {
             auto ValueStr = FString{};
             InProperty->ExportTextItem_Direct(ValueStr, ValuePtr, nullptr, nullptr, PPF_None);
-            return { ValueStr, FCkDebuggerStyle::Color_Value_Numeric };
+            return { ValueStr, CkDebugStyle::Value_Numeric() };
         }
 
         // ---- String types
@@ -122,19 +123,19 @@ namespace
         if (CastField<FNameProperty>(InProperty))
         {
             const auto NameValue = *static_cast<const FName*>(ValuePtr);
-            return { NameValue.IsNone() ? TEXT("(None)") : NameValue.ToString(), FCkDebuggerStyle::Color_Value_String };
+            return { NameValue.IsNone() ? TEXT("(None)") : NameValue.ToString(), CkDebugStyle::Value_String() };
         }
 
         if (CastField<FStrProperty>(InProperty))
         {
             const auto& StrValue = *static_cast<const FString*>(ValuePtr);
-            return { StrValue.IsEmpty() ? TEXT("(Empty)") : StrValue, FCkDebuggerStyle::Color_Value_String };
+            return { StrValue.IsEmpty() ? TEXT("(Empty)") : StrValue, CkDebugStyle::Value_String() };
         }
 
         if (CastField<FTextProperty>(InProperty))
         {
             const auto& TextValue = *static_cast<const FText*>(ValuePtr);
-            return { TextValue.IsEmpty() ? TEXT("(Empty)") : TextValue.ToString(), FCkDebuggerStyle::Color_Value_String };
+            return { TextValue.IsEmpty() ? TEXT("(Empty)") : TextValue.ToString(), CkDebugStyle::Value_String() };
         }
 
         // ---- UObject pointer
@@ -142,7 +143,7 @@ namespace
         if (const auto* ObjProp = CastField<FObjectPropertyBase>(InProperty))
         {
             const auto* Obj = ObjProp->GetObjectPropertyValue(ValuePtr);
-            return { Obj ? Obj->GetName() : TEXT("(None)"), FCkDebuggerStyle::Color_Value_Object };
+            return { Obj ? Obj->GetName() : TEXT("(None)"), CkDebugStyle::Value_Object() };
         }
 
         // ---- Struct types (order matters — check specific before generic fallback)
@@ -153,38 +154,38 @@ namespace
             if (IsStructType(StructProp, FGameplayTag::StaticStruct()))
             {
                 const auto& Tag = *static_cast<const FGameplayTag*>(ValuePtr);
-                return { Tag.IsValid() ? Tag.GetTagName().ToString() : TEXT("(None)"), FCkDebuggerStyle::Color_Value_Tag };
+                return { Tag.IsValid() ? Tag.GetTagName().ToString() : TEXT("(None)"), CkDebugStyle::Value_Tag() };
             }
 
             // FGameplayTagContainer
             if (IsStructType(StructProp, FGameplayTagContainer::StaticStruct()))
             {
                 const auto& Container = *static_cast<const FGameplayTagContainer*>(ValuePtr);
-                return { Container.IsEmpty() ? TEXT("(Empty)") : Container.ToString(), FCkDebuggerStyle::Color_Value_Tag };
+                return { Container.IsEmpty() ? TEXT("(Empty)") : Container.ToString(), CkDebugStyle::Value_Tag() };
             }
 
             // FVector
             if (IsStructType(StructProp, TBaseStructure<FVector>::Get()))
             {
-                return { static_cast<const FVector*>(ValuePtr)->ToString(), FCkDebuggerStyle::Color_Value_Math };
+                return { static_cast<const FVector*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
             }
 
             // FVector2D
             if (IsStructType(StructProp, TBaseStructure<FVector2D>::Get()))
             {
-                return { static_cast<const FVector2D*>(ValuePtr)->ToString(), FCkDebuggerStyle::Color_Value_Math };
+                return { static_cast<const FVector2D*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
             }
 
             // FRotator
             if (IsStructType(StructProp, TBaseStructure<FRotator>::Get()))
             {
-                return { static_cast<const FRotator*>(ValuePtr)->ToString(), FCkDebuggerStyle::Color_Value_Math };
+                return { static_cast<const FRotator*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
             }
 
             // FTransform
             if (IsStructType(StructProp, TBaseStructure<FTransform>::Get()))
             {
-                return { static_cast<const FTransform*>(ValuePtr)->ToString(), FCkDebuggerStyle::Color_Value_Math };
+                return { static_cast<const FTransform*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
             }
 
             // FLinearColor
@@ -206,7 +207,7 @@ namespace
 
         auto ValueStr = FString{};
         InProperty->ExportTextItem_Direct(ValueStr, ValuePtr, nullptr, nullptr, PPF_None);
-        return { ValueStr, FCkDebuggerStyle::Color_Text_Primary };
+        return { ValueStr, CkDebugStyle::Text() };
     }
 }
 
@@ -276,7 +277,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(PropertyName))
-                        .ColorAndOpacity(FCkDebuggerStyle::Color_Selection)
+                        .ColorAndOpacity(CkDebugStyle::Selection())
                         .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                     ]
                 ];
@@ -286,7 +287,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(DisplayStr))
-                    .ColorAndOpacity(FCkDebuggerStyle::Color_Value_Handle)
+                    .ColorAndOpacity(CkDebugStyle::Value_Handle())
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                     .ToolTipText(FText::FromString(DisplayStr))
                 ];

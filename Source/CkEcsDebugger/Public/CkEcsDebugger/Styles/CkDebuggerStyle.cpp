@@ -1,5 +1,6 @@
 #include "CkDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkObjective/Objective/CkObjective_Fragment_Data.h"
 
 #include "Styling/SlateStyleRegistry.h"
@@ -9,73 +10,16 @@
 
 TSharedPtr<FSlateStyleSet> FCkDebuggerStyle::StyleInstance = nullptr;
 
-const FLinearColor FCkDebuggerStyle::Color_Background_Dark = FLinearColor(0.01f, 0.01f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Background_Medium = FLinearColor(0.025f, 0.025f, 0.025f);
-const FLinearColor FCkDebuggerStyle::Color_Background_Light = FLinearColor(0.04f, 0.04f, 0.04f);
-const FLinearColor FCkDebuggerStyle::Color_Border = FLinearColor(0.08f, 0.08f, 0.08f);
-const FLinearColor FCkDebuggerStyle::Color_Selection = FLinearColor(0.2f, 0.4f, 0.8f);
-const FLinearColor FCkDebuggerStyle::Color_SelectionInactive = FLinearColor(0.15f, 0.15f, 0.2f);
-const FLinearColor FCkDebuggerStyle::Color_Hover = FLinearColor(0.06f, 0.06f, 0.08f);
-
-const FLinearColor FCkDebuggerStyle::Color_Text_Primary = FLinearColor(0.85f, 0.85f, 0.85f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Secondary = FLinearColor(0.6f, 0.6f, 0.6f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Muted = FLinearColor(0.35f, 0.35f, 0.35f);
-const FLinearColor FCkDebuggerStyle::Color_Text_Highlight = FLinearColor(0.95f, 0.95f, 0.95f);
-
-const FLinearColor FCkDebuggerStyle::Color_Entity_ID = FLinearColor(0.51f, 0.69f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_Transform = FLinearColor(0.76f, 0.91f, 0.55f);
-const FLinearColor FCkDebuggerStyle::Color_PickMarker_Default = FLinearColor(0.35f, 0.75f, 0.95f, 0.65f);
-const FLinearColor FCkDebuggerStyle::Color_PickMarker_Hover = FLinearColor(1.0f, 0.9f, 0.2f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_Network = FLinearColor(1.0f, 0.8f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Relationship = FLinearColor(0.97f, 0.73f, 0.85f);
-const FLinearColor FCkDebuggerStyle::Color_Attribute = FLinearColor(0.55f, 0.85f, 0.95f);
-const FLinearColor FCkDebuggerStyle::Color_Reference = FLinearColor(0.51f, 0.69f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_None = FLinearColor(0.4f, 0.4f, 0.4f);
-const FLinearColor FCkDebuggerStyle::Color_Error = FLinearColor(1.0f, 0.34f, 0.13f);
-const FLinearColor FCkDebuggerStyle::Color_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
-const FLinearColor FCkDebuggerStyle::Color_Success = FLinearColor(0.25f, 0.75f, 0.25f);
-
-// ---- Value-type colors
-const FLinearColor FCkDebuggerStyle::Color_Value_Bool_True = FLinearColor(0.2f, 1.0f, 0.4f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Bool_False = FLinearColor(1.0f, 0.4f, 0.4f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Numeric = FLinearColor(0.6f, 0.9f, 0.6f);
-const FLinearColor FCkDebuggerStyle::Color_Value_String = FLinearColor(1.0f, 0.85f, 0.5f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Math = FLinearColor(0.7f, 0.7f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Tag = FLinearColor(0.8f, 0.6f, 1.0f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Enum = FLinearColor(0.5f, 0.9f, 0.9f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Object = FLinearColor(0.9f, 0.7f, 0.4f);
-const FLinearColor FCkDebuggerStyle::Color_Value_Handle = FLinearColor(0.4f, 0.8f, 1.0f);
-
-// ---- State colors
-const FLinearColor FCkDebuggerStyle::Color_State_Enabled = FLinearColor(0.0f, 1.0f, 0.5f);
-const FLinearColor FCkDebuggerStyle::Color_State_Disabled = FLinearColor(1.0f, 0.5f, 0.5f);
-const FLinearColor FCkDebuggerStyle::Color_State_Overlapping = FLinearColor(1.0f, 0.95f, 0.0f);
-const FLinearColor FCkDebuggerStyle::Color_State_Config = FLinearColor(1.0f, 0.8f, 0.01f);
-
-// ---- Status colors
-const FLinearColor FCkDebuggerStyle::Color_Status_NotStarted = FLinearColor(0.5f, 0.5f, 0.5f);
-const FLinearColor FCkDebuggerStyle::Color_Status_Active = FLinearColor(0.55f, 0.78f, 0.95f);
-const FLinearColor FCkDebuggerStyle::Color_Status_Completed = FLinearColor(0.6f, 0.85f, 0.55f);
-const FLinearColor FCkDebuggerStyle::Color_Status_Failed = FLinearColor(0.95f, 0.35f, 0.3f);
-
-// ---- Graph colors
-const FLinearColor FCkDebuggerStyle::Color_Graph_Background = FLinearColor(FColor(0x0D, 0x0D, 0x14));
-const FLinearColor FCkDebuggerStyle::Color_Graph_Edge = FLinearColor(0.4f, 0.4f, 0.45f);
-const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Center = FLinearColor(FColor(0x2D, 0x2D, 0x3D));
-const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Default = FLinearColor(FColor(0x1E, 0x1E, 0x2E));
-const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Border_Default = FLinearColor(FColor(0x60, 0x7D, 0x8B));
-const FLinearColor FCkDebuggerStyle::Color_Graph_Node_Border_Center = FLinearColor(FColor(0x4C, 0xAF, 0x50));
-
 // -----------------------------------------------------------------------------------------------------------------
 auto FCkDebuggerStyle::Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
 {
     switch (InStatus)
     {
-        case ECk_ObjectiveStatus::NotStarted: return Color_Status_NotStarted;
-        case ECk_ObjectiveStatus::Active:     return Color_Status_Active;
-        case ECk_ObjectiveStatus::Completed:  return Color_Status_Completed;
-        case ECk_ObjectiveStatus::Failed:     return Color_Status_Failed;
-        default:                              return Color_Text_Primary;
+        case ECk_ObjectiveStatus::NotStarted: return CkDebugStyle::Status_NotStarted();
+        case ECk_ObjectiveStatus::Active:     return CkDebugStyle::Status_Active();
+        case ECk_ObjectiveStatus::Completed:  return CkDebugStyle::Status_Completed();
+        case ECk_ObjectiveStatus::Failed:     return CkDebugStyle::Status_Failed();
+        default:                              return CkDebugStyle::Text();
     }
 }
 
@@ -122,58 +66,56 @@ auto FCkDebuggerStyle::Create() -> TSharedRef<FSlateStyleSet>
 
 auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
 {
-    InStyle->Set("CkDebugger.Background.Dark", new FSlateColorBrush(Color_Background_Dark));
-    InStyle->Set("CkDebugger.Background.Medium", new FSlateColorBrush(Color_Background_Medium));
-    InStyle->Set("CkDebugger.Background.Light", new FSlateColorBrush(Color_Background_Light));
-    InStyle->Set("CkDebugger.Border", new FSlateColorBrush(Color_Border));
-    InStyle->Set("CkDebugger.Selection", new FSlateColorBrush(Color_Selection));
-    InStyle->Set("CkDebugger.Hover", new FSlateColorBrush(Color_Hover));
+    InStyle->Set("CkDebugger.Background.Dark", new FSlateColorBrush(CkDebugStyle::BgRoot()));
+    InStyle->Set("CkDebugger.Background.Medium", new FSlateColorBrush(CkDebugStyle::Bg1()));
+    InStyle->Set("CkDebugger.Background.Light", new FSlateColorBrush(CkDebugStyle::Bg2()));
+    InStyle->Set("CkDebugger.Border", new FSlateColorBrush(CkDebugStyle::Border()));
+    InStyle->Set("CkDebugger.Selection", new FSlateColorBrush(CkDebugStyle::Selection()));
+    InStyle->Set("CkDebugger.Hover", new FSlateColorBrush(CkDebugStyle::Hover()));
 
-    InStyle->Set("CkDebugger.Panel.Background", new FSlateColorBrush(Color_Background_Medium));
+    InStyle->Set("CkDebugger.Panel.Background", new FSlateColorBrush(CkDebugStyle::Bg1()));
     InStyle->Set("CkDebugger.Panel.Border", new FSlateRoundedBoxBrush(
-        Color_Border,
+        CkDebugStyle::Border(),
         2.0f,
-        Color_Background_Medium,
+        CkDebugStyle::Bg1(),
         1.0f
     ));
 
-    InStyle->Set("CkDebugger.Row.Even", new FSlateColorBrush(Color_Background_Medium));
-    InStyle->Set("CkDebugger.Row.Odd", new FSlateColorBrush(Color_Background_Light));
+    InStyle->Set("CkDebugger.Row.Even", new FSlateColorBrush(CkDebugStyle::Bg1()));
+    InStyle->Set("CkDebugger.Row.Odd", new FSlateColorBrush(CkDebugStyle::Bg2()));
 
-    InStyle->Set("CkDebugger.Separator", new FSlateColorBrush(Color_Border));
+    InStyle->Set("CkDebugger.Separator", new FSlateColorBrush(CkDebugStyle::Border()));
 
-    InStyle->Set("CkDebugger.Graph.Background", new FSlateColorBrush(Color_Graph_Background));
+    InStyle->Set("CkDebugger.Graph.Background", new FSlateColorBrush(CkDebugStyle::Graph_Background()));
     InStyle->Set("CkDebugger.Graph.NodeBackground", new FSlateRoundedBoxBrush(
-        Color_Graph_Node_Default, GraphNode_CornerRadius));
+        CkDebugStyle::Graph_Node_Default(), GraphNode_CornerRadius));
     InStyle->Set("CkDebugger.Graph.NodeBackground.Hover", new FSlateRoundedBoxBrush(
-        FLinearColor(FColor(0x2D, 0x2D, 0x3D)), GraphNode_CornerRadius));
+        CkDebugStyle::Graph_Node_Center(), GraphNode_CornerRadius));
     InStyle->Set("CkDebugger.Graph.NodeBackground.Center", new FSlateRoundedBoxBrush(
-        Color_Graph_Node_Center, GraphNode_CornerRadius));
+        CkDebugStyle::Graph_Node_Center(), GraphNode_CornerRadius));
 
-    // ---- Filter badge brush (white so per-badge BorderBackgroundColor controls the color) ----
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
-        FLinearColor::White, 3.0f /* corner radius */));
+        FLinearColor::White, 3.0f));
 }
 
 auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void
 {
-    InStyle->Set("CkDebugger.Color.Text.Primary", Color_Text_Primary);
-    InStyle->Set("CkDebugger.Color.Text.Secondary", Color_Text_Secondary);
-    InStyle->Set("CkDebugger.Color.Text.Muted", Color_Text_Muted);
-    InStyle->Set("CkDebugger.Color.Text.Highlight", Color_Text_Highlight);
+    InStyle->Set("CkDebugger.Color.Text.Primary", CkDebugStyle::Text());
+    InStyle->Set("CkDebugger.Color.Text.Secondary", CkDebugStyle::TextDim());
+    InStyle->Set("CkDebugger.Color.Text.Muted", CkDebugStyle::TextMute());
+    InStyle->Set("CkDebugger.Color.Text.Highlight", CkDebugStyle::TextStrong());
 
-    InStyle->Set("CkDebugger.Color.EntityID", Color_Entity_ID);
-    InStyle->Set("CkDebugger.Color.Transform", Color_Transform);
-    InStyle->Set("CkDebugger.Color.Network", Color_Network);
-    InStyle->Set("CkDebugger.Color.Relationship", Color_Relationship);
-    InStyle->Set("CkDebugger.Color.Attribute", Color_Attribute);
-    InStyle->Set("CkDebugger.Color.Reference", Color_Reference);
-    InStyle->Set("CkDebugger.Color.None", Color_None);
+    InStyle->Set("CkDebugger.Color.EntityID", CkDebugStyle::EntityId());
+    InStyle->Set("CkDebugger.Color.Transform", CkDebugStyle::Transform());
+    InStyle->Set("CkDebugger.Color.Network", CkDebugStyle::Network());
+    InStyle->Set("CkDebugger.Color.Relationship", CkDebugStyle::Relationship());
+    InStyle->Set("CkDebugger.Color.Attribute", CkDebugStyle::Attribute());
+    InStyle->Set("CkDebugger.Color.Reference", CkDebugStyle::Reference());
+    InStyle->Set("CkDebugger.Color.None", CkDebugStyle::None());
 
-    InStyle->Set("CkDebugger.Color.Error", Color_Error);
-    InStyle->Set("CkDebugger.Color.Warning", Color_Warning);
-    InStyle->Set("CkDebugger.Color.Success", Color_Success);
-
+    InStyle->Set("CkDebugger.Color.Error", CkDebugStyle::Err());
+    InStyle->Set("CkDebugger.Color.Warning", CkDebugStyle::Warn());
+    InStyle->Set("CkDebugger.Color.Success", CkDebugStyle::Ok());
 }
 
 auto FCkDebuggerStyle::CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void
@@ -186,25 +128,25 @@ auto FCkDebuggerStyle::CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> v
 
     InStyle->Set("CkDebugger.Text.Normal", FTextBlockStyle()
         .SetFont(DefaultFont)
-        .SetColorAndOpacity(Color_Text_Primary));
+        .SetColorAndOpacity(CkDebugStyle::Text()));
 
     InStyle->Set("CkDebugger.Text.Bold", FTextBlockStyle()
         .SetFont(BoldFont)
-        .SetColorAndOpacity(Color_Text_Primary));
+        .SetColorAndOpacity(CkDebugStyle::Text()));
 
     InStyle->Set("CkDebugger.Text.Monospace", FTextBlockStyle()
         .SetFont(MonospaceFont)
-        .SetColorAndOpacity(Color_Text_Secondary));
+        .SetColorAndOpacity(CkDebugStyle::TextDim()));
 
     InStyle->Set("CkDebugger.Text.Header", FTextBlockStyle()
         .SetFont(HeaderFont)
-        .SetColorAndOpacity(Color_Text_Highlight));
+        .SetColorAndOpacity(CkDebugStyle::TextStrong()));
 
     InStyle->Set("CkDebugger.Text.LargeHeader", FTextBlockStyle()
         .SetFont(LargeHeaderFont)
-        .SetColorAndOpacity(Color_Text_Highlight));
+        .SetColorAndOpacity(CkDebugStyle::TextStrong()));
 
     InStyle->Set("CkDebugger.Text.Muted", FTextBlockStyle()
         .SetFont(DefaultFont)
-        .SetColorAndOpacity(Color_Text_Muted));
+        .SetColorAndOpacity(CkDebugStyle::TextMute()));
 }

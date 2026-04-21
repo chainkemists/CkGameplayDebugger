@@ -9,6 +9,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ObjectiveOwner)
 
 // =====================================================================================================================
@@ -57,7 +58,7 @@ auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const
         {
             return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
         },
-        FCkDebuggerStyle::Color_Text_Secondary);
+        CkDebugStyle::TextDim());
 
     // Each objective as a clickable row with live status
     for (const auto& ObjectiveHandle : Objectives)
@@ -78,7 +79,7 @@ auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const
             },
             [CapturedObjective](const FCk_Handle& E) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(CapturedObjective)) { return FCkDebuggerStyle::Color_None; }
+                if (ck::Is_NOT_Valid(CapturedObjective)) { return CkDebugStyle::None(); }
                 return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
             },
             [WeakSelectionModel, ObjectiveAsEntity]()

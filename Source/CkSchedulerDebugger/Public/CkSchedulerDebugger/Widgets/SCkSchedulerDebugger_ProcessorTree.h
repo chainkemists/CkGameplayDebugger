@@ -49,6 +49,14 @@ private:
 
 	auto DoBuildPumpSection() -> TSharedRef<SWidget>;
 
+	// Stable-tree builder for the pump/frame breakdown. Called only on
+	// structural hash change (topology grew, filter/scrub changed). Produces
+	// a pre-allocated widget tree where visibility and text for every row
+	// bind to TAttribute lambdas reading live from the data collector — so
+	// per-frame pump toggles, timing updates and entity-count changes flow
+	// through without ANY structural widget mutation. Kills scrunch.
+	auto DoBuildPumpBreakdown_StableTree() -> TSharedRef<SWidget>;
+
 private:
 	TSharedPtr<FCkSchedulerDebugger_ViewModel> _ViewModel;
 	TArray<TSharedPtr<FCkSchedulerDebugger_TreeNode>> _DisplayRoots;
@@ -62,6 +70,13 @@ private:
 
 	FDelegateHandle _DataRefreshedHandle;
 	uint32 _LastPumpDataHash = 0;
+
+	// Grow-only counter tracking the highest pump count we've ever observed.
+	// The pump-breakdown structure pre-allocates Pass sections up to this
+	// number and toggles their Visibility per-frame based on live PumpCount.
+	// Only growing the counter triggers a structural rebuild — per-frame
+	// variance in how many passes actually ran does not.
+	int32 _MaxObservedPumpCount = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

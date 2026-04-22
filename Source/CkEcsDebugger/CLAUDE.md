@@ -1,4 +1,10 @@
-# CkEcsDebugger - Development Guidelines
+# CkEcsDebugger — Development Guidelines
+
+> **Read [`../CkDebuggerCommon/CLAUDE.md`](../CkDebuggerCommon/CLAUDE.md) first.**
+> It covers cross-debugger conventions: shared widgets, copy / selectable text
+> policy, the search-mode toggle, PIE world handling, and the safety rules
+> (lambda capture, TSharedPtr null-checks, deprecated Slate APIs, brush
+> allocation, etc.). This file only covers what's specific to the ECS debugger.
 
 ## Module Overview
 
@@ -33,109 +39,20 @@ Window (SCkDebuggerWindow_Main)
 - `ICkEcsGraphLayoutStrategy` — layout algorithm (currently `FCkDirectionalGraphLayout`)
 - `SCkDebuggerWidget_GraphView` — SCanvas + OnPaint rendering with pan/zoom/drag
 
-## Critical Safety Rules
+## ECS-Specific Safety Rule
 
-### 1. NEVER capture raw UObject* in delegates or lambdas
-
-**Wrong:**
-```cpp
-auto* World = GetWorld();
-Button->OnClicked(this, &MyClass::OnClicked, World); // World can be GC'd
-```
-
-**Correct:**
-```cpp
-TWeakObjectPtr<UWorld> WorldWeak(GetWorld());
-Button->OnClicked(this, &MyClass::OnClicked, WorldWeak);
-// In handler: auto* World = InWorldWeak.Get(); if (!World) return;
-```
-
-This applies to ALL UObject-derived types: UWorld, AActor, UActorComponent, UGameInstance, etc. Slate widgets outlive PIE sessions. Worlds and actors are garbage collected when PIE ends. A raw pointer captured in a button delegate becomes dangling.
-
-### 2. ALWAYS null-check TSharedPtr widgets before dereferencing
-
-**Wrong:**
-```cpp
-NodeCanvas->ClearChildren(); // Crashes if called before Construct()
-```
-
-**Correct:**
-```cpp
-if (NodeCanvas.IsValid())
-{
-    NodeCanvas->ClearChildren();
-}
-```
-
-Every `TSharedPtr<SWidget>` member must be checked before use. Methods like `ClearGraph()`, `RebuildFromModel()`, `RebuildInspectors()` can be called during construction, teardown, or in response to external events before widgets are ready.
-
-### 3. ALWAYS validate array indices before access
-
-**Wrong:**
-```cpp
-Pages[ActivePageIndex]->Set_IsActive(true);
-```
-
-**Correct:**
-```cpp
-if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())
-{
-    Pages[ActivePageIndex]->Set_IsActive(true);
-}
-```
-
-### 4. Inspector lifecycle: use OnDeactivated for cleanup
+### Inspector lifecycle: use `OnDeactivated` for cleanup
 
 When an inspector allocates per-entity state (debug draw, registered delegates, etc.), clean it up in `OnDeactivated()` — NOT in the destructor alone. `OnDeactivated` is called when:
 - The inspected entity changes
 - The inspector panel rebuilds
 - The panel is destroyed
 
-### 5. FCk_Handle validity
-
-ALWAYS check `ck::IsValid(Handle)` before passing handles to CkFoundation API functions. Handles become invalid when:
-- PIE ends (all entities destroyed)
-- The entity is killed at runtime
-- The world switches
-
-### 6. World validity
-
-Before calling `UWorld::GetSubsystem()` or any world API, verify:
-```cpp
-if (ck::Is_NOT_Valid(World)) { return; }
-if (NOT World->HasBegunPlay()) { return; } // Subsystems not initialized yet
-```
-
-Worlds appear in `GEngine->GetWorldContexts()` before `HasBegunPlay()` is true. Calling `GetSubsystem()` on such a world crashes.
-
-### 7. No deprecated Slate APIs
-
-Use explicit `ToPaintGeometry(FVector2f Size, FSlateLayoutTransform)` instead of the parameterless `ToPaintGeometry()` which is deprecated in UE 5.5+.
-
-### 8. Brush allocation
-
-NEVER allocate brushes (`new FSlateColorBrush(...)`) in hot paths (Tick, OnPaint, Build methods called per-frame). Register brushes in `FCkDebuggerStyle` and reference them via the style set. Bare `new` brushes leak.
-
-## Coding Conventions
-
-Follow CkFoundation conventions (see CkFoundation/CLAUDE.md):
-
-- **Trailing return types:** `auto Foo() -> ReturnType`
-- **Validity checks:** `ck::IsValid()` / `ck::Is_NOT_Valid()` — never raw null checks
-- **Boolean negation:** `NOT` macro instead of `!`
-- **String formatting:** `ck::Format_UE(TEXT("{}"), Value)` — NEVER `FString::Printf` or `%s` specifiers. Uses `{}` libfmt-style placeholders.
-- **`auto` everywhere:** Prefer `auto` for local variables
-- **`MoveTemp`:** Use UE's `MoveTemp` instead of `std::move`
-- **Member variable prefix:** `_` prefix (e.g., `_Config`, `_ProbeHandleToToggle`)
-- **Section separators:** `// ====...` between major sections in .cpp files
-- **Include order:** Standard → Unreal Engine → CkCore/CkEcs → Module-specific
-
-### Debugger-Specific Conventions
+## ECS-Specific Conventions
 
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
-- Colors live in `CkDebugStyle::` (CkDebuggerCommon) — tunable under Project Settings → CkGameplayDebugger → GOAP. `FCkDebuggerStyle` only owns ECS-specific Slate brushes, text styles, padding + graph-node size constants.
-- Common Slate primitives live in `CkDebuggerCommon/Widgets/` — `SCkDebug_InspectorPanel` for collapsible sections, `SCkDebug_KeyValueRow` for label/value rows, `SCkDebug_SectionHeader` for subsection headers, `SCkDebug_StatusPill` for toned status labels. Prefer these over bespoke `SExpandableArea` / `STextBlock` constructions.
+- `FCkDebuggerStyle` owns ECS-specific Slate brushes, text styles, padding + graph-node size constants. Cross-debugger style tokens live in `CkDebugStyle::` (CkDebuggerCommon).
 - `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
 - Graph model is pure data with no rendering. Layout strategy is swappable.
 
@@ -147,7 +64,8 @@ Follow CkFoundation conventions (see CkFoundation/CLAUDE.md):
 4. Implement `Get_ComponentName`, `CanInspect`, `Build_Inspector`, `Get_SortPriority`
 5. If filterable: override `IsFilterable() -> true` and implement `Build_Inspector(Entity, Filter)`
 6. If cleanup needed: override `OnDeactivated()`
-7. Add module dependency to `CkEcsDebugger.Build.cs` if needed
+7. Use `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) for value rows — values are automatically copyable. For custom text, use `SCkDebug_SelectableLabel` (see `CkDebuggerCommon/CLAUDE.md`).
+8. Add module dependency to `CkEcsDebugger.Build.cs` if needed
 
 ## Adding a Graph Relationship
 

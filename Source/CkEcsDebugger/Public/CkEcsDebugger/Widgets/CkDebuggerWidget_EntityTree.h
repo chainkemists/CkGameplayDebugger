@@ -23,6 +23,13 @@ struct FCkEntityTreeNode
      * The two flags compose: a row is rendered iff IsVisible, and rendered dimmed iff !IsFilterMatch.
      */
     bool IsFilterMatch = true;
+
+    /**
+     * Highlight-text match state. Driven by the Highlight search input — when false,
+     * the row is shown but dimmed so matches stand out within the filtered set.
+     * Independent of IsVisible (which is driven by the Filter input).
+     */
+    bool IsSearchMatch = true;
 };
 
 class SCkDebuggerWidget_EntityTree : public SCompoundWidget
@@ -43,10 +50,12 @@ public:
 
     auto RefreshTree() -> void;
     auto ApplyFilter(const FString& InFilterText) -> void;
+    auto ApplyHighlight(const FString& InHighlightText) -> void;
     auto ExpandAll() -> void;
     auto CollapseAll() -> void;
     auto Get_CurrentFilter() const -> FText { return FText::FromString(CurrentFilter); }
     auto Get_CurrentFilterString() const -> const FString& { return CurrentFilter; }
+    auto Get_CurrentHighlight() const -> FText { return FText::FromString(CurrentHighlight); }
 
 private:
     auto BuildEntityTree() -> void;
@@ -64,7 +73,6 @@ private:
     auto OnExpansionChanged(TSharedPtr<FCkEntityTreeNode> InNode, bool InIsExpanded) -> void;
     auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
 
-    auto DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeNode> InNode) const -> bool;
     auto OnExternalSelectionChanged(const TArray<FCk_Handle>& InNewSelection) -> void;
 
     bool IsUpdatingSelection = false;
@@ -81,6 +89,7 @@ private:
     FDelegateHandle FilterChangedHandle;
 
     FString CurrentFilter;
+    FString CurrentHighlight;
     bool NeedsRefresh = true;
     float TimeSinceLastRefresh = 0.0f;
     static constexpr float RefreshInterval = 0.1f;

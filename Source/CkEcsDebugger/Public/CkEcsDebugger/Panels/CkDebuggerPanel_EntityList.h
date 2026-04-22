@@ -7,7 +7,7 @@ class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
 class FCkDebuggerModel_InspectorFilter;
 class SBox;
-class SCkDebuggerWidget_SearchBar;
+class SCkDebug_DualSearchBar;
 class SCkDebuggerWidget_EntityTree;
 
 class SCkDebuggerPanel_EntityList : public SCompoundWidget
@@ -29,16 +29,18 @@ private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;
 
-    auto OnSearchTextChanged(const FString& InSearchText) -> void;
+    auto OnFilterTextChanged(const FString& InText) -> void;
+    auto OnHighlightTextChanged(const FString& InText) -> void;
     auto OnRefreshClicked() -> FReply;
     auto OnExpandAllClicked() -> FReply;
     auto OnCollapseAllClicked() -> FReply;
     auto OnWorldButtonClicked(TWeakObjectPtr<UWorld> InWorldWeak) -> FReply;
+    auto OnCopyableTextRightClicked(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent, FString InText) -> FReply;
 
     auto Get_EntityCountText() const -> FText;
     auto Get_SelectionCountText() const -> FText;
 
-    TSharedPtr<SCkDebuggerWidget_SearchBar> SearchBar;
+    TSharedPtr<SCkDebug_DualSearchBar> SearchBar;
     TSharedPtr<SCkDebuggerWidget_EntityTree> EntityTree;
     TSharedPtr<SBox> WorldSelectorContainer;
 

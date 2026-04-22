@@ -1,8 +1,11 @@
 #include "CkEcsDebugGraphSchema.h"
 #include "CkEcsDebugConnectionPolicy.h"
+#include "CkEcsDebugNode_Entity.h"
 
 #include "ConnectionDrawingPolicy.h"
-#include "ToolMenu.h"
+#include "EdGraph/EdGraphNode.h"
+
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -35,7 +38,20 @@ auto
         UGraphNodeContextMenuContext* InContext) const
     -> void
 {
-    // Read-only graph — no context menu
+    if (InMenu == nullptr || InContext == nullptr || InContext->Node == nullptr)
+    { return; }
+
+    const auto* EntityNode = Cast<UCkEcsDebugNode_Entity>(InContext->Node);
+    if (EntityNode == nullptr)
+    { return; }
+
+    const auto NodeText = EntityNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
+
+    ck::DebugCopyMenu::AddCopyEntryToToolMenu(InMenu,
+        TEXT("CopyText"),
+        FText::FromString(TEXT("Copy Text")),
+        FText::FromString(TEXT("Copy this node's display text to the clipboard")),
+        NodeText);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

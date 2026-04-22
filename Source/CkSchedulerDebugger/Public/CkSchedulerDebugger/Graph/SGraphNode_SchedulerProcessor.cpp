@@ -2,11 +2,11 @@
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
+
 #include "SGraphPin.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -34,122 +34,115 @@ auto
 	InputPins.Empty();
 	OutputPins.Empty();
 	RightNodeBox.Reset();
+	LeftNodeBox.Reset();
 
-	const auto GhostOpacity = _ProcessorNode->IsGhost ? 0.4f : 1.0f;
+	const auto Variant = _ProcessorNode->IsGhost
+		? ECkDebug_NodePillVariant::Inactive
+		: ECkDebug_NodePillVariant::InPlan;
 
-	RightNodeBox = SNew(SVerticalBox);
+	// Pumped-this-frame highlight rides on the pill's border-color override so
+	// the rest of the variant palette (fill / badge) keeps flowing from tokens.
+	const auto BorderOverride = _ProcessorNode->WasDirtyThisFrame
+		? CkDebugStyle::Warn()
+		: FLinearColor::Transparent;
+
+	const auto AccentColor = FCkSchedulerDebuggerStyle::Get_GroupColor(_ProcessorNode->GroupName);
 
 	GetOrAddSlot(ENodeZone::Center)
 	.HAlign(HAlign_Fill)
 	.VAlign(VAlign_Center)
 	[
-		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("Graph.StateNode.Body"))
-		.BorderBackgroundColor_Raw(this, &SGraphNode_SchedulerProcessor::Get_NodeBorderColor)
-		.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, GhostOpacity))
-		.Padding(FCkSchedulerDebuggerStyle::Node_BorderThickness)
+		SNew(SOverlay)
+
+		// Hidden pin overlay for connection geometry — pins are HitTestInvisible
+		// so they don't eat clicks targeted at the pill.
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
 		[
-			SNew(SOverlay)
+			SAssignNew(RightNodeBox, SVerticalBox)
+			.Visibility(EVisibility::HitTestInvisible)
+		]
 
-			+ SOverlay::Slot()
-			[
-				RightNodeBox.ToSharedRef()
-			]
-
-			+ SOverlay::Slot()
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			[
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				[
-					SNew(SBorder)
-					.BorderImage(FCoreStyle::Get().GetBrush("GenericWhiteBox"))
-					.BorderBackgroundColor_Raw(this, &SGraphNode_SchedulerProcessor::Get_GroupAccentColor)
-					.Padding(FMargin(FCkSchedulerDebuggerStyle::Node_AccentWidth, 0.0f, 0.0f, 0.0f))
-					[
-						SNew(SSpacer)
-					]
-				]
-
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-				[
-					SNew(SBorder)
-					.BorderImage(FCoreStyle::Get().GetBrush("GenericWhiteBox"))
-					.BorderBackgroundColor(FCkSchedulerDebuggerStyle::Color_Graph_NodeBody)
-					.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-					[
-						SNew(SVerticalBox)
-
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 0.0f, 0.0f, 2.0f)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(_ProcessorNode->DisplayName))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
-						]
-
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							SNew(SHorizontalBox)
-
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text_Raw(this, &SGraphNode_SchedulerProcessor::Get_TimingText)
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity_Raw(this, &SGraphNode_SchedulerProcessor::Get_TimingColor)
-							]
-
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, 6.0f, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("#%d"), _ProcessorNode->ExecutionOrder)))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-							]
-
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, 3.0f, 0.0f)
-							[
-								SNew(STextBlock)
-								.Text(_ProcessorNode->HasDirtyMarker
-									? FText::FromString(FString(UTF8TEXT("\u25CF")))
-									: FText::GetEmpty())
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
-							]
-
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							[
-								SNew(STextBlock)
-								.Text(_ProcessorNode->IsParallel
-									? FText::FromString(FString(UTF8TEXT("\u25C6")))
-									: FText::GetEmpty())
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Parallel)
-							]
-						]
-					]
-				]
-			]
+		+ SOverlay::Slot()
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
+		[
+			SNew(SCkDebug_NodePill)
+			.Variant(Variant)
+			.StepIndex(-1)
+			.ShowCost(false)
+			.Title(FText::FromString(_ProcessorNode->DisplayName))
+			.AccentColor(AccentColor)
+			.BorderColorOverride(BorderOverride)
+			.BodyContent() [ CreateMetaRow() ]
 		]
 	];
 
 	CreatePinWidgets();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SGraphNode_SchedulerProcessor::
+	CreateMetaRow()
+	-> TSharedRef<SWidget>
+{
+	const auto MetaFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize());
+
+	auto Row = SNew(SHorizontalBox);
+
+	Row->AddSlot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text_Raw(this, &SGraphNode_SchedulerProcessor::Get_TimingText)
+			.Font(MetaFont)
+			.ColorAndOpacity_Raw(this, &SGraphNode_SchedulerProcessor::Get_TimingColor)
+		];
+
+	Row->AddSlot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(FString::Printf(TEXT("#%d"), _ProcessorNode->ExecutionOrder)))
+			.Font(MetaFont)
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+		];
+
+	if (_ProcessorNode->HasDirtyMarker)
+	{
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(FString(UTF8TEXT("\u25CF"))))
+				.Font(MetaFont)
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::Warn()))
+			];
+	}
+
+	if (_ProcessorNode->IsParallel)
+	{
+		Row->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(FString(UTF8TEXT("\u25C6"))))
+				.Font(MetaFont)
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::Info()))
+			];
+	}
+
+	return Row;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -161,11 +154,9 @@ auto
 {
 	for (auto Pin : GraphNode->Pins)
 	{
-		if (Pin && Pin->Direction == EGPD_Output && NOT Pin->bHidden)
+		if (Pin && NOT Pin->bHidden)
 		{
 			auto PinWidget = SNew(SGraphPin, Pin);
-			PinWidget->SetIsEditable(false);
-			PinWidget->SetVisibility(EVisibility::HitTestInvisible);
 			AddPin(PinWidget);
 		}
 	}
@@ -180,24 +171,28 @@ auto
 	-> void
 {
 	InPinToAdd->SetOwner(SharedThis(this));
+	InPinToAdd->SetRenderOpacity(0.0f);
+	InPinToAdd->SetVisibility(EVisibility::HitTestInvisible);
 
-	RightNodeBox->AddSlot()
-	.HAlign(HAlign_Fill)
-	.VAlign(VAlign_Fill)
-	[
-		InPinToAdd
-	];
-	OutputPins.Add(InPinToAdd);
-}
+	if (RightNodeBox.IsValid())
+	{
+		RightNodeBox->AddSlot()
+			.HAlign(HAlign_Fill)
+			.VAlign(VAlign_Fill)
+			.FillHeight(1.0f)
+			[
+				InPinToAdd
+			];
+	}
 
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-	SGraphNode_SchedulerProcessor::
-	Get_GroupAccentColor() const
-	-> FSlateColor
-{
-	return FSlateColor(FCkSchedulerDebuggerStyle::Get_GroupColor(_ProcessorNode->GroupName));
+	if (InPinToAdd->GetDirection() == EGPD_Input)
+	{
+		InputPins.Add(InPinToAdd);
+	}
+	else
+	{
+		OutputPins.Add(InPinToAdd);
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -218,26 +213,6 @@ auto
 	-> FSlateColor
 {
 	return FSlateColor(FCkSchedulerDebuggerStyle::Get_TimingColor(_ProcessorNode->LastFrameTimeMs));
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-	SGraphNode_SchedulerProcessor::
-	Get_NodeBorderColor() const
-	-> FSlateColor
-{
-	if (_ProcessorNode->IsGhost)
-	{
-		return FSlateColor(FCkSchedulerDebuggerStyle::Color_Ghost);
-	}
-
-	if (_ProcessorNode->WasDirtyThisFrame)
-	{
-		return FSlateColor(FCkSchedulerDebuggerStyle::Color_Pumped);
-	}
-
-	return FSlateColor(FCkSchedulerDebuggerStyle::Color_Graph_NodeBorder);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

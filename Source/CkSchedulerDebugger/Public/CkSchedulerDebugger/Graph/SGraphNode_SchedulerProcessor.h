@@ -22,10 +22,10 @@ public:
 private:
 	UCkSchedulerDebugNode_Processor* _ProcessorNode = nullptr;
 
-	auto Get_GroupAccentColor() const -> FSlateColor;
+	auto CreateMetaRow() -> TSharedRef<SWidget>;
+
 	auto Get_TimingText() const -> FText;
 	auto Get_TimingColor() const -> FSlateColor;
-	auto Get_NodeBorderColor() const -> FSlateColor;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

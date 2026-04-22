@@ -119,6 +119,11 @@ struct FCkSchedulerDebugger_TreeNode
 	TWeakPtr<FCkSchedulerDebugger_TreeNode> Parent;
 	bool IsVisible = true;
 	bool IsExpanded = true;
+
+	// Search-text match state. Only meaningful in Highlight search mode — in Filter
+	// mode every visible node matches by definition. When false in Highlight mode,
+	// the row stays visible but is rendered dim so matches stand out.
+	bool IsSearchMatch = true;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

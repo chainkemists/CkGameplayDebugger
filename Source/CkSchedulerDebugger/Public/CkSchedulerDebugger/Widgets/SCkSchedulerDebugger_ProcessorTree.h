@@ -47,6 +47,8 @@ private:
 		TSharedPtr<FCkSchedulerDebugger_TreeNode> InItem,
 		ESelectInfo::Type InSelectInfo) -> void;
 
+	auto DoOnContextMenuOpening() -> TSharedPtr<SWidget>;
+
 	auto DoBuildPumpSection() -> TSharedRef<SWidget>;
 
 	// Stable-tree builder for the pump/frame breakdown. Called only on
@@ -63,7 +65,9 @@ private:
 	TSharedPtr<STreeView<TSharedPtr<FCkSchedulerDebugger_TreeNode>>> _TreeView;
 
 	FString _FilterString;
+	FString _HighlightString;
 	FString _BreakdownFilterString;
+	FString _BreakdownHighlightString;
 	bool _BreakdownHideIdle = false;
 	ECkSchedulerDebugger_SortMode _SortMode = ECkSchedulerDebugger_SortMode::ExecutionOrder;
 	TSharedPtr<SBox> _PumpContainer;

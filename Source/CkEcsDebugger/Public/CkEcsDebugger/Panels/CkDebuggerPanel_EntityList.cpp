@@ -8,8 +8,10 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
@@ -58,8 +60,9 @@ auto SCkDebuggerPanel_EntityList::Construct(
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
-                SAssignNew(SearchBar, SCkDebuggerWidget_SearchBar)
-                .OnSearchTextChanged(this, &SCkDebuggerPanel_EntityList::OnSearchTextChanged)
+                SAssignNew(SearchBar, SCkDebug_DualSearchBar)
+                .OnFilterTextChanged(this, &SCkDebuggerPanel_EntityList::OnFilterTextChanged)
+                .OnHighlightTextChanged(this, &SCkDebuggerPanel_EntityList::OnHighlightTextChanged)
             ]
 
             + SVerticalBox::Slot()
@@ -177,6 +180,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
 
             const auto bIsSelected = WorldModel->Get_SelectedWorld() == World;
             const TWeakObjectPtr<UWorld> WorldWeak(World);
+            const auto WorldLabel = ck::Format_UE(TEXT("{}"), World->GetNetMode());
 
             ButtonRow->AddSlot()
             .FillWidth(1.0f)
@@ -186,6 +190,9 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
                     ? FCkDebuggerStyle::Get().GetBrush("CkDebugger.Panel.Border")
                     : FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
                 .Padding(FMargin(2.0f))
+                // Right-click → "Copy Text". SButton ignores non-left-mouse buttons,
+                // so right-click bubbles up to this SBorder handler.
+                .OnMouseButtonDown(this, &SCkDebuggerPanel_EntityList::OnCopyableTextRightClicked, WorldLabel)
                 [
                     SNew(SButton)
                     .ButtonStyle(FAppStyle::Get(), "Button")
@@ -194,7 +201,7 @@ auto SCkDebuggerPanel_EntityList::Build_WorldSelector() -> TSharedRef<SWidget>
                     .HAlign(HAlign_Center)
                     [
                         SNew(STextBlock)
-                        .Text(FText::FromString(ck::Format_UE(TEXT("{}"), World->GetNetMode())))
+                        .Text(FText::FromString(WorldLabel))
                         .ColorAndOpacity(bIsSelected
                             ? CkDebugStyle::Selection()
                             : CkDebugStyle::Text())
@@ -334,11 +341,19 @@ auto SCkDebuggerPanel_EntityList::Build_StatusBar() -> TSharedRef<SWidget>
         ];
 }
 
-auto SCkDebuggerPanel_EntityList::OnSearchTextChanged(const FString& InSearchText) -> void
+auto SCkDebuggerPanel_EntityList::OnFilterTextChanged(const FString& InText) -> void
 {
     if (EntityTree.IsValid())
     {
-        EntityTree->ApplyFilter(InSearchText);
+        EntityTree->ApplyFilter(InText);
+    }
+}
+
+auto SCkDebuggerPanel_EntityList::OnHighlightTextChanged(const FString& InText) -> void
+{
+    if (EntityTree.IsValid())
+    {
+        EntityTree->ApplyHighlight(InText);
     }
 }
 
@@ -404,6 +419,14 @@ auto SCkDebuggerPanel_EntityList::OnWorldButtonClicked(TWeakObjectPtr<UWorld> In
     }
 
     return FReply::Handled();
+}
+
+auto SCkDebuggerPanel_EntityList::OnCopyableTextRightClicked(
+    const FGeometry& InGeometry,
+    const FPointerEvent& InMouseEvent,
+    FString InText) -> FReply
+{
+    return ck::DebugCopyMenu::Handle_RightClickToCopy(AsShared(), InMouseEvent, InText);
 }
 
 auto SCkDebuggerPanel_EntityList::Get_EntityCountText() const -> FText

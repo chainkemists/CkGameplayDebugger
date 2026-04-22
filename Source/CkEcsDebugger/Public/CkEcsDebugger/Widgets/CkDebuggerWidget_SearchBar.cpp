@@ -9,6 +9,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
 auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
 {
     OnSearchTextChangedDelegate = InArgs._OnSearchTextChanged;
@@ -74,6 +75,7 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
         ]
     ];
 }
+
 
 auto SCkDebuggerWidget_SearchBar::Tick(
     const FGeometry& InAllottedGeometry,

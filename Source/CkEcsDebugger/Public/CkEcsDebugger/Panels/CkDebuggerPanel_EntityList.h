@@ -45,7 +45,7 @@ private:
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
 
-    int32 LastKnownWorldCount = -1;
+    TArray<TWeakObjectPtr<UWorld>> LastKnownWorlds;
     float TimeSinceWorldCheck = 0.0f;
     static constexpr float WorldCheckInterval = 1.0f;
 };

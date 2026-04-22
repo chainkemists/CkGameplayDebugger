@@ -14,6 +14,11 @@
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -30,6 +35,7 @@ namespace
 		-> TSharedRef<SWidget>
 	{
 		const auto WeakVM = TWeakPtr<FCkSchedulerDebugger_ViewModel>(InViewModel);
+		const auto WeakNode = TWeakPtr<FCkSchedulerDebugger_TreeNode>(InNode);
 		const auto ProcIdx = InNode ? InNode->ProcessorIndex : INDEX_NONE;
 		const auto NodeName = InNode ? InNode->DisplayName : FString{};
 
@@ -81,8 +87,13 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::FromString(NodeName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity_Lambda([LookupProc]() -> FSlateColor
+						.ColorAndOpacity_Lambda([LookupProc, WeakNode]() -> FSlateColor
 						{
+							// Highlight-mode dim takes precedence so non-matches read clearly.
+							if (const auto Node = WeakNode.Pin();
+								Node.IsValid() && NOT Node->IsSearchMatch)
+							{ return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
+
 							const auto* Proc = LookupProc();
 							const auto IsGhost = Proc && Proc->IsGhost;
 							return FSlateColor(IsGhost
@@ -431,11 +442,10 @@ namespace
 					SNew(SBox)
 						.WidthOverride(30.0f)
 						[
-							SNew(STextBlock)
+							SNew(SCkDebug_SelectableLabel)
 								.Text(FText::FromString(ExecOrderText))
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-								.Justification(ETextJustify::Right)
 						]
 				]
 
@@ -444,7 +454,7 @@ namespace
 				.VAlign(VAlign_Center)
 				.Padding(2.0f, 0.0f)
 				[
-					SNew(STextBlock)
+					SNew(SCkDebug_SelectableLabel)
 						.Text(FText::FromString(InProc.DisplayName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 						.ColorAndOpacity(NameColor)
@@ -473,12 +483,10 @@ namespace
 				SNew(SBox)
 					.WidthOverride(40.0f)
 					[
-						SNew(STextBlock)
+						SNew(SCkDebug_SelectableLabel)
 							.Text(FText::FromString(EntityText))
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
-							.Justification(ETextJustify::Right)
-							.ToolTipText(FText::FromString(TEXT("Entity count")))
 					]
 			];
 
@@ -487,7 +495,7 @@ namespace
 			.VAlign(VAlign_Center)
 			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 			[
-				SNew(STextBlock)
+				SNew(SCkDebug_SelectableLabel)
 					.Text(FText::FromString(TimingText))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 					.ColorAndOpacity(TimingColor)
@@ -529,12 +537,19 @@ auto
 					.FillWidth(1.0f)
 					.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 					[
-						SNew(SSearchBox)
-							.OnTextChanged_Lambda([this](const FText& InText)
+						SNew(SCkDebug_DualSearchBar)
+							.FilterHintText(FText::FromString(TEXT("Filter processors…")))
+							.HighlightHintText(FText::FromString(TEXT("Highlight…")))
+							.OnFilterTextChanged_Lambda([this](const FString& InText)
 							{
-								DoApplyFilter(InText);
+								DoApplyFilter(FText::FromString(InText));
 							})
-							.HintText(FText::FromString(TEXT("Search processors...")))
+							.OnHighlightTextChanged_Lambda([this](const FString& InText)
+							{
+								if (_HighlightString == InText) { return; }
+								_HighlightString = InText;
+								DoApplyFilter(FText::FromString(_FilterString));
+							})
 					]
 
 				+ SHorizontalBox::Slot()
@@ -595,6 +610,7 @@ auto
 								.OnGenerateRow(this, &SCkSchedulerDebugger_ProcessorTree::DoGenerateRow)
 								.OnGetChildren(this, &SCkSchedulerDebugger_ProcessorTree::DoGetChildren)
 								.OnSelectionChanged(this, &SCkSchedulerDebugger_ProcessorTree::DoOnSelectionChanged)
+								.OnContextMenuOpening(this, &SCkSchedulerDebugger_ProcessorTree::DoOnContextMenuOpening)
 								.SelectionMode(ESelectionMode::Single)
 						]
 
@@ -648,14 +664,21 @@ auto
 											+ SHorizontalBox::Slot()
 												.FillWidth(1.0f)
 												[
-													SNew(SSearchBox)
-														.OnTextChanged_Lambda([this](const FText& InText)
+													SNew(SCkDebug_DualSearchBar)
+														.FilterHintText(FText::FromString(TEXT("Filter…")))
+														.HighlightHintText(FText::FromString(TEXT("Highlight…")))
+														.OnFilterTextChanged_Lambda([this](const FString& InText)
 														{
-															_BreakdownFilterString = InText.ToString();
+															if (_BreakdownFilterString == InText) { return; }
+															_BreakdownFilterString = InText;
 															_LastPumpDataHash = 0;
 															DoOnDataRefreshed();
 														})
-														.HintText(FText::FromString(TEXT("Filter...")))
+														.OnHighlightTextChanged_Lambda([this](const FString& InText)
+														{
+															// Dim binding reads this at paint time; no rebuild needed.
+															_BreakdownHighlightString = InText;
+														})
 												]
 										]
 
@@ -775,7 +798,9 @@ auto
 	});
 
 	// Shared predicate. Captured by value into every row lambda so each row
-	// makes its own filter decision at paint time.
+	// makes its own filter decision at paint time. The Filter input narrows
+	// visibility; the Highlight input only drives row-text dimming and is
+	// applied separately in the row's colour binding.
 	const auto ProcMatchesFilter = [FilterString](const FCkSchedulerDebugger_ProcessorInfo& Proc) -> bool
 	{
 		if (Proc.IsGroupStart || Proc.IsGroupEnd || Proc.IsGhost) { return false; }
@@ -1056,10 +1081,19 @@ auto
 						// Name (static)
 						+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(2.0f, 0.0f)
 						[
-							SNew(STextBlock)
+							SNew(SCkDebug_SelectableLabel)
 							.Text(FText::FromString(MemberName))
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+							.ColorAndOpacity_Lambda([this, MemberName]() -> FSlateColor
+							{
+								// Dim when the Highlight input is set and this row doesn't match.
+								// Otherwise use the primary colour. (The row is only here at all
+								// because it already passed the Filter input.)
+								if (NOT _BreakdownHighlightString.IsEmpty()
+									&& NOT ck::fuzzy::Match(_BreakdownHighlightString, MemberName, {}).Get_IsMatch())
+								{ return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
+								return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Primary);
+							})
 						]
 
 						// Entity count (bound)
@@ -1794,37 +1828,46 @@ auto
 {
 	_FilterString = InFilterText.ToString();
 
-	TFunction<bool(const TSharedPtr<FCkSchedulerDebugger_TreeNode>&, const FString&)> ApplyFilterRecursive =
-		[&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode, const FString& InFilter) -> bool
+	// Two-pass pipeline driven by the dual search bar:
+	//   Pass 1 (visibility) — _FilterString hides non-matches; ancestors stay
+	//                         visible if any descendant matches.
+	//   Pass 2 (dim flag)   — _HighlightString flags IsSearchMatch on the
+	//                         visible set so the row's name colour can dim
+	//                         anything that doesn't match.
+	const auto FilterStr = _FilterString;
+	const auto HighlightStr = _HighlightString;
+
+	TFunction<bool(const TSharedPtr<FCkSchedulerDebugger_TreeNode>&)> ApplyFilterRecursive =
+		[&](const TSharedPtr<FCkSchedulerDebugger_TreeNode>& InNode) -> bool
 	{
-		if (InFilter.IsEmpty())
+		// ---- Visibility (Filter input) ----
+		if (FilterStr.IsEmpty())
 		{
 			InNode->IsVisible = true;
 			for (const auto& Child : InNode->Children)
-			{
-				ApplyFilterRecursive(Child, InFilter);
-			}
-			return true;
+			{ ApplyFilterRecursive(Child); }
 		}
-
-		if (InNode->Children.Num() > 0)
+		else if (InNode->Children.Num() > 0)
 		{
 			auto AnyChildVisible = false;
 			for (const auto& Child : InNode->Children)
-			{
-				AnyChildVisible |= ApplyFilterRecursive(Child, InFilter);
-			}
-			InNode->IsVisible = AnyChildVisible || DoMatchesFilter(*InNode, InFilter);
-			return InNode->IsVisible;
+			{ AnyChildVisible |= ApplyFilterRecursive(Child); }
+			InNode->IsVisible = AnyChildVisible || DoMatchesFilter(*InNode, FilterStr);
+		}
+		else
+		{
+			InNode->IsVisible = DoMatchesFilter(*InNode, FilterStr);
 		}
 
-		InNode->IsVisible = DoMatchesFilter(*InNode, InFilter);
+		// ---- Dim flag (Highlight input) ----
+		InNode->IsSearchMatch = HighlightStr.IsEmpty() || DoMatchesFilter(*InNode, HighlightStr);
+
 		return InNode->IsVisible;
 	};
 
 	for (const auto& Root : _DisplayRoots)
 	{
-		ApplyFilterRecursive(Root, _FilterString);
+		ApplyFilterRecursive(Root);
 	}
 
 	if (_TreeView.IsValid())
@@ -2010,6 +2053,93 @@ auto
 	{
 		_ViewModel->Set_SelectedProcessorIndex(InItem->ProcessorIndex);
 	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_ProcessorTree::
+	DoOnContextMenuOpening()
+	-> TSharedPtr<SWidget>
+{
+	if (NOT _TreeView.IsValid())
+	{ return nullptr; }
+
+	const auto SelectedNodes = _TreeView->GetSelectedItems();
+	if (SelectedNodes.Num() == 0)
+	{ return nullptr; }
+
+	// Collect per-selected-row projections of the useful fields. For processor
+	// nodes we also look up live data from the view model to include timing
+	// and execution order; group / tick-group nodes only carry a name.
+	auto NameLines = TArray<FString>{};
+	auto ExecOrderLines = TArray<FString>{};
+	auto TimingLines = TArray<FString>{};
+	auto NameWithOrderLines = TArray<FString>{};
+	auto AllLines = TArray<FString>{};
+
+	const auto HasViewModel = _ViewModel.IsValid();
+	const auto* Procs = HasViewModel ? &_ViewModel->Get_DataCollector().Get_Processors() : nullptr;
+
+	for (const auto& Node : SelectedNodes)
+	{
+		if (NOT Node.IsValid() || Node->DisplayName.IsEmpty())
+		{ continue; }
+
+		NameLines.Add(Node->DisplayName);
+
+		if (Node->Type == ECkSchedulerDebugger_TreeNodeType::Processor
+			&& Procs != nullptr
+			&& Procs->IsValidIndex(Node->ProcessorIndex))
+		{
+			const auto& Proc = (*Procs)[Node->ProcessorIndex];
+			const auto ExecOrderStr = FString::Printf(TEXT("#%d"), Proc.ExecutionOrder);
+			const auto TimingStr    = FString::Printf(TEXT("%.3f ms"), Proc.MainPassTimeMs);
+
+			ExecOrderLines.Add(ExecOrderStr);
+			TimingLines.Add(TimingStr);
+			NameWithOrderLines.Add(FString::Printf(TEXT("%s %s"), *ExecOrderStr, *Node->DisplayName));
+			AllLines.Add(FString::Printf(TEXT("%s %s (%s)"), *ExecOrderStr, *Node->DisplayName, *TimingStr));
+		}
+		else
+		{
+			NameWithOrderLines.Add(Node->DisplayName);
+			AllLines.Add(Node->DisplayName);
+		}
+	}
+
+	if (NameLines.Num() == 0)
+	{ return nullptr; }
+
+	auto MenuBuilder = FMenuBuilder(true, nullptr);
+
+	ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+		FText::FromString(TEXT("Copy Name")),
+		FText::FromString(TEXT("Copy the processor / group name(s) to the clipboard")),
+		FString::Join(NameLines, TEXT("\n")));
+
+	if (NameWithOrderLines.Num() > 0)
+	{
+		ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+			FText::FromString(TEXT("Copy Name with Exec Order")),
+			FText::FromString(TEXT("Copy \"#N Name\" line(s) to the clipboard")),
+			FString::Join(NameWithOrderLines, TEXT("\n")));
+	}
+
+	if (TimingLines.Num() > 0)
+	{
+		ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+			FText::FromString(TEXT("Copy Timing")),
+			FText::FromString(TEXT("Copy last-frame timing for selected processor(s)")),
+			FString::Join(TimingLines, TEXT("\n")));
+	}
+
+	ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+		FText::FromString(TEXT("Copy All")),
+		FText::FromString(TEXT("Copy \"#N Name (t ms)\" line(s) to the clipboard")),
+		FString::Join(AllLines, TEXT("\n")));
+
+	return MenuBuilder.MakeWidget();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

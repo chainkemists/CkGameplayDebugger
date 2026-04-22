@@ -11,6 +11,8 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -145,11 +147,10 @@ auto
 			+ SVerticalBox::Slot()
 				.AutoHeight()
 				[
-					SNew(STextBlock)
+					SNew(SCkDebug_SelectableLabel)
 						.Text(FText::FromName(InProc.ProcessorName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
 						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
-						.AutoWrapText(true)
 				]
 
 			+ SVerticalBox::Slot()
@@ -614,11 +615,10 @@ auto
 			.VAlign(VAlign_Top)
 			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
 			[
-				SNew(STextBlock)
+				SNew(SCkDebug_SelectableLabel)
 					.Text(FText::FromString(InValue))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
-					.AutoWrapText(true)
 			];
 }
 

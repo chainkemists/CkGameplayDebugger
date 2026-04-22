@@ -97,42 +97,59 @@ auto SCkDebuggerPanel_EntityList::Tick(
     { return; }
 
     TimeSinceWorldCheck += InDeltaTime;
-    if (TimeSinceWorldCheck >= WorldCheckInterval && WorldModel.IsValid())
+    if (TimeSinceWorldCheck < WorldCheckInterval || NOT WorldModel.IsValid())
+    { return; }
+
+    TimeSinceWorldCheck = 0.0f;
+
+    // Detect changes by IDENTITY, not just count. A quick PIE stop→restart can
+    // produce the same count with a different UWorld* — count-only gating would
+    // miss it and leave a stale TWeakObjectPtr selected.
+    const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
+
+    auto WorldsChanged = AvailableWorlds.Num() != LastKnownWorlds.Num();
+    if (NOT WorldsChanged)
     {
-        TimeSinceWorldCheck = 0.0f;
-
-        const auto CurrentWorldCount = WorldModel->Get_AvailableWorlds().Num();
-        if (CurrentWorldCount != LastKnownWorldCount)
+        for (auto Index = 0; Index < AvailableWorlds.Num(); ++Index)
         {
-            LastKnownWorldCount = CurrentWorldCount;
-
-            // Auto-select first world if none selected and worlds are available
-            if (CurrentWorldCount > 0 && NOT WorldModel->Get_SelectedWorld())
+            if (LastKnownWorlds[Index].Get() != AvailableWorlds[Index])
             {
-                const auto AvailableWorlds = WorldModel->Get_AvailableWorlds();
-                if (AvailableWorlds.Num() > 0)
-                {
-                    WorldModel->Set_SelectedWorld(AvailableWorlds[0]);
-                    if (EntityTree.IsValid())
-                    {
-                        EntityTree->RefreshTree();
-                    }
-                }
-            }
-
-            // Clear selection when worlds disappear
-            if (CurrentWorldCount == 0 && SelectionModel.IsValid())
-            {
-                SelectionModel->Clear_Selection();
-                WorldModel->Set_SelectedWorld(nullptr);
-            }
-
-            // Rebuild world selector AFTER auto-select so the active state is correct
-            if (WorldSelectorContainer.IsValid())
-            {
-                WorldSelectorContainer->SetContent(Build_WorldSelector());
+                WorldsChanged = true;
+                break;
             }
         }
+    }
+
+    if (NOT WorldsChanged)
+    { return; }
+
+    LastKnownWorlds.Reset(AvailableWorlds.Num());
+    for (auto* World : AvailableWorlds)
+    {
+        LastKnownWorlds.Emplace(World);
+    }
+
+    // If the previously-selected world was destroyed, the weak ptr now returns null.
+    // Clear any stale entity selection before auto-selecting a replacement.
+    if (NOT WorldModel->Get_SelectedWorld() && SelectionModel.IsValid())
+    {
+        SelectionModel->Clear_Selection();
+        WorldModel->Set_SelectedWorld(nullptr);
+    }
+
+    if (AvailableWorlds.Num() > 0 && NOT WorldModel->Get_SelectedWorld())
+    {
+        WorldModel->Set_SelectedWorld(AvailableWorlds[0]);
+        if (EntityTree.IsValid())
+        {
+            EntityTree->RefreshTree();
+        }
+    }
+
+    // Rebuild world selector AFTER auto-select so the active state is correct
+    if (WorldSelectorContainer.IsValid())
+    {
+        WorldSelectorContainer->SetContent(Build_WorldSelector());
     }
 }
 

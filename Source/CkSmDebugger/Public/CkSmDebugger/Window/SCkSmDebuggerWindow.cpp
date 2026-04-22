@@ -35,6 +35,8 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 // Detail panel — small widget helpers
 // --------------------------------------------------------------------------------------------------------------------
@@ -97,7 +99,7 @@ namespace
     // -----------------------------------------------------------------------------------------------------------------
     auto MakeClassName(const FString& InText) -> TSharedRef<SWidget>
     {
-        return SNew(STextBlock)
+        return SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(InText))
             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
             .ColorAndOpacity(FSlateColor(Color_Detail_ClassName));
@@ -122,7 +124,7 @@ namespace
             ]
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(InValue)
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     .ColorAndOpacity(FSlateColor(Color_Detail_Value))

@@ -1,6 +1,7 @@
 #include "SCkGoapDebug_PlanStrip.h"
 
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
@@ -339,6 +340,8 @@ auto
 		.TransformPolicy(ETextTransformPolicy::ToUpper);
 
 	const auto ClassNameCaptured = InClassName;
+	const auto CopyStr = FString::Printf(TEXT("%d. %s ($%.0f) — %s"),
+		InStepIdx + 1, *InDisplayName, InCost, *StateText);
 	return SNew(SCkDebug_NodePill)
 		.Variant(Variant)
 		.StepIndex(InStepIdx)
@@ -348,6 +351,7 @@ auto
 		// force full opacity here since plan-strip pills are always visible.
 		.OpacityOverride(1.0f)
 		.MinDesiredWidth(150.0f)
+		.CopyText(CopyStr)
 		.OnClicked(FOnCkDebug_NodePillClicked::CreateLambda([this, ClassNameCaptured]()
 		{
 			_OnStepClicked.ExecuteIfBound(ClassNameCaptured);
@@ -399,49 +403,56 @@ auto
 		? UCkGoapDebugGraph::ComputeDisplayName(InGoal.ClassName, Graph->NameDepth)
 		: InGoal.ClassName;
 
-	return SNew(SBox)
-		.MinDesiredWidth(200.0f)
+	const auto CopyStr = FString::Printf(TEXT("GOAL · PRIORITY %d\n%s\n%s"),
+		InGoal.Priority, *GoalDisplay, *CondStr);
+
+	return SNew(SCkDebug_CopyableContainer)
+		.CopyText(CopyStr)
 		[
-			SNew(SBorder)
-			.BorderImage(RoundedBrush)
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalBorder()))
-			.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
+			SNew(SBox)
+			.MinDesiredWidth(200.0f)
 			[
 				SNew(SBorder)
 				.BorderImage(RoundedBrush)
-				.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalFill()))
-				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+				.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalBorder()))
+				.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
 				[
-					SNew(SVerticalBox)
-
-					+ SVerticalBox::Slot()
-					.AutoHeight()
+					SNew(SBorder)
+					.BorderImage(RoundedBrush)
+					.BorderBackgroundColor(FSlateColor(CkDebugStyle::PlanStrip_GoalFill()))
+					.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 					[
-						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), InGoal.Priority)))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
-						.TransformPolicy(ETextTransformPolicy::ToUpper)
-					]
+						SNew(SVerticalBox)
 
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, 1.0f, 0.0f, 0.0f)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(GoalDisplay))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_GoalNameFontSize()))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
-					]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(FString::Printf(TEXT("GOAL · PRIORITY %d"), InGoal.Priority)))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+							.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
+							.TransformPolicy(ETextTransformPolicy::ToUpper)
+						]
 
-					+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(CondStr))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 1.0f, 0.0f, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(GoalDisplay))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PlanStrip_GoalNameFontSize()))
+							.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
+						]
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(CondStr))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+							.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+						]
 					]
 				]
 			]

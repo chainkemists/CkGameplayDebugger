@@ -3,9 +3,10 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 
 #include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Input/SEditableText.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
@@ -41,9 +42,11 @@ auto
 			.FillWidth(1.0f)
 			.VAlign(VAlign_Center)
 			[
-				SAssignNew(_SearchBox, SEditableTextBox)
-				.HintText(FText::FromString(TEXT("Filter tags...")))
-				.OnTextChanged(this, &SCkGoapDebugger_WorldStatePanel::OnSearchTextChanged)
+				SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
+				.FilterHintText(FText::FromString(TEXT("Filter tags…")))
+				.HighlightHintText(FText::FromString(TEXT("Highlight…")))
+				.OnFilterTextChanged(this, &SCkGoapDebugger_WorldStatePanel::OnFilterTextChanged)
+				.OnHighlightTextChanged(this, &SCkGoapDebugger_WorldStatePanel::OnHighlightTextChanged)
 			]
 
 			+ SHorizontalBox::Slot()
@@ -132,10 +135,21 @@ auto
 
 auto
 	SCkGoapDebugger_WorldStatePanel::
-	OnSearchTextChanged(const FText& InText)
+	OnFilterTextChanged(const FString& InText)
 	-> void
 {
-	_SearchFilter = InText.ToString();
+	if (_FilterString == InText) { return; }
+	_FilterString = InText;
+	RebuildWorldState();
+}
+
+auto
+	SCkGoapDebugger_WorldStatePanel::
+	OnHighlightTextChanged(const FString& InText)
+	-> void
+{
+	if (_HighlightString == InText) { return; }
+	_HighlightString = InText;
 	RebuildWorldState();
 }
 
@@ -206,7 +220,8 @@ auto
 		return A.Key.ToString() < B.Key.ToString();
 	});
 
-	const auto FilterLower = _SearchFilter.ToLower();
+	const auto FilterLower = _FilterString.ToLower();
+	const auto HighlightLower = _HighlightString.ToLower();
 	auto VisibleCount = 0;
 
 	for (const auto& Entry : Sorted)
@@ -216,16 +231,24 @@ auto
 			continue;
 		}
 
-		if (NOT FilterLower.IsEmpty() && NOT Entry.Key.ToString().ToLower().Contains(FilterLower))
+		// Filter input narrows the visible set.
+		const auto KeyLower = Entry.Key.ToString().ToLower();
+		if (NOT FilterLower.IsEmpty() && NOT KeyLower.Contains(FilterLower))
 		{
 			continue;
 		}
 
+		// Among visible rows, the Highlight input dims non-matches.
+		const auto MatchesHighlight = HighlightLower.IsEmpty() || KeyLower.Contains(HighlightLower);
+
 		++VisibleCount;
 
-		const auto ValueColor = Entry.Value
-			? CkGoapDebuggerStyle::WorldStateTrue
-			: CkGoapDebuggerStyle::WorldStateFalse;
+		const auto NameColor = MatchesHighlight
+			? CkGoapDebuggerStyle::TextPrimary
+			: CkGoapDebuggerStyle::TextMuted;
+		const auto ValueColor = MatchesHighlight
+			? (Entry.Value ? CkGoapDebuggerStyle::WorldStateTrue : CkGoapDebuggerStyle::WorldStateFalse)
+			: CkGoapDebuggerStyle::TextMuted;
 		const auto ValueText = Entry.Value ? FString(TEXT("true")) : FString(TEXT("false"));
 
 		const auto Key = Entry.Key;
@@ -247,10 +270,11 @@ auto
 				.FillWidth(1.0f)
 				.VAlign(VAlign_Center)
 				[
-					SNew(STextBlock)
+					SNew(SEditableText)
 					.Text(FText::FromString(Entry.Key.ToString()))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
+					.ColorAndOpacity(NameColor)
+					.IsReadOnly(true)
 				]
 
 				+ SHorizontalBox::Slot()
@@ -258,15 +282,18 @@ auto
 				.VAlign(VAlign_Center)
 				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(STextBlock)
+					SNew(SEditableText)
 					.Text(FText::FromString(ValueText))
 					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
 					.ColorAndOpacity(ValueColor)
+					.IsReadOnly(true)
 				]
 			]
 		];
 	}
 
+	// VisibleCount == 0 means the Filter input (and/or ShowOnlyTrue) eliminated
+	// every entry — the Highlight input only dims, never hides.
 	if (VisibleCount == 0)
 	{
 		_StateListBox->AddSlot()

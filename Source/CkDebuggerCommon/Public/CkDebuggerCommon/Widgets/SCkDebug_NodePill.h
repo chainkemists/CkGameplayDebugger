@@ -67,6 +67,9 @@ public:
 		SLATE_ARGUMENT(FLinearColor, BorderColorOverride)
 		// Draws an extra selection-highlight ring around the pill when true.
 		SLATE_ARGUMENT(bool, Selected)
+		// When non-empty, right-click on the pill shows a "Copy Text" menu that
+		// puts this string on the clipboard. Default off.
+		SLATE_ARGUMENT(FString, CopyText)
 		SLATE_EVENT(FOnCkDebug_NodePillClicked, OnClicked)
 		SLATE_NAMED_SLOT(FArguments, BodyContent)
 	SLATE_END_ARGS()

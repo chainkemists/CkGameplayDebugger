@@ -4,6 +4,7 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Input/SEditableText.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -138,10 +139,11 @@ auto
 
 	_ContentBox->AddSlot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 2.0f, CkGoapDebuggerStyle::PanelPadding, 4.0f)
 	[
-		SNew(STextBlock)
+		SNew(SEditableText)
 		.Text(FText::FromString(GoalLabel))
 		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 		.ColorAndOpacity(FLinearColor(0.96f, 0.78f, 0.18f))
+		.IsReadOnly(true)
 	];
 
 	// Prominent status banner — explain in plain language what the planner is
@@ -315,10 +317,11 @@ auto
 
 			_ContentBox->AddSlot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding, 0.0f, CkGoapDebuggerStyle::PanelPadding, 0.0f)
 			[
-				SNew(STextBlock)
+				SNew(SEditableText)
 				.Text(FText::FromString(Line))
 				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
 				.ColorAndOpacity(CkGoapDebuggerStyle::TextSecondary)
+				.IsReadOnly(true)
 			];
 		}
 	}
@@ -443,20 +446,22 @@ auto
 
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
-					SNew(STextBlock)
+					SNew(SEditableText)
 					.Text(FText::FromString(ConditionText))
 					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
 					.ColorAndOpacity(CkGoapDebuggerStyle::TextPrimary)
+					.IsReadOnly(true)
 				]
 
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(STextBlock)
+					SNew(SEditableText)
 					.Text(FText::FromString(CurrentText))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 					.ColorAndOpacity(N.HasCurrentValue
 						? CkGoapDebuggerStyle::TextSecondary
 						: CkGoapDebuggerStyle::TextMuted)
+					.IsReadOnly(true)
 				]
 			];
 		}
@@ -477,11 +482,11 @@ auto
 
 			_ContentBox->AddSlot().AutoHeight().Padding(CkGoapDebuggerStyle::PanelPadding + Indent, 1.0f, CkGoapDebuggerStyle::PanelPadding, 1.0f)
 			[
-				SNew(STextBlock)
+				SNew(SEditableText)
 				.Text(FText::FromString(Label))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 				.ColorAndOpacity(Color)
-				.AutoWrapText(true)
+				.IsReadOnly(true)
 			];
 		}
 	}

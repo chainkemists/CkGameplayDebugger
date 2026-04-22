@@ -149,14 +149,21 @@ auto
 		ChainText += GoalText;
 
 		const auto ClickedIdx = Idx;
+		const auto TitleStr = FString::Printf(TEXT("%s — %d steps, cost %.0f"),
+			*DoGetStatusText(Entry.FinalStatus), Entry.PlanLength, Entry.PlanCost);
+		const auto FrameStr = FString::Printf(TEXT("F#%lld"), Entry.FrameNumber);
+		// Multi-line clipboard: title, frame, then plan chain. Most useful as a
+		// single right-click "give me the gist of this entry" payload.
+		const auto CopyStr = FString::Printf(TEXT("%s [%s]\n%s"), *TitleStr, *FrameStr, *ChainText);
+
 		_Rail->AddChild(
 			SNew(SCkDebug_HistoryRow)
 			.Tone(DoGetStatusTone(Entry.FinalStatus))
-			.TitleText(FText::FromString(FString::Printf(TEXT("%s — %d steps, cost %.0f"),
-				*DoGetStatusText(Entry.FinalStatus), Entry.PlanLength, Entry.PlanCost)))
-			.RightText(FText::FromString(FString::Printf(TEXT("F#%lld"), Entry.FrameNumber)))
+			.TitleText(FText::FromString(TitleStr))
+			.RightText(FText::FromString(FrameStr))
 			.SubtitleText(FText::FromString(ChainText))
 			.IsSelected(IsSelected)
+			.CopyText(CopyStr)
 			.OnClicked_Lambda([this, ClickedIdx]()
 			{
 				_ViewModel->Set_ScrubHistoryIndex(ClickedIdx);

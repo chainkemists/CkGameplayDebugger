@@ -1,0 +1,274 @@
+#include "CkInspector_SceneNode.h"
+
+#include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
+#include "CkEcs/Handle/CkHandle_Utils.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
+#include "CkEcsExt/SceneNode/CkSceneNode_Utils.h"
+#include "CkEcsExt/Transform/CkTransform_Utils.h"
+
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
+#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
+CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
+
+// ====================================================================================================
+
+namespace
+{
+    auto Get_LayerIndex(const FCk_Handle& E) -> int32
+    {
+        if (E.Has<ck::FTag_SceneNode_Layer0>()) { return 0; }
+        if (E.Has<ck::FTag_SceneNode_Layer1>()) { return 1; }
+        if (E.Has<ck::FTag_SceneNode_Layer2>()) { return 2; }
+        if (E.Has<ck::FTag_SceneNode_Layer3>()) { return 3; }
+        if (E.Has<ck::FTag_SceneNode_Layer4>()) { return 4; }
+        if (E.Has<ck::FTag_SceneNode_Layer5>()) { return 5; }
+        if (E.Has<ck::FTag_SceneNode_Layer6>()) { return 6; }
+        if (E.Has<ck::FTag_SceneNode_Layer7>()) { return 7; }
+        if (E.Has<ck::FTag_SceneNode_Layer8>()) { return 8; }
+        if (E.Has<ck::FTag_SceneNode_Layer9>()) { return 9; }
+        return INDEX_NONE;
+    }
+
+    auto Gather_Siblings(const FCk_Handle& Entity) -> TArray<FCk_Handle>
+    {
+        auto Out = TArray<FCk_Handle>{};
+
+        if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_SceneNode_UE::Has(Entity))
+        { return Out; }
+
+        auto NodeMutable = Entity;
+        const auto Node = UCk_Utils_SceneNode_UE::Cast(NodeMutable);
+        if (ck::Is_NOT_Valid(Node))
+        { return Out; }
+
+        auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
+        if (ck::Is_NOT_Valid(Parent))
+        { return Out; }
+
+        UCk_Utils_SceneNode_UE::ForEach_SceneNode(Parent,
+            [&Out](FCk_Handle_SceneNode InSibling) -> void
+            {
+                if (ck::IsValid(InSibling))
+                {
+                    Out.Add(FCk_Handle(InSibling));
+                }
+            });
+
+        return Out;
+    }
+}
+
+// ====================================================================================================
+
+auto FCkInspector_SceneNode::Get_ComponentName() const -> FText
+{
+    return FText::FromString(TEXT("SceneNode"));
+}
+
+auto FCkInspector_SceneNode::CanInspect(const FCk_Handle& Entity) const -> bool
+{
+    return ck::IsValid(Entity) && UCk_Utils_SceneNode_UE::Has(Entity);
+}
+
+auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
+{
+    auto Builder = FCkInspectorWidgetBuilder();
+    auto WeakSelectionModel = SelectionModel;
+
+    // ----- Parent entity (clickable) -----
+    Builder.AddClickableRow(
+        FText::FromString(TEXT("Parent:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
+            auto Mut = E;
+            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
+            const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
+            if (ck::Is_NOT_Valid(Parent)) { return FText::FromString(TEXT("None")); }
+            return FText::FromString(ck::Format_UE(TEXT("{} | {}"),
+                UCk_Utils_Handle_UE::Get_DebugName(Parent), Parent));
+        },
+        CkDebugStyle::Reference(),
+        [WeakSelectionModel, Entity]()
+        {
+            if (NOT WeakSelectionModel.IsValid() || NOT UCk_Utils_SceneNode_UE::Has(Entity))
+            { return; }
+            auto Mut = Entity;
+            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+            if (ck::Is_NOT_Valid(Node)) { return; }
+            const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
+            if (ck::IsValid(Parent))
+            {
+                WeakSelectionModel->Set_SelectedEntities({ FCk_Handle(Parent) });
+            }
+        });
+
+    // ----- Layer -----
+    Builder.AddConditionalRow(
+        FText::FromString(TEXT("Layer:")),
+        [](const FCk_Handle& E)
+        {
+            const auto Idx = Get_LayerIndex(E);
+            if (Idx == INDEX_NONE) { return FText::FromString(TEXT("—")); }
+            return FText::FromString(ck::Format_UE(TEXT("Layer {}"), Idx));
+        },
+        [](const FCk_Handle& E)
+        {
+            return Get_LayerIndex(E) == INDEX_NONE ? CkDebugStyle::None() : CkDebugStyle::Text();
+        });
+
+    // ----- Dirty this frame -----
+    Builder.AddConditionalRow(
+        FText::FromString(TEXT("Dirty This Frame:")),
+        [](const FCk_Handle& E)
+        {
+            return FText::FromString(E.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
+                ? TEXT("Yes") : TEXT("No"));
+        },
+        [](const FCk_Handle& E)
+        {
+            return E.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
+                ? CkDebugStyle::State_Enabled() : CkDebugStyle::None();
+        });
+
+    // ----- Relative transform -----
+    Builder.AddHeader(FText::FromString(TEXT("Relative Transform")));
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Location:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
+            auto Mut = E;
+            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetLocation()));
+        },
+        CkDebugStyle::Transform());
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Rotation:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
+            auto Mut = E;
+            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetRotation().Rotator()));
+        },
+        CkDebugStyle::Transform());
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Scale:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
+            auto Mut = E;
+            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetScale3D()));
+        },
+        CkDebugStyle::Transform());
+
+    // ----- Resolved world transform -----
+    Builder.AddHeader(FText::FromString(TEXT("Resolved World Transform")));
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Location:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
+        },
+        CkDebugStyle::Transform());
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Rotation:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
+        },
+        CkDebugStyle::Transform());
+
+    Builder.AddRow(
+        FText::FromString(TEXT("Scale:")),
+        [](const FCk_Handle& E)
+        {
+            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
+            return FText::FromString(ck::Format_UE(TEXT("{}"),
+                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
+        },
+        CkDebugStyle::Transform());
+
+    // ----- Siblings -----
+    Builder.AddHeader(FText::FromString(TEXT("Siblings (under Parent)")));
+
+    const auto Siblings = Gather_Siblings(Entity);
+    _LastSiblingCount = Siblings.Num();
+    _SiblingsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(Siblings, SelectionModel);
+    Builder.AddWidgetRow(FText::FromString(TEXT("Nodes:")), _SiblingsBox.ToSharedRef());
+
+    return Builder.Build(Entity);
+}
+
+auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
+{
+    if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_SceneNode_UE::Has(Entity))
+    { return; }
+
+    const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
+    if (ck::Is_NOT_Valid(EntityWorld))
+    { return; }
+
+    // Keep sibling badges in sync when SceneNodes come and go.
+    if (_SiblingsBox.IsValid())
+    {
+        const auto Siblings = Gather_Siblings(Entity);
+        if (Siblings.Num() != _LastSiblingCount)
+        {
+            _LastSiblingCount = Siblings.Num();
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_SiblingsBox, Siblings, SelectionModel);
+        }
+    }
+
+    // Debug draw: world gizmo for this SceneNode, plus line to parent's world position.
+    if (NOT UCk_Utils_Transform_UE::Has(Entity))
+    { return; }
+
+    const auto NodeWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
+    UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, NodeWorld);
+
+    auto Mut = Entity;
+    const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+    if (ck::IsValid(Node))
+    {
+        const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
+        if (ck::IsValid(Parent) && UCk_Utils_Transform_UE::Has(FCk_Handle(Parent)))
+        {
+            const auto ParentWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(FCk_Handle(Parent));
+            UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, ParentWorld);
+        }
+    }
+
+    const auto TextLocation = NodeWorld.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
+    UCk_Utils_DebugDraw_UE::DrawDebugString(
+        EntityWorld,
+        TextLocation,
+        Entity.ToString(),
+        FLinearColor::White,
+        0.0f);
+}

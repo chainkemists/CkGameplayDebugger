@@ -5,6 +5,15 @@
 
 DECLARE_DELEGATE_OneParam(FCkDebugger_OnSearchTextChanged, const FString&);
 
+// --------------------------------------------------------------------------------------------------------------------
+// Single-mode search bar with debounce + clear button. Used by panels that
+// only need a "filter this list" affordance (e.g. the inspector's per-component
+// search).
+//
+// For panels that want both a Filter and a Highlight input, use the shared
+// SCkDebug_DualSearchBar from CkDebuggerCommon instead.
+// --------------------------------------------------------------------------------------------------------------------
+
 class SCkDebuggerWidget_SearchBar : public SCompoundWidget
 {
 public:

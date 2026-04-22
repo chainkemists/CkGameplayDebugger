@@ -8,6 +8,8 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkEcs/Net/CkNet_Utils.h"
@@ -109,7 +111,8 @@ private:
 
         // Inspector-filter dim takes precedence over selection — dimmed entities still
         // read as dimmed even when clicked, so the user knows the row didn't pass the filter.
-        if (NOT Node->IsFilterMatch)
+        // The same dim applies to non-matches in Highlight search mode.
+        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
         { return CkDebugStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
@@ -123,7 +126,7 @@ private:
         if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
         { return CkDebugStyle::Err(); }
 
-        if (NOT Node->IsFilterMatch)
+        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
         { return CkDebugStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
@@ -138,7 +141,10 @@ private:
         if (NOT TreeWidgetPinned.IsValid())
         { return FText::GetEmpty(); }
 
-        return TreeWidgetPinned->Get_CurrentFilter();
+        // Prefer the Highlight bar — it's the user's "find this" query. Fall
+        // back to the Filter so substrings still draw when only Filter is set.
+        const auto HighlightText = TreeWidgetPinned->Get_CurrentHighlight();
+        return HighlightText.IsEmpty() ? TreeWidgetPinned->Get_CurrentFilter() : HighlightText;
     }
 
     TSharedPtr<FCkEntityTreeNode> Node;
@@ -270,6 +276,21 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilter(const FString& InFilterText) -> v
     }
 }
 
+auto SCkDebuggerWidget_EntityTree::ApplyHighlight(const FString& InHighlightText) -> void
+{
+    if (CurrentHighlight == InHighlightText)
+    { return; }
+
+    CurrentHighlight = InHighlightText;
+    ApplyFilterToNodes();
+    UpdateFilteredRootNodes();
+
+    if (TreeView.IsValid())
+    {
+        TreeView->RequestTreeRefresh();
+    }
+}
+
 auto SCkDebuggerWidget_EntityTree::ExpandAll() -> void
 {
     if (NOT TreeView.IsValid())
@@ -356,38 +377,59 @@ auto SCkDebuggerWidget_EntityTree::BuildHierarchy(const TArray<FCk_Handle>& InEn
 
 auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
 {
+    // Two-pass pipeline driven by the dual search bar:
+    //   1. Filter pass — CurrentFilter hides non-matches via IsVisible.
+    //   2. Highlight pass — CurrentHighlight (independent input) flags
+    //      IsSearchMatch on the visible set so the row's text colour can dim
+    //      anything that doesn't match.
+    // Either string can be empty; an empty Filter shows everything, an empty
+    // Highlight makes every visible row read as a match.
+
+    // ---- Pass 1: visibility from CurrentFilter ----
     if (CurrentFilter.IsEmpty())
     {
-        // No filter - show everything
         for (const auto& Node : AllNodes)
         {
-            if (Node.IsValid())
+            if (Node.IsValid()) { Node->IsVisible = true; }
+        }
+    }
+    else
+    {
+        for (const auto& Node : AllNodes)
+        {
+            if (Node.IsValid()) { Node->IsVisible = false; }
+        }
+
+        for (const auto& Node : AllNodes)
+        {
+            if (NOT Node.IsValid())
+            { continue; }
+
+            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity);
+            if (ck::fuzzy::Match(CurrentFilter, DebugName.ToString(), {}).Get_IsMatch())
             {
-                Node->IsVisible = true;
+                MarkNodeVisibilityRecursive(Node, true);
             }
         }
-        return;
     }
 
-    // First pass: Mark all nodes as invisible
-    for (const auto& Node : AllNodes)
+    // ---- Pass 2: IsSearchMatch from CurrentHighlight ----
+    if (CurrentHighlight.IsEmpty())
     {
-        if (Node.IsValid())
+        for (const auto& Node : AllNodes)
         {
-            Node->IsVisible = false;
+            if (Node.IsValid()) { Node->IsSearchMatch = true; }
         }
     }
-
-    // Second pass: Find matching nodes and mark them + their ancestors as visible
-    for (const auto& Node : AllNodes)
+    else
     {
-        if (NOT Node.IsValid())
-        { continue; }
-
-        const auto Matches = DoesNodeMatchFilter(Node);
-        if (Matches)
+        for (const auto& Node : AllNodes)
         {
-            MarkNodeVisibilityRecursive(Node, true);
+            if (NOT Node.IsValid())
+            { continue; }
+
+            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity);
+            Node->IsSearchMatch = ck::fuzzy::Match(CurrentHighlight, DebugName.ToString(), {}).Get_IsMatch();
         }
     }
 
@@ -641,6 +683,50 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
 
     auto MenuBuilder = FMenuBuilder(true, nullptr);
 
+    // Copy entries: prefer the right-clicked row when STableRow auto-selected it,
+    // otherwise fall back to all currently-selected rows. Joined with newlines so
+    // multi-select copy is useful for pasting into a list.
+    auto SelectedNodes = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+    if (TreeView.IsValid())
+    {
+        SelectedNodes = TreeView->GetSelectedItems();
+    }
+
+    if (SelectedNodes.Num() > 0)
+    {
+        auto NameLines = TArray<FString>{};
+        auto IdLines = TArray<FString>{};
+        auto NameAndIdLines = TArray<FString>{};
+        for (const auto& Node : SelectedNodes)
+        {
+            if (NOT Node.IsValid())
+            { continue; }
+
+            const auto NameStr = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity).ToString();
+            const auto IdStr = ck::Format_UE(TEXT("{}"), Node->Entity.Get_Entity().Get_ID());
+            NameLines.Add(NameStr);
+            IdLines.Add(IdStr);
+            NameAndIdLines.Add(ck::Format_UE(TEXT("{} [{}]"), NameStr, IdStr));
+        }
+
+        ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+            FText::FromString(TEXT("Copy Name")),
+            FText::FromString(TEXT("Copy the entity name(s) to the clipboard")),
+            FString::Join(NameLines, TEXT("\n")));
+
+        ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+            FText::FromString(TEXT("Copy ID")),
+            FText::FromString(TEXT("Copy the entity ID(s) to the clipboard")),
+            FString::Join(IdLines, TEXT("\n")));
+
+        ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+            FText::FromString(TEXT("Copy Name + ID")),
+            FText::FromString(TEXT("Copy \"Name [ID]\" line(s) to the clipboard")),
+            FString::Join(NameAndIdLines, TEXT("\n")));
+
+        MenuBuilder.AddMenuSeparator();
+    }
+
     MenuBuilder.AddMenuEntry(
         FText::FromString(TEXT("Clear Selection")),
         FText::FromString(TEXT("Clears all selected entities")),
@@ -661,14 +747,6 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
     return MenuBuilder.MakeWidget();
 }
 
-auto SCkDebuggerWidget_EntityTree::DoesNodeMatchFilter(TSharedPtr<FCkEntityTreeNode> InNode) const -> bool
-{
-    if (NOT InNode.IsValid() || CurrentFilter.IsEmpty())
-    { return true; }
-
-    const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(InNode->Entity);
-    return ck::fuzzy::Match(CurrentFilter, DebugName.ToString(), {}).Get_IsMatch();
-}
 
 auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_Handle>& InNewSelection) -> void
 {

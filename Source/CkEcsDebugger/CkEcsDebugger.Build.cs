@@ -13,6 +13,7 @@ public class CkEcsDebugger : CkModuleRules
             "GameplayTags",
             "InputCore",
 
+            "ApplicationCore",
             "Slate",
             "SlateCore",
             "GraphEditor",

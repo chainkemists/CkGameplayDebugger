@@ -138,8 +138,8 @@ auto
             InOutDrawElements,
             InLayerId + 1,
             InAllottedGeometry.ToPaintGeometry(
-                FVector2D(20.0f, InAllottedGeometry.GetLocalSize().Y * 0.5f - 8.0f),
-                InAllottedGeometry.GetLocalSize()),
+                InAllottedGeometry.GetLocalSize(),
+                FSlateLayoutTransform(FVector2D(20.0f, InAllottedGeometry.GetLocalSize().Y * 0.5f - 8.0f))),
             NoDataText,
             FCoreStyle::GetDefaultFontStyle("Regular", 10),
             ESlateDrawEffect::None,
@@ -187,7 +187,7 @@ auto
             FSlateDrawElement::MakeBox(
                 InOutDrawElements,
                 InLayerId,
-                InGeometry.ToPaintGeometry(ScreenPos, FVector2D(_CellSize, _CellSize)),
+                InGeometry.ToPaintGeometry(FVector2D(_CellSize, _CellSize), FSlateLayoutTransform(ScreenPos)),
                 WhiteBrush,
                 ESlateDrawEffect::None,
                 Color);
@@ -201,7 +201,7 @@ auto
                 // Top
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId + 1,
-                    InGeometry.ToPaintGeometry(BorderPos, FVector2D(BorderSize.X, 1.0f)),
+                    InGeometry.ToPaintGeometry(FVector2D(BorderSize.X, 1.0f), FSlateLayoutTransform(BorderPos)),
                     WhiteBrush, ESlateDrawEffect::None, BorderColor);
                 // Bottom
                 FSlateDrawElement::MakeBox(

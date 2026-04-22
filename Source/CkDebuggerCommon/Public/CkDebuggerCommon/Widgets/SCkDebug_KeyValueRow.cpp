@@ -5,6 +5,7 @@
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SEditableText.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -82,10 +83,13 @@ auto
 	}
 	else
 	{
-		KeyWidget = SNew(STextBlock)
+		// SEditableText (read-only) lets users select/copy the key text via Ctrl+C
+		// or right-click context menu while still rendering like a label.
+		KeyWidget = SNew(SEditableText)
 			.Text(InArgs._KeyText)
 			.Font(MonoFont)
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()));
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.IsReadOnly(true);
 	}
 
 	Row->AddSlot()
@@ -115,10 +119,11 @@ auto
 			.VAlign(VAlign_Center)
 			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
-				SNew(STextBlock)
+				SNew(SEditableText)
 				.Text(ValueAttr)
 				.Font(BoldFont)
 				.ColorAndOpacity(ValueColorAttr)
+				.IsReadOnly(true)
 				.Visibility_Lambda([ValueAttr]()
 				{
 					return ValueAttr.Get().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;

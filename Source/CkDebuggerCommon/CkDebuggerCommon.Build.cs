@@ -11,6 +11,7 @@ public class CkDebuggerCommon : CkModuleRules
             "Engine",
             "DeveloperSettings",
 
+            "ApplicationCore",  // FPlatformApplicationMisc::ClipboardCopy in CkDebug_CopyMenu_Utils
             "InputCore",     // EKeys symbols referenced by templated SListView/SComboBox instantiations
             "Slate",
             "SlateCore",

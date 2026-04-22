@@ -31,6 +31,9 @@ public:
 		SLATE_ARGUMENT(FText, RightText)
 		SLATE_ARGUMENT(FText, SubtitleText)
 		SLATE_ARGUMENT(bool, IsSelected)
+		// When non-empty, right-click on the row shows a "Copy Text" menu that
+		// puts this string on the clipboard. Default off.
+		SLATE_ARGUMENT(FString, CopyText)
 		SLATE_EVENT(FOnCkDebugHistoryRowClicked, OnClicked)
 	SLATE_END_ARGS()
 

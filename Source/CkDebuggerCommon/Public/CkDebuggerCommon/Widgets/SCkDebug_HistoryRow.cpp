@@ -1,6 +1,7 @@
 #include "SCkDebug_HistoryRow.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -88,9 +89,7 @@ auto
 			];
 	}
 
-	ChildSlot
-	[
-		SNew(SButton)
+	auto Inner = SNew(SButton)
 		.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
 		.ContentPadding(FMargin(0.0f))
 		.OnClicked(this, &SCkDebug_HistoryRow::OnClicked)
@@ -122,8 +121,37 @@ auto
 					Body
 				]
 			]
-		]
-	];
+		];
+
+	// Wrap in a transparent right-click catcher only when CopyText is supplied.
+	// SButton ignores non-left-mouse-buttons so right-click bubbles to the wrapper.
+	if (NOT InArgs._CopyText.IsEmpty())
+	{
+		const auto CopyText = InArgs._CopyText;
+		ChildSlot
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("NoBorder"))
+			.Padding(FMargin(0.0f))
+			.OnMouseButtonDown_Lambda([WeakThis = TWeakPtr<SWidget>(AsShared()), CopyText](const FGeometry&, const FPointerEvent& Evt) -> FReply
+			{
+				const auto Self = WeakThis.Pin();
+				if (NOT Self.IsValid())
+				{ return FReply::Unhandled(); }
+				return ck::DebugCopyMenu::Handle_RightClickToCopy(Self.ToSharedRef(), Evt, CopyText);
+			})
+			[
+				Inner
+			]
+		];
+	}
+	else
+	{
+		ChildSlot
+		[
+			Inner
+		];
+	}
 }
 
 auto

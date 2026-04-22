@@ -4,7 +4,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class SCheckBox;
-class SEditableTextBox;
+class SCkDebug_DualSearchBar;
 
 // ====================================================================================================================
 
@@ -26,18 +26,20 @@ private:
 	};
 
 	auto RebuildWorldState() -> void;
-	auto OnSearchTextChanged(const FText& InText) -> void;
+	auto OnFilterTextChanged(const FString& InText) -> void;
+	auto OnHighlightTextChanged(const FString& InText) -> void;
 	auto OnShowOnlyTrueChanged(ECheckBoxState InState) -> void;
 	auto GetRowBackground(FGameplayTag InKey) const -> FSlateColor;
 
 private:
 	TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 	TSharedPtr<SVerticalBox> _StateListBox;
-	TSharedPtr<SEditableTextBox> _SearchBox;
+	TSharedPtr<SCkDebug_DualSearchBar> _SearchBar;
 	TSharedPtr<SCheckBox> _ShowOnlyTrueCheckBox;
 
 	uint32 _LastWorldStateHash = 0;
-	FString _SearchFilter;
+	FString _FilterString;
+	FString _HighlightString;
 	bool _ShowOnlyTrue = false;
 
 	TMap<FGameplayTag, bool> _PrevValues;

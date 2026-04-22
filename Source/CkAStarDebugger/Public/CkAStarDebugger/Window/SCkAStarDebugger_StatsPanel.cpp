@@ -10,6 +10,8 @@
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 // ====================================================================================================================
 // Helper: stat row (label + value)
 // ====================================================================================================================
@@ -17,7 +19,7 @@
 static auto
     MakeStatRow(
         const FString& InLabel,
-        TSharedPtr<STextBlock>& OutValueText,
+        TSharedPtr<SCkDebug_SelectableLabel>& OutValueText,
         const FString& InDefaultValue = TEXT("—"))
     -> TSharedRef<SWidget>
 {
@@ -25,7 +27,7 @@ static auto
         + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(InLabel))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                     .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
@@ -33,7 +35,7 @@ static auto
         + SHorizontalBox::Slot()
             .AutoWidth()
             [
-                SAssignNew(OutValueText, STextBlock)
+                SAssignNew(OutValueText, SCkDebug_SelectableLabel)
                     .Text(FText::FromString(InDefaultValue))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                     .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Primary)
@@ -46,7 +48,7 @@ static auto
 
 static auto
     MakeMiniStat(
-        TSharedPtr<STextBlock>& OutValueText,
+        TSharedPtr<SCkDebug_SelectableLabel>& OutValueText,
         const FString& InLabel,
         const FString& InDefaultValue = TEXT("0"))
     -> TSharedRef<SWidget>
@@ -59,7 +61,7 @@ static auto
                     .AutoHeight()
                     .HAlign(HAlign_Center)
                     [
-                        SAssignNew(OutValueText, STextBlock)
+                        SAssignNew(OutValueText, SCkDebug_SelectableLabel)
                             .Text(FText::FromString(InDefaultValue))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
                             .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Primary)
@@ -68,7 +70,7 @@ static auto
                     .AutoHeight()
                     .HAlign(HAlign_Center)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(InLabel))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                             .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
@@ -85,7 +87,7 @@ static auto
         const FString& InTitle)
     -> TSharedRef<SWidget>
 {
-    return SNew(STextBlock)
+    return SNew(SCkDebug_SelectableLabel)
         .Text(FText::FromString(InTitle.ToUpper()))
         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
         .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted);
@@ -147,7 +149,7 @@ auto
                                                     .Padding(8.0f, 0.0f, 0.0f, 0.0f)
                                                     .VAlign(VAlign_Center)
                                                     [
-                                                        SAssignNew(_BudgetPctText, STextBlock)
+                                                        SAssignNew(_BudgetPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
                                                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                                             .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
@@ -178,7 +180,7 @@ auto
                                                     .Padding(8.0f, 0.0f, 0.0f, 0.0f)
                                                     .VAlign(VAlign_Center)
                                                     [
-                                                        SAssignNew(_ExplorationPctText, STextBlock)
+                                                        SAssignNew(_ExplorationPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
                                                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                                             .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
@@ -213,7 +215,7 @@ auto
                                                 + SVerticalBox::Slot()
                                                     .AutoHeight()
                                                     [
-                                                        SNew(STextBlock)
+                                                        SNew(SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
                                                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                                                             .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
@@ -260,7 +262,7 @@ auto
             _CellDetailBox->AddSlot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                         .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
@@ -301,7 +303,7 @@ auto
 
             _CellDetailBox->AddSlot().AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(FString::Printf(TEXT("Cell (%d, %d) \u2014 #%d"), CellX, CellY, SelectedCell)))
                         .Font(BoldFont)
                         .ColorAndOpacity(TitleColor)
@@ -309,7 +311,7 @@ auto
 
             auto AddDetailRow = [&](const FString& InLabel, const FString& InValue)
             {
-                TSharedPtr<STextBlock> Dummy;
+                TSharedPtr<SCkDebug_SelectableLabel> Dummy;
                 _CellDetailBox->AddSlot().AutoHeight() [ MakeStatRow(InLabel, Dummy, InValue) ];
             };
 

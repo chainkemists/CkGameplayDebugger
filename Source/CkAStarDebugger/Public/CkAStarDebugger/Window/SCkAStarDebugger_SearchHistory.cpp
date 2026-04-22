@@ -8,6 +8,8 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
+
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "Widgets/Images/SImage.h"
 
 // ====================================================================================================================
@@ -30,7 +32,7 @@ auto
                 .AutoHeight()
                 .Padding(12.0f, 8.0f, 12.0f, 4.0f)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("SEARCH HISTORY")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                         .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
@@ -96,7 +98,7 @@ auto
         _EntryListBox->AddSlot()
             .AutoHeight()
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("No search history yet")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
@@ -178,7 +180,7 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(StatusStr))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                                 .ColorAndOpacity(StatusColor)
@@ -186,7 +188,7 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(MetaStr))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                                 .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)

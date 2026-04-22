@@ -4,6 +4,8 @@
 
 #include "Widgets/SCompoundWidget.h"
 
+class SCkDebug_SelectableLabel;
+
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkAStarDebugger_ViewModel;
@@ -33,22 +35,22 @@ private:
 
     TSharedPtr<FCkAStarDebugger_ViewModel> _ViewModel;
 
-    TSharedPtr<STextBlock> _IterationsText;
-    TSharedPtr<STextBlock> _OpenText;
-    TSharedPtr<STextBlock> _ClosedText;
-    TSharedPtr<STextBlock> _PathText;
+    TSharedPtr<SCkDebug_SelectableLabel> _IterationsText;
+    TSharedPtr<SCkDebug_SelectableLabel> _OpenText;
+    TSharedPtr<SCkDebug_SelectableLabel> _ClosedText;
+    TSharedPtr<SCkDebug_SelectableLabel> _PathText;
 
     TSharedPtr<SProgressBar> _BudgetBar;
-    TSharedPtr<STextBlock> _BudgetPctText;
+    TSharedPtr<SCkDebug_SelectableLabel> _BudgetPctText;
 
     TSharedPtr<SProgressBar> _ExplorationBar;
-    TSharedPtr<STextBlock> _ExplorationPctText;
+    TSharedPtr<SCkDebug_SelectableLabel> _ExplorationPctText;
 
-    TSharedPtr<STextBlock> _GridSizeText;
-    TSharedPtr<STextBlock> _BlockedText;
-    TSharedPtr<STextBlock> _CostText;
-    TSharedPtr<STextBlock> _TimeText;
-    TSharedPtr<STextBlock> _ThresholdText;
+    TSharedPtr<SCkDebug_SelectableLabel> _GridSizeText;
+    TSharedPtr<SCkDebug_SelectableLabel> _BlockedText;
+    TSharedPtr<SCkDebug_SelectableLabel> _CostText;
+    TSharedPtr<SCkDebug_SelectableLabel> _TimeText;
+    TSharedPtr<SCkDebug_SelectableLabel> _ThresholdText;
 
     TSharedPtr<SVerticalBox> _CellDetailBox;
     int32 _LastShownCellIndex = -1;

@@ -11,6 +11,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -173,13 +174,22 @@ auto
             .Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
         [ BuildTaskChips(InItem->TaskSnapshots, true) ];
 
+    // Compact one-line clipboard payload mirroring the visible row.
+    const auto CopyStr = DeltaStr.IsEmpty()
+        ? FString::Printf(TEXT("%s  %s  %s"), *FrameStr, *TitleStr, *CondStr)
+        : FString::Printf(TEXT("%s  %s  %s  %s"), *FrameStr, *DeltaStr, *TitleStr, *CondStr);
+
     return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
         .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
         [
-            SNew(SBorder)
-            .BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
-            .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
-            [ Line ]
+            SNew(SCkDebug_CopyableContainer)
+            .CopyText(CopyStr)
+            [
+                SNew(SBorder)
+                .BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
+                .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+                [ Line ]
+            ]
         ];
 }
 

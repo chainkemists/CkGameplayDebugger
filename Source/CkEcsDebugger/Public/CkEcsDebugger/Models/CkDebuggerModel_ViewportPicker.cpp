@@ -1,6 +1,5 @@
 #include "CkDebuggerModel_ViewportPicker.h"
 
-#include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
@@ -14,12 +13,18 @@
 #include "CkEcsDebugger/Models/CkDebuggerViewportPicker_InputProcessor.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "DrawDebugHelpers.h"
+#include "CanvasItem.h"
+#include "Debug/DebugDrawService.h"
+#include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#if WITH_EDITOR
+#include "TextureCompiler.h"
+#endif
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -40,13 +45,14 @@ namespace
 {
     static constexpr auto PickRadius             = 30.0f;        // cm
     static constexpr auto MaxAttachmentWalkDepth = 16;
-    static constexpr auto MarkerLodNearDistance  = 2'000.0f;     // full octahedron within this distance
-    static constexpr auto MarkerThickness        = 1.5f;
-    static constexpr auto HoverThickness         = 3.0f;
     static constexpr auto CullRadiusMin          = 100.0f;       // 1 m
     static constexpr auto CullRadiusMax          = 100'000.0f;   // 1 km
-    static constexpr auto DebugDrawLifetime      = 0.0f;
-    static constexpr auto NonPersistentLines     = false;
+
+    // Billboard presentation (screen-space pixels). Constant size — they do NOT shrink with distance.
+    static constexpr auto BillboardSizeMinPx      = 8.0f;
+    static constexpr auto BillboardSizeMaxPx      = 128.0f;
+    static constexpr auto BillboardHoverScale     = 1.25f;
+    static constexpr auto BillboardLabelGapPx     = 4.0f;
 
 #if WITH_EDITOR
     // When the PIE player is "ejected" (F8), this project's setup does NOT swap the LocalPlayer to
@@ -180,6 +186,38 @@ auto
             });
     }
 
+    if (NOT _MarkerTexture.IsValid())
+    {
+        _MarkerTexture.Reset(LoadObject<UTexture2D>(
+            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker.T_ECSPicker_Marker")));
+    }
+    if (NOT _MarkerHoverTexture.IsValid())
+    {
+        _MarkerHoverTexture.Reset(LoadObject<UTexture2D>(
+            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker_Hover.T_ECSPicker_Marker_Hover")));
+    }
+
+#if WITH_EDITOR
+    // Freshly-imported textures compile their platform data asynchronously. LoadObject returns before
+    // that finishes, so GetResource() can point at a placeholder whose FRHITexture is never properly
+    // initialized — which is the intermittent crash we were hitting on cold editor starts. Force the
+    // compiler to finish before anyone calls GetResource().
+    auto TexturesToFinish = TArray<UTexture*>{};
+    if (_MarkerTexture.IsValid())      { TexturesToFinish.Add(_MarkerTexture.Get()); }
+    if (_MarkerHoverTexture.IsValid()) { TexturesToFinish.Add(_MarkerHoverTexture.Get()); }
+    if (TexturesToFinish.Num() > 0)
+    {
+        FTextureCompilingManager::Get().FinishCompilation(TexturesToFinish);
+    }
+#endif
+
+    // Register for BOTH "Game" (PIE viewports) and "Editor" (level editor viewport) show flags so
+    // billboards keep rendering after the user ejects with F8 and input moves to the editor viewport.
+    const auto DrawDelegate = FDebugDrawDelegate::CreateSP(
+        AsShared(), &FCkDebuggerModel_ViewportPicker::DoDrawBillboards);
+    _DebugDrawHandle_Game   = UDebugDrawService::Register(TEXT("Game"),   DrawDelegate);
+    _DebugDrawHandle_Editor = UDebugDrawService::Register(TEXT("Editor"), DrawDelegate);
+
     _IsActive = true;
     OnPickModeChanged.Broadcast(_IsActive);
 
@@ -200,6 +238,17 @@ auto
         FSlateApplication::Get().UnregisterInputPreProcessor(_InputProcessor);
     }
     _InputProcessor.Reset();
+
+    if (_DebugDrawHandle_Game.IsValid())
+    {
+        UDebugDrawService::Unregister(_DebugDrawHandle_Game);
+        _DebugDrawHandle_Game.Reset();
+    }
+    if (_DebugDrawHandle_Editor.IsValid())
+    {
+        UDebugDrawService::Unregister(_DebugDrawHandle_Editor);
+        _DebugDrawHandle_Editor.Reset();
+    }
 
     DoRestoreMouseState();
 
@@ -261,23 +310,6 @@ auto
 
 auto
     FCkDebuggerModel_ViewportPicker::
-    Get_DrawThroughWalls() const -> bool
-{
-    return _DrawThroughWalls;
-}
-
-auto
-    FCkDebuggerModel_ViewportPicker::
-    Set_DrawThroughWalls(
-        bool InValue) -> void
-{
-    _DrawThroughWalls = InValue;
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    FCkDebuggerModel_ViewportPicker::
     Get_IgnoreLocalPawn() const -> bool
 {
     return _IgnoreLocalPawn;
@@ -308,6 +340,23 @@ auto
     _CullRadius = FMath::Clamp(InValue, CullRadiusMin, CullRadiusMax);
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    Get_BillboardSize() const -> float
+{
+    return _BillboardSizePx;
+}
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    Set_BillboardSize(
+        float InValue) -> void
+{
+    _BillboardSizePx = FMath::Clamp(InValue, BillboardSizeMinPx, BillboardSizeMaxPx);
+}
+
 // =====================================================================================================================
 
 auto
@@ -326,13 +375,11 @@ auto
     }
 
     // Refresh the hover hit under the last known cursor ray, since entities can move between frames.
+    // Billboard rendering is driven by the UDebugDrawService callback (DoDrawBillboards), not here.
     if (_HasRay)
     {
         _HoveredEntity = DoPickAtRay(World, _LastRayOrigin, _LastRayDirection);
     }
-
-    DoDrawMarkers(World);
-    DoDrawHover(World);
 }
 
 // =====================================================================================================================
@@ -711,23 +758,53 @@ auto
 
 auto
     FCkDebuggerModel_ViewportPicker::
-    DoDrawMarkers(
-        UWorld* InWorld) const -> void
+    DoDrawBillboards(
+        UCanvas*           InCanvas,
+        APlayerController* InPC) -> void
 {
-#if ENABLE_DRAW_DEBUG
-    if (ck::Is_NOT_Valid(InWorld))
+    if (NOT _IsActive)
     { return; }
 
-    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
+    if (InCanvas == nullptr)
+    { return; }
+
+    auto* World = DoResolveTargetWorld();
+    if (ck::Is_NOT_Valid(World))
+    { return; }
+
+    // DebugDrawService fires for every game viewport on screen; reject callbacks for worlds we aren't inspecting.
+    if (ck::IsValid(InPC) && InPC->GetWorld() != World)
+    { return; }
+
+    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(World);
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
 
-    const auto CameraLocation  = DoGet_CameraLocation(InWorld);
-    const auto CullRadiusSq    = _CullRadius * _CullRadius;
-    const auto MarkerColor     = CkDebugStyle::PickMarker_Default().ToFColor(true);
-    const auto DepthPriority   = static_cast<uint8>(_DrawThroughWalls ? SDPG_Foreground : SDPG_World);
+    // Textures are guaranteed compiled before we get here (FTextureCompilingManager::FinishCompilation
+    // in Activate). If they failed to load outright — bad path, missing asset — bail silently; the
+    // picker is still functional via click-to-select, just invisible.
+    auto* MarkerTex = _MarkerTexture.Get();
+    auto* HoverTex  = _MarkerHoverTexture.IsValid() ? _MarkerHoverTexture.Get() : MarkerTex;
+    if (MarkerTex == nullptr || HoverTex == nullptr)
+    { return; }
 
-    const auto IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
+    const auto* MarkerResource = MarkerTex->GetResource();
+    const auto* HoverResource  = HoverTex->GetResource();
+    if (MarkerResource == nullptr || HoverResource == nullptr)
+    { return; }
+
+    const auto CameraLocation = DoGet_CameraLocation(World);
+    const auto CullRadiusSq   = _CullRadius * _CullRadius;
+    const auto DefaultColor   = CkDebugStyle::PickMarker_Default();
+    const auto HoverColor     = CkDebugStyle::PickMarker_Hover();
+    const auto CanvasSizeX    = static_cast<float>(InCanvas->SizeX);
+    const auto CanvasSizeY    = static_cast<float>(InCanvas->SizeY);
+    const auto TileSizePx     = FMath::Clamp(_BillboardSizePx, BillboardSizeMinPx, BillboardSizeMaxPx);
+
+    const auto IgnoredActors = DoGet_LocalIgnoredActors(World);
+
+    // Defer the hovered entity's draw so it renders on top of the cluster.
+    auto HoveredCenter = TOptional<FVector>{};
 
     TransientEntity.View<ck::FFragment_Transform, CK_IGNORE_PENDING_KILL>().ForEach(
     [&](FCk_Entity InEntity, const ck::FFragment_Transform& InTransform)
@@ -745,73 +822,57 @@ auto
         if (_IgnoreLocalPawn && DoIsEntityOwnedByIgnoredActor(Handle, IgnoredActors))
         { return; }
 
-        const auto XVertPos = Center + FVector{PickRadius, 0.0f, 0.0f};
-        const auto XVertNeg = Center - FVector{PickRadius, 0.0f, 0.0f};
-        const auto YVertPos = Center + FVector{0.0f, PickRadius, 0.0f};
-        const auto YVertNeg = Center - FVector{0.0f, PickRadius, 0.0f};
-        const auto ZVertPos = Center + FVector{0.0f, 0.0f, PickRadius};
-        const auto ZVertNeg = Center - FVector{0.0f, 0.0f, PickRadius};
-
-        const auto DistToCamera = FMath::Sqrt(DistSqToCamera);
-        if (DistToCamera <= MarkerLodNearDistance)
+        if (Handle == _HoveredEntity)
         {
-            // Full octahedron (12 edges)
-            ::DrawDebugLine(InWorld, XVertPos, YVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertPos, XVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, XVertNeg, YVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertNeg, XVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-
-            ::DrawDebugLine(InWorld, XVertPos, ZVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertPos, ZVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, XVertNeg, ZVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertNeg, ZVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-
-            ::DrawDebugLine(InWorld, XVertPos, ZVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertPos, ZVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, XVertNeg, ZVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertNeg, ZVertNeg, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
+            HoveredCenter = Center;
+            return;
         }
-        else
-        {
-            // Far LOD: just the three principal axes through the center
-            ::DrawDebugLine(InWorld, XVertNeg, XVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, YVertNeg, YVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-            ::DrawDebugLine(InWorld, ZVertNeg, ZVertPos, MarkerColor, NonPersistentLines, DebugDrawLifetime, DepthPriority, MarkerThickness);
-        }
+
+        const auto Projected = InCanvas->Project(Center);
+        if (Projected.Z <= 0.0f)
+        { return; }
+        if (Projected.X < 0.0f || Projected.Y < 0.0f || Projected.X >= CanvasSizeX || Projected.Y >= CanvasSizeY)
+        { return; }
+
+        const auto TopLeft = FVector2D(
+            static_cast<float>(Projected.X) - TileSizePx * 0.5f,
+            static_cast<float>(Projected.Y) - TileSizePx * 0.5f);
+
+        auto Tile = FCanvasTileItem(TopLeft, MarkerResource, FVector2D(TileSizePx, TileSizePx), DefaultColor);
+        Tile.BlendMode = SE_BLEND_Translucent;
+        InCanvas->DrawItem(Tile);
     });
-#endif
-}
 
-// --------------------------------------------------------------------------------------------------------------------
+    if (HoveredCenter.IsSet())
+    {
+        const auto Center    = HoveredCenter.GetValue();
+        const auto Projected = InCanvas->Project(Center);
+        if (Projected.Z > 0.0f)
+        {
+            const auto HoverSize = TileSizePx * BillboardHoverScale;
 
-auto
-    FCkDebuggerModel_ViewportPicker::
-    DoDrawHover(
-        UWorld* InWorld) const -> void
-{
-#if ENABLE_DRAW_DEBUG
-    if (ck::Is_NOT_Valid(InWorld))
-    { return; }
+            const auto TopLeft = FVector2D(
+                static_cast<float>(Projected.X) - HoverSize * 0.5f,
+                static_cast<float>(Projected.Y) - HoverSize * 0.5f);
 
-    if (ck::Is_NOT_Valid(_HoveredEntity))
-    { return; }
+            auto Tile = FCanvasTileItem(TopLeft, HoverResource, FVector2D(HoverSize, HoverSize), HoverColor);
+            Tile.BlendMode = SE_BLEND_Translucent;
+            InCanvas->DrawItem(Tile);
 
-    if (NOT UCk_Utils_Transform_UE::Has(_HoveredEntity))
-    { return; }
-
-    const auto Center         = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(_HoveredEntity).GetLocation();
-    const auto HoverColor     = CkDebugStyle::PickMarker_Hover().ToFColor(true);
-    const auto DepthPriority  = static_cast<uint8>(_DrawThroughWalls ? SDPG_Foreground : SDPG_World);
-    constexpr auto Segments   = 16;
-
-    ::DrawDebugSphere(
-        InWorld, Center, PickRadius, Segments, HoverColor,
-        NonPersistentLines, DebugDrawLifetime, DepthPriority, HoverThickness);
-
-    const auto LabelLocation = Center + FVector{0.0f, 0.0f, PickRadius + 20.0f};
-    UCk_Utils_DebugDraw_UE::DrawDebugString(
-        InWorld, LabelLocation, _HoveredEntity.ToString(), CkDebugStyle::PickMarker_Hover(), DebugDrawLifetime);
-#endif
+            if (auto* Font = GEngine != nullptr ? GEngine->GetSmallFont() : nullptr)
+            {
+                const auto LabelText = FText::FromString(_HoveredEntity.ToString());
+                auto TextItem = FCanvasTextItem(
+                    FVector2D(
+                        static_cast<float>(Projected.X),
+                        static_cast<float>(Projected.Y) - HoverSize * 0.5f - BillboardLabelGapPx),
+                    LabelText, Font, HoverColor);
+                TextItem.bCentreX = true;
+                TextItem.EnableShadow(FLinearColor::Black);
+                InCanvas->DrawItem(TextItem);
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

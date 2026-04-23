@@ -6,6 +6,7 @@
 
 #include "GenericPlatform/ICursor.h"
 #include "Engine/EngineBaseTypes.h"
+#include "UObject/StrongObjectPtr.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -14,6 +15,8 @@ class FCkDebuggerModel_WorldContext;
 class FCkDebuggerViewportPicker_InputProcessor;
 class UGameViewportClient;
 class APlayerController;
+class UCanvas;
+class UTexture2D;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -33,7 +36,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCkDebugger_OnPickModeChanged, bool /*IsActi
  *   - Deproject cursor positions into the selected world via ULocalPlayer::CalcSceneView
  *   - Hit-test ECS-ready actors (physics trace) and pure ECS entities with FCk_Transform
  *     (inline ray-sphere) and pick the closest candidate
- *   - Draw diamond markers and hover highlights for transform entities while active
+ *   - Draw screen-space billboards (with hover swap) for transform entities while active
  *   - Auto-exit on successful pick; subscribe to world changes to deactivate cleanly
  */
 class FCkDebuggerModel_ViewportPicker
@@ -87,13 +90,6 @@ public:
     // ---- Options ---------------------------------------------------------
 
     auto
-    Get_DrawThroughWalls() const -> bool;
-
-    auto
-    Set_DrawThroughWalls(
-        bool InValue) -> void;
-
-    auto
     Get_IgnoreLocalPawn() const -> bool;
 
     auto
@@ -105,6 +101,13 @@ public:
 
     auto
     Set_CullRadius(
+        float InValue) -> void;
+
+    auto
+    Get_BillboardSize() const -> float;
+
+    auto
+    Set_BillboardSize(
         float InValue) -> void;
 
     // ---- Multicast -------------------------------------------------------
@@ -174,12 +177,9 @@ private:
         const FVector& InDirection) const -> FCk_Handle;
 
     auto
-    DoDrawMarkers(
-        UWorld* InWorld) const -> void;
-
-    auto
-    DoDrawHover(
-        UWorld* InWorld) const -> void;
+    DoDrawBillboards(
+        UCanvas*           InCanvas,
+        APlayerController* InPC) -> void;
 
     auto
     DoResolveActorEntity(
@@ -192,12 +192,16 @@ private:
     TWeakPtr<FCkDebuggerModel_WorldContext>               _WorldModel;
     TSharedPtr<FCkDebuggerViewportPicker_InputProcessor>  _InputProcessor;
     FDelegateHandle                                       _WorldChangedHandle;
+    FDelegateHandle                                       _DebugDrawHandle_Game;
+    FDelegateHandle                                       _DebugDrawHandle_Editor;
+    TStrongObjectPtr<UTexture2D>                          _MarkerTexture;
+    TStrongObjectPtr<UTexture2D>                          _MarkerHoverTexture;
     bool                                                  _IsActive = false;
 
     // ---- Options ---------------------------------------------------------
-    bool  _DrawThroughWalls = true;
     bool  _IgnoreLocalPawn  = true;
     float _CullRadius       = 5000.0f;
+    float _BillboardSizePx  = 32.0f;
 
     // ---- Cached hover state ---------------------------------------------
     FCk_Handle _HoveredEntity;

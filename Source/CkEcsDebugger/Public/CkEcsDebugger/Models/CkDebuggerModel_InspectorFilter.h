@@ -108,6 +108,36 @@ public:
     Set_BadgeStyle(
         ECk_InspectorFilter_BadgeStyle InStyle) -> void;
 
+    // ---- Exclusion (persistent hide list) --------------------------------
+
+    /**
+     * Separate from the include-selection above. Entities matched by ANY excluded inspector
+     * are fully hidden from the entity tree (IsVisible=false), not just dimmed. Persisted
+     * via UCkEcsDebuggerSettings so the list survives editor restarts.
+     */
+
+    auto
+    Get_ExcludedIDs() const -> const TSet<FName>&;
+
+    auto
+    Get_HasActiveExclusion() const -> bool;
+
+    auto
+    Get_IsExcluded(
+        FName InID) const -> bool;
+
+    auto
+    Toggle_Exclusion(
+        FName InID) -> void;
+
+    auto
+    Set_Exclusion(
+        FName InID,
+        bool  InExcluded) -> void;
+
+    auto
+    Clear_Exclusions() -> void;
+
     // ---- Predicate -------------------------------------------------------
 
     /**
@@ -118,6 +148,14 @@ public:
     Test_Entity(
         const FCk_Handle& InEntity) const -> bool;
 
+    /**
+     * Returns true if the entity matches ANY excluded inspector. Caller is expected to
+     * force IsVisible=false on the entity's tree node when this returns true.
+     */
+    auto
+    Test_Entity_IsExcluded(
+        const FCk_Handle& InEntity) const -> bool;
+
     // ---- Multicast -------------------------------------------------------
 
     FCkDebugger_OnInspectorFilterChanged OnFilterChanged;
@@ -126,8 +164,15 @@ private:
     auto
     DoBroadcast() -> void;
 
+    auto
+    LoadExclusionsFromSettings() -> void;
+
+    auto
+    SaveExclusionsToSettings() const -> void;
+
     TArray<FInspectorEntry>          _AllEntries;
     TSet<FName>                      _SelectedIDs;
+    TSet<FName>                      _ExcludedIDs;
     ECk_InspectorFilter_MatchMode    _MatchMode  = ECk_InspectorFilter_MatchMode::All;
     ECk_InspectorFilter_BadgeStyle   _BadgeStyle = ECk_InspectorFilter_BadgeStyle::ColorAndText;
 };

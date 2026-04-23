@@ -28,6 +28,12 @@
 #include "Widgets/SViewport.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+
+#if WITH_EDITOR
+#include "Editor.h"
+#include "EditorViewportClient.h"
+#include "LevelEditorViewport.h"
+#endif
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace
@@ -41,6 +47,80 @@ namespace
     static constexpr auto CullRadiusMax          = 100'000.0f;   // 1 km
     static constexpr auto DebugDrawLifetime      = 0.0f;
     static constexpr auto NonPersistentLines     = false;
+
+#if WITH_EDITOR
+    // When the PIE player is "ejected" (F8), this project's setup does NOT swap the LocalPlayer to
+    // an ADebugCameraController — the game PC's view simply freezes at the eject point and input
+    // goes to the Level Editor viewport. A pick sourced from the game PC would use a stale camera,
+    // so in that state we deproject against the live Level Editor viewport instead.
+    //
+    // Discriminator: `GEditor->GetActiveViewport()` points at whichever FViewport is currently
+    // driving input/rendering. When possessed it is the PIE game viewport; when ejected it is the
+    // level editor viewport itself. Other candidates (IsInGameView, the viewport's client pointer,
+    // ActorLock, cursor-in-widget checks) do not reliably flip — particularly in "Play in Current
+    // Viewport" mode where the game viewport widget is nested inside the level editor viewport.
+    static auto TryGet_LevelEditorViewport() -> FEditorViewportClient*
+    {
+        if (GEditor == nullptr || GEditor->PlayWorld == nullptr)
+        { return nullptr; }
+
+        auto* LEVC = GCurrentLevelEditingViewportClient;
+        if (LEVC == nullptr || LEVC->Viewport == nullptr)
+        { return nullptr; }
+
+        if (GEditor->GetActiveViewport() != LEVC->Viewport)
+        { return nullptr; }
+
+        return LEVC;
+    }
+
+    static auto Deproject_LevelEditorViewport(
+        FEditorViewportClient* InVC,
+        FVector&               OutOrigin,
+        FVector&               OutDirection) -> bool
+    {
+        auto* Viewport = InVC->Viewport;
+        if (Viewport == nullptr)
+        { return false; }
+
+        const auto Size   = Viewport->GetSizeXY();
+        const auto MouseX = Viewport->GetMouseX();
+        const auto MouseY = Viewport->GetMouseY();
+        if (Size.X <= 0 || Size.Y <= 0)
+        { return false; }
+        if (MouseX < 0 || MouseY < 0 || MouseX >= Size.X || MouseY >= Size.Y)
+        { return false; }
+
+        if (InVC->IsOrtho())
+        { return false; }
+
+        // Build view+projection from the viewport client's CURRENT camera state, rather than
+        // calling FEditorViewportClient::CalcSceneView() — that call returns stale matrices on
+        // repeat invocations outside the viewport's own Draw pass.
+        const auto ViewLocation = InVC->GetViewLocation();
+        const auto ViewRotation = InVC->GetViewRotation();
+
+        const auto ViewRotationMatrix = FInverseRotationMatrix(ViewRotation) * FMatrix(
+            FPlane(0.0, 0.0, 1.0, 0.0),
+            FPlane(1.0, 0.0, 0.0, 0.0),
+            FPlane(0.0, 1.0, 0.0, 0.0),
+            FPlane(0.0, 0.0, 0.0, 1.0));
+        const auto ViewMatrix = FTranslationMatrix(-ViewLocation) * ViewRotationMatrix;
+
+        const auto AspectRatio = static_cast<float>(Size.X) / static_cast<float>(Size.Y);
+        const auto HalfFOVRad  = FMath::DegreesToRadians(InVC->ViewFOV * 0.5f);
+
+        const auto ProjectionMatrix = FReversedZPerspectiveMatrix(
+            HalfFOVRad, AspectRatio, 1.0f, GNearClippingPlane);
+
+        const auto InvViewProj = (ViewMatrix * ProjectionMatrix).InverseFast();
+        const auto ViewRect    = FIntRect(0, 0, Size.X, Size.Y);
+
+        FSceneView::DeprojectScreenToWorld(
+            FVector2D(MouseX, MouseY), ViewRect, InvViewProj, OutOrigin, OutDirection);
+        return true;
+    }
+#endif
 }
 
 // =====================================================================================================================
@@ -427,6 +507,15 @@ auto
     if (ck::Is_NOT_Valid(InWorld))
     { return false; }
 
+#if WITH_EDITOR
+    // During ejected PIE, the game PC's view freezes — deproject against the active Level Editor
+    // viewport's live camera instead.
+    if (auto* LEVC = TryGet_LevelEditorViewport())
+    {
+        return Deproject_LevelEditorViewport(LEVC, OutOrigin, OutDirection);
+    }
+#endif
+
     auto* GVC = InWorld->GetGameViewport();
     if (ck::Is_NOT_Valid(GVC))
     { return false; }
@@ -740,6 +829,13 @@ auto
     if (ck::Is_NOT_Valid(InWorld))
     { return IgnoredActors; }
 
+#if WITH_EDITOR
+    // Ejected PIE: no in-game "local pawn" context worth ignoring, and the user may want to pick
+    // their own pawn anyway.
+    if (TryGet_LevelEditorViewport() != nullptr)
+    { return IgnoredActors; }
+#endif
+
     auto* PC = InWorld->GetFirstPlayerController();
     if (ck::Is_NOT_Valid(PC))
     { return IgnoredActors; }
@@ -806,6 +902,11 @@ auto
 {
     if (ck::Is_NOT_Valid(InWorld))
     { return _LastRayOrigin; }
+
+#if WITH_EDITOR
+    if (auto* LEVC = TryGet_LevelEditorViewport())
+    { return LEVC->GetViewLocation(); }
+#endif
 
     auto* PC = InWorld->GetFirstPlayerController();
     if (ck::Is_NOT_Valid(PC))

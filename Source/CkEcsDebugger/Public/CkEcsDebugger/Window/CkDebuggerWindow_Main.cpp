@@ -364,36 +364,6 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
         [
             SNew(SVerticalBox)
 
-            // ---- Through Walls toggle ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([this]() -> ECheckBoxState
-                {
-                    return ViewportPicker.IsValid() && ViewportPicker->Get_DrawThroughWalls()
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
-                })
-                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                {
-                    if (ViewportPicker.IsValid())
-                    {
-                        ViewportPicker->Set_DrawThroughWalls(InState == ECheckBoxState::Checked);
-                    }
-                })
-                .ToolTipText(FText::FromString(TEXT(
-                    "Draw pick markers and hover highlight on top of world geometry.\n"
-                    "Enable this when entities are enclosed in meshes.")))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Through Walls")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
-                ]
-            ]
-
             // ---- Ignore Self toggle ----
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -428,6 +398,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
             // ---- Cull Radius spinbox ----
             + SVerticalBox::Slot()
             .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot()
@@ -468,6 +439,52 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                             "Maximum distance (cm) from the camera at which entities are\n"
                             "drawn and considered for picking. Lower values reduce clutter\n"
                             "in large worlds.")))
+                    ]
+                ]
+            ]
+
+            // ---- Billboard Size spinbox ----
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Billboard Size:")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SBox)
+                    .WidthOverride(120.0f)
+                    [
+                        SNew(SSpinBox<float>)
+                        .MinValue(8.0f)
+                        .MaxValue(128.0f)
+                        .MinSliderValue(8.0f)
+                        .MaxSliderValue(128.0f)
+                        .Delta(1.0f)
+                        .Value_Lambda([this]() -> float
+                        {
+                            return ViewportPicker.IsValid() ? ViewportPicker->Get_BillboardSize() : 0.0f;
+                        })
+                        .OnValueChanged_Lambda([this](float InValue)
+                        {
+                            if (ViewportPicker.IsValid())
+                            {
+                                ViewportPicker->Set_BillboardSize(InValue);
+                            }
+                        })
+                        .ToolTipText(FText::FromString(TEXT(
+                            "Size (pixels) of each entity billboard. Billboards keep the same\n"
+                            "screen size regardless of distance to the camera.")))
                     ]
                 ]
             ]

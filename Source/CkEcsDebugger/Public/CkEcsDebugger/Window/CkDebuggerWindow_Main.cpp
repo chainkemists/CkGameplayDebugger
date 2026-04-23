@@ -552,6 +552,36 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
                 ]
             ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+            [
+                SNew(SCheckBox)
+                .ToolTipText(FText::FromString(TEXT(
+                    "Hide — when checked, entities matching this inspector are removed from the\n"
+                    "entity tree entirely (not just dimmed). Persists across editor sessions via\n"
+                    "Project Settings → CkGameplayDebugger → Ck ECS Debugger.")))
+                .IsChecked_Lambda([this, EntryID]() -> ECheckBoxState
+                {
+                    return FilterModel.IsValid() && FilterModel->Get_IsExcluded(EntryID)
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this, EntryID](ECheckBoxState InState)
+                {
+                    if (FilterModel.IsValid())
+                    {
+                        FilterModel->Set_Exclusion(EntryID, InState == ECheckBoxState::Checked);
+                    }
+                })
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Hide")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                ]
+            ]
         ];
     }
 
@@ -639,22 +669,52 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     .HAlign(HAlign_Right)
                     .VAlign(VAlign_Center)
                     [
-                        SNew(SButton)
-                        .ButtonColorAndOpacity(CkDebugStyle::Bg2())
-                        .ToolTipText(FText::FromString(TEXT("Remove every active filter.")))
-                        .OnClicked_Lambda([this]() -> FReply
-                        {
-                            if (FilterModel.IsValid())
-                            {
-                                FilterModel->Clear_Selection();
-                            }
-                            return FReply::Handled();
-                        })
+                        SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
                         [
-                            SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Clear all")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                            SNew(SButton)
+                            .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                            .ToolTipText(FText::FromString(TEXT(
+                                "Un-hide every inspector — clears the persistent exclusion list.")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (FilterModel.IsValid())
+                                {
+                                    FilterModel->Clear_Exclusions();
+                                }
+                                return FReply::Handled();
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("Clear hidden")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                            ]
+                        ]
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(SButton)
+                            .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                            .ToolTipText(FText::FromString(TEXT("Remove every active filter.")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (FilterModel.IsValid())
+                                {
+                                    FilterModel->Clear_Selection();
+                                }
+                                return FReply::Handled();
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("Clear all")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                            ]
                         ]
                     ]
                 ]

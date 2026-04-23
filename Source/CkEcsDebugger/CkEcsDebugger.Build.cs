@@ -9,6 +9,7 @@ public class CkEcsDebugger : CkModuleRules
         {
             "Core",
             "CoreUObject",
+            "DeveloperSettings",
             "Engine",
             "GameplayTags",
             "InputCore",

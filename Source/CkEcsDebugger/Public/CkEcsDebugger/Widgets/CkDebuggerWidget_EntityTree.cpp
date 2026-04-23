@@ -188,6 +188,10 @@ auto SCkDebuggerWidget_EntityTree::Construct(
             { return; }
 
             Pinned->ApplyInspectorFilter();
+            // Exclusions are applied inside ApplyFilterToNodes (re-runs the visibility pass)
+            // so toggling an exclusion immediately hides/reveals matching rows.
+            Pinned->ApplyFilterToNodes();
+            Pinned->UpdateFilteredRootNodes();
             if (Pinned->TreeView.IsValid())
             {
                 Pinned->TreeView->RequestTreeRefresh();
@@ -409,6 +413,23 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             if (ck::fuzzy::Match(CurrentFilter, DebugName.ToString(), {}).Get_IsMatch())
             {
                 MarkNodeVisibilityRecursive(Node, true);
+            }
+        }
+    }
+
+    // ---- Pass 1b: force-hide entities matched by the persistent exclusion list ----
+    // Exclusions override the search filter — an entity the user has added to the
+    // "always hide" list should never appear even when they type a matching filter.
+    if (FilterModel.IsValid() && FilterModel->Get_HasActiveExclusion())
+    {
+        for (const auto& Node : AllNodes)
+        {
+            if (NOT Node.IsValid() || NOT Node->IsVisible)
+            { continue; }
+
+            if (FilterModel->Test_Entity_IsExcluded(Node->Entity))
+            {
+                Node->IsVisible = false;
             }
         }
     }

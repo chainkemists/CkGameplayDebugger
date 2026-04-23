@@ -23,6 +23,7 @@ public class CkEcsDebugger : CkModuleRules
             "AppFramework",
             "ToolMenus",
 
+            "CkActorRelay",
             "CkAnimation",
             "CkAttribute",
             "CkCore",
@@ -43,6 +44,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkDynamic",
             "CkSpatialQuery",
             "CkTagSet",
+            "CkTimer",
             "CkVariables",
         });
 

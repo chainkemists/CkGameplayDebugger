@@ -44,6 +44,8 @@ namespace
             Map.Add(TEXT("FCkInspector_ObjectiveOwner"),    CkDebugStyle::State_Config());
             Map.Add(TEXT("FCkInspector_InteractionResolver"), CkDebugStyle::Value_Bool_True());
             Map.Add(TEXT("FCkInspector_InteractTarget"),    CkDebugStyle::Value_Bool_True());
+            Map.Add(TEXT("FCkInspector_Timer"),             CkDebugStyle::Value_Numeric());
+            Map.Add(TEXT("FCkInspector_ActorRelay"),        CkDebugStyle::Value_Object());
             return Map;
         }();
 

@@ -3,6 +3,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
@@ -94,6 +95,8 @@ FCkDebuggerModel_InspectorFilter::FCkDebuggerModel_InspectorFilter()
             Resolve_BadgeColor(Entry.ID)
         });
     }
+
+    LoadExclusionsFromSettings();
 }
 
 // =====================================================================================================================
@@ -274,6 +277,130 @@ auto
         { return true; }
     }
     return false;
+}
+
+// =====================================================================================================================
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Test_Entity_IsExcluded(
+        const FCk_Handle& InEntity) const -> bool
+{
+    if (_ExcludedIDs.IsEmpty())
+    { return false; }
+
+    if (ck::Is_NOT_Valid(InEntity))
+    { return false; }
+
+    auto& Registry = FCkDebuggerInspectorRegistry::Get();
+    for (const auto& ID : _ExcludedIDs)
+    {
+        if (Registry.Test(ID, InEntity))
+        { return true; }
+    }
+    return false;
+}
+
+// =====================================================================================================================
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Get_ExcludedIDs() const -> const TSet<FName>&
+{
+    return _ExcludedIDs;
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Get_HasActiveExclusion() const -> bool
+{
+    return _ExcludedIDs.Num() > 0;
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Get_IsExcluded(
+        FName InID) const -> bool
+{
+    return _ExcludedIDs.Contains(InID);
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Toggle_Exclusion(
+        FName InID) -> void
+{
+    if (_ExcludedIDs.Contains(InID))
+    {
+        _ExcludedIDs.Remove(InID);
+    }
+    else
+    {
+        _ExcludedIDs.Add(InID);
+    }
+
+    SaveExclusionsToSettings();
+    DoBroadcast();
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Set_Exclusion(
+        FName InID,
+        bool  InExcluded) -> void
+{
+    const auto AlreadyExcluded = _ExcludedIDs.Contains(InID);
+    if (AlreadyExcluded == InExcluded)
+    { return; }
+
+    if (InExcluded)
+    {
+        _ExcludedIDs.Add(InID);
+    }
+    else
+    {
+        _ExcludedIDs.Remove(InID);
+    }
+
+    SaveExclusionsToSettings();
+    DoBroadcast();
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Clear_Exclusions() -> void
+{
+    if (_ExcludedIDs.IsEmpty())
+    { return; }
+
+    _ExcludedIDs.Reset();
+    SaveExclusionsToSettings();
+    DoBroadcast();
+}
+
+// =====================================================================================================================
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    LoadExclusionsFromSettings() -> void
+{
+    const auto* Settings = UCkEcsDebuggerSettings::Get();
+    if (Settings == nullptr)
+    { return; }
+
+    _ExcludedIDs = Settings->DefaultExcludedInspectorIDs;
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    SaveExclusionsToSettings() const -> void
+{
+    auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>();
+    if (Settings == nullptr)
+    { return; }
+
+    Settings->DefaultExcludedInspectorIDs = _ExcludedIDs;
+    Settings->SaveConfig();
 }
 
 // =====================================================================================================================

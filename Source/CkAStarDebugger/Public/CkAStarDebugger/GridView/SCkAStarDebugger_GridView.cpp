@@ -206,17 +206,17 @@ auto
                 // Bottom
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId + 1,
-                    InGeometry.ToPaintGeometry(BorderPos + FVector2D(0.0f, BorderSize.Y - 1.0f), FVector2D(BorderSize.X, 1.0f)),
+                    InGeometry.ToPaintGeometry(FVector2D(BorderSize.X, 1.0f), FSlateLayoutTransform(BorderPos + FVector2D(0.0f, BorderSize.Y - 1.0f))),
                     WhiteBrush, ESlateDrawEffect::None, BorderColor);
                 // Left
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId + 1,
-                    InGeometry.ToPaintGeometry(BorderPos, FVector2D(1.0f, BorderSize.Y)),
+                    InGeometry.ToPaintGeometry(FVector2D(1.0f, BorderSize.Y), FSlateLayoutTransform(BorderPos)),
                     WhiteBrush, ESlateDrawEffect::None, BorderColor);
                 // Right
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId + 1,
-                    InGeometry.ToPaintGeometry(BorderPos + FVector2D(BorderSize.X - 1.0f, 0.0f), FVector2D(1.0f, BorderSize.Y)),
+                    InGeometry.ToPaintGeometry(FVector2D(1.0f, BorderSize.Y), FSlateLayoutTransform(BorderPos + FVector2D(BorderSize.X - 1.0f, 0.0f))),
                     WhiteBrush, ESlateDrawEffect::None, BorderColor);
             }
         }
@@ -302,14 +302,14 @@ auto
     {
         FSlateDrawElement::MakeBox(
             InOutDrawElements, InLayerId,
-            InGeometry.ToPaintGeometry(FVector2D{X, Y}, FVector2D{SwatchSize, SwatchSize}),
+            InGeometry.ToPaintGeometry(FVector2D{SwatchSize, SwatchSize}, FSlateLayoutTransform(FVector2D{X, Y})),
             WhiteBrush, ESlateDrawEffect::None, Item.Color);
 
         FSlateDrawElement::MakeText(
             InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D{X + SwatchSize + 3.0f, Y - 1.0f},
-                FVector2D{60.0f, 14.0f}),
+                FVector2D{60.0f, 14.0f},
+                FSlateLayoutTransform(FVector2D{X + SwatchSize + 3.0f, Y - 1.0f})),
             Item.Label, Font, ESlateDrawEffect::None,
             FCkAStarDebuggerStyle::Color_Text_Secondary);
 

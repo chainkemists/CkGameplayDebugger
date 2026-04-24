@@ -80,8 +80,18 @@ public:
     // Mockup — hard-coded test graph matching the LogicDriverPro reference
     auto BuildMockup() -> void;
 
-    // Force a full rebuild on the next UpdateFromSmInfo call
-    auto ForceRebuild() -> void { _TopologyHash = 0; }
+    // Force a full rebuild on the next UpdateFromSmInfo call.
+    // Also drops every cached ECS handle the graph holds. Must be called during
+    // EndPIE (while the registry is still live) so the TOptional<FCk_Registry>
+    // inside each handle releases cleanly — otherwise the next operator== on a
+    // stale handle will deref freed registry memory and crash.
+    auto ForceRebuild() -> void
+    {
+        _TopologyHash = 0;
+        _CachedSubSmOwner = FCk_Handle_StateMachine{};
+        _TransitionData.Empty();
+        _CachedSubSmData.Empty();
+    }
 
     // Largest segment count across all state names — used to bound NameDepth cycling.
     // Returns at least 1 so cycling always has a non-zero leaf depth available.

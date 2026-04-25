@@ -157,6 +157,60 @@ if (NOT WorldsChanged)
 
 See `CkDebuggerPanel_EntityList.cpp::Tick` for the canonical implementation.
 
+## In-world overlays via PMG
+
+Debugger overlays that attach geometry to a selected runtime entity should
+use `CkPmg`'s typed-shape API (filled procmesh + auto-wireframe) for any
+volume-shaped marker — capsule, sphere, box. Reach for the line-only
+`ck::pmg::Append_Debug*_World` API only for inherently line-shaped content
+(paths, polylines, drop indicators).
+
+| Use case | API |
+|---|---|
+| Filled capsule/sphere/box on the selected entity (live-tracking) | `UCk_Utils_Pmg_BasicShapes::Add_Capsule` / `Add_Sphere` / `Add_Box` etc. |
+| Filled marker shapes that should cascade-destroy with a parent overlay entity | `UCk_Utils_Pmg_BasicShapes::Create_*` with the parent overlay entity as owner |
+| Path lines, drop indicators, custom polylines | `ck::pmg::Append_DebugLine_World` (wireframe by design) |
+
+Two gotchas the nav-debugger session burned — both fully covered in
+`CkPmg/CLAUDE.md`, summarised here:
+
+- **`InDuration = 0.0f` is a one-tick destroy**, not "persistent". The
+  `CheckDuration` processor early-outs only on negative values. For live
+  overlays use `-1.0f`.
+- **`Append_Debug*_World` produces wireframes, not filled meshes.** If
+  the overlay was supposed to look like a real volume, use the typed
+  `Add_*` / `Create_*` calls — those build the procmesh and emit the
+  wireframe automatically when `InDrawLines=true`.
+
+Live-tracking pattern:
+
+```cpp
+// Once on selection:
+GState.Entity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity_TransientOwner(World);
+UCk_Utils_Pmg_BasicShapes::Add_Capsule(
+    GState.Entity, FTransform{Center}, Radius, HalfHeight, Segments, Rings,
+    Axis, Color, /*InDrawLines=*/true, Thickness, /*InDuration=*/-1.0f);
+GState.Transform = UCk_Utils_Transform_UE::Cast(GState.Entity);
+
+// Each tick:
+UCk_Utils_Transform_UE::Request_SetTransform(
+    GState.Transform, FCk_Request_Transform_SetTransform{FTransform{NewLocation}});
+```
+
+When the debugger window closes, selection changes, or the world resets,
+call `UCk_Utils_EntityLifetime_UE::Request_DestroyEntity` on the parent
+overlay entity — child shapes spawned via `Create_*(ParentEntity, ...)`
+cascade-destroy with it. Don't poke ECS internals (`InHandle.AddOrGet<>`,
+`InHandle.Add<>`) from debugger client code; that belongs inside the
+PMG / Transform Utils. If a Util's behaviour seems wrong, fix the Util.
+
+Render gating reminder: keep `DrawAll` cheap when nothing's selected and
+the window is closed. The nav debugger gates on
+`(WindowOpen || OverlayAlwaysOn cvar) && SelectedId >= 0`, then matches
+`SelectedId` against `int32(GetTypeHash(Agent.EntityHandle))`. The same
+hash lookup must be done identically on both write (selection) and read
+(overlay) paths or the overlay silently no-ops on a live agent.
+
 ## Critical safety rules
 
 These apply across **every** debugger module.

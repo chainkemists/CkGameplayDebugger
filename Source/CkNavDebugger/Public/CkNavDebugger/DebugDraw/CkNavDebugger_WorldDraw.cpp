@@ -158,11 +158,11 @@ auto
         GState.LastWaypointCount = -1;
     }
 
-    // Gate: opted in (debugger window open or OverlayAlwaysOn cvar) AND have a selection.
-    const auto AlwaysOn = GetCVarInt(TEXT("Ck.NavDebugger.OverlayAlwaysOn")) != 0;
-    if (NOT (AlwaysOn || GIsWindowOpen))
-    { DestroyAll(); return; }
-
+    // Gate: a selection means the user wants to see this agent. The Module clears the
+    // SelectedEntityId cvar to -1 on tab close, so closing the debugger tears down the
+    // overlay naturally. Window-open as a separate gate is fragile — when the tab is
+    // restored from a saved Slate layout, OnSpawnDebuggerTab may not fire and the cached
+    // GIsWindowOpen flag stays stale.
     const auto SelectedId = GetCVarInt(TEXT("Ck.NavDebugger.SelectedEntityId"));
     if (SelectedId < 0)
     { DestroyAll(); return; }

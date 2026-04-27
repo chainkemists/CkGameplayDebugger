@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Framework/Docking/TabManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
@@ -136,6 +137,12 @@ auto
 
     _DebuggerWindow.Reset();
     FCkNavDebugger_WorldDraw::Set_WindowOpen(false);
+
+    // Clear the selection cvar so the in-world overlay tears down (gate is selection-only;
+    // the WindowOpen flag is no longer authoritative — saved-layout tab restores can leave
+    // it stale).
+    if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("Ck.NavDebugger.SelectedEntityId")))
+    { CVar->Set(-1, ECVF_SetByConsole); }
 }
 
 auto
@@ -177,6 +184,10 @@ auto
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
             FCkNavDebugger_WorldDraw::Set_WindowOpen(false);
+
+            // Mirror CloseDebugger: clear selection cvar so the overlay tears down.
+            if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("Ck.NavDebugger.SelectedEntityId")))
+            { CVar->Set(-1, ECVF_SetByConsole); }
         })
         [
             _DebuggerWindow.ToSharedRef()

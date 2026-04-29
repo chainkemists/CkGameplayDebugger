@@ -46,7 +46,9 @@ struct FCkNavDebugger_NavmeshInfo
     bool HasNavData = false;
     bool DefaultFilterValid = false;
     bool BoundsValid = false;
-    bool BoundsHasNonZeroVolume = false;
+    // 2D footprint (X*Y > 0). Flat navmeshes legitimately have zero Z extent —
+    // checking full volume false-positives every flat-floor gym/test level.
+    bool BoundsHasFootprint = false;
 
     FString NavDataName;
     FString NavDataClassName;

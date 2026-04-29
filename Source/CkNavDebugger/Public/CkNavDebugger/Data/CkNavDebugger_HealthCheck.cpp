@@ -109,26 +109,32 @@ auto
     }
 
     // 6. NavMesh bounds non-zero
+    // A flat-floor navmesh legitimately reports zero Z extent (all polys at one height) —
+    // GetNavMeshBounds() collapses to a thin shell. Use 2D footprint (X*Y) as the
+    // "is there any walkable surface" signal instead of full 3D volume; otherwise we
+    // false-positive on every flat gym/test level.
     const auto Bounds = NavData->GetNavMeshBounds();
-    const auto BoundsValid = Bounds.IsValid != 0;
-    const auto BoundsHasVolume = BoundsValid && Bounds.GetVolume() > KINDA_SMALL_NUMBER;
+    const auto BoundsValid    = Bounds.IsValid != 0;
+    const auto BoundsExtent   = BoundsValid ? Bounds.GetExtent() : FVector::ZeroVector;
+    const auto FootprintArea  = BoundsExtent.X * BoundsExtent.Y * 4.0;   // (2*Ex)*(2*Ey)
+    const auto HasFootprint   = BoundsValid && FootprintArea > KINDA_SMALL_NUMBER;
 
     if (NOT BoundsValid)
     {
         Report.Items.Add(MakeItem(TEXT("NavMesh bounds"), ECkNavDebugger_HealthStatus::Fail,
             TEXT("Bounds invalid (zero). Navmesh has no tiles — place a NavMeshBoundsVolume + bake.")));
     }
-    else if (NOT BoundsHasVolume)
+    else if (NOT HasFootprint)
     {
         Report.Items.Add(MakeItem(TEXT("NavMesh bounds"), ECkNavDebugger_HealthStatus::Warn,
-            FString::Printf(TEXT("Bounds have zero volume (%s → %s). Navmesh likely empty."),
+            FString::Printf(TEXT("Bounds have zero footprint (%s → %s). Navmesh likely empty."),
                 *Bounds.Min.ToString(), *Bounds.Max.ToString())));
     }
     else
     {
         Report.Items.Add(MakeItem(TEXT("NavMesh bounds"), ECkNavDebugger_HealthStatus::Pass,
-            FString::Printf(TEXT("%s → %s (volume %.0f cm³)"),
-                *Bounds.Min.ToString(), *Bounds.Max.ToString(), Bounds.GetVolume())));
+            FString::Printf(TEXT("%s → %s (footprint %.0f cm²)"),
+                *Bounds.Min.ToString(), *Bounds.Max.ToString(), FootprintArea)));
     }
 
     // 7. Default query filter present
@@ -162,7 +168,7 @@ auto
     }
 
     // 9. Synthetic FindPath at the navmesh center (only run if everything above passed)
-    if (BoundsHasVolume && NavData->GetDefaultQueryFilter().IsValid())
+    if (HasFootprint && NavData->GetDefaultQueryFilter().IsValid())
     {
         const auto Center = Bounds.GetCenter();
         const auto Offset = FVector{Bounds.GetExtent().X * 0.4, 0.0, 0.0};

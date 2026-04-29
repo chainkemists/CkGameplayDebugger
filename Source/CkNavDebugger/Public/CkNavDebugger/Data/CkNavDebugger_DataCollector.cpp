@@ -144,7 +144,11 @@ auto
     const auto Bounds = NavData->GetNavMeshBounds();
     Out.NavMeshBounds  = Bounds;
     Out.BoundsValid    = Bounds.IsValid != 0;
-    Out.BoundsHasNonZeroVolume = Bounds.IsValid && Bounds.GetVolume() > KINDA_SMALL_NUMBER;
+    {
+        const auto Ex = Bounds.IsValid ? Bounds.GetExtent() : FVector::ZeroVector;
+        const auto FootprintArea = Ex.X * Ex.Y * 4.0;
+        Out.BoundsHasFootprint = Bounds.IsValid && FootprintArea > KINDA_SMALL_NUMBER;
+    }
 
     Out.DefaultFilterValid = NavData->GetDefaultQueryFilter().IsValid();
 

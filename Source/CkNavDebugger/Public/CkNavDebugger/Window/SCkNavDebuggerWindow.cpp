@@ -364,7 +364,7 @@ auto
             return FText::FromString(FString::Printf(TEXT("Min %s, Max %s"),
                 *I.NavMeshBounds.Min.ToString(), *I.NavMeshBounds.Max.ToString()));
         }),
-        MakeNavmeshColorAttr(VMWeak, [](const auto& I) { return OkColor(I.BoundsHasNonZeroVolume); }));
+        MakeNavmeshColorAttr(VMWeak, [](const auto& I) { return OkColor(I.BoundsHasFootprint); }));
 
     AddRow(FText::FromString(TEXT("NavDataSet count")),
         MakeNavmeshTextAttr(VMWeak, [](const auto& I)

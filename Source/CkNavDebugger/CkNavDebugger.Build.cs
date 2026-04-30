@@ -17,6 +17,7 @@ public class CkNavDebugger : CkModuleRules
 			"WorkspaceMenuStructure",
 			"EditorStyle",
 			"AppFramework",
+			"DeveloperSettings",
 			"ToolMenus",
 
 			"NavigationSystem",
@@ -24,8 +25,10 @@ public class CkNavDebugger : CkModuleRules
 			"CkCore",
 			"CkEcs",
 			"CkEcsExt",
+			"CkLog",
 			"CkNavigation",
 			"CkPmg",
+			"CkSettings",
 
 			"CkDebuggerCommon",
 		});

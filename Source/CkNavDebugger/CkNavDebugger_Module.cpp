@@ -2,7 +2,6 @@
 
 #include "CkNavDebugger/Data/CkNavDebugger_HealthCheck.h"
 #include "CkNavDebugger/Data/CkNavDebugger_Types.h"
-#include "CkNavDebugger/DebugDraw/CkNavDebugger_WorldDraw.h"
 #include "CkNavDebugger/Window/SCkNavDebuggerWindow.h"
 
 #include "Engine/Engine.h"
@@ -79,13 +78,11 @@ auto
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Navigation Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
 
-    // In-world overlay runs whenever the module is loaded, regardless of whether the panel
-    // window is open — the overlay is the killer feature for nav debugging.
-    _WorldTickHandle = FWorldDelegates::OnWorldTickStart.AddLambda(
-        [](UWorld* InWorld, ELevelTick, float)
-        {
-            FCkNavDebugger_WorldDraw::DrawAll(InWorld);
-        });
+    // In-world overlay used to run via this module's OnWorldTickStart delegate
+    // (FCkNavDebugger_WorldDraw::DrawAll). It's now driven by ECS processors
+    // registered with the world's processor scheduler, gated by the
+    // UCk_NavDebugger_UserSettings_UE values. See
+    // CkNavDebugger/Processor/CkNavDebugger_Processor.h.
 }
 
 auto
@@ -93,12 +90,6 @@ auto
     ShutdownModule()
     -> void
 {
-    if (_WorldTickHandle.IsValid())
-    {
-        FWorldDelegates::OnWorldTickStart.Remove(_WorldTickHandle);
-        _WorldTickHandle.Reset();
-    }
-
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
@@ -136,11 +127,10 @@ auto
     }
 
     _DebuggerWindow.Reset();
-    FCkNavDebugger_WorldDraw::Set_WindowOpen(false);
 
-    // Clear the selection cvar so the in-world overlay tears down (gate is selection-only;
-    // the WindowOpen flag is no longer authoritative — saved-layout tab restores can leave
-    // it stale).
+    // Clear the selection cvar so any external listeners see "no selection" once
+    // the debugger window is closed. The processors that consume the tag will
+    // remove the visuals from the previously-selected agent next tick.
     if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("Ck.NavDebugger.SelectedEntityId")))
     { CVar->Set(-1, ECVF_SetByConsole); }
 }
@@ -183,9 +173,9 @@ auto
         {
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
-            FCkNavDebugger_WorldDraw::Set_WindowOpen(false);
 
-            // Mirror CloseDebugger: clear selection cvar so the overlay tears down.
+            // Clear selection cvar so processors tear down visuals on the
+            // previously-selected agent.
             if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("Ck.NavDebugger.SelectedEntityId")))
             { CVar->Set(-1, ECVF_SetByConsole); }
         })
@@ -194,7 +184,6 @@ auto
         ];
 
     _DebuggerWindow->Set_OwningTab(_DebuggerTab);
-    FCkNavDebugger_WorldDraw::Set_WindowOpen(true);
 
     return _DebuggerTab.ToSharedRef();
 }

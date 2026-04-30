@@ -23,6 +23,8 @@ public class CkCrowdDebugger : CkModuleRules
 			"ToolMenus",
 
 			"GameplayTags",
+			"NavigationSystem",
+			"AIModule",
 
 			"CkCore",
 			"CkEcs",

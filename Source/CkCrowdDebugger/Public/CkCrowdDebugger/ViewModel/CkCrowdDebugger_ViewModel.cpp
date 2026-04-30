@@ -14,19 +14,17 @@ auto
 
 	_DataCollector.Collect(InWorld);
 
+	// Only broadcast when the agent list shape actually changes. Broadcasting every
+	// frame causes the AgentListPanel to rebuild its TSharedPtr<AgentSnapshot> items,
+	// which invalidates SListView selection (SListView keys selection by TSharedPtr
+	// identity, not by snapshot content). For Gate 0, count-change is sufficient
+	// because there's no per-frame agent data. Gates 2+ will need a smarter dirty-bit
+	// (e.g. hash of {position, velocity, status}) so per-agent data can refresh
+	// without resetting selection — paired with selection restoration in the panel.
 	const auto Count = _DataCollector.Get_AgentCount();
 	if (Count != _LastAgentCount)
 	{
 		_LastAgentCount = Count;
-		OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
-	}
-	else
-	{
-		// Same count — but content may have changed (a new tag, different handle id,
-		// agent destroyed and another created in the same frame). For Gate 0 we
-		// always broadcast the latest list; per-tick refresh of the ListView is
-		// cheap when the data is already a copyable struct array. Subsequent gates
-		// can hash this and skip the broadcast on unchanged frames.
 		OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
 	}
 

@@ -1,7 +1,9 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentListPanel.h"
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
-#include "CkCrowdDebuggerStyle.h"
+#include "CkCrowdDebugger/CkCrowdDebuggerStyle.h"
+
+#include "CkCore/Macros/CkMacros.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -80,6 +82,25 @@ auto SCkCrowdDebugger_AgentListPanel::OnAgentListChanged(
 	if (_ListView.IsValid())
 	{
 		_ListView->RequestListRefresh();
+
+		// Rebuilding _ItemSource creates fresh TSharedPtr identities; SListView keys
+		// selection by pointer identity so the previous selection is now stale.
+		// Restore by matching against the ViewModel's persistent selected handle.
+		if (_ViewModel.IsValid())
+		{
+			const auto SelectedHandle = _ViewModel->Get_SelectedHandle();
+			if (ck::IsValid(SelectedHandle))
+			{
+				for (const auto& Item : _ItemSource)
+				{
+					if (Item.IsValid() && Item->Handle == SelectedHandle)
+					{
+						_ListView->SetSelection(Item, ESelectInfo::Direct);
+						break;
+					}
+				}
+			}
+		}
 	}
 }
 

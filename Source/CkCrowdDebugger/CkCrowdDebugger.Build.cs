@@ -22,6 +22,8 @@ public class CkCrowdDebugger : CkModuleRules
 			"AppFramework",
 			"ToolMenus",
 
+			"GameplayTags",
+
 			"CkCore",
 			"CkEcs",
 			"CkLabel",

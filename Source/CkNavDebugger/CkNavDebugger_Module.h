@@ -25,7 +25,5 @@ private:
 	TSharedPtr<SCkNavDebuggerWindow> _DebuggerWindow;
 	TSharedPtr<SDockTab> _DebuggerTab;
 
-	FDelegateHandle _WorldTickHandle;
-
 	static const FName _DebuggerTabName;
 };

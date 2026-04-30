@@ -1,63 +1,56 @@
 #include "CkNavDebugger/ViewModel/CkNavDebugger_ViewModel.h"
 
+#include "CkNavDebugger/Fragment/CkNavDebugger_Fragment.h"
+
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    // Selection state mirrors into the ECS as a single-instance tag on the
+    // selected agent — that's what the EnsureX_Selected / RecolorX processors
+    // match on. Keeping the tag and the cvar in sync from a single helper
+    // avoids the "panel and processors disagree about who's selected" class
+    // of bug.
+    auto Apply_SelectionTag(
+        FCk_Handle& InOldSelection,
+        FCk_Handle& InNewSelection)
+        -> void
+    {
+        if (ck::IsValid(InOldSelection))
+        {
+            InOldSelection.Try_Remove<ck::FTag_NavDebugger_AgentSelected>();
+        }
+        if (ck::IsValid(InNewSelection))
+        {
+            InNewSelection.AddOrGet<ck::FTag_NavDebugger_AgentSelected>();
+        }
+    }
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 // CVars exposed for selection + draw-layer toggles. The in-world overlay reads these directly,
 // so panels and CVars share state and stay in sync.
 // --------------------------------------------------------------------------------------------------------------------
 
+// All draw-toggle CVars now live on UCk_NavDebugger_UserSettings_UE
+// (with `meta = (ConsoleVariable = "Ck.NavDebugger.*")`) so the same names
+// stay console-tweakable AND get persisted per-user. Only SelectedEntityId
+// remains here — it's transient runtime state (the active selection),
+// not a setting we want persisted across editor sessions.
 namespace ck::nav_debugger::cvars
 {
     static TAutoConsoleVariable<int32> CVar_SelectedEntityId(
         TEXT("Ck.NavDebugger.SelectedEntityId"),
         -1,
-        TEXT("CkNavDebugger: id of the nav agent to focus (-1 = all agents). The in-world overlay\n")
-        TEXT("filters by this id; selecting from the agent-list panel writes here too."),
-        ECVF_Default);
-
-    // Master overlay toggle. When 0 (default), the in-world overlay only draws while the
-    // debugger window is open. When 1, it draws regardless — useful if you want path
-    // visualization without the panel taking screen real estate.
-    static TAutoConsoleVariable<int32> CVar_OverlayAlwaysOn(
-        TEXT("Ck.NavDebugger.OverlayAlwaysOn"),
-        0,
-        TEXT("CkNavDebugger: 1 = in-world overlay draws even when the debugger window is\n")
-        TEXT("closed. 0 (default) = only draw while the debugger window is open."),
-        ECVF_Default);
-
-    static TAutoConsoleVariable<int32> CVar_DrawPaths(
-        TEXT("Ck.NavDebugger.DrawPaths"),
-        1,
-        TEXT("CkNavDebugger: draw path waypoints in the world (0/1)."),
-        ECVF_Default);
-
-    static TAutoConsoleVariable<int32> CVar_DrawProjections(
-        TEXT("Ck.NavDebugger.DrawProjections"),
-        1,
-        TEXT("CkNavDebugger: draw vertical lines from agent to projected-on-navmesh location.\n")
-        TEXT("Makes 'agent floating above navmesh' setup mistakes immediately visible (0/1)."),
-        ECVF_Default);
-
-    static TAutoConsoleVariable<int32> CVar_DrawAgentCapsules(
-        TEXT("Ck.NavDebugger.DrawAgentCapsules"),
-        1,
-        TEXT("CkNavDebugger: draw nav agent capsules at agent locations (0/1)."),
-        ECVF_Default);
-
-    static TAutoConsoleVariable<int32> CVar_DrawStatusText(
-        TEXT("Ck.NavDebugger.DrawStatusText"),
-        1,
-        TEXT("CkNavDebugger: draw floating status/fail-reason text above each nav agent (0/1)."),
-        ECVF_Default);
-
-    static TAutoConsoleVariable<int32> CVar_DrawNavmeshBounds(
-        TEXT("Ck.NavDebugger.DrawNavmeshBounds"),
-        0,
-        TEXT("CkNavDebugger: draw the navmesh AABB as a wireframe box (0/1)."),
+        TEXT("CkNavDebugger: id of the nav agent to focus (-1 = all agents). The processors\n")
+        TEXT("filter by this id via FTag_NavDebugger_AgentSelected; selecting from the agent\n")
+        TEXT("list panel writes here too."),
         ECVF_Default);
 }
 
@@ -87,7 +80,10 @@ auto
         {
             if (ck::IsValid(_SelectedEntityHandle))
             {
+                auto OldSelection = _SelectedEntityHandle;
+                auto Empty = FCk_Handle{};
                 _SelectedEntityHandle = FCk_Handle{};
+                Apply_SelectionTag(OldSelection, Empty);
                 OnSelectionChanged.Broadcast(_SelectedEntityHandle);
             }
         }
@@ -107,7 +103,9 @@ auto
         {
             if (static_cast<int32>(GetTypeHash(Agent.EntityHandle)) == CVarSelected)
             {
+                auto OldSelection = _SelectedEntityHandle;
                 _SelectedEntityHandle = Agent.EntityHandle;
+                Apply_SelectionTag(OldSelection, _SelectedEntityHandle);
                 OnSelectionChanged.Broadcast(_SelectedEntityHandle);
                 break;
             }
@@ -126,6 +124,8 @@ auto
         }
         if (NOT StillPresent)
         {
+            // Entity gone — no agent handle to remove the tag from anyway,
+            // since the entity destruction takes the tag with it.
             _SelectedEntityHandle = FCk_Handle{};
             OnSelectionChanged.Broadcast(_SelectedEntityHandle);
         }
@@ -142,7 +142,11 @@ auto
         FCk_Handle InHandle)
     -> void
 {
+    auto OldSelection = _SelectedEntityHandle;
     _SelectedEntityHandle = InHandle;
+
+    Apply_SelectionTag(OldSelection, _SelectedEntityHandle);
+
     const auto NewId = ck::IsValid(InHandle) ? static_cast<int32>(GetTypeHash(InHandle)) : -1;
     ck::nav_debugger::cvars::CVar_SelectedEntityId->Set(NewId, ECVF_SetByConsole);
     _LastSelectedIdHint = NewId;

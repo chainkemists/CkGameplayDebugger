@@ -1,5 +1,6 @@
 #include "CkNavDebugger/Window/SCkNavDebuggerWindow.h"
 
+#include "CkNavDebugger/Settings/CkNavDebugger_UserSettings.h"
 #include "CkNavDebugger/ViewModel/CkNavDebugger_ViewModel.h"
 #include "CkNavDebugger/Window/SCkNavDebugger_AgentListPanel.h"
 #include "CkNavDebugger/Window/SCkNavDebugger_FailureLogPanel.h"
@@ -17,6 +18,8 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -111,6 +114,89 @@ namespace
             case ECk_Nav_PathStatus::Pending: return ECkDebug_Tone::Info;
             default:                          return ECkDebug_Tone::Neutral;
         }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Compact toolbar widgets for the overlay settings — combo + checkbox.
+    // All edits route through UCk_Utils_NavDebugger_Settings_UE so the CVar +
+    // persisted config stay in sync regardless of where the change came from.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    // Static lifetime — SComboBox needs the source items to outlive it.
+    static const TArray<TSharedPtr<ECk_NavDebugger_DrawMode>>& Get_DrawModeItems()
+    {
+        static const TArray<TSharedPtr<ECk_NavDebugger_DrawMode>> Items =
+        {
+            MakeShared<ECk_NavDebugger_DrawMode>(ECk_NavDebugger_DrawMode::None),
+            MakeShared<ECk_NavDebugger_DrawMode>(ECk_NavDebugger_DrawMode::Selected),
+            MakeShared<ECk_NavDebugger_DrawMode>(ECk_NavDebugger_DrawMode::All),
+        };
+        return Items;
+    }
+
+    auto Get_DrawModeLabel(ECk_NavDebugger_DrawMode InMode) -> FText
+    {
+        switch (InMode)
+        {
+            case ECk_NavDebugger_DrawMode::None:     return FText::FromString(TEXT("None"));
+            case ECk_NavDebugger_DrawMode::Selected: return FText::FromString(TEXT("Selected"));
+            case ECk_NavDebugger_DrawMode::All:      return FText::FromString(TEXT("All"));
+            default:                                  return FText::FromString(TEXT("?"));
+        }
+    }
+
+    auto Make_DrawModeCombo(
+        TFunction<ECk_NavDebugger_DrawMode()> InGetter,
+        TFunction<void(ECk_NavDebugger_DrawMode)> InSetter)
+        -> TSharedRef<SWidget>
+    {
+        const auto& Items = Get_DrawModeItems();
+        TSharedPtr<ECk_NavDebugger_DrawMode> Initial = Items[0];
+        const auto Current = InGetter();
+        for (const auto& Item : Items)
+        {
+            if (*Item == Current) { Initial = Item; break; }
+        }
+
+        return SNew(SComboBox<TSharedPtr<ECk_NavDebugger_DrawMode>>)
+            .OptionsSource(&Items)
+            .InitiallySelectedItem(Initial)
+            .OnGenerateWidget_Lambda([](TSharedPtr<ECk_NavDebugger_DrawMode> InItem)
+            {
+                return SNew(STextBlock).Text(Get_DrawModeLabel(*InItem));
+            })
+            .OnSelectionChanged_Lambda([InSetter = MoveTemp(InSetter)]
+                (TSharedPtr<ECk_NavDebugger_DrawMode> InItem, ESelectInfo::Type)
+            {
+                if (InItem.IsValid()) { InSetter(*InItem); }
+            })
+            [
+                SNew(STextBlock)
+                    .Text_Lambda([InGetter = MoveTemp(InGetter)]() { return Get_DrawModeLabel(InGetter()); })
+            ];
+    }
+
+    auto Make_ToolbarCheckbox(
+        const FText& InLabel,
+        TFunction<bool()> InGetter,
+        TFunction<void(bool)> InSetter)
+        -> TSharedRef<SWidget>
+    {
+        return SNew(SCheckBox)
+            .IsChecked_Lambda([InGetter = MoveTemp(InGetter)]()
+            {
+                return InGetter() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+            })
+            .OnCheckStateChanged_Lambda([InSetter = MoveTemp(InSetter)](ECheckBoxState InState)
+            {
+                InSetter(InState == ECheckBoxState::Checked);
+            })
+            [
+                SNew(STextBlock)
+                    .Text(InLabel)
+                    .ColorAndOpacity(CkDebugStyle::Text())
+                    .Margin(FMargin(CkDebugStyle::SpaceS, 0.0f, 0.0f, 0.0f))
+            ];
     }
 }
 
@@ -300,6 +386,59 @@ auto
                         }
                         return FReply::Handled();
                     })
+            ]
+
+        // ---- Compact overlay controls ----
+        // Sit inline in the toolbar so they're one click away without taking
+        // a panel slot. Same UCk_Utils_NavDebugger_Settings_UE setters as
+        // before — CVar + persisted config stay in sync regardless of route.
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, CkDebugStyle::SpaceXS, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Capsules:")))
+                    .ColorAndOpacity(CkDebugStyle::TextDim())
+            ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            [
+                SNew(SBox).MinDesiredWidth(96.0f)
+                [
+                    Make_DrawModeCombo(
+                        []() { return UCk_Utils_NavDebugger_Settings_UE::Get_AgentCapsuleMode(); },
+                        [](ECk_NavDebugger_DrawMode InMode) { UCk_Utils_NavDebugger_Settings_UE::Set_AgentCapsuleMode(InMode); })
+                ]
+            ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceXS, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Paths:")))
+                    .ColorAndOpacity(CkDebugStyle::TextDim())
+            ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            [
+                SNew(SBox).MinDesiredWidth(96.0f)
+                [
+                    Make_DrawModeCombo(
+                        []() { return UCk_Utils_NavDebugger_Settings_UE::Get_AgentPathMode(); },
+                        [](ECk_NavDebugger_DrawMode InMode) { UCk_Utils_NavDebugger_Settings_UE::Set_AgentPathMode(InMode); })
+                ]
+            ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            [
+                Make_ToolbarCheckbox(
+                    FText::FromString(TEXT("Projections")),
+                    []() { return UCk_Utils_NavDebugger_Settings_UE::Get_DrawProjections(); },
+                    [](bool InValue) { UCk_Utils_NavDebugger_Settings_UE::Set_DrawProjections(InValue); })
+            ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            [
+                Make_ToolbarCheckbox(
+                    FText::FromString(TEXT("Bounds")),
+                    []() { return UCk_Utils_NavDebugger_Settings_UE::Get_DrawNavmeshBounds(); },
+                    [](bool InValue) { UCk_Utils_NavDebugger_Settings_UE::Set_DrawNavmeshBounds(InValue); })
             ]
 
         + SHorizontalBox::Slot().FillWidth(1.0f)

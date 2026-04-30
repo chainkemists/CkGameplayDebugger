@@ -97,7 +97,7 @@
 			]
 		},
 		{
-			"Name": "CkNavDebugger",
+			"Name": "CkCrowdDebugger",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [

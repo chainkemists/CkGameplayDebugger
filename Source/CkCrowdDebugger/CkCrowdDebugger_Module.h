@@ -7,7 +7,7 @@
 
 class SCkCrowdDebuggerWindow;
 class SDockTab;
-struct FSpawnTabArgs;
+class FSpawnTabArgs;
 
 // --------------------------------------------------------------------------------------------------------------------
 

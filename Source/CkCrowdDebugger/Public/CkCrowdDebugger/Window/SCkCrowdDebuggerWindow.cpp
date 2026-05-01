@@ -7,6 +7,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_StatsPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
 
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -99,7 +100,19 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			[
 				SNew(STextBlock).Text(FText::FromString(TEXT("CK Crowd Debugger")))
 			]
-			+ SHorizontalBox::Slot().FillWidth(1.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(TEXT("Run Health Check")))
+				.ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin → +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely — a green probe proves the nav stack works in isolation from any gym wiring.")))
+				.OnClicked_Lambda([this]() -> FReply
+				{
+					if (_ViewModel.IsValid())
+					{ _ViewModel->Run_HealthCheckProbe(); }
+					return FReply::Handled();
+				})
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
 				.Text_Lambda([this]() -> FText

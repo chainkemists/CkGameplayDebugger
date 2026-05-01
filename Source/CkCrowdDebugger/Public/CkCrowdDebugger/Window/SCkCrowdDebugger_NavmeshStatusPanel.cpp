@@ -72,6 +72,12 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Construct(const FArguments& InArgs) ->
 					TAttribute<FText>::CreateSP(this, &SCkCrowdDebugger_NavmeshStatusPanel::Get_SupportedAgentsText),
 					TAttribute<FSlateColor>::Create([]() { return FSlateColor(FLinearColor(0.85f, 0.85f, 0.85f)); }))
 			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 2)
+			[
+				BuildRow(TEXT("Health Check"),
+					TAttribute<FText>::CreateSP(this, &SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckText),
+					TAttribute<FSlateColor>::CreateSP(this, &SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckColor))
+			]
 		]
 	];
 }
@@ -144,6 +150,39 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_SupportedAgentsText() const -> FTe
 	if (NOT _ViewModel.IsValid()) { return FText::FromString(TEXT("—")); }
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
 	return FText::FromString(FString::Printf(TEXT("%d"), Status._SupportedAgents));
+}
+
+auto SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckText() const -> FText
+{
+	if (NOT _ViewModel.IsValid()) { return FText::FromString(TEXT("—")); }
+	const auto& Status = _ViewModel->Get_NavmeshStatus();
+	if (NOT Status._HealthCheckRun)
+	{ return FText::FromString(TEXT("Not run yet — click 'Run Health Check'")); }
+
+	const auto AgeSec = FPlatformTime::Seconds() - Status._HealthCheckTimestamp;
+	if (Status._HealthCheckPassed)
+	{
+		return FText::FromString(FString::Printf(
+			TEXT("PASS  %.2f ms  %d waypoints  (%.1f s ago)"),
+			Status._HealthCheckDurationMs,
+			Status._HealthCheckWaypoints,
+			AgeSec));
+	}
+	return FText::FromString(FString::Printf(
+		TEXT("FAIL  %s  (%.1f s ago)"),
+		*Status._HealthCheckFailReason,
+		AgeSec));
+}
+
+auto SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckColor() const -> FSlateColor
+{
+	if (NOT _ViewModel.IsValid()) { return FSlateColor(CkCrowdDebuggerStyle::StatusAsleep); }
+	const auto& Status = _ViewModel->Get_NavmeshStatus();
+	if (NOT Status._HealthCheckRun)
+	{ return FSlateColor(CkCrowdDebuggerStyle::StatusAsleep); }
+	return Status._HealthCheckPassed
+		? FSlateColor(CkCrowdDebuggerStyle::StatusOk)
+		: FSlateColor(CkCrowdDebuggerStyle::StatusError);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -9,6 +9,8 @@ auto
 	Tick(UWorld* InWorld, float InDeltaTime)
 	-> void
 {
+	_LastWorld = InWorld;
+
 	if (_IsPaused)
 	{ return; }
 
@@ -37,6 +39,18 @@ auto
 	{
 		OnAgentDataRefreshed.Broadcast(nullptr);
 	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkCrowdDebugger_ViewModel::
+	Run_HealthCheckProbe()
+	-> void
+{
+	_DataCollector.Run_HealthCheckProbe(_LastWorld.Get());
+	// No specific delegate for health-check yet; the panel reads the status via
+	// TAttribute bindings on every paint, so the next frame picks up the result.
 }
 
 // --------------------------------------------------------------------------------------------------------------------

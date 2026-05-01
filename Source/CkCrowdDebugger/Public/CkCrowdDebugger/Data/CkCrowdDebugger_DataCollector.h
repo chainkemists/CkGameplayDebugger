@@ -15,6 +15,12 @@ class FCkCrowdDebugger_DataCollector
 public:
 	auto Collect(UWorld* InWorld) -> void;
 
+	// Run a synthetic FindPathSync probe (origin → origin+200 in world space) and
+	// stash the result on _NavmeshStatus. Called by the ViewModel from the toolbar
+	// button. Bypasses the request/processor pipeline entirely so a green probe
+	// proves the nav stack works in isolation from any gym wiring.
+	auto Run_HealthCheckProbe(UWorld* InWorld) -> void;
+
 	auto Get_AllAgents() const -> const TArray<FCkCrowdDebugger_AgentSnapshot>& { return _Agents; }
 	auto Get_AgentCount() const -> int32 { return _Agents.Num(); }
 	auto Get_NavmeshStatus() const -> const FCkCrowdDebugger_NavmeshStatus& { return _NavmeshStatus; }

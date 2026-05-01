@@ -23,6 +23,8 @@ private:
 	auto Get_FilterText() const -> FText;
 	auto Get_FilterColor() const -> FSlateColor;
 	auto Get_SupportedAgentsText() const -> FText;
+	auto Get_HealthCheckText() const -> FText;
+	auto Get_HealthCheckColor() const -> FSlateColor;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;

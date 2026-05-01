@@ -9,10 +9,16 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 
+#include "CkNavigation/Nav/CkNav_Algorithm.h"
+#include "CkNavigation/Nav/CkNav_Fragment_Data.h"
+
 #include "Engine/World.h"
+#include "HAL/PlatformTime.h"
 #include "NavigationSystem.h"
 #include "NavMesh/RecastNavMesh.h"
 #include "NavFilters/NavigationQueryFilter.h"
+#include "UObject/UObjectGlobals.h"
+#include "UObject/Class.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -22,7 +28,15 @@ auto
 	-> void
 {
 	_Agents.Reset();
-	_NavmeshStatus = FCkCrowdDebugger_NavmeshStatus{};
+
+	// Reset only the per-tick-sampled fields. Health-check fields are sticky across
+	// ticks (set explicitly by Run_HealthCheckProbe; not derived from the live world).
+	_NavmeshStatus._Sampled = false;
+	_NavmeshStatus._NavSystemPresent = false;
+	_NavmeshStatus._NavDataClassName.Empty();
+	_NavmeshStatus._DefaultFilterValid = false;
+	_NavmeshStatus._SupportedAgents = 0;
+	_NavmeshStatus._LastRegenTimestamp = -1.0;
 
 	// Per CkDebuggerCommon convention: guard on world validity AND HasBegunPlay
 	// (worlds appear in GEngine->GetWorldContexts before BeginPlay).
@@ -66,6 +80,68 @@ auto
 			auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 			SampleAgent(Handle);
 		});
+
+	// Note: per-tick Collect does NOT clear _HealthCheckRun fields — they're sticky
+	// across ticks until the user explicitly re-runs the probe. The early
+	// `_NavmeshStatus = FCkCrowdDebugger_NavmeshStatus{}` reset above is overridden
+	// by re-copying the prior health-check state below if it was previously run.
+	// (See Run_HealthCheckProbe — it sets the fields to non-default values; subsequent
+	// Collect() calls preserve them by writing only the non-health-check fields.)
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkCrowdDebugger_DataCollector::
+	Run_HealthCheckProbe(UWorld* InWorld)
+	-> void
+{
+	_NavmeshStatus._HealthCheckRun = true;
+	_NavmeshStatus._HealthCheckTimestamp = FPlatformTime::Seconds();
+
+	auto FailEarly = [this](const FString& InReason)
+	{
+		_NavmeshStatus._HealthCheckPassed = false;
+		_NavmeshStatus._HealthCheckFailReason = InReason;
+		_NavmeshStatus._HealthCheckDurationMs = 0.0f;
+		_NavmeshStatus._HealthCheckWaypoints = 0;
+	};
+
+	if (NOT IsValid(InWorld))           { FailEarly(TEXT("NoWorld"));     return; }
+	if (NOT InWorld->HasBegunPlay())    { FailEarly(TEXT("WorldNotPlaying")); return; }
+
+	auto* NavSys = UNavigationSystemV1::GetCurrent(InWorld);
+	if (NavSys == nullptr)              { FailEarly(TEXT("NoNavSystem")); return; }
+
+	auto* NavData = Cast<ARecastNavMesh>(NavSys->GetDefaultNavDataInstance(FNavigationSystem::DontCreate));
+	if (NavData == nullptr)             { FailEarly(TEXT("NoNavData"));   return; }
+
+	const auto Start = FVector::ZeroVector;
+	const auto End   = FVector{200.0, 0.0, 0.0};
+
+	auto Result = FCk_Nav_PathResult{};
+	const auto bSucceeded = FCk_Nav_Algorithm::FindPathSync(
+		*NavSys, *NavData, Start, End,
+		/*allowPartial*/ true,
+		/*projectionHalfExtent*/ 500.0f,
+		/*agentRadiusForFirstSkip*/ 0.0f,
+		Result);
+
+	_NavmeshStatus._HealthCheckPassed       = bSucceeded;
+	_NavmeshStatus._HealthCheckDurationMs   = Result.Get_Diagnostics().Get_LastQueryDurationMs();
+	_NavmeshStatus._HealthCheckWaypoints    = Result.Get_Waypoints().Num();
+
+	if (bSucceeded)
+	{
+		_NavmeshStatus._HealthCheckFailReason.Empty();
+	}
+	else
+	{
+		const auto Reason = Result.Get_Diagnostics().Get_LastFailReason();
+		_NavmeshStatus._HealthCheckFailReason = StaticEnum<ECk_Nav_PathFailReason>()
+			? StaticEnum<ECk_Nav_PathFailReason>()->GetNameStringByValue(static_cast<int64>(Reason))
+			: TEXT("Unknown");
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------

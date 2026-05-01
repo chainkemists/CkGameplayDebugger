@@ -34,6 +34,11 @@ class FCkCrowdDebugger_ViewModel
 public:
 	auto Tick(UWorld* InWorld, float InDeltaTime) -> void;
 
+	// Run a synthetic FindPathSync probe via the DataCollector. The world is the
+	// last one passed to Tick; if there isn't one (no PIE / world torn down), the
+	// probe records a NoWorld failure so the panel still updates.
+	auto Run_HealthCheckProbe() -> void;
+
 	// Selection
 	auto Set_SelectedHandle(FCk_Handle InHandle) -> void;
 	auto Get_SelectedHandle() const -> FCk_Handle { return _SelectedHandle; }
@@ -70,6 +75,10 @@ private:
 	bool _IsPaused = false;
 	int32 _LastAgentCount = -1;
 	ECk_CrowdDebugger_ViewMode _ViewMode = ECk_CrowdDebugger_ViewMode::Live;
+
+	// Cached on each Tick so the Run_HealthCheckProbe can grab the current world
+	// without the button click handler having to re-find one.
+	TWeakObjectPtr<UWorld> _LastWorld;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

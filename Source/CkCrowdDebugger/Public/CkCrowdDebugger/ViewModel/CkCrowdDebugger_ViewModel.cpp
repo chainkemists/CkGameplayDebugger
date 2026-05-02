@@ -16,19 +16,13 @@ auto
 
 	_DataCollector.Collect(InWorld);
 
-	// Only broadcast when the agent list shape actually changes. Broadcasting every
-	// frame causes the AgentListPanel to rebuild its TSharedPtr<AgentSnapshot> items,
-	// which invalidates SListView selection (SListView keys selection by TSharedPtr
-	// identity, not by snapshot content). For Gate 0, count-change is sufficient
-	// because there's no per-frame agent data. Gates 2+ will need a smarter dirty-bit
-	// (e.g. hash of {position, velocity, status}) so per-agent data can refresh
-	// without resetting selection — paired with selection restoration in the panel.
-	const auto Count = _DataCollector.Get_AgentCount();
-	if (Count != _LastAgentCount)
-	{
-		_LastAgentCount = Count;
-		OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
-	}
+	// Gate 3 — broadcast every frame so the agent-list rows reflect live neighbor counts,
+	// status, etc. The Gate 0 count-change-only gate left per-agent fields stale (n= column
+	// stuck at 0 even after NeighborSync populated the cache). The AgentListPanel already
+	// restores selection by handle after rebuild (see OnAgentListChanged), so per-frame
+	// broadcast is safe; cost is rebuilding ~N TSharedPtr items per tick at typical N≤150.
+	OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
+	_LastAgentCount = _DataCollector.Get_AgentCount();
 
 	if (ck::IsValid(_SelectedHandle))
 	{

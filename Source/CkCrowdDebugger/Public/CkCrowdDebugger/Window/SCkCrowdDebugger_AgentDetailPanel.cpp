@@ -70,21 +70,65 @@ auto SCkCrowdDebugger_AgentDetailPanel::OnAgentDataRefreshed(
 		return;
 	}
 
-	_CachedBody = FString::Printf(
+	auto Body = FString::Printf(
 		TEXT("Identity\n"
 		     "  Handle id    : #%05u\n"
 		     "  Primary tag  : %s\n"
 		     "  Tag count    : %d\n"
 		     "  Radius       : %.1f cm\n"
-		     "  Height       : %.1f cm\n"
-		     "\n"
-		     "Other sections (Position / Velocity / Goal / Path / Steering / Neighbors /\n"
-		     "Sleep & Replan) populate as later gates land — see PLAN.md."),
+		     "  Height       : %.1f cm\n"),
 		GetTypeHash(InSnapshot->Handle),
 		*InSnapshot->PrimaryTag,
 		InSnapshot->Tags.Num(),
 		InSnapshot->Radius,
 		InSnapshot->Height);
+
+	// Gate 3 — Steering Forces. Only the Separation row is wired up in this gate; PathFollow
+	// + Pierce + PlayerYield rows land in their respective gates. Magnitude is shown alongside
+	// the vector so a quick glance answers "is separation active?" without parsing 3 floats.
+	const auto SepMag = InSnapshot->SeparationForce.Size();
+	Body += FString::Printf(
+		TEXT("\nSteering Forces\n"
+		     "  Separation   : (%+7.1f, %+7.1f, %+7.1f)  |%.1f|  weight=%.2f\n"
+		     "  PathFollow   : (Gate 3C wires this row up)\n"
+		     "  Pierce       : (Gate 4 wires this row up)\n"
+		     "  PlayerYield  : (Gate 5 wires this row up)\n"),
+		InSnapshot->SeparationForce.X,
+		InSnapshot->SeparationForce.Y,
+		InSnapshot->SeparationForce.Z,
+		SepMag,
+		InSnapshot->SeparationWeight);
+
+	// Gate 3 — Neighbors. Header reports count + the radius they're being measured against.
+	// Per-row: id (cyan in the mockup, plain text here until the panel gets rich text),
+	// distance in cm, relative offset for sanity-checking direction.
+	Body += FString::Printf(
+		TEXT("\nNeighbors  (count=%d, sep_radius=%.0fcm)\n"),
+		InSnapshot->Neighbors.Num(),
+		InSnapshot->SeparationRadius);
+
+	if (InSnapshot->Neighbors.Num() == 0)
+	{
+		Body += TEXT("  (none in range)\n");
+	}
+	else
+	{
+		for (const auto& Nbr : InSnapshot->Neighbors)
+		{
+			Body += FString::Printf(
+				TEXT("  #%05u  d=%6.1fcm  off=(%+7.1f, %+7.1f, %+7.1f)\n"),
+				GetTypeHash(Nbr.Handle),
+				Nbr.Distance,
+				Nbr.RelativeOffset.X,
+				Nbr.RelativeOffset.Y,
+				Nbr.RelativeOffset.Z);
+		}
+	}
+
+	Body += TEXT("\nOther sections (Position / Velocity / Goal / Path / Sleep & Replan) populate\n"
+	             "as later gates land — see PLAN.md.");
+
+	_CachedBody = MoveTemp(Body);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Neighbors_Fragment.h"
 
 #include "CkNavigation/Nav/CkNav_Algorithm.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
@@ -163,6 +164,32 @@ auto
 		Snapshot.Tags = Params.Get_Tags();
 		Snapshot.Radius = Params.Get_Radius();
 		Snapshot.Height = Params.Get_Height();
+		Snapshot.SeparationRadius = Params.Get_SeparationRadius();
+		Snapshot.SeparationWeight = Params.Get_SeparationWeight();
+	}
+
+	// Gate 3 — neighbor cache + separation force. The fragments may be absent on agents
+	// that haven't completed Setup yet (FTag_CrowdAgent_HasProbe gates probe-child spawning),
+	// in which case Neighbors stays empty and SeparationForce stays zero.
+	if (InHandle.Has<ck::FFragment_CrowdAgent_NeighborCache>())
+	{
+		const auto& Cache = InHandle.Get<ck::FFragment_CrowdAgent_NeighborCache>();
+		const auto& Neighbors = Cache.Get_Neighbors();
+		Snapshot.NeighborCount = Neighbors.Num();
+		Snapshot.Neighbors.Reserve(Neighbors.Num());
+		for (const auto& Nbr : Neighbors)
+		{
+			auto Info = FCkCrowdDebugger_NeighborInfo{};
+			Info.Handle         = Nbr.Get_Handle();
+			Info.Distance       = Nbr.Get_Distance();
+			Info.RelativeOffset = Nbr.Get_RelativeOffset();
+			Snapshot.Neighbors.Add(Info);
+		}
+	}
+
+	if (InHandle.Has<ck::FFragment_CrowdAgent_SeparationForce>())
+	{
+		Snapshot.SeparationForce = InHandle.Get<ck::FFragment_CrowdAgent_SeparationForce>().Get_Force();
 	}
 
 	if (Snapshot.Tags.Num() > 0)

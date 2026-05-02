@@ -26,6 +26,17 @@ enum class ECkCrowdDebugger_AgentStatus : uint8
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+// One row in the Agent Detail Neighbors section. Mirrors FCk_CrowdAgent_Neighbor flat-copyable, no
+// pointers into ECS state. The handle's id is rendered cyan in the panel; distance is in cm.
+
+struct FCkCrowdDebugger_NeighborInfo
+{
+	FCk_Handle Handle;
+	float      Distance = 0.0f;
+	FVector    RelativeOffset = FVector::ZeroVector;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
 
 struct FCkCrowdDebugger_AgentSnapshot
 {
@@ -42,6 +53,15 @@ struct FCkCrowdDebugger_AgentSnapshot
 	// Gate 0 minimum — these are enough for the agent list to render
 	float                    Radius = 0.0f;
 	float                    Height = 0.0f;
+
+	// Gate 3 — separation. Neighbors is sorted by distance ascending and trimmed to the
+	// agent's _MaxNeighborsForSteering. SeparationForce is the Gate 3B output (zero until 3B
+	// lands). SeparationRadius / SeparationWeight come from the params struct so the detail
+	// panel can label the Neighbors section "(within Xcm)" without reaching back into ECS.
+	TArray<FCkCrowdDebugger_NeighborInfo> Neighbors;
+	FVector                  SeparationForce  = FVector::ZeroVector;
+	float                    SeparationRadius = 0.0f;
+	float                    SeparationWeight = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

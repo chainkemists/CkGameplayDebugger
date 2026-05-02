@@ -17,8 +17,11 @@ namespace
 {
 	auto AgentRowText(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
 	{
-		return FString::Printf(TEXT("#%05u  %s"),
+		// Gate 3 — `Nbrs` column. Right-padded so columns line up at small list widths;
+		// formatted as "n=NN" rather than a bare number to keep tag strings unambiguous.
+		return FString::Printf(TEXT("#%05u  n=%-2d  %s"),
 			GetTypeHash(InSnapshot.Handle),
+			InSnapshot.NeighborCount,
 			*InSnapshot.PrimaryTag);
 	}
 }
@@ -73,20 +76,49 @@ auto SCkCrowdDebugger_AgentListPanel::OnAgentListChanged(
 	const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents)
 	-> void
 {
-	_ItemSource.Reset(InAgents.Num());
-	for (const auto& Agent : InAgents)
+	// Gate 3 — broadcast fires every frame for live data (neighbor count, status). To keep
+	// SListView selection alive, we mutate existing TSharedPtr<AgentSnapshot> contents in
+	// place rather than rebuild _ItemSource. SListView keys selection by pointer identity,
+	// so a wholesale rebuild every tick was eating user clicks before they resolved into
+	// selection. We only re-allocate items when the agent set itself changes (count diff
+	// or handle mismatch at any index).
+	const auto NeedsRebuild = [&]() -> bool
 	{
-		_ItemSource.Add(MakeShared<FCkCrowdDebugger_AgentSnapshot>(Agent));
+		if (_ItemSource.Num() != InAgents.Num())
+		{ return true; }
+
+		for (auto i = 0; i < InAgents.Num(); ++i)
+		{
+			if (NOT _ItemSource[i].IsValid() || _ItemSource[i]->Handle != InAgents[i].Handle)
+			{ return true; }
+		}
+		return false;
+	}();
+
+	if (NeedsRebuild)
+	{
+		_ItemSource.Reset(InAgents.Num());
+		for (const auto& Agent : InAgents)
+		{
+			_ItemSource.Add(MakeShared<FCkCrowdDebugger_AgentSnapshot>(Agent));
+		}
+	}
+	else
+	{
+		// In-place content update — same TSharedPtr identities, fresh data inside.
+		for (auto i = 0; i < InAgents.Num(); ++i)
+		{
+			*_ItemSource[i] = InAgents[i];
+		}
 	}
 
 	if (_ListView.IsValid())
 	{
 		_ListView->RequestListRefresh();
 
-		// Rebuilding _ItemSource creates fresh TSharedPtr identities; SListView keys
-		// selection by pointer identity so the previous selection is now stale.
-		// Restore by matching against the ViewModel's persistent selected handle.
-		if (_ViewModel.IsValid())
+		// Only re-stamp selection on rebuild — otherwise the user's in-flight click is
+		// preserved by the unchanged TSharedPtr identity.
+		if (NeedsRebuild && _ViewModel.IsValid())
 		{
 			const auto SelectedHandle = _ViewModel->Get_SelectedHandle();
 			if (ck::IsValid(SelectedHandle))
@@ -119,10 +151,21 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 		];
 	}
 
+	// Bind text to a lambda so live mutations to the underlying snapshot (Gate 3+: neighbor
+	// count, status, etc.) propagate per-frame without regenerating the row widget. Static
+	// `Text(...)` would freeze the row at the values present at OnGenerateRow time.
+	const auto WeakItem = TWeakPtr<FCkCrowdDebugger_AgentSnapshot>(InItem);
 	return SNew(STableRow<ItemPtr>, InTable)
 		.Padding(FMargin(8, 3))
 		[
-			SNew(STextBlock).Text(FText::FromString(AgentRowText(*InItem)))
+			SNew(STextBlock)
+			.Text_Lambda([WeakItem]() -> FText
+			{
+				const auto Pinned = WeakItem.Pin();
+				if (NOT Pinned.IsValid())
+				{ return FText::GetEmpty(); }
+				return FText::FromString(AgentRowText(*Pinned));
+			})
 		];
 }
 

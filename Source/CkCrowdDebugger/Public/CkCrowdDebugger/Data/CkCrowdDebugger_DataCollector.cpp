@@ -11,6 +11,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Neighbors_Fragment.h"
 
 #include "CkNavigation/Nav/CkNav_Algorithm.h"
+#include "CkNavigation/Nav/CkNav_Fragment.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
 #include "Engine/World.h"
@@ -202,7 +203,32 @@ auto
 		Snapshot.PrimaryTag = TEXT("—");
 	}
 
+	// Derive the agent's status. Order matters — a Failed nav result trumps the agent state
+	// tag because the failure is the most actionable thing to surface in the UI. Asleep wins
+	// over the active states because we want to know it's parked.
 	Snapshot.Status = ECkCrowdDebugger_AgentStatus::None;
+	if (InHandle.Has<ck::FFragment_Nav_PathResult>()
+		&& InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Status() == ECk_Nav_PathStatus::Failed)
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Failed;
+		Snapshot.PathFailReason = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Diagnostics().Get_LastFailReason();
+	}
+	else if (InHandle.Has<ck::FTag_CrowdAgent_Asleep>())
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Asleep;
+	}
+	else if (InHandle.Has<ck::FTag_CrowdAgent_Walking>())
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Walking;
+	}
+	else if (InHandle.Has<ck::FTag_CrowdAgent_PathPending>())
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Replanning;  // closest existing enum for "in flight"
+	}
+	else if (InHandle.Has<ck::FTag_CrowdAgent_Idle>())
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Idle;
+	}
 
 	_Agents.Add(MoveTemp(Snapshot));
 }

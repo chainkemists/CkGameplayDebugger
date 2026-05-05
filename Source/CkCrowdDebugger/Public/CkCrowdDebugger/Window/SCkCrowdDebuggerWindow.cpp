@@ -8,6 +8,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
 
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -15,6 +16,8 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+
+#include "HAL/IConsoleManager.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -90,6 +93,25 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 
 // --------------------------------------------------------------------------------------------------------------------
 
+namespace
+{
+	// Read/write helpers for the two CkCrowd-side overlay CVars. The toolbar checkboxes call
+	// these so any external `console set` is reflected on the next paint without us caching
+	// state — the CVar is the single source of truth.
+	auto Get_CVarBool(const TCHAR* InName) -> bool
+	{
+		const auto* CVar = IConsoleManager::Get().FindConsoleVariable(InName);
+		return CVar != nullptr && CVar->GetInt() != 0;
+	}
+
+	auto Set_CVarBool(const TCHAR* InName, bool InValue) -> void
+	{
+		auto* CVar = IConsoleManager::Get().FindConsoleVariable(InName);
+		if (CVar != nullptr)
+		{ CVar->Set(InValue ? 1 : 0, ECVF_SetByConsole); }
+	}
+}
+
 auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 {
 	return SNew(SBorder)
@@ -111,6 +133,40 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 					{ _ViewModel->Run_HealthCheckProbe(); }
 					return FReply::Handled();
 				})
+			]
+			// ---- Overlay toggles -----------------------------------------------------------
+			// IsChecked is a lambda so external `console set` flips the visible state too.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 4, 0)
+			[
+				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw a breadcrumb trail (the agent's actually-traversed path) for every agent that has the recorder feature. The selected agent is always drawn regardless of this toggle.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.DrawBreadcrumbs")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.DrawBreadcrumbs"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Breadcrumbs")))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
+			[
+				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw the planned-path waypoints for every agent that has a path result. The selected agent is always drawn regardless of this toggle.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.DrawPlannedPaths")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.DrawPlannedPaths"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Planned Paths")))
+				]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[

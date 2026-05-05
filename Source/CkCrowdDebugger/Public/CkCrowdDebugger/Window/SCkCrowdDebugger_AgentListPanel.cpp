@@ -5,6 +5,10 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
+
+#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -23,6 +27,39 @@ namespace
 			GetTypeHash(InSnapshot.Handle),
 			InSnapshot.NeighborCount,
 			*InSnapshot.PrimaryTag);
+	}
+
+	// Status pill colour and label — Failed is red and prominent so a misbehaving agent
+	// is the first thing a dev sees when they open the list. Walking is calm green; Idle and
+	// the rest stay grey so they don't compete visually with anomalies.
+	auto StatusColor(ECkCrowdDebugger_AgentStatus InStatus) -> FLinearColor
+	{
+		switch (InStatus)
+		{
+			case ECkCrowdDebugger_AgentStatus::Failed:     return FLinearColor(1.0f, 0.20f, 0.20f, 1.0f);
+			case ECkCrowdDebugger_AgentStatus::Walking:    return FLinearColor(0.40f, 0.85f, 0.40f, 1.0f);
+			case ECkCrowdDebugger_AgentStatus::Replanning: return FLinearColor(1.0f, 0.85f, 0.20f, 1.0f);
+			case ECkCrowdDebugger_AgentStatus::Asleep:     return FLinearColor(0.55f, 0.55f, 0.75f, 1.0f);
+			case ECkCrowdDebugger_AgentStatus::Idle:       return FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
+			default:                                       return FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
+		}
+	}
+
+	auto StatusLabel(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
+	{
+		switch (InSnapshot.Status)
+		{
+			case ECkCrowdDebugger_AgentStatus::Failed:
+				// Surface the fail reason inline — that's the actionable data. "FAIL: NoNavData"
+				// instantly says "the navmesh isn't there" without needing to open Agent Detail.
+				return FString::Printf(TEXT("FAIL: %s"),
+					*StaticEnum<ECk_Nav_PathFailReason>()->GetNameStringByValue(static_cast<int64>(InSnapshot.PathFailReason)));
+			case ECkCrowdDebugger_AgentStatus::Walking:    return TEXT("Walking");
+			case ECkCrowdDebugger_AgentStatus::Replanning: return TEXT("Pending");
+			case ECkCrowdDebugger_AgentStatus::Asleep:     return TEXT("Asleep");
+			case ECkCrowdDebugger_AgentStatus::Idle:       return TEXT("Idle");
+			default:                                       return TEXT("—");
+		}
 	}
 }
 
@@ -154,18 +191,59 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 	// Bind text to a lambda so live mutations to the underlying snapshot (Gate 3+: neighbor
 	// count, status, etc.) propagate per-frame without regenerating the row widget. Static
 	// `Text(...)` would freeze the row at the values present at OnGenerateRow time.
+	//
+	// The leading SCkDebug_CategoryDot shows the agent's identity colour — same colour the
+	// in-world capsule + breadcrumb + planned-path use, sourced from Get_DebugColor (which
+	// falls back to a hash-derived stable colour for agents that never opted in).
 	const auto WeakItem = TWeakPtr<FCkCrowdDebugger_AgentSnapshot>(InItem);
+	auto AgentHandle = InItem->Handle;
+	auto AgentColor = FLinearColor::White;
+	if (auto CrowdAgent = UCk_Utils_CrowdAgent_UE::Cast(AgentHandle); ck::IsValid(CrowdAgent))
+	{
+		AgentColor = UCk_Utils_CrowdAgent_UE::Get_DebugColor(CrowdAgent);
+	}
+
 	return SNew(STableRow<ItemPtr>, InTable)
 		.Padding(FMargin(8, 3))
 		[
-			SNew(STextBlock)
-			.Text_Lambda([WeakItem]() -> FText
-			{
-				const auto Pinned = WeakItem.Pin();
-				if (NOT Pinned.IsValid())
-				{ return FText::GetEmpty(); }
-				return FText::FromString(AgentRowText(*Pinned));
-			})
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 6, 0)
+			[
+				SNew(SCkDebug_CategoryDot)
+					.Color(AgentColor)
+					.Diameter(10.0f)
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([WeakItem]() -> FText
+				{
+					const auto Pinned = WeakItem.Pin();
+					if (NOT Pinned.IsValid())
+					{ return FText::GetEmpty(); }
+					return FText::FromString(AgentRowText(*Pinned));
+				})
+			]
+			// Status badge — colour bound to a lambda so live status changes (Idle → Walking →
+			// Failed) repaint without us regenerating the row widget.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([WeakItem]() -> FText
+				{
+					const auto Pinned = WeakItem.Pin();
+					if (NOT Pinned.IsValid())
+					{ return FText::GetEmpty(); }
+					return FText::FromString(StatusLabel(*Pinned));
+				})
+				.ColorAndOpacity_Lambda([WeakItem]() -> FSlateColor
+				{
+					const auto Pinned = WeakItem.Pin();
+					if (NOT Pinned.IsValid())
+					{ return FSlateColor(FLinearColor::Gray); }
+					return FSlateColor(StatusColor(Pinned->Status));
+				})
+			]
 		];
 }
 

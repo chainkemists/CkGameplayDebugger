@@ -2,6 +2,8 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 
+#include "CkNavigation/Nav/CkNav_Fragment_Data.h"
+
 #include <CoreMinimal.h>
 #include <GameplayTagContainer.h>
 
@@ -43,6 +45,7 @@ struct FCkCrowdDebugger_AgentSnapshot
 	FCk_Handle               Handle;
 	FGameplayTagContainer    Tags;
 	ECkCrowdDebugger_AgentStatus Status = ECkCrowdDebugger_AgentStatus::None;
+	ECk_Nav_PathFailReason   PathFailReason = ECk_Nav_PathFailReason::None;
 	int32                    NeighborCount = 0;
 	FString                  PrimaryTag;       // Display string — first tag, or "—"
 

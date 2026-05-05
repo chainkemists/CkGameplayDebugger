@@ -2,6 +2,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "HAL/IConsoleManager.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -58,6 +60,18 @@ auto
 	{ return; }
 
 	_SelectedHandle = InHandle;
+
+	// Mirror the selection to the CkCrowd-side `ck.Crowd.SelectedEntityId` CVar so the
+	// in-world breadcrumb / planned-path draw processors render the selected agent
+	// regardless of their global toggles. -1 means "no selection".
+	if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.Crowd.SelectedEntityId")))
+	{
+		const auto NewId = ck::IsValid(_SelectedHandle)
+			? static_cast<int32>(GetTypeHash(_SelectedHandle))
+			: -1;
+		CVar->Set(NewId, ECVF_SetByConsole);
+	}
+
 	OnSelectedAgentChanged.Broadcast(_SelectedHandle);
 	OnAgentDataRefreshed.Broadcast(Get_SelectedSnapshot());
 }

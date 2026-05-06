@@ -63,11 +63,14 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
 
 auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
 {
-    if (DebuggerTab.IsValid())
-    {
-        DebuggerTab->RequestCloseTab();
-    }
-
+    // We deliberately do NOT call DebuggerTab->RequestCloseTab() here. By the
+    // time OnEnginePreExit fires, the tab's TSharedFromThis weak-self can
+    // already be cleared (the editor's window teardown runs before
+    // UEngine::PreExit), and RequestCloseTab -> SharedThis(this) would assert.
+    //
+    // Just drop our refs — that's enough to release the inspector widget tree
+    // (and any FCk_Handles it owns) while the ECS registry is still alive,
+    // which is the whole point of this hook.
     DebuggerTab.Reset();
     DebuggerWindow.Reset();
 }

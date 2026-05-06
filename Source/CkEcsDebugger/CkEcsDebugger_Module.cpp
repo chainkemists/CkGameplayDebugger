@@ -6,6 +6,7 @@
 
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
@@ -50,10 +51,35 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK ECS Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK ECS Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    // Tear the debugger UI down BEFORE module shutdown / world cleanup, so that
+    // any inspector-held FCk_Handle (and any captured handles in Slate delegates)
+    // release their TSharedRef into the ECS registry while the registry is still
+    // alive. Doing it during ShutdownModule is too late: by then the registry's
+    // shared state has been freed and ~FCk_Handle hits an access violation
+    // releasing the dangling shared reference.
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkEcsDebuggerModule::HandleEnginePreExit);
+}
+
+auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
+{
+    if (DebuggerTab.IsValid())
+    {
+        DebuggerTab->RequestCloseTab();
+    }
+
+    DebuggerTab.Reset();
+    DebuggerWindow.Reset();
 }
 
 auto FCkEcsDebuggerModule::ShutdownModule() -> void
 {
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DebuggerTabName);
@@ -65,6 +91,9 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
         _NodeFactory.Reset();
     }
 
+    // These should already have been released in HandleEnginePreExit during a
+    // normal editor shutdown. Reset again here as a safety net (e.g. live module
+    // reload, where OnEnginePreExit doesn't fire).
     DebuggerWindow.Reset();
     DebuggerTab.Reset();
 

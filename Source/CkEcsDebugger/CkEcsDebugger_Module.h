@@ -23,9 +23,13 @@ public:
 private:
 	auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 
+	auto HandleEnginePreExit() -> void;
+
 	TSharedPtr<SCkDebuggerWindow_Main> DebuggerWindow;
 	TSharedPtr<SDockTab> DebuggerTab;
 	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
+
+	FDelegateHandle _EnginePreExitHandle;
 
 	static const FName DebuggerTabName;
 };

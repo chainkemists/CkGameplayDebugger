@@ -190,11 +190,32 @@ auto
     auto& ScrubState = _ViewModel->Get_ScrubState();
     auto RunIndex = ScrubState.SelectedRunIndex;
 
-    auto& Run = (RunIndex < 0)
+    auto& SourceRun = (RunIndex < 0)
         ? SmInfo->CurrentRun
         : (RunIndex < SmInfo->CompletedRuns.Num()
             ? SmInfo->CompletedRuns[RunIndex]
             : SmInfo->CurrentRun);
+
+    // While in Scrub mode on the live (current) run, override the last segment's End
+    // with the values captured when scrubbing began. This stops per-frame cells from
+    // shrinking as real time advances during scrub. The override only applies if the
+    // last segment's state matches the captured state — if the SM has transitioned
+    // since scrub start, the new live segment renders normally.
+    auto FrozenRun = FCkSmDebugger_RunInfo{};
+    auto UseFrozenRun = false;
+    if (RunIndex < 0 && _ViewModel->Get_LiveSegmentFreezeActive())
+    {
+        auto& Segs = SourceRun.Segments;
+        if (Segs.Num() > 0 && Segs.Last().StateName == _ViewModel->Get_LiveSegmentFreezeStateName())
+        {
+            FrozenRun = SourceRun;
+            auto& LastSeg = FrozenRun.Segments.Last();
+            LastSeg.EndTime = _ViewModel->Get_LiveSegmentFreezeEndTime();
+            LastSeg.EndFrame = _ViewModel->Get_LiveSegmentFreezeEndFrame();
+            UseFrozenRun = true;
+        }
+    }
+    auto& Run = UseFrozenRun ? FrozenRun : SourceRun;
 
     auto ViewStart = 0.0;
     auto ViewDuration = 10.0;

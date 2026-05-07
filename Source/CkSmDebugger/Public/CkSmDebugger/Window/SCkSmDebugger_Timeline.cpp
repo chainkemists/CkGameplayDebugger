@@ -277,10 +277,16 @@ auto
             static_cast<int64>(Segment.EndFrame) - static_cast<int64>(Segment.StartFrame), 1));
         auto FullWidth = FMath::Max(X1Full - X0Full, 1.0f);
         auto PxPerFrame = FullWidth / static_cast<float>(FrameCount);
-        auto SliceCells = FrameCount > 1 && PxPerFrame >= 4.0f;
+        // Slice down to 2px/frame — at the lower bound the gap shrinks to 0.5px so cells
+        // remain visible (vs. forcing a 1px gap that would consume the whole cell).
+        auto SliceCells = FrameCount > 1 && PxPerFrame >= 2.0f;
 
         if (SliceCells)
         {
+            // Scale the inter-cell gap so it never eats more than a third of a frame's
+            // width. At ≥3px/frame this stays at the full 1px gap; below that it shrinks
+            // so cells remain a visible block of color.
+            auto CellGap = FMath::Min(Gap, FMath::Max(PxPerFrame * 0.33f, 0.25f));
             for (auto F = int64{0}; F < FrameCount; ++F)
             {
                 auto CellStartTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));
@@ -292,7 +298,7 @@ auto
                 CellX0 = FMath::Max(CellX0, 0.0f);
                 CellX1 = FMath::Min(CellX1, static_cast<float>(Size.X));
 
-                auto CellWidth = FMath::Max(CellX1 - CellX0 - Gap, 1.0f);
+                auto CellWidth = FMath::Max(CellX1 - CellX0 - CellGap, 1.0f);
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId,
                     InGeometry.ToPaintGeometry(
@@ -413,7 +419,7 @@ auto
     auto PxPerFrame = SegFullWidth / static_cast<float>(FrameCount);
 
     // Only highlight when slicing is visible — otherwise the cursor itself is enough.
-    if (FrameCount <= 1 || PxPerFrame < 4.0f) { return; }
+    if (FrameCount <= 1 || PxPerFrame < 2.0f) { return; }
 
     // Use floor (not round) so the highlighted cell is the one VISUALLY CONTAINING the
     // needle position. Round would flip to the next cell at half-cell, which feels like

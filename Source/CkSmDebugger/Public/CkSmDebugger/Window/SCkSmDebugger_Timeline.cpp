@@ -224,7 +224,8 @@ auto
     PaintSegments(InAllottedGeometry, InOutDrawElements, InLayerId + 1, Run, ViewStart, ViewDuration);
     PaintScrubFrameHighlight(InAllottedGeometry, InOutDrawElements, InLayerId + 2, Run, ViewStart, ViewDuration);
     PaintBusyFrames(InAllottedGeometry, InOutDrawElements, InLayerId + 3, Run, ViewStart, ViewDuration);
-    PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 4, ViewStart, ViewDuration);
+    PaintPauseMarkers(InAllottedGeometry, InOutDrawElements, InLayerId + 4, Run, ViewStart, ViewDuration);
+    PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 5, ViewStart, ViewDuration);
 
     // Time / frame labels along the bottom edge
     {
@@ -240,8 +241,12 @@ auto
             auto Time = ViewStart + ViewDuration * Frac;
             auto X = Frac * Size.X;
 
+            // Show absolute frame plus a [mod 1000] tail so the eye can easily compare
+            // nearby labels even when the absolute number runs into the millions. The
+            // raw frame is kept so the value is still useful to copy/grep against logs.
+            auto Frame = TimeToFrame(Run, Time);
             auto Label = ShowFrames
-                ? FString::Printf(TEXT("f%lld"), TimeToFrame(Run, Time))
+                ? FString::Printf(TEXT("f%lld [%03lld]"), Frame, Frame % 1000)
                 : FString::Printf(TEXT("%.1fs"), Time);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
             auto TextSize = FontService->Measure(Label, Font);
@@ -468,6 +473,57 @@ auto
         FAppStyle::GetBrush("WhiteBrush"),
         ESlateDrawEffect::None,
         Hi);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebugger_Timeline::
+    PaintPauseMarkers(
+        const FGeometry& InGeometry,
+        FSlateWindowElementList& InOutDrawElements,
+        int32 InLayerId,
+        const FCkSmDebugger_RunInfo& InRun,
+        double InViewStart,
+        double InViewDuration) const
+    -> void
+{
+    if (InRun.PauseMarkers.IsEmpty()) { return; }
+
+    auto Size = InGeometry.GetLocalSize();
+    auto SegmentHeight = Size.Y * 0.6f;
+    auto Brush = FAppStyle::GetBrush("WhiteBrush");
+
+    // Papercut effect: a 4px-wide vertical band split down the middle by a 2px gap of
+    // background color. Reads as a "tear" in the segment row indicating execution
+    // paused and resumed at this point. Breakpoint pauses get an amber tint, manual
+    // pauses a softer cyan.
+    for (auto& Marker : InRun.PauseMarkers)
+    {
+        auto X = TimeToX(Marker.Time, InViewStart, InViewDuration, Size.X);
+        if (X < -2.0f || X > Size.X + 2.0f) { continue; }
+
+        auto MarkerColor = Marker.IsBreakpoint
+            ? FLinearColor(1.0f, 0.6f, 0.0f)        // amber for breakpoint
+            : FLinearColor(0.4f, 0.85f, 1.0f);      // cyan for manual pause
+        auto BgColor = FLinearColor(0.04f, 0.04f, 0.06f);
+
+        // Outer band (4px)
+        FSlateDrawElement::MakeBox(
+            InOutDrawElements, InLayerId,
+            InGeometry.ToPaintGeometry(
+                FVector2D(4.0f, SegmentHeight),
+                FSlateLayoutTransform(FVector2D(X - 2.0f, 0.0f))),
+            Brush, ESlateDrawEffect::None, MarkerColor);
+
+        // Inner gap (1px) — splits the band so it reads as a tear, not a solid bar
+        FSlateDrawElement::MakeBox(
+            InOutDrawElements, InLayerId + 1,
+            InGeometry.ToPaintGeometry(
+                FVector2D(1.0f, SegmentHeight),
+                FSlateLayoutTransform(FVector2D(X - 0.5f, 0.0f))),
+            Brush, ESlateDrawEffect::None, BgColor);
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

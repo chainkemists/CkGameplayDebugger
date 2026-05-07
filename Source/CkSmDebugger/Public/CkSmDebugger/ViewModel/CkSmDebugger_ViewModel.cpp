@@ -178,6 +178,24 @@ auto
     {
         ClearScrubTransitionHighlight();
         _ScrubSnapshot = FCkSmDebugger_ScrubSnapshot{};
+        _LiveSegmentFreezeActive = false;
+        _LiveSegmentFreezeStateName.Empty();
+    }
+    else if (_ViewMode == ECkSmDebugger_ViewMode::Scrub && _HasSmInfo)
+    {
+        // Capture the live segment's End at the moment scrubbing begins. The renderer
+        // overrides the segment's growing tail with these frozen values until the user
+        // returns to Live, so per-frame cells stay readable instead of shrinking as
+        // real time advances.
+        auto& Segs = _CurrentSmInfo.CurrentRun.Segments;
+        if (Segs.Num() > 0)
+        {
+            auto& Last = Segs.Last();
+            _LiveSegmentFreezeStateName = Last.StateName;
+            _LiveSegmentFreezeEndTime = Last.EndTime;
+            _LiveSegmentFreezeEndFrame = Last.EndFrame;
+            _LiveSegmentFreezeActive = true;
+        }
     }
 
     OnViewModeChanged.Broadcast(_ViewMode);

@@ -183,6 +183,21 @@ private:
 
     bool _NeedsRelayout = true;
     bool _ExpandAllNodes = true;
+
+    // Live-segment freeze: while in Scrub mode the live state segment should stop
+    // growing so per-frame cells stay readable. Captured when entering Scrub, cleared
+    // on Live. State name is stored alongside so the freeze releases automatically if
+    // the SM transitions to a different state during the scrub session.
+    bool _LiveSegmentFreezeActive = false;
+    FString _LiveSegmentFreezeStateName;
+    double _LiveSegmentFreezeEndTime = 0.0;
+    uint64 _LiveSegmentFreezeEndFrame = 0;
+
+public:
+    auto Get_LiveSegmentFreezeActive() const -> bool { return _LiveSegmentFreezeActive; }
+    auto Get_LiveSegmentFreezeStateName() const -> const FString& { return _LiveSegmentFreezeStateName; }
+    auto Get_LiveSegmentFreezeEndTime() const -> double { return _LiveSegmentFreezeEndTime; }
+    auto Get_LiveSegmentFreezeEndFrame() const -> uint64 { return _LiveSegmentFreezeEndFrame; }
 };
 
 // --------------------------------------------------------------------------------------------------------------------

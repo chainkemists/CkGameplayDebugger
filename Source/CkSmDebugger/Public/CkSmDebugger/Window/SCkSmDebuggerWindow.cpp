@@ -1256,6 +1256,13 @@ auto
                     {
                         if (_ViewModel.IsValid())
                         {
+                            // Reset the timeline scroll offset so Live mode anchors back to "now".
+                            // Without this, the scroll offset accumulated during scrubbing would
+                            // pull the live view far into the past.
+                            auto NewScrubState = _ViewModel->Get_ScrubState();
+                            NewScrubState.TimelineScrollX = 0.0f;
+                            _ViewModel->Set_ScrubState(NewScrubState);
+
                             _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
                             _ViewModel->ClearScrubTransitionHighlight();
                         }
@@ -1356,6 +1363,33 @@ auto
 
                         return FReply::Handled();
                     })
+            ]
+
+        // Show frames (timeline label format)
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(8.0f, 2.0f, 2.0f, 2.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCheckBox)
+                    .IsChecked_Lambda([this]() -> ECheckBoxState
+                    {
+                        return _ViewModel.IsValid() && _ViewModel->Get_ScrubState().ShowFramesOnTimeline
+                            ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+                    })
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InNewState)
+                    {
+                        if (NOT _ViewModel.IsValid()) { return; }
+                        auto NewScrubState = _ViewModel->Get_ScrubState();
+                        NewScrubState.ShowFramesOnTimeline = (InNewState == ECheckBoxState::Checked);
+                        _ViewModel->Set_ScrubState(NewScrubState);
+                    })
+                    .ToolTipText(NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
+                        "Show timeline labels as frame numbers (checked) or seconds (unchecked)."))
+                    [
+                        SNew(STextBlock)
+                            .Text(NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"))
+                    ]
             ]
 
         // ── Spacer ───────────────────────────────────────────────────────
@@ -1514,6 +1548,10 @@ auto
         Sig.HistoryEntry = static_cast<const void*>(_SelectedHistoryEntry.Get());
         Sig.NodeIdx = _ViewModel->Get_SelectedNodeIndex();
         Sig.TransitionIdx = _SelectedTransitionIndex;
+        Sig.ScrubMode = (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub) ? 1 : 0;
+        auto& ScrubSnap = _ViewModel->Get_ScrubSnapshot();
+        Sig.ScrubHistoryIdx = ScrubSnap.HistoryIndex;
+        Sig.ScrubActiveStateIdx = ScrubSnap.ActiveStateIndex;
 
         if (SmInfo && Sig.NodeIdx >= 0 && Sig.NodeIdx < SmInfo->States.Num())
         {
@@ -1884,9 +1922,15 @@ auto
 
     // ───────────────────────────────────────────────────────────────────
     // Case 3: state selected in graph
+    //
+    // Skipped while scrubbing — the window's Tick auto-sets SelectedNodeIndex to
+    // the active state at scrub time, which would always win against the scrub
+    // snapshot below. Explicit history/transition clicks (cases 1 and 2) still
+    // take priority because they're checked earlier.
     // ───────────────────────────────────────────────────────────────────
     auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-    if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
+    auto IsScrubbing = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
+    if (NOT IsScrubbing && SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
     {
         auto& State = SmInfo->States[SelectedIdx];
         auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
@@ -2201,6 +2245,188 @@ auto
                     ];
                 }
             }
+        }
+
+        return Root;
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Case 4: scrubbing (no other selection) — show what the SM was doing
+    // at the needle's position.
+    // ───────────────────────────────────────────────────────────────────
+    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+    {
+        auto& Snap = _ViewModel->Get_ScrubSnapshot();
+        auto& ScrubState = _ViewModel->Get_ScrubState();
+        auto RunIdx = ScrubState.SelectedRunIndex;
+        auto& Run = (RunIdx < 0)
+            ? SmInfo->CurrentRun
+            : (RunIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RunIdx] : SmInfo->CurrentRun);
+
+        if (Snap.ActiveStateIndex < 0 || Snap.ActiveStateName.IsEmpty())
+        { return MakeNoSelection(); }
+
+        auto StateDisplay = FCkSmLayoutParams::ComputeDisplayName(Snap.ActiveStateName, Depth);
+
+        // Scrub frame number — derived live via lambda so it updates as the needle moves
+        // even if structural content is cached.
+        auto ScrubFrameAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel)]()
+            {
+                auto VM = ViewModelWeak.Pin();
+                if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                auto* Info = VM->Get_CurrentSmInfo();
+                if (NOT Info) { return FText::GetEmpty(); }
+                auto& SS = VM->Get_ScrubState();
+                auto RIdx = SS.SelectedRunIndex;
+                auto& R = (RIdx < 0)
+                    ? Info->CurrentRun
+                    : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+
+                // Reuse TimeToFrame logic locally — find the FrameSegment containing ScrubTime.
+                auto T = SS.ScrubTime;
+                if (R.FrameSegments.IsEmpty()) { return FText::FromString(FString::Printf(TEXT("Frame [?]  •  %.2fs"), T)); }
+
+                int64 Frame = static_cast<int64>(R.FrameSegments[0].StartFrame);
+                if (T <= R.FrameSegments[0].StartTime) { Frame = static_cast<int64>(R.FrameSegments[0].StartFrame); }
+                else if (T >= R.FrameSegments.Last().EndTime) { Frame = static_cast<int64>(R.FrameSegments.Last().EndFrame); }
+                else
+                {
+                    for (auto& Seg : R.FrameSegments)
+                    {
+                        if (T >= Seg.StartTime && T <= Seg.EndTime)
+                        {
+                            auto Span = Seg.EndTime - Seg.StartTime;
+                            auto Frac = (Span > 0.0) ? (T - Seg.StartTime) / Span : 0.0;
+                            auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
+                            Frame = static_cast<int64>(Seg.StartFrame) + static_cast<int64>(FMath::RoundToInt(Frac * FrameSpan));
+                            break;
+                        }
+                    }
+                }
+                return FText::FromString(FString::Printf(TEXT("Frame [%lld]  \x2022  %.2fs"), Frame, T));
+            }));
+
+        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("SCRUB AT")) ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+                .Text(ScrubFrameAttr)
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+        ];
+
+        // STATE row with active pill + dwell
+        Root->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("STATE")) ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+        [
+            SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("\x25CF")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(StateDisplay))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
+                [
+                    MakePill(TEXT("ACTIVE"), FCkSmDebuggerStyle::Color_Sm_TaskRunning)
+                ]
+        ];
+
+        // Dwell info (live)
+        auto DwellAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel)]()
+            {
+                auto VM = ViewModelWeak.Pin();
+                if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                auto& S = VM->Get_ScrubSnapshot();
+                return FText::FromString(FString::Printf(TEXT("Dwelt %.2fs in this state"), S.TimeInState));
+            }));
+
+        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+                .Text(DwellAttr)
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+        ];
+
+        // CAME FROM (previous transition)
+        if (Snap.HistoryIndex >= 0 && Snap.HistoryIndex < Run.History.Num())
+        {
+            auto& PrevEntry = Run.History[Snap.HistoryIndex];
+            auto FromName = FCkSmLayoutParams::ComputeDisplayName(PrevEntry.FromStateName, Depth);
+
+            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+            ];
+        }
+
+        // NEXT TRANSITION (upcoming history entry, if any)
+        auto NextIdx = Snap.HistoryIndex + 1;
+        if (NextIdx >= 0 && NextIdx < Run.History.Num())
+        {
+            auto& NextEntry = Run.History[NextIdx];
+            auto NextName = FCkSmLayoutParams::ComputeDisplayName(NextEntry.ToStateName, Depth);
+            auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber)
+                - static_cast<int64>(Run.History[FMath::Max(Snap.HistoryIndex, 0)].FrameNumber);
+
+            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(
+                        TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
+                        *NextName, FramesAhead, NextEntry.FrameNumber)))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+            ];
+
+            if (NextEntry.ConditionNames.Num() > 0)
+            {
+                for (auto& CondName : NextEntry.ConditionNames)
+                {
+                    auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                    Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                            [
+                                MakeConditionPill(ECk_SmConditionResult::Pass)
+                            ]
+                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                            [
+                                SNew(STextBlock)
+                                    .Text(FText::FromString(CName))
+                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            ]
+                    ];
+                }
+            }
+        }
+        else
+        {
+            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+            ];
         }
 
         return Root;

@@ -39,11 +39,16 @@ private:
     auto XToTime(float InX, double InViewStart, double InViewDuration, float InWidth) const -> double;
     auto GetViewRange(double& OutStart, double& OutDuration) const -> void;
 
+    // Map run-relative time to absolute frame number, using the run's FrameSegments.
+    // Returns 0 if the run has no history yet.
+    auto TimeToFrame(const FCkSmDebugger_RunInfo& InRun, double InRunRelativeTime) const -> int64;
+
     auto GetCurrentRunDuration() const -> double;
 
     auto PaintSegments(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
     auto PaintBusyFrames(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
     auto PaintScrubCursor(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, double InViewStart, double InViewDuration) const -> void;
+    auto PaintScrubFrameHighlight(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
 
 private:
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
@@ -52,6 +57,10 @@ private:
     bool _IsScrubbing = false;
     bool _IsPanning = false;
     float _PanStartX = 0.0f;
+
+    // While scrubbing, freeze the view origin so segments don't slide opposite to the drag.
+    // Cleared on mouse-up.
+    TOptional<double> _ScrubAnchorViewStart;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

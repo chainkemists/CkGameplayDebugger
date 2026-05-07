@@ -71,6 +71,49 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Auto-highlight the history row that matches the scrub needle's position. Items
+    // are stored newest-first (reverse history order), so a transition with backend
+    // index H lives at list index (Items.Num() - 1 - H). _IsApplyingScrubSelection
+    // suppresses our programmatic select inside OnSelectionChanged so it doesn't
+    // feedback into ScrubTime.
+    if (NOT _ViewModel.IsValid() || NOT _ListView.IsValid()) { return; }
+    if (_ViewModel->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub) { return; }
+
+    auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo) { return; }
+
+    auto& ScrubState = _ViewModel->Get_ScrubState();
+    auto RunIdx = ScrubState.SelectedRunIndex;
+    auto& Run = (RunIdx < 0)
+        ? SmInfo->CurrentRun
+        : (RunIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RunIdx] : SmInfo->CurrentRun);
+
+    if (Run.History.IsEmpty()) { return; }
+
+    auto ScrubAbs = ScrubState.ScrubTime + Run.StartTime;
+    auto BestHistIdx = -1;
+    for (auto i = 0; i < Run.History.Num(); ++i)
+    {
+        if (Run.History[i].RealTimeSeconds <= ScrubAbs)
+        { BestHistIdx = i; }
+        else
+        { break; }
+    }
+
+    if (BestHistIdx < 0 || BestHistIdx >= Run.History.Num()) { return; }
+
+    auto ListIdx = _Items.Num() - 1 - BestHistIdx;
+    if (ListIdx < 0 || ListIdx >= _Items.Num()) { return; }
+
+    auto& TargetItem = _Items[ListIdx];
+    auto Selected = _ListView->GetSelectedItems();
+    if (Selected.Num() == 1 && Selected[0] == TargetItem) { return; }
+
+    _IsApplyingScrubSelection = true;
+    _ListView->SetItemSelection(TargetItem, true, ESelectInfo::Direct);
+    _ListView->RequestScrollIntoView(TargetItem);
+    _IsApplyingScrubSelection = false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -255,6 +298,12 @@ auto
     -> void
 {
     if (NOT InItem.IsValid() || NOT _ViewModel.IsValid())
+    { return; }
+
+    // Skip when our own Tick is mirroring the scrub needle into the list — otherwise
+    // the auto-select would re-pin ScrubTime to the row's exact transition frame and
+    // freeze the needle there mid-drag.
+    if (_IsApplyingScrubSelection)
     { return; }
 
     _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);

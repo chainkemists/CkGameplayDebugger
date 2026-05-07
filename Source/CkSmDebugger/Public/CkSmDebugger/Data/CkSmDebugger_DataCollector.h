@@ -95,11 +95,19 @@ private:
     TArray<double> _BreakpointHitWallTimes;
     int32 _LastObservedRunCounter = -1;
 
-    // Frame-counter snapshot at the start of the current pause. Used so the live
-    // segment's EndFrame stays frozen while PIE is paused — GFrameCounter advances
-    // every engine tick regardless of pause, which would otherwise make per-frame
-    // cells shrink endlessly during pause.
+    // Frame-space pause tracking — mirrors the time-space pause tracking above so
+    // the live segment's EndFrame stays consistent with history's StartFrame even
+    // across pause cycles. GFrameCounter advances every editor tick regardless of
+    // PIE pause; subtracting paused-frame counts gives a logical frame counter that
+    // matches "frames during which the SM actually ran".
     uint64 _GFrameAtPauseStart = 0;
-};
+    TArray<TPair<uint64, uint64>> _CompletedPauseFrameIntervals;
+
+public:
+    // Convert a raw GFrameCounter value into the logical (paused-frames-subtracted)
+    // frame number the timeline operates in. Static-friendly: only reads internal
+    // pause-interval state.
+    auto ComputeLogicalFrame(uint64 InRawFrame) const -> uint64;
+private:
 
 // --------------------------------------------------------------------------------------------------------------------

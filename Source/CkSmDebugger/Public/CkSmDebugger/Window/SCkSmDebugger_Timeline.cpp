@@ -283,10 +283,9 @@ auto
 
         if (SliceCells)
         {
-            // Scale the inter-cell gap so it never eats more than a third of a frame's
-            // width. At ≥3px/frame this stays at the full 1px gap; below that it shrinks
-            // so cells remain a visible block of color.
-            auto CellGap = FMath::Min(Gap, FMath::Max(PxPerFrame * 0.33f, 0.25f));
+            // Constant 1px gap — readable at all zoom levels even when each cell narrows
+            // to its 1px floor. Adaptive gaps were too subtle to see.
+            auto CellGap = Gap;
             for (auto F = int64{0}; F < FrameCount; ++F)
             {
                 auto CellStartTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));

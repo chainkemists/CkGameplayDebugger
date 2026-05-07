@@ -101,6 +101,15 @@ private:
         int32 TransitionIdx = -1;
         int32 TaskCount = 0;
         int32 TransitionCount = 0;
+        // Scrub-driven branch: when the panel falls through to the scrub-snapshot
+        // case, the snapshot's HistoryIndex changes the structural content (different
+        // active state, different next transition). Including it forces a rebuild as
+        // the needle crosses state boundaries. ActiveStateIdx is also tracked so a
+        // transient -1 (snapshot computed before States array stabilized) flipping to
+        // a real index triggers a rebuild rather than leaving stale "No selection".
+        int32 ScrubHistoryIdx = -1;
+        int32 ScrubActiveStateIdx = -1;
+        int32 ScrubMode = 0; // 0 = not scrubbing, 1 = scrubbing
 
         auto operator==(const FDetailSignature& Other) const -> bool
         {
@@ -109,7 +118,10 @@ private:
                 && NodeIdx == Other.NodeIdx
                 && TransitionIdx == Other.TransitionIdx
                 && TaskCount == Other.TaskCount
-                && TransitionCount == Other.TransitionCount;
+                && TransitionCount == Other.TransitionCount
+                && ScrubHistoryIdx == Other.ScrubHistoryIdx
+                && ScrubActiveStateIdx == Other.ScrubActiveStateIdx
+                && ScrubMode == Other.ScrubMode;
         }
         auto operator!=(const FDetailSignature& Other) const -> bool { return !(*this == Other); }
     };

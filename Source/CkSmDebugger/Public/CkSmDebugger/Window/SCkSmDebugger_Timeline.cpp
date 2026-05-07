@@ -72,6 +72,15 @@ auto
     auto& ScrubState = _ViewModel->Get_ScrubState();
     OutDuration = ScrubState.TimelineViewDuration;
 
+    // While the user is actively dragging the scrub needle, freeze the view origin.
+    // Otherwise the auto-recenter on ScrubTime makes segments slide opposite to the drag,
+    // which feels like the timeline is inverted.
+    if (_ScrubAnchorViewStart.IsSet())
+    {
+        OutStart = _ScrubAnchorViewStart.GetValue();
+        return;
+    }
+
     // TimelineScrollX is the absolute view-start offset.
     // In Live mode with ScrollX == 0, the view's right edge tracks "now".
     auto RunDuration = GetCurrentRunDuration();
@@ -110,6 +119,42 @@ auto
 {
     if (InWidth <= 0.0f) { return InViewStart; }
     return InViewStart + (static_cast<double>(InX) / InWidth) * InViewDuration;
+}
+
+auto
+    SCkSmDebugger_Timeline::
+    TimeToFrame(
+        const FCkSmDebugger_RunInfo& InRun,
+        double InRunRelativeTime) const
+    -> int64
+{
+    if (InRun.FrameSegments.IsEmpty())
+    { return 0; }
+
+    auto& First = InRun.FrameSegments[0];
+    auto& Last = InRun.FrameSegments.Last();
+
+    if (InRunRelativeTime <= First.StartTime)
+    { return static_cast<int64>(First.StartFrame); }
+
+    if (InRunRelativeTime >= Last.EndTime)
+    { return static_cast<int64>(Last.EndFrame); }
+
+    for (auto& Seg : InRun.FrameSegments)
+    {
+        if (InRunRelativeTime >= Seg.StartTime && InRunRelativeTime <= Seg.EndTime)
+        {
+            auto Span = Seg.EndTime - Seg.StartTime;
+            if (Span <= 0.0)
+            { return static_cast<int64>(Seg.StartFrame); }
+
+            auto Frac = (InRunRelativeTime - Seg.StartTime) / Span;
+            auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
+            return static_cast<int64>(Seg.StartFrame) + static_cast<int64>(FMath::RoundToInt(Frac * FrameSpan));
+        }
+    }
+
+    return static_cast<int64>(Last.EndFrame);
 }
 
 // ====================================================================================================================
@@ -156,14 +201,16 @@ auto
     GetViewRange(ViewStart, ViewDuration);
 
     PaintSegments(InAllottedGeometry, InOutDrawElements, InLayerId + 1, Run, ViewStart, ViewDuration);
+    PaintScrubFrameHighlight(InAllottedGeometry, InOutDrawElements, InLayerId + 2, Run, ViewStart, ViewDuration);
     PaintBusyFrames(InAllottedGeometry, InOutDrawElements, InLayerId + 3, Run, ViewStart, ViewDuration);
     PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 4, ViewStart, ViewDuration);
 
-    // Time labels — relative seconds
+    // Time / frame labels along the bottom edge
     {
         auto Size = InAllottedGeometry.GetLocalSize();
         auto Font = FCoreStyle::GetDefaultFontStyle("Mono", 7);
         auto TextColor = FLinearColor(0.4f, 0.4f, 0.45f);
+        auto ShowFrames = ScrubState.ShowFramesOnTimeline;
 
         constexpr auto LabelCount = 5;
         for (auto i = 0; i <= LabelCount; ++i)
@@ -172,7 +219,9 @@ auto
             auto Time = ViewStart + ViewDuration * Frac;
             auto X = Frac * Size.X;
 
-            auto Label = FString::Printf(TEXT("%.1fs"), Time);
+            auto Label = ShowFrames
+                ? FString::Printf(TEXT("f%lld"), TimeToFrame(Run, Time))
+                : FString::Printf(TEXT("%.1fs"), Time);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
             auto TextSize = FontService->Measure(Label, Font);
 
@@ -205,29 +254,62 @@ auto
     auto Size = InGeometry.GetLocalSize();
     auto SegmentHeight = Size.Y * 0.6f;
     auto NameDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
     for (auto& Segment : InRun.Segments)
     {
-        auto X0 = TimeToX(Segment.StartTime, InViewStart, InViewDuration, Size.X);
-        auto X1 = TimeToX(Segment.EndTime, InViewStart, InViewDuration, Size.X);
+        auto X0Full = TimeToX(Segment.StartTime, InViewStart, InViewDuration, Size.X);
+        auto X1Full = TimeToX(Segment.EndTime, InViewStart, InViewDuration, Size.X);
 
-        if (X1 < 0.0f || X0 > Size.X) { continue; }
+        if (X1Full < 0.0f || X0Full > Size.X) { continue; }
 
-        X0 = FMath::Max(X0, 0.0f);
-        X1 = FMath::Min(X1, static_cast<float>(Size.X));
+        auto X0 = FMath::Max(X0Full, 0.0f);
+        auto X1 = FMath::Min(X1Full, static_cast<float>(Size.X));
 
         auto Width = FMath::Max(X1 - X0, 1.0f);
         constexpr auto Gap = 1.0f;
         auto BodyWidth = FMath::Max(Width - Gap, 1.0f);
 
-        FSlateDrawElement::MakeBox(
-            InOutDrawElements, InLayerId,
-            InGeometry.ToPaintGeometry(
-                FVector2D(BodyWidth, SegmentHeight),
-                FSlateLayoutTransform(FVector2D(X0, 0.0f))),
-            FAppStyle::GetBrush("WhiteBrush"),
-            ESlateDrawEffect::None,
-            Segment.Color);
+        // Per-frame cell slicing: read the frame range straight off the segment (set by
+        // BuildTimelineSegments). The previous TimeToFrame-based approach hit boundary
+        // ambiguities on the live segment and the synthesized first segment.
+        auto FrameCount = static_cast<int64>(FMath::Max<int64>(
+            static_cast<int64>(Segment.EndFrame) - static_cast<int64>(Segment.StartFrame), 1));
+        auto FullWidth = FMath::Max(X1Full - X0Full, 1.0f);
+        auto PxPerFrame = FullWidth / static_cast<float>(FrameCount);
+        auto SliceCells = FrameCount > 1 && PxPerFrame >= 4.0f;
+
+        if (SliceCells)
+        {
+            for (auto F = int64{0}; F < FrameCount; ++F)
+            {
+                auto CellStartTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));
+                auto CellEndTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F + 1) / static_cast<double>(FrameCount));
+                auto CellX0 = TimeToX(CellStartTime, InViewStart, InViewDuration, Size.X);
+                auto CellX1 = TimeToX(CellEndTime, InViewStart, InViewDuration, Size.X);
+
+                if (CellX1 < 0.0f || CellX0 > Size.X) { continue; }
+                CellX0 = FMath::Max(CellX0, 0.0f);
+                CellX1 = FMath::Min(CellX1, static_cast<float>(Size.X));
+
+                auto CellWidth = FMath::Max(CellX1 - CellX0 - Gap, 1.0f);
+                FSlateDrawElement::MakeBox(
+                    InOutDrawElements, InLayerId,
+                    InGeometry.ToPaintGeometry(
+                        FVector2D(CellWidth, SegmentHeight),
+                        FSlateLayoutTransform(FVector2D(CellX0, 0.0f))),
+                    Brush, ESlateDrawEffect::None, Segment.Color);
+            }
+        }
+        else
+        {
+            FSlateDrawElement::MakeBox(
+                InOutDrawElements, InLayerId,
+                InGeometry.ToPaintGeometry(
+                    FVector2D(BodyWidth, SegmentHeight),
+                    FSlateLayoutTransform(FVector2D(X0, 0.0f))),
+                Brush, ESlateDrawEffect::None, Segment.Color);
+        }
 
         if (Width > 30.0f)
         {
@@ -242,11 +324,19 @@ auto
                     X0 + (BodyWidth - TextSize.X) * 0.5f,
                     (SegmentHeight - TextSize.Y) * 0.5f);
 
+                // Luminance-based label color: hash-derived segment colors land on bright
+                // yellows/cyans where white is unreadable. Pick black or white based on the
+                // segment color's perceived brightness.
+                auto Lum = 0.299f * Segment.Color.R + 0.587f * Segment.Color.G + 0.114f * Segment.Color.B;
+                auto LabelColor = (Lum > 0.55f)
+                    ? FLinearColor(0.05f, 0.05f, 0.05f)
+                    : FLinearColor(0.95f, 0.95f, 0.95f);
+
                 FSlateDrawElement::MakeText(
                     InOutDrawElements, InLayerId + 1,
                     InGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPos)),
                     DisplayName, Font, ESlateDrawEffect::None,
-                    FLinearColor(0.95f, 0.95f, 0.95f));
+                    LabelColor);
             }
         }
     }
@@ -280,6 +370,85 @@ auto
             FLinearColor(0.9f, 0.7f, 0.1f, 0.6f),
             false, 1.0f);
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebugger_Timeline::
+    PaintScrubFrameHighlight(
+        const FGeometry& InGeometry,
+        FSlateWindowElementList& InOutDrawElements,
+        int32 InLayerId,
+        const FCkSmDebugger_RunInfo& InRun,
+        double InViewStart,
+        double InViewDuration) const
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live) { return; }
+
+    auto Size = InGeometry.GetLocalSize();
+    auto SegmentHeight = Size.Y * 0.6f;
+    auto ScrubTime = _ViewModel->Get_ScrubState().ScrubTime;
+
+    // Find the containing state segment.
+    auto Containing = static_cast<const FCkSmDebugger_TimelineSegment*>(nullptr);
+    for (auto& Seg : InRun.Segments)
+    {
+        if (ScrubTime >= Seg.StartTime && ScrubTime <= Seg.EndTime)
+        {
+            Containing = &Seg;
+            break;
+        }
+    }
+    if (NOT Containing) { return; }
+
+    auto FrameCount = static_cast<int64>(FMath::Max<int64>(
+        static_cast<int64>(Containing->EndFrame) - static_cast<int64>(Containing->StartFrame), 1));
+
+    auto SegFullX0 = TimeToX(Containing->StartTime, InViewStart, InViewDuration, Size.X);
+    auto SegFullX1 = TimeToX(Containing->EndTime, InViewStart, InViewDuration, Size.X);
+    auto SegFullWidth = FMath::Max(SegFullX1 - SegFullX0, 1.0f);
+    auto PxPerFrame = SegFullWidth / static_cast<float>(FrameCount);
+
+    // Only highlight when slicing is visible — otherwise the cursor itself is enough.
+    if (FrameCount <= 1 || PxPerFrame < 4.0f) { return; }
+
+    // Use floor (not round) so the highlighted cell is the one VISUALLY CONTAINING the
+    // needle position. Round would flip to the next cell at half-cell, which feels like
+    // the highlight is leading the needle.
+    auto SegSpan = Containing->EndTime - Containing->StartTime;
+    auto Frac = (SegSpan > 0.0) ? (ScrubTime - Containing->StartTime) / SegSpan : 0.0;
+    auto LocalIndex = FMath::Clamp(static_cast<int64>(FMath::FloorToInt64(Frac * FrameCount)), int64{0}, FrameCount - 1);
+
+    auto CellStartTime = Containing->StartTime + (Containing->EndTime - Containing->StartTime) * (static_cast<double>(LocalIndex) / static_cast<double>(FrameCount));
+    auto CellEndTime = Containing->StartTime + (Containing->EndTime - Containing->StartTime) * (static_cast<double>(LocalIndex + 1) / static_cast<double>(FrameCount));
+
+    auto X0 = TimeToX(CellStartTime, InViewStart, InViewDuration, Size.X);
+    auto X1 = TimeToX(CellEndTime, InViewStart, InViewDuration, Size.X);
+    if (X1 < 0.0f || X0 > Size.X) { return; }
+    X0 = FMath::Max(X0, 0.0f);
+    X1 = FMath::Min(X1, static_cast<float>(Size.X));
+
+    constexpr auto Gap = 1.0f;
+    auto CellWidth = FMath::Max(X1 - X0 - Gap, 1.0f);
+
+    // Brightened version of the segment color.
+    auto Hi = Containing->Color * 1.6f;
+    Hi.A = 1.0f;
+    Hi.R = FMath::Min(Hi.R, 1.0f);
+    Hi.G = FMath::Min(Hi.G, 1.0f);
+    Hi.B = FMath::Min(Hi.B, 1.0f);
+
+    FSlateDrawElement::MakeBox(
+        InOutDrawElements, InLayerId,
+        InGeometry.ToPaintGeometry(
+            FVector2D(CellWidth, SegmentHeight),
+            FSlateLayoutTransform(FVector2D(X0, 0.0f))),
+        FAppStyle::GetBrush("WhiteBrush"),
+        ESlateDrawEffect::None,
+        Hi);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -344,28 +513,29 @@ auto
 {
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && _ViewModel.IsValid())
     {
-        _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
-
         auto Size = InGeometry.GetLocalSize();
         auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
 
+        // Snapshot the view origin BEFORE switching modes — this is what we'll anchor to.
+        // Without an anchor, switching to Scrub mode recenters the view on ScrubTime every
+        // paint, which makes segments slide opposite to the drag direction.
         auto ViewStart = 0.0;
         auto ViewDuration = 10.0;
         GetViewRange(ViewStart, ViewDuration);
 
         auto ScrubTime = XToTime(LocalPos.X, ViewStart, ViewDuration, Size.X);
 
-        // Clamp to valid run range
         auto RunDuration = GetCurrentRunDuration();
         ScrubTime = FMath::Clamp(ScrubTime, 0.0, RunDuration);
+
+        _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
 
         auto NewScrubState = _ViewModel->Get_ScrubState();
         NewScrubState.ViewMode = ECkSmDebugger_ViewMode::Scrub;
         NewScrubState.ScrubTime = ScrubTime;
-        // Reset scroll so view centers on the new scrub position
-        NewScrubState.TimelineScrollX = 0.0f;
         _ViewModel->Set_ScrubState(NewScrubState);
 
+        _ScrubAnchorViewStart = ViewStart;
         _IsScrubbing = true;
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
@@ -390,6 +560,18 @@ auto
 {
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && _IsScrubbing)
     {
+        // Transfer the frozen view origin into TimelineScrollX so the view stays where the
+        // user left it once the anchor is cleared. In Scrub mode the natural origin is
+        // ScrubTime - Duration*0.5; the difference becomes the persisted scroll offset.
+        if (_ScrubAnchorViewStart.IsSet() && _ViewModel.IsValid())
+        {
+            auto& ScrubState = _ViewModel->Get_ScrubState();
+            auto NewScrubState = ScrubState;
+            NewScrubState.TimelineScrollX = static_cast<float>(
+                _ScrubAnchorViewStart.GetValue() - ScrubState.ScrubTime + ScrubState.TimelineViewDuration * 0.5);
+            _ViewModel->Set_ScrubState(NewScrubState);
+        }
+        _ScrubAnchorViewStart.Reset();
         _IsScrubbing = false;
         return FReply::Handled().ReleaseMouseCapture();
     }
@@ -424,6 +606,26 @@ auto
         // Clamp to valid run range
         auto RunDuration = GetCurrentRunDuration();
         ScrubTime = FMath::Clamp(ScrubTime, 0.0, RunDuration);
+
+        // Auto-pan: if the user drags the needle to / past either edge of the viewport,
+        // slide the frozen anchor so the needle stays visible. This makes "drag past the
+        // edge to see more of that side" work without needing a separate scroll gesture.
+        if (_ScrubAnchorViewStart.IsSet())
+        {
+            constexpr auto EdgeMarginFrac = 0.05;
+            auto MarginTime = ViewDuration * EdgeMarginFrac;
+            auto MinVisible = ViewStart + MarginTime;
+            auto MaxVisible = ViewStart + ViewDuration - MarginTime;
+
+            if (ScrubTime < MinVisible)
+            {
+                _ScrubAnchorViewStart = ScrubTime - MarginTime;
+            }
+            else if (ScrubTime > MaxVisible)
+            {
+                _ScrubAnchorViewStart = ScrubTime - ViewDuration + MarginTime;
+            }
+        }
 
         auto NewScrubState = _ViewModel->Get_ScrubState();
         NewScrubState.ScrubTime = ScrubTime;

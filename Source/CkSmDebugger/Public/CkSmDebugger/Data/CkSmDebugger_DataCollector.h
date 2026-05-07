@@ -66,7 +66,8 @@ private:
         const TArray<FCkSmDebugger_HistoryEntry>& InHistory,
         double InRunStartTime,
         double InNow,
-        const FString& InInitialStateName) -> TArray<FCkSmDebugger_TimelineSegment>;
+        const FString& InInitialStateName,
+        uint64 InCurrentFrameNumber = 0) -> TArray<FCkSmDebugger_TimelineSegment>;
 
     static auto
     DetectBusyFrames(
@@ -77,7 +78,8 @@ private:
     BuildFrameSegments(
         const TArray<FCkSmDebugger_HistoryEntry>& InHistory,
         double InRunStartTime,
-        double InNow) -> TArray<FCkSmDebugger_FrameSegment>;
+        double InNow,
+        uint64 InCurrentFrameNumber = 0) -> TArray<FCkSmDebugger_FrameSegment>;
 
     auto
     ComputeLogicalTime(

@@ -108,6 +108,6 @@ public:
     // frame number the timeline operates in. Static-friendly: only reads internal
     // pause-interval state.
     auto ComputeLogicalFrame(uint64 InRawFrame) const -> uint64;
-private:
+};
 
 // --------------------------------------------------------------------------------------------------------------------

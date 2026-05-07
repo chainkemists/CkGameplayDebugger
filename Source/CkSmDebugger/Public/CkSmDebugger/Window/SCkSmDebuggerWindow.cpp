@@ -2288,17 +2288,44 @@ auto
     // ───────────────────────────────────────────────────────────────────
     if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
     {
-        auto& Snap = _ViewModel->Get_ScrubSnapshot();
         auto& ScrubState = _ViewModel->Get_ScrubState();
         auto RunIdx = ScrubState.SelectedRunIndex;
         auto& Run = (RunIdx < 0)
             ? SmInfo->CurrentRun
             : (RunIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RunIdx] : SmInfo->CurrentRun);
 
-        if (Snap.ActiveStateIndex < 0 || Snap.ActiveStateName.IsEmpty())
+        // Derive the active state directly from Run.Segments instead of relying on
+        // _ScrubSnapshot. The snapshot can lag (computed from a different code path)
+        // and bailing when its index is -1 made the panel stuck on "No selection"
+        // for valid scrub positions during the initial state.
+        auto ActiveStateName = FString{};
+        auto ActiveSegStart = 0.0;
+        auto ActiveSegEnd = 0.0;
+        auto ActiveSegStartFrame = uint64{0};
+        auto ActiveSegIdx = -1;
+        for (auto i = 0; i < Run.Segments.Num(); ++i)
+        {
+            auto& Seg = Run.Segments[i];
+            if (ScrubState.ScrubTime >= Seg.StartTime && ScrubState.ScrubTime <= Seg.EndTime)
+            {
+                ActiveStateName = Seg.StateName;
+                ActiveSegStart = Seg.StartTime;
+                ActiveSegEnd = Seg.EndTime;
+                ActiveSegStartFrame = Seg.StartFrame;
+                ActiveSegIdx = i;
+                break;
+            }
+        }
+        // Fall back to the snapshot's name if the time-based search didn't hit (rare,
+        // e.g. needle exactly between segments due to floating-point edge).
+        if (ActiveStateName.IsEmpty())
+        {
+            ActiveStateName = _ViewModel->Get_ScrubSnapshot().ActiveStateName;
+        }
+        if (ActiveStateName.IsEmpty())
         { return MakeNoSelection(); }
 
-        auto StateDisplay = FCkSmLayoutParams::ComputeDisplayName(Snap.ActiveStateName, Depth);
+        auto StateDisplay = FCkSmLayoutParams::ComputeDisplayName(ActiveStateName, Depth);
 
         // Scrub frame number — derived live via lambda so it updates as the needle moves
         // even if structural content is cached.
@@ -2373,14 +2400,16 @@ auto
                 ]
         ];
 
-        // Dwell info (live)
+        // Dwell info (live) — derived directly from ScrubTime and the active segment's
+        // start so the number is correct regardless of snapshot lag.
+        auto SegStartCapture = ActiveSegStart;
         auto DwellAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
-            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel)]()
+            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SegStartCapture]()
             {
                 auto VM = ViewModelWeak.Pin();
                 if (NOT VM.IsValid()) { return FText::GetEmpty(); }
-                auto& S = VM->Get_ScrubSnapshot();
-                return FText::FromString(FString::Printf(TEXT("Dwelt %.2fs in this state"), S.TimeInState));
+                auto Dwell = FMath::Max(0.0, VM->Get_ScrubState().ScrubTime - SegStartCapture);
+                return FText::FromString(FString::Printf(TEXT("Dwelt %.2fs in this state"), Dwell));
             }));
 
         Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
@@ -2391,10 +2420,16 @@ auto
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
         ];
 
+        // Segment 0 is the synthesized initial state (no preceding transition); subsequent
+        // segments correspond 1:1 with history entries: segment k > 0 was entered via
+        // History[k-1] and is left via History[k] (if present).
+        auto CameFromHistIdx = ActiveSegIdx > 0 ? ActiveSegIdx - 1 : -1;
+        auto NextHistIdx = (ActiveSegIdx >= 0 && ActiveSegIdx < Run.History.Num()) ? ActiveSegIdx : -1;
+
         // CAME FROM (previous transition)
-        if (Snap.HistoryIndex >= 0 && Snap.HistoryIndex < Run.History.Num())
+        if (CameFromHistIdx >= 0 && CameFromHistIdx < Run.History.Num())
         {
-            auto& PrevEntry = Run.History[Snap.HistoryIndex];
+            auto& PrevEntry = Run.History[CameFromHistIdx];
             auto FromName = FCkSmLayoutParams::ComputeDisplayName(PrevEntry.FromStateName, Depth);
 
             Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
@@ -2408,13 +2443,11 @@ auto
         }
 
         // NEXT TRANSITION (upcoming history entry, if any)
-        auto NextIdx = Snap.HistoryIndex + 1;
-        if (NextIdx >= 0 && NextIdx < Run.History.Num())
+        if (NextHistIdx >= 0 && NextHistIdx < Run.History.Num())
         {
-            auto& NextEntry = Run.History[NextIdx];
+            auto& NextEntry = Run.History[NextHistIdx];
             auto NextName = FCkSmLayoutParams::ComputeDisplayName(NextEntry.ToStateName, Depth);
-            auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber)
-                - static_cast<int64>(Run.History[FMath::Max(Snap.HistoryIndex, 0)].FrameNumber);
+            auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber) - static_cast<int64>(ActiveSegStartFrame);
 
             Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
             Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)

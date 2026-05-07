@@ -40,6 +40,7 @@ auto
         if (IsPausedNow && NOT _WasPausedLastTick)
         {
             _PauseStartTime = FPlatformTime::Seconds();
+            _GFrameAtPauseStart = GFrameCounter;
         }
         else if (NOT IsPausedNow && _WasPausedLastTick)
         {
@@ -691,9 +692,13 @@ auto
         SmInfo.CurrentRun.EndTime = 0.0;
         SmInfo.CurrentRun.Duration = Now - RunStartTime;
         SmInfo.CurrentRun.History = SmInfo.History;
-        SmInfo.CurrentRun.Segments = BuildTimelineSegments(SmInfo.History, RunStartTime, Now, InitialStateName, GFrameCounter);
+        // While paused, freeze the current frame at the value captured when pause
+        // started so the live segment doesn't keep growing as engine frames continue
+        // to tick during pause (PIE pause stops the SM, not the editor render loop).
+        const uint64 EffectiveFrame = _IsPieDebugPaused ? _GFrameAtPauseStart : GFrameCounter;
+        SmInfo.CurrentRun.Segments = BuildTimelineSegments(SmInfo.History, RunStartTime, Now, InitialStateName, EffectiveFrame);
         SmInfo.CurrentRun.BusyFrames = DetectBusyFrames(SmInfo.History, RunStartTime);
-        SmInfo.CurrentRun.FrameSegments = BuildFrameSegments(SmInfo.History, RunStartTime, Now, GFrameCounter);
+        SmInfo.CurrentRun.FrameSegments = BuildFrameSegments(SmInfo.History, RunStartTime, Now, EffectiveFrame);
 
         // Populate pause markers from breakpoint hit wall times
         for (const auto& HitWallTime : _BreakpointHitWallTimes)

@@ -45,6 +45,7 @@ auto
         else if (NOT IsPausedNow && _WasPausedLastTick)
         {
             _CompletedPauseIntervals.Add({_PauseStartTime, FPlatformTime::Seconds()});
+            _CompletedPauseFrameIntervals.Add({_GFrameAtPauseStart, GFrameCounter});
         }
 
         _WasPausedLastTick = IsPausedNow;
@@ -508,7 +509,7 @@ auto
         ViewerEntry.FromStateName = HistoryEntry.FromStateName;
         ViewerEntry.ToStateName = HistoryEntry.ToStateName;
         ViewerEntry.SubSmParentStateName = HistoryEntry.SubSmParentStateName;
-        ViewerEntry.FrameNumber = HistoryEntry.FrameNumber;
+        ViewerEntry.FrameNumber = ComputeLogicalFrame(HistoryEntry.FrameNumber);
         ViewerEntry.ConditionNames = HistoryEntry.TransitionConditionNames;
         ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistoryEntry.RealTimeSeconds);
 
@@ -692,10 +693,11 @@ auto
         SmInfo.CurrentRun.EndTime = 0.0;
         SmInfo.CurrentRun.Duration = Now - RunStartTime;
         SmInfo.CurrentRun.History = SmInfo.History;
-        // While paused, freeze the current frame at the value captured when pause
-        // started so the live segment doesn't keep growing as engine frames continue
-        // to tick during pause (PIE pause stops the SM, not the editor render loop).
-        const uint64 EffectiveFrame = _IsPieDebugPaused ? _GFrameAtPauseStart : GFrameCounter;
+        // Logical frame: GFrameCounter with paused engine frames subtracted, so the
+        // live segment's EndFrame stays consistent with history's StartFrame across
+        // pause cycles. While paused, ComputeLogicalFrame returns the value at the
+        // moment pause began (the active-pause portion is included in the subtraction).
+        const uint64 EffectiveFrame = ComputeLogicalFrame(GFrameCounter);
         SmInfo.CurrentRun.Segments = BuildTimelineSegments(SmInfo.History, RunStartTime, Now, InitialStateName, EffectiveFrame);
         SmInfo.CurrentRun.BusyFrames = DetectBusyFrames(SmInfo.History, RunStartTime);
         SmInfo.CurrentRun.FrameSegments = BuildFrameSegments(SmInfo.History, RunStartTime, Now, EffectiveFrame);
@@ -747,7 +749,7 @@ auto
                 auto ViewerEntry = FCkSmDebugger_HistoryEntry{};
                 ViewerEntry.FromStateName = HistEntry.FromStateName;
                 ViewerEntry.ToStateName = HistEntry.ToStateName;
-                ViewerEntry.FrameNumber = HistEntry.FrameNumber;
+                ViewerEntry.FrameNumber = ComputeLogicalFrame(HistEntry.FrameNumber);
                 ViewerEntry.ConditionNames = HistEntry.TransitionConditionNames;
                 ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistEntry.RealTimeSeconds);
 
@@ -1266,6 +1268,32 @@ auto
     }
 
     return InWallClockTime - TotalPauseBefore;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
+    ComputeLogicalFrame(
+        uint64 InRawFrame) const
+    -> uint64
+{
+    uint64 PausedFramesBefore = 0;
+
+    for (const auto& [PauseStart, PauseEnd] : _CompletedPauseFrameIntervals)
+    {
+        if (InRawFrame > PauseStart)
+        {
+            PausedFramesBefore += FMath::Min<uint64>(InRawFrame, PauseEnd) - PauseStart;
+        }
+    }
+
+    if (_WasPausedLastTick && InRawFrame > _GFrameAtPauseStart)
+    {
+        PausedFramesBefore += FMath::Min<uint64>(InRawFrame, GFrameCounter) - _GFrameAtPauseStart;
+    }
+
+    return (InRawFrame > PausedFramesBefore) ? InRawFrame - PausedFramesBefore : 0;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

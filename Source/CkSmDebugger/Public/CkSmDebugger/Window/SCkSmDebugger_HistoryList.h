@@ -40,6 +40,10 @@ private:
     FDelegateHandle _SmDataRefreshedHandle;
     FDelegateHandle _SmListChangedHandle;
     int32 _LastHistoryCount = 0;
+    // True while Tick is programmatically selecting a row to mirror the scrub needle.
+    // OnSelectionChanged uses this to skip its ScrubTime-update path so the auto-select
+    // doesn't pin the needle to the row's exact frame.
+    bool _IsApplyingScrubSelection = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

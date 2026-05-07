@@ -128,6 +128,8 @@ struct FCkSmDebugger_TimelineSegment
     int32 StateIndex = -1;
     double StartTime = 0.0;
     double EndTime = 0.0;
+    uint64 StartFrame = 0;
+    uint64 EndFrame = 0;
     FLinearColor Color = FLinearColor::White;
     int32 HierarchyDepth = 0;
 };
@@ -229,6 +231,7 @@ struct FCkSmDebugger_ScrubState
     int32 SelectedHistoryIndex = -1;
     double TimelineViewDuration = 10.0;
     float TimelineScrollX = 0.0f;
+    bool ShowFramesOnTimeline = true;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

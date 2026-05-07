@@ -255,7 +255,7 @@ auto
         SmInfo.InitialStateClass = InSmHandle.Get<ck::FFragment_Sm_Params>().Get_InitialStateClass();
     }
 
-    // FFragment_Sm_Context was removed — SM now lives on the game entity
+    // FFragment_Sm_Context was removed ï¿½ SM now lives on the game entity
     // directly rather than referencing one. Fall through to resolving the
     // debug name off the SM handle itself.
     SmInfo.DebugName = UCk_Utils_Handle_UE::Get_DebugName(InSmHandle).ToString();
@@ -379,7 +379,7 @@ auto
     // (only when the state becomes current). Target states of outgoing transitions
     // get placeholder entries (StateClass + StateName only). The graph walker, gated
     // on CK_BUILD_SM_GRAPH_WALK, walks all reachable states up-front and records the
-    // full static structure — including conditions and their modes. Using it here
+    // full static structure ï¿½ including conditions and their modes. Using it here
     // means the debugger can show event-driven / override / tick indicators for
     // every state from the first frame, not only after they've been visited.
     if (InSmHandle.Has<ck::FFragment_Sm_Debug_GraphDefinition>())
@@ -434,7 +434,7 @@ auto
                     }
                 }
 
-                // Only synthesize transitions if this state has none in SmInfo yet —
+                // Only synthesize transitions if this state has none in SmInfo yet ï¿½
                 // otherwise the cache path already provided them (with live data).
                 auto AlreadyHasTransitions = false;
                 for (const auto& ExistingTrans : SmInfo.Transitions)
@@ -527,7 +527,7 @@ auto
 
     // Current state: live dwell since we most recently entered it.
     // Walk the backend history backwards to find the latest transition where
-    // ToStateClass == CurrentStateClass — that's when this visit began. The
+    // ToStateClass == CurrentStateClass ï¿½ that's when this visit began. The
     // debug fragment's CurrentStateEnteredAtRealTime can accumulate across
     // repeated entries in some paths, so we prefer the history timestamp and
     // fall back to the fragment only when there is no matching entry yet.
@@ -549,11 +549,11 @@ auto
         { EnteredAt = ComputeLogicalTime(Debug.Get_CurrentStateEnteredAtRealTime()); }
 
         // For sub-SMs still on their initial state, the backend has no matching
-        // history entry yet — fall back to the birth time supplied by the parent.
+        // history entry yet ï¿½ fall back to the birth time supplied by the parent.
         if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
         { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
 
-        // Birth time is an authoritative lower bound for sub-SMs — when a parent
+        // Birth time is an authoritative lower bound for sub-SMs ï¿½ when a parent
         // state re-enters and re-boots its sub-SM, Debug.Get_CurrentStateEnteredAtRealTime
         // can carry a stale value from a previous incarnation (same initial state class),
         // producing massively inflated dwells. Clamp to the most recent birth.
@@ -577,7 +577,7 @@ auto
     // locate the matching entry timestamp by searching backwards for the last
     // prior entry whose ToStateClass matches. Searching (instead of blindly
     // reading HistIdx-1) is needed because the history chain can have gaps
-    // when sub-SMs stop/start — the neighbouring entry's ToStateClass is not
+    // when sub-SMs stop/start ï¿½ the neighbouring entry's ToStateClass is not
     // guaranteed to match.
     auto VisitedStateClasses = TSet<TSubclassOf<UCk_SmState_EntityScript>>{};
 
@@ -622,14 +622,14 @@ auto
         }
 
         // Sub-SM initial states never appear as ToStateClass in their own
-        // history — their enter time is the birth time supplied by the parent.
+        // history ï¿½ their enter time is the birth time supplied by the parent.
         if (EnteredAt <= 0.0 && InBirthRealTimeSeconds > 0.0)
         { EnteredAt = ComputeLogicalTime(InBirthRealTimeSeconds); }
 
         auto ExitedAt = ComputeLogicalTime(Entry.RealTimeSeconds);
 
         // Sub-SM re-entry: discard history rows whose exit timestamp predates the
-        // current incarnation's birth — those belong to a previous sub-SM run and
+        // current incarnation's birth ï¿½ those belong to a previous sub-SM run and
         // would otherwise mix old timing into the freshly-rebooted sub-SM.
         if (InBirthRealTimeSeconds > 0.0)
         {
@@ -691,9 +691,9 @@ auto
         SmInfo.CurrentRun.EndTime = 0.0;
         SmInfo.CurrentRun.Duration = Now - RunStartTime;
         SmInfo.CurrentRun.History = SmInfo.History;
-        SmInfo.CurrentRun.Segments = BuildTimelineSegments(SmInfo.History, RunStartTime, Now, InitialStateName);
+        SmInfo.CurrentRun.Segments = BuildTimelineSegments(SmInfo.History, RunStartTime, Now, InitialStateName, GFrameCounter);
         SmInfo.CurrentRun.BusyFrames = DetectBusyFrames(SmInfo.History, RunStartTime);
-        SmInfo.CurrentRun.FrameSegments = BuildFrameSegments(SmInfo.History, RunStartTime, Now);
+        SmInfo.CurrentRun.FrameSegments = BuildFrameSegments(SmInfo.History, RunStartTime, Now, GFrameCounter);
 
         // Populate pause markers from breakpoint hit wall times
         for (const auto& HitWallTime : _BreakpointHitWallTimes)
@@ -856,7 +856,7 @@ auto
             { continue; }
 
             // The parent records a "(start)" marker in its own history when a
-            // sub-SM boots — find the most recent one so we can hand the birth
+            // sub-SM boots ï¿½ find the most recent one so we can hand the birth
             // time down. The sub-SM's own history never contains this marker,
             // so its initial state's first dwell can only be reconstructed via
             // the parent. Walk backwards so repeated start/stop cycles pick up
@@ -917,7 +917,7 @@ auto
         }
     }
 
-    // Recurse for nested sub-SMs — only scan newly added states to avoid re-merging
+    // Recurse for nested sub-SMs ï¿½ only scan newly added states to avoid re-merging
     if (InOutSmInfo.States.Num() > OriginalStateCount)
     {
         // Nested sub-SMs within newly-added states: we don't have their owning
@@ -1043,7 +1043,8 @@ auto
         const TArray<FCkSmDebugger_HistoryEntry>& InHistory,
         double InRunStartTime,
         double InNow,
-        const FString& InInitialStateName)
+        const FString& InInitialStateName,
+        uint64 InCurrentFrameNumber)
     -> TArray<FCkSmDebugger_TimelineSegment>
 {
     auto Segments = TArray<FCkSmDebugger_TimelineSegment>{};
@@ -1056,6 +1057,15 @@ auto
             Segment.StateName = InInitialStateName;
             Segment.StartTime = 0.0;
             Segment.EndTime = InNow - InRunStartTime;
+            // No history â†’ no known start frame. Estimate at 60 FPS so the timeline
+            // still shows reasonable per-frame slicing for the initial state.
+            auto FramesElapsed = static_cast<uint64>(FMath::RoundToInt(Segment.EndTime * 60.0));
+            Segment.StartFrame = (InCurrentFrameNumber > FramesElapsed)
+                ? InCurrentFrameNumber - FramesElapsed
+                : 0;
+            Segment.EndFrame = InCurrentFrameNumber > Segment.StartFrame
+                ? InCurrentFrameNumber
+                : Segment.StartFrame;
             Segment.Color = CkSmDebugger::ComputeStateColor(InInitialStateName);
             Segments.Add(MoveTemp(Segment));
         }
@@ -1063,32 +1073,46 @@ auto
         return Segments;
     }
 
-    // First segment: initial state (FromState of first entry) from time 0 to first transition
+    // First segment: initial state (FromState of first entry) from time 0 to first transition.
+    // The first transition's FrameNumber is the EndFrame; StartFrame is unknown (run start),
+    // estimated below at 60 FPS from the time delta.
     {
         auto Segment = FCkSmDebugger_TimelineSegment{};
         Segment.StateName = InHistory[0].FromStateName;
         Segment.StartTime = 0.0;
         Segment.EndTime = InHistory[0].RealTimeSeconds - InRunStartTime;
+        Segment.EndFrame = InHistory[0].FrameNumber;
+        auto FramesElapsed = static_cast<uint64>(FMath::RoundToInt(Segment.EndTime * 60.0));
+        Segment.StartFrame = (Segment.EndFrame > FramesElapsed)
+            ? Segment.EndFrame - FramesElapsed
+            : 0;
         Segment.Color = CkSmDebugger::ComputeStateColor(Segment.StateName);
         Segments.Add(MoveTemp(Segment));
     }
 
-    // Middle segments: each history entry's ToState occupies from this entry's time to the next entry's time
+    // Middle/last segments: each history entry's ToState occupies from this entry's time
+    // to the next entry's time. Frame range comes from history entry frame numbers (or
+    // GFrameCounter for the live last segment).
     for (auto Index = 0; Index < InHistory.Num(); ++Index)
     {
         auto Segment = FCkSmDebugger_TimelineSegment{};
         Segment.StateName = InHistory[Index].ToStateName;
         Segment.StartTime = InHistory[Index].RealTimeSeconds - InRunStartTime;
+        Segment.StartFrame = InHistory[Index].FrameNumber;
 
         if (Index + 1 < InHistory.Num())
         {
             Segment.EndTime = InHistory[Index + 1].RealTimeSeconds - InRunStartTime;
+            Segment.EndFrame = InHistory[Index + 1].FrameNumber;
         }
         else
         {
-            // Last entry is the currently-active state — extend to "now" so the
+            // Last entry is the currently-active state â€” extend to "now" so the
             // swim-lane bar keeps growing while the state is being dwelt in.
             Segment.EndTime = InNow > InRunStartTime ? InNow - InRunStartTime : Segment.StartTime;
+            Segment.EndFrame = (InCurrentFrameNumber > Segment.StartFrame)
+                ? InCurrentFrameNumber
+                : Segment.StartFrame;
         }
 
         Segment.Color = CkSmDebugger::ComputeStateColor(Segment.StateName);
@@ -1159,13 +1183,32 @@ auto
     BuildFrameSegments(
         const TArray<FCkSmDebugger_HistoryEntry>& InHistory,
         double InRunStartTime,
-        double InNow)
+        double InNow,
+        uint64 InCurrentFrameNumber)
     -> TArray<FCkSmDebugger_FrameSegment>
 {
     auto Segments = TArray<FCkSmDebugger_FrameSegment>{};
 
     if (InHistory.IsEmpty())
-    { return Segments; }
+    {
+        // No transitions yet â€” synthesize a single frame segment from run start to "now"
+        // so the timeline can still draw frame-numbered cells for the initial state.
+        // We don't know the exact run start frame, so estimate at 60fps; the absolute frame
+        // numbers may drift slightly but the cell count and labels are correct.
+        if (InNow > InRunStartTime && InCurrentFrameNumber > 0)
+        {
+            auto Segment = FCkSmDebugger_FrameSegment{};
+            Segment.StartTime = 0.0;
+            Segment.EndTime = InNow - InRunStartTime;
+            auto FramesElapsed = static_cast<uint64>(FMath::RoundToInt(Segment.EndTime * 60.0));
+            Segment.StartFrame = (InCurrentFrameNumber > FramesElapsed)
+                ? InCurrentFrameNumber - FramesElapsed
+                : 0;
+            Segment.EndFrame = InCurrentFrameNumber;
+            Segments.Add(MoveTemp(Segment));
+        }
+        return Segments;
+    }
 
     for (auto Index = 0; Index < InHistory.Num(); ++Index)
     {
@@ -1180,8 +1223,12 @@ auto
         }
         else
         {
+            // Live segment: terminate at "now" both in time and in frame count, so the
+            // timeline can slice the currently-active state into per-frame cells.
             Segment.EndTime = InNow > InRunStartTime ? InNow - InRunStartTime : 0.0;
-            Segment.EndFrame = Segment.StartFrame;
+            Segment.EndFrame = (InCurrentFrameNumber > Segment.StartFrame)
+                ? InCurrentFrameNumber
+                : Segment.StartFrame;
         }
 
         Segments.Add(MoveTemp(Segment));

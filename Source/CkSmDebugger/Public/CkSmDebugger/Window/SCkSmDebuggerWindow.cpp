@@ -1553,6 +1553,19 @@ auto
         Sig.ScrubHistoryIdx = ScrubSnap.HistoryIndex;
         Sig.ScrubActiveStateIdx = ScrubSnap.ActiveStateIndex;
 
+        Sig.ScrubAlignsWithSelectedEntry = 1;
+        if (Sig.ScrubMode && SmInfo && _SelectedHistoryEntry.IsValid())
+        {
+            auto& SS = _ViewModel->Get_ScrubState();
+            auto RIdx = SS.SelectedRunIndex;
+            auto& R = (RIdx < 0)
+                ? SmInfo->CurrentRun
+                : (RIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RIdx] : SmInfo->CurrentRun);
+            auto EntryRunRel = _SelectedHistoryEntry->RealTimeSeconds - R.StartTime;
+            constexpr auto Epsilon = 0.05;
+            Sig.ScrubAlignsWithSelectedEntry = (FMath::Abs(EntryRunRel - SS.ScrubTime) <= Epsilon) ? 1 : 0;
+        }
+
         if (SmInfo && Sig.NodeIdx >= 0 && Sig.NodeIdx < SmInfo->States.Num())
         {
             Sig.TaskCount = SmInfo->States[Sig.NodeIdx].Tasks.Num();
@@ -1599,8 +1612,27 @@ auto
 
     // ───────────────────────────────────────────────────────────────────
     // Case 1: history entry selected
+    //
+    // Skipped when scrubbing AND the needle has moved away from the entry's
+    // time — that means the user clicked a row earlier but is now actively
+    // dragging the needle; the live scrub snapshot (Case 4) wins. Without
+    // this guard, the panel would stay stuck on the old entry forever.
     // ───────────────────────────────────────────────────────────────────
-    if (_SelectedHistoryEntry.IsValid())
+    auto IsScrubbingForCase1 = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
+    auto Case1NeedleAlignsWithEntry = true;
+    if (IsScrubbingForCase1 && _SelectedHistoryEntry.IsValid())
+    {
+        auto& SS = _ViewModel->Get_ScrubState();
+        auto RIdx = SS.SelectedRunIndex;
+        auto& R = (RIdx < 0)
+            ? SmInfo->CurrentRun
+            : (RIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RIdx] : SmInfo->CurrentRun);
+        auto EntryRunRel = _SelectedHistoryEntry->RealTimeSeconds - R.StartTime;
+        constexpr auto Epsilon = 0.05;  // 50 ms — tolerance for "still on the clicked row"
+        Case1NeedleAlignsWithEntry = FMath::Abs(EntryRunRel - SS.ScrubTime) <= Epsilon;
+    }
+
+    if (_SelectedHistoryEntry.IsValid() && Case1NeedleAlignsWithEntry)
     {
         auto& Entry = *_SelectedHistoryEntry;
         auto ToName   = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName,   Depth);

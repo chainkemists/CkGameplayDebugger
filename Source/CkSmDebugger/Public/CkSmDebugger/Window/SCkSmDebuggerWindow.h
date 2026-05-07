@@ -110,6 +110,10 @@ private:
         int32 ScrubHistoryIdx = -1;
         int32 ScrubActiveStateIdx = -1;
         int32 ScrubMode = 0; // 0 = not scrubbing, 1 = scrubbing
+        // True when the scrub needle is sitting on the selected history entry's time
+        // (within epsilon). When this flips false during scrub, Case 1 yields to the
+        // live scrub-snapshot (Case 4) and the panel must rebuild.
+        int32 ScrubAlignsWithSelectedEntry = 1;
 
         auto operator==(const FDetailSignature& Other) const -> bool
         {
@@ -121,7 +125,8 @@ private:
                 && TransitionCount == Other.TransitionCount
                 && ScrubHistoryIdx == Other.ScrubHistoryIdx
                 && ScrubActiveStateIdx == Other.ScrubActiveStateIdx
-                && ScrubMode == Other.ScrubMode;
+                && ScrubMode == Other.ScrubMode
+                && ScrubAlignsWithSelectedEntry == Other.ScrubAlignsWithSelectedEntry;
         }
         auto operator!=(const FDetailSignature& Other) const -> bool { return !(*this == Other); }
     };

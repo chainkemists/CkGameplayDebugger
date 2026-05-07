@@ -337,8 +337,20 @@ auto
                     ? FLinearColor(0.05f, 0.05f, 0.05f)
                     : FLinearColor(0.95f, 0.95f, 0.95f);
 
-                FSlateDrawElement::MakeText(
+                // Draw a solid backing block under the text in the segment color so the
+                // 1px cell gaps don't stripe the glyphs. Sits between the cell pass and
+                // the text itself.
+                constexpr auto BgPadX = 4.0f;
+                constexpr auto BgPadY = 1.0f;
+                auto BgPos = FVector2D(TextPos.X - BgPadX, TextPos.Y - BgPadY);
+                auto BgSize = FVector2D(TextSize.X + BgPadX * 2.0f, TextSize.Y + BgPadY * 2.0f);
+                FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId + 1,
+                    InGeometry.ToPaintGeometry(BgSize, FSlateLayoutTransform(BgPos)),
+                    Brush, ESlateDrawEffect::None, Segment.Color);
+
+                FSlateDrawElement::MakeText(
+                    InOutDrawElements, InLayerId + 2,
                     InGeometry.ToPaintGeometry(TextSize, FSlateLayoutTransform(TextPos)),
                     DisplayName, Font, ESlateDrawEffect::None,
                     LabelColor);

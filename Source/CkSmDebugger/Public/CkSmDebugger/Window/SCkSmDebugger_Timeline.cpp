@@ -270,50 +270,43 @@ auto
         constexpr auto Gap = 1.0f;
         auto BodyWidth = FMath::Max(Width - Gap, 1.0f);
 
-        // Per-frame cell slicing: read the frame range straight off the segment (set by
-        // BuildTimelineSegments). The previous TimeToFrame-based approach hit boundary
-        // ambiguities on the live segment and the synthesized first segment.
+        // Always draw the segment as a solid colored block. Per-frame structure is then
+        // overlaid as thin darker-shade separator lines at each frame boundary — this
+        // keeps the segment a coherent block of color so labels read cleanly, while
+        // still showing where individual frames begin and end.
+        FSlateDrawElement::MakeBox(
+            InOutDrawElements, InLayerId,
+            InGeometry.ToPaintGeometry(
+                FVector2D(BodyWidth, SegmentHeight),
+                FSlateLayoutTransform(FVector2D(X0, 0.0f))),
+            Brush, ESlateDrawEffect::None, Segment.Color);
+
         auto FrameCount = static_cast<int64>(FMath::Max<int64>(
             static_cast<int64>(Segment.EndFrame) - static_cast<int64>(Segment.StartFrame), 1));
         auto FullWidth = FMath::Max(X1Full - X0Full, 1.0f);
         auto PxPerFrame = FullWidth / static_cast<float>(FrameCount);
-        // Slice down to 2px/frame — at the lower bound the gap shrinks to 0.5px so cells
-        // remain visible (vs. forcing a 1px gap that would consume the whole cell).
-        auto SliceCells = FrameCount > 1 && PxPerFrame >= 2.0f;
+        auto DrawFrameLines = FrameCount > 1 && PxPerFrame >= 2.0f;
 
-        if (SliceCells)
+        if (DrawFrameLines)
         {
-            // Constant 1px gap — readable at all zoom levels even when each cell narrows
-            // to its 1px floor. Adaptive gaps were too subtle to see.
-            auto CellGap = Gap;
-            for (auto F = int64{0}; F < FrameCount; ++F)
+            // Darker variant of the segment color — visible against the segment but soft
+            // enough not to compete with the centered label text.
+            auto LineColor = Segment.Color * 0.55f;
+            LineColor.A = 1.0f;
+
+            for (auto F = int64{1}; F < FrameCount; ++F)
             {
-                auto CellStartTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));
-                auto CellEndTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F + 1) / static_cast<double>(FrameCount));
-                auto CellX0 = TimeToX(CellStartTime, InViewStart, InViewDuration, Size.X);
-                auto CellX1 = TimeToX(CellEndTime, InViewStart, InViewDuration, Size.X);
+                auto BoundaryTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));
+                auto LineX = TimeToX(BoundaryTime, InViewStart, InViewDuration, Size.X);
+                if (LineX < 0.0f || LineX > Size.X) { continue; }
 
-                if (CellX1 < 0.0f || CellX0 > Size.X) { continue; }
-                CellX0 = FMath::Max(CellX0, 0.0f);
-                CellX1 = FMath::Min(CellX1, static_cast<float>(Size.X));
-
-                auto CellWidth = FMath::Max(CellX1 - CellX0 - CellGap, 1.0f);
                 FSlateDrawElement::MakeBox(
                     InOutDrawElements, InLayerId,
                     InGeometry.ToPaintGeometry(
-                        FVector2D(CellWidth, SegmentHeight),
-                        FSlateLayoutTransform(FVector2D(CellX0, 0.0f))),
-                    Brush, ESlateDrawEffect::None, Segment.Color);
+                        FVector2D(1.0f, SegmentHeight),
+                        FSlateLayoutTransform(FVector2D(LineX, 0.0f))),
+                    Brush, ESlateDrawEffect::None, LineColor);
             }
-        }
-        else
-        {
-            FSlateDrawElement::MakeBox(
-                InOutDrawElements, InLayerId,
-                InGeometry.ToPaintGeometry(
-                    FVector2D(BodyWidth, SegmentHeight),
-                    FSlateLayoutTransform(FVector2D(X0, 0.0f))),
-                Brush, ESlateDrawEffect::None, Segment.Color);
         }
 
         if (Width > 30.0f)

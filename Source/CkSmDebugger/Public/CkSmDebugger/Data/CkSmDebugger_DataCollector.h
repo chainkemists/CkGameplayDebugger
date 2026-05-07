@@ -94,6 +94,12 @@ private:
     TArray<TPair<double, double>> _CompletedPauseIntervals;
     TArray<double> _BreakpointHitWallTimes;
     int32 _LastObservedRunCounter = -1;
+
+    // Frame-counter snapshot at the start of the current pause. Used so the live
+    // segment's EndFrame stays frozen while PIE is paused — GFrameCounter advances
+    // every engine tick regardless of pause, which would otherwise make per-frame
+    // cells shrink endlessly during pause.
+    uint64 _GFrameAtPauseStart = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

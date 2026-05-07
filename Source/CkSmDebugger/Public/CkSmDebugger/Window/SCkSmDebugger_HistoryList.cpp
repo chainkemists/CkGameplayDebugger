@@ -111,6 +111,7 @@ auto
     if (Selected.Num() == 1 && Selected[0] == TargetItem) { return; }
 
     _IsApplyingScrubSelection = true;
+    _ListView->ClearSelection();
     _ListView->SetItemSelection(TargetItem, true, ESelectInfo::Direct);
     _ListView->RequestScrollIntoView(TargetItem);
     _IsApplyingScrubSelection = false;

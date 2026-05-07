@@ -261,7 +261,23 @@ auto
 
     auto NewScrubState = _ViewModel->Get_ScrubState();
     NewScrubState.ViewMode = ECkSmDebugger_ViewMode::Scrub;
-    NewScrubState.ScrubTime = InItem->RealTimeSeconds;
+
+    // History entries store absolute logical time (ComputeLogicalTime'd FPlatformTime::Seconds).
+    // Timeline segments and the scrub cursor live in run-relative space — subtract Run.StartTime
+    // so the playhead lands on the correct segment instead of jumping to ~17M seconds off-screen.
+    auto SmInfo = _ViewModel->Get_CurrentSmInfo();
+    auto RunRelative = InItem->RealTimeSeconds;
+    if (SmInfo)
+    {
+        auto& Run = (NewScrubState.SelectedRunIndex < 0)
+            ? SmInfo->CurrentRun
+            : (NewScrubState.SelectedRunIndex < SmInfo->CompletedRuns.Num()
+                ? SmInfo->CompletedRuns[NewScrubState.SelectedRunIndex]
+                : SmInfo->CurrentRun);
+        RunRelative = InItem->RealTimeSeconds - Run.StartTime;
+    }
+    NewScrubState.ScrubTime = RunRelative;
+    NewScrubState.TimelineScrollX = 0.0f;
 
     auto ItemIndex = _Items.IndexOfByKey(InItem);
     NewScrubState.SelectedHistoryIndex = ItemIndex;
@@ -273,7 +289,6 @@ auto
     {
         if (_Items[i] == InItem)
         {
-            auto SmInfo = _ViewModel->Get_CurrentSmInfo();
             if (SmInfo)
             {
                 auto SourceIdx = -1;

@@ -356,7 +356,10 @@ auto
     if (History.Num() == 0)
     { return; }
 
-    auto ScrubTime = _ScrubState.ScrubTime;
+    // ScrubTime is run-relative (seconds since run start), but History[i].RealTimeSeconds
+    // is absolute logical time (same space as Run->StartTime). Convert ScrubTime to the
+    // absolute space once so the loop comparisons are well-formed.
+    auto ScrubTime = _ScrubState.ScrubTime + Run->StartTime;
 
     auto BestIndex = -1;
     for (auto i = 0; i < History.Num(); ++i)

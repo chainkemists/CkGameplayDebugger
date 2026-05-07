@@ -150,7 +150,10 @@ auto
 
             auto Frac = (InRunRelativeTime - Seg.StartTime) / Span;
             auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
-            return static_cast<int64>(Seg.StartFrame) + static_cast<int64>(FMath::RoundToInt(Frac * FrameSpan));
+            // Floor (not round) so the reported frame matches the cell visually under the
+            // needle: cell N covers [N/total, (N+1)/total), and Floor maps any time in that
+            // range to N. Round would tick to N+1 at the cell midpoint, ahead of the needle.
+            return static_cast<int64>(Seg.StartFrame) + FMath::FloorToInt64(Frac * FrameSpan);
         }
     }
 

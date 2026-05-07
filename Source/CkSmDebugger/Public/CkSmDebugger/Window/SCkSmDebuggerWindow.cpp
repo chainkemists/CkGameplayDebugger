@@ -1953,16 +1953,146 @@ auto
     }
 
     // ───────────────────────────────────────────────────────────────────
-    // Case 3: state selected in graph
-    //
-    // Skipped while scrubbing — the window's Tick auto-sets SelectedNodeIndex to
-    // the active state at scrub time, which would always win against the scrub
-    // snapshot below. Explicit history/transition clicks (cases 1 and 2) still
-    // take priority because they're checked earlier.
+    // Scrub prefix (renders before the state body when scrubbing): adds SCRUB AT
+    // / CAME FROM / NEXT TRANSITION blocks at the top so the user sees both the
+    // needle's position context AND the live state details in one panel. The
+    // state body itself (Case 3 below) renders the active state's tasks and
+    // transitions — the window's Tick auto-mirrors SelectedNodeIndex to the
+    // scrubbed-active state, so the same code path serves both modes.
+    // ───────────────────────────────────────────────────────────────────
+    auto IsScrubbing = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
+    if (IsScrubbing)
+    {
+        auto& ScrubState = _ViewModel->Get_ScrubState();
+        auto SRunIdx = ScrubState.SelectedRunIndex;
+        auto& SRun = (SRunIdx < 0)
+            ? SmInfo->CurrentRun
+            : (SRunIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[SRunIdx] : SmInfo->CurrentRun);
+
+        auto ActiveSegIdx = -1;
+        auto ActiveSegStart = 0.0;
+        auto ActiveSegStartFrame = uint64{0};
+        for (auto i = 0; i < SRun.Segments.Num(); ++i)
+        {
+            auto& Seg = SRun.Segments[i];
+            if (ScrubState.ScrubTime >= Seg.StartTime && ScrubState.ScrubTime <= Seg.EndTime)
+            {
+                ActiveSegIdx = i;
+                ActiveSegStart = Seg.StartTime;
+                ActiveSegStartFrame = Seg.StartFrame;
+                break;
+            }
+        }
+
+        if (ActiveSegIdx >= 0)
+        {
+            auto ScrubFrameAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+                [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel)]()
+                {
+                    auto VM = ViewModelWeak.Pin();
+                    if (NOT VM.IsValid()) { return FText::GetEmpty(); }
+                    auto* Info = VM->Get_CurrentSmInfo();
+                    if (NOT Info) { return FText::GetEmpty(); }
+                    auto& SS = VM->Get_ScrubState();
+                    auto RIdx = SS.SelectedRunIndex;
+                    auto& R = (RIdx < 0)
+                        ? Info->CurrentRun
+                        : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+
+                    auto T = SS.ScrubTime;
+                    int64 Frame = R.FrameSegments.IsEmpty()
+                        ? 0
+                        : static_cast<int64>(R.FrameSegments[0].StartFrame);
+                    if (NOT R.FrameSegments.IsEmpty())
+                    {
+                        if (T <= R.FrameSegments[0].StartTime) { Frame = static_cast<int64>(R.FrameSegments[0].StartFrame); }
+                        else if (T >= R.FrameSegments.Last().EndTime) { Frame = static_cast<int64>(R.FrameSegments.Last().EndFrame); }
+                        else
+                        {
+                            for (auto& Seg : R.FrameSegments)
+                            {
+                                if (T >= Seg.StartTime && T <= Seg.EndTime)
+                                {
+                                    auto Span = Seg.EndTime - Seg.StartTime;
+                                    auto Frac = (Span > 0.0) ? (T - Seg.StartTime) / Span : 0.0;
+                                    auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
+                                    Frame = static_cast<int64>(Seg.StartFrame) + FMath::FloorToInt64(Frac * FrameSpan);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return FText::FromString(FString::Printf(TEXT("Frame [%lld]  \x2022  %.2fs"), Frame, T));
+                }));
+
+            Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("SCRUB AT")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(ScrubFrameAttr)
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+            ];
+
+            // CAME FROM (the transition that entered this segment)
+            auto CameFromHistIdx = ActiveSegIdx > 0 ? ActiveSegIdx - 1 : -1;
+            if (CameFromHistIdx >= 0 && CameFromHistIdx < SRun.History.Num())
+            {
+                auto& PrevEntry = SRun.History[CameFromHistIdx];
+                auto FromName = FCkSmLayoutParams::ComputeDisplayName(PrevEntry.FromStateName, Depth);
+
+                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
+                Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                ];
+            }
+
+            // NEXT TRANSITION (upcoming history entry, if any)
+            auto NextHistIdx = (ActiveSegIdx >= 0 && ActiveSegIdx < SRun.History.Num()) ? ActiveSegIdx : -1;
+            if (NextHistIdx >= 0 && NextHistIdx < SRun.History.Num())
+            {
+                auto& NextEntry = SRun.History[NextHistIdx];
+                auto NextName = FCkSmLayoutParams::ComputeDisplayName(NextEntry.ToStateName, Depth);
+                auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber) - static_cast<int64>(ActiveSegStartFrame);
+
+                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
+                Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(FString::Printf(
+                            TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
+                            *NextName, FramesAhead, NextEntry.FrameNumber)))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                ];
+            }
+            else
+            {
+                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                ];
+            }
+
+            // Visual divider between scrub-navigation and the state body that follows.
+            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ SNullWidget::NullWidget ];
+        }
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Case 3: state body (live or scrubbed). The window's Tick auto-mirrors
+    // SelectedNodeIndex to the scrub-active state, so the same code path
+    // renders state + tasks + transitions in either mode.
     // ───────────────────────────────────────────────────────────────────
     auto SelectedIdx = _ViewModel->Get_SelectedNodeIndex();
-    auto IsScrubbing = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
-    if (NOT IsScrubbing && SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
+    if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
     {
         auto& State = SmInfo->States[SelectedIdx];
         auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
@@ -2277,221 +2407,6 @@ auto
                     ];
                 }
             }
-        }
-
-        return Root;
-    }
-
-    // ───────────────────────────────────────────────────────────────────
-    // Case 4: scrubbing (no other selection) — show what the SM was doing
-    // at the needle's position.
-    // ───────────────────────────────────────────────────────────────────
-    if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-    {
-        auto& ScrubState = _ViewModel->Get_ScrubState();
-        auto RunIdx = ScrubState.SelectedRunIndex;
-        auto& Run = (RunIdx < 0)
-            ? SmInfo->CurrentRun
-            : (RunIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RunIdx] : SmInfo->CurrentRun);
-
-        // Derive the active state directly from Run.Segments instead of relying on
-        // _ScrubSnapshot. The snapshot can lag (computed from a different code path)
-        // and bailing when its index is -1 made the panel stuck on "No selection"
-        // for valid scrub positions during the initial state.
-        auto ActiveStateName = FString{};
-        auto ActiveSegStart = 0.0;
-        auto ActiveSegEnd = 0.0;
-        auto ActiveSegStartFrame = uint64{0};
-        auto ActiveSegIdx = -1;
-        for (auto i = 0; i < Run.Segments.Num(); ++i)
-        {
-            auto& Seg = Run.Segments[i];
-            if (ScrubState.ScrubTime >= Seg.StartTime && ScrubState.ScrubTime <= Seg.EndTime)
-            {
-                ActiveStateName = Seg.StateName;
-                ActiveSegStart = Seg.StartTime;
-                ActiveSegEnd = Seg.EndTime;
-                ActiveSegStartFrame = Seg.StartFrame;
-                ActiveSegIdx = i;
-                break;
-            }
-        }
-        // Fall back to the snapshot's name if the time-based search didn't hit (rare,
-        // e.g. needle exactly between segments due to floating-point edge).
-        if (ActiveStateName.IsEmpty())
-        {
-            ActiveStateName = _ViewModel->Get_ScrubSnapshot().ActiveStateName;
-        }
-        if (ActiveStateName.IsEmpty())
-        { return MakeNoSelection(); }
-
-        auto StateDisplay = FCkSmLayoutParams::ComputeDisplayName(ActiveStateName, Depth);
-
-        // Scrub frame number — derived live via lambda so it updates as the needle moves
-        // even if structural content is cached.
-        auto ScrubFrameAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
-            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel)]()
-            {
-                auto VM = ViewModelWeak.Pin();
-                if (NOT VM.IsValid()) { return FText::GetEmpty(); }
-                auto* Info = VM->Get_CurrentSmInfo();
-                if (NOT Info) { return FText::GetEmpty(); }
-                auto& SS = VM->Get_ScrubState();
-                auto RIdx = SS.SelectedRunIndex;
-                auto& R = (RIdx < 0)
-                    ? Info->CurrentRun
-                    : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
-
-                // Reuse TimeToFrame logic locally — find the FrameSegment containing ScrubTime.
-                auto T = SS.ScrubTime;
-                if (R.FrameSegments.IsEmpty()) { return FText::FromString(FString::Printf(TEXT("Frame [?]  •  %.2fs"), T)); }
-
-                int64 Frame = static_cast<int64>(R.FrameSegments[0].StartFrame);
-                if (T <= R.FrameSegments[0].StartTime) { Frame = static_cast<int64>(R.FrameSegments[0].StartFrame); }
-                else if (T >= R.FrameSegments.Last().EndTime) { Frame = static_cast<int64>(R.FrameSegments.Last().EndFrame); }
-                else
-                {
-                    for (auto& Seg : R.FrameSegments)
-                    {
-                        if (T >= Seg.StartTime && T <= Seg.EndTime)
-                        {
-                            auto Span = Seg.EndTime - Seg.StartTime;
-                            auto Frac = (Span > 0.0) ? (T - Seg.StartTime) / Span : 0.0;
-                            auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
-                            Frame = static_cast<int64>(Seg.StartFrame) + static_cast<int64>(FMath::RoundToInt(Frac * FrameSpan));
-                            break;
-                        }
-                    }
-                }
-                return FText::FromString(FString::Printf(TEXT("Frame [%lld]  \x2022  %.2fs"), Frame, T));
-            }));
-
-        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("SCRUB AT")) ];
-        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-        [
-            SNew(STextBlock)
-                .Text(ScrubFrameAttr)
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
-                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-        ];
-
-        // STATE row with active pill + dwell
-        Root->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("STATE")) ];
-        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-        [
-            SNew(SHorizontalBox)
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("\x25CF")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(StateDisplay))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                ]
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
-                [
-                    MakePill(TEXT("ACTIVE"), FCkSmDebuggerStyle::Color_Sm_TaskRunning)
-                ]
-        ];
-
-        // Dwell info (live) — derived directly from ScrubTime and the active segment's
-        // start so the number is correct regardless of snapshot lag.
-        auto SegStartCapture = ActiveSegStart;
-        auto DwellAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
-            [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SegStartCapture]()
-            {
-                auto VM = ViewModelWeak.Pin();
-                if (NOT VM.IsValid()) { return FText::GetEmpty(); }
-                auto Dwell = FMath::Max(0.0, VM->Get_ScrubState().ScrubTime - SegStartCapture);
-                return FText::FromString(FString::Printf(TEXT("Dwelt %.2fs in this state"), Dwell));
-            }));
-
-        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-        [
-            SNew(STextBlock)
-                .Text(DwellAttr)
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-        ];
-
-        // Segment 0 is the synthesized initial state (no preceding transition); subsequent
-        // segments correspond 1:1 with history entries: segment k > 0 was entered via
-        // History[k-1] and is left via History[k] (if present).
-        auto CameFromHistIdx = ActiveSegIdx > 0 ? ActiveSegIdx - 1 : -1;
-        auto NextHistIdx = (ActiveSegIdx >= 0 && ActiveSegIdx < Run.History.Num()) ? ActiveSegIdx : -1;
-
-        // CAME FROM (previous transition)
-        if (CameFromHistIdx >= 0 && CameFromHistIdx < Run.History.Num())
-        {
-            auto& PrevEntry = Run.History[CameFromHistIdx];
-            auto FromName = FCkSmLayoutParams::ComputeDisplayName(PrevEntry.FromStateName, Depth);
-
-            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
-            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-            ];
-        }
-
-        // NEXT TRANSITION (upcoming history entry, if any)
-        if (NextHistIdx >= 0 && NextHistIdx < Run.History.Num())
-        {
-            auto& NextEntry = Run.History[NextHistIdx];
-            auto NextName = FCkSmLayoutParams::ComputeDisplayName(NextEntry.ToStateName, Depth);
-            auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber) - static_cast<int64>(ActiveSegStartFrame);
-
-            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
-            Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(FString::Printf(
-                        TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
-                        *NextName, FramesAhead, NextEntry.FrameNumber)))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-            ];
-
-            if (NextEntry.ConditionNames.Num() > 0)
-            {
-                for (auto& CondName : NextEntry.ConditionNames)
-                {
-                    auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
-                    Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-                            [
-                                MakeConditionPill(ECk_SmConditionResult::Pass)
-                            ]
-                            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                            [
-                                SNew(STextBlock)
-                                    .Text(FText::FromString(CName))
-                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            ]
-                    ];
-                }
-            }
-        }
-        else
-        {
-            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-            ];
         }
 
         return Root;

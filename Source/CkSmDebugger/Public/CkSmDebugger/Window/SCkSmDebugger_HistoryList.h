@@ -40,6 +40,7 @@ private:
     FDelegateHandle _SmDataRefreshedHandle;
     FDelegateHandle _SmListChangedHandle;
     int32 _LastHistoryCount = 0;
+    int32 _LastScrubScrollIdx = -1;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

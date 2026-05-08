@@ -193,11 +193,24 @@ private:
     double _LiveSegmentFreezeEndTime = 0.0;
     uint64 _LiveSegmentFreezeEndFrame = 0;
 
+    // Bookmarks — session-level run-relative timestamps the user has flagged with
+    // Ctrl+B during scrub. F2 / F3 cycle backward / forward; Shift+B (handled in
+    // the window) removes the nearest bookmark. Lives on the view model so the
+    // timeline paint pass and inspector both observe the same set, and gets cleared
+    // along with other handle-bearing state on PIE world tear-down.
+    TArray<double> _Bookmarks;
+
 public:
     auto Get_LiveSegmentFreezeActive() const -> bool { return _LiveSegmentFreezeActive; }
     auto Get_LiveSegmentFreezeStateName() const -> const FString& { return _LiveSegmentFreezeStateName; }
     auto Get_LiveSegmentFreezeEndTime() const -> double { return _LiveSegmentFreezeEndTime; }
     auto Get_LiveSegmentFreezeEndFrame() const -> uint64 { return _LiveSegmentFreezeEndFrame; }
+
+    auto Get_Bookmarks() const -> const TArray<double>& { return _Bookmarks; }
+    auto AddBookmark(double InRunRelativeTime) -> void;
+    auto RemoveNearestBookmark(double InRunRelativeTime, double InTolerance = 0.05) -> void;
+    auto FindNextBookmark(double InRunRelativeTime, int32 InDirection) const -> double;
+    auto ClearBookmarks() -> void { _Bookmarks.Empty(); }
 };
 
 // --------------------------------------------------------------------------------------------------------------------

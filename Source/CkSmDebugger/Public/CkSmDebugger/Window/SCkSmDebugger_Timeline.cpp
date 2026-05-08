@@ -228,7 +228,8 @@ auto
     PaintScrubFrameHighlight(InAllottedGeometry, InOutDrawElements, InLayerId + 2, Run, ViewStart, ViewDuration);
     PaintBusyFrames(InAllottedGeometry, InOutDrawElements, InLayerId + 3, Run, ViewStart, ViewDuration);
     PaintPauseMarkers(InAllottedGeometry, InOutDrawElements, InLayerId + 4, Run, ViewStart, ViewDuration);
-    PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 5, ViewStart, ViewDuration);
+    PaintBookmarks(InAllottedGeometry, InOutDrawElements, InLayerId + 5, ViewStart, ViewDuration);
+    PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 6, ViewStart, ViewDuration);
 
     // Time / frame labels along the bottom edge with ruler ticks above them.
     // Major ticks at each label, minor ticks (4 between each major) for finer
@@ -605,6 +606,58 @@ auto
                 FVector2D(Thickness, SegmentHeight - Mid),
                 FSlateLayoutTransform(FVector2D(X + Offset - Thickness * 0.5f, Mid))),
             Brush, ESlateDrawEffect::None, MarkerColor);
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebugger_Timeline::
+    PaintBookmarks(
+        const FGeometry& InGeometry,
+        FSlateWindowElementList& InOutDrawElements,
+        int32 InLayerId,
+        double InViewStart,
+        double InViewDuration) const
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+    auto& Bookmarks = _ViewModel->Get_Bookmarks();
+    if (Bookmarks.IsEmpty()) { return; }
+
+    auto Size = InGeometry.GetLocalSize();
+    auto SegmentHeight = Size.Y * 0.5f;
+    auto Brush = FAppStyle::GetBrush("WhiteBrush");
+
+    // Bookmark visual: a small filled triangle (▼) hanging from the very top of
+    // the segment row. Distinct from pause markers (cyan/amber bands) and busy
+    // underlines (orange below the row) so all three coexist legibly.
+    constexpr auto FlagWidth = 8.0f;
+    constexpr auto FlagHeight = 6.0f;
+    auto FlagColor = FLinearColor(1.0f, 0.85f, 0.2f, 0.95f);  // soft gold
+
+    for (auto BookmarkTime : Bookmarks)
+    {
+        auto X = TimeToX(BookmarkTime, InViewStart, InViewDuration, Size.X);
+        if (X < -FlagWidth || X > Size.X + FlagWidth) { continue; }
+
+        // Filled rect tab at the top
+        FSlateDrawElement::MakeBox(
+            InOutDrawElements, InLayerId,
+            InGeometry.ToPaintGeometry(
+                FVector2D(FlagWidth, FlagHeight),
+                FSlateLayoutTransform(FVector2D(X - FlagWidth * 0.5f, 0.0f))),
+            Brush, ESlateDrawEffect::None, FlagColor);
+
+        // Thin vertical guide down through the segment row so users can see which
+        // moment the bookmark refers to.
+        FSlateDrawElement::MakeBox(
+            InOutDrawElements, InLayerId,
+            InGeometry.ToPaintGeometry(
+                FVector2D(1.0f, SegmentHeight),
+                FSlateLayoutTransform(FVector2D(X - 0.5f, 0.0f))),
+            Brush, ESlateDrawEffect::None,
+            FLinearColor(FlagColor.R, FlagColor.G, FlagColor.B, 0.45f));
     }
 }
 

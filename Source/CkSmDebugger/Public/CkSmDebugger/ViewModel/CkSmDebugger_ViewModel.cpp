@@ -20,6 +20,7 @@ auto
     _ScrubHighlightSource = -1;
     _ScrubHighlightTarget = -1;
     _NeedsRelayout = true;
+    _Bookmarks.Empty();
 
     // Broadcast empties so every listener drops stale data in one pass
     OnSmListChanged.Broadcast(_DataCollector.Get_AllStateMachines());
@@ -90,10 +91,77 @@ auto
     _ViewMode = ECkSmDebugger_ViewMode::Live;
     _ScrubState = FCkSmDebugger_ScrubState{};
     _ScrubSnapshot = FCkSmDebugger_ScrubSnapshot{};
+    _Bookmarks.Empty();
     ClearScrubTransitionHighlight();
 
     OnSelectedNodeChanged.Broadcast(_SelectedNodeIndex);
     OnViewModeChanged.Broadcast(_ViewMode);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_ViewModel::
+    AddBookmark(
+        double InRunRelativeTime)
+    -> void
+{
+    // Deduplicate within a small tolerance so rapid double-presses don't accumulate.
+    constexpr auto Tolerance = 0.01;
+    for (auto Existing : _Bookmarks)
+    {
+        if (FMath::Abs(Existing - InRunRelativeTime) < Tolerance) { return; }
+    }
+    _Bookmarks.Add(InRunRelativeTime);
+    _Bookmarks.Sort();
+}
+
+auto
+    FCkSmDebugger_ViewModel::
+    RemoveNearestBookmark(
+        double InRunRelativeTime,
+        double InTolerance)
+    -> void
+{
+    auto BestIdx = -1;
+    auto BestDist = InTolerance;
+    for (auto i = 0; i < _Bookmarks.Num(); ++i)
+    {
+        auto Dist = FMath::Abs(_Bookmarks[i] - InRunRelativeTime);
+        if (Dist <= BestDist)
+        {
+            BestDist = Dist;
+            BestIdx = i;
+        }
+    }
+    if (BestIdx >= 0)
+    { _Bookmarks.RemoveAt(BestIdx); }
+}
+
+auto
+    FCkSmDebugger_ViewModel::
+    FindNextBookmark(
+        double InRunRelativeTime,
+        int32 InDirection) const
+    -> double
+{
+    if (_Bookmarks.IsEmpty()) { return -1.0; }
+    constexpr auto Epsilon = 0.001;
+    if (InDirection > 0)
+    {
+        for (auto B : _Bookmarks)
+        {
+            if (B > InRunRelativeTime + Epsilon) { return B; }
+        }
+    }
+    else
+    {
+        for (auto i = _Bookmarks.Num() - 1; i >= 0; --i)
+        {
+            if (_Bookmarks[i] < InRunRelativeTime - Epsilon) { return _Bookmarks[i]; }
+        }
+    }
+    return -1.0;
 }
 
 auto

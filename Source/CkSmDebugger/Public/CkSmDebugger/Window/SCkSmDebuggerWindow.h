@@ -45,6 +45,9 @@ private:
     auto RefreshDetailContent() -> void;
     auto RefreshSmSelector() -> void;
 
+    // Move the scrub needle to the previous (-1) or next (+1) history transition.
+    auto StepScrubToTransition(int32 InDirection) -> void;
+
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
     TSharedPtr<FCkSmDebugger_DataCollector> _DataCollector;
 

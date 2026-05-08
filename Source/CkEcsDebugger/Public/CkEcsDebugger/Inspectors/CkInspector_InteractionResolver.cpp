@@ -110,7 +110,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
             }
             _LastTotalBestCount += BestHandles.Num();
 
-            auto BestBox = FCkInspectorWidgetBuilder::MakeBadgeBox(BestHandles, SelectionModel);
+            auto BestBox = FCkInspectorWidgetBuilder::MakeBadgeBox(BestHandles);
             _BestTargetBoxes.Add(BestBox);
             Builder.AddWidgetRow(FText::FromString(TEXT("Best Targets:")), BestBox);
         }
@@ -156,7 +156,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         }
         _LastAvailableCount = AvailHandles.Num();
 
-        _AvailableTargetsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(AvailHandles, SelectionModel);
+        _AvailableTargetsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(AvailHandles);
         Builder.AddWidgetRow(FText::FromString(TEXT("Available Targets:")), _AvailableTargetsBox.ToSharedRef());
     }
 
@@ -190,7 +190,7 @@ auto FCkInspector_InteractionResolver::Tick(const FCk_Handle& Entity, float InDe
             {
                 if (ck::IsValid(T)) { AvailHandles.Add(T); }
             }
-            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_AvailableTargetsBox, AvailHandles, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_AvailableTargetsBox, AvailHandles);
         }
     }
 
@@ -216,7 +216,7 @@ auto FCkInspector_InteractionResolver::Tick(const FCk_Handle& Entity, float InDe
             {
                 if (ck::IsValid(T)) { BestHandles.Add(T); }
             }
-            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_BestTargetBoxes[i], BestHandles, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_BestTargetBoxes[i], BestHandles);
         }
     }
 }

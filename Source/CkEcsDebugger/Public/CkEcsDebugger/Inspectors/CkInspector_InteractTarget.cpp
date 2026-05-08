@@ -160,7 +160,7 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
             if (State.Handle == InTarget)
             {
                 State.LastInteractionCount = InteractionHandles.Num();
-                State.InteractionsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(InteractionHandles, SelectionModel);
+                State.InteractionsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(InteractionHandles);
                 Builder.AddWidgetRow(FText::FromString(TEXT("Interactions:")), State.InteractionsBox.ToSharedRef());
                 break;
             }
@@ -211,7 +211,7 @@ auto FCkInspector_InteractTarget::Tick(const FCk_Handle& Entity, float InDeltaTi
                     InteractionHandles.Add(Interaction);
                 }
             }
-            FCkInspectorWidgetBuilder::PopulateBadgeBox(*State.InteractionsBox, InteractionHandles, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*State.InteractionsBox, InteractionHandles);
         }
     }
 }

@@ -14,6 +14,7 @@
 #include "Widgets/Text/STextBlock.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Relationships)
 
 auto FCkInspector_Relationships::Get_ComponentName() const -> FText
@@ -28,7 +29,13 @@ auto FCkInspector_Relationships::CanInspect(const FCk_Handle& Entity) const -> b
 
 auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    auto WeakSelectionModel = SelectionModel;
+    const auto ContextOwner = UCk_Utils_ContextOwner_UE::Has(Entity)
+        ? UCk_Utils_ContextOwner_UE::Get_ContextOwner(Entity)
+        : FCk_Handle{};
+
+    const auto LifetimeOwner = Entity.Has<ck::FFragment_LifetimeOwner>()
+        ? FCk_Handle{Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity()}
+        : FCk_Handle{};
 
     return FCkInspectorWidgetBuilder()
         .AddConditionalRow(
@@ -45,50 +52,16 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
                 { return CkDebugStyle::Relationship(); }
                 return CkDebugStyle::Err();
             })
-        .AddClickableRow(
+        .AddWidgetRow(
             FText::FromString(TEXT("Context Owner:")),
-            [](const FCk_Handle& E)
-            {
-                if (UCk_Utils_ContextOwner_UE::Has(E))
-                {
-                    const auto ContextOwner = UCk_Utils_ContextOwner_UE::Get_ContextOwner(E);
-                    return FText::FromString(ck::Format_UE(TEXT("{} | {}"), UCk_Utils_Handle_UE::Get_DebugName(ContextOwner), ContextOwner));
-                }
-                return FText::FromString(TEXT("None"));
-            },
-            CkDebugStyle::Reference(),
-            [WeakSelectionModel, Entity]()
-            {
-                if (NOT WeakSelectionModel.IsValid() || NOT UCk_Utils_ContextOwner_UE::Has(Entity))
-                { return; }
-                const auto ContextOwner = UCk_Utils_ContextOwner_UE::Get_ContextOwner(Entity);
-                if (ck::IsValid(ContextOwner))
-                {
-                    WeakSelectionModel->Set_SelectedEntities({ ContextOwner });
-                }
-            })
-        .AddClickableRow(
+            SNew(SCkDebug_EntityRef)
+                .Entity(ContextOwner)
+                .ShowName(true))
+        .AddWidgetRow(
             FText::FromString(TEXT("Lifetime Owner:")),
-            [](const FCk_Handle& E)
-            {
-                if (E.Has<ck::FFragment_LifetimeOwner>())
-                {
-                    const auto& LifetimeOwner = E.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                    return FText::FromString(ck::Format_UE(TEXT("{} | {}"), UCk_Utils_Handle_UE::Get_DebugName(LifetimeOwner), LifetimeOwner));
-                }
-                return FText::FromString(TEXT("None"));
-            },
-            CkDebugStyle::Reference(),
-            [WeakSelectionModel, Entity]()
-            {
-                if (NOT WeakSelectionModel.IsValid() || NOT Entity.Has<ck::FFragment_LifetimeOwner>())
-                { return; }
-                const auto& LifetimeOwner = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-                if (ck::IsValid(LifetimeOwner))
-                {
-                    WeakSelectionModel->Set_SelectedEntities({ LifetimeOwner });
-                }
-            })
+            SNew(SCkDebug_EntityRef)
+                .Entity(LifetimeOwner)
+                .ShowName(true))
         .Build(Entity);
 }
 

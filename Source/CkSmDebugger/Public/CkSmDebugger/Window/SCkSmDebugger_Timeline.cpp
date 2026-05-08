@@ -365,6 +365,12 @@ auto
             {
                 auto BoundaryTime = Segment.StartTime + (Segment.EndTime - Segment.StartTime) * (static_cast<double>(F) / static_cast<double>(FrameCount));
                 auto LineX = TimeToX(BoundaryTime, InViewStart, InViewDuration, Size.X);
+                // Snap to integer pixel so the 1px boundary lines stay crisp and
+                // anchored as the timeline scrolls. Without snapping, sub-pixel
+                // float positions get alpha-blended across two pixels, which the
+                // eye reads as the cells "drifting" within the segment as time
+                // advances and ViewStart shifts by fractional pixels.
+                LineX = FMath::FloorToFloat(LineX);
                 if (LineX < 0.0f || LineX > Size.X) { continue; }
 
                 FSlateDrawElement::MakeBox(

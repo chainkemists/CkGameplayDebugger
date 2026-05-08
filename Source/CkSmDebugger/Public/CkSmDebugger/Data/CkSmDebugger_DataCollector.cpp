@@ -1159,6 +1159,10 @@ auto
             {
                 auto BusyFrame = FCkSmDebugger_TimelineBusyFrame{};
                 BusyFrame.Time = FirstEntryTime - InRunStartTime;
+                // EndTime closes the underline at the next-frame transition's time —
+                // that's where this engine frame's chain of state changes ends, so the
+                // mark spans every cell entered during this single frame.
+                BusyFrame.EndTime = InHistory[Index].RealTimeSeconds - InRunStartTime;
                 BusyFrame.FrameNumber = CurrentFrame;
                 BusyFrame.TransitionCount = Count;
                 BusyFrames.Add(MoveTemp(BusyFrame));
@@ -1170,11 +1174,13 @@ auto
         }
     }
 
-    // Check the last group
+    // Check the last group — no trailing transition to read EndTime from, so reuse
+    // the last entry's time as both endpoints (single-position mark).
     if (Count >= 2)
     {
         auto BusyFrame = FCkSmDebugger_TimelineBusyFrame{};
         BusyFrame.Time = FirstEntryTime - InRunStartTime;
+        BusyFrame.EndTime = InHistory.Last().RealTimeSeconds - InRunStartTime;
         BusyFrame.FrameNumber = CurrentFrame;
         BusyFrame.TransitionCount = Count;
         BusyFrames.Add(MoveTemp(BusyFrame));

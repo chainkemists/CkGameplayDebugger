@@ -2863,11 +2863,10 @@ auto
                         if (NOT Info || TargetIdx >= Info->Transitions.Num()) { return FText::GetEmpty(); }
                         auto& T = Info->Transitions[TargetIdx];
 
-                        // While scrubbing on a completed segment, mirror the per-condition logic:
-                        // for the transition that actually fired, all conditions passed
-                        // (TotalCount/TotalCount); for any other transition out of this state,
-                        // none fired so report 0/TotalCount. Live counts are only meaningful
-                        // for the current live state.
+                        // While scrubbing, look up the recorded SatisfiedCount/TotalCount
+                        // from the per-frame snapshot history at the scrub time. Falls
+                        // back to live counts only when no snapshot is available (e.g.
+                        // completed-run snapshots not yet populated).
                         if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
                         {
                             auto& SS = VM->Get_ScrubState();
@@ -2875,19 +2874,17 @@ auto
                             auto& R = (RIdx < 0)
                                 ? Info->CurrentRun
                                 : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
-                            auto ActiveSegIdx = -1;
-                            for (auto i = 0; i < R.Segments.Num(); ++i)
+                            const auto AbsoluteTime = R.StartTime + SS.ScrubTime;
+
+                            if (auto* Snap = CkSmDebugger::FindTransitionSnapshot(R, T.SourceStateClass, T.TargetStateClass, T.Order))
                             {
-                                if (SS.ScrubTime >= R.Segments[i].StartTime && SS.ScrubTime <= R.Segments[i].EndTime)
-                                { ActiveSegIdx = i; break; }
-                            }
-                            if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
-                            {
-                                auto& NextEntry = R.History[ActiveSegIdx];
-                                auto Fired = (T.SourceStateName == NextEntry.FromStateName
-                                              && T.TargetStateName == NextEntry.ToStateName);
-                                auto Satisfied = Fired ? T.TotalCount : 0;
-                                return FText::FromString(FString::Printf(TEXT("%d/%d"), Satisfied, T.TotalCount));
+                                if (auto* Sample = CkSmDebugger::FindSampleAtTime(Snap->ResultHistory, AbsoluteTime))
+                                {
+                                    return FText::FromString(FString::Printf(TEXT("%d/%d"),
+                                        Sample->SatisfiedCount, Sample->TotalCount));
+                                }
+                                // Pre-first-sample: nothing has been satisfied yet.
+                                return FText::FromString(FString::Printf(TEXT("0/%d"), T.TotalCount));
                             }
                         }
 
@@ -2948,11 +2945,10 @@ auto
                             auto& Tr = Info->Transitions[TargetIdx];
                             if (CondIdx >= Tr.Conditions.Num()) { return ECk_SmConditionResult::Undetermined; }
 
-                            // While scrubbing on a completed segment, return Pass for the
-                            // conditions named in the next transition's ConditionNames (those
-                            // are the ones that actually fired the exit) and Fail for the
-                            // rest. Live polling values are only meaningful for the current
-                            // live state.
+                            // While scrubbing, look up the recorded condition result
+                            // from the per-frame snapshot history at the scrub time.
+                            // Falls back to the live result only when no snapshot
+                            // exists (e.g. completed-run snapshots not yet populated).
                             if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
                             {
                                 auto& SS = VM->Get_ScrubState();
@@ -2960,23 +2956,17 @@ auto
                                 auto& R = (RIdx < 0)
                                     ? Info->CurrentRun
                                     : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
-                                auto ActiveSegIdx = -1;
-                                for (auto i = 0; i < R.Segments.Num(); ++i)
+                                const auto AbsoluteTime = R.StartTime + SS.ScrubTime;
+
+                                if (auto* Snap = CkSmDebugger::FindTransitionSnapshot(R, Tr.SourceStateClass, Tr.TargetStateClass, Tr.Order))
                                 {
-                                    if (SS.ScrubTime >= R.Segments[i].StartTime && SS.ScrubTime <= R.Segments[i].EndTime)
-                                    { ActiveSegIdx = i; break; }
-                                }
-                                if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
-                                {
-                                    auto& NextEntry = R.History[ActiveSegIdx];
-                                    if (Tr.SourceStateName == NextEntry.FromStateName
-                                        && Tr.TargetStateName == NextEntry.ToStateName)
+                                    if (CondIdx < Snap->ConditionResultHistory.Num())
                                     {
-                                        return NextEntry.ConditionNames.Contains(CondNameCapture)
-                                            ? ECk_SmConditionResult::Pass
-                                            : ECk_SmConditionResult::Fail;
+                                        const auto& CondHist = Snap->ConditionResultHistory[CondIdx];
+                                        if (auto* Sample = CkSmDebugger::FindSampleAtTime(CondHist, AbsoluteTime))
+                                        { return Sample->Result; }
                                     }
-                                    // Different transition (didn't fire) — return Undetermined
+                                    // Pre-first-sample: condition hasn't reported yet.
                                     return ECk_SmConditionResult::Undetermined;
                                 }
                             }

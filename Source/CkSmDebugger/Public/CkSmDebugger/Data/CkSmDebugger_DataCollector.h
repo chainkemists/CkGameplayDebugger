@@ -85,6 +85,54 @@ private:
     ComputeLogicalTime(
         double InWallClockTime) const -> double;
 
+    // Persistent per-transition sample histories. Lives on the collector
+    // (not on SmInfo) because _StateMachines is rebuilt every Collect tick;
+    // restored into matching transitions at the start of each tick and
+    // cleared on run-counter advance / PIE teardown.
+    struct FTransitionKey
+    {
+        TSubclassOf<UCk_SmState_EntityScript> SourceStateClass;
+        TSubclassOf<UCk_SmState_EntityScript> TargetStateClass;
+        int32 Order = 0;
+
+        auto operator==(const FTransitionKey& Other) const -> bool
+        {
+            return SourceStateClass == Other.SourceStateClass
+                && TargetStateClass == Other.TargetStateClass
+                && Order == Other.Order;
+        }
+
+        friend auto GetTypeHash(const FTransitionKey& InKey) -> uint32
+        {
+            return HashCombine(
+                HashCombine(GetTypeHash(InKey.SourceStateClass), GetTypeHash(InKey.TargetStateClass)),
+                ::GetTypeHash(InKey.Order));
+        }
+    };
+
+    struct FTransitionSampleRing
+    {
+        TArray<TArray<FCkSmDebugger_ConditionResultSample>> ConditionResultHistory;
+        TArray<FCkSmDebugger_TransitionResultSample>        ResultHistory;
+    };
+
+    // Keyed by SM debug name (unique enough in practice; collisions would
+    // merge harmlessly into a single ring, but BB-side debug names are unique).
+    TMap<FString, TMap<FTransitionKey, FTransitionSampleRing>> _TransitionHistoriesBySm;
+
+    // Track each SM's last observed run counter to clear histories on a new run.
+    TMap<FString, int32> _PerSmRunCounters;
+
+    auto
+    PersistTransitionHistories(
+        const FString& InSmDebugName,
+        const FCkSmDebugger_SmInfo& InSmInfo) -> void;
+
+    auto
+    RestoreTransitionHistories(
+        const FString& InSmDebugName,
+        FCkSmDebugger_SmInfo& InOutSmInfo) -> void;
+
 private:
     TArray<FCkSmDebugger_SmInfo> _StateMachines;
 

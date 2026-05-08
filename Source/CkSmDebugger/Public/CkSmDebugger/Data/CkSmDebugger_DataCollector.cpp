@@ -101,6 +101,8 @@ auto
     _CompletedPauseFrameIntervals.Reset();
     _BreakpointHitWallTimes.Reset();
     _LastObservedRunCounter = -1;
+    _TransitionHistoriesBySm.Reset();
+    _PerSmRunCounters.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -290,6 +292,21 @@ auto
         _CompletedPauseIntervals.Reset();
         _BreakpointHitWallTimes.Reset();
         _LastObservedRunCounter = CurrentRunCounter;
+    }
+
+    // Per-SM run-counter tracking — clear this SM's transition histories at
+    // run boundary so a fresh run doesn't show stale samples.
+    if (auto* PerSmRunCounter = _PerSmRunCounters.Find(SmInfo.DebugName))
+    {
+        if (*PerSmRunCounter != CurrentRunCounter)
+        {
+            _TransitionHistoriesBySm.Remove(SmInfo.DebugName);
+            *PerSmRunCounter = CurrentRunCounter;
+        }
+    }
+    else
+    {
+        _PerSmRunCounters.Add(SmInfo.DebugName, CurrentRunCounter);
     }
 
     const auto& CachedStates = Debug.Get_CachedStates();
@@ -497,16 +514,31 @@ auto
     auto SubSmHistories = TArray<FCkSmDebugger_HistoryEntry>{};
     MergeSubStateMachines(SmInfo, StateClassToIndex, SubSmHistories, InSmHandle);
 
-    // Overlay live condition satisfaction for the current state's transitions
+    // Overlay live condition satisfaction for the current state's transitions.
+    // Per-frame sample histories are persisted on the collector across ticks
+    // (since SmInfo is rebuilt each Collect): restore them onto the freshly-
+    // built transitions, let OverlayLiveData append today's sample on change,
+    // then persist back into the collector's store.
     auto CurrentStateHandle = Current.Get_CurrentStateHandle();
 
     if (ck::IsValid(CurrentStateHandle) && IsValid(SmInfo.CurrentStateClass))
     {
+        RestoreTransitionHistories(SmInfo.DebugName, SmInfo);
+
         OverlayLiveData(
             CurrentStateHandle,
             SmInfo.CurrentStateIndex,
             StateClassToIndex,
             SmInfo);
+
+        PersistTransitionHistories(SmInfo.DebugName, SmInfo);
+    }
+    else
+    {
+        // Even when there's no live state to overlay, restore persisted
+        // histories so the inspector still sees them while scrubbing a
+        // completed-but-not-restarted run.
+        RestoreTransitionHistories(SmInfo.DebugName, SmInfo);
     }
 
     // Copy history
@@ -700,6 +732,24 @@ auto
         SmInfo.CurrentRun.EndTime = 0.0;
         SmInfo.CurrentRun.Duration = Now - RunStartTime;
         SmInfo.CurrentRun.History = SmInfo.History;
+
+        // Snapshot per-transition sample histories into CurrentRun so the
+        // inspector can read them when scrubbing this run. CompletedRuns are
+        // not yet populated with TransitionSnapshots — that requires a hook
+        // into the run-end transition (TODO).
+        for (const auto& Trans : SmInfo.Transitions)
+        {
+            if (Trans.ConditionResultHistory.IsEmpty() && Trans.ResultHistory.IsEmpty())
+            { continue; }
+
+            auto Snap = FCkSmDebugger_TransitionRunSnapshot{};
+            Snap.SourceStateClass = Trans.SourceStateClass;
+            Snap.TargetStateClass = Trans.TargetStateClass;
+            Snap.Order = Trans.Order;
+            Snap.ConditionResultHistory = Trans.ConditionResultHistory;
+            Snap.ResultHistory = Trans.ResultHistory;
+            SmInfo.CurrentRun.TransitionSnapshots.Add(MoveTemp(Snap));
+        }
         // Logical frame: GFrameCounter with paused engine frames subtracted, so the
         // live segment's EndFrame stays consistent with history's StartFrame across
         // pause cycles. While paused, ComputeLogicalFrame returns the value at the
@@ -1028,6 +1078,53 @@ auto
             {
                 MatchingTransition->TransitionResult = ECk_SmTransitionResult::Undetermined;
             }
+
+            // Per-frame snapshot recording — append on change only. Read at scrub
+            // time via binary search over Time. Bounded by GCkSmDebugger_MaxResultSamplesPerCondition.
+            const auto SampleFrame = ComputeLogicalFrame(GFrameCounter);
+            const auto SampleTime  = ComputeLogicalTime(FPlatformTime::Seconds());
+
+            auto AppendCappedCondition = [](TArray<FCkSmDebugger_ConditionResultSample>& InOutHistory,
+                                            FCkSmDebugger_ConditionResultSample InSample) -> void
+            {
+                InOutHistory.Add(MoveTemp(InSample));
+                if (InOutHistory.Num() > GCkSmDebugger_MaxResultSamplesPerCondition)
+                {
+                    const auto DropCount = GCkSmDebugger_MaxResultSamplesPerCondition / 2;
+                    InOutHistory.RemoveAt(0, DropCount, EAllowShrinking::No);
+                }
+            };
+
+            // Sync per-condition history array length with current Conditions count
+            if (MatchingTransition->ConditionResultHistory.Num() != MatchingTransition->Conditions.Num())
+            { MatchingTransition->ConditionResultHistory.SetNum(MatchingTransition->Conditions.Num()); }
+
+            for (auto CondIdx = 0; CondIdx < MatchingTransition->Conditions.Num(); ++CondIdx)
+            {
+                auto& CondHistory = MatchingTransition->ConditionResultHistory[CondIdx];
+                const auto NewResult = MatchingTransition->Conditions[CondIdx].Result;
+                const auto Changed = CondHistory.IsEmpty() || CondHistory.Last().Result != NewResult;
+                if (Changed)
+                {
+                    AppendCappedCondition(CondHistory,
+                        FCkSmDebugger_ConditionResultSample{SampleFrame, SampleTime, NewResult});
+                }
+            }
+
+            auto& ResultHistory = MatchingTransition->ResultHistory;
+            const auto CountChanged = ResultHistory.IsEmpty()
+                || ResultHistory.Last().SatisfiedCount != SatisfiedCount
+                || ResultHistory.Last().TotalCount     != TotalCount;
+            if (CountChanged)
+            {
+                ResultHistory.Add(FCkSmDebugger_TransitionResultSample{
+                    SampleFrame, SampleTime, SatisfiedCount, TotalCount});
+                if (ResultHistory.Num() > GCkSmDebugger_MaxResultSamplesPerCondition)
+                {
+                    const auto DropCount = GCkSmDebugger_MaxResultSamplesPerCondition / 2;
+                    ResultHistory.RemoveAt(0, DropCount, EAllowShrinking::No);
+                }
+            }
         }
 
         // Overlay live task results
@@ -1307,6 +1404,53 @@ auto
     }
 
     return (InRawFrame > PausedFramesBefore) ? InRawFrame - PausedFramesBefore : 0;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
+    RestoreTransitionHistories(
+        const FString& InSmDebugName,
+        FCkSmDebugger_SmInfo& InOutSmInfo)
+    -> void
+{
+    auto* Bucket = _TransitionHistoriesBySm.Find(InSmDebugName);
+    if (NOT Bucket)
+    { return; }
+
+    for (auto& Trans : InOutSmInfo.Transitions)
+    {
+        const auto Key = FTransitionKey{Trans.SourceStateClass, Trans.TargetStateClass, Trans.Order};
+        if (auto* Ring = Bucket->Find(Key))
+        {
+            Trans.ConditionResultHistory = Ring->ConditionResultHistory;
+            Trans.ResultHistory          = Ring->ResultHistory;
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
+    PersistTransitionHistories(
+        const FString& InSmDebugName,
+        const FCkSmDebugger_SmInfo& InSmInfo)
+    -> void
+{
+    auto& Bucket = _TransitionHistoriesBySm.FindOrAdd(InSmDebugName);
+
+    for (const auto& Trans : InSmInfo.Transitions)
+    {
+        if (Trans.ConditionResultHistory.IsEmpty() && Trans.ResultHistory.IsEmpty())
+        { continue; }
+
+        const auto Key = FTransitionKey{Trans.SourceStateClass, Trans.TargetStateClass, Trans.Order};
+        auto& Ring = Bucket.FindOrAdd(Key);
+        Ring.ConditionResultHistory = Trans.ConditionResultHistory;
+        Ring.ResultHistory          = Trans.ResultHistory;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

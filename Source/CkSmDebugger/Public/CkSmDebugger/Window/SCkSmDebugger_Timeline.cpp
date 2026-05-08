@@ -230,19 +230,54 @@ auto
     PaintPauseMarkers(InAllottedGeometry, InOutDrawElements, InLayerId + 4, Run, ViewStart, ViewDuration);
     PaintScrubCursor(InAllottedGeometry, InOutDrawElements, InLayerId + 5, ViewStart, ViewDuration);
 
-    // Time / frame labels along the bottom edge
+    // Time / frame labels along the bottom edge with ruler ticks above them.
+    // Major ticks at each label, minor ticks (4 between each major) for finer
+    // visual subdivisions — same convention as a hardware ruler.
     {
         auto Size = InAllottedGeometry.GetLocalSize();
         auto Font = FCoreStyle::GetDefaultFontStyle("Mono", 7);
         auto TextColor = FLinearColor(0.4f, 0.4f, 0.45f);
+        auto MajorTickColor = FLinearColor(0.55f, 0.55f, 0.6f);
+        auto MinorTickColor = FLinearColor(0.32f, 0.32f, 0.36f);
+        auto SegmentHeight = Size.Y * 0.6f;
         auto ShowFrames = ScrubState.ShowFramesOnTimeline;
+        auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
         constexpr auto LabelCount = 5;
+        constexpr auto MinorPerMajor = 5;        // 5 minor segments per major (4 minor ticks between)
+        constexpr auto MajorTickHeight = 6.0f;
+        constexpr auto MinorTickHeight = 3.0f;
+        constexpr auto TickWidth = 1.0f;
+        const auto TickBaseY = SegmentHeight + 4.0f;
+
+        // Minor ticks: between every consecutive pair of major positions.
+        for (auto i = 0; i < LabelCount * MinorPerMajor; ++i)
+        {
+            if (i % MinorPerMajor == 0) { continue; } // skip positions where major ticks live
+            auto Frac = static_cast<float>(i) / (LabelCount * MinorPerMajor);
+            auto X = Frac * Size.X;
+            FSlateDrawElement::MakeBox(
+                InOutDrawElements, InLayerId + 4,
+                InAllottedGeometry.ToPaintGeometry(
+                    FVector2D(TickWidth, MinorTickHeight),
+                    FSlateLayoutTransform(FVector2D(X - TickWidth * 0.5f, TickBaseY))),
+                Brush, ESlateDrawEffect::None, MinorTickColor);
+        }
+
+        // Major ticks + their labels.
         for (auto i = 0; i <= LabelCount; ++i)
         {
             auto Frac = static_cast<float>(i) / LabelCount;
             auto Time = ViewStart + ViewDuration * Frac;
             auto X = Frac * Size.X;
+
+            // Major tick mark above the label
+            FSlateDrawElement::MakeBox(
+                InOutDrawElements, InLayerId + 4,
+                InAllottedGeometry.ToPaintGeometry(
+                    FVector2D(TickWidth, MajorTickHeight),
+                    FSlateLayoutTransform(FVector2D(X - TickWidth * 0.5f, TickBaseY))),
+                Brush, ESlateDrawEffect::None, MajorTickColor);
 
             // Show absolute frame plus a [mod 1000] tail so the eye can easily compare
             // nearby labels even when the absolute number runs into the millions. The
@@ -383,19 +418,26 @@ auto
     -> void
 {
     auto Size = InGeometry.GetLocalSize();
+    auto SegmentHeight = Size.Y * 0.6f;
 
+    // Render the busy-frame indicator as a short underline directly under the cell row
+    // instead of a full-height vertical bar. Reads as "this frame had multiple
+    // transitions" without obscuring the cell colors above.
+    constexpr auto MarkWidthPx = 6.0f;
+    constexpr auto MarkThicknessPx = 2.0f;
+    auto Brush = FAppStyle::GetBrush("WhiteBrush");
     for (auto& BusyFrame : InRun.BusyFrames)
     {
         auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
-        if (X < 0.0f || X > Size.X) { continue; }
+        if (X < -MarkWidthPx * 0.5f || X > Size.X + MarkWidthPx * 0.5f) { continue; }
 
-        FSlateDrawElement::MakeLines(
+        FSlateDrawElement::MakeBox(
             InOutDrawElements, InLayerId,
-            InGeometry.ToPaintGeometry(),
-            TArray<FVector2D>{ FVector2D(X, 0.0f), FVector2D(X, Size.Y) },
-            ESlateDrawEffect::None,
-            FLinearColor(0.9f, 0.7f, 0.1f, 0.6f),
-            false, 1.0f);
+            InGeometry.ToPaintGeometry(
+                FVector2D(MarkWidthPx, MarkThicknessPx),
+                FSlateLayoutTransform(FVector2D(X - MarkWidthPx * 0.5f, SegmentHeight + 1.0f))),
+            Brush, ESlateDrawEffect::None,
+            FLinearColor(0.95f, 0.55f, 0.1f, 0.95f));
     }
 }
 
@@ -497,35 +539,38 @@ auto
     auto SegmentHeight = Size.Y * 0.6f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
-    // Papercut effect: a 4px-wide vertical band split down the middle by a 2px gap of
-    // background color. Reads as a "tear" in the segment row indicating execution
-    // paused and resumed at this point. Breakpoint pauses get an amber tint, manual
-    // pauses a softer cyan.
+    // Cut effect: two thin vertical segments slightly offset horizontally — top half
+    // shifted left, bottom half shifted right — meeting at the segment's vertical
+    // midpoint. Reads as a scissor snip across the timeline at this point. Breakpoint
+    // pauses get an amber tint, manual pauses a softer cyan.
+    constexpr auto Offset = 1.5f;
+    constexpr auto Thickness = 2.0f;
     for (auto& Marker : InRun.PauseMarkers)
     {
         auto X = TimeToX(Marker.Time, InViewStart, InViewDuration, Size.X);
-        if (X < -2.0f || X > Size.X + 2.0f) { continue; }
+        if (X < -Offset - Thickness || X > Size.X + Offset + Thickness) { continue; }
 
         auto MarkerColor = Marker.IsBreakpoint
             ? FLinearColor(1.0f, 0.6f, 0.0f)        // amber for breakpoint
             : FLinearColor(0.4f, 0.85f, 1.0f);      // cyan for manual pause
-        auto BgColor = FLinearColor(0.04f, 0.04f, 0.06f);
 
-        // Outer band (4px)
+        auto Mid = SegmentHeight * 0.5f;
+
+        // Top half — shifted left of center
         FSlateDrawElement::MakeBox(
             InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D(4.0f, SegmentHeight),
-                FSlateLayoutTransform(FVector2D(X - 2.0f, 0.0f))),
+                FVector2D(Thickness, Mid),
+                FSlateLayoutTransform(FVector2D(X - Offset - Thickness * 0.5f, 0.0f))),
             Brush, ESlateDrawEffect::None, MarkerColor);
 
-        // Inner gap (1px) — splits the band so it reads as a tear, not a solid bar
+        // Bottom half — shifted right of center
         FSlateDrawElement::MakeBox(
-            InOutDrawElements, InLayerId + 1,
+            InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D(1.0f, SegmentHeight),
-                FSlateLayoutTransform(FVector2D(X - 0.5f, 0.0f))),
-            Brush, ESlateDrawEffect::None, BgColor);
+                FVector2D(Thickness, SegmentHeight - Mid),
+                FSlateLayoutTransform(FVector2D(X + Offset - Thickness * 0.5f, Mid))),
+            Brush, ESlateDrawEffect::None, MarkerColor);
     }
 }
 

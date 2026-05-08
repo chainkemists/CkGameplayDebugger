@@ -50,6 +50,7 @@ private:
     auto PaintScrubCursor(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, double InViewStart, double InViewDuration) const -> void;
     auto PaintScrubFrameHighlight(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
     auto PaintPauseMarkers(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FCkSmDebugger_RunInfo& InRun, double InViewStart, double InViewDuration) const -> void;
+    auto PaintBookmarks(const FGeometry& InGeometry, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, double InViewStart, double InViewDuration) const -> void;
 
 private:
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;

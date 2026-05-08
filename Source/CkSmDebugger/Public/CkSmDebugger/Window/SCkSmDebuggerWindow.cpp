@@ -729,6 +729,41 @@ auto
     // Arrow keys step the scrub needle by transition while in Scrub mode.
     if (_ViewModel.IsValid() && _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
     {
+        // Bookmarks: Ctrl+B adds at the current scrub position; Shift+B removes
+        // the closest one; F2 / F3 cycle backward / forward.
+        if (InKeyEvent.GetKey() == EKeys::B && InKeyEvent.IsControlDown())
+        {
+            _ViewModel->AddBookmark(_ViewModel->Get_ScrubState().ScrubTime);
+            return FReply::Handled();
+        }
+        if (InKeyEvent.GetKey() == EKeys::B && InKeyEvent.IsShiftDown())
+        {
+            _ViewModel->RemoveNearestBookmark(_ViewModel->Get_ScrubState().ScrubTime);
+            return FReply::Handled();
+        }
+        if (InKeyEvent.GetKey() == EKeys::F2)
+        {
+            auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, -1);
+            if (Target >= 0.0)
+            {
+                auto NS = _ViewModel->Get_ScrubState();
+                NS.ScrubTime = Target;
+                _ViewModel->Set_ScrubState(NS);
+            }
+            return FReply::Handled();
+        }
+        if (InKeyEvent.GetKey() == EKeys::F3)
+        {
+            auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, +1);
+            if (Target >= 0.0)
+            {
+                auto NS = _ViewModel->Get_ScrubState();
+                NS.ScrubTime = Target;
+                _ViewModel->Set_ScrubState(NS);
+            }
+            return FReply::Handled();
+        }
+
         if (InKeyEvent.GetKey() == EKeys::Left)
         { StepScrubToTransition(-1); return FReply::Handled(); }
         if (InKeyEvent.GetKey() == EKeys::Right)
@@ -833,24 +868,16 @@ auto
             ]
 
         // ── Owning entity (clickable → opens in CK ECS Debugger) ─────────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Entity:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-            ]
+        // Sits next to the SM combo; that combo already shows the entity's
+        // DebugName, so the pill renders just the canonical ID. Same pattern
+        // as the GOAP and AStar toolbars (no leading "Entity:" label —
+        // visually consistent across the four debuggers).
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, 6.0f, 0.0f)
             [
                 SNew(SCkDebug_EntityRef)
-                    .ShowName(true)
                     .Entity_Lambda([this]() -> FCk_Handle
                     {
                         if (NOT _ViewModel.IsValid())
@@ -1731,6 +1758,70 @@ auto
                         .OnClicked_Lambda([this]() { StepScrubToTransition(+1); return FReply::Handled(); })
                 ]
 
+            // Bookmark add (Ctrl+B)
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x2606")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "AddBookmarkTooltip",
+                            "Add a bookmark at the current scrub position (Ctrl+B). Shift+B removes the nearest one."))
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (_ViewModel.IsValid())
+                            { _ViewModel->AddBookmark(_ViewModel->Get_ScrubState().ScrubTime); }
+                            return FReply::Handled();
+                        })
+                ]
+
+            // Prev bookmark (F2)
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x21A4\x2606")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "PrevBookmarkTooltip",
+                            "Jump to the previous bookmark (F2)."))
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (_ViewModel.IsValid())
+                            {
+                                auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, -1);
+                                if (Target >= 0.0)
+                                {
+                                    auto NS = _ViewModel->Get_ScrubState();
+                                    NS.ScrubTime = Target;
+                                    _ViewModel->Set_ScrubState(NS);
+                                }
+                            }
+                            return FReply::Handled();
+                        })
+                ]
+
+            // Next bookmark (F3)
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x2606\x21A6")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "NextBookmarkTooltip",
+                            "Jump to the next bookmark (F3)."))
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (_ViewModel.IsValid())
+                            {
+                                auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, +1);
+                                if (Target >= 0.0)
+                                {
+                                    auto NS = _ViewModel->Get_ScrubState();
+                                    NS.ScrubTime = Target;
+                                    _ViewModel->Set_ScrubState(NS);
+                                }
+                            }
+                            return FReply::Handled();
+                        })
+                ]
+
             // Back to Live — separated by a small gap rather than full-width so all
             // controls cluster left without dragging the eye across the whole row.
             + SHorizontalBox::Slot()
@@ -1749,6 +1840,10 @@ auto
                                 _ViewModel->Set_ScrubState(NS);
                                 _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
                                 _ViewModel->ClearScrubTransitionHighlight();
+                                // Defensive: any history-row selection from the earlier
+                                // scrub session could otherwise linger and momentarily
+                                // re-trigger Case 1 in the detail panel on the next scrub.
+                                _SelectedHistoryEntry.Reset();
                             }
                             return FReply::Handled();
                         })

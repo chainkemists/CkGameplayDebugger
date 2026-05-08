@@ -454,9 +454,11 @@ auto
             }
         }
 
-        // Cluster width = stacked thin cells (~1.5px each) + 1 frame of new state.
-        auto ThinCellsWidth = static_cast<float>(BusyFrame.TransitionCount - 1) * 1.5f;
-        auto Width = FMath::Max(PxPerFrame + ThinCellsWidth, MinMarkWidthPx);
+        // Cluster width = stacked thin cells (~2px each, accounting for cell+gap) +
+        // 1 frame of new state. The extra +1 pads to the right edge of the visible
+        // cell (which itself is PxPerFrame - Gap wide due to the gap between cells).
+        auto ThinCellsWidth = static_cast<float>(BusyFrame.TransitionCount - 1) * 2.0f;
+        auto Width = FMath::Max(PxPerFrame + ThinCellsWidth + 1.0f, MinMarkWidthPx);
 
         if (X + Width < 0.0f || X > Size.X) { continue; }
         auto LeftEdge = FMath::Max(X, 0.0f);
@@ -695,7 +697,8 @@ auto
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
 
-    if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+    if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
+        || InMouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton)
     {
         auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
         _PanStartX = LocalPos.X;
@@ -731,7 +734,8 @@ auto
         return FReply::Handled().ReleaseMouseCapture();
     }
 
-    if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton && _IsPanning)
+    if ((InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
+         || InMouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton) && _IsPanning)
     {
         _IsPanning = false;
         return FReply::Handled().ReleaseMouseCapture();

@@ -1488,32 +1488,8 @@ auto
                     })
             ]
 
-        // Show frames (timeline label format)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(8.0f, 2.0f, 2.0f, 2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCheckBox)
-                    .IsChecked_Lambda([this]() -> ECheckBoxState
-                    {
-                        return _ViewModel.IsValid() && _ViewModel->Get_ScrubState().ShowFramesOnTimeline
-                            ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-                    })
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InNewState)
-                    {
-                        if (NOT _ViewModel.IsValid()) { return; }
-                        auto NewScrubState = _ViewModel->Get_ScrubState();
-                        NewScrubState.ShowFramesOnTimeline = (InNewState == ECheckBoxState::Checked);
-                        _ViewModel->Set_ScrubState(NewScrubState);
-                    })
-                    .ToolTipText(NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
-                        "Show timeline labels as frame numbers (checked) or seconds (unchecked)."))
-                    [
-                        SNew(STextBlock)
-                            .Text(NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"))
-                    ]
-            ]
+        // (Show Frames toggle moved to the timeline toolbar — it's timeline-only
+        // anyway, and groups with the other timeline-related controls.)
 
         // ── Spacer ───────────────────────────────────────────────────────
 
@@ -1678,10 +1654,43 @@ auto
             return FText::FromString(FString::Printf(TEXT("%lld"), Frame));
         }));
 
-    return SNew(SBox)
-        .Visibility(IsScrubbingVis)
-        [
-            SNew(SHorizontalBox)
+    return SNew(SHorizontalBox)
+
+            // Show Frames toggle — always visible (frame labels are useful in Live
+            // mode too); the scrub-only controls below are wrapped in their own
+            // box that collapses when not scrubbing.
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f, 8.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SCheckBox)
+                        .IsChecked_Lambda([this]() -> ECheckBoxState
+                        {
+                            return _ViewModel.IsValid() && _ViewModel->Get_ScrubState().ShowFramesOnTimeline
+                                ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+                        })
+                        .OnCheckStateChanged_Lambda([this](ECheckBoxState InNewState)
+                        {
+                            if (NOT _ViewModel.IsValid()) { return; }
+                            auto NS = _ViewModel->Get_ScrubState();
+                            NS.ShowFramesOnTimeline = (InNewState == ECheckBoxState::Checked);
+                            _ViewModel->Set_ScrubState(NS);
+                        })
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
+                            "Show timeline labels as frame numbers (checked) or seconds (unchecked)."))
+                        [
+                            SNew(STextBlock)
+                                .Text(NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"))
+                        ]
+                ]
+
+            // Scrub-only cluster — collapses when not in Scrub mode.
+            + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [
+                    SNew(SBox)
+                        .Visibility(IsScrubbingVis)
+                        [
+                            SNew(SHorizontalBox)
 
             // To Start
             + SHorizontalBox::Slot()
@@ -1849,10 +1858,12 @@ auto
                         })
                 ]
 
-            // Trailing spacer so the row doesn't try to grow past content width.
+            // Trailing spacer inside the scrub-only cluster.
             + SHorizontalBox::Slot().FillWidth(1.0f)
                 [ SNullWidget::NullWidget ]
-        ];
+                        ]
+                ]
+        ;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

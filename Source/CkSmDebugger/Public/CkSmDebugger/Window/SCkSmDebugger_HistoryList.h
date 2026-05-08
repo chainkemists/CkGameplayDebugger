@@ -41,6 +41,13 @@ private:
     FDelegateHandle _SmListChangedHandle;
     int32 _LastHistoryCount = 0;
     int32 _LastScrubScrollIdx = -1;
+
+    // Dual-search state. Filter narrows _Items; Highlight only dims rows that
+    // don't match (no rebuild — applied via per-row tint lambda).
+    FString _FilterString;
+    FString _HighlightString;
+
+    auto MatchesFilter(const FCkSmDebugger_HistoryEntry& InEntry, const FString& InText) const -> bool;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

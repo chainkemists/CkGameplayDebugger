@@ -10,6 +10,7 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
@@ -31,11 +32,42 @@ auto
 
     ChildSlot
     [
-        SAssignNew(_ListView, SListView<FHistoryItemPtr>)
-            .ListItemsSource(&_Items)
-            .OnGenerateRow(this, &SCkSmDebugger_HistoryList::GenerateRow)
-            .OnSelectionChanged(this, &SCkSmDebugger_HistoryList::OnSelectionChanged)
-            .SelectionMode(ESelectionMode::Single)
+        SNew(SVerticalBox)
+
+        // Filter / Highlight inputs — same dual-bar widget used by the other
+        // CK debuggers. Filter narrows the visible rows, Highlight dims rows
+        // that don't match within the filtered set.
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(4.0f, 2.0f, 4.0f, 2.0f)
+            [
+                SNew(SCkDebug_DualSearchBar)
+                    .FilterHintText(NSLOCTEXT("CkSmDebugger", "HistoryFilterHint", "Filter transitions…"))
+                    .HighlightHintText(NSLOCTEXT("CkSmDebugger", "HistoryHighlightHint", "Highlight…"))
+                    .OnFilterTextChanged_Lambda([this](const FString& InText)
+                    {
+                        if (_FilterString == InText) { return; }
+                        _FilterString = InText;
+                        _LastHistoryCount = -1; // force RebuildList to actually rebuild
+                        RebuildList();
+                    })
+                    .OnHighlightTextChanged_Lambda([this](const FString& InText)
+                    {
+                        if (_HighlightString == InText) { return; }
+                        _HighlightString = InText;
+                        // Highlight only affects per-row tint via lambdas — no rebuild needed.
+                    })
+            ]
+
+        + SVerticalBox::Slot()
+            .FillHeight(1.0f)
+            [
+                SAssignNew(_ListView, SListView<FHistoryItemPtr>)
+                    .ListItemsSource(&_Items)
+                    .OnGenerateRow(this, &SCkSmDebugger_HistoryList::GenerateRow)
+                    .OnSelectionChanged(this, &SCkSmDebugger_HistoryList::OnSelectionChanged)
+                    .SelectionMode(ESelectionMode::Single)
+            ]
     ];
 
     if (_ViewModel.IsValid())
@@ -255,6 +287,20 @@ auto
             return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f);
         }));
 
+    // Highlight dimming — when the dual-search Highlight input has text and this
+    // row doesn't match, fade the row to draw the eye toward matching rows. Capture
+    // the entry by value so the lambda can run the same MatchesFilter check the
+    // top-level filter uses.
+    auto EntryCopy = *InItem;
+    auto HighlightOpacityAttr = TAttribute<float>::Create(TAttribute<float>::FGetter::CreateLambda(
+        [ListWeak = TWeakPtr<SCkSmDebugger_HistoryList>(SharedThis(this)), EntryCopy]() -> float
+        {
+            auto Pinned = ListWeak.Pin();
+            if (NOT Pinned.IsValid()) { return 1.0f; }
+            if (Pinned->_HighlightString.IsEmpty()) { return 1.0f; }
+            return Pinned->MatchesFilter(EntryCopy, Pinned->_HighlightString) ? 1.0f : 0.35f;
+        }));
+
     return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
         .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
         [
@@ -265,6 +311,7 @@ auto
                 .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(TintAttr)
                 .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+                .RenderOpacity(HighlightOpacityAttr)
                 [ Line ]
             ]
         ];
@@ -429,15 +476,19 @@ auto
 
     auto& History = Run.History;
 
+    // _LastHistoryCount short-circuits when neither history nor filter changed.
+    // Filter changes set _LastHistoryCount = -1 to force a rebuild.
     if (History.Num() == _LastHistoryCount)
     { return; }
 
     _LastHistoryCount = History.Num();
     _Items.Empty(History.Num());
 
-    // Reverse order — most recent transition first
+    // Reverse order — most recent transition first. Apply filter as we go.
     for (auto i = History.Num() - 1; i >= 0; --i)
     {
+        if (NOT _FilterString.IsEmpty() && NOT MatchesFilter(History[i], _FilterString))
+        { continue; }
         _Items.Add(MakeShared<FCkSmDebugger_HistoryEntry>(History[i]));
     }
 
@@ -450,6 +501,34 @@ auto
             _ListView->RequestScrollIntoView(_Items[0]);
         }
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebugger_HistoryList::
+    MatchesFilter(
+        const FCkSmDebugger_HistoryEntry& InEntry,
+        const FString& InText) const
+    -> bool
+{
+    if (InText.IsEmpty()) { return true; }
+
+    auto Lower = InText.ToLower();
+    auto Test = [&Lower](const FString& InCandidate)
+    {
+        return InCandidate.ToLower().Contains(Lower);
+    };
+
+    if (Test(InEntry.ToStateName)) { return true; }
+    if (Test(InEntry.FromStateName)) { return true; }
+    for (auto& Cond : InEntry.ConditionNames)
+    {
+        if (Test(Cond)) { return true; }
+    }
+    if (Test(FString::Printf(TEXT("%llu"), InEntry.FrameNumber))) { return true; }
+
+    return false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

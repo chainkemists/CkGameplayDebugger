@@ -422,18 +422,42 @@ auto
     auto Size = InGeometry.GetLocalSize();
     auto SegmentHeight = Size.Y * 0.5f;
 
-    // Render the busy-frame indicator as a small underline below the cell cluster
-    // for the busy frame — N transitions in the same engine frame produce N stacked
-    // 1-2px-wide cells at the same X position, so the mark width scales with the
-    // transition count rather than spanning the whole state segment.
+    // Render the busy-frame indicator as a small underline that covers exactly the
+    // cells living in the same engine frame. Each busy frame produces:
+    //   • N-1 zero-frame-wide cells (the intermediate state slivers) stacked at X
+    //   • the first cell of the post-busy state (StartFrame == busy frame number)
+    // To size the underline correctly we need "one engine frame's pixel width" —
+    // derived from the segment whose StartFrame matches the busy frame, since
+    // BusyFrame.EndTime measures the gap to the *next non-busy* transition (which
+    // could be many frames away).
     constexpr auto MarkThicknessPx = 2.0f;
     constexpr auto MinMarkWidthPx = 4.0f;
-    constexpr auto PxPerTransition = 2.0f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
     for (auto& BusyFrame : InRun.BusyFrames)
     {
         auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
-        auto Width = FMath::Max(static_cast<float>(BusyFrame.TransitionCount) * PxPerTransition, MinMarkWidthPx);
+
+        // Find the segment with StartFrame == busy frame's FrameNumber — that's the
+        // post-busy state (or the last sliver of a zero-time state). Its PxPerFrame
+        // is "what 1 engine frame looks like" right here.
+        auto PxPerFrame = MinMarkWidthPx;
+        for (auto& Seg : InRun.Segments)
+        {
+            if (Seg.StartFrame == BusyFrame.FrameNumber && Seg.EndFrame > Seg.StartFrame)
+            {
+                auto SegX0 = TimeToX(Seg.StartTime, InViewStart, InViewDuration, Size.X);
+                auto SegX1 = TimeToX(Seg.EndTime, InViewStart, InViewDuration, Size.X);
+                auto FrameCount = static_cast<float>(Seg.EndFrame - Seg.StartFrame);
+                if (FrameCount > 0.0f)
+                { PxPerFrame = FMath::Max((SegX1 - SegX0) / FrameCount, MinMarkWidthPx); }
+                break;
+            }
+        }
+
+        // Cluster width = stacked thin cells (~1.5px each) + 1 frame of new state.
+        auto ThinCellsWidth = static_cast<float>(BusyFrame.TransitionCount - 1) * 1.5f;
+        auto Width = FMath::Max(PxPerFrame + ThinCellsWidth, MinMarkWidthPx);
+
         if (X + Width < 0.0f || X > Size.X) { continue; }
         auto LeftEdge = FMath::Max(X, 0.0f);
         auto Right = FMath::Min(X + Width, static_cast<float>(Size.X));

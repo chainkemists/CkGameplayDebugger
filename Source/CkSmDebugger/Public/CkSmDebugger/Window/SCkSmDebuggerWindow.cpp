@@ -581,21 +581,41 @@ auto
     // Tick ViewModel — broadcasts delegates to sub-widgets
     _ViewModel->Tick(World, InDeltaTime);
 
-    // Auto-select the current active state when the user hasn't explicitly
-    // picked something — saves them a click to populate the detail panel.
+    // Auto-select the active state when the user hasn't explicitly picked
+    // something — saves them a click to populate the detail panel. While
+    // scrubbing this mirrors the segment under the needle (so STATE / TASKS /
+    // TRANSITIONS reflect the scrubbed moment); in live mode it follows the
+    // live current-state flag.
+    //
+    // In scrub mode we run the mirror unconditionally — the user may have
+    // clicked a history row earlier, but as they scrub the panel must keep
+    // tracking the segment under the needle, not freeze on the click target.
+    // In live mode we still defer to explicit history/transition selections.
+    auto IsScrubbingForMirror = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
     if (_AutoSelectActiveState
-        && NOT _SelectedHistoryEntry.IsValid()
-        && _SelectedTransitionIndex < 0)
+        && (IsScrubbingForMirror
+            || (NOT _SelectedHistoryEntry.IsValid() && _SelectedTransitionIndex < 0)))
     {
         if (auto SmInfo = _ViewModel->Get_CurrentSmInfo())
         {
             auto ActiveIdx = -1;
-            for (auto i = 0; i < SmInfo->States.Num(); ++i)
+            if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
             {
-                if (SmInfo->States[i].IsCurrentState)
-                { ActiveIdx = i; break; }
+                ActiveIdx = _ViewModel->Get_ScrubSnapshot().ActiveStateIndex;
+            }
+            else
+            {
+                for (auto i = 0; i < SmInfo->States.Num(); ++i)
+                {
+                    if (SmInfo->States[i].IsCurrentState)
+                    { ActiveIdx = i; break; }
+                }
             }
 
+            // Don't clobber an existing valid selection with -1: ScrubSnapshot
+            // can be transiently empty between the live tick reaching a state
+            // boundary and the snapshot recompute, and we don't want the panel
+            // to flash "No selection" in that gap.
             if (ActiveIdx >= 0 && _ViewModel->Get_SelectedNodeIndex() != ActiveIdx)
             { _ViewModel->Set_SelectedNodeIndex(ActiveIdx); }
         }
@@ -1984,16 +2004,25 @@ auto
     {
         auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
         Sig.SmInfo = static_cast<const void*>(SmInfo);
-        Sig.HistoryEntry = static_cast<const void*>(_SelectedHistoryEntry.Get());
+        Sig.ScrubMode = (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub) ? 1 : 0;
+        // In scrub mode the panel layout doesn't depend on which history row
+        // (if any) was clicked — Case 1 is gated to live mode only — so don't
+        // let history-click churn force panel rebuilds during scrubbing.
+        Sig.HistoryEntry = Sig.ScrubMode
+            ? nullptr
+            : static_cast<const void*>(_SelectedHistoryEntry.Get());
         Sig.NodeIdx = _ViewModel->Get_SelectedNodeIndex();
         Sig.TransitionIdx = _SelectedTransitionIndex;
-        Sig.ScrubMode = (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub) ? 1 : 0;
         auto& ScrubSnap = _ViewModel->Get_ScrubSnapshot();
         Sig.ScrubHistoryIdx = ScrubSnap.HistoryIndex;
         Sig.ScrubActiveStateIdx = ScrubSnap.ActiveStateIndex;
 
+        // ScrubAlignsWithSelectedEntry is no longer consulted in scrub mode
+        // (Case 1 only fires in live mode) — leave it at 1 in scrub so it
+        // doesn't flip 0/1 as the needle crosses history rows and force a
+        // pointless rebuild. In live mode it tracks the click target normally.
         Sig.ScrubAlignsWithSelectedEntry = 1;
-        if (Sig.ScrubMode && SmInfo && _SelectedHistoryEntry.IsValid())
+        if (NOT Sig.ScrubMode && SmInfo && _SelectedHistoryEntry.IsValid())
         {
             auto& SS = _ViewModel->Get_ScrubState();
             auto RIdx = SS.SelectedRunIndex;
@@ -2050,28 +2079,16 @@ auto
     auto Root = SNew(SVerticalBox);
 
     // ───────────────────────────────────────────────────────────────────
-    // Case 1: history entry selected
+    // Case 1: history entry selected (live mode only)
     //
-    // Skipped when scrubbing AND the needle has moved away from the entry's
-    // time — that means the user clicked a row earlier but is now actively
-    // dragging the needle; the live scrub snapshot (Case 4) wins. Without
-    // this guard, the panel would stay stuck on the old entry forever.
+    // In scrub mode the unified scrub view (Case 4 prefix + Case 3 body)
+    // always wins — clicking a history row updates the scrub time but the
+    // panel keeps showing STATE / TASKS / TRANSITIONS for the segment
+    // under the needle, so the layout doesn't flip between two completely
+    // different shapes as you drag past transition frames.
     // ───────────────────────────────────────────────────────────────────
     auto IsScrubbingForCase1 = _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
-    auto Case1NeedleAlignsWithEntry = true;
-    if (IsScrubbingForCase1 && _SelectedHistoryEntry.IsValid())
-    {
-        auto& SS = _ViewModel->Get_ScrubState();
-        auto RIdx = SS.SelectedRunIndex;
-        auto& R = (RIdx < 0)
-            ? SmInfo->CurrentRun
-            : (RIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RIdx] : SmInfo->CurrentRun);
-        auto EntryRunRel = _SelectedHistoryEntry->RealTimeSeconds - R.StartTime;
-        constexpr auto Epsilon = 0.05;  // 50 ms — tolerance for "still on the clicked row"
-        Case1NeedleAlignsWithEntry = FMath::Abs(EntryRunRel - SS.ScrubTime) <= Epsilon;
-    }
-
-    if (_SelectedHistoryEntry.IsValid() && Case1NeedleAlignsWithEntry)
+    if (NOT IsScrubbingForCase1 && _SelectedHistoryEntry.IsValid())
     {
         auto& Entry = *_SelectedHistoryEntry;
         auto ToName   = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName,   Depth);
@@ -2490,7 +2507,9 @@ auto
                 ];
             }
 
-            // NEXT TRANSITION (upcoming history entry, if any)
+            // NEXT TRANSITION (upcoming history entry, if any). Mirrors Case 1's
+            // TRANSITION block so the same PASS feedback shows whether the user
+            // got here by clicking a history row or by pure timeline scrubbing.
             auto NextHistIdx = (ActiveSegIdx >= 0 && ActiveSegIdx < SRun.History.Num()) ? ActiveSegIdx : -1;
             if (NextHistIdx >= 0 && NextHistIdx < SRun.History.Num())
             {
@@ -2508,6 +2527,41 @@ auto
                         .ColorAndOpacity(FSlateColor(Color_Detail_Value))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
+
+                // Conditions that fired the transition (PASS pills). Falls back to
+                // "(unconditional)" when ConditionNames is empty — same as Case 1.
+                if (NextEntry.ConditionNames.Num() > 0)
+                {
+                    for (auto& CondName : NextEntry.ConditionNames)
+                    {
+                        auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                        Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                        [
+                            SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                                [
+                                    MakeConditionPill(ECk_SmConditionResult::Pass)
+                                ]
+                                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                                [
+                                    SNew(STextBlock)
+                                        .Text(FText::FromString(CName))
+                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                ]
+                        ];
+                    }
+                }
+                else
+                {
+                    Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("(unconditional)")))
+                            .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                    ];
+                }
             }
             else
             {
@@ -2567,6 +2621,12 @@ auto
                     if (NOT VM.IsValid()) { return EVisibility::Collapsed; }
                     auto* Info = VM->Get_CurrentSmInfo();
                     if (NOT Info || StateIdx >= Info->States.Num()) { return EVisibility::Collapsed; }
+                    if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                    {
+                        return VM->Get_ScrubSnapshot().ActiveStateIndex == StateIdx
+                            ? EVisibility::Visible
+                            : EVisibility::Collapsed;
+                    }
                     return Info->States[StateIdx].IsCurrentState ? EVisibility::Visible : EVisibility::Collapsed;
                 }));
 
@@ -2802,6 +2862,35 @@ auto
                         auto* Info = VM->Get_CurrentSmInfo();
                         if (NOT Info || TargetIdx >= Info->Transitions.Num()) { return FText::GetEmpty(); }
                         auto& T = Info->Transitions[TargetIdx];
+
+                        // While scrubbing on a completed segment, mirror the per-condition logic:
+                        // for the transition that actually fired, all conditions passed
+                        // (TotalCount/TotalCount); for any other transition out of this state,
+                        // none fired so report 0/TotalCount. Live counts are only meaningful
+                        // for the current live state.
+                        if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                        {
+                            auto& SS = VM->Get_ScrubState();
+                            auto RIdx = SS.SelectedRunIndex;
+                            auto& R = (RIdx < 0)
+                                ? Info->CurrentRun
+                                : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+                            auto ActiveSegIdx = -1;
+                            for (auto i = 0; i < R.Segments.Num(); ++i)
+                            {
+                                if (SS.ScrubTime >= R.Segments[i].StartTime && SS.ScrubTime <= R.Segments[i].EndTime)
+                                { ActiveSegIdx = i; break; }
+                            }
+                            if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
+                            {
+                                auto& NextEntry = R.History[ActiveSegIdx];
+                                auto Fired = (T.SourceStateName == NextEntry.FromStateName
+                                              && T.TargetStateName == NextEntry.ToStateName);
+                                auto Satisfied = Fired ? T.TotalCount : 0;
+                                return FText::FromString(FString::Printf(TEXT("%d/%d"), Satisfied, T.TotalCount));
+                            }
+                        }
+
                         return FText::FromString(FString::Printf(TEXT("%d/%d"), T.SatisfiedCount, T.TotalCount));
                     }));
 

@@ -40,6 +40,7 @@ public:
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildTimelineToolbar() -> TSharedRef<SWidget>;
     auto BuildDetailPanel() -> TSharedRef<SWidget>;
     auto BuildDetailContent() -> TSharedRef<SWidget>;
     auto RefreshDetailContent() -> void;
@@ -47,6 +48,8 @@ private:
 
     // Move the scrub needle to the previous (-1) or next (+1) history transition.
     auto StepScrubToTransition(int32 InDirection) -> void;
+    // Jump to a specific frame number (entered via the toolbar input field).
+    auto JumpScrubToFrame(int64 InFrame) -> void;
 
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
     TSharedPtr<FCkSmDebugger_DataCollector> _DataCollector;

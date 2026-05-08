@@ -30,11 +30,13 @@
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -481,6 +483,14 @@ auto
                                 SNew(SVerticalBox)
 
                                 // Timeline bar (full width, auto-height)
+                                // Timeline toolbar — scrub navigation kept close to the timeline.
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(4.0f, 2.0f, 4.0f, 0.0f)
+                                    [
+                                        BuildTimelineToolbar()
+                                    ]
+
                                 + SVerticalBox::Slot()
                                     .AutoHeight()
                                     [
@@ -815,6 +825,48 @@ auto
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(6.0f, 0.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("|")))
+                    .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
+            ]
+
+        // ── Owning entity (clickable → opens in CK ECS Debugger) ─────────
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Entity:")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 6.0f, 0.0f)
+            [
+                SNew(SCkDebug_EntityRef)
+                    .ShowName(true)
+                    .Entity_Lambda([this]() -> FCk_Handle
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FCk_Handle{}; }
+
+                        const auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+                        if (NOT SmInfo)
+                        { return FCk_Handle{}; }
+
+                        return SmInfo->GameEntity;
+                    })
+            ]
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(0.0f, 0.0f, 6.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
@@ -1311,115 +1363,8 @@ auto
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
             ]
 
-        // To Start (scrub-mode only)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x23EE To Start")))
-                    .ToolTipText(NSLOCTEXT("CkSmDebugger", "ToStartTooltip",
-                        "Jump the scrub needle to the beginning of the run (frame 0)."))
-                    .Visibility_Lambda([this]()
-                    {
-                        if (NOT _ViewModel.IsValid()) { return EVisibility::Collapsed; }
-                        return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                            ? EVisibility::Visible : EVisibility::Collapsed;
-                    })
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_ViewModel.IsValid())
-                        {
-                            auto NewScrubState = _ViewModel->Get_ScrubState();
-                            NewScrubState.ScrubTime = 0.0;
-                            NewScrubState.TimelineScrollX = 0.0f;
-                            _ViewModel->Set_ScrubState(NewScrubState);
-                        }
-                        return FReply::Handled();
-                    })
-            ]
-
-        // Step backward 1 frame (scrub-mode only)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25C0")))
-                    .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepBackTooltip",
-                        "Step the scrub needle to the previous transition."))
-                    .Visibility_Lambda([this]()
-                    {
-                        if (NOT _ViewModel.IsValid()) { return EVisibility::Collapsed; }
-                        return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                            ? EVisibility::Visible : EVisibility::Collapsed;
-                    })
-                    .OnClicked_Lambda([this]()
-                    {
-                        StepScrubToTransition(-1);
-                        return FReply::Handled();
-                    })
-            ]
-
-        // Step forward 1 transition (scrub-mode only)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25B6")))
-                    .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepFwdTooltip",
-                        "Step the scrub needle to the next transition."))
-                    .Visibility_Lambda([this]()
-                    {
-                        if (NOT _ViewModel.IsValid()) { return EVisibility::Collapsed; }
-                        return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                            ? EVisibility::Visible : EVisibility::Collapsed;
-                    })
-                    .OnClicked_Lambda([this]()
-                    {
-                        StepScrubToTransition(+1);
-                        return FReply::Handled();
-                    })
-            ]
-
-        // Back to Live (scrub-mode only)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("Back to Live \x23ED")))
-                    .Visibility_Lambda([this]()
-                    {
-                        if (NOT _ViewModel.IsValid())
-                        { return EVisibility::Collapsed; }
-
-                        return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                            ? EVisibility::Visible
-                            : EVisibility::Collapsed;
-                    })
-                    .OnClicked_Lambda([this]()
-                    {
-                        if (_ViewModel.IsValid())
-                        {
-                            // Reset the timeline scroll offset so Live mode anchors back to "now".
-                            // Without this, the scroll offset accumulated during scrubbing would
-                            // pull the live view far into the past.
-                            auto NewScrubState = _ViewModel->Get_ScrubState();
-                            NewScrubState.TimelineScrollX = 0.0f;
-                            _ViewModel->Set_ScrubState(NewScrubState);
-
-                            _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
-                            _ViewModel->ClearScrubTransitionHighlight();
-                        }
-                        return FReply::Handled();
-                    })
-            ]
+        // (Scrub navigation moved to the dedicated timeline toolbar, just above the
+        // timeline widget — closer to where the user is actually scrubbing.)
 
         // Pause / Resume
         + SHorizontalBox::Slot()
@@ -1648,6 +1593,177 @@ auto
         if (NOT _ViewModel->Has_SelectedSm() && _SmSelectorHandles.Num() > 0)
         { _ViewModel->Set_SelectedSmHandle(_SmSelectorHandles[0]); }
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Timeline toolbar — scrub navigation kept close to the timeline so the eye
+// doesn't have to bounce between the top of the window and the timeline row.
+// Visible only while scrubbing; the top toolbar still owns the SM picker, run
+// selector, Pause, Preview, Test and the frames toggle (less timeline-specific).
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    BuildTimelineToolbar()
+    -> TSharedRef<SWidget>
+{
+    auto IsScrubbingVis = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+        [this]()
+        {
+            if (NOT _ViewModel.IsValid()) { return EVisibility::Collapsed; }
+            return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                ? EVisibility::Visible : EVisibility::Collapsed;
+        }));
+
+    return SNew(SBox)
+        .Visibility(IsScrubbingVis)
+        [
+            SNew(SHorizontalBox)
+
+            // To Start
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x23EE")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "ToStartTooltip",
+                            "Jump to the start of the run (Home)."))
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (_ViewModel.IsValid())
+                            {
+                                auto NS = _ViewModel->Get_ScrubState();
+                                NS.ScrubTime = 0.0;
+                                NS.TimelineScrollX = 0.0f;
+                                _ViewModel->Set_ScrubState(NS);
+                            }
+                            return FReply::Handled();
+                        })
+                ]
+
+            // Step Prev
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x25C0")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepBackTooltip",
+                            "Step to the previous transition (Left arrow)."))
+                        .OnClicked_Lambda([this]() { StepScrubToTransition(-1); return FReply::Handled(); })
+                ]
+
+            // Frame jump input field
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(NSLOCTEXT("CkSmDebugger", "JumpToFrameLabel", "Frame:"))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                ]
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SBox).WidthOverride(80.0f)
+                    [
+                        SNew(SEditableTextBox)
+                            .HintText(NSLOCTEXT("CkSmDebugger", "JumpHint", "12345"))
+                            .ToolTipText(NSLOCTEXT("CkSmDebugger", "JumpTooltip",
+                                "Type a frame number and press Enter to jump the scrub needle there."))
+                            .OnTextCommitted_Lambda([this](const FText& InText, ETextCommit::Type InCommitType)
+                            {
+                                if (InCommitType != ETextCommit::OnEnter) { return; }
+                                auto Str = InText.ToString().TrimStartAndEnd();
+                                if (Str.IsEmpty()) { return; }
+                                int64 Frame = 0;
+                                LexFromString(Frame, *Str);
+                                JumpScrubToFrame(Frame);
+                            })
+                    ]
+                ]
+
+            // Step Next
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("\x25B6")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepFwdTooltip",
+                            "Step to the next transition (Right arrow)."))
+                        .OnClicked_Lambda([this]() { StepScrubToTransition(+1); return FReply::Handled(); })
+                ]
+
+            // Spacer pushes Back-to-Live to the right
+            + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                [ SNullWidget::NullWidget ]
+
+            // Back to Live (right-aligned, prominent)
+            + SHorizontalBox::Slot()
+                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                [
+                    SNew(SButton)
+                        .Text(FText::FromString(TEXT("Back to Live \x23ED")))
+                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "BackToLiveTooltip",
+                            "Resume tracking the live SM (exits Scrub mode)."))
+                        .OnClicked_Lambda([this]()
+                        {
+                            if (_ViewModel.IsValid())
+                            {
+                                auto NS = _ViewModel->Get_ScrubState();
+                                NS.TimelineScrollX = 0.0f;
+                                _ViewModel->Set_ScrubState(NS);
+                                _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
+                                _ViewModel->ClearScrubTransitionHighlight();
+                            }
+                            return FReply::Handled();
+                        })
+                ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    JumpScrubToFrame(
+        int64 InFrame)
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+    auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo) { return; }
+
+    auto& ScrubState = _ViewModel->Get_ScrubState();
+    auto RIdx = ScrubState.SelectedRunIndex;
+    auto& Run = (RIdx < 0)
+        ? SmInfo->CurrentRun
+        : (RIdx < SmInfo->CompletedRuns.Num() ? SmInfo->CompletedRuns[RIdx] : SmInfo->CurrentRun);
+    if (Run.FrameSegments.IsEmpty()) { return; }
+
+    // Convert target frame → run-relative time using the FrameSegments table.
+    auto F = static_cast<uint64>(FMath::Max<int64>(InFrame, 0));
+    auto Target = 0.0;
+    if (F <= Run.FrameSegments[0].StartFrame) { Target = 0.0; }
+    else if (F >= Run.FrameSegments.Last().EndFrame) { Target = Run.Duration; }
+    else
+    {
+        for (auto& Seg : Run.FrameSegments)
+        {
+            if (F >= Seg.StartFrame && F <= Seg.EndFrame)
+            {
+                auto FrameSpan = static_cast<double>(Seg.EndFrame - Seg.StartFrame);
+                auto Frac = (FrameSpan > 0.0) ? static_cast<double>(F - Seg.StartFrame) / FrameSpan : 0.0;
+                Target = Seg.StartTime + Frac * (Seg.EndTime - Seg.StartTime);
+                break;
+            }
+        }
+    }
+
+    auto NewScrubState = ScrubState;
+    NewScrubState.ScrubTime = FMath::Clamp(Target, 0.0, Run.Duration);
+    NewScrubState.TimelineScrollX = 0.0f;
+    _ViewModel->Set_ScrubState(NewScrubState);
+    _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

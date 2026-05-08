@@ -3,6 +3,10 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 #include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
+#include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
+
+#include "CkCore/Validation/CkIsValid.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
@@ -59,6 +63,28 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
     // shared state has been freed and ~FCk_Handle hits an access violation
     // releasing the dangling shared reference.
     _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkEcsDebuggerModule::HandleEnginePreExit);
+
+    // Install the cross-debugger entity-navigation hook so SCkDebug_EntityRef
+    // (and any other widget in CkDebuggerCommon) can route "open this entity in
+    // the ECS Debugger" without taking a hard dependency on this module.
+    ck::DebugNav::Register_EntityNavigator([this](const FCk_Handle& InEntity)
+    {
+        if (ck::Is_NOT_Valid(InEntity))
+        { return; }
+
+        // OpenDebugger is synchronous: TryInvokeTab spawns the tab via
+        // OnSpawnDebuggerTab, which populates DebuggerWindow before returning.
+        OpenDebugger();
+
+        if (NOT DebuggerWindow.IsValid())
+        { return; }
+
+        const auto Selection = DebuggerWindow->Get_SelectionModel();
+        if (NOT Selection.IsValid())
+        { return; }
+
+        Selection->Set_SelectedEntities({ InEntity });
+    });
 }
 
 auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
@@ -77,6 +103,10 @@ auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
 
 auto FCkEcsDebuggerModule::ShutdownModule() -> void
 {
+    // Drop the navigator first — any subsequent click on a stale SCkDebug_EntityRef
+    // becomes a no-op instead of dereferencing a half-torn-down module.
+    ck::DebugNav::Register_EntityNavigator(ck::DebugNav::FGotoEntityFn{});
+
     if (_EnginePreExitHandle.IsValid())
     {
         FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);

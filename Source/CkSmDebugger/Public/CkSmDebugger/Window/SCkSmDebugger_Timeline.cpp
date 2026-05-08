@@ -422,30 +422,28 @@ auto
     auto Size = InGeometry.GetLocalSize();
     auto SegmentHeight = Size.Y * 0.5f;
 
-    // Render the busy-frame indicator as an underline that spans every cell touched
-    // by the busy run (Time → EndTime), drawn directly under the cell row. Reads as
-    // "all of these states happened in the same engine frame" without obscuring the
-    // cell colors above. Falls back to a small mark for zero-width spans.
+    // Render the busy-frame indicator as a small underline below the cell cluster
+    // for the busy frame — N transitions in the same engine frame produce N stacked
+    // 1-2px-wide cells at the same X position, so the mark width scales with the
+    // transition count rather than spanning the whole state segment.
     constexpr auto MarkThicknessPx = 2.0f;
     constexpr auto MinMarkWidthPx = 4.0f;
+    constexpr auto PxPerTransition = 2.0f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
     for (auto& BusyFrame : InRun.BusyFrames)
     {
-        auto X0 = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
-        auto X1 = TimeToX(BusyFrame.EndTime, InViewStart, InViewDuration, Size.X);
-        auto Span = FMath::Max(X1 - X0, MinMarkWidthPx);
-        auto LeftEdge = X0 - (Span - (X1 - X0)) * 0.5f; // center the mark when we floor to MinMarkWidthPx
-
-        if (LeftEdge + Span < 0.0f || LeftEdge > Size.X) { continue; }
-        auto VisibleLeft = FMath::Max(LeftEdge, 0.0f);
-        auto VisibleRight = FMath::Min(LeftEdge + Span, static_cast<float>(Size.X));
-        auto VisibleWidth = FMath::Max(VisibleRight - VisibleLeft, 1.0f);
+        auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
+        auto Width = FMath::Max(static_cast<float>(BusyFrame.TransitionCount) * PxPerTransition, MinMarkWidthPx);
+        if (X + Width < 0.0f || X > Size.X) { continue; }
+        auto LeftEdge = FMath::Max(X, 0.0f);
+        auto Right = FMath::Min(X + Width, static_cast<float>(Size.X));
+        auto Visible = FMath::Max(Right - LeftEdge, 1.0f);
 
         FSlateDrawElement::MakeBox(
             InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D(VisibleWidth, MarkThicknessPx),
-                FSlateLayoutTransform(FVector2D(VisibleLeft, SegmentHeight + 1.0f))),
+                FVector2D(Visible, MarkThicknessPx),
+                FSlateLayoutTransform(FVector2D(LeftEdge, SegmentHeight + 1.0f))),
             Brush, ESlateDrawEffect::None,
             FLinearColor(0.95f, 0.55f, 0.1f, 0.95f));
     }

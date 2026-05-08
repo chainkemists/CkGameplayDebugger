@@ -72,12 +72,10 @@ auto
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
-    // Auto-highlight the history row that matches the scrub needle's position. Items
-    // are stored newest-first (reverse history order), so a transition with backend
-    // index H lives at list index (Items.Num() - 1 - H). The programmatic
-    // SetItemSelection passes ESelectInfo::Direct, which OnSelectionChanged filters out
-    // — that prevents the auto-mirror from re-pinning ScrubTime to the row's exact
-    // transition frame mid-drag.
+    // Scroll the row matching the scrub needle into view, but DON'T touch SListView's
+    // selection — selection is user-only. The visual highlight for the scrub-active
+    // row is applied per-row via a TAttribute background color in GenerateRow, which
+    // updates each frame without any feedback into selection state.
     if (NOT _ViewModel.IsValid() || NOT _ListView.IsValid()) { return; }
     if (_ViewModel->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub) { return; }
 
@@ -107,13 +105,12 @@ auto
     auto ListIdx = _Items.Num() - 1 - BestHistIdx;
     if (ListIdx < 0 || ListIdx >= _Items.Num()) { return; }
 
-    auto& TargetItem = _Items[ListIdx];
-    auto Selected = _ListView->GetSelectedItems();
-    if (Selected.Num() == 1 && Selected[0] == TargetItem) { return; }
-
-    _ListView->ClearSelection();
-    _ListView->SetItemSelection(TargetItem, true, ESelectInfo::Direct);
-    _ListView->RequestScrollIntoView(TargetItem);
+    // Re-scroll only when the matching row changes — avoids constant scroll thrash.
+    if (_LastScrubScrollIdx != ListIdx)
+    {
+        _ListView->RequestScrollIntoView(_Items[ListIdx]);
+        _LastScrubScrollIdx = ListIdx;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -222,6 +219,42 @@ auto
         ? FString::Printf(TEXT("%s  %s  %s"), *FrameStr, *TitleStr, *CondStr)
         : FString::Printf(TEXT("%s  %s  %s  %s"), *FrameStr, *DeltaStr, *TitleStr, *CondStr);
 
+    // Scrub-active row tint. A TAttribute checks each frame whether this row's
+    // history entry brackets the scrub needle's time; when it does, the SBorder
+    // brightens to a soft amber. Independent of SListView selection so user clicks
+    // remain authoritative for selection state.
+    auto ItemFrame = InItem->FrameNumber;
+    auto ItemTime = InItem->RealTimeSeconds;
+    auto TintAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda(
+        [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), ItemFrame, ItemTime]() -> FSlateColor
+        {
+            auto VM = ViewModelWeak.Pin();
+            if (NOT VM.IsValid() || VM->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub)
+            { return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f); }
+
+            auto* Info = VM->Get_CurrentSmInfo();
+            if (NOT Info) { return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f); }
+
+            auto& SS = VM->Get_ScrubState();
+            auto RIdx = SS.SelectedRunIndex;
+            auto& R = (RIdx < 0)
+                ? Info->CurrentRun
+                : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+
+            // This row matches if its time is the latest history entry whose time is <=
+            // the scrubbed absolute time. Walk the run history once to find that entry.
+            auto ScrubAbs = SS.ScrubTime + R.StartTime;
+            auto BestTime = -DBL_MAX;
+            for (auto& Entry : R.History)
+            {
+                if (Entry.RealTimeSeconds <= ScrubAbs && Entry.RealTimeSeconds > BestTime)
+                { BestTime = Entry.RealTimeSeconds; }
+            }
+            if (BestTime == ItemTime)
+            { return FLinearColor(1.0f, 0.6f, 0.1f, 0.35f); }
+            return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f);
+        }));
+
     return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
         .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
         [
@@ -229,7 +262,8 @@ auto
             .CopyText(CopyStr)
             [
                 SNew(SBorder)
-                .BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
+                .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                .BorderBackgroundColor(TintAttr)
                 .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
                 [ Line ]
             ]

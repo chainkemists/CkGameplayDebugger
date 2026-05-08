@@ -1709,7 +1709,7 @@ auto
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
-                        .Text(FText::FromString(TEXT("\x23EE")))
+                        .Text(FText::FromString(TEXT("|\x25C0")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "ToStartTooltip",
                             "Jump the scrub needle to the start of the run (Home)."))
                         .OnClicked_Lambda([this, EnsureScrubMode]()
@@ -1819,7 +1819,7 @@ auto
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
-                        .Text(FText::FromString(TEXT("\x21A4\x2606")))
+                        .Text(FText::FromString(TEXT("\x25C0\x2606")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "PrevBookmarkTooltip",
                             "Jump to the previous bookmark (F2)."))
                         .OnClicked_Lambda([this, EnsureScrubMode, GetCursorTime]()
@@ -1842,7 +1842,7 @@ auto
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
-                        .Text(FText::FromString(TEXT("\x2606\x21A6")))
+                        .Text(FText::FromString(TEXT("\x2606\x25B6")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "NextBookmarkTooltip",
                             "Jump to the next bookmark (F3)."))
                         .OnClicked_Lambda([this, EnsureScrubMode, GetCursorTime]()
@@ -1868,7 +1868,7 @@ auto
                     SNew(SBox).Visibility(BackToLiveVis)
                     [
                         SNew(SButton)
-                            .Text(FText::FromString(TEXT("Back to Live \x23ED")))
+                            .Text(FText::FromString(TEXT("Back to Live")))
                             .ToolTipText(NSLOCTEXT("CkSmDebugger", "BackToLiveTooltip",
                                 "Resume tracking the live SM (exits Scrub mode)."))
                             .OnClicked_Lambda([this]()

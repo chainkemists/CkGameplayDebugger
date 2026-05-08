@@ -1610,13 +1610,34 @@ auto
     BuildTimelineToolbar()
     -> TSharedRef<SWidget>
 {
-    auto IsScrubbingVis = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
+    // Used only by the Back-to-Live button: hide it (but reserve the layout space)
+    // while in Live mode so toggling Scrub doesn't pop the toolbar height.
+    auto BackToLiveVis = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateLambda(
         [this]()
         {
-            if (NOT _ViewModel.IsValid()) { return EVisibility::Collapsed; }
+            if (NOT _ViewModel.IsValid()) { return EVisibility::Hidden; }
             return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
-                ? EVisibility::Visible : EVisibility::Collapsed;
+                ? EVisibility::Visible : EVisibility::Hidden;
         }));
+
+    // Returns the run-relative time the navigation buttons should treat as the
+    // "current cursor position" when entering Scrub from Live. In Live mode
+    // ScrubTime is meaningless (defaults to 0), so we use the run's duration —
+    // i.e. "now". In Scrub mode we use the existing ScrubTime.
+    auto GetCursorTime = [this]() -> double
+    {
+        if (NOT _ViewModel.IsValid()) { return 0.0; }
+        if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+        { return _ViewModel->Get_ScrubState().ScrubTime; }
+        auto* Info = _ViewModel->Get_CurrentSmInfo();
+        return Info ? Info->CurrentRun.Duration : 0.0;
+    };
+
+    auto EnsureScrubMode = [this]()
+    {
+        if (_ViewModel.IsValid() && _ViewModel->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub)
+        { _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub); }
+    };
 
     // Scrub frame as a live-bound text — when not focused, displays the current
     // scrub-needle frame; when committed, jumps the needle to that frame.
@@ -1683,27 +1704,19 @@ auto
                         ]
                 ]
 
-            // Scrub-only cluster — collapses when not in Scrub mode.
-            + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [
-                    SNew(SBox)
-                        .Visibility(IsScrubbingVis)
-                        [
-                            SNew(SHorizontalBox)
-
-            // To Start
+            // To Start — works in either mode; auto-enters Scrub.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                         .Text(FText::FromString(TEXT("\x23EE")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "ToStartTooltip",
-                            "Jump to the start of the run (Home)."))
-                        .OnClicked_Lambda([this]()
+                            "Jump the scrub needle to the start of the run (Home)."))
+                        .OnClicked_Lambda([this, EnsureScrubMode]()
                         {
                             if (_ViewModel.IsValid())
                             {
+                                EnsureScrubMode();
                                 auto NS = _ViewModel->Get_ScrubState();
                                 NS.ScrubTime = 0.0;
                                 NS.TimelineScrollX = 0.0f;
@@ -1713,19 +1726,31 @@ auto
                         })
                 ]
 
-            // Step Prev
+            // Step Prev — auto-enters Scrub at the previous transition relative to
+            // current "cursor" (ScrubTime in Scrub, RunDuration in Live).
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                         .Text(FText::FromString(TEXT("\x25C0")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepBackTooltip",
-                            "Step to the previous transition (Left arrow)."))
-                        .OnClicked_Lambda([this]() { StepScrubToTransition(-1); return FReply::Handled(); })
+                            "Jump scrub to the previous transition (Left arrow)."))
+                        .OnClicked_Lambda([this, EnsureScrubMode, GetCursorTime]()
+                        {
+                            if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                            // Seed ScrubTime to the cursor before stepping so Live mode
+                            // walks back from "now" rather than from time 0.
+                            auto NS = _ViewModel->Get_ScrubState();
+                            NS.ScrubTime = GetCursorTime();
+                            _ViewModel->Set_ScrubState(NS);
+                            EnsureScrubMode();
+                            StepScrubToTransition(-1);
+                            return FReply::Handled();
+                        })
                 ]
 
-            // "Frame: <live value>" — read-only display when not focused; type a value
-            // and press Enter to jump the needle.
+            // "Frame: <live value>" — shows the scrub frame in Scrub mode and the
+            // live frame in Live mode. Editing + Enter jumps and enters Scrub.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
@@ -1741,7 +1766,7 @@ auto
                         SNew(SEditableTextBox)
                             .Text(FrameAttr)
                             .ToolTipText(NSLOCTEXT("CkSmDebugger", "JumpTooltip",
-                                "Current scrub frame. Type a frame number and press Enter to jump there."))
+                                "Current frame. Type a frame number and press Enter to jump the scrub needle there."))
                             .SelectAllTextWhenFocused(true)
                             .RevertTextOnEscape(true)
                             .OnTextCommitted_Lambda([this](const FText& InText, ETextCommit::Type InCommitType)
@@ -1756,34 +1781,40 @@ auto
                     ]
                 ]
 
-            // Step Next
+            // Step Next — only meaningful in Scrub mode (Live is already at "now").
+            // Enabled in Scrub, disabled (greyed) in Live.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                         .Text(FText::FromString(TEXT("\x25B6")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "StepFwdTooltip",
-                            "Step to the next transition (Right arrow)."))
+                            "Jump scrub to the next transition (Right arrow). Disabled in Live mode."))
+                        .IsEnabled_Lambda([this]()
+                        {
+                            return _ViewModel.IsValid()
+                                && _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub;
+                        })
                         .OnClicked_Lambda([this]() { StepScrubToTransition(+1); return FReply::Handled(); })
                 ]
 
-            // Bookmark add (Ctrl+B)
+            // Bookmark add — works in both modes (bookmarks the current cursor position).
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                         .Text(FText::FromString(TEXT("\x2606")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "AddBookmarkTooltip",
-                            "Add a bookmark at the current scrub position (Ctrl+B). Shift+B removes the nearest one."))
-                        .OnClicked_Lambda([this]()
+                            "Bookmark the current cursor position (Ctrl+B). Shift+B removes the nearest one."))
+                        .OnClicked_Lambda([this, GetCursorTime]()
                         {
                             if (_ViewModel.IsValid())
-                            { _ViewModel->AddBookmark(_ViewModel->Get_ScrubState().ScrubTime); }
+                            { _ViewModel->AddBookmark(GetCursorTime()); }
                             return FReply::Handled();
                         })
                 ]
 
-            // Prev bookmark (F2)
+            // Prev bookmark — auto-enters Scrub.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
@@ -1791,23 +1822,22 @@ auto
                         .Text(FText::FromString(TEXT("\x21A4\x2606")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "PrevBookmarkTooltip",
                             "Jump to the previous bookmark (F2)."))
-                        .OnClicked_Lambda([this]()
+                        .OnClicked_Lambda([this, EnsureScrubMode, GetCursorTime]()
                         {
-                            if (_ViewModel.IsValid())
+                            if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                            auto Target = _ViewModel->FindNextBookmark(GetCursorTime(), -1);
+                            if (Target >= 0.0)
                             {
-                                auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, -1);
-                                if (Target >= 0.0)
-                                {
-                                    auto NS = _ViewModel->Get_ScrubState();
-                                    NS.ScrubTime = Target;
-                                    _ViewModel->Set_ScrubState(NS);
-                                }
+                                EnsureScrubMode();
+                                auto NS = _ViewModel->Get_ScrubState();
+                                NS.ScrubTime = Target;
+                                _ViewModel->Set_ScrubState(NS);
                             }
                             return FReply::Handled();
                         })
                 ]
 
-            // Next bookmark (F3)
+            // Next bookmark — auto-enters Scrub.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
                 [
@@ -1815,54 +1845,51 @@ auto
                         .Text(FText::FromString(TEXT("\x2606\x21A6")))
                         .ToolTipText(NSLOCTEXT("CkSmDebugger", "NextBookmarkTooltip",
                             "Jump to the next bookmark (F3)."))
-                        .OnClicked_Lambda([this]()
+                        .OnClicked_Lambda([this, EnsureScrubMode, GetCursorTime]()
                         {
-                            if (_ViewModel.IsValid())
+                            if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                            auto Target = _ViewModel->FindNextBookmark(GetCursorTime(), +1);
+                            if (Target >= 0.0)
                             {
-                                auto Target = _ViewModel->FindNextBookmark(_ViewModel->Get_ScrubState().ScrubTime, +1);
-                                if (Target >= 0.0)
-                                {
-                                    auto NS = _ViewModel->Get_ScrubState();
-                                    NS.ScrubTime = Target;
-                                    _ViewModel->Set_ScrubState(NS);
-                                }
+                                EnsureScrubMode();
+                                auto NS = _ViewModel->Get_ScrubState();
+                                NS.ScrubTime = Target;
+                                _ViewModel->Set_ScrubState(NS);
                             }
                             return FReply::Handled();
                         })
                 ]
 
-            // Back to Live — separated by a small gap rather than full-width so all
-            // controls cluster left without dragging the eye across the whole row.
+            // Back to Live — visible in Scrub, Hidden (space reserved) in Live so
+            // the toolbar height never changes between modes.
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(16.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
-                    SNew(SButton)
-                        .Text(FText::FromString(TEXT("Back to Live \x23ED")))
-                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "BackToLiveTooltip",
-                            "Resume tracking the live SM (exits Scrub mode)."))
-                        .OnClicked_Lambda([this]()
-                        {
-                            if (_ViewModel.IsValid())
+                    SNew(SBox).Visibility(BackToLiveVis)
+                    [
+                        SNew(SButton)
+                            .Text(FText::FromString(TEXT("Back to Live \x23ED")))
+                            .ToolTipText(NSLOCTEXT("CkSmDebugger", "BackToLiveTooltip",
+                                "Resume tracking the live SM (exits Scrub mode)."))
+                            .OnClicked_Lambda([this]()
                             {
-                                auto NS = _ViewModel->Get_ScrubState();
-                                NS.TimelineScrollX = 0.0f;
-                                _ViewModel->Set_ScrubState(NS);
-                                _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
-                                _ViewModel->ClearScrubTransitionHighlight();
-                                // Defensive: any history-row selection from the earlier
-                                // scrub session could otherwise linger and momentarily
-                                // re-trigger Case 1 in the detail panel on the next scrub.
-                                _SelectedHistoryEntry.Reset();
-                            }
-                            return FReply::Handled();
-                        })
+                                if (_ViewModel.IsValid())
+                                {
+                                    auto NS = _ViewModel->Get_ScrubState();
+                                    NS.TimelineScrollX = 0.0f;
+                                    _ViewModel->Set_ScrubState(NS);
+                                    _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
+                                    _ViewModel->ClearScrubTransitionHighlight();
+                                    _SelectedHistoryEntry.Reset();
+                                }
+                                return FReply::Handled();
+                            })
+                    ]
                 ]
 
-            // Trailing spacer inside the scrub-only cluster.
+            // Trailing spacer.
             + SHorizontalBox::Slot().FillWidth(1.0f)
                 [ SNullWidget::NullWidget ]
-                        ]
-                ]
         ;
 }
 

@@ -217,8 +217,6 @@ struct FCkSmDebugger_ScrubSnapshot
     int32 ActiveStateIndex = -1;
     FString ActiveStateName;
     double TimeInState = 0.0;
-    int32 TakenTransitionSourceIdx = -1;
-    int32 TakenTransitionTargetIdx = -1;
     int32 HistoryIndex = -1;
 };
 

@@ -96,7 +96,9 @@ auto
     _IsPieDebugPaused = false;
     _WasPausedLastTick = false;
     _PauseStartTime = 0.0;
+    _GFrameAtPauseStart = 0;
     _CompletedPauseIntervals.Reset();
+    _CompletedPauseFrameIntervals.Reset();
     _BreakpointHitWallTimes.Reset();
     _LastObservedRunCounter = -1;
 }
@@ -246,6 +248,11 @@ auto
 {
     auto SmInfo = FCkSmDebugger_SmInfo{};
     SmInfo.Handle = UCk_Utils_StateMachine_UE::CastChecked(InSmHandle);
+    // FFragment_Sm_Context was removed — the SM fragments now live directly on
+    // the game entity, so InSmHandle *is* the owning game entity. Surface it
+    // explicitly so UI consumers (e.g. the SM Debugger's toolbar EntityRef)
+    // don't have to know about that detail.
+    SmInfo.GameEntity = InSmHandle;
 
     const auto& Current = InSmHandle.Get<ck::FFragment_Sm_Current>();
     SmInfo.RunStatus = Current.Get_RunStatus();
@@ -1115,7 +1122,7 @@ auto
         else
         {
             // Last entry is the currently-active state — extend to "now" so the
-            // swim-lane bar keeps growing while the state is being dwelt in.
+            // segment keeps growing while the state is being dwelt in.
             Segment.EndTime = InNow > InRunStartTime ? InNow - InRunStartTime : Segment.StartTime;
             Segment.EndFrame = (InCurrentFrameNumber > Segment.StartFrame)
                 ? InCurrentFrameNumber

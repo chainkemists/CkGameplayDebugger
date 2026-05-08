@@ -74,9 +74,10 @@ auto
 
     // Auto-highlight the history row that matches the scrub needle's position. Items
     // are stored newest-first (reverse history order), so a transition with backend
-    // index H lives at list index (Items.Num() - 1 - H). _IsApplyingScrubSelection
-    // suppresses our programmatic select inside OnSelectionChanged so it doesn't
-    // feedback into ScrubTime.
+    // index H lives at list index (Items.Num() - 1 - H). The programmatic
+    // SetItemSelection passes ESelectInfo::Direct, which OnSelectionChanged filters out
+    // — that prevents the auto-mirror from re-pinning ScrubTime to the row's exact
+    // transition frame mid-drag.
     if (NOT _ViewModel.IsValid() || NOT _ListView.IsValid()) { return; }
     if (_ViewModel->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub) { return; }
 
@@ -110,11 +111,9 @@ auto
     auto Selected = _ListView->GetSelectedItems();
     if (Selected.Num() == 1 && Selected[0] == TargetItem) { return; }
 
-    _IsApplyingScrubSelection = true;
     _ListView->ClearSelection();
     _ListView->SetItemSelection(TargetItem, true, ESelectInfo::Direct);
     _ListView->RequestScrollIntoView(TargetItem);
-    _IsApplyingScrubSelection = false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -301,10 +300,12 @@ auto
     if (NOT InItem.IsValid() || NOT _ViewModel.IsValid())
     { return; }
 
-    // Skip when our own Tick is mirroring the scrub needle into the list — otherwise
-    // the auto-select would re-pin ScrubTime to the row's exact transition frame and
-    // freeze the needle there mid-drag.
-    if (_IsApplyingScrubSelection)
+    // Skip programmatic selections (Tick auto-mirrors the scrub needle into the list).
+    // ESelectInfo::Direct is what SListView::SetItemSelection passes through. User clicks
+    // come through as OnMouseClick/OnKeyPress/OnNavigation. Filtering on Direct directly
+    // is more robust than a flag — Slate may defer the selection-change broadcast past
+    // our flag's reset window, which would otherwise drop user clicks.
+    if (InSelectInfo == ESelectInfo::Direct)
     { return; }
 
     _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);

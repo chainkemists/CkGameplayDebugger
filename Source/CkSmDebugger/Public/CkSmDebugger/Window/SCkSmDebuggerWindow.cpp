@@ -438,7 +438,7 @@ auto
                                     .AutoHeight()
                                     [
                                         SAssignNew(_Timeline, SCkSmDebugger_Timeline, _ViewModel, _Graph)
-                                            .DesiredHeight(40.0f)
+                                            .DesiredHeight(56.0f)
                                     ]
 
                                 // History | Details (side-by-side, fills remaining)

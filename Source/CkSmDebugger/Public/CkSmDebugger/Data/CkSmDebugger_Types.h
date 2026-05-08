@@ -138,7 +138,8 @@ struct FCkSmDebugger_TimelineSegment
 
 struct FCkSmDebugger_TimelineBusyFrame
 {
-    double Time = 0.0;
+    double Time = 0.0;       // start: first transition at this engine frame
+    double EndTime = 0.0;    // end: time of the next-frame transition (where the busy run finishes)
     uint64 FrameNumber = 0;
     int32 TransitionCount = 0;
 };

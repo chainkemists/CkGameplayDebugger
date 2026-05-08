@@ -7,6 +7,7 @@
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
 #include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
@@ -201,6 +202,24 @@ auto
                             .Text(FText::FromString(TEXT("(no entities)")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     ]
+            ]
+
+        // Click-to-open in CK ECS Debugger. The combo immediately to the
+        // left already shows the selected entity's DebugName, so the pill
+        // renders just the canonical ID (ShowName=false) to avoid duplicating
+        // the name twice in adjacent widgets. Same pattern in SM and GOAP.
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f)
+            [
+                SNew(SCkDebug_EntityRef)
+                    .Entity_Lambda([this]() -> FCk_Handle
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FCk_Handle{}; }
+                        return _ViewModel->Get_SelectedEntityHandle();
+                    })
             ]
 
         // Status badge

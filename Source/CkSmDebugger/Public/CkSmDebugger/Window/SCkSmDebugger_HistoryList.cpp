@@ -288,17 +288,19 @@ auto
         }));
 
     // Highlight dimming — when the dual-search Highlight input has text and this
-    // row doesn't match, fade the row to draw the eye toward matching rows. Capture
-    // the entry by value so the lambda can run the same MatchesFilter check the
-    // top-level filter uses.
+    // row doesn't match, fade the row to draw the eye toward matching rows. Use
+    // SBorder::ColorAndOpacity (bindable, multiplies child content's color); the
+    // RenderOpacity slate arg is fixed-value-only.
     auto EntryCopy = *InItem;
-    auto HighlightOpacityAttr = TAttribute<float>::Create(TAttribute<float>::FGetter::CreateLambda(
-        [ListWeak = TWeakPtr<SCkSmDebugger_HistoryList>(SharedThis(this)), EntryCopy]() -> float
+    auto ContentTintAttr = TAttribute<FLinearColor>::Create(TAttribute<FLinearColor>::FGetter::CreateLambda(
+        [ListWeak = TWeakPtr<SCkSmDebugger_HistoryList>(SharedThis(this)), EntryCopy]() -> FLinearColor
         {
             auto Pinned = ListWeak.Pin();
-            if (NOT Pinned.IsValid()) { return 1.0f; }
-            if (Pinned->_HighlightString.IsEmpty()) { return 1.0f; }
-            return Pinned->MatchesFilter(EntryCopy, Pinned->_HighlightString) ? 1.0f : 0.35f;
+            if (NOT Pinned.IsValid()) { return FLinearColor::White; }
+            if (Pinned->_HighlightString.IsEmpty()) { return FLinearColor::White; }
+            return Pinned->MatchesFilter(EntryCopy, Pinned->_HighlightString)
+                ? FLinearColor::White
+                : FLinearColor(1.0f, 1.0f, 1.0f, 0.35f);
         }));
 
     return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
@@ -310,8 +312,8 @@ auto
                 SNew(SBorder)
                 .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(TintAttr)
+                .ColorAndOpacity(ContentTintAttr)
                 .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
-                .RenderOpacity(HighlightOpacityAttr)
                 [ Line ]
             ]
         ];

@@ -2022,7 +2022,7 @@ auto
                             }
                         }
                     }
-                    return FText::FromString(FString::Printf(TEXT("Frame [%lld]  \x2022  %.2fs"), Frame, T));
+                    return FText::FromString(FString::Printf(TEXT("Frame [%lld] (%03lld)  \x2022  %.2fs"), Frame, Frame % 1000, T));
                 }));
 
             Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("SCRUB AT")) ];
@@ -2216,6 +2216,25 @@ auto
                     if (NOT VM.IsValid()) { return FText::GetEmpty(); }
                     auto* Info = VM->Get_CurrentSmInfo();
                     if (NOT Info || SelectedIdx >= Info->States.Num()) { return FText::GetEmpty(); }
+
+                    // While scrubbing, report dwell relative to the scrub needle: time spent
+                    // in the active segment up to ScrubTime. For the live state with no exit
+                    // yet this matches the live DwellTimeSeconds; for completed segments it
+                    // shows the duration the SM was in this state at the scrubbed moment.
+                    if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                    {
+                        auto& SS = VM->Get_ScrubState();
+                        auto RIdx = SS.SelectedRunIndex;
+                        auto& R = (RIdx < 0)
+                            ? Info->CurrentRun
+                            : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+                        for (auto& Seg : R.Segments)
+                        {
+                            if (SS.ScrubTime >= Seg.StartTime && SS.ScrubTime <= Seg.EndTime)
+                            { return FText::FromString(FString::Printf(TEXT("%.2fs"), FMath::Max(0.0, SS.ScrubTime - Seg.StartTime))); }
+                        }
+                    }
+
                     return FText::FromString(FString::Printf(TEXT("%.2fs"), Info->States[SelectedIdx].DwellTimeSeconds));
                 })))
         ];
@@ -2242,8 +2261,9 @@ auto
                 auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
                 auto TaskClassStr = IsValid(Task.ScriptClass) ? Task.ScriptClass->GetName() : FString(TEXT("(unknown)"));
 
+                auto TaskNameCapture = Task.ClassName;
                 auto ResultAttr = TAttribute<ECk_SmTaskResult>::Create(TAttribute<ECk_SmTaskResult>::FGetter::CreateLambda(
-                    [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx, TaskIdx]()
+                    [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx, TaskIdx, TaskNameCapture]()
                     {
                         auto VM = ViewModelWeak.Pin();
                         if (NOT VM.IsValid()) { return ECk_SmTaskResult::Running; }
@@ -2251,6 +2271,35 @@ auto
                         if (NOT Info || SelectedIdx >= Info->States.Num()) { return ECk_SmTaskResult::Running; }
                         auto& St = Info->States[SelectedIdx];
                         if (TaskIdx >= St.Tasks.Num()) { return ECk_SmTaskResult::Running; }
+
+                        // While scrubbing on a completed state segment, return the task's
+                        // recorded result from the next transition's TaskSnapshots — that's
+                        // the value at the moment the SM left this state. For the currently-
+                        // active live state (no exit yet), fall through to the live value.
+                        if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                        {
+                            auto& SS = VM->Get_ScrubState();
+                            auto RIdx = SS.SelectedRunIndex;
+                            auto& R = (RIdx < 0)
+                                ? Info->CurrentRun
+                                : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+                            auto ActiveSegIdx = -1;
+                            for (auto i = 0; i < R.Segments.Num(); ++i)
+                            {
+                                if (SS.ScrubTime >= R.Segments[i].StartTime && SS.ScrubTime <= R.Segments[i].EndTime)
+                                { ActiveSegIdx = i; break; }
+                            }
+                            if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
+                            {
+                                auto& NextEntry = R.History[ActiveSegIdx];
+                                for (auto& Snap : NextEntry.TaskSnapshots)
+                                {
+                                    if (Snap.TaskName == TaskNameCapture)
+                                    { return Snap.Result; }
+                                }
+                            }
+                        }
+
                         return St.Tasks[TaskIdx].LastResult;
                     }));
 
@@ -2360,8 +2409,9 @@ auto
                     auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
                     auto CondClassStr = IsValid(Cond.ScriptClass) ? Cond.ScriptClass->GetName() : FString(TEXT("(unknown)"));
 
+                    auto CondNameCapture = Cond.ClassName;
                     auto CondResultAttr = TAttribute<ECk_SmConditionResult>::Create(TAttribute<ECk_SmConditionResult>::FGetter::CreateLambda(
-                        [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TargetIdx, CondIdx]()
+                        [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), TargetIdx, CondIdx, CondNameCapture]()
                         {
                             auto VM = ViewModelWeak.Pin();
                             if (NOT VM.IsValid()) { return ECk_SmConditionResult::Undetermined; }
@@ -2369,6 +2419,40 @@ auto
                             if (NOT Info || TargetIdx >= Info->Transitions.Num()) { return ECk_SmConditionResult::Undetermined; }
                             auto& Tr = Info->Transitions[TargetIdx];
                             if (CondIdx >= Tr.Conditions.Num()) { return ECk_SmConditionResult::Undetermined; }
+
+                            // While scrubbing on a completed segment, return Pass for the
+                            // conditions named in the next transition's ConditionNames (those
+                            // are the ones that actually fired the exit) and Fail for the
+                            // rest. Live polling values are only meaningful for the current
+                            // live state.
+                            if (VM->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                            {
+                                auto& SS = VM->Get_ScrubState();
+                                auto RIdx = SS.SelectedRunIndex;
+                                auto& R = (RIdx < 0)
+                                    ? Info->CurrentRun
+                                    : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+                                auto ActiveSegIdx = -1;
+                                for (auto i = 0; i < R.Segments.Num(); ++i)
+                                {
+                                    if (SS.ScrubTime >= R.Segments[i].StartTime && SS.ScrubTime <= R.Segments[i].EndTime)
+                                    { ActiveSegIdx = i; break; }
+                                }
+                                if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
+                                {
+                                    auto& NextEntry = R.History[ActiveSegIdx];
+                                    if (Tr.SourceStateName == NextEntry.FromStateName
+                                        && Tr.TargetStateName == NextEntry.ToStateName)
+                                    {
+                                        return NextEntry.ConditionNames.Contains(CondNameCapture)
+                                            ? ECk_SmConditionResult::Pass
+                                            : ECk_SmConditionResult::Fail;
+                                    }
+                                    // Different transition (didn't fire) — return Undetermined
+                                    return ECk_SmConditionResult::Undetermined;
+                                }
+                            }
+
                             return Tr.Conditions[CondIdx].Result;
                         }));
 

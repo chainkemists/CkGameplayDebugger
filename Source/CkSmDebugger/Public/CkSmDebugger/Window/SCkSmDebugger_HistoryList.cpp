@@ -6,7 +6,6 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Images/SImage.h"
 
 #include "CkCore/Macros/CkMacros.h"
 

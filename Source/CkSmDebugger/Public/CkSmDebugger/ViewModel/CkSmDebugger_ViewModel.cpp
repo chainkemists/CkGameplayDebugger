@@ -493,26 +493,6 @@ auto
         }
     }
 
-    _ScrubSnapshot.TakenTransitionSourceIdx = -1;
-    _ScrubSnapshot.TakenTransitionTargetIdx = -1;
-
-    if (BestIndex + 1 < History.Num())
-    {
-        auto& NextEntry = History[BestIndex + 1];
-        auto TimeDelta = NextEntry.RealTimeSeconds - ScrubTime;
-        constexpr auto FlashWindow = 0.3;
-
-        if (TimeDelta < FlashWindow)
-        {
-            for (auto i = 0; i < _CurrentSmInfo.States.Num(); ++i)
-            {
-                if (_CurrentSmInfo.States[i].StateName == NextEntry.FromStateName)
-                { _ScrubSnapshot.TakenTransitionSourceIdx = i; }
-                if (_CurrentSmInfo.States[i].StateName == NextEntry.ToStateName)
-                { _ScrubSnapshot.TakenTransitionTargetIdx = i; }
-            }
-        }
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

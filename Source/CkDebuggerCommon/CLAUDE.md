@@ -20,6 +20,12 @@ provides:
   searches.
 - **Copy-menu helpers** (`Utils/CkDebug_CopyMenu_Utils.h`) — one canonical
   "Copy …" menu shape across schemas, lists, and right-click handlers.
+- **Entity reference widget** (`Widgets/SCkDebug_EntityRef`) — single-line
+  clickable pill for any `FCk_Handle` display surface. Click opens the entity
+  in the CK ECS Debugger; right-click → Copy. See "Entity references" below.
+- **Cross-debugger navigator** (`Navigation/CkDebug_Navigator.h`) — the
+  one-way registration hook the EntityRef widget uses to invoke the ECS
+  Debugger without taking a hard dependency on it.
 - **Window-level plumbing** (`Window/CkDebuggerRefreshGate.h`) — refresh-rate
   gate honouring user settings (Use Global / OnlyWhenVisible / Hz cap).
 
@@ -45,6 +51,52 @@ selectable.
 Compose multi-field clipboard payloads with newlines so the user can paste a
 "give me everything about this thing" summary into a bug report. See
 `SCkGoapDebug_HistoryRail.cpp` for the canonical example.
+
+## Entity references — always use `SCkDebug_EntityRef`
+
+Any time a debugger renders an `FCk_Handle` to the user, use
+`SCkDebug_EntityRef` instead of formatting it into an `STextBlock`. Click on
+the pill opens the entity in the CK ECS Debugger (tab is invoked / focused,
+selection model gets the handle); right-click → Copy works automatically.
+
+```cpp
+SNew(SCkDebug_EntityRef)
+    .Entity(SomeHandle)              // FCk_Handle, plain or attribute
+    .ShowName(true)                  // optional: prefixes with DebugName
+```
+
+Use `Entity_Lambda([this](){ ... return Handle; })` when the displayed entity
+changes over time (e.g. the selection in your debugger's view-model).
+
+### `ShowName` — when to set true vs false
+
+- **`ShowName(false)` (default)** — when an adjacent widget (like a combo box
+  or section header) already shows the DebugName. The pill renders just the
+  canonical `ID|Version(Raw)`, avoiding visual duplication. This is the
+  pattern used in the SM / GOAP / AStar toolbars.
+- **`ShowName(true)`** — when the pill is the *only* identifier of the entity
+  on that surface (inspector rows like "Context Owner:" / "Parent:" / variable
+  rows; badge boxes; the Crowd AgentDetail panel header).
+
+### How click-to-navigate is wired up
+
+`SCkDebug_EntityRef` calls `ck::DebugNav::Goto_Entity(Handle)`. The ECS
+Debugger module registers a navigator function in its `StartupModule` that
+opens the tab and sets the selection model. If `CkEcsDebugger` isn't loaded
+(e.g. cooked client), the click is a no-op and the pill still renders +
+right-click → Copy still works.
+
+### Where the widget already lives
+
+| Site | `ShowName` | Notes |
+|---|---|---|
+| ECS Inspector — `Entity Info → ID:` row | false | Sibling `Name:` row already shows the name. |
+| ECS Inspector — `Relationships`, `SceneNode`, `DynamicFragments`, `Variables` | true | Pill is the only entity identifier in the row. |
+| ECS Inspector — `MakeBadgeBox` / `PopulateBadgeBox` (used by Probes, ProbeTraces, InteractionResolver, InteractTarget, SceneNode siblings) | true | Each handle in the wrap-box is a pill. |
+| SM / GOAP / AStar toolbars | false | Adjacent combo already shows the name. |
+| Crowd `AgentDetailPanel` header | true | No combo on this panel; pill is the only identifier. |
+
+When adding a new debugger that displays entities, follow the same matrix.
 
 ## Right-click "Copy …" menus
 
@@ -331,11 +383,14 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 
 ```
 CkDebuggerCommon/
+├── Navigation/
+│   └── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
 ├── Search/
 │   └── SCkDebug_DualSearchBar.h      (Filter + Highlight side-by-side)
 ├── Utils/
 │   └── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
 ├── Widgets/
+│   ├── SCkDebug_EntityRef.h          (clickable FCk_Handle pill — navigates to ECS Debugger)
 │   ├── SCkDebug_SelectableLabel.h    (STextBlock-shape, copyable)
 │   ├── SCkDebug_CopyableContainer.h  (wrap any widget with right-click → Copy)
 │   ├── SCkDebug_KeyValueRow.h        (inspector row; values selectable)

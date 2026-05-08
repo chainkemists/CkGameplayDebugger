@@ -29,6 +29,17 @@ Window (SCkDebuggerWindow_Main)
 - `FCkDebuggerModel_EntitySelection` — selected entities + history for back/forward navigation
 - `FCkDebuggerModel_WorldContext` — selected world, entity cache, world change broadcast
 
+### Cross-debugger entity navigation hook
+
+`FCkEcsDebuggerModule::StartupModule` registers an
+`ck::DebugNav::Register_EntityNavigator` callback that opens this debugger's
+tab and sets its selection model when any other debugger's
+`SCkDebug_EntityRef` widget is clicked. `ShutdownModule` clears the slot
+first so a stale click can't re-enter a torn-down module. The navigator
+itself lives in `CkDebuggerCommon/Navigation/CkDebug_Navigator.h`. See the
+"Entity references" section in `../CkDebuggerCommon/CLAUDE.md` for the full
+pattern.
+
 ### Inspector System
 - `ICkDebuggerComponentInspector_Base` — interface with lifecycle: `CanInspect`, `Build_Inspector`, `Tick`, `OnDeactivated`
 - `FCkDebuggerInspectorRegistry` — auto-registration via `CK_REGISTER_DEBUGGER_INSPECTOR` macro

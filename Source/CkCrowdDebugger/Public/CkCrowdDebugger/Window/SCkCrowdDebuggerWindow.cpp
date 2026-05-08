@@ -168,6 +168,38 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 					SNew(STextBlock).Text(FText::FromString(TEXT("Planned Paths")))
 				]
 			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
+			[
+				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw a body capsule + forward-facing cone for every crowd agent. Color comes from the agent's debug color (per-agent override or hash-derived stable fallback). PathPending agents tint yellow; Asleep agents desaturate.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.Debug.AgentBody")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.Debug.AgentBody"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Agent Body")))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
+			[
+				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw separation diagnostics for every awake crowd agent: yellow separation-radius circle on the floor, cyan lines to each neighbor in the steering cache, orange arrow showing the active separation force.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.Debug")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.Debug"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Separation")))
+				]
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)

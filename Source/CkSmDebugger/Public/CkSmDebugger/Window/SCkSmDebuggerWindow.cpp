@@ -1615,6 +1615,42 @@ auto
                 ? EVisibility::Visible : EVisibility::Collapsed;
         }));
 
+    // Scrub frame as a live-bound text — when not focused, displays the current
+    // scrub-needle frame; when committed, jumps the needle to that frame.
+    auto FrameAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+        [this]() -> FText
+        {
+            if (NOT _ViewModel.IsValid()) { return FText::GetEmpty(); }
+            auto* Info = _ViewModel->Get_CurrentSmInfo();
+            if (NOT Info) { return FText::GetEmpty(); }
+            auto& SS = _ViewModel->Get_ScrubState();
+            auto RIdx = SS.SelectedRunIndex;
+            auto& R = (RIdx < 0)
+                ? Info->CurrentRun
+                : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
+            if (R.FrameSegments.IsEmpty()) { return FText::GetEmpty(); }
+
+            auto T = SS.ScrubTime;
+            int64 Frame = static_cast<int64>(R.FrameSegments[0].StartFrame);
+            if (T <= R.FrameSegments[0].StartTime) { Frame = static_cast<int64>(R.FrameSegments[0].StartFrame); }
+            else if (T >= R.FrameSegments.Last().EndTime) { Frame = static_cast<int64>(R.FrameSegments.Last().EndFrame); }
+            else
+            {
+                for (auto& Seg : R.FrameSegments)
+                {
+                    if (T >= Seg.StartTime && T <= Seg.EndTime)
+                    {
+                        auto Span = Seg.EndTime - Seg.StartTime;
+                        auto Frac = (Span > 0.0) ? (T - Seg.StartTime) / Span : 0.0;
+                        auto FrameSpan = static_cast<int64>(Seg.EndFrame) - static_cast<int64>(Seg.StartFrame);
+                        Frame = static_cast<int64>(Seg.StartFrame) + FMath::FloorToInt64(Frac * FrameSpan);
+                        break;
+                    }
+                }
+            }
+            return FText::FromString(FString::Printf(TEXT("%lld"), Frame));
+        }));
+
     return SNew(SBox)
         .Visibility(IsScrubbingVis)
         [
@@ -1652,23 +1688,26 @@ auto
                         .OnClicked_Lambda([this]() { StepScrubToTransition(-1); return FReply::Handled(); })
                 ]
 
-            // Frame jump input field
+            // "Frame: <live value>" — read-only display when not focused; type a value
+            // and press Enter to jump the needle.
             + SHorizontalBox::Slot()
-                .AutoWidth().Padding(6.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
+                .AutoWidth().Padding(8.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(NSLOCTEXT("CkSmDebugger", "JumpToFrameLabel", "Frame:"))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                 ]
             + SHorizontalBox::Slot()
-                .AutoWidth().Padding(0.0f, 0.0f, 4.0f, 0.0f).VAlign(VAlign_Center)
+                .AutoWidth().Padding(0.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SBox).WidthOverride(80.0f)
                     [
                         SNew(SEditableTextBox)
-                            .HintText(NSLOCTEXT("CkSmDebugger", "JumpHint", "12345"))
+                            .Text(FrameAttr)
                             .ToolTipText(NSLOCTEXT("CkSmDebugger", "JumpTooltip",
-                                "Type a frame number and press Enter to jump the scrub needle there."))
+                                "Current scrub frame. Type a frame number and press Enter to jump there."))
+                            .SelectAllTextWhenFocused(true)
+                            .RevertTextOnEscape(true)
                             .OnTextCommitted_Lambda([this](const FText& InText, ETextCommit::Type InCommitType)
                             {
                                 if (InCommitType != ETextCommit::OnEnter) { return; }
@@ -1692,14 +1731,10 @@ auto
                         .OnClicked_Lambda([this]() { StepScrubToTransition(+1); return FReply::Handled(); })
                 ]
 
-            // Spacer pushes Back-to-Live to the right
+            // Back to Live — separated by a small gap rather than full-width so all
+            // controls cluster left without dragging the eye across the whole row.
             + SHorizontalBox::Slot()
-                .FillWidth(1.0f)
-                [ SNullWidget::NullWidget ]
-
-            // Back to Live (right-aligned, prominent)
-            + SHorizontalBox::Slot()
-                .AutoWidth().Padding(2.0f, 0.0f).VAlign(VAlign_Center)
+                .AutoWidth().Padding(16.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
                 [
                     SNew(SButton)
                         .Text(FText::FromString(TEXT("Back to Live \x23ED")))
@@ -1718,6 +1753,10 @@ auto
                             return FReply::Handled();
                         })
                 ]
+
+            // Trailing spacer so the row doesn't try to grow past content width.
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+                [ SNullWidget::NullWidget ]
         ];
 }
 

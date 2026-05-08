@@ -3,7 +3,7 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkVfx/CkVfxCue_Fragment.h"
+#include "CkVfx/Cue/CkVfxCue_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"

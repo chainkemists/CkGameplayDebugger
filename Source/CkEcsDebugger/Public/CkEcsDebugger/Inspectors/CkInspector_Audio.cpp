@@ -3,8 +3,8 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkAudio/CkAudioTrack_Fragment.h"
-#include "CkAudio/CkAudioDirector_Fragment.h"
+#include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
+#include "CkAudio/AudioDirector/CkAudioDirector_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"

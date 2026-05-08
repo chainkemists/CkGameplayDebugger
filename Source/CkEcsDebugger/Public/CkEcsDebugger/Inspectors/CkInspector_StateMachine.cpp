@@ -7,8 +7,10 @@
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment_Data.h"
 #include "CkStateMachine/State/CkSmState_Fragment.h"
 #include "CkStateMachine/Task/CkSmTask_Fragment.h"
+#include "CkStateMachine/Task/EntityScripts/CkSmTask_EntityScript.h"
 #include "CkStateMachine/Transition/CkSmTransition_Fragment.h"
 #include "CkStateMachine/Condition/CkSmCondition_Fragment.h"
+#include "CkStateMachine/Condition/EntityScripts/CkSmCondition_EntityScript.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -67,7 +69,7 @@ namespace
         }
     }
 
-    auto Format_ClassName(const UClass* InClass) -> FString
+    auto Format_Sm_ClassName(const UClass* InClass) -> FString
     {
         return InClass != nullptr ? InClass->GetName() : FString(TEXT("(None)"));
     }
@@ -132,8 +134,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
                 { return FText::FromString(TEXT("--")); }
-                const auto* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
-                return FText::FromString(Format_ClassName(StateClass));
+                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
+                return FText::FromString(Format_Sm_ClassName(StateClass));
             },
             CkDebugStyle::Value_Object());
     }
@@ -151,8 +153,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_PendingTransition>())
                 { return FText::FromString(TEXT("--")); }
-                const auto* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_PreviousStateClass();
-                return FText::FromString(Format_ClassName(Class));
+                const UClass* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_PreviousStateClass();
+                return FText::FromString(Format_Sm_ClassName(Class));
             },
             CkDebugStyle::Value_Object());
 
@@ -162,8 +164,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_PendingTransition>())
                 { return FText::FromString(TEXT("--")); }
-                const auto* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_TargetStateClass();
-                return FText::FromString(Format_ClassName(Class));
+                const UClass* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_TargetStateClass();
+                return FText::FromString(Format_Sm_ClassName(Class));
             },
             CkDebugStyle::Value_Object());
     }
@@ -228,10 +230,10 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         Builder.AddHeader(FText::FromString(TEXT("State")));
 
         const auto& Params            = Entity.Get<ck::FFragment_SmState_Params>();
-        const auto* ResolvedClass     = Params.Get_ResolvedScriptClass();
-        const auto* RequestedClass    = Params.Get_RequestedScriptClass();
-        const auto  ResolvedName      = Format_ClassName(ResolvedClass);
-        const auto  RequestedName     = Format_ClassName(RequestedClass);
+        const UClass* ResolvedClass     = Params.Get_ResolvedScriptClass();
+        const UClass* RequestedClass    = Params.Get_RequestedScriptClass();
+        const auto  ResolvedName      = Format_Sm_ClassName(ResolvedClass);
+        const auto  RequestedName     = Format_Sm_ClassName(RequestedClass);
 
         Builder.AddRow(
             FText::FromString(TEXT("Class:")),
@@ -274,8 +276,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
 
         if (Entity.Has<ck::FFragment_SmTask_Params>())
         {
-            const auto* ScriptClass = Entity.Get<ck::FFragment_SmTask_Params>().Get_ScriptClass();
-            const auto  ClassName   = Format_ClassName(ScriptClass);
+            const UClass* ScriptClass = Entity.Get<ck::FFragment_SmTask_Params>().Get_ScriptClass();
+            const auto  ClassName   = Format_Sm_ClassName(ScriptClass);
 
             Builder.AddRow(
                 FText::FromString(TEXT("Class:")),
@@ -328,8 +330,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
 
         if (Entity.Has<ck::FFragment_SmTransition_Params>())
         {
-            const auto* TargetClass = Entity.Get<ck::FFragment_SmTransition_Params>().Get_TargetStateClass();
-            const auto  ClassName   = Format_ClassName(TargetClass);
+            const UClass* TargetClass = Entity.Get<ck::FFragment_SmTransition_Params>().Get_TargetStateClass();
+            const auto  ClassName   = Format_Sm_ClassName(TargetClass);
             Builder.AddRow(
                 FText::FromString(TEXT("Target:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); },
@@ -364,8 +366,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
 
         if (Entity.Has<ck::FFragment_SmCondition_Params>())
         {
-            const auto* ScriptClass = Entity.Get<ck::FFragment_SmCondition_Params>().Get_ScriptClass();
-            const auto  ClassName   = Format_ClassName(ScriptClass);
+            const UClass* ScriptClass = Entity.Get<ck::FFragment_SmCondition_Params>().Get_ScriptClass();
+            const auto  ClassName   = Format_Sm_ClassName(ScriptClass);
             Builder.AddRow(
                 FText::FromString(TEXT("Class:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); },

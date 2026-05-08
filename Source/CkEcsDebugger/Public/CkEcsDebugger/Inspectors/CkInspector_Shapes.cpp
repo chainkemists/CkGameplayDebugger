@@ -47,7 +47,7 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         Builder.AddHeader(FText::FromString(TEXT("Sphere")));
 
         const auto& Dims = Entity.Get<ck::FFragment_ShapeSphere_Current>().Get_Dimensions();
-        const auto  Radius = Dims._Radius;
+        const auto  Radius = Dims.Get_Radius();
 
         Builder.AddRow(
             FText::FromString(TEXT("Radius:")),
@@ -62,8 +62,8 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         Builder.AddHeader(FText::FromString(TEXT("Box")));
 
         const auto& Dims       = Entity.Get<ck::FFragment_ShapeBox_Current>().Get_Dimensions();
-        const auto  HalfExtent = Dims._HalfExtents;
-        const auto  ConvexR    = Dims._ConvexRadius;
+        const auto  HalfExtent = Dims.Get_HalfExtents();
+        const auto  ConvexR    = Dims.Get_ConvexRadius();
 
         Builder.AddRow(
             FText::FromString(TEXT("Half Extents:")),
@@ -84,8 +84,8 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         Builder.AddHeader(FText::FromString(TEXT("Capsule")));
 
         const auto& Dims       = Entity.Get<ck::FFragment_ShapeCapsule_Current>().Get_Dimensions();
-        const auto  HalfHeight = Dims._HalfHeight;
-        const auto  Radius     = Dims._Radius;
+        const auto  HalfHeight = Dims.Get_HalfHeight();
+        const auto  Radius     = Dims.Get_Radius();
 
         Builder.AddRow(
             FText::FromString(TEXT("Half Height:")),
@@ -106,9 +106,9 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         Builder.AddHeader(FText::FromString(TEXT("Cylinder")));
 
         const auto& Dims       = Entity.Get<ck::FFragment_ShapeCylinder_Current>().Get_Dimensions();
-        const auto  HalfHeight = Dims._HalfHeight;
-        const auto  Radius     = Dims._Radius;
-        const auto  ConvexR    = Dims._ConvexRadius;
+        const auto  HalfHeight = Dims.Get_HalfHeight();
+        const auto  Radius     = Dims.Get_Radius();
+        const auto  ConvexR    = Dims.Get_ConvexRadius();
 
         Builder.AddRow(
             FText::FromString(TEXT("Half Height:")),

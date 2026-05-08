@@ -59,20 +59,19 @@ public:
         FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&;
 
     /**
-     * Build a clickable entity badge wrap-box. Each handle becomes a button labeled with
-     * its debug name; clicking the button selects that entity in the supplied selection model.
-     * Used by inspectors that need to show lists of related entities (e.g. probe overlaps,
-     * interaction targets) as live, clickable badges.
+     * Build a clickable entity badge wrap-box. Each handle becomes an
+     * SCkDebug_EntityRef pill; clicking opens that entity in the CK ECS
+     * Debugger via ck::DebugNav (right-click → copy works too). Used by
+     * inspectors that show lists of related entities (probe overlaps,
+     * interaction targets, scene-node siblings, etc.).
      */
     static auto MakeBadgeBox(
-        const TArray<FCk_Handle>& InHandles,
-        TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>;
+        const TArray<FCk_Handle>& InHandles) -> TSharedRef<SWrapBox>;
 
     /** Populate (or repopulate) an existing badge box with the given handles. */
     static auto PopulateBadgeBox(
         SWrapBox& InBox,
-        const TArray<FCk_Handle>& InHandles,
-        TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void;
+        const TArray<FCk_Handle>& InHandles) -> void;
 
     auto Build(const FCk_Handle& InEntity, const FString& InFilter = FString()) -> TSharedRef<SWidget>;
 

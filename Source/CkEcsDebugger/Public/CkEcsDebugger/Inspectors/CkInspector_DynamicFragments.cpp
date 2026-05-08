@@ -19,6 +19,7 @@
 #include "StructUtils/InstancedStruct.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_DynamicFragments)
 
 // =====================================================================================================================
@@ -249,47 +250,26 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         {
             const auto* HandlePtr = StructProp->ContainerPtrToValuePtr<FCk_Handle>(StructMemory);
             const auto HandleValue = *HandlePtr;
-            const auto DisplayStr = [&]() -> FString
-            {
-                if (ck::Is_NOT_Valid(HandleValue)) { return TEXT("(Invalid)"); }
-                const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(HandleValue);
-                return DebugName.IsNone() ? *ck::Format_UE(TEXT("[{}]"), HandleValue) : DebugName.ToString();
-            }();
 
-            auto WeakSelectionModel = SelectionModel;
-
+            // Property name in the key column (plain label — the value column is the
+            // clickable navigator now, so the key no longer needs to be a button).
             Grid->AddSlot(0, Row)
                 .Padding(FCkDebuggerStyle::Padding_Small)
                 [
-                    SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .OnClicked_Lambda([WeakSelectionModel, HandleValue]()
-                    {
-                        if (WeakSelectionModel.IsValid() && ck::IsValid(HandleValue))
-                        {
-                            WeakSelectionModel->Set_SelectedEntities({ HandleValue });
-                        }
-                        return FReply::Handled();
-                    })
-                    .IsEnabled(ck::IsValid(HandleValue))
-                    .ContentPadding(0.0f)
+                    SNew(STextBlock)
+                    .Text(FText::FromString(PropertyName))
+                    .ColorAndOpacity(CkDebugStyle::TextDim())
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                     .ToolTipText(FText::FromString(PropertyName))
-                    [
-                        SNew(STextBlock)
-                        .Text(FText::FromString(PropertyName))
-                        .ColorAndOpacity(CkDebugStyle::Selection())
-                        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    ]
                 ];
 
+            // Clickable entity ref in the value column.
             Grid->AddSlot(1, Row)
                 .Padding(FCkDebuggerStyle::Padding_Small)
                 [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(DisplayStr))
-                    .ColorAndOpacity(CkDebugStyle::Value_Handle())
-                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                    .ToolTipText(FText::FromString(DisplayStr))
+                    SNew(SCkDebug_EntityRef)
+                    .Entity(HandleValue)
+                    .ShowName(true)
                 ];
         }
         else

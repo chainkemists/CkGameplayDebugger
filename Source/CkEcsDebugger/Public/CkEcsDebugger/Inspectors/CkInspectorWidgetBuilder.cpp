@@ -6,6 +6,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 
@@ -131,47 +132,32 @@ auto FCkInspectorWidgetBuilder::AddClickableWidgetRow(
 }
 
 auto FCkInspectorWidgetBuilder::MakeBadgeBox(
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> TSharedRef<SWrapBox>
+    const TArray<FCk_Handle>& InHandles) -> TSharedRef<SWrapBox>
 {
     auto Box = SNew(SWrapBox).UseAllottedSize(true);
-    PopulateBadgeBox(*Box, InHandles, InWeakModel);
+    PopulateBadgeBox(*Box, InHandles);
     return Box;
 }
 
 auto FCkInspectorWidgetBuilder::PopulateBadgeBox(
     SWrapBox& InBox,
-    const TArray<FCk_Handle>& InHandles,
-    TWeakPtr<FCkDebuggerModel_EntitySelection> InWeakModel) -> void
+    const TArray<FCk_Handle>& InHandles) -> void
 {
     InBox.ClearChildren();
 
+    // Clicks route through the global ck::DebugNav navigator (registered by
+    // the ECS debugger module), which sets selection on whichever ECS Debugger
+    // window is open — same behaviour as SCkDebug_EntityRef everywhere else.
     for (const auto& Handle : InHandles)
     {
         if (ck::Is_NOT_Valid(Handle)) { continue; }
 
-        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Handle).ToString();
-        const auto CapturedHandle = Handle;
-
         InBox.AddSlot()
             .Padding(FMargin(0.0f, 0.0f, 2.0f, 2.0f))
             [
-                SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .ContentPadding(FMargin(4.0f, 1.0f))
-                    .OnClicked_Lambda([InWeakModel, CapturedHandle]()
-                    {
-                        if (const auto Model = InWeakModel.Pin(); Model.IsValid())
-                        {
-                            Model->Set_SelectedEntities({ CapturedHandle });
-                        }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(DebugName))
-                            .ColorAndOpacity(CkDebugStyle::Selection())
-                    ]
+                SNew(SCkDebug_EntityRef)
+                    .Entity(Handle)
+                    .ShowName(true)
             ];
     }
 }

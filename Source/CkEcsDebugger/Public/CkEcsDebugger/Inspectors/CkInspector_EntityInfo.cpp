@@ -12,6 +12,7 @@
 #include "Widgets/Text/STextBlock.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityInfo)
 
 auto FCkInspector_EntityInfo::Get_ComponentName() const -> FText
@@ -30,10 +31,10 @@ auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TShar
         .AddRow(
             FText::FromString(TEXT("Name:")),
             [](const FCk_Handle& E) { return FText::FromString(UCk_Utils_Handle_UE::Get_DebugName(E).ToString()); })
-        .AddRow(
+        .AddWidgetRow(
             FText::FromString(TEXT("ID:")),
-            [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), E.Get_Entity())); },
-            CkDebugStyle::EntityId())
+            SNew(SCkDebug_EntityRef)
+                .Entity(Entity))
         .AddConditionalRow(
             FText::FromString(TEXT("Actor:")),
             [](const FCk_Handle& E)

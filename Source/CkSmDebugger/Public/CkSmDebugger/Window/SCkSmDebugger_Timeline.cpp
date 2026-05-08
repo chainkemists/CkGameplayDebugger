@@ -239,16 +239,18 @@ auto
         auto TextColor = FLinearColor(0.4f, 0.4f, 0.45f);
         auto MajorTickColor = FLinearColor(0.55f, 0.55f, 0.6f);
         auto MinorTickColor = FLinearColor(0.32f, 0.32f, 0.36f);
-        auto SegmentHeight = Size.Y * 0.6f;
+        auto SegmentHeight = Size.Y * 0.5f;
         auto ShowFrames = ScrubState.ShowFramesOnTimeline;
         auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
+        // Layout (DaVinci-style — ruler band between cells and labels):
+        // [cells] [busy underline] [ruler band] [label text]
         constexpr auto LabelCount = 5;
         constexpr auto MinorPerMajor = 5;        // 5 minor segments per major (4 minor ticks between)
-        constexpr auto MajorTickHeight = 6.0f;
-        constexpr auto MinorTickHeight = 3.0f;
+        constexpr auto MajorTickHeight = 7.0f;
+        constexpr auto MinorTickHeight = 4.0f;
         constexpr auto TickWidth = 1.0f;
-        const auto TickBaseY = SegmentHeight + 4.0f;
+        const auto TickBaseY = SegmentHeight + 5.0f;
 
         // Minor ticks: between every consecutive pair of major positions.
         for (auto i = 0; i < LabelCount * MinorPerMajor; ++i)
@@ -316,7 +318,7 @@ auto
     -> void
 {
     auto Size = InGeometry.GetLocalSize();
-    auto SegmentHeight = Size.Y * 0.6f;
+    auto SegmentHeight = Size.Y * 0.5f;
     auto NameDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
@@ -418,24 +420,32 @@ auto
     -> void
 {
     auto Size = InGeometry.GetLocalSize();
-    auto SegmentHeight = Size.Y * 0.6f;
+    auto SegmentHeight = Size.Y * 0.5f;
 
-    // Render the busy-frame indicator as a short underline directly under the cell row
-    // instead of a full-height vertical bar. Reads as "this frame had multiple
-    // transitions" without obscuring the cell colors above.
-    constexpr auto MarkWidthPx = 6.0f;
+    // Render the busy-frame indicator as an underline that spans every cell touched
+    // by the busy run (Time → EndTime), drawn directly under the cell row. Reads as
+    // "all of these states happened in the same engine frame" without obscuring the
+    // cell colors above. Falls back to a small mark for zero-width spans.
     constexpr auto MarkThicknessPx = 2.0f;
+    constexpr auto MinMarkWidthPx = 4.0f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
     for (auto& BusyFrame : InRun.BusyFrames)
     {
-        auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
-        if (X < -MarkWidthPx * 0.5f || X > Size.X + MarkWidthPx * 0.5f) { continue; }
+        auto X0 = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
+        auto X1 = TimeToX(BusyFrame.EndTime, InViewStart, InViewDuration, Size.X);
+        auto Span = FMath::Max(X1 - X0, MinMarkWidthPx);
+        auto LeftEdge = X0 - (Span - (X1 - X0)) * 0.5f; // center the mark when we floor to MinMarkWidthPx
+
+        if (LeftEdge + Span < 0.0f || LeftEdge > Size.X) { continue; }
+        auto VisibleLeft = FMath::Max(LeftEdge, 0.0f);
+        auto VisibleRight = FMath::Min(LeftEdge + Span, static_cast<float>(Size.X));
+        auto VisibleWidth = FMath::Max(VisibleRight - VisibleLeft, 1.0f);
 
         FSlateDrawElement::MakeBox(
             InOutDrawElements, InLayerId,
             InGeometry.ToPaintGeometry(
-                FVector2D(MarkWidthPx, MarkThicknessPx),
-                FSlateLayoutTransform(FVector2D(X - MarkWidthPx * 0.5f, SegmentHeight + 1.0f))),
+                FVector2D(VisibleWidth, MarkThicknessPx),
+                FSlateLayoutTransform(FVector2D(VisibleLeft, SegmentHeight + 1.0f))),
             Brush, ESlateDrawEffect::None,
             FLinearColor(0.95f, 0.55f, 0.1f, 0.95f));
     }
@@ -458,7 +468,7 @@ auto
     if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live) { return; }
 
     auto Size = InGeometry.GetLocalSize();
-    auto SegmentHeight = Size.Y * 0.6f;
+    auto SegmentHeight = Size.Y * 0.5f;
     auto ScrubTime = _ViewModel->Get_ScrubState().ScrubTime;
 
     // Find the containing state segment.
@@ -536,7 +546,7 @@ auto
     if (InRun.PauseMarkers.IsEmpty()) { return; }
 
     auto Size = InGeometry.GetLocalSize();
-    auto SegmentHeight = Size.Y * 0.6f;
+    auto SegmentHeight = Size.Y * 0.5f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
 
     // Cut effect: two thin vertical segments slightly offset horizontally — top half

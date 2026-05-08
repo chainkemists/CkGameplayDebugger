@@ -422,47 +422,47 @@ auto
     auto Size = InGeometry.GetLocalSize();
     auto SegmentHeight = Size.Y * 0.5f;
 
-    // Render the busy-frame indicator as a small underline that covers exactly the
-    // cells living in the same engine frame. Each busy frame produces:
-    //   • N-1 zero-frame-wide cells (the intermediate state slivers) stacked at X
-    //   • the first cell of the post-busy state (StartFrame == busy frame number)
-    // To size the underline correctly we need "one engine frame's pixel width" —
-    // derived from the segment whose StartFrame matches the busy frame, since
-    // BusyFrame.EndTime measures the gap to the *next non-busy* transition (which
-    // could be many frames away).
+    // Render the busy-frame indicator as an underline whose extent is the union
+    // of every segment's pixel range at this engine frame. That's:
+    //   • zero-frame-wide slivers (StartFrame == EndFrame == busy frame), each
+    //     spanning [StartTime, EndTime] in pixels
+    //   • the post-busy state's FIRST cell only — pixels [StartTime, StartTime + 1f]
+    // Computing the bounds directly from segment data avoids any per-zoom drift
+    // that fixed-pixel padding would introduce.
     constexpr auto MarkThicknessPx = 2.0f;
     constexpr auto MinMarkWidthPx = 4.0f;
     auto Brush = FAppStyle::GetBrush("WhiteBrush");
     for (auto& BusyFrame : InRun.BusyFrames)
     {
-        auto X = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
+        auto MinX = TimeToX(BusyFrame.Time, InViewStart, InViewDuration, Size.X);
+        auto MaxX = MinX;
 
-        // Find the segment with StartFrame == busy frame's FrameNumber — that's the
-        // post-busy state (or the last sliver of a zero-time state). Its PxPerFrame
-        // is "what 1 engine frame looks like" right here.
-        auto PxPerFrame = MinMarkWidthPx;
         for (auto& Seg : InRun.Segments)
         {
-            if (Seg.StartFrame == BusyFrame.FrameNumber && Seg.EndFrame > Seg.StartFrame)
+            if (Seg.StartFrame != BusyFrame.FrameNumber) { continue; }
+
+            if (Seg.EndFrame == Seg.StartFrame)
             {
-                auto SegX0 = TimeToX(Seg.StartTime, InViewStart, InViewDuration, Size.X);
+                // Zero-frame sliver — visual extent = [StartTime, EndTime].
                 auto SegX1 = TimeToX(Seg.EndTime, InViewStart, InViewDuration, Size.X);
-                auto FrameCount = static_cast<float>(Seg.EndFrame - Seg.StartFrame);
-                if (FrameCount > 0.0f)
-                { PxPerFrame = FMath::Max((SegX1 - SegX0) / FrameCount, MinMarkWidthPx); }
-                break;
+                MaxX = FMath::Max(MaxX, SegX1);
+            }
+            else
+            {
+                // Post-busy state — only the first cell (frame == busy frame) belongs
+                // to the busy run. Compute the cell's right edge in time, then in X.
+                auto FrameSpan = static_cast<double>(Seg.EndFrame - Seg.StartFrame);
+                auto OneFrameTime = (Seg.EndTime - Seg.StartTime) / FrameSpan;
+                auto CellEndX = TimeToX(Seg.StartTime + OneFrameTime, InViewStart, InViewDuration, Size.X);
+                MaxX = FMath::Max(MaxX, CellEndX);
             }
         }
 
-        // Cluster width = stacked thin cells (~2px each, accounting for cell+gap) +
-        // 1 frame of new state. The extra +1 pads to the right edge of the visible
-        // cell (which itself is PxPerFrame - Gap wide due to the gap between cells).
-        auto ThinCellsWidth = static_cast<float>(BusyFrame.TransitionCount - 1) * 2.0f;
-        auto Width = FMath::Max(PxPerFrame + ThinCellsWidth + 1.0f, MinMarkWidthPx);
+        auto Width = FMath::Max(MaxX - MinX, MinMarkWidthPx);
 
-        if (X + Width < 0.0f || X > Size.X) { continue; }
-        auto LeftEdge = FMath::Max(X, 0.0f);
-        auto Right = FMath::Min(X + Width, static_cast<float>(Size.X));
+        if (MinX + Width < 0.0f || MinX > Size.X) { continue; }
+        auto LeftEdge = FMath::Max(MinX, 0.0f);
+        auto Right = FMath::Min(MinX + Width, static_cast<float>(Size.X));
         auto Visible = FMath::Max(Right - LeftEdge, 1.0f);
 
         FSlateDrawElement::MakeBox(
@@ -668,7 +668,11 @@ auto
         const FPointerEvent& InMouseEvent)
     -> FReply
 {
-    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && _ViewModel.IsValid())
+    // Plain left-click starts scrubbing; Ctrl+left is reserved for panning (handled
+    // below alongside RMB) so the modifier branch must run before this one.
+    if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton
+        && NOT InMouseEvent.IsControlDown()
+        && _ViewModel.IsValid())
     {
         auto Size = InGeometry.GetLocalSize();
         auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
@@ -697,8 +701,11 @@ auto
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
 
+    // Pan: right-click drag (matches Unreal's general convention) or Ctrl+left-click
+    // drag (one-handed alternative). Trackpad users without an easy right-click can
+    // hold Ctrl and use the primary button.
     if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
-        || InMouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton)
+        || (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && InMouseEvent.IsControlDown()))
     {
         auto LocalPos = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
         _PanStartX = LocalPos.X;
@@ -734,8 +741,10 @@ auto
         return FReply::Handled().ReleaseMouseCapture();
     }
 
-    if ((InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
-         || InMouseEvent.GetEffectingButton() == EKeys::MiddleMouseButton) && _IsPanning)
+    // RMB up OR LMB up while we were panning (Ctrl+LMB pan path) ends the pan.
+    if (_IsPanning &&
+        (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
+         || InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton))
     {
         _IsPanning = false;
         return FReply::Handled().ReleaseMouseCapture();

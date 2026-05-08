@@ -6,6 +6,8 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> void
@@ -28,7 +30,24 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
 			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("AGENT DETAIL")))
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("AGENT DETAIL")))
+				]
+				// Click to open this agent's entity in the CK ECS Debugger.
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SCkDebug_EntityRef)
+					.ShowName(true)
+					.Entity_Lambda([this]() -> FCk_Handle
+					{
+						if (NOT _ViewModel.IsValid())
+						{ return FCk_Handle{}; }
+
+						return _ViewModel->Get_SelectedHandle();
+					})
+				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[

@@ -14,6 +14,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
 
@@ -80,36 +81,23 @@ auto FCkInspector_SceneNode::CanInspect(const FCk_Handle& Entity) const -> bool
 auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
-    auto WeakSelectionModel = SelectionModel;
 
     // ----- Parent entity (clickable) -----
-    Builder.AddClickableRow(
+    const auto ParentHandle = [&]() -> FCk_Handle
+    {
+        if (NOT UCk_Utils_SceneNode_UE::Has(Entity)) { return FCk_Handle{}; }
+        auto Mut = Entity;
+        const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+        if (ck::Is_NOT_Valid(Node)) { return FCk_Handle{}; }
+        const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
+        return ck::IsValid(Parent) ? FCk_Handle{Parent} : FCk_Handle{};
+    }();
+
+    Builder.AddWidgetRow(
         FText::FromString(TEXT("Parent:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
-            auto Mut = E;
-            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
-            const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
-            if (ck::Is_NOT_Valid(Parent)) { return FText::FromString(TEXT("None")); }
-            return FText::FromString(ck::Format_UE(TEXT("{} | {}"),
-                UCk_Utils_Handle_UE::Get_DebugName(Parent), Parent));
-        },
-        CkDebugStyle::Reference(),
-        [WeakSelectionModel, Entity]()
-        {
-            if (NOT WeakSelectionModel.IsValid() || NOT UCk_Utils_SceneNode_UE::Has(Entity))
-            { return; }
-            auto Mut = Entity;
-            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-            if (ck::Is_NOT_Valid(Node)) { return; }
-            const auto Parent = UCk_Utils_SceneNode_UE::Get_Parent(Node);
-            if (ck::IsValid(Parent))
-            {
-                WeakSelectionModel->Set_SelectedEntities({ FCk_Handle(Parent) });
-            }
-        });
+        SNew(SCkDebug_EntityRef)
+            .Entity(ParentHandle)
+            .ShowName(true));
 
     // ----- Layer -----
     Builder.AddConditionalRow(
@@ -219,7 +207,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
 
     const auto Siblings = Gather_Siblings(Entity);
     _LastSiblingCount = Siblings.Num();
-    _SiblingsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(Siblings, SelectionModel);
+    _SiblingsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(Siblings);
     Builder.AddWidgetRow(FText::FromString(TEXT("Nodes:")), _SiblingsBox.ToSharedRef());
 
     return Builder.Build(Entity);
@@ -241,7 +229,7 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         if (Siblings.Num() != _LastSiblingCount)
         {
             _LastSiblingCount = Siblings.Num();
-            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_SiblingsBox, Siblings, SelectionModel);
+            FCkInspectorWidgetBuilder::PopulateBadgeBox(*_SiblingsBox, Siblings);
         }
     }
 

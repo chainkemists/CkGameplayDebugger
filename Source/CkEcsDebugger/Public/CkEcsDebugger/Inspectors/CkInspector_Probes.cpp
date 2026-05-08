@@ -93,7 +93,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             }
         }
         _LastOverlapCount = OverlapHandles.Num();
-        _OverlapsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(OverlapHandles, SelectionModel);
+        _OverlapsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(OverlapHandles);
         Builder.AddWidgetRow(FText::FromString(TEXT("Overlaps:")), _OverlapsBox.ToSharedRef());
     }
 
@@ -184,7 +184,7 @@ auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
                         OverlapHandles.Add(Info.Get_OtherEntity());
                     }
                 }
-                FCkInspectorWidgetBuilder::PopulateBadgeBox(*_OverlapsBox, OverlapHandles, SelectionModel);
+                FCkInspectorWidgetBuilder::PopulateBadgeBox(*_OverlapsBox, OverlapHandles);
             }
         }
     }

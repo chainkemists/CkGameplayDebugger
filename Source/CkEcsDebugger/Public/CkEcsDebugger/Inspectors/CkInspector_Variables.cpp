@@ -10,6 +10,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Variables)
 
 // =====================================================================================================================
@@ -169,38 +170,24 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
         CkDebugStyle::Value_Math(),
         [](const FLinearColor& InValue) -> FString { return InValue.ToString(); });
 
-    // ---- Entity (clickable to navigate)
+    // ---- Entity (clickable to navigate via SCkDebug_EntityRef)
     if (Entity.Has<ck::FFragment_Variable_Entity>())
     {
         const auto& EntityVariables = Entity.Get<ck::FFragment_Variable_Entity>().Get_Variables();
         if (NOT EntityVariables.IsEmpty())
         {
             Builder.AddHeader(FText::FromString(TEXT("Entity")));
-            auto WeakSelectionModel = SelectionModel;
 
             for (const auto& [Name, Value] : EntityVariables)
             {
                 const auto NameStr = Name.ToString();
                 const auto EntityHandle = Value;
-                const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(EntityHandle);
-                const auto DisplayStr = DebugName.IsNone()
-                    ? (ck::IsValid(EntityHandle) ? *ck::Format_UE(TEXT("[{}]"), EntityHandle) : TEXT("(Invalid)"))
-                    : DebugName.ToString();
 
-                Builder.AddClickableRow(
+                Builder.AddWidgetRow(
                     FText::FromString(NameStr),
-                    [DisplayStr](const FCk_Handle& E) -> FText
-                    {
-                        return FText::FromString(DisplayStr);
-                    },
-                    CkDebugStyle::Value_Handle(),
-                    [WeakSelectionModel, EntityHandle]()
-                    {
-                        if (WeakSelectionModel.IsValid() && ck::IsValid(EntityHandle))
-                        {
-                            WeakSelectionModel->Set_SelectedEntities({ EntityHandle });
-                        }
-                    });
+                    SNew(SCkDebug_EntityRef)
+                        .Entity(EntityHandle)
+                        .ShowName(true));
             }
         }
     }

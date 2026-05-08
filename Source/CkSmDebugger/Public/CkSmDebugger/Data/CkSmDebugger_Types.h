@@ -73,6 +73,32 @@ struct FCkSmDebugger_StateInfo
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Per-frame snapshot samples for scrub-mode reconstruction. We record changes
+// only (not every frame), so a polled condition that flips a few times per
+// segment costs a few entries instead of one-per-tick. Reading at a scrub
+// time is a binary search for the latest sample with Time <= scrubTime.
+struct FCkSmDebugger_ConditionResultSample
+{
+    uint64 FrameNumber = 0;
+    double Time = 0.0;
+    ECk_SmConditionResult Result = ECk_SmConditionResult::Undetermined;
+};
+
+struct FCkSmDebugger_TransitionResultSample
+{
+    uint64 FrameNumber = 0;
+    double Time = 0.0;
+    int32  SatisfiedCount = 0;
+    int32  TotalCount = 0;
+};
+
+// Cap to keep memory bounded for pathological flip-every-frame conditions.
+// When exceeded, the oldest half is dropped — the recent past is what matters
+// for scrub. Typical event-driven SMs stay well below this.
+inline constexpr int32 GCkSmDebugger_MaxResultSamplesPerCondition = 4096;
+
+// --------------------------------------------------------------------------------------------------------------------
+
 struct FCkSmDebugger_TransitionInfo
 {
     FCk_Handle Handle;
@@ -89,6 +115,12 @@ struct FCkSmDebugger_TransitionInfo
     ECk_SmTransitionResult TransitionResult = ECk_SmTransitionResult::Undetermined;
     int32 SatisfiedCount = 0;
     int32 TotalCount = 0;
+
+    // Per-frame history (delta-encoded). Outer index aligns with Conditions.
+    // Populated by DataCollector on every Collect tick; cleared on run start
+    // and PIE world teardown.
+    TArray<TArray<FCkSmDebugger_ConditionResultSample>> ConditionResultHistory;
+    TArray<FCkSmDebugger_TransitionResultSample>        ResultHistory;
 
     bool HasBreakpoint = false;
 
@@ -164,6 +196,17 @@ struct FCkSmDebugger_FrameSegment
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Snapshot of a transition's per-frame condition / count history at run end.
+// Keyed by transition order so it survives renumbering across PIE sessions.
+struct FCkSmDebugger_TransitionRunSnapshot
+{
+    TSubclassOf<UCk_SmState_EntityScript> SourceStateClass;
+    TSubclassOf<UCk_SmState_EntityScript> TargetStateClass;
+    int32 Order = 0;
+    TArray<TArray<FCkSmDebugger_ConditionResultSample>> ConditionResultHistory;
+    TArray<FCkSmDebugger_TransitionResultSample>        ResultHistory;
+};
+
 struct FCkSmDebugger_RunInfo
 {
     int32 RunIndex = 0;
@@ -175,6 +218,7 @@ struct FCkSmDebugger_RunInfo
     TArray<FCkSmDebugger_TimelineBusyFrame> BusyFrames;
     TArray<FCkSmDebugger_TimelinePauseMarker> PauseMarkers;
     TArray<FCkSmDebugger_FrameSegment> FrameSegments;
+    TArray<FCkSmDebugger_TransitionRunSnapshot> TransitionSnapshots;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -317,6 +361,32 @@ inline auto
     }
 }
 
+// Latest sample at-or-before the given time. Binary search; returns nullptr if
+// the history is empty or every sample is in the future.
+template <typename SampleT>
+inline auto
+    FindSampleAtTime(
+        const TArray<SampleT>& InHistory,
+        double InTime)
+    -> const SampleT*
+{
+    if (InHistory.IsEmpty())
+    { return nullptr; }
+
+    auto Lo = 0;
+    auto Hi = InHistory.Num() - 1;
+    auto Result = -1;
+    while (Lo <= Hi)
+    {
+        auto Mid = (Lo + Hi) / 2;
+        if (InHistory[Mid].Time <= InTime)
+        { Result = Mid; Lo = Mid + 1; }
+        else
+        { Hi = Mid - 1; }
+    }
+    return Result >= 0 ? &InHistory[Result] : nullptr;
+}
+
 inline auto
     PointToLineSegmentDistanceSq(
         FVector2D InPoint,
@@ -334,6 +404,24 @@ inline auto
     auto T = FMath::Clamp(FVector2D::DotProduct(Ap, Ab) / LenSq, 0.0, 1.0);
     auto Closest = InLineA + T * Ab;
     return static_cast<float>((InPoint - Closest).SizeSquared());
+}
+
+inline auto
+    FindTransitionSnapshot(
+        const FCkSmDebugger_RunInfo& InRun,
+        const TSubclassOf<UCk_SmState_EntityScript>& InSourceClass,
+        const TSubclassOf<UCk_SmState_EntityScript>& InTargetClass,
+        int32 InOrder)
+    -> const FCkSmDebugger_TransitionRunSnapshot*
+{
+    for (const auto& Snap : InRun.TransitionSnapshots)
+    {
+        if (Snap.SourceStateClass == InSourceClass
+            && Snap.TargetStateClass == InTargetClass
+            && Snap.Order == InOrder)
+        { return &Snap; }
+    }
+    return nullptr;
 }
 
 } // namespace CkSmDebugger

@@ -13,6 +13,7 @@
 #include "CkGoapDebugger/Graph/CkGoapDebugNode_Action.h"
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -453,6 +454,21 @@ auto
 							_Graph->ForceRebuild();
 						}
 					}
+				})
+			]
+
+			// Click-to-open in CK ECS Debugger. The combo immediately to the
+			// left already shows the selected entity's DebugName, so the pill
+			// renders just the canonical ID (ShowName=false) to avoid duplicating
+			// the name twice in adjacent widgets. Same pattern in SM and AStar.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceS, 0.0f)
+			[
+				SNew(SCkDebug_EntityRef)
+				.Entity_Lambda([this]() -> FCk_Handle
+				{
+					if (NOT _ViewModel.IsValid())
+					{ return FCk_Handle{}; }
+					return _ViewModel->Get_SelectedEntityHandle();
 				})
 			]
 

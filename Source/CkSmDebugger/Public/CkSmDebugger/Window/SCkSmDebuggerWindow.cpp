@@ -3038,7 +3038,11 @@ auto
                                         }
 
                                         const auto& EndingEntry = R.History[ActiveSegIdx];
-                                        const auto IsLastFrame = ScrubFrame >= static_cast<int64>(R.Segments[ActiveSegIdx].EndFrame);
+                                        // BuildTimelineSegments sets EndFrame to the NEXT segment's
+                                        // StartFrame (i.e. the transition frame itself), so the last
+                                        // actual frame of this segment is EndFrame - 1.
+                                        const auto SegEndFrame = static_cast<int64>(R.Segments[ActiveSegIdx].EndFrame);
+                                        const auto IsLastFrame = SegEndFrame > 0 && ScrubFrame >= SegEndFrame - 1;
                                         if (IsLastFrame
                                             && Tr.SourceStateName == EndingEntry.FromStateName
                                             && Tr.TargetStateName == EndingEntry.ToStateName)

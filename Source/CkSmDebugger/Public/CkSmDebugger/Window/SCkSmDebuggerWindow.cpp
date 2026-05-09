@@ -2639,6 +2639,17 @@ auto
                     ]
             ];
 
+            // HISTORICAL pill: shown when this is a sub-SM state restored from the
+            // persistent cache (live entity is gone but we kept the structure so
+            // the inspector still works while scrubbing into that segment).
+            if (State.IsHistoricalSubSm)
+            {
+                NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
+                [
+                    MakePill(TEXT("HISTORICAL"), FCkSmDebuggerStyle::Color_Sm_Polled)
+                ];
+            }
+
             // Event-driven / tick / polled summary pills — only meaningful when the
             // runtime has cached real data for this state (ScriptClass is valid).
             // Unvisited target states get placeholder entries with no tasks/conditions,

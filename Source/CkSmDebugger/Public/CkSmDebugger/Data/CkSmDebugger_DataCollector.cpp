@@ -103,6 +103,7 @@ auto
     _LastObservedRunCounter = -1;
     _TransitionHistoriesBySm.Reset();
     _PerSmRunCounters.Reset();
+    _HistoricalSubSms.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -301,6 +302,7 @@ auto
         if (*PerSmRunCounter != CurrentRunCounter)
         {
             _TransitionHistoriesBySm.Remove(SmInfo.DebugName);
+            _HistoricalSubSms.Remove(SmInfo.DebugName);
             *PerSmRunCounter = CurrentRunCounter;
         }
     }
@@ -513,6 +515,23 @@ auto
     // Recursively merge sub-SM states into the parent SmInfo
     auto SubSmHistories = TArray<FCkSmDebugger_HistoryEntry>{};
     MergeSubStateMachines(SmInfo, StateClassToIndex, SubSmHistories, InSmHandle);
+
+    // Detect which parent state names got live sub-SM merges this tick — we
+    // walk the merged-in sub-SM states and collect their parent state names.
+    auto LiveMergedParentStateNames = TSet<FString>{};
+    for (const auto& State : SmInfo.States)
+    {
+        if (State.IsSubSmNode && NOT State.IsHistoricalSubSm && NOT State.SubSmParentStateName.IsEmpty())
+        { LiveMergedParentStateNames.Add(State.SubSmParentStateName); }
+    }
+
+    // Snapshot the live merge into the persistent cache (handles nulled),
+    // then re-add historical sub-SM data for any parent state whose live
+    // sub-SM didn't merge this tick. Order matters: persist first so the
+    // restore step works against fresh cache content for live sub-SMs that
+    // re-entered, but we skip restoring those since they're in the live set.
+    PersistLiveSubSms(SmInfo.DebugName, SmInfo, LiveMergedParentStateNames);
+    RestoreHistoricalSubSms(SmInfo.DebugName, SmInfo, StateClassToIndex, LiveMergedParentStateNames);
 
     // Overlay live condition satisfaction for the current state's transitions.
     // Per-frame sample histories are persisted on the collector across ticks
@@ -1450,6 +1469,177 @@ auto
         auto& Ring = Bucket.FindOrAdd(Key);
         Ring.ConditionResultHistory = Trans.ConditionResultHistory;
         Ring.ResultHistory          = Trans.ResultHistory;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    // Null all FCk_Handle fields on a state (and its tasks/conditions) so the
+    // cached copy can outlive the source registry safely. Default-constructed
+    // handles hold no registry reference — see CkSmDebugger/CLAUDE.md.
+    auto NullHandlesOnState(FCkSmDebugger_StateInfo& InOutState) -> void
+    {
+        InOutState.Handle = FCk_Handle{};
+        for (auto& Task : InOutState.Tasks)
+        {
+            Task.Handle = FCk_Handle{};
+            Task.SubSmHandle = FCk_Handle_StateMachine{};
+        }
+    }
+
+    auto NullHandlesOnTransition(FCkSmDebugger_TransitionInfo& InOutTrans) -> void
+    {
+        InOutTrans.Handle = FCk_Handle{};
+        for (auto& Cond : InOutTrans.Conditions)
+        {
+            Cond.Handle = FCk_Handle{};
+        }
+    }
+}
+
+auto
+    FCkSmDebugger_DataCollector::
+    PersistLiveSubSms(
+        const FString& InSmDebugName,
+        const FCkSmDebugger_SmInfo& InSmInfo,
+        const TSet<FString>& InLiveMergedParentStateNames)
+    -> void
+{
+    if (InLiveMergedParentStateNames.IsEmpty())
+    { return; }
+
+    auto& BySm = _HistoricalSubSms.FindOrAdd(InSmDebugName);
+
+    // Group merged sub-SM states by their parent state name, then snapshot each
+    // group into the cache (replacing any previous snapshot for that parent —
+    // re-entry of a sub-SM yields a different entity, so old cache is stale).
+    for (const auto& ParentName : InLiveMergedParentStateNames)
+    {
+        auto Cache = FHistoricalSubSmCache{};
+
+        for (const auto& State : InSmInfo.States)
+        {
+            if (NOT State.IsSubSmNode || State.IsHistoricalSubSm) { continue; }
+            if (State.SubSmParentStateName != ParentName)         { continue; }
+
+            auto Copy = State;
+            NullHandlesOnState(Copy);
+            Cache.States.Add(MoveTemp(Copy));
+        }
+
+        // Pull in transitions that go between any of the cached states (sub-SM
+        // internal transitions) — match by source/target state class so the
+        // re-merge step doesn't depend on indices that may shift.
+        auto CachedClasses = TSet<TSubclassOf<UCk_SmState_EntityScript>>{};
+        for (const auto& S : Cache.States) { CachedClasses.Add(S.StateClass); }
+
+        for (const auto& Trans : InSmInfo.Transitions)
+        {
+            if (NOT Trans.IsSubSmTransition) { continue; }
+            if (NOT CachedClasses.Contains(Trans.SourceStateClass)) { continue; }
+            if (NOT CachedClasses.Contains(Trans.TargetStateClass)) { continue; }
+
+            auto Copy = Trans;
+            NullHandlesOnTransition(Copy);
+            // Strip per-frame snapshots from the cached struct — those live
+            // in _TransitionHistoriesBySm and get restored separately, no
+            // need to duplicate them here.
+            Copy.ConditionResultHistory.Reset();
+            Copy.ResultHistory.Reset();
+            Cache.Transitions.Add(MoveTemp(Copy));
+        }
+
+        if (Cache.States.Num() > 0)
+        { BySm.Add(ParentName, MoveTemp(Cache)); }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
+    RestoreHistoricalSubSms(
+        const FString& InSmDebugName,
+        FCkSmDebugger_SmInfo& InOutSmInfo,
+        TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
+        const TSet<FString>& InLiveMergedParentStateNames)
+    -> void
+{
+    auto* BySm = _HistoricalSubSms.Find(InSmDebugName);
+    if (NOT BySm)
+    { return; }
+
+    // For each parent state with a sub-SM that didn't get a live merge this
+    // tick, re-add the cached states and transitions as historical entries.
+    for (auto ParentIdx = 0; ParentIdx < InOutSmInfo.States.Num(); ++ParentIdx)
+    {
+        auto& Parent = InOutSmInfo.States[ParentIdx];
+        if (NOT Parent.HasSubStateMachine) { continue; }
+        if (Parent.IsSubSmNode)            { continue; } // skip nested-parent edge case for now
+        if (InLiveMergedParentStateNames.Contains(Parent.StateName)) { continue; }
+
+        auto* Cache = BySm->Find(Parent.StateName);
+        if (NOT Cache || Cache->States.IsEmpty()) { continue; }
+
+        // Capture index offset BEFORE adding any states so transition remap is
+        // computed against the original layout.
+        const auto IndexOffset = InOutSmInfo.States.Num();
+
+        // Track new indices of restored states by class so transitions can map.
+        auto ClassToNewIndex = TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>{};
+
+        for (const auto& CachedState : Cache->States)
+        {
+            auto Restored = CachedState;
+            Restored.IsHistoricalSubSm = true;
+            Restored.SubSmParentStateIndex = ParentIdx;
+            Restored.IsCurrentState = false;
+            Restored.IsCurrentDwellLive = false;
+            Restored.IsBreakpointHit = false;
+
+            // Live-only task fields shouldn't display fresh runtime values for
+            // historical states — clear LastResult so the inspector falls back
+            // to the per-frame snapshot history (which has authoritative data).
+            for (auto& Task : Restored.Tasks)
+            {
+                Task.LastResult = ECk_SmTaskResult::Running;
+            }
+
+            const auto NewIndex = InOutSmInfo.States.Num();
+            ClassToNewIndex.Add(Restored.StateClass, NewIndex);
+            InOutStateClassToIndex.Add(Restored.StateClass, NewIndex);
+            InOutSmInfo.States.Add(MoveTemp(Restored));
+        }
+
+        for (const auto& CachedTrans : Cache->Transitions)
+        {
+            auto Restored = CachedTrans;
+
+            auto* SrcIdx = ClassToNewIndex.Find(Restored.SourceStateClass);
+            auto* DstIdx = ClassToNewIndex.Find(Restored.TargetStateClass);
+            if (NOT SrcIdx || NOT DstIdx) { continue; }
+
+            Restored.SourceStateIndex = *SrcIdx;
+            Restored.TargetStateIndex = *DstIdx;
+            Restored.IsSubSmTransition = true;
+
+            // Reset live count fields — the per-frame snapshot path is what
+            // the inspector reads while scrubbing through historical segments.
+            Restored.SatisfiedCount = 0;
+            Restored.AreAllConditionsSatisfied = false;
+            Restored.TransitionResult = ECk_SmTransitionResult::Undetermined;
+            for (auto& Cond : Restored.Conditions)
+            {
+                Cond.Result = ECk_SmConditionResult::Undetermined;
+            }
+
+            InOutSmInfo.Transitions.Add(MoveTemp(Restored));
+        }
+
+        // Avoid touching IndexOffset (silences -Wunused for builds that promote it)
+        (void)IndexOffset;
     }
 }
 

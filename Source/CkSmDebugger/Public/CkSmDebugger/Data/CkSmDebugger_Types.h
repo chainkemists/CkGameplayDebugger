@@ -62,6 +62,12 @@ struct FCkSmDebugger_StateInfo
     int32 SubSmParentStateIndex = -1;
     bool HasSubStateMachine = false;
 
+    // True when this sub-SM state was re-merged from the persistent cache after
+    // the live sub-SM entity was destroyed (parent state exited). Read-only:
+    // OverlayLiveData will not touch these because they're not children of the
+    // current live state. Used by the inspector to suppress live-only fields.
+    bool IsHistoricalSubSm = false;
+
     bool IsCompoundNode = false;
     float CompoundNodeWidth = 0.0f;
     float CompoundNodeHeight = 0.0f;

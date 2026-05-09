@@ -2887,6 +2887,43 @@ auto
                                 : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
                             const auto AbsoluteTime = R.StartTime + SS.ScrubTime;
 
+                            // Last-frame override: same logic as CondResultAttr — on
+                            // the source segment's final frame, report the firing
+                            // transition as fully satisfied (TotalCount/TotalCount).
+                            {
+                                auto ActiveSegIdx = -1;
+                                for (auto i = 0; i < R.Segments.Num(); ++i)
+                                {
+                                    if (AbsoluteTime >= R.Segments[i].StartTime && AbsoluteTime <= R.Segments[i].EndTime)
+                                    { ActiveSegIdx = i; break; }
+                                }
+                                if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
+                                {
+                                    auto ScrubFrame = static_cast<int64>(R.Segments[ActiveSegIdx].StartFrame);
+                                    for (const auto& Fs : R.FrameSegments)
+                                    {
+                                        if (AbsoluteTime >= Fs.StartTime && AbsoluteTime <= Fs.EndTime)
+                                        {
+                                            auto Span = Fs.EndTime - Fs.StartTime;
+                                            auto Frac = (Span > 0.0) ? (AbsoluteTime - Fs.StartTime) / Span : 0.0;
+                                            auto FrameSpan = static_cast<int64>(Fs.EndFrame) - static_cast<int64>(Fs.StartFrame);
+                                            ScrubFrame = static_cast<int64>(Fs.StartFrame) + FMath::FloorToInt64(Frac * FrameSpan);
+                                            break;
+                                        }
+                                    }
+
+                                    const auto& EndingEntry = R.History[ActiveSegIdx];
+                                    const auto IsLastFrame = ScrubFrame >= static_cast<int64>(R.Segments[ActiveSegIdx].EndFrame);
+                                    if (IsLastFrame
+                                        && T.SourceStateName == EndingEntry.FromStateName
+                                        && T.TargetStateName == EndingEntry.ToStateName)
+                                    {
+                                        return FText::FromString(FString::Printf(TEXT("%d/%d"),
+                                            T.TotalCount, T.TotalCount));
+                                    }
+                                }
+                            }
+
                             if (auto* Snap = CkSmDebugger::FindTransitionSnapshot(R, T.SourceStateClass, T.TargetStateClass, T.Order))
                             {
                                 if (auto* Sample = CkSmDebugger::FindSampleAtTime(Snap->ResultHistory, AbsoluteTime))
@@ -2968,6 +3005,50 @@ auto
                                     ? Info->CurrentRun
                                     : (RIdx < Info->CompletedRuns.Num() ? Info->CompletedRuns[RIdx] : Info->CurrentRun);
                                 const auto AbsoluteTime = R.StartTime + SS.ScrubTime;
+
+                                // Last-frame override: when the scrub frame is the
+                                // source state segment's final frame AND the segment
+                                // ends via this transition, treat the firing conditions
+                                // as PASS. The natural sample-on-change recording can
+                                // miss the flip if the SM processed the transition
+                                // mid-frame in a tick our Collect didn't observe — the
+                                // history entry's ConditionNames is authoritative for
+                                // what fired, so we trust it for the segment endpoint.
+                                {
+                                    auto ActiveSegIdx = -1;
+                                    for (auto i = 0; i < R.Segments.Num(); ++i)
+                                    {
+                                        if (AbsoluteTime >= R.Segments[i].StartTime && AbsoluteTime <= R.Segments[i].EndTime)
+                                        { ActiveSegIdx = i; break; }
+                                    }
+                                    if (ActiveSegIdx >= 0 && ActiveSegIdx < R.History.Num())
+                                    {
+                                        // Resolve scrub frame at this time via FrameSegments.
+                                        auto ScrubFrame = static_cast<int64>(R.Segments[ActiveSegIdx].StartFrame);
+                                        for (const auto& Fs : R.FrameSegments)
+                                        {
+                                            if (AbsoluteTime >= Fs.StartTime && AbsoluteTime <= Fs.EndTime)
+                                            {
+                                                auto Span = Fs.EndTime - Fs.StartTime;
+                                                auto Frac = (Span > 0.0) ? (AbsoluteTime - Fs.StartTime) / Span : 0.0;
+                                                auto FrameSpan = static_cast<int64>(Fs.EndFrame) - static_cast<int64>(Fs.StartFrame);
+                                                ScrubFrame = static_cast<int64>(Fs.StartFrame) + FMath::FloorToInt64(Frac * FrameSpan);
+                                                break;
+                                            }
+                                        }
+
+                                        const auto& EndingEntry = R.History[ActiveSegIdx];
+                                        const auto IsLastFrame = ScrubFrame >= static_cast<int64>(R.Segments[ActiveSegIdx].EndFrame);
+                                        if (IsLastFrame
+                                            && Tr.SourceStateName == EndingEntry.FromStateName
+                                            && Tr.TargetStateName == EndingEntry.ToStateName)
+                                        {
+                                            return EndingEntry.ConditionNames.Contains(CondNameCapture)
+                                                ? ECk_SmConditionResult::Pass
+                                                : ECk_SmConditionResult::Undetermined;
+                                        }
+                                    }
+                                }
 
                                 if (auto* Snap = CkSmDebugger::FindTransitionSnapshot(R, Tr.SourceStateClass, Tr.TargetStateClass, Tr.Order))
                                 {

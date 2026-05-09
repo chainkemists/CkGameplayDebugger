@@ -123,6 +123,22 @@ private:
     // Track each SM's last observed run counter to clear histories on a new run.
     TMap<FString, int32> _PerSmRunCounters;
 
+    // Persistent cache of sub-SM structural data. When a sub-SM entity is
+    // destroyed (parent state with SubSmTask exits), MergeSubStateMachines
+    // would normally drop those states from SmInfo.States — and the inspector
+    // would go blank when scrubbing into that segment. Caching here lets us
+    // re-add them as historical (read-only) entries on subsequent collects.
+    //
+    // Keyed by parent SM debug name → parent state name. All FCk_Handle fields
+    // inside cached structs are nulled before caching so they survive PIE
+    // teardown (default handles hold no registry ref).
+    struct FHistoricalSubSmCache
+    {
+        TArray<FCkSmDebugger_StateInfo>      States;
+        TArray<FCkSmDebugger_TransitionInfo> Transitions;
+    };
+    TMap<FString, TMap<FString, FHistoricalSubSmCache>> _HistoricalSubSms;
+
     auto
     PersistTransitionHistories(
         const FString& InSmDebugName,
@@ -132,6 +148,24 @@ private:
     RestoreTransitionHistories(
         const FString& InSmDebugName,
         FCkSmDebugger_SmInfo& InOutSmInfo) -> void;
+
+    // Snapshot live-merged sub-SM states/transitions into the cache (handles
+    // nulled). Called from CollectStateMachine after MergeSubStateMachines.
+    auto
+    PersistLiveSubSms(
+        const FString& InSmDebugName,
+        const FCkSmDebugger_SmInfo& InSmInfo,
+        const TSet<FString>& InLiveMergedParentStateNames) -> void;
+
+    // Re-merge cached sub-SM data for any HasSubStateMachine parent state that
+    // didn't get a live merge this Collect. Modifies StateClassToIndex so the
+    // inspector / graph can resolve historical states by class.
+    auto
+    RestoreHistoricalSubSms(
+        const FString& InSmDebugName,
+        FCkSmDebugger_SmInfo& InOutSmInfo,
+        TMap<TSubclassOf<UCk_SmState_EntityScript>, int32>& InOutStateClassToIndex,
+        const TSet<FString>& InLiveMergedParentStateNames) -> void;
 
 private:
     TArray<FCkSmDebugger_SmInfo> _StateMachines;

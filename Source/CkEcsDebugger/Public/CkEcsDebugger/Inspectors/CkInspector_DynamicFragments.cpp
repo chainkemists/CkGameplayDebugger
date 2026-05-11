@@ -144,7 +144,15 @@ namespace
         if (const auto* ObjProp = CastField<FObjectPropertyBase>(InProperty))
         {
             const auto* Obj = ObjProp->GetObjectPropertyValue(ValuePtr);
-            return { Obj ? Obj->GetName() : TEXT("(None)"), CkDebugStyle::Value_Object() };
+
+            // Raw UObject* in an FInstancedStruct is not guaranteed to be nulled by GC the
+            // way a UPROPERTY-reflected pointer on a UObject is. Stale references survive as
+            // non-null but pending-kill / unreachable, and GetName() on those will crash.
+            // ::IsValid checks GUObjectArray + object flags safely.
+            if (Obj == nullptr || NOT ::IsValid(Obj))
+            { return { TEXT("(None)"), CkDebugStyle::Value_Object() }; }
+
+            return { Obj->GetName(), CkDebugStyle::Value_Object() };
         }
 
         // ---- Struct types (order matters — check specific before generic fallback)
@@ -242,7 +250,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         // ---- FCk_Handle: clickable navigation
 
         const auto* StructProp = CastField<FStructProperty>(Property);
-        const auto IsHandle = StructProp &&
+        const auto IsHandle = StructProp && StructProp->Struct &&
             (StructProp->Struct == FCk_Handle::StaticStruct() ||
              StructProp->Struct->IsChildOf(FCk_Handle::StaticStruct()));
 

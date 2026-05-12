@@ -45,7 +45,7 @@ selectable.
 | A label or value previously written as `STextBlock` | `SCkDebug_SelectableLabel` | Drop-in. Has `.Text/.Font/.ColorAndOpacity` and an imperative `SetText()`. **Single-line only**, no `AutoWrapText`, no `TransformPolicy::ToUpper`. For uppercase headers, use `STextBlock` or apply `FString::ToUpper()` to the input. |
 | Composite widget that should support right-click → Copy as a unit (group, pill, custom row) | Wrap with `SCkDebug_CopyableContainer` | Pass `.CopyText(...)` with the multi-line clipboard payload. SButton inside the wrapped child still receives left-clicks; right-click bubbles through. |
 | Inspector key/value rows | `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) | Values are already `SEditableText` — automatic. |
-| Tree / list row composite (history, plan history, transition log) | `SCkDebug_HistoryRow` with `.CopyText(...)` | Preferred over hand-rolled rows because it shares tone, accent, selection styling. |
+| Standalone history row in a fixed-rebuild panel (plan history rail, transition log strip) | `SCkDebug_HistoryRow` with `.CopyText(...)` | Shares tone, accent, selection styling. **Click-trap warning — do NOT use inside `SListView`/`STreeView`/`STableRow`.** Its body is wrapped in an `SButton` that returns `FReply::Handled()` on every left click, so the parent `STableRow` never sees the selection click and the user cannot select rows. See "List / tree rows" section below for the correct pattern. |
 | Graph-style step / node pill | `SCkDebug_NodePill` with `.CopyText(...)` | Same opt-in pattern. |
 
 Compose multi-field clipboard payloads with newlines so the user can paste a
@@ -129,6 +129,84 @@ join names / ids with `\n` so users can copy several rows at once. See
 For `SEditableText`-based widgets (`SelectableLabel`, `KeyValueRow` value): no
 extra wiring needed — they ship with a built-in right-click context menu and
 Ctrl+C / drag-select for free.
+
+## List / tree rows — `SListView` / `STreeView` contracts
+
+Two contracts that are easy to miss and break selection silently. Both have been broken in past sessions; both produce the same end-user symptom ("rows flicker, I can't click them").
+
+### 1. Don't put click-consuming widgets inside `STableRow`
+
+`STableRow` detects selection via `OnMouseButtonDown` bubbling up from its content. Any child widget that returns `FReply::Handled()` on a left-mouse-down event traps the click before `STableRow` sees it — the row is rendered but **not selectable**.
+
+The repeat offender is `SCkDebug_HistoryRow`: its body is wrapped in an internal `SButton` (used for the `OnClicked` event), and `SButton` always returns `Handled` on left-click. Despite the widget's name suggesting "row composite for lists", it is for **standalone, fixed-rebuild panels** (e.g. `SCkGoapDebug_HistoryRail` builds them in a `SVerticalBox`, not an `SListView`). Putting one inside an `STableRow` is the bug.
+
+`SCkDebug_SelectableLabel` (built on `SEditableText`) is also a click-trap when sized to fill row width — it captures clicks for cursor-positioning. Use it for headers / value text *outside* of `SListView` rows.
+
+**Safe widgets inside `STableRow`** — they don't consume left-click events, so selection bubbles cleanly:
+- `STextBlock`
+- `SImage`, `SBox`, `SBorder`, `SHorizontalBox`, `SVerticalBox`, `SSpacer`
+- `SCkDebug_StatusPill` (visual-only; no internal button)
+
+**Canonical reference**: [`SCkSchedulerDebugger_ProcessorTree::DoBuildRowContent`](../CkSchedulerDebugger/Public/CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_ProcessorTree.cpp). Builds row content from `SHorizontalBox` + `STextBlock` + `SBox` + `SImage`. Selection styling is delegated to `STableRow.ShowSelection(true)`.
+
+```cpp
+// ✓ Correct — STableRow handles selection; row body is plain visual widgets.
+return SNew(STableRow<TSharedPtr<FRowItem>>, InOwnerTable)
+    .Padding(FMargin{0.0f, 1.0f})
+    .ShowSelection(true)
+    [
+        SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth() [ /* status dot via SImage + SBox */ ]
+        + SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(STextBlock).Text(...) ]
+    ];
+
+// ✗ Wrong — SCkDebug_HistoryRow's internal SButton consumes the click; STableRow never selects.
+return SNew(STableRow<TSharedPtr<FRowItem>>, InOwnerTable)
+    [ SNew(SCkDebug_HistoryRow).TitleText(...).Tone(...) ];
+```
+
+Right-click "Copy ..." menus go on `SListView::OnContextMenuOpening` (not on the row body), so per-row right-click works without needing `SCkDebug_HistoryRow`'s `.CopyText(...)` argument.
+
+### 2. Keep row-item `TSharedPtr` identity stable across refreshes
+
+`SListView` / `STreeView` track selection by **pointer identity**. If your refresh handler does `_Items.Reset()` + `MakeShared<FRowItem>` per item every Tick, the user's selection is destroyed every tick — they click a row and the selection vanishes by the next paint. Visible symptoms: "rows flicker", "can't click rows", "selection won't stick".
+
+The fix: index existing items by a stable key (entity handle, processor index, candidate index, ...) and **reuse the existing `TSharedPtr` when the key matches**. Allocate new shared pointers only for genuinely new items; drop ones for vanished items. Update displayed fields in place via `*Item = NewData`.
+
+```cpp
+// ✓ Correct — reuse existing pointers across refreshes; in-place field updates.
+auto Existing = TMap<FStableKey, TSharedPtr<FRowItem>>{};
+for (const auto& I : _Items) { if (I.IsValid()) Existing.Add(I->Key, I); }
+
+auto NewItems = TArray<TSharedPtr<FRowItem>>{};
+auto SetChanged = false;
+for (const auto& Source : InSourceList)
+{
+    auto Item = TSharedPtr<FRowItem>{};
+    if (auto* Found = Existing.Find(Source.Key))
+    { Item = *Found; *Item = Source; Existing.Remove(Source.Key); }   // stable pointer
+    else
+    { Item = MakeShared<FRowItem>(Source); SetChanged = true; }       // new entry
+    NewItems.Add(MoveTemp(Item));
+}
+if (Existing.Num() > 0) { SetChanged = true; }                        // vanished entries
+
+_Items = MoveTemp(NewItems);
+if (SetChanged) { _ListView->RequestListRefresh(); }                  // only on set change
+```
+
+Two consequences worth knowing:
+- **`RequestListRefresh` only when the SET changes.** In-place field updates don't need a refresh — the existing row widgets stay valid. (The widgets won't auto-reflect the field change unless they bind via `TAttribute<FText>` lambdas reading from the item; the alternative is "rebuild structure on set change, accept stale fields between rebuilds." For most debug data — completed queries, completed plans — the latter is fine.)
+- **Selection-restore on refresh** should compare against current selection before calling `SetItemSelection` to avoid spurious `OnSelectionChanged` firings:
+  ```cpp
+  const auto Cur = _ListView->GetSelectedItems();
+  const auto AlreadySelected = (Cur.Num() == 1 && Cur[0] == NewSelection);
+  if (NewSelection.IsValid() && NOT AlreadySelected)
+  { _ListView->SetItemSelection(NewSelection, true, ESelectInfo::Direct); }
+  ```
+  And `OnSelectionChanged` should ignore `ESelectInfo::Direct` so the programmatic restore doesn't echo back into the ViewModel.
+
+`SCkSchedulerDebugger_ProcessorTree` is the canonical reference for both of these patterns — it updates existing tree-node `TSharedPtr` instances in place (`InNode->IsVisible = ...`) and only calls `RequestTreeRefresh` when structure changes.
 
 ## Search bars
 

@@ -41,6 +41,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkInteraction",
             "CkInventory",
             "CkIsmRenderer",
+            "CkIskmRenderer",
             "CkLabel",
             "CkObjective",
             "CkOverlapBody",

@@ -52,7 +52,6 @@ public class CkEcsDebugger : CkModuleRules
             "CkShapes",
             "CkSpatialQuery",
             "CkStateMachine",
-            "CkStateTree",
             "CkTagSet",
             "CkTimer",
             "CkTween",

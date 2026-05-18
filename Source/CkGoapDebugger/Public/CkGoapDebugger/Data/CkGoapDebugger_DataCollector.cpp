@@ -10,6 +10,7 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkGoap/CkGoap_Fragment.h"
+#include "CkGoap/WorldState/CkGoap_WorldState_Fragment.h"
 #include "CkAStar/CkAStar_Fragment.h"
 #include "CkLabel/CkLabel_Utils.h"
 
@@ -206,8 +207,14 @@ auto
 		}
 	}
 
-	const auto* KeyRegistry = InHandle.Has<ck::FFragment_Goap_KeyRegistry>()
-		? &InHandle.Get<ck::FFragment_Goap_KeyRegistry>().Get_Registry()
+	// Resolve through the planner's WorldState source — WS now lives on a
+	// separate entity that one or more planners reference via Params.
+	auto Source = InHandle.Has<ck::FFragment_Goap_Params>()
+		? InHandle.Get<ck::FFragment_Goap_Params>().Get_WorldStateSource()
+		: FCk_Handle_Goap_WorldState{};
+
+	const auto* KeyRegistry = (ck::IsValid(Source) && Source.Has<ck::FFragment_Goap_WorldState_KeyRegistry>())
+		? &Source.Get<ck::FFragment_Goap_WorldState_KeyRegistry>().Get_Registry()
 		: nullptr;
 
 	const auto ConditionFromRaw = [&](const ck::goap::FWorldStateCondition& C) -> FCkGoapDebugger_Condition
@@ -229,9 +236,9 @@ auto
 	// World state — iterate registered keys and emit every one with its bool
 	// value. Unlike the typed layout there's no "Unused" — every registered
 	// key always has a bool (default false).
-	if (InHandle.Has<ck::FFragment_Goap_WorldState>() && KeyRegistry != nullptr)
+	if (ck::IsValid(Source) && Source.Has<ck::FFragment_Goap_WorldState_Values>() && KeyRegistry != nullptr)
 	{
-		const auto& WS = InHandle.Get<ck::FFragment_Goap_WorldState>().Get_WorldState();
+		const auto& WS = Source.Get<ck::FFragment_Goap_WorldState_Values>().Get_Values();
 		for (auto KeyIdx = int32{0}; KeyIdx < KeyRegistry->Num(); ++KeyIdx)
 		{
 			auto Entry = FCkGoapDebugger_WorldStateEntry{};

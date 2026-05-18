@@ -8,6 +8,7 @@
 #include "CkGoap/Algorithm/CkGoap_WorldState.h"
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
 #include "CkGoap/EntityScripts/CkGoapGoal_EntityScript.h"
+#include "CkGoap/WorldState/CkGoap_WorldState_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -57,7 +58,6 @@ auto FCkInspector_Goap::CanInspect(const FCk_Handle& Entity) const -> bool
     return Entity.Has_Any<
         ck::FFragment_Goap_Params,
         ck::FFragment_Goap_Current,
-        ck::FFragment_Goap_WorldState,
         ck::FFragment_Goap_Actions,
         ck::FFragment_Goap_Goals,
         ck::FFragment_Goap_Diagnostics,
@@ -223,10 +223,17 @@ auto FCkInspector_Goap::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<
     }
 
     // ---- World State (key registry → ground truth bools) ----
-    if (Entity.Has<ck::FFragment_Goap_KeyRegistry>() && Entity.Has<ck::FFragment_Goap_WorldState>())
+    // Resolve through the planner's WorldState source — WS now lives on a
+    // separate entity that one or more planners reference via Params.
+    auto Source = Entity.Has<ck::FFragment_Goap_Params>()
+        ? Entity.Get<ck::FFragment_Goap_Params>().Get_WorldStateSource()
+        : FCk_Handle_Goap_WorldState{};
+    if (ck::IsValid(Source)
+        && Source.Has<ck::FFragment_Goap_WorldState_KeyRegistry>()
+        && Source.Has<ck::FFragment_Goap_WorldState_Values>())
     {
-        const auto& Registry   = Entity.Get<ck::FFragment_Goap_KeyRegistry>().Get_Registry();
-        const auto& WorldState = Entity.Get<ck::FFragment_Goap_WorldState>().Get_WorldState();
+        const auto& Registry   = Source.Get<ck::FFragment_Goap_WorldState_KeyRegistry>().Get_Registry();
+        const auto& WorldState = Source.Get<ck::FFragment_Goap_WorldState_Values>().Get_Values();
         const auto& AllTags    = Registry.GetAllTags();
 
         Builder.AddHeader(FText::FromString(TEXT("World State")));

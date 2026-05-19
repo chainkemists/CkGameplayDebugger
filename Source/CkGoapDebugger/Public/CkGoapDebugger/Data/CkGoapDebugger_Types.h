@@ -8,7 +8,6 @@
 // ====================================================================================================================
 
 class UCk_GoapAction_EntityScript;
-class UCk_GoapGoal_EntityScript;
 
 // ====================================================================================================================
 // DISPLAY TYPES — debugger-side copies sized for rendering
@@ -61,7 +60,10 @@ struct FCkGoapDebugger_ActionInfo
 
 struct FCkGoapDebugger_GoalInfo
 {
-	TSubclassOf<UCk_GoapGoal_EntityScript> GoalClass;
+	// TODO(CkGoap-BundleTierRefactor): UCk_GoapGoal_EntityScript is being
+	// removed; the goal is now just a WorldState. This struct will be
+	// repurposed during the debugger redesign. For now it holds the bare
+	// minimum to keep the UI shells compiling.
 	FString ClassName;
 	TArray<FCkGoapDebugger_Condition> Conditions;
 	int32 Priority = 0;

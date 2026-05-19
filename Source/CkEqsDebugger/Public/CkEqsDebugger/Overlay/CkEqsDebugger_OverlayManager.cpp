@@ -47,13 +47,13 @@ auto
     -> void
 {
     // Master toggle off OR no settings OR no world: clear and bail.
-    if (NOT IsValid(InWorld) || InSettings == nullptr || NOT InSettings->bShow_Overlay)
+    if (NOT IsValid(InWorld) || InSettings == nullptr || NOT InSettings->Show_Overlay)
     {
         Reset();
         return;
     }
 
-    const auto ShowAll = InSettings->bShow_AllQueriesAlways;
+    const auto ShowAll = InSettings->Show_AllQueriesAlways;
 
     // In selection mode: nothing to draw if no query is selected. In all-queries mode: nothing to draw if
     // the source list is empty / null.
@@ -138,7 +138,7 @@ auto
     // re-issued every tick to stay visible. Walk the cached grid entities even when the rebuild path was
     // skipped — this is the difference between "grid lines flash for one frame after a state change" and
     // "grid lines persistently visible while the panel is open".
-    if (InSettings->bShow_GridLines && _GridsPerQuery.Num() > 0)
+    if (InSettings->Show_GridLines && _GridsPerQuery.Num() > 0)
     {
         auto DrawOptions = FCk_2dGridSystem_DebugDraw_Options{};
         DrawOptions.Set_CellVisualization(ECk_2dGridSystem_DebugDraw_CellVisualization::OBB);
@@ -212,13 +212,13 @@ auto
     // Pack visibility bits + quantised float sizes (cm precision is fine — we only care whether the user changed
     // something the overlay would reflect). Matches the data flowing into Rebuild's branches.
     auto Hash = uint32{0};
-    Hash |= (InSettings.bShow_Overlay                 ? 1u : 0u) << 0;
-    Hash |= (InSettings.bShow_AllCandidateSpheres     ? 1u : 0u) << 1;
-    Hash |= (InSettings.bShow_BestCandidateHighlight  ? 1u : 0u) << 2;
-    Hash |= (InSettings.bShow_FailedCandidates        ? 1u : 0u) << 3;
-    Hash |= (InSettings.bShow_QuerierMarker           ? 1u : 0u) << 4;
-    Hash |= (InSettings.bShow_BestLocationLine        ? 1u : 0u) << 5;
-    Hash |= (InSettings.bShow_GridLines               ? 1u : 0u) << 6;
+    Hash |= (InSettings.Show_Overlay                 ? 1u : 0u) << 0;
+    Hash |= (InSettings.Show_AllCandidateSpheres     ? 1u : 0u) << 1;
+    Hash |= (InSettings.Show_BestCandidateHighlight  ? 1u : 0u) << 2;
+    Hash |= (InSettings.Show_FailedCandidates        ? 1u : 0u) << 3;
+    Hash |= (InSettings.Show_QuerierMarker           ? 1u : 0u) << 4;
+    Hash |= (InSettings.Show_BestLocationLine        ? 1u : 0u) << 5;
+    Hash |= (InSettings.Show_GridLines               ? 1u : 0u) << 6;
     Hash ^= static_cast<uint32>(InSettings.CandidateSphereRadius)       << 8;
     Hash ^= static_cast<uint32>(InSettings.BestPickSphereRadius)        << 12;
     Hash ^= static_cast<uint32>(InSettings.QuerierMarkerRadius)         << 16;
@@ -240,7 +240,7 @@ auto
     const auto QuerierLoc = Get_QuerierLocation(InQuery.Querier);
 
     // ---- Querier marker ------------------------------------------------------------------------------------------
-    if (InSettings.bShow_QuerierMarker && NOT QuerierLoc.IsZero())
+    if (InSettings.Show_QuerierMarker && NOT QuerierLoc.IsZero())
     {
         UCk_Utils_Pmg_BasicShapes::Create_Sphere(
             _OverlayParent,
@@ -255,14 +255,14 @@ auto
     }
 
     // ---- Per-candidate spheres -----------------------------------------------------------------------------------
-    if (InSettings.bShow_AllCandidateSpheres)
+    if (InSettings.Show_AllCandidateSpheres)
     {
         for (const auto& Cand : InQuery.Candidates)
         {
-            const auto IsBestPick = Cand.IsBestPick && InSettings.bShow_BestCandidateHighlight;
+            const auto IsBestPick = Cand.IsBestPick && InSettings.Show_BestCandidateHighlight;
 
             // Skip filter-failed candidates if the user hasn't asked to see them.
-            if (NOT Cand.Passed && NOT InSettings.bShow_FailedCandidates && NOT IsBestPick)
+            if (NOT Cand.Passed && NOT InSettings.Show_FailedCandidates && NOT IsBestPick)
             { continue; }
 
             const auto Color = IsBestPick
@@ -287,7 +287,7 @@ auto
     }
 
     // ---- Querier-to-best line ------------------------------------------------------------------------------------
-    if (InSettings.bShow_BestLocationLine && InQuery.HasResults && NOT QuerierLoc.IsZero())
+    if (InSettings.Show_BestLocationLine && InQuery.HasResults && NOT QuerierLoc.IsZero())
     {
         ck::pmg::Append_DebugLine_World(
             _OverlayParent,
@@ -305,7 +305,7 @@ auto
         InQuery.GeneratorType == ECk_Eqs_GeneratorType::SimpleGrid ||
         InQuery.GeneratorType == ECk_Eqs_GeneratorType::Grid;
 
-    if (InSettings.bShow_GridLines && IsGridGenerator &&
+    if (InSettings.Show_GridLines && IsGridGenerator &&
         InQuery.GridSpaceBetween > 0.0f && InQuery.GridHalfSize > 0.0f &&
         NOT QuerierLoc.IsZero())
     {

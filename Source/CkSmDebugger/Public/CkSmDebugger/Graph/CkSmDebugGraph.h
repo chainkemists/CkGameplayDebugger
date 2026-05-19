@@ -26,8 +26,8 @@ enum class ECkSmDebugger_HistoryStyle : uint8
 
 struct FCkSmLayoutParams
 {
-    bool  bUndirectedBFS           = false;  // false = directed (better depth), true = undirected (compact cycles)
-    bool  bExpandTasks             = true;   // show task rows inside state nodes
+    bool  UndirectedBFS           = false;  // false = directed (better depth), true = undirected (compact cycles)
+    bool  ExpandTasks             = true;   // show task rows inside state nodes
     int32 SpacingX                 = 350;
     int32 SpacingY                 = 120;
     int32 CrossingReductionPasses  = 4;

@@ -44,7 +44,7 @@ private:
     // History: each entry is a snapshot of the selection at that point
     TArray<TArray<FCk_Handle>> History;
     int32 HistoryIndex = INDEX_NONE;
-    bool bIsNavigating = false;
+    bool IsNavigating = false;
 
     static constexpr int32 MaxHistorySize = 64;
 };

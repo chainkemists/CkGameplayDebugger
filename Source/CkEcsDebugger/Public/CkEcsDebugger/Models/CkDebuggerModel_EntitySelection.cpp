@@ -6,7 +6,7 @@
 
 auto FCkDebuggerModel_EntitySelection::Set_SelectedEntities(const TArray<FCk_Handle>& InEntities) -> void
 {
-    if (NOT bIsNavigating)
+    if (NOT IsNavigating)
     {
         PushToHistory();
     }
@@ -23,7 +23,7 @@ auto FCkDebuggerModel_EntitySelection::Add_SelectedEntity(const FCk_Handle& InEn
     if (SelectedEntitiesSet.Contains(InEntity))
     { return; }
 
-    if (NOT bIsNavigating)
+    if (NOT IsNavigating)
     {
         PushToHistory();
     }
@@ -39,7 +39,7 @@ auto FCkDebuggerModel_EntitySelection::Remove_SelectedEntity(const FCk_Handle& I
     if (NOT SelectedEntitiesSet.Contains(InEntity))
     { return; }
 
-    if (NOT bIsNavigating)
+    if (NOT IsNavigating)
     {
         PushToHistory();
     }
@@ -70,7 +70,7 @@ auto FCkDebuggerModel_EntitySelection::Clear_Selection() -> void
     if (SelectedEntities.IsEmpty())
     { return; }
 
-    if (NOT bIsNavigating)
+    if (NOT IsNavigating)
     {
         PushToHistory();
     }
@@ -122,10 +122,10 @@ auto FCkDebuggerModel_EntitySelection::NavigateBack() -> bool
 
     HistoryIndex--;
 
-    bIsNavigating = true;
+    IsNavigating = true;
     ApplySelection(History[HistoryIndex]);
     BroadcastSelectionChanged();
-    bIsNavigating = false;
+    IsNavigating = false;
 
     return true;
 }
@@ -137,10 +137,10 @@ auto FCkDebuggerModel_EntitySelection::NavigateForward() -> bool
 
     HistoryIndex++;
 
-    bIsNavigating = true;
+    IsNavigating = true;
     ApplySelection(History[HistoryIndex]);
     BroadcastSelectionChanged();
-    bIsNavigating = false;
+    IsNavigating = false;
 
     return true;
 }

@@ -398,7 +398,7 @@ auto
     SharedLayoutParams.SpacingX = LayoutParams.SpacingX;
     SharedLayoutParams.SpacingY = LayoutParams.SpacingY;
     SharedLayoutParams.CrossingReductionPasses = LayoutParams.CrossingReductionPasses;
-    SharedLayoutParams.IsDirectedBFS = NOT LayoutParams.bUndirectedBFS;
+    SharedLayoutParams.IsDirectedBFS = NOT LayoutParams.UndirectedBFS;
     SharedLayoutParams.InitialNodeIndex = InitialLayoutIdx;
 
     auto LayoutResult = FCkDebugGraphLayout::ComputeLayout(LayoutNodesInput, LayoutEdgesInput, SharedLayoutParams);

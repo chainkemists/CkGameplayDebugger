@@ -30,7 +30,7 @@ public:
     // Rebuild the overlay from the given query info. Cheap to call per-frame for typical query sizes (256 candidates
     // × 2 sphere ops + 1 line ≈ < 1 ms). Per-frame rebuild is fine for v1.1; if perf becomes a problem with very
     // large queries, switch to incremental updates keyed on candidate count + selection delta.
-    // InAllQueries is consulted only when InSettings->bShow_AllQueriesAlways is on — in that mode the overlay
+    // InAllQueries is consulted only when InSettings->Show_AllQueriesAlways is on — in that mode the overlay
     // ignores the selection entirely and draws every query in the registry. Pass nullptr (or an empty array)
     // when you don't have the all-queries list handy; the overlay just falls back to the selection-only path.
     auto

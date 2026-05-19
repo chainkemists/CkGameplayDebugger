@@ -931,7 +931,7 @@ auto
                 SNew(SCheckBox)
                     .IsChecked_Lambda([this]()
                     {
-                        return (_Graph && _Graph->LayoutParams.bExpandTasks)
+                        return (_Graph && _Graph->LayoutParams.ExpandTasks)
                             ? ECheckBoxState::Checked
                             : ECheckBoxState::Unchecked;
                     })
@@ -939,7 +939,7 @@ auto
                     {
                         if (_Graph)
                         {
-                            _Graph->LayoutParams.bExpandTasks = (InState == ECheckBoxState::Checked);
+                            _Graph->LayoutParams.ExpandTasks = (InState == ECheckBoxState::Checked);
                             _Graph->ForceRebuild();
                         }
                     })
@@ -1142,7 +1142,7 @@ auto
                                 SNew(SCheckBox)
                                     .IsChecked_Lambda([this]()
                                     {
-                                        return (_Graph && _Graph->LayoutParams.bUndirectedBFS)
+                                        return (_Graph && _Graph->LayoutParams.UndirectedBFS)
                                             ? ECheckBoxState::Checked
                                             : ECheckBoxState::Unchecked;
                                     })
@@ -1150,7 +1150,7 @@ auto
                                     {
                                         if (_Graph)
                                         {
-                                            _Graph->LayoutParams.bUndirectedBFS = (InState == ECheckBoxState::Checked);
+                                            _Graph->LayoutParams.UndirectedBFS = (InState == ECheckBoxState::Checked);
                                             _Graph->ForceRebuild();
                                         }
                                     })

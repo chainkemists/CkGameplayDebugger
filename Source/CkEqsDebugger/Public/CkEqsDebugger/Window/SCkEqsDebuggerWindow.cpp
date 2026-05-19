@@ -34,7 +34,7 @@ const FName SCkEqsDebuggerWindow::WindowId = FName("CkEqsDebugger");
 namespace
 {
     // One row inside the View-menu popover: a checkbox bound to a UCkEqsDebuggerSettings bool field.
-    // Pointer-to-member-bool keeps the popover construction concise: BuildSettingRow(&UCk...::bShow_X, "Label").
+    // Pointer-to-member-bool keeps the popover construction concise: BuildSettingRow(&UCk...::Show_X, "Label").
     auto BuildSettingRow(
         bool UCkEqsDebuggerSettings::* InMember,
         const FText&                   InLabel) -> TSharedRef<SWidget>
@@ -245,31 +245,31 @@ auto
             ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_Overlay,                FText::FromString(TEXT("Show overlay (master)"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_Overlay,                FText::FromString(TEXT("Show overlay (master)"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_AllQueriesAlways,       FText::FromString(TEXT("Show ALL queries (ignore selection)"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_AllQueriesAlways,       FText::FromString(TEXT("Show ALL queries (ignore selection)"))) ]
 
             + SVerticalBox::Slot().AutoHeight()
             [ SNew(SSeparator).Orientation(Orient_Horizontal).Thickness(1.0f) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_AllCandidateSpheres,    FText::FromString(TEXT("All candidate spheres"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_AllCandidateSpheres,    FText::FromString(TEXT("All candidate spheres"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_BestCandidateHighlight, FText::FromString(TEXT("Highlight best pick"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_BestCandidateHighlight, FText::FromString(TEXT("Highlight best pick"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_FailedCandidates,       FText::FromString(TEXT("Show failed candidates"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_FailedCandidates,       FText::FromString(TEXT("Show failed candidates"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_QuerierMarker,          FText::FromString(TEXT("Querier marker"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_QuerierMarker,          FText::FromString(TEXT("Querier marker"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_BestLocationLine,       FText::FromString(TEXT("Querier-to-best line"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_BestLocationLine,       FText::FromString(TEXT("Querier-to-best line"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::bShow_GridLines,              FText::FromString(TEXT("Grid lattice (SimpleGrid / Grid)"))) ]
+            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_GridLines,              FText::FromString(TEXT("Grid lattice (SimpleGrid / Grid)"))) ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 6.0f, 0.0f, 0.0f})
             [

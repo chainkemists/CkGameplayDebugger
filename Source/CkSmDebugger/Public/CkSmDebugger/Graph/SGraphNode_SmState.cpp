@@ -743,7 +743,7 @@ auto
     // Check expand flag on the owning graph
     if (auto* Graph = Cast<UCkSmDebugGraph>(_StateNode->GetGraph()))
     {
-        if (NOT Graph->LayoutParams.bExpandTasks)
+        if (NOT Graph->LayoutParams.ExpandTasks)
         { return SNew(SBox).HeightOverride(0.0f); }
     }
 

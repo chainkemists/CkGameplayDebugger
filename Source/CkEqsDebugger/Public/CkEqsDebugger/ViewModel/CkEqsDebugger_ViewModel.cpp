@@ -21,7 +21,7 @@ auto
     // — the OverlayManager needs candidate locations for every query, not just the selected one. Off by
     // default to keep the typical (selection-driven) collector cheap on large query sets.
     const auto* Settings = UCkEqsDebuggerSettings::Get();
-    const auto DeepPopulateAll = Settings != nullptr && Settings->bShow_Overlay && Settings->bShow_AllQueriesAlways;
+    const auto DeepPopulateAll = Settings != nullptr && Settings->Show_Overlay && Settings->Show_AllQueriesAlways;
 
     _DataCollector.Collect(InWorld, _SelectedQueryHandle, DeepPopulateAll);
 

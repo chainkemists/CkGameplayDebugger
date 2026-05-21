@@ -37,6 +37,113 @@ auto
 
 auto
     UCkGoapDebugGraph::
+    ComputeTopologyHash(
+        const FCkGoapDebugger_ActionSetInfo& InActionSet)
+    -> uint32
+{
+    // Capture identity of every catalog node + its pin shape (precondition
+    // keys + effect keys) + the goal owner. Intentionally excludes mutable
+    // per-tick fields (PlanStatus, ActiveChain, selection) so the fast-path
+    // UpdateRuntimeState handles those without a full rebuild.
+    auto Hash = uint32{0};
+    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InActionSet.Handle)));
+    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InActionSet.RootActionHandle)));
+    Hash = HashCombine(Hash, ::GetTypeHash(InActionSet.Catalog.Num()));
+
+    for (const auto& Action : InActionSet.Catalog)
+    {
+        Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Action.Handle)));
+        Hash = HashCombine(Hash, GetTypeHash(Action.ClassName));
+        Hash = HashCombine(Hash, ::GetTypeHash(Action.Preconditions.Num()));
+        Hash = HashCombine(Hash, ::GetTypeHash(Action.Effects.Num()));
+        Hash = HashCombine(Hash, ::GetTypeHash(Action.Goal.Num()));
+
+        for (const auto& P : Action.Preconditions)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(P.Key));
+            Hash = HashCombine(Hash, ::GetTypeHash(P.Value ? 1 : 0));
+        }
+        for (const auto& E : Action.Effects)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(E.Key));
+            Hash = HashCombine(Hash, ::GetTypeHash(E.Value ? 1 : 0));
+        }
+        for (const auto& G : Action.Goal)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(G.Key));
+            Hash = HashCombine(Hash, ::GetTypeHash(G.Value ? 1 : 0));
+        }
+    }
+    return Hash;
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugGraph::
+    UpdateRuntimeState(
+        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCk_Handle_Goap_Action& InSelectedActionHandle)
+    -> bool
+{
+    // Rebuild per-Action plan-step membership from the active chain so the
+    // in-place update sees the same numbering RebuildFromSnapshot would.
+    auto PlanIndexByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+    {
+        auto Step = 1;
+        for (const auto& H : InActionSet.ActiveChainHandles)
+        { PlanIndexByHandle.Add(H, Step++); }
+    }
+
+    auto Changed = false;
+
+    for (UEdGraphNode* Node : Nodes)
+    {
+        auto* ActionNode = Cast<UCkGoapDebugNode_Action>(Node);
+        if (ActionNode == nullptr) { continue; }
+
+        const auto& Handle = ActionNode->Get_ActionHandle();
+
+        // Look up the live catalog entry for this node's handle. Falls back
+        // to leaving the existing values alone if the snapshot's catalog
+        // doesn't include this handle (shouldn't happen given topology hash
+        // matched, but be defensive).
+        const auto* Catalog = InActionSet.Catalog.FindByPredicate(
+            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == Handle; });
+        if (Catalog == nullptr) { continue; }
+
+        const auto NewInPlan = Catalog->IsInActiveChain;
+        auto NewStep = 0;
+        if (auto* StepPtr = PlanIndexByHandle.Find(Handle))
+        { NewStep = *StepPtr; }
+
+        const auto NewSelected = ck::IsValid(InSelectedActionHandle) && (Handle == InSelectedActionHandle);
+
+        const auto NewFailureBlocked =
+            Catalog->PlanStatus == ECk_GoapPlanStatus::PlanFailed
+            && (Catalog->Role == ECkGoapDebugger_ActionRole::Leaf
+                || Catalog->Role == ECkGoapDebugger_ActionRole::Mid);
+
+        if (ActionNode->Get_IsInPlan()         != NewInPlan
+         || ActionNode->Get_PlanStepIndex()    != NewStep
+         || ActionNode->Get_IsSelected()       != NewSelected
+         || ActionNode->Get_IsFailureBlocked() != NewFailureBlocked)
+        {
+            ActionNode->Set_IsInPlan(NewInPlan);
+            ActionNode->Set_PlanStepIndex(NewStep);
+            ActionNode->Set_IsSelected(NewSelected);
+            ActionNode->Set_IsFailureBlocked(NewFailureBlocked);
+            Changed = true;
+        }
+    }
+
+    return Changed;
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugGraph::
     Get_ActionCount() const
     -> int32
 {

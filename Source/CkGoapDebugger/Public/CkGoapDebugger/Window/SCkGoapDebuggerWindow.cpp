@@ -3,6 +3,8 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_Breadcrumb.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_PrimaryPane.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Sidebar.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -128,7 +130,7 @@ auto
     { HandleWorldTornDown(); });
 
     auto SidebarWidget   = SAssignNew(_Sidebar, SCkGoapDebugger_Sidebar, _ViewModel);
-    auto CenterStub      = BuildCenterStub();
+    auto CenterColumn    = BuildCenterColumn();
     auto WsRailStub      = BuildWsRailStub();
 
     ChildSlot
@@ -177,7 +179,7 @@ auto
                                 + SSplitter::Slot()
                                     .Value(0.55f)
                                     [
-                                        CenterStub
+                                        CenterColumn
                                     ]
 
                                 + SSplitter::Slot()
@@ -198,6 +200,10 @@ auto
         {
             if (_Sidebar.IsValid())
             { _Sidebar->RefreshFromViewModel(); }
+            if (_Breadcrumb.IsValid())
+            { _Breadcrumb->RefreshFromViewModel(); }
+            if (_PrimaryPane.IsValid())
+            { _PrimaryPane->RefreshFromViewModel(); }
         });
     }
 }
@@ -515,12 +521,50 @@ auto
 }
 
 // ====================================================================================================================
-// BUILD — CENTER / WS RAIL STUBS
+// BUILD — CENTER COLUMN (breadcrumb + primary + graph stub) / WS RAIL STUB
 // ====================================================================================================================
 
 auto
     SCkGoapDebuggerWindow::
-    BuildCenterStub()
+    BuildCenterColumn()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SBorder)
+        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Root")))
+        .Padding(FMargin(0.0f))
+        [
+            SNew(SSplitter)
+                .Orientation(Orient_Vertical)
+
+                // Breadcrumb (auto height — wraps to its content)
+                + SSplitter::Slot()
+                    .Value(0.08f)
+                    .SizeRule(SSplitter::SizeToContent)
+                    [
+                        SAssignNew(_Breadcrumb, SCkGoapDebugger_Breadcrumb)
+                            .ViewModel(_ViewModel)
+                    ]
+
+                // Primary pane (top of remaining space)
+                + SSplitter::Slot()
+                    .Value(0.42f)
+                    [
+                        SAssignNew(_PrimaryPane, SCkGoapDebugger_PrimaryPane)
+                            .ViewModel(_ViewModel)
+                    ]
+
+                // Graph pane (bottom — stub for D5)
+                + SSplitter::Slot()
+                    .Value(0.50f)
+                    [
+                        BuildGraphStub()
+                    ]
+        ];
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    BuildGraphStub()
     -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
@@ -530,7 +574,7 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(STextBlock)
-                .Text(FText::FromString(TEXT("D3 — primary pane goes here")))
+                .Text(FText::FromString(TEXT("D5 — graph goes here")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
         ];

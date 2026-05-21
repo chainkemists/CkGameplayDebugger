@@ -9,6 +9,8 @@
 
 class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
+class SCkGoapDebugger_Breadcrumb;
+class SCkGoapDebugger_PrimaryPane;
 class STextBlock;
 class SBox;
 template <typename> class SComboBox;
@@ -55,7 +57,8 @@ private:
     auto BuildModeBar()  -> TSharedRef<SWidget>;
     auto BuildToolbar()  -> TSharedRef<SWidget>;
     auto BuildLegend()   -> TSharedRef<SWidget>;
-    auto BuildCenterStub()    -> TSharedRef<SWidget>;
+    auto BuildCenterColumn()  -> TSharedRef<SWidget>;
+    auto BuildGraphStub()     -> TSharedRef<SWidget>;
     auto BuildWsRailStub()    -> TSharedRef<SWidget>;
 
     // Refresh the entity picker's items array off the current snapshot batch.
@@ -67,8 +70,10 @@ private:
     auto HandleWorldTornDown() -> void;
 
 private:
-    TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
-    TSharedPtr<SCkGoapDebugger_Sidebar>   _Sidebar;
+    TSharedPtr<FCkGoapDebugger_ViewModel>   _ViewModel;
+    TSharedPtr<SCkGoapDebugger_Sidebar>     _Sidebar;
+    TSharedPtr<SCkGoapDebugger_Breadcrumb>  _Breadcrumb;
+    TSharedPtr<SCkGoapDebugger_PrimaryPane> _PrimaryPane;
 
     TWeakObjectPtr<UWorld> _CachedWorld;
 

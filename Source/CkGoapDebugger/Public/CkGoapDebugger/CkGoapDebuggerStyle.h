@@ -1,80 +1,81 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Styling/SlateStyle.h"
+#include "Styling/SlateColor.h"
 
 // ====================================================================================================================
-// GOAP DEBUGGER STYLE — Centralized colors and layout constants
+// CkGoap Debugger style — brushes, text styles, layout constants, and palette
+// matching mockup F v2. Owned by the CkGoapDebugger module; registered at
+// StartupModule, unregistered at ShutdownModule.
+//
+// Palette mirrors the mockup tokens exactly (hex → linear). The Color_*
+// statics double as a quick lookup for code that needs the underlying
+// FLinearColor (e.g. node tinting in custom paint paths).
 // ====================================================================================================================
 
-namespace CkGoapDebuggerStyle
+class FCkGoapDebuggerStyle
 {
-	// Status colors
-	inline const auto StatusIdle = FLinearColor{0.4f, 0.4f, 0.4f, 1.0f};
-	inline const auto StatusPlanning = FLinearColor{0.2f, 0.5f, 1.0f, 1.0f};
-	inline const auto StatusPlanFound = FLinearColor{0.13f, 0.77f, 0.37f, 1.0f};
-	inline const auto StatusPlanFailed = FLinearColor{0.94f, 0.27f, 0.27f, 1.0f};
-	inline const auto StatusCostThreshold = FLinearColor{0.96f, 0.62f, 0.04f, 1.0f};
+public:
+    static auto Initialize()      -> void;
+    static auto Shutdown()        -> void;
+    static auto Get()             -> const ISlateStyle&;
+    static auto GetStyleSetName() -> FName;
 
-	// World state colors
-	inline const auto WorldStateTrue = FLinearColor{0.13f, 0.77f, 0.37f, 1.0f};
-	inline const auto WorldStateFalse = FLinearColor{0.94f, 0.27f, 0.27f, 1.0f};
+    // -- Palette (mockup F v2) -----------------------------------------------
+    // Backgrounds
+    static const FLinearColor Color_Bg_Root;            // #0a0e17  app background
+    static const FLinearColor Color_Bg_Panel;           // #0c1018  sidebar / panels
+    static const FLinearColor Color_Bg_Surface;         // #0f1520  card surfaces
+    static const FLinearColor Color_Bg_Black;           // #000000  mode bar / graph head
 
-	// Plan action colors
-	inline const auto PlanActionBackground = FLinearColor{0.08f, 0.12f, 0.18f, 1.0f};
-	inline const auto PlanActionBorder = FLinearColor{0.2f, 0.5f, 1.0f, 0.6f};
-	inline const auto PlanCostText = FLinearColor{0.96f, 0.62f, 0.04f, 1.0f};
+    // Borders
+    static const FLinearColor Color_Border_Subtle;      // #1a2332  inner dividers
+    static const FLinearColor Color_Border_Strong;      // #2a3342  outer dividers
 
-	// Goal colors
-	inline const auto GoalActive = FLinearColor{0.13f, 0.77f, 0.37f, 1.0f};
-	inline const auto GoalInactive = FLinearColor{0.4f, 0.4f, 0.4f, 1.0f};
+    // Text
+    static const FLinearColor Color_Text_Primary;       // #e0e0e0
+    static const FLinearColor Color_Text_Secondary;     // #aaaaaa
+    static const FLinearColor Color_Text_Muted;         // #888888
+    static const FLinearColor Color_Text_Dim;           // #666666
+    static const FLinearColor Color_Text_Faint;         // #555555
+    static const FLinearColor Color_Text_Ghost;         // #444444
 
-	// Budget bar
-	inline const auto BudgetNormal = FLinearColor{0.2f, 0.5f, 1.0f, 1.0f};
-	inline const auto BudgetWarning = FLinearColor{0.96f, 0.62f, 0.04f, 1.0f};
-	inline const auto BudgetOver = FLinearColor{0.94f, 0.27f, 0.27f, 1.0f};
+    // Status accents
+    static const FLinearColor Color_Status_PlanFound;   // #22c55e  green
+    static const FLinearColor Color_Status_Planning;    // #60a5fa  blue
+    static const FLinearColor Color_Status_PlanningBdr; // #3b82f6  blue (border)
+    static const FLinearColor Color_Status_Failed;      // #ef4444  red
+    static const FLinearColor Color_Status_Selected;    // #f59e0b  amber
+    static const FLinearColor Color_Status_Composite;   // #a855f7  purple
 
-	// Panel
-	inline const auto PanelBackground = FLinearColor{0.02f, 0.04f, 0.08f, 1.0f};
-	inline const auto SectionHeader = FLinearColor{0.7f, 0.7f, 0.7f, 1.0f};
+    // -- Layout constants -----------------------------------------------------
+    static constexpr float Padding_XSmall  = 2.0f;
+    static constexpr float Padding_Small   = 4.0f;
+    static constexpr float Padding_Medium  = 8.0f;
+    static constexpr float Padding_Large   = 14.0f;
 
-	// Text
-	inline const auto TextPrimary = FLinearColor{0.9f, 0.9f, 0.9f, 1.0f};
-	inline const auto TextSecondary = FLinearColor{0.6f, 0.6f, 0.6f, 1.0f};
-	inline const auto TextMuted = FLinearColor{0.4f, 0.4f, 0.4f, 1.0f};
+    static constexpr float SidebarWidth          = 280.0f;
+    static constexpr float SidebarBottomHeight   = 230.0f;
+    static constexpr float ModeBarHeight         = 36.0f;
+    static constexpr float ToolbarHeight         = 38.0f;
+    static constexpr float CornerRadius_Small    = 3.0f;
+    static constexpr float CornerRadius_Medium   = 4.0f;
+    static constexpr float CornerRadius_Large    = 6.0f;
+    static constexpr float CornerRadius_Badge    = 8.0f;
+    static constexpr float Border_Thin           = 1.0f;
+    static constexpr float Border_Standard       = 1.5f;
+    static constexpr float Border_Strong         = 2.0f;
 
-	// Layout
-	constexpr auto PanelPadding = 12.0f;
-	constexpr auto SectionSpacing = 16.0f;
-	constexpr auto RowHeight = 18.0f;
+    static constexpr float GraphNode_Width       = 180.0f;
+    static constexpr float GraphNode_MinHeight   = 60.0f;
 
-	// Helpers
-	inline auto
-	GetStatusColor(ECk_GoapPlanStatus InStatus) -> FLinearColor
-	{
-		switch (InStatus)
-		{
-		case ECk_GoapPlanStatus::Idle:                 return StatusIdle;
-		case ECk_GoapPlanStatus::Planning:             return StatusPlanning;
-		case ECk_GoapPlanStatus::PlanFound:             return StatusPlanFound;
-		case ECk_GoapPlanStatus::PlanFailed:            return StatusPlanFailed;
-		case ECk_GoapPlanStatus::CostThresholdReached: return StatusCostThreshold;
-		default:                                        return StatusIdle;
-		}
-	}
+private:
+    static TSharedPtr<FSlateStyleSet> StyleInstance;
 
-	inline auto
-	GetStatusString(ECk_GoapPlanStatus InStatus) -> FString
-	{
-		switch (InStatus)
-		{
-		case ECk_GoapPlanStatus::Idle:                 return TEXT("Idle");
-		case ECk_GoapPlanStatus::Planning:             return TEXT("Planning");
-		case ECk_GoapPlanStatus::PlanFound:             return TEXT("Plan Found");
-		case ECk_GoapPlanStatus::PlanFailed:            return TEXT("Plan Failed");
-		case ECk_GoapPlanStatus::CostThresholdReached: return TEXT("Cost Threshold");
-		default:                                        return TEXT("Unknown");
-		}
-	}
-}
+    static auto Create() -> TSharedRef<FSlateStyleSet>;
+    static auto CreateBrushes(TSharedRef<FSlateStyleSet> InStyle)    -> void;
+    static auto CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void;
+};
 
 // ====================================================================================================================

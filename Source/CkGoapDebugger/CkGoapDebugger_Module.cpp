@@ -1,16 +1,16 @@
 #include "CkGoapDebugger_Module.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
 // ====================================================================================================================
 
 #define LOCTEXT_NAMESPACE "FCkGoapDebuggerModule"
 
 // ====================================================================================================================
-// Phase D0: bare module shell. Style set is registered up-front so later phases
-// can reference brushes/text styles via FCkGoapDebuggerStyle::Get(). No tab
-// spawners, no graph factories, no console commands — those re-appear in
-// subsequent phases as the matching widgets/window come back online.
+// Phase D1: module shell + style set + data layer. The data collector's
+// singleton lifecycle is anchored here so PIE delegate (re)binding tracks
+// module lifetime exactly. No tab spawners / windows yet — D2 wires those.
 // ====================================================================================================================
 
 auto
@@ -19,6 +19,7 @@ auto
     -> void
 {
     FCkGoapDebuggerStyle::Initialize();
+    FCkGoapDebugger_DataCollector::Initialize();
 }
 
 auto
@@ -26,6 +27,7 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkGoapDebugger_DataCollector::Shutdown();
     FCkGoapDebuggerStyle::Shutdown();
 }
 

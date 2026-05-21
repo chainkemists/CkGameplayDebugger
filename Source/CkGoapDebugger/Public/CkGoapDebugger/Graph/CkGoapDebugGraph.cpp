@@ -23,6 +23,39 @@ namespace ck_goap_graph
 }
 
 // ====================================================================================================================
+// Helpers
+// ====================================================================================================================
+
+namespace
+{
+    // Resolves which Action's _Plan should drive in-plan tinting + plan-step
+    // numbering. Prefer the user-selected Action (its plan is what the
+    // primary pane is showing in the plan-strip); fall back to the
+    // ActionSet's root so the graph always shows a meaningful plan
+    // visualization even before the user clicks anything.
+    //
+    // Returns nullptr if neither handle resolves to a catalog entry — in
+    // that case the caller treats no node as in-plan.
+    auto Resolve_PlanDriverAction(
+        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCk_Handle_Goap_Action& InSelectedActionHandle)
+        -> const FCkGoapDebugger_ActionInfo*
+    {
+        auto Find = [&](const FCk_Handle_Goap_Action& H)
+            -> const FCkGoapDebugger_ActionInfo*
+        {
+            if (ck::Is_NOT_Valid(H)) { return nullptr; }
+            return InActionSet.Catalog.FindByPredicate(
+                [&](const FCkGoapDebugger_ActionInfo& A) { return A.Handle == H; });
+        };
+
+        if (auto* Selected = Find(InSelectedActionHandle))
+        { return Selected; }
+        return Find(InActionSet.RootActionHandle);
+    }
+}
+
+// ====================================================================================================================
 
 auto
     UCkGoapDebugGraph::
@@ -86,13 +119,22 @@ auto
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
     -> bool
 {
-    // Rebuild per-Action plan-step membership from the active chain so the
-    // in-place update sees the same numbering RebuildFromSnapshot would.
-    auto PlanIndexByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+    // In-plan tinting + plan-step numbering reflect the currently-selected
+    // action's _Plan (or the ActionSet's root plan when nothing is selected).
+    //
+    // CRITICAL: this is NOT the same as the active chain. In the unified
+    // model the active chain only contains composite/root Actions (the
+    // tree depth), while _Plan is the flat ordered list of child Action
+    // classes the planner chose to satisfy the selected Action's goal.
+    // Atomic operators that satisfy the goal directly (e.g. all four
+    // MakeTea steps) live in _Plan but never appear in ActiveChain.
+    const auto* PlanDriver = Resolve_PlanDriverAction(InActionSet, InSelectedActionHandle);
+    auto PlanStepByClassName = TMap<FString, int32>{};
+    if (PlanDriver != nullptr)
     {
         auto Step = 1;
-        for (const auto& H : InActionSet.ActiveChainHandles)
-        { PlanIndexByHandle.Add(H, Step++); }
+        for (const auto& Name : PlanDriver->PlanClassNames)
+        { PlanStepByClassName.Add(Name, Step++); }
     }
 
     auto Changed = false;
@@ -112,10 +154,10 @@ auto
             [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == Handle; });
         if (Catalog == nullptr) { continue; }
 
-        const auto NewInPlan = Catalog->IsInActiveChain;
         auto NewStep = 0;
-        if (auto* StepPtr = PlanIndexByHandle.Find(Handle))
+        if (auto* StepPtr = PlanStepByClassName.Find(Catalog->ClassName))
         { NewStep = *StepPtr; }
+        const auto NewInPlan = NewStep > 0;
 
         const auto NewSelected = ck::IsValid(InSelectedActionHandle) && (Handle == InSelectedActionHandle);
 
@@ -227,16 +269,17 @@ auto
     // Build effect-key → producing-action-index map for fast wiring later.
     auto EffectKeyToProducer = TMap<FGameplayTag, TArray<int32>>{};
 
-    // Compute plan membership / step index from the ActiveChain.
-    // ChainHandles ordered root→leaf; the leaf is the "current plan tip"
-    // and we number plan steps from 1.
-    auto PlanIndexByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+    // Plan-step numbering + in-plan tinting are driven by the currently-
+    // selected Action's _Plan (or the ActionSet's root plan when nothing
+    // is selected). See UpdateRuntimeState's matching comment for the
+    // rationale — _Plan is NOT the active chain.
+    const auto* PlanDriver = Resolve_PlanDriverAction(InActionSet, InSelectedActionHandle);
+    auto PlanStepByClassName = TMap<FString, int32>{};
+    if (PlanDriver != nullptr)
     {
         auto Step = 1;
-        for (const auto& H : InActionSet.ActiveChainHandles)
-        {
-            PlanIndexByHandle.Add(H, Step++);
-        }
+        for (const auto& Name : PlanDriver->PlanClassNames)
+        { PlanStepByClassName.Add(Name, Step++); }
     }
 
     for (auto i = 0; i < ActionCount; ++i)
@@ -248,13 +291,14 @@ auto
         Node->AllocateDefaultPins();
         Node->SetFlags(RF_Transactional);
 
-        const auto IsInChain = Action.IsInActiveChain;
-        Node->Set_IsInPlan(IsInChain);
-
-        if (auto* StepPtr = PlanIndexByHandle.Find(Action.Handle))
-        { Node->Set_PlanStepIndex(*StepPtr); }
-        else
-        { Node->Set_PlanStepIndex(0); }
+        // IsInPlan + PlanStepIndex come from the selected (or root) Action's
+        // _Plan, NOT the active chain. See UpdateRuntimeState's matching
+        // block for the rationale.
+        auto Step = 0;
+        if (auto* StepPtr = PlanStepByClassName.Find(Action.ClassName))
+        { Step = *StepPtr; }
+        Node->Set_IsInPlan(Step > 0);
+        Node->Set_PlanStepIndex(Step);
 
         Node->Set_IsSelected(ck::IsValid(InSelectedActionHandle) && Action.Handle == InSelectedActionHandle);
 

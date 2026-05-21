@@ -26,6 +26,8 @@ public class CkGoapDebugger : CkModuleRules
 			"CkEcs",
 			"CkAStar",
 			"CkGoap",
+			"CkEntityExtension",
+			"CkRecord",
 			"CkLabel",
 			"CkDebuggerCommon",
 

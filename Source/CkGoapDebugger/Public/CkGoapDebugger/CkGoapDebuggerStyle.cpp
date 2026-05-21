@@ -165,6 +165,12 @@ auto
         CornerRadius_Badge,
         Color_Status_Failed,
         Border_Thin));
+
+    // WorldState rail — recently-changed row tint. Mockup uses `#f59e0b0a`
+    // (amber at ~4% alpha) plus a tiny radius.
+    InStyle->Set("CkGoap.WS.RowRecent", new FSlateRoundedBoxBrush(
+        FLinearColor(Color_Status_Selected.R, Color_Status_Selected.G, Color_Status_Selected.B, 0.06f),
+        CornerRadius_Small));
 }
 
 auto

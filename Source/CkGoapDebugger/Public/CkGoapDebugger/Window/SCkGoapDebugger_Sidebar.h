@@ -12,6 +12,7 @@
 class FCkGoapDebugger_ViewModel;
 class STextBlock;
 class SBox;
+class SCkGoapDebugger_ScrubTrack;
 
 // ====================================================================================================================
 // CkGoap Debugger — Sidebar.
@@ -101,6 +102,17 @@ private:
 
     auto GenerateHistoryRow(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
     auto RebuildHistoryItems() -> void;
+    auto OnHistoryRowSelectionChanged(FHistoryItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
+
+    // ---- Scrub interaction ---------------------------------------------------
+    // Reverse-order list maps to history indices via: histIdx = Hist.Num()-1-rowIdx.
+    // Called by the scrub track (chronological hist index) and the events list
+    // (chronological hist index translated from row).
+    auto SelectHistoryEvent(int32 InHistIdx) -> void;
+
+    // Push the scrub selection into the SListView selection so the row tint
+    // matches the dot highlight.
+    auto SyncHistoryListSelectionFromViewModel() -> void;
 
     // -----------------------------------------------------------------------------------------------------------------
     // Header text helpers — Bind via TAttribute<FText> on header labels so we
@@ -118,6 +130,8 @@ private:
 
     TSharedPtr<SListView<FHistoryItemPtr>>   _HistoryListView;
     TArray<FHistoryItemPtr>                  _HistoryItems;
+
+    TSharedPtr<SCkGoapDebugger_ScrubTrack>   _ScrubTrack;
 
     // Selection-restore guard — suppress OnSelectionChanged echoes that
     // originate from a programmatic SetItemSelection during refresh.

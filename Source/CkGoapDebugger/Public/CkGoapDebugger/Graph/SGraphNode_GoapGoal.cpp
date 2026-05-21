@@ -18,7 +18,7 @@
 
 namespace
 {
-    auto Compute_TagLeaf(const FGameplayTag& InTag) -> FString
+    auto Compute_TagLeaf_Goal(const FGameplayTag& InTag) -> FString
     {
         const auto Full = InTag.ToString();
         int32 Idx = INDEX_NONE;
@@ -65,7 +65,7 @@ auto
         for (const auto& Cond : _GoalNode->Get_GoalConditions())
         {
             const auto Line = FString::Printf(TEXT("%s = %s"),
-                *Compute_TagLeaf(Cond.Key),
+                *Compute_TagLeaf_Goal(Cond.Key),
                 Cond.Value ? TEXT("true") : TEXT("false"));
 
             Conditions->AddSlot()

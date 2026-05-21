@@ -11,6 +11,7 @@
 #include "Styling/CoreStyle.h"
 
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -18,6 +19,7 @@
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
+#include "Rendering/DrawElements.h"
 
 // ====================================================================================================================
 // Internal helpers
@@ -159,6 +161,215 @@ namespace
 }
 
 // ====================================================================================================================
+// SCRUB TRACK — custom leaf widget. Paints chain/failure dots positioned
+// proportionally along a thin horizontal track. Hit-tests OnMouseButtonDown
+// against each dot and forwards to OnEventClicked(histIdx).
+//
+// The track reads the history every paint via a weak ViewModel pointer so it
+// reflects the live ring buffer without needing the parent to push updates.
+// ====================================================================================================================
+
+class SCkGoapDebugger_ScrubTrack : public SLeafWidget
+{
+public:
+    DECLARE_DELEGATE_OneParam(FOnEventClicked, int32 /*HistIdx*/);
+
+    SLATE_BEGIN_ARGS(SCkGoapDebugger_ScrubTrack) {}
+        SLATE_EVENT(FOnEventClicked, OnEventClicked)
+    SLATE_END_ARGS()
+
+    auto Construct(const FArguments& InArgs, TWeakPtr<FCkGoapDebugger_ViewModel> InViewModel) -> void
+    {
+        _ViewModel = InViewModel;
+        _OnEventClicked = InArgs._OnEventClicked;
+        SetCanTick(false);
+    }
+
+    virtual auto ComputeDesiredSize(float) const -> FVector2D override
+    { return FVector2D(120.0f, 22.0f); }
+
+    virtual auto OnPaint(
+        const FPaintArgs& Args,
+        const FGeometry& AllottedGeometry,
+        const FSlateRect& MyCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32 LayerId,
+        const FWidgetStyle& InWidgetStyle,
+        bool bParentEnabled) const -> int32 override
+    {
+        const auto Local = AllottedGeometry.GetLocalSize();
+        const auto TrackY = Local.Y * 0.5f;
+        const auto TrackThickness = 2.0f;
+        const auto* WhiteBrush = FAppStyle::GetBrush(TEXT("WhiteBrush"));
+
+        // Background bar
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            LayerId,
+            AllottedGeometry.ToPaintGeometry(
+                FVector2f(Local.X, TrackThickness),
+                FSlateLayoutTransform(FVector2f(0.0f, TrackY - TrackThickness * 0.5f))),
+            WhiteBrush,
+            ESlateDrawEffect::None,
+            FCkGoapDebuggerStyle::Color_Border_Subtle);
+
+        // "now" indicator — green vertical bar at the right edge
+        constexpr auto NowBarWidth = 2.0f;
+        constexpr auto NowBarHeight = 14.0f;
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            LayerId + 1,
+            AllottedGeometry.ToPaintGeometry(
+                FVector2f(NowBarWidth, NowBarHeight),
+                FSlateLayoutTransform(FVector2f(Local.X - NowBarWidth, TrackY - NowBarHeight * 0.5f))),
+            WhiteBrush,
+            ESlateDrawEffect::None,
+            FCkGoapDebuggerStyle::Color_Status_PlanFound);
+
+        // Dots
+        const auto VM = _ViewModel.Pin();
+        if (NOT VM.IsValid())
+        { return LayerId + 2; }
+
+        const auto Entity = VM->GetSelectedEntity();
+        if (NOT ck::IsValid(Entity))
+        { return LayerId + 2; }
+
+        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+        if (Hist.Num() == 0)
+        { return LayerId + 2; }
+
+        const auto SelectedIdx = (VM->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
+            ? VM->GetScrubEventIndex() : INDEX_NONE;
+
+        const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
+
+        constexpr auto DotRadius = 4.0f;
+        constexpr auto SelectedDotRadius = 6.0f;
+        constexpr auto OutlineThickness = 1.5f;
+
+        for (auto i = 0; i < Hist.Num(); ++i)
+        {
+            const auto& Ev = Hist[i];
+            const auto CenterX = TrackPx[i];
+            const auto IsSelected = (i == SelectedIdx);
+            const auto R = IsSelected ? SelectedDotRadius : DotRadius;
+
+            const auto Color = HistoryEventColor(Ev.Kind);
+
+            // Selected outline ring
+            if (IsSelected)
+            {
+                const auto Ring = R + OutlineThickness;
+                FSlateDrawElement::MakeBox(
+                    OutDrawElements,
+                    LayerId + 2,
+                    AllottedGeometry.ToPaintGeometry(
+                        FVector2f(Ring * 2.0f, Ring * 2.0f),
+                        FSlateLayoutTransform(FVector2f(CenterX - Ring, TrackY - Ring))),
+                    WhiteBrush,
+                    ESlateDrawEffect::None,
+                    FCkGoapDebuggerStyle::Color_Text_Primary);
+            }
+
+            FSlateDrawElement::MakeBox(
+                OutDrawElements,
+                LayerId + 3,
+                AllottedGeometry.ToPaintGeometry(
+                    FVector2f(R * 2.0f, R * 2.0f),
+                    FSlateLayoutTransform(FVector2f(CenterX - R, TrackY - R))),
+                WhiteBrush,
+                ESlateDrawEffect::None,
+                Color);
+        }
+
+        return LayerId + 4;
+    }
+
+    virtual auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override
+    {
+        if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+        { return FReply::Unhandled(); }
+
+        const auto VM = _ViewModel.Pin();
+        if (NOT VM.IsValid())
+        { return FReply::Unhandled(); }
+
+        const auto Entity = VM->GetSelectedEntity();
+        if (NOT ck::IsValid(Entity))
+        { return FReply::Unhandled(); }
+
+        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+        if (Hist.Num() == 0)
+        { return FReply::Unhandled(); }
+
+        const auto Local   = MyGeometry.GetLocalSize();
+        const auto LocalP  = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+        const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
+
+        // Generous hit radius so users don't need pixel precision.
+        constexpr auto HitRadius = 10.0f;
+        auto BestIdx  = int32{INDEX_NONE};
+        auto BestDist = HitRadius;
+
+        for (auto i = 0; i < TrackPx.Num(); ++i)
+        {
+            const auto Dist = FMath::Abs(static_cast<float>(LocalP.X) - TrackPx[i]);
+            if (Dist < BestDist)
+            {
+                BestDist = Dist;
+                BestIdx  = i;
+            }
+        }
+
+        if (BestIdx != INDEX_NONE && _OnEventClicked.IsBound())
+        {
+            _OnEventClicked.Execute(BestIdx);
+            return FReply::Handled();
+        }
+
+        return FReply::Unhandled();
+    }
+
+private:
+    // Compute the x-pixel center of each event's dot, proportional to
+    // WorldTimeSeconds across [first..last] with edge padding.
+    static auto ComputeTrackPositions(
+        const TArray<FCkGoapDebugger_HistoryEvent>& InHist,
+        float InWidth) -> TArray<float>
+    {
+        auto Out = TArray<float>{};
+        Out.Reserve(InHist.Num());
+
+        if (InHist.Num() == 0) { return Out; }
+
+        constexpr auto EdgePad = 8.0f;
+        const auto Usable = FMath::Max(1.0f, InWidth - EdgePad * 2.0f);
+
+        if (InHist.Num() == 1)
+        {
+            Out.Add(EdgePad + Usable * 0.5f);
+            return Out;
+        }
+
+        const auto T0 = InHist[0].WorldTimeSeconds;
+        const auto T1 = InHist.Last().WorldTimeSeconds;
+        const auto Span = FMath::Max(0.001, T1 - T0);
+
+        for (const auto& Ev : InHist)
+        {
+            const auto Alpha = static_cast<float>((Ev.WorldTimeSeconds - T0) / Span);
+            Out.Add(EdgePad + Usable * FMath::Clamp(Alpha, 0.0f, 1.0f));
+        }
+
+        return Out;
+    }
+
+    TWeakPtr<FCkGoapDebugger_ViewModel> _ViewModel;
+    FOnEventClicked                     _OnEventClicked;
+};
+
+// ====================================================================================================================
 // CONSTRUCT / DESTRUCT
 // ====================================================================================================================
 
@@ -233,22 +444,16 @@ auto
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                     ]
 
-                // ---- Placeholder scrub track (filled out in D6) -------------
+                // ---- Interactive scrub track --------------------------------
                 + SVerticalBox::Slot()
                     .AutoHeight()
                     .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f,
                              FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
                     [
-                        SNew(SBox).HeightOverride(4.0f)
-                            [
-                                SNew(SBorder)
-                                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                    .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Border_Subtle)
-                                    .Padding(FMargin(0.0f))
-                                    [
-                                        SNew(SSpacer)
-                                    ]
-                            ]
+                        SAssignNew(_ScrubTrack, SCkGoapDebugger_ScrubTrack,
+                                   TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel))
+                            .OnEventClicked(SCkGoapDebugger_ScrubTrack::FOnEventClicked::CreateSP(
+                                this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent))
                     ]
 
                 // ---- History list (bottom, fixed height) --------------------
@@ -261,7 +466,8 @@ auto
                                 SAssignNew(_HistoryListView, SListView<FHistoryItemPtr>)
                                     .ListItemsSource(&_HistoryItems)
                                     .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateHistoryRow)
-                                    .SelectionMode(ESelectionMode::None)
+                                    .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnHistoryRowSelectionChanged)
+                                    .SelectionMode(ESelectionMode::Single)
                             ]
                     ]
             ]
@@ -312,6 +518,15 @@ auto
             { _TreeView->SetItemExpansion(Root, true); }
         }
     }
+
+    // Mirror the ViewModel scrub selection into the list's row selection so
+    // dot-highlight and row-tint stay in sync.
+    SyncHistoryListSelectionFromViewModel();
+
+    // Repaint the scrub track — its dot layout & selection depend on history
+    // contents we may have just rebuilt.
+    if (_ScrubTrack.IsValid())
+    { _ScrubTrack->Invalidate(EInvalidateWidgetReason::Paint); }
 }
 
 // ====================================================================================================================
@@ -814,7 +1029,7 @@ auto
 
     return SNew(FRowType, InOwnerTable)
         .Padding(FMargin(2.0f, 1.0f))
-        .ShowSelection(false)
+        .ShowSelection(true)
         [
             SNew(SHorizontalBox)
                 + SHorizontalBox::Slot()
@@ -858,6 +1073,95 @@ auto
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
                     ]
         ];
+}
+
+// ====================================================================================================================
+// PRIVATE — scrub interaction
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_Sidebar::
+    OnHistoryRowSelectionChanged(
+        FHistoryItemPtr InItem,
+        ESelectInfo::Type InSelectInfo)
+    -> void
+{
+    if (_SuppressSelectionEcho) { return; }
+    if (NOT InItem.IsValid())   { return; }
+    if (NOT _ViewModel.IsValid()) { return; }
+
+    // _HistoryItems is reverse-chronological. Map row index → hist index.
+    const auto RowIdx = _HistoryItems.IndexOfByKey(InItem);
+    if (RowIdx == INDEX_NONE) { return; }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity)) { return; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    const auto HistIdx = Hist.Num() - 1 - RowIdx;
+    if (NOT Hist.IsValidIndex(HistIdx)) { return; }
+
+    SelectHistoryEvent(HistIdx);
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    SelectHistoryEvent(
+        int32 InHistIdx)
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity)) { return; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    if (NOT Hist.IsValidIndex(InHistIdx)) { return; }
+
+    // Adopt the event's ActionSet so the rest of the window snaps to the
+    // snapshot's owner.
+    const auto& Event = Hist[InHistIdx];
+    if (ck::IsValid(Event.ActionSetHandle))
+    { _ViewModel->SetSelectedActionSet(Event.ActionSetHandle); }
+
+    _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Scrub);
+    _ViewModel->SetScrubEventIndex(InHistIdx);
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    SyncHistoryListSelectionFromViewModel()
+    -> void
+{
+    if (NOT _HistoryListView.IsValid()) { return; }
+    if (NOT _ViewModel.IsValid())       { return; }
+
+    const auto Mode    = _ViewModel->GetMode();
+    const auto HistIdx = _ViewModel->GetScrubEventIndex();
+
+    auto Guard = TGuardValue<bool>(_SuppressSelectionEcho, true);
+
+    if (Mode != FCkGoapDebugger_ViewModel::EMode::Scrub || HistIdx == INDEX_NONE)
+    {
+        _HistoryListView->ClearSelection();
+        return;
+    }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity))
+    { _HistoryListView->ClearSelection(); return; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    if (NOT Hist.IsValidIndex(HistIdx))
+    { _HistoryListView->ClearSelection(); return; }
+
+    // Row index for the (potentially truncated to MaxRowsToShow) reverse list.
+    const auto RowIdx = Hist.Num() - 1 - HistIdx;
+    if (NOT _HistoryItems.IsValidIndex(RowIdx))
+    { _HistoryListView->ClearSelection(); return; }
+
+    _HistoryListView->SetSelection(_HistoryItems[RowIdx], ESelectInfo::Direct);
+    _HistoryListView->RequestScrollIntoView(_HistoryItems[RowIdx]);
 }
 
 // ====================================================================================================================

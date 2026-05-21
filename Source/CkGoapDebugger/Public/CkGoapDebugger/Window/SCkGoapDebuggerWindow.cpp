@@ -410,14 +410,16 @@ auto
                             {
                                 if (NOT _ViewModel.IsValid()) { return FSlateColor(FLinearColor::White); }
                                 const auto Active = _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live;
+                                // Tinted when active so the toggle reads at a glance.
                                 return Active
-                                    ? FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning)
-                                    : FSlateColor(FLinearColor::White);
+                                    ? FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound)
+                                    : FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim);
                             })
                             .OnClicked_Lambda([this]() -> FReply
                             {
-                                if (_ViewModel.IsValid())
-                                { _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live); }
+                                if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                                _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live);
+                                _ViewModel->SetScrubEventIndex(INDEX_NONE);
                                 return FReply::Handled();
                             })
                     ]
@@ -429,19 +431,38 @@ auto
                     [
                         SNew(SButton)
                             .Text(FText::FromString(TEXT("Scrub")))
-                            .ToolTipText(FText::FromString(TEXT("Scrub mode — freeze on selected history event (full UI in D6)")))
+                            .ToolTipText(FText::FromString(TEXT("Scrub mode — freeze on a history event. Click a dot or row in the sidebar to jump to it.")))
                             .ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
                             {
                                 if (NOT _ViewModel.IsValid()) { return FSlateColor(FLinearColor::White); }
                                 const auto Active = _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub;
                                 return Active
                                     ? FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected)
-                                    : FSlateColor(FLinearColor::White);
+                                    : FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim);
                             })
                             .OnClicked_Lambda([this]() -> FReply
                             {
-                                if (_ViewModel.IsValid())
-                                { _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Scrub); }
+                                if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+
+                                // Default to the most recent event if no scrub
+                                // selection exists yet — chronological order in
+                                // GetHistory means the last element is "newest".
+                                if (_ViewModel->GetScrubEventIndex() == INDEX_NONE)
+                                {
+                                    const auto Entity = _ViewModel->GetSelectedEntity();
+                                    if (ck::IsValid(Entity))
+                                    {
+                                        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+                                        if (Hist.Num() > 0)
+                                        {
+                                            _ViewModel->SetScrubEventIndex(Hist.Num() - 1);
+                                            if (ck::IsValid(Hist.Last().ActionSetHandle))
+                                            { _ViewModel->SetSelectedActionSet(Hist.Last().ActionSetHandle); }
+                                        }
+                                    }
+                                }
+
+                                _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Scrub);
                                 return FReply::Handled();
                             })
                     ]
@@ -449,14 +470,24 @@ auto
                 + SHorizontalBox::Slot()
                     .FillWidth(1.0f)
 
-                // Force replan
+                // Force replan — disabled in Scrub mode (historical chain).
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
                     [
                         SNew(SButton)
                             .Text(FText::FromString(TEXT("Force replan")))
-                            .ToolTipText(FText::FromString(TEXT("Issue Request_Plan on the currently selected Action")))
+                            .ToolTipText_Lambda([this]() -> FText
+                            {
+                                if (_ViewModel.IsValid() && _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
+                                { return FText::FromString(TEXT("Disabled in Scrub mode — switch to Live to mutate ECS state")); }
+                                return FText::FromString(TEXT("Issue Request_Plan on the currently selected Action"));
+                            })
+                            .IsEnabled_Lambda([this]() -> bool
+                            {
+                                if (NOT _ViewModel.IsValid()) { return false; }
+                                return _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live;
+                            })
                             .OnClicked_Lambda([this]() -> FReply
                             {
                                 if (_ViewModel.IsValid())

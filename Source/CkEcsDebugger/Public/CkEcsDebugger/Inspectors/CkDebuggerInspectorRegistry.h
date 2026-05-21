@@ -9,7 +9,7 @@ struct FCkDebuggerInspectorMetadata
     FText DisplayName;
 };
 
-class FCkDebuggerInspectorRegistry
+class CKECSDEBUGGER_API FCkDebuggerInspectorRegistry
 {
 public:
     using FInspectorFactory = TFunction<TSharedPtr<ICkDebuggerComponentInspector_Base>()>;

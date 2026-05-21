@@ -2,8 +2,10 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
+#include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -48,6 +50,9 @@ auto
     FCkGoapDebuggerStyle::Initialize();
     FCkGoapDebugger_DataCollector::Initialize();
 
+    _NodeFactory = MakeShared<FCkGoapDebugGraphFactory>();
+    FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkGoapDebuggerModule::OnSpawnDebuggerTab))
@@ -68,6 +73,12 @@ auto
 
     _DebuggerWindow.Reset();
     _DebuggerTab.Reset();
+
+    if (_NodeFactory.IsValid())
+    {
+        FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
+        _NodeFactory.Reset();
+    }
 
     FCkGoapDebugger_DataCollector::Shutdown();
     FCkGoapDebuggerStyle::Shutdown();

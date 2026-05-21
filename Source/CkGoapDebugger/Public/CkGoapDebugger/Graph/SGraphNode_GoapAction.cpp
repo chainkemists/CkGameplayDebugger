@@ -1,0 +1,393 @@
+#include "SGraphNode_GoapAction.h"
+
+#include "CkGoapDebugNode_Action.h"
+#include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+
+#include "CkCore/Macros/CkMacros.h"
+
+#include "SGraphPin.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
+
+// ====================================================================================================================
+
+namespace
+{
+    // Truncate a class name like "Ck_GoapAction_Wander_C" to its leaf segment "Wander".
+    auto Compute_ShortName(const FString& InClassName) -> FString
+    {
+        auto Name = InClassName;
+        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
+        auto Segments = TArray<FString>{};
+        Name.ParseIntoArray(Segments, TEXT("_"), true);
+        if (Segments.Num() == 0) { return Name; }
+        return Segments.Last();
+    }
+
+    auto Compute_TagLeaf(const FGameplayTag& InTag) -> FString
+    {
+        const auto Full = InTag.ToString();
+        int32 Idx = INDEX_NONE;
+        if (Full.FindLastChar(TEXT('.'), Idx) && Idx != INDEX_NONE)
+        { return Full.Mid(Idx + 1); }
+        return Full;
+    }
+
+    // Outer border color for the action card.
+    auto Compute_BorderColor(const UCkGoapDebugNode_Action* InNode) -> FLinearColor
+    {
+        if (NOT InNode) { return FCkGoapDebuggerStyle::Color_Border_Strong; }
+
+        if (InNode->Get_IsSelected())
+        { return FCkGoapDebuggerStyle::Color_Status_Selected; }
+
+        if (InNode->Get_IsFailureBlocked())
+        { return FCkGoapDebuggerStyle::Color_Status_Failed; }
+
+        if (InNode->Get_IsInPlan())
+        { return FCkGoapDebuggerStyle::Color_Status_PlanningBdr; }
+
+        if (InNode->Get_IsComposite())
+        { return FCkGoapDebuggerStyle::Color_Status_Composite; }
+
+        return FCkGoapDebuggerStyle::Color_Border_Strong;
+    }
+
+    // Small filled circle for port indicator dots.
+    auto MakeDot(const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .WidthOverride(7.0f)
+            .HeightOverride(7.0f)
+            [
+                SNew(SBorder)
+                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor(InColor)
+            ];
+    }
+}
+
+// ====================================================================================================================
+
+auto
+    SGraphNode_GoapAction::
+    Construct(
+        const FArguments& /*InArgs*/,
+        UCkGoapDebugNode_Action* InNode)
+    -> void
+{
+    _ActionNode = InNode;
+    GraphNode = InNode;
+
+    SetCursor(EMouseCursor::CardinalCross);
+    UpdateGraphNode();
+}
+
+// ====================================================================================================================
+
+BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
+
+auto
+    SGraphNode_GoapAction::
+    UpdateGraphNode()
+    -> void
+{
+    InputPins.Empty();
+    OutputPins.Empty();
+    RightNodeBox.Reset();
+    LeftNodeBox.Reset();
+
+    if (NOT _ActionNode)
+    {
+        GetOrAddSlot(ENodeZone::Center)
+        [
+            SNew(SBorder)
+                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+        ];
+        return;
+    }
+
+    const auto& Snap = _ActionNode->Get_Snapshot();
+    const auto BorderColor = Compute_BorderColor(_ActionNode);
+    const auto IsInPlan = _ActionNode->Get_IsInPlan();
+    const auto StepIndex = _ActionNode->Get_PlanStepIndex();
+    const auto IsComposite = _ActionNode->Get_IsComposite();
+
+    // Header row: name + cost.
+    auto Header = SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(Compute_ShortName(Snap.ClassName)))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+            ]
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Snap.Cost)))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+            ];
+
+    // Composite bar — small purple "▸ leaf" strip just below the header.
+    const auto CompositeText = IsComposite
+        ? FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf(Snap.ActionTag))
+        : FString{};
+
+    auto CompositeBar = SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+        .BorderBackgroundColor(FLinearColor(
+            FCkGoapDebuggerStyle::Color_Status_Composite.R,
+            FCkGoapDebuggerStyle::Color_Status_Composite.G,
+            FCkGoapDebuggerStyle::Color_Status_Composite.B,
+            0.15f))
+        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+        .Visibility(IsComposite ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
+        [
+            SNew(STextBlock)
+                .Text(FText::FromString(CompositeText))
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Composite))
+        ];
+
+    // Plan-step badge overlay.
+    const auto ShowBadge = IsInPlan && StepIndex > 0;
+    auto StepBadge = SNew(SBox)
+        .WidthOverride(18.0f)
+        .HeightOverride(18.0f)
+        .Visibility(ShowBadge ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
+        [
+            SNew(SBorder)
+                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Status_PlanningBdr)
+                .HAlign(HAlign_Center)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(FString::FromInt(StepIndex)))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .ColorAndOpacity(FSlateColor(FLinearColor::White))
+                ]
+        ];
+
+    const auto BodyContent = BuildBody();
+
+    // Card chrome: outer border in the highlight color, inner panel in surface color.
+    auto Card = SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+        .BorderBackgroundColor(BorderColor)
+        .Padding(FMargin(2.0f))  // border thickness
+        [
+            SNew(SBorder)
+                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
+                [
+                    SNew(SVerticalBox)
+
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            [ Header ]
+
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
+                            [ CompositeBar ]
+
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
+                            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f)
+                            [ BodyContent ]
+                ]
+        ];
+
+    GetOrAddSlot(ENodeZone::Center)
+        .HAlign(HAlign_Fill)
+        .VAlign(VAlign_Center)
+        [
+            SNew(SBox)
+                .WidthOverride(FCkGoapDebuggerStyle::GraphNode_Width)
+                .MinDesiredHeight(FCkGoapDebuggerStyle::GraphNode_MinHeight)
+                [
+                    SNew(SOverlay)
+
+                        // Pin overlay — fills entire node so connection geometry attaches to the boundary.
+                        + SOverlay::Slot()
+                            .HAlign(HAlign_Fill)
+                            .VAlign(VAlign_Fill)
+                            [
+                                SAssignNew(RightNodeBox, SVerticalBox)
+                                    .Visibility(EVisibility::HitTestInvisible)
+                            ]
+
+                        // Card body.
+                        + SOverlay::Slot()
+                            .HAlign(HAlign_Fill)
+                            .VAlign(VAlign_Fill)
+                            [
+                                Card
+                            ]
+
+                        // Plan-step badge in the top-left corner.
+                        + SOverlay::Slot()
+                            .HAlign(HAlign_Left)
+                            .VAlign(VAlign_Top)
+                            .Padding(FMargin(-6.0f, -6.0f, 0.0f, 0.0f))
+                            [
+                                StepBadge
+                            ]
+                ]
+        ];
+
+    CreatePinWidgets();
+}
+
+END_SLATE_FUNCTION_BUILD_OPTIMIZATION
+
+// ====================================================================================================================
+
+auto
+    SGraphNode_GoapAction::
+    BuildBody()
+    -> TSharedRef<SWidget>
+{
+    const auto& Snap = _ActionNode->Get_Snapshot();
+
+    // Build per-key WS lookup so the dot color reflects current satisfaction state.
+    auto LeftCol  = SNew(SVerticalBox);
+    auto RightCol = SNew(SVerticalBox);
+
+    // Preconditions: green if any condition's authored Value matches an
+    // arbitrary "sat" check is non-trivial; for D5 use red/green based on
+    // whether the condition's Value field is true (treating the snapshot
+    // truthiness as a quick visual signal). A future revision should pull
+    // from the parent ActionSet's WorldState array.
+    for (const auto& Pre : Snap.Preconditions)
+    {
+        const auto Sat = Pre.Value;
+        const auto DotColor = Sat
+            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+            : FCkGoapDebuggerStyle::Color_Status_Failed;
+
+        LeftCol->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 1.0f)
+            [
+                SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                        [ MakeDot(DotColor) ]
+                    + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(Compute_TagLeaf(Pre.Key)))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                        ]
+            ];
+    }
+
+    for (const auto& Eff : Snap.Effects)
+    {
+        RightCol->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 1.0f)
+            [
+                SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .HAlign(HAlign_Right)
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(Compute_TagLeaf(Eff.Key)))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                        ]
+                    + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                        [ MakeDot(FCkGoapDebuggerStyle::Color_Status_Planning) ]
+            ];
+    }
+
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [ LeftCol ]
+
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [ RightCol ];
+}
+
+// ====================================================================================================================
+
+auto
+    SGraphNode_GoapAction::
+    CreatePinWidgets()
+    -> void
+{
+    if (NOT GraphNode) { return; }
+
+    // Only emit a single output-pin widget — the connection policy resolves
+    // wire geometry to the node boundary, so the visual pin is purely for
+    // anchoring. HitTestInvisible to keep right-click on the card.
+    for (auto* Pin : GraphNode->Pins)
+    {
+        if (Pin && Pin->Direction == EGPD_Output && NOT Pin->bHidden)
+        {
+            auto PinWidget = SNew(SGraphPin, Pin);
+            PinWidget->SetIsEditable(false);
+            PinWidget->SetVisibility(EVisibility::HitTestInvisible);
+            AddPin(PinWidget);
+            break;
+        }
+    }
+}
+
+// ====================================================================================================================
+
+auto
+    SGraphNode_GoapAction::
+    AddPin(
+        const TSharedRef<SGraphPin>& InPinToAdd)
+    -> void
+{
+    InPinToAdd->SetOwner(SharedThis(this));
+
+    RightNodeBox->AddSlot()
+        .HAlign(HAlign_Fill)
+        .VAlign(VAlign_Fill)
+        .FillHeight(1.0f)
+        [
+            InPinToAdd
+        ];
+
+    OutputPins.Add(InPinToAdd);
+}
+
+// ====================================================================================================================

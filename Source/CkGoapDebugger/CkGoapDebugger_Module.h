@@ -5,6 +5,7 @@
 
 class SCkGoapDebuggerWindow;
 class SDockTab;
+struct FGraphPanelNodeFactory;
 
 // ====================================================================================================================
 // CkGoap Debugger module. D0 set up the module shell; D1 added the data layer;
@@ -32,6 +33,7 @@ private:
 
     TSharedPtr<SCkGoapDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab>              _DebuggerTab;
+    TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
     static const FName _DebuggerTabName;
 };

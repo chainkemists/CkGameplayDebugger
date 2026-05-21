@@ -4,6 +4,7 @@
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Breadcrumb.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_GraphPane.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_PrimaryPane.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Sidebar.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_WorldStateRail.h"
@@ -102,6 +103,12 @@ auto
 
     if (_Sidebar.IsValid())
     { _Sidebar->Reset_ForWorldChange(); }
+
+    // Clear the graph BEFORE the ViewModel resets — graph node snapshots
+    // hold FCk_Handle copies, and they must be released while the registry
+    // is still live.
+    if (_GraphPane.IsValid())
+    { _GraphPane->Reset_ForWorldChange(); }
 
     if (_ViewModel.IsValid())
     { _ViewModel->Reset_ForWorldChange(); }
@@ -557,30 +564,13 @@ auto
                             .ViewModel(_ViewModel)
                     ]
 
-                // Graph pane (bottom — stub for D5)
+                // Graph pane (bottom — D5)
                 + SSplitter::Slot()
                     .Value(0.50f)
                     [
-                        BuildGraphStub()
+                        SAssignNew(_GraphPane, SCkGoapDebugger_GraphPane)
+                            .ViewModel(_ViewModel)
                     ]
-        ];
-}
-
-auto
-    SCkGoapDebuggerWindow::
-    BuildGraphStub()
-    -> TSharedRef<SWidget>
-{
-    return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large))
-        .HAlign(HAlign_Center)
-        .VAlign(VAlign_Center)
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(TEXT("D5 — graph goes here")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
         ];
 }
 

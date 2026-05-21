@@ -11,6 +11,7 @@ class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
 class SCkGoapDebugger_Breadcrumb;
 class SCkGoapDebugger_PrimaryPane;
+class SCkGoapDebugger_WorldStateRail;
 class STextBlock;
 class SBox;
 template <typename> class SComboBox;
@@ -21,7 +22,7 @@ template <typename> class SComboBox;
 //
 //   - The ViewModel (selection state, mode, snapshot batch).
 //   - The Sidebar (ActionSet tree + history list).
-//   - Stub center pane + stub right-rail pane (D3 / D4).
+//   - Center column (breadcrumb + primary + graph stub) and the WS rail.
 //   - Toolbar (entity picker, Live/Scrub toggle, Force replan).
 //   - Mode bar (Standalone vs ECS-Inspector — only Standalone implemented in D2).
 //   - Legend (action-color descriptive row).
@@ -59,7 +60,6 @@ private:
     auto BuildLegend()   -> TSharedRef<SWidget>;
     auto BuildCenterColumn()  -> TSharedRef<SWidget>;
     auto BuildGraphStub()     -> TSharedRef<SWidget>;
-    auto BuildWsRailStub()    -> TSharedRef<SWidget>;
 
     // Refresh the entity picker's items array off the current snapshot batch.
     // Cheap; called every Tick. Set rebuilds use stable string identity by
@@ -74,6 +74,7 @@ private:
     TSharedPtr<SCkGoapDebugger_Sidebar>     _Sidebar;
     TSharedPtr<SCkGoapDebugger_Breadcrumb>  _Breadcrumb;
     TSharedPtr<SCkGoapDebugger_PrimaryPane> _PrimaryPane;
+    TSharedPtr<SCkGoapDebugger_WorldStateRail> _WorldStateRail;
 
     TWeakObjectPtr<UWorld> _CachedWorld;
 

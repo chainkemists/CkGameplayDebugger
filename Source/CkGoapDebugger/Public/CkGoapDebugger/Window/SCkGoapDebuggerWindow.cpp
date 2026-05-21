@@ -6,6 +6,7 @@
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Breadcrumb.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_PrimaryPane.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Sidebar.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_WorldStateRail.h"
 
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -131,7 +132,8 @@ auto
 
     auto SidebarWidget   = SAssignNew(_Sidebar, SCkGoapDebugger_Sidebar, _ViewModel);
     auto CenterColumn    = BuildCenterColumn();
-    auto WsRailStub      = BuildWsRailStub();
+    auto WsRailWidget    = SAssignNew(_WorldStateRail, SCkGoapDebugger_WorldStateRail)
+                                .ViewModel(_ViewModel);
 
     ChildSlot
     [
@@ -186,7 +188,7 @@ auto
                                     .Value(0.23f)
                                     .MinSize(220.0f)
                                     [
-                                        WsRailStub
+                                        WsRailWidget
                                     ]
                         ]
             ]
@@ -204,6 +206,8 @@ auto
             { _Breadcrumb->RefreshFromViewModel(); }
             if (_PrimaryPane.IsValid())
             { _PrimaryPane->RefreshFromViewModel(); }
+            if (_WorldStateRail.IsValid())
+            { _WorldStateRail->RefreshFromViewModel(); }
         });
     }
 }
@@ -575,24 +579,6 @@ auto
         [
             SNew(STextBlock)
                 .Text(FText::FromString(TEXT("D5 — graph goes here")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-        ];
-}
-
-auto
-    SCkGoapDebuggerWindow::
-    BuildWsRailStub()
-    -> TSharedRef<SWidget>
-{
-    return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large))
-        .HAlign(HAlign_Center)
-        .VAlign(VAlign_Center)
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(TEXT("D4 — WS rail goes here")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
         ];

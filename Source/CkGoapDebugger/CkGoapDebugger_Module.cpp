@@ -3,7 +3,10 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
+#include "CkGoapDebugger/Inspector/CkGoapInspector_Gateway.h"
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
+
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
@@ -16,6 +19,10 @@
 #define LOCTEXT_NAMESPACE "FCkGoapDebuggerModule"
 
 const FName FCkGoapDebuggerModule::_DebuggerTabName = FName("CkGoapDebugger");
+
+// Inspector ID used to register / unregister the CkEcsDebugger gateway. Kept
+// in a single named constant so Startup/Shutdown can't drift.
+static const FName GGoapInspectorID = FName(TEXT("FCkGoapInspector_Gateway"));
 
 // ====================================================================================================================
 
@@ -53,6 +60,19 @@ auto
     _NodeFactory = MakeShared<FCkGoapDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
 
+    // Explicit inspector registration. The CK_REGISTER_DEBUGGER_INSPECTOR macro
+    // performs the same registration at file-scope static init, but that
+    // pattern is fragile when the registry singleton lives in a sibling DLL
+    // (CkEcsDebugger) — cross-DLL static-init ordering has tripped DebugGame
+    // launches in this project's history. Doing it explicitly here also makes
+    // the Unregister call in ShutdownModule symmetric.
+    FCkDebuggerInspectorRegistry::Get().Register(
+        GGoapInspectorID,
+        []() -> TSharedPtr<ICkDebuggerComponentInspector_Base>
+        {
+            return MakeShared<FCkGoapInspector_Gateway>();
+        });
+
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkGoapDebuggerModule::OnSpawnDebuggerTab))
@@ -66,6 +86,8 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkDebuggerInspectorRegistry::Get().Unregister(GGoapInspectorID);
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

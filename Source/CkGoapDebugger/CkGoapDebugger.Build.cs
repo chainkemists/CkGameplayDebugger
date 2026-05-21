@@ -34,6 +34,14 @@ public class CkGoapDebugger : CkModuleRules
 			"GraphEditor",
 		});
 
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+			// D7: Inspector gateway — registered via FCkDebuggerInspectorRegistry,
+			// which lives in CkEcsDebugger. Kept private so consumers of CkGoapDebugger
+			// don't transitively pull the ECS-debugger module.
+			"CkEcsDebugger",
+		});
+
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("UnrealEd");

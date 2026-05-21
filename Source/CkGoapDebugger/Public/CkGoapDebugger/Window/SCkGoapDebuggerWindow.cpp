@@ -1,5 +1,6 @@
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Module.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
@@ -298,16 +299,23 @@ auto
                             .ToolTipText(FText::FromString(TEXT("Top-level debugger window (active)")))
                     ]
 
-                // "ECS Inspector" — disabled stub
+                // "Open ECS Inspector" — invokes the ECS debugger tab.
+                // The Goap summary card lives inside that window's entity inspector
+                // via SCkGoapDebugger_InspectorGateway (D7), so this is just a
+                // convenience jump.
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                     [
                         SNew(SButton)
-                            .Text(FText::FromString(TEXT("ECS Inspector")))
-                            .IsEnabled(false)
-                            .ToolTipText(FText::FromString(TEXT("Embeds the debugger inside the ECS Inspector (later phase)")))
+                            .Text(FText::FromString(TEXT("Open ECS Inspector")))
+                            .ToolTipText(FText::FromString(TEXT("Open the CkEcsDebugger window; the Goap summary card lives in its entity inspector panel.")))
+                            .OnClicked_Lambda([]() -> FReply
+                            {
+                                FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("CkEcsDebugger")));
+                                return FReply::Handled();
+                            })
                     ]
 
                 + SHorizontalBox::Slot()
@@ -603,6 +611,50 @@ auto
                             .ViewModel(_ViewModel)
                     ]
         ];
+}
+
+// ====================================================================================================================
+// EXTERNAL ENTRY POINT (D7) — used by SCkGoapDebugger_InspectorGateway.
+// ====================================================================================================================
+
+auto
+    SCkGoapDebuggerWindow::
+    OpenForEntity(
+        const FCk_Handle& InEntity)
+    -> void
+{
+    if (ck::Is_NOT_Valid(InEntity)) { return; }
+
+    // Spawn / focus the standalone tab. The module's OnSpawnDebuggerTab path
+    // is what creates the live SCkGoapDebuggerWindow instance and stores it
+    // on FCkGoapDebuggerModule, so this MUST run before we ask the module
+    // for the window pointer.
+    FGlobalTabmanager::Get()->TryInvokeTab(FCkGoapDebuggerModule::Get_TabName());
+
+    auto Window = FCkGoapDebuggerModule::Get().Get_DebuggerWindow();
+    if (Window.IsValid())
+    { Window->Set_SelectedEntityExternal(InEntity); }
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    Set_SelectedEntityExternal(
+        const FCk_Handle& InEntity)
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+    if (ck::Is_NOT_Valid(InEntity)) { return; }
+
+    // ViewModel::Tick on the next frame will resolve the entity against the
+    // freshly-collected snapshot batch — if the entity has a Goap root, the
+    // selection sticks; otherwise it auto-picks the first available, which is
+    // the documented behaviour.
+    _ViewModel->SetSelectedEntity(InEntity);
+
+    // Refresh the picker label so it reflects the new selection immediately
+    // (Tick will also do this on the next frame, but doing it now avoids a
+    // visible delay).
+    RefreshEntityPickerItems();
 }
 
 // ====================================================================================================================

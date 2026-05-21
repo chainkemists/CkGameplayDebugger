@@ -51,6 +51,18 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Goap Debugger")); }
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // External entry point — used by the inspector gateway (D7) to invoke the
+    // standalone tab AND drive the live window's ViewModel to select the given
+    // entity. Safe to call before the tab exists: it spawns it via
+    // FGlobalTabmanager::TryInvokeTab and then walks the active instance to
+    // set selection. No-op if InEntity is invalid.
+    // -----------------------------------------------------------------------------------------------------------------
+    static auto OpenForEntity(const FCk_Handle& InEntity) -> void;
+
+    // Used by the static OpenForEntity above to push selection into a live window.
+    auto Set_SelectedEntityExternal(const FCk_Handle& InEntity) -> void;
+
 private:
     // -----------------------------------------------------------------------------------------------------------------
     // Build helpers — called once from Construct; result subtrees are cached.

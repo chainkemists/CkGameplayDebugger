@@ -6,14 +6,14 @@
 
 #include "CkGoap/CkGoap_Utils.h"
 
-#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
-
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
-
-CK_REGISTER_DEBUGGER_INSPECTOR(FCkGoapInspector_Gateway)
-
+// Registration is explicit (FCkGoapDebuggerModule::StartupModule), not via the
+// static-init CK_REGISTER_DEBUGGER_INSPECTOR macro. The macro is safe within
+// CkEcsDebugger (where the registry singleton lives) but caused fragile cross-
+// DLL static-init ordering when invoked from CkGoapDebugger. Explicit lifecycle
+// also matches the header doc and lets us symmetrically Unregister on shutdown.
 // ====================================================================================================================
 
 auto

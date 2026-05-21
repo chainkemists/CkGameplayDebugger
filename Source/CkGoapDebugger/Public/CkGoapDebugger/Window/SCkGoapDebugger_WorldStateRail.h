@@ -64,6 +64,13 @@ private:
     TSharedPtr<SBox>         _HeaderHost;
     TSharedPtr<SVerticalBox> _Body;
     TSharedPtr<SBox>         _FooterHost;
+
+    // Content-hash gate. The rail rebuilds three subtrees per refresh; on a
+    // typical Live tick the WS entries don't change, so we early-out unless
+    // the snapshot actually differs from the last render. Captures (entity,
+    // ActionSet, key set + values + RecentlyChanged flag, label).
+    uint32 _LastContentHash = 0;
+    bool   _HasMaterialized = false;
 };
 
 // ====================================================================================================================

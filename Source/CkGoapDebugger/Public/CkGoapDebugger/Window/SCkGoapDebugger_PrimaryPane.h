@@ -68,6 +68,16 @@ private:
 
     // Plan strip — its own widget; just call RefreshFromViewModel on it.
     TSharedPtr<SCkGoapDebugger_PlanStrip> _PlanStrip;
+
+    // Content-hash gate. The pane rebuilds three subtrees (header, left
+    // body, right rail) per refresh — each build allocates a fresh widget
+    // tree. Without this gate every ViewModel broadcast (every plan
+    // attempt or selection echo) tore down + re-laid-out the whole pane,
+    // which manifested as the scrunched / overlapping labels users saw.
+    // Hash captures everything that affects which widget tree we'd build;
+    // when it matches the last refresh we early-return.
+    uint32 _LastContentHash = 0;
+    bool   _HasMaterialized = false;
 };
 
 // ====================================================================================================================

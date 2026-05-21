@@ -114,6 +114,12 @@ auto
         _Graph->NotifyGraphChanged();
     }
 
+    // Clear the cached topology so the next RefreshFromViewModel hits the
+    // full-rebuild path (the in-place fast-path would mismatch handles
+    // captured before the world swap).
+    _LastTopologyHash = 0;
+    _LastSelectedAction = FCk_Handle_Goap_Action{};
+
     if (_HeaderText.IsValid())
     {
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
@@ -136,8 +142,16 @@ auto
     const auto* ActionSet = _ViewModel.IsValid() ? _ViewModel->GetSelectedActionSetInfo() : nullptr;
     if (ActionSet == nullptr)
     {
-        _Graph->ForceClear();
-        _Graph->NotifyGraphChanged();
+        // No ActionSet selected — drop everything once, then short-circuit.
+        // Clearing the cached topology hash forces a rebuild when an
+        // ActionSet eventually arrives.
+        if (_LastTopologyHash != 0)
+        {
+            _Graph->ForceClear();
+            _Graph->NotifyGraphChanged();
+            _LastTopologyHash = 0;
+            _LastSelectedAction = FCk_Handle_Goap_Action{};
+        }
 
         if (_HeaderText.IsValid())
         {
@@ -150,11 +164,40 @@ auto
         ? _ViewModel->GetSelectedAction()
         : FCk_Handle_Goap_Action{};
 
-    // Capture the previously-selected action handle BEFORE the rebuild so
-    // we can restore selection by handle identity, not pointer identity.
-    const auto PreviousSelection = SelectedActionHandle;
+    // ----------------------------------------------------------------------
+    // Topology gate: rebuild from scratch only when the catalog identity /
+    // pin shape / goal owner actually changed. Otherwise update mutable
+    // render hints (plan membership / step index / selection / failure) on
+    // existing nodes in place. This is the central fix for the
+    // action-graph flicker — every ViewModel broadcast (every plan attempt)
+    // was previously tearing down all UEdGraphNodes and forcing the
+    // SGraphEditor to recreate every Slate widget, which read as flicker
+    // and empty viewport during fast replans.
+    // ----------------------------------------------------------------------
+    const auto NewTopologyHash = UCkGoapDebugGraph::ComputeTopologyHash(*ActionSet);
+    const auto TopologyChanged = NewTopologyHash != _LastTopologyHash;
+    const auto SelectionChanged = SelectedActionHandle != _LastSelectedAction;
 
-    _Graph->RebuildFromSnapshot(*ActionSet, SelectedActionHandle);
+    if (TopologyChanged)
+    {
+        // Full rebuild — RebuildFromSnapshot un-suppresses notifications
+        // and calls NotifyGraphChanged at the end, so we don't need to
+        // notify again here.
+        _Graph->RebuildFromSnapshot(*ActionSet, SelectedActionHandle);
+        _LastTopologyHash = NewTopologyHash;
+        _LastSelectedAction = SelectedActionHandle;
+    }
+    else
+    {
+        // Mutable per-tick state may have shifted — refresh node hints in
+        // place on the existing nodes. We always call UpdateRuntimeState
+        // (it's cheap and returns whether anything actually changed) so we
+        // only emit NotifyGraphChanged on real changes.
+        const auto RuntimeChanged = _Graph->UpdateRuntimeState(*ActionSet, SelectedActionHandle);
+        if (RuntimeChanged || SelectionChanged)
+        { _Graph->NotifyGraphChanged(); }
+        _LastSelectedAction = SelectedActionHandle;
+    }
 
     ActionCount = _Graph->Get_ActionCount();
     EdgeCount   = _Graph->Get_EdgeCount();
@@ -170,20 +213,19 @@ auto
         _HeaderText->SetText(FText::FromString(Header));
     }
 
-    // Restore selection in the SGraphEditor.
-    if (_GraphEditor.IsValid())
+    // Mirror the ViewModel selection into the SGraphEditor only when it
+    // actually drifted (avoids a per-broadcast Clear+SetSelection cycle
+    // that would otherwise echo back through OnGraphSelectionChanged).
+    if (_GraphEditor.IsValid() && (TopologyChanged || SelectionChanged))
     {
+        _SuppressSelectionEcho = true;
         _GraphEditor->ClearSelectionSet();
-
-        if (ck::IsValid(PreviousSelection))
+        if (ck::IsValid(SelectedActionHandle))
         {
-            if (auto* Node = _Graph->FindActionNode(PreviousSelection))
-            {
-                _SuppressSelectionEcho = true;
-                _GraphEditor->SetNodeSelection(Node, true);
-                _SuppressSelectionEcho = false;
-            }
+            if (auto* Node = _Graph->FindActionNode(SelectedActionHandle))
+            { _GraphEditor->SetNodeSelection(Node, true); }
         }
+        _SuppressSelectionEcho = false;
     }
 }
 

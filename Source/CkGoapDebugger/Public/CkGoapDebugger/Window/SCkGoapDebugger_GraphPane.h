@@ -4,6 +4,8 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 
+#include "CkGoap/Action/CkGoap_Action_Fragment_Data.h"  // FCk_Handle_Goap_Action — stored by value below
+
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
@@ -68,6 +70,18 @@ private:
     // after a rebuild — otherwise OnSelectionChanged would push it back into
     // the ViewModel as if the user clicked it.
     bool _SuppressSelectionEcho = false;
+
+    // Topology hash of the last graph we built. Lets RefreshFromViewModel
+    // skip the destructive RebuildFromSnapshot when only mutable per-tick
+    // state changed (plan membership / selection / failure flag) — those go
+    // through the cheap UCkGoapDebugGraph::UpdateRuntimeState path instead.
+    // Setting this back to 0 (via Reset_ForWorldChange) forces a rebuild.
+    uint32 _LastTopologyHash = 0;
+
+    // Track selection identity separately from the topology hash. A selection
+    // change inside an otherwise-stable topology still needs the in-place
+    // node update so the highlighted-node tint follows the user's click.
+    FCk_Handle_Goap_Action _LastSelectedAction;
 };
 
 // ====================================================================================================================

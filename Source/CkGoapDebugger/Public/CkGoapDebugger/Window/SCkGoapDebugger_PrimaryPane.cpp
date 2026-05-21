@@ -234,6 +234,64 @@ auto
             [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == AsInfo->RootActionHandle; });
     }
 
+    // -----------------------------------------------------------------------
+    // Content-hash gate. Captures every field the rebuild paths read so we
+    // can skip the destructive SetContent + ClearChildren cascade when the
+    // current snapshot would render the same tree as last time.
+    //
+    // Critically, the plan strip is a child widget that hash-debounces
+    // itself, so we forward the refresh to it even when our own gate fires
+    // — that way live plan changes still propagate without rebuilding our
+    // header / drilldown / right rail every tick.
+    // -----------------------------------------------------------------------
+    auto NewHash = uint32{0};
+    if (AsInfo != nullptr)
+    {
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(AsInfo->Handle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(AsInfo->RootActionHandle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->Catalog.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->ActiveChainHandles.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->DependencyCycles.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->WorldState.Num()));
+
+        // World-state values feed the goal / precondition tick-marks in the
+        // drilldown — fold them in so satisfied/unmet badges refresh on flips.
+        for (const auto& WS : AsInfo->WorldState)
+        {
+            auto Pair = GetTypeHash(WS.Key);
+            Pair = HashCombine(Pair, ::GetTypeHash(WS.Value ? 1 : 0));
+            NewHash ^= Pair;  // commutative — map iteration order doesn't matter
+        }
+    }
+    if (HeaderAction != nullptr)
+    {
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(HeaderAction->Handle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(HeaderAction->PlanStatus)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(HeaderAction->Role)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->PlanCost));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->PlanAttemptCount));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->Goal.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->InvalidGoal.Num()));
+    }
+    if (SelAction != nullptr && SelAction != HeaderAction)
+    {
+        // Drilldown sub-tree differs when the user clicks a sibling node.
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelAction->Handle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Preconditions.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Effects.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Cost));
+    }
+
+    // Always forward to the plan strip; it has its own hash gate and is
+    // visually independent from the rest of this pane.
+    if (_PlanStrip.IsValid())
+    { _PlanStrip->RefreshFromViewModel(); }
+
+    if (_HasMaterialized && NewHash == _LastContentHash)
+    { return; }
+    _LastContentHash = NewHash;
+    _HasMaterialized = true;
+
     // ---- Empty state ----------------------------------------------------------
     if (AsInfo == nullptr || HeaderAction == nullptr)
     {

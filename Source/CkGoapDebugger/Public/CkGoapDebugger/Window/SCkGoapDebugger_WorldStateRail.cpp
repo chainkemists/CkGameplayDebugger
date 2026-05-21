@@ -145,6 +145,33 @@ auto
     auto Label = FString{};
     const auto HasSelection = Resolve_DisplayedWorldState(Entries, Label);
 
+    // ----------------------------------------------------------------------
+    // Content-hash gate — skip the destructive SetContent / ClearChildren
+    // cascade when this snapshot would render identical to the last one.
+    // Covers the empty-state path too: the first time the user lands on a
+    // panel-less state we materialise it; subsequent broadcasts with the
+    // same null selection early-return.
+    // ----------------------------------------------------------------------
+    auto NewHash = uint32{0};
+    NewHash = HashCombine(NewHash, ::GetTypeHash(HasSelection ? 1 : 0));
+    NewHash = HashCombine(NewHash, GetTypeHash(Label));
+    if (HasSelection && Entries != nullptr)
+    {
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Entries->Num()));
+        for (const auto& E : *Entries)
+        {
+            auto Pair = GetTypeHash(E.Key);
+            Pair = HashCombine(Pair, ::GetTypeHash(E.Value ? 1 : 0));
+            Pair = HashCombine(Pair, ::GetTypeHash(E.RecentlyChanged ? 1 : 0));
+            NewHash ^= Pair;  // commutative — entry-order doesn't fake a change
+        }
+    }
+
+    if (_HasMaterialized && NewHash == _LastContentHash)
+    { return; }
+    _LastContentHash = NewHash;
+    _HasMaterialized = true;
+
     // ---- Empty state ----------------------------------------------------------
     if (NOT HasSelection || Entries == nullptr || Entries->Num() == 0)
     {

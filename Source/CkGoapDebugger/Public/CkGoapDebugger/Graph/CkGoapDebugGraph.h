@@ -52,6 +52,27 @@ public:
         const FCkGoapDebugger_ActionSetInfo& InActionSet,
         const FCk_Handle_Goap_Action& InSelectedActionHandle) -> void;
 
+    // Updates per-Action render hints (IsInPlan / PlanStepIndex / IsSelected /
+    // IsFailureBlocked) in place on the existing nodes. Cheap fast-path used
+    // when only the active chain or selection changed but topology (Catalog
+    // identity + edges + goal owner) did not — avoids tearing down the
+    // SGraphEditor scene every refresh, which was the cause of action-graph
+    // flicker. Returns true when any node's render-hint state actually
+    // changed (caller can decide whether to NotifyGraphChanged).
+    auto
+    UpdateRuntimeState(
+        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCk_Handle_Goap_Action& InSelectedActionHandle) -> bool;
+
+    // Topology hash — captures everything that affects WHICH nodes exist and
+    // HOW they're wired (catalog identity, preconditions/effects, goal owner).
+    // Excludes mutable per-tick state (PlanStatus, ActiveChain, selection)
+    // which UpdateRuntimeState handles in place. The pane uses this to decide
+    // between a fast in-place update and a full destructive rebuild.
+    static auto
+    ComputeTopologyHash(
+        const FCkGoapDebugger_ActionSetInfo& InActionSet) -> uint32;
+
     // Drops all nodes and clears the topology cache. Must be called from
     // the pane widget's PIE-teardown path so the FCk_Handle copies inside
     // each node's ActionInfo snapshot are released while the registry is

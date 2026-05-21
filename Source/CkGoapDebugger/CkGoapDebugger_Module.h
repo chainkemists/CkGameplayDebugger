@@ -4,37 +4,22 @@
 #include "Modules/ModuleManager.h"
 
 // ====================================================================================================================
-
-class SCkGoapDebuggerWindow;
-class SDockTab;
-struct FGraphPanelNodeFactory;
-
+// Minimal module shell for the rewritten CkGoap debugger. The pre-unification
+// implementation (Goal-centric panels, graph factories, ViewModel, style-test
+// tab) has been removed. Subsequent phases (D1+) re-add the data collector,
+// window, panels, and any graph/visual factories incrementally.
 // ====================================================================================================================
 
 class FCkGoapDebuggerModule : public IModuleInterface
 {
 public:
-	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
+    auto StartupModule() -> void override;
+    auto ShutdownModule() -> void override;
 
-	static auto Get() -> FCkGoapDebuggerModule& { return FModuleManager::GetModuleChecked<FCkGoapDebuggerModule>("CkGoapDebugger"); }
-
-	auto OpenDebugger() -> void;
-	auto CloseDebugger() -> void;
-	auto ToggleDebugger() -> void;
-	auto IsDebuggerOpen() const -> bool;
-
-private:
-	auto OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
-	auto OnSpawnStyleTestTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
-
-private:
-	TSharedPtr<SCkGoapDebuggerWindow> _Window;
-	TSharedPtr<SDockTab> _Tab;
-	TSharedPtr<SDockTab> _StyleTestTab;
-	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
-
-	static const FName _TabId;
+    static auto Get() -> FCkGoapDebuggerModule&
+    {
+        return FModuleManager::GetModuleChecked<FCkGoapDebuggerModule>("CkGoapDebugger");
+    }
 };
 
 // ====================================================================================================================

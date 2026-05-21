@@ -12,6 +12,7 @@ class SCkGoapDebugger_Sidebar;
 class SCkGoapDebugger_Breadcrumb;
 class SCkGoapDebugger_PrimaryPane;
 class SCkGoapDebugger_WorldStateRail;
+class SCkGoapDebugger_GraphPane;
 class STextBlock;
 class SBox;
 template <typename> class SComboBox;
@@ -59,7 +60,6 @@ private:
     auto BuildToolbar()  -> TSharedRef<SWidget>;
     auto BuildLegend()   -> TSharedRef<SWidget>;
     auto BuildCenterColumn()  -> TSharedRef<SWidget>;
-    auto BuildGraphStub()     -> TSharedRef<SWidget>;
 
     // Refresh the entity picker's items array off the current snapshot batch.
     // Cheap; called every Tick. Set rebuilds use stable string identity by
@@ -75,6 +75,7 @@ private:
     TSharedPtr<SCkGoapDebugger_Breadcrumb>  _Breadcrumb;
     TSharedPtr<SCkGoapDebugger_PrimaryPane> _PrimaryPane;
     TSharedPtr<SCkGoapDebugger_WorldStateRail> _WorldStateRail;
+    TSharedPtr<SCkGoapDebugger_GraphPane>   _GraphPane;
 
     TWeakObjectPtr<UWorld> _CachedWorld;
 

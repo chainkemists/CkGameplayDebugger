@@ -28,6 +28,13 @@ public:
     auto ToggleDebugger() -> void;
     auto IsDebuggerOpen() const -> bool;
 
+    // Used by SCkGoapDebuggerWindow::OpenForEntity (D7) to reach the live window
+    // instance after spawning the tab.
+    auto Get_DebuggerWindow() const -> TSharedPtr<SCkGoapDebuggerWindow> { return _DebuggerWindow; }
+
+    // Tab name registered with the global tab manager.
+    static auto Get_TabName() -> FName { return _DebuggerTabName; }
+
 private:
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 

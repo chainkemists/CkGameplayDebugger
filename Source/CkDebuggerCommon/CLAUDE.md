@@ -208,6 +208,25 @@ Two consequences worth knowing:
 
 `SCkSchedulerDebugger_ProcessorTree` is the canonical reference for both of these patterns — it updates existing tree-node `TSharedPtr` instances in place (`InNode->IsVisible = ...`) and only calls `RequestTreeRefresh` when structure changes.
 
+## Graph nodes — SGraphNode live-bind invariant
+
+**SGraphNode visuals must bind via `TAttribute` lambdas, not construction-time reads.**
+
+`UEdGraph` runtime state — flags like `IsInPlan`, selection state, role badges — changes between snapshots without the topology changing. If `SGraphNode` subclasses read these flags at construction time (e.g., `.BorderColor(Compute_BorderColor(_Node))`), the only way the visual updates is by recreating the node widget. That recreation is flicker.
+
+The pattern: bind flag-driven visuals via `TAttribute<T>` lambdas with `TWeakObjectPtr` capture + null guard:
+
+```cpp
+.BorderBackgroundColor_Lambda([WeakNode = TWeakObjectPtr<UMyDebugNode>(_Node)]()
+{
+    auto Node = WeakNode.Get();
+    if (Node == nullptr) { return DefaultColor; }
+    return Compute_BorderColor(Node);
+})
+```
+
+Corollary: `UEdGraph::NotifyGraphChanged` triggers `SGraphPanel::OnGraphChanged` which recreates node widgets. **Never emit `NotifyGraphChanged` from an in-place runtime-update path** — only from the topology rebuild. If your refresh splits into `topology_changed` + `runtime_changed` branches (it should), only the topology branch notifies.
+
 ## Search bars
 
 Every debugger search input should be a `SCkDebug_DualSearchBar`, giving the

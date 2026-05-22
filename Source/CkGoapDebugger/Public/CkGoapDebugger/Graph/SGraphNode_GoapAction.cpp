@@ -114,12 +114,15 @@ auto
     }
 
     const auto& Snap = _ActionNode->Get_Snapshot();
-    const auto BorderColor = Compute_BorderColor(_ActionNode);
-    const auto IsInPlan = _ActionNode->Get_IsInPlan();
-    const auto StepIndex = _ActionNode->Get_PlanStepIndex();
-    const auto IsComposite = _ActionNode->Get_IsComposite();
 
-    // Header row: name + cost.
+    // Live-binding capture: TWeakObjectPtr is robust to PIE teardown — Slate
+    // outlives the UObject during world transitions. All TAttribute lambdas
+    // below null-check via .Get() before deref.
+    const auto WeakNode = TWeakObjectPtr<UCkGoapDebugNode_Action>(_ActionNode);
+
+    // Header row: name + cost. ClassName and Cost are snapshot fields that
+    // only change on topology rebuild (which spawns a new widget), so they
+    // are safe to capture at construction time.
     auto Header = SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot()
@@ -145,9 +148,10 @@ auto
             ];
 
     // Composite bar — small purple "▸ leaf" strip just below the header.
-    const auto CompositeText = IsComposite
-        ? FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf(Snap.ActionTag))
-        : FString{};
+    // ActionTag is a snapshot field (set on topology rebuild). Visibility is
+    // bound live to Get_IsComposite() so that future per-tick flips don't
+    // require widget recreation.
+    const auto CompositeText = FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf(Snap.ActionTag));
 
     auto CompositeBar = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -157,7 +161,12 @@ auto
             FCkGoapDebuggerStyle::Color_Status_Composite.B,
             0.15f))
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
-        .Visibility(IsComposite ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
+        .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
+        {
+            const auto* Node = WeakNode.Get();
+            if (Node == nullptr) { return EVisibility::Collapsed; }
+            return Node->Get_IsComposite() ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
+        }))
         [
             SNew(STextBlock)
                 .Text(FText::FromString(CompositeText))
@@ -165,12 +174,21 @@ auto
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Composite))
         ];
 
-    // Plan-step badge overlay.
-    const auto ShowBadge = IsInPlan && StepIndex > 0;
+    // Plan-step badge overlay. Visibility and number both come from
+    // _ActionNode flags mutated by UCkGoapDebugGraph::UpdateRuntimeState, so
+    // they MUST be bound via TAttribute — capturing the int at construction
+    // produces stale visuals (or, worse, requires NotifyGraphChanged to
+    // rebuild the whole node widget, which is the flicker we're fixing).
     auto StepBadge = SNew(SBox)
         .WidthOverride(18.0f)
         .HeightOverride(18.0f)
-        .Visibility(ShowBadge ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
+        .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
+        {
+            const auto* Node = WeakNode.Get();
+            if (Node == nullptr) { return EVisibility::Collapsed; }
+            const auto Show = Node->Get_IsInPlan() && Node->Get_PlanStepIndex() > 0;
+            return Show ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed;
+        }))
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -179,7 +197,12 @@ auto
                 .VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
-                        .Text(FText::FromString(FString::FromInt(StepIndex)))
+                        .Text(TAttribute<FText>::CreateLambda([WeakNode]()
+                        {
+                            const auto* Node = WeakNode.Get();
+                            if (Node == nullptr) { return FText::GetEmpty(); }
+                            return FText::FromString(FString::FromInt(Node->Get_PlanStepIndex()));
+                        }))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                         .ColorAndOpacity(FSlateColor(FLinearColor::White))
                 ]
@@ -187,10 +210,16 @@ auto
 
     const auto BodyContent = BuildBody();
 
-    // Card chrome: outer border in the highlight color, inner panel in surface color.
+    // Card chrome: outer border in the highlight color (live-bound — driven
+    // by IsSelected / IsFailureBlocked / IsInPlan / IsComposite flags that
+    // UpdateRuntimeState mutates per tick), inner panel in surface color.
     auto Card = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(BorderColor)
+        .BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([WeakNode]()
+        {
+            const auto* Node = WeakNode.Get();
+            return FSlateColor(Compute_BorderColor(Node));
+        }))
         .Padding(FMargin(2.0f))  // border thickness
         [
             SNew(SBorder)

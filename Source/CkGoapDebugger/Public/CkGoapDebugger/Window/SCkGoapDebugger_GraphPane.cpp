@@ -190,12 +190,16 @@ auto
     else
     {
         // Mutable per-tick state may have shifted — refresh node hints in
-        // place on the existing nodes. We always call UpdateRuntimeState
-        // (it's cheap and returns whether anything actually changed) so we
-        // only emit NotifyGraphChanged on real changes.
-        const auto RuntimeChanged = _Graph->UpdateRuntimeState(*ActionSet, SelectedActionHandle);
-        if (RuntimeChanged || SelectionChanged)
-        { _Graph->NotifyGraphChanged(); }
+        // place on the existing nodes. SGraphNode_GoapAction binds its
+        // visuals (border color, plan-step badge, composite bar) via
+        // TAttribute lambdas that read live from the node flags, so the
+        // next paint pass will reflect the new state WITHOUT a
+        // NotifyGraphChanged. Emitting NotifyGraphChanged here would
+        // trigger SGraphPanel::OnGraphChanged → node-widget recreation,
+        // which is the very flicker this fix exists to remove. We still
+        // mirror selection into the SGraphEditor below so the framework's
+        // selection box updates without rebuilding nodes.
+        (void)_Graph->UpdateRuntimeState(*ActionSet, SelectedActionHandle);
         _LastSelectedAction = SelectedActionHandle;
     }
 

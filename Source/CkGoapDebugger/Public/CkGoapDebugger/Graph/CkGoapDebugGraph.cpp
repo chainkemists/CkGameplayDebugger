@@ -28,30 +28,75 @@ namespace ck_goap_graph
 
 namespace
 {
-    // Resolves which Action's _Plan should drive in-plan tinting + plan-step
-    // numbering. Prefer the user-selected Action (its plan is what the
-    // primary pane is showing in the plan-strip); fall back to the
-    // Planner's root so the graph always shows a meaningful plan
-    // visualization even before the user clicks anything.
+    // Flattens a PlannerInfo subtree into a single ordered catalog of pointers
+    // into the live snapshot. Atomic Actions appear once (under their owning
+    // Planner's ChildActions); composite Actions appear once (they show up as
+    // ChildActions[i] of their parent — we don't double-add when we recurse
+    // into ChildPlanners[i].ChildActions). Recursion is dedup'd by handle.
     //
-    // Returns nullptr if neither handle resolves to a catalog entry — in
-    // that case the caller treats no node as in-plan.
-    auto Resolve_PlanDriverAction(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner,
-        const FCk_Handle_Goap_Action& InSelectedActionHandle)
+    // Suffixed `_Graph` to keep this safe from Adaptive-Unity anon-namespace
+    // collisions with same-named helpers in sibling .cpp files.
+    auto Flatten_Catalog_Graph(
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
+        TArray<const FCkGoapDebugger_ActionInfo*>& OutCatalog,
+        TSet<FCk_Handle_Goap_Action>& InOutVisited) -> void
+    {
+        for (const auto& Child : InPlanner.ChildActions)
+        {
+            if (NOT ck::IsValid(Child.Handle)) { continue; }
+            if (InOutVisited.Contains(Child.Handle)) { continue; }
+            InOutVisited.Add(Child.Handle);
+            OutCatalog.Add(&Child);
+        }
+        for (const auto& SubPlanner : InPlanner.ChildPlanners)
+        {
+            Flatten_Catalog_Graph(SubPlanner, OutCatalog, InOutVisited);
+        }
+    }
+
+    // Find an ActionInfo* in a flattened catalog by handle.
+    auto FindByHandle_Graph(
+        const TArray<const FCkGoapDebugger_ActionInfo*>& InCatalog,
+        const FCk_Handle_Goap_Action& InHandle)
         -> const FCkGoapDebugger_ActionInfo*
     {
-        auto Find = [&](const FCk_Handle_Goap_Action& H)
-            -> const FCkGoapDebugger_ActionInfo*
+        if (ck::Is_NOT_Valid(InHandle)) { return nullptr; }
+        for (const auto* A : InCatalog)
         {
-            if (ck::Is_NOT_Valid(H)) { return nullptr; }
-            return InPlanner.Catalog.FindByPredicate(
-                [&](const FCkGoapDebugger_ActionInfo& A) { return A.Handle == H; });
-        };
+            if (A != nullptr && A->Handle == InHandle) { return A; }
+        }
+        return nullptr;
+    }
 
-        if (auto* Selected = Find(InSelectedActionHandle))
-        { return Selected; }
-        return Find(InPlanner.RootActionHandle);
+    // Resolves which Action's _Plan should drive in-plan tinting + plan-step
+    // numbering. Prefer the user-selected Action (its plan is what the
+    // primary pane is showing in the plan-strip). If unselected (or selection
+    // has no plan handles of its own), fall back to the Planner's own plan
+    // (PlanHandles + PlanClassNames on FCkGoapDebugger_PlannerInfo).
+    //
+    // Returns a pair (plan-step-by-classname, in-plan flag): when bool is false
+    // the caller treats no node as in-plan.
+    auto BuildPlanStepMap_Graph(
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
+        const TArray<const FCkGoapDebugger_ActionInfo*>& InCatalog,
+        const FCk_Handle_Goap_Action& InSelectedActionHandle)
+        -> TMap<FString, int32>
+    {
+        auto StepByName = TMap<FString, int32>{};
+
+        const auto* Selected = FindByHandle_Graph(InCatalog, InSelectedActionHandle);
+        if (Selected != nullptr && Selected->PlanClassNames.Num() > 0)
+        {
+            auto Step = 1;
+            for (const auto& Name : Selected->PlanClassNames)
+            { StepByName.Add(Name, Step++); }
+            return StepByName;
+        }
+
+        auto Step = 1;
+        for (const auto& Name : InPlanner.PlanClassNames)
+        { StepByName.Add(Name, Step++); }
+        return StepByName;
     }
 }
 
@@ -85,25 +130,34 @@ auto
 auto
     UCkGoapDebugGraph::
     ComputeTopologyHash(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner)
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
     -> uint32
 {
     // Capture identity of every catalog node + its pin shape (precondition
-    // keys + effect keys) + the goal owner. Intentionally excludes mutable
-    // per-tick fields (PlanStatus, ActiveChain, selection) so the fast-path
-    // UpdateRuntimeState handles those without a full rebuild.
+    // keys + effect keys) + the Planner's resolved goal. Intentionally
+    // excludes mutable per-tick fields (PlanStatus, plan handles, selection)
+    // so the fast-path UpdateRuntimeState handles those without a full
+    // rebuild.
     auto Hash = uint32{0};
-    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.Handle)));
-    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.RootActionHandle)));
-    Hash = HashCombine(Hash, ::GetTypeHash(InPlanner.Catalog.Num()));
+    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.PlannerHandle)));
 
-    for (const auto& Action : InPlanner.Catalog)
+    // Flatten the catalog so re-parenting / sub-planner promotions /
+    // ChildActions mutations show up as topology changes.
+    auto Catalog  = TArray<const FCkGoapDebugger_ActionInfo*>{};
+    auto Visited  = TSet<FCk_Handle_Goap_Action>{};
+    Flatten_Catalog_Graph(InPlanner, Catalog, Visited);
+
+    Hash = HashCombine(Hash, ::GetTypeHash(Catalog.Num()));
+
+    for (const auto* ActionPtr : Catalog)
     {
+        if (ActionPtr == nullptr) { continue; }
+        const auto& Action = *ActionPtr;
+
         Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Action.Handle)));
         Hash = HashCombine(Hash, GetTypeHash(Action.ClassName));
         Hash = HashCombine(Hash, ::GetTypeHash(Action.Preconditions.Num()));
         Hash = HashCombine(Hash, ::GetTypeHash(Action.Effects.Num()));
-        Hash = HashCombine(Hash, ::GetTypeHash(Action.Goal.Num()));
 
         for (const auto& P : Action.Preconditions)
         {
@@ -115,22 +169,25 @@ auto
             Hash = HashCombine(Hash, GetTypeHash(E.Key));
             Hash = HashCombine(Hash, ::GetTypeHash(E.Value ? 1 : 0));
         }
-        for (const auto& G : Action.Goal)
-        {
-            Hash = HashCombine(Hash, GetTypeHash(G.Key));
-            Hash = HashCombine(Hash, ::GetTypeHash(G.Value ? 1 : 0));
-        }
 
-        // U11.7-D: parent/child tree structure participates in topology.
-        // Re-parenting an Action, or adding/removing a child, must trigger a
-        // full graph rebuild so the tree edges and per-pin connections track
-        // the new shape. Selection deliberately does NOT enter the hash —
-        // selection-only changes route through UpdateRuntimeState.
+        // Tree structure participates in topology. Re-parenting an Action,
+        // or adding/removing a child, must trigger a full graph rebuild so
+        // the tree edges and per-pin connections track the new shape.
         Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Action.ParentActionHandle)));
         Hash = HashCombine(Hash, ::GetTypeHash(Action.ChildActionHandles.Num()));
         for (const auto& Child : Action.ChildActionHandles)
         { Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Child))); }
     }
+
+    // Planner-level goal — its resolved condition set drives the goal node's
+    // pin shape, so it must enter the topology hash.
+    Hash = HashCombine(Hash, ::GetTypeHash(InPlanner.GoalResolved.Num()));
+    for (const auto& G : InPlanner.GoalResolved)
+    {
+        Hash = HashCombine(Hash, GetTypeHash(G.Key));
+        Hash = HashCombine(Hash, ::GetTypeHash(G.Value ? 1 : 0));
+    }
+
     return Hash;
 }
 
@@ -139,27 +196,25 @@ auto
 auto
     UCkGoapDebugGraph::
     UpdateRuntimeState(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner,
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
     -> bool
 {
     // In-plan tinting + plan-step numbering reflect the currently-selected
-    // action's _Plan (or the Planner's root plan when nothing is selected).
+    // Action's _Plan (or the Planner's own plan when no specific Action is
+    // selected).
     //
     // CRITICAL: this is NOT the same as the active chain. In the unified
     // model the active chain only contains composite/root Actions (the
     // tree depth), while _Plan is the flat ordered list of child Action
-    // classes the planner chose to satisfy the selected Action's goal.
-    // Atomic operators that satisfy the goal directly (e.g. all four
-    // MakeTea steps) live in _Plan but never appear in ActiveChain.
-    const auto* PlanDriver = Resolve_PlanDriverAction(InPlanner, InSelectedActionHandle);
-    auto PlanStepByClassName = TMap<FString, int32>{};
-    if (PlanDriver != nullptr)
-    {
-        auto Step = 1;
-        for (const auto& Name : PlanDriver->PlanClassNames)
-        { PlanStepByClassName.Add(Name, Step++); }
-    }
+    // classes the planner chose to satisfy its goal. Atomic operators that
+    // satisfy the goal directly (e.g. all four MakeTea steps) live in
+    // _Plan but never appear in the active chain.
+    auto Catalog = TArray<const FCkGoapDebugger_ActionInfo*>{};
+    auto Visited = TSet<FCk_Handle_Goap_Action>{};
+    Flatten_Catalog_Graph(InPlanner, Catalog, Visited);
+
+    const auto PlanStepByClassName = BuildPlanStepMap_Graph(InPlanner, Catalog, InSelectedActionHandle);
 
     auto Changed = false;
 
@@ -170,25 +225,20 @@ auto
 
         const auto& Handle = ActionNode->Get_ActionHandle();
 
-        // Look up the live catalog entry for this node's handle. Falls back
-        // to leaving the existing values alone if the snapshot's catalog
-        // doesn't include this handle (shouldn't happen given topology hash
-        // matched, but be defensive).
-        const auto* Catalog = InPlanner.Catalog.FindByPredicate(
-            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == Handle; });
-        if (Catalog == nullptr) { continue; }
+        const auto* CatalogEntry = FindByHandle_Graph(Catalog, Handle);
+        if (CatalogEntry == nullptr) { continue; }
 
         auto NewStep = 0;
-        if (auto* StepPtr = PlanStepByClassName.Find(Catalog->ClassName))
+        if (auto* StepPtr = PlanStepByClassName.Find(CatalogEntry->ClassName))
         { NewStep = *StepPtr; }
         const auto NewInPlan = NewStep > 0;
 
         const auto NewSelected = ck::IsValid(InSelectedActionHandle) && (Handle == InSelectedActionHandle);
 
         const auto NewFailureBlocked =
-            Catalog->PlanStatus == ECk_GoapPlanStatus::PlanFailed
-            && (Catalog->Role == ECkGoapDebugger_ActionRole::Leaf
-                || Catalog->Role == ECkGoapDebugger_ActionRole::Mid);
+            CatalogEntry->PlanStatus == ECk_GoapPlanStatus::PlanFailed
+            && (CatalogEntry->Role == ECkGoapDebugger_ActionRole::Leaf
+                || CatalogEntry->Role == ECkGoapDebugger_ActionRole::Mid);
 
         if (ActionNode->Get_IsInPlan()         != NewInPlan
          || ActionNode->Get_PlanStepIndex()    != NewStep
@@ -267,7 +317,7 @@ auto
 auto
     UCkGoapDebugGraph::
     RebuildFromSnapshot(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner,
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
     -> void
 {
@@ -279,8 +329,14 @@ auto
     _TreeEdgePins_Graph.Reset();
     Nodes.Empty();
 
-    const auto& Catalog = InPlanner.Catalog;
-    const auto ActionCount = Catalog.Num();
+    // Flatten the recursive PlannerInfo tree into an ordered catalog of
+    // ActionInfo pointers — this replaces the legacy ActionSetInfo::Catalog
+    // flat array. Walk order is parent-first so layout reproduces the same
+    // visual ordering the legacy path produced.
+    auto CatalogPtrs = TArray<const FCkGoapDebugger_ActionInfo*>{};
+    auto VisitedFlatten = TSet<FCk_Handle_Goap_Action>{};
+    Flatten_Catalog_Graph(InPlanner, CatalogPtrs, VisitedFlatten);
+    const auto ActionCount = CatalogPtrs.Num();
 
     // ----------------------------------------------------------------------------------------------------------------
     // Phase 1: Create one node per Catalog entry. Defer pin allocation until
@@ -295,21 +351,15 @@ auto
     auto EffectKeyToProducer = TMap<FGameplayTag, TArray<int32>>{};
 
     // Plan-step numbering + in-plan tinting are driven by the currently-
-    // selected Action's _Plan (or the Planner's root plan when nothing
-    // is selected). See UpdateRuntimeState's matching comment for the
-    // rationale — _Plan is NOT the active chain.
-    const auto* PlanDriver = Resolve_PlanDriverAction(InPlanner, InSelectedActionHandle);
-    auto PlanStepByClassName = TMap<FString, int32>{};
-    if (PlanDriver != nullptr)
-    {
-        auto Step = 1;
-        for (const auto& Name : PlanDriver->PlanClassNames)
-        { PlanStepByClassName.Add(Name, Step++); }
-    }
+    // selected Action's _Plan (or the Planner's own plan when no specific
+    // Action is selected). See UpdateRuntimeState's matching comment for
+    // the rationale — _Plan is NOT the active chain.
+    const auto PlanStepByClassName =
+        BuildPlanStepMap_Graph(InPlanner, CatalogPtrs, InSelectedActionHandle);
 
     for (auto i = 0; i < ActionCount; ++i)
     {
-        const auto& Action = Catalog[i];
+        const auto& Action = *CatalogPtrs[i];
 
         auto* Node = NewObject<UCkGoapDebugNode_Action>(this);
         Node->PopulateFromActionInfo(Action);
@@ -367,7 +417,7 @@ auto
         Layers[InIndex] = -2;  // visiting sentinel
 
         auto BestLayer = 0;
-        const auto& Action = Catalog[InIndex];
+        const auto& Action = *CatalogPtrs[InIndex];
         for (const auto& Pre : Action.Preconditions)
         {
             const auto* Producers = EffectKeyToProducer.Find(Pre.Key);
@@ -457,7 +507,7 @@ auto
 
     for (auto i = 0; i < ActionCount; ++i)
     {
-        const auto& Action = Catalog[i];
+        const auto& Action = *CatalogPtrs[i];
         for (const auto& Pre : Action.Preconditions)
         {
             auto* PrePin = FindPrePin(ActionNodes[i], Pre.Key);
@@ -489,14 +539,14 @@ auto
         if (ck::Is_NOT_Valid(InH)) { return INDEX_NONE; }
         for (auto Idx = 0; Idx < ActionCount; ++Idx)
         {
-            if (Catalog[Idx].Handle == InH) { return Idx; }
+            if (CatalogPtrs[Idx] != nullptr && CatalogPtrs[Idx]->Handle == InH) { return Idx; }
         }
         return INDEX_NONE;
     };
 
     for (auto i = 0; i < ActionCount; ++i)
     {
-        const auto& Action = Catalog[i];
+        const auto& Action = *CatalogPtrs[i];
         if (Action.ChildActionHandles.Num() == 0) { continue; }
 
         auto* ParentOutPin = ActionNodes[i]->Get_TreeOutPin();
@@ -516,34 +566,38 @@ auto
     }
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Phase 5: Goal anchor. Use selected Action's Goal when selection is valid,
-    //          otherwise fall back to the root Action's Goal. Place beyond the
-    //          last action layer.
+    // Phase 5: Goal anchor. The Planner's own resolved goal is what we render —
+    //          if the selected Action is dual-role and has its own resolved
+    //          goal we prefer that (the selected Action is showing what THAT
+    //          Action's sub-planner is solving for). Place beyond the last
+    //          action layer.
     // ----------------------------------------------------------------------------------------------------------------
 
-    const FCkGoapDebugger_ActionInfo* GoalSource = nullptr;
+    const TArray<FCkGoapDebugger_Condition>* GoalConditions = nullptr;
     auto GoalOwnerName = FString{};
 
     if (ck::IsValid(InSelectedActionHandle))
     {
-        for (const auto& A : Catalog)
+        if (const auto* SelectedAction = FindByHandle_Graph(CatalogPtrs, InSelectedActionHandle))
         {
-            if (A.Handle == InSelectedActionHandle) { GoalSource = &A; GoalOwnerName = A.ClassName; break; }
+            if (SelectedAction->Goal.Num() > 0)
+            {
+                GoalConditions = &SelectedAction->Goal;
+                GoalOwnerName = SelectedAction->ClassName;
+            }
         }
     }
 
-    if (NOT GoalSource && ck::IsValid(InPlanner.RootActionHandle))
+    if (GoalConditions == nullptr && InPlanner.GoalResolved.Num() > 0)
     {
-        for (const auto& A : Catalog)
-        {
-            if (A.Handle == InPlanner.RootActionHandle) { GoalSource = &A; GoalOwnerName = A.ClassName; break; }
-        }
+        GoalConditions = &InPlanner.GoalResolved;
+        GoalOwnerName = InPlanner.DisplayName;
     }
 
-    if (GoalSource != nullptr)
+    if (GoalConditions != nullptr)
     {
         auto* GoalNode = NewObject<UCkGoapDebugNode_Goal>(this);
-        GoalNode->PopulateFromGoal(GoalOwnerName, GoalSource->Goal);
+        GoalNode->PopulateFromGoal(GoalOwnerName, *GoalConditions);
         GoalNode->AllocateDefaultPins();
         GoalNode->SetFlags(RF_Transactional);
 
@@ -555,7 +609,7 @@ auto
         _GoalNode = GoalNode;
 
         // Wire effect-producers into matching goal-condition pins.
-        for (const auto& Cond : GoalSource->Goal)
+        for (const auto& Cond : *GoalConditions)
         {
             auto* GoalPin = static_cast<UEdGraphPin*>(nullptr);
             const auto Target = FName(*Cond.Key.ToString());

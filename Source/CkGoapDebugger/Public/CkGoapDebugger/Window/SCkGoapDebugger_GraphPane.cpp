@@ -139,8 +139,8 @@ auto
     auto ActionCount = 0;
     auto EdgeCount   = 0;
 
-    const auto* ActionSet = _ViewModel.IsValid() ? _ViewModel->GetSelectedActionSetInfo() : nullptr;
-    if (ActionSet == nullptr)
+    const auto* PlannerInfo = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
+    if (PlannerInfo == nullptr)
     {
         // No Planner selected — drop everything once, then short-circuit.
         // Clearing the cached topology hash forces a rebuild when a
@@ -174,7 +174,7 @@ auto
     // SGraphEditor to recreate every Slate widget, which read as flicker
     // and empty viewport during fast replans.
     // ----------------------------------------------------------------------
-    const auto NewTopologyHash = UCkGoapDebugGraph::ComputeTopologyHash(*ActionSet);
+    const auto NewTopologyHash = UCkGoapDebugGraph::ComputeTopologyHash(*PlannerInfo);
     const auto TopologyChanged = NewTopologyHash != _LastTopologyHash;
     const auto SelectionChanged = SelectedActionHandle != _LastSelectedAction;
 
@@ -183,7 +183,7 @@ auto
         // Full rebuild — RebuildFromSnapshot un-suppresses notifications
         // and calls NotifyGraphChanged at the end, so we don't need to
         // notify again here.
-        _Graph->RebuildFromSnapshot(*ActionSet, SelectedActionHandle);
+        _Graph->RebuildFromSnapshot(*PlannerInfo, SelectedActionHandle);
         _LastTopologyHash = NewTopologyHash;
         _LastSelectedAction = SelectedActionHandle;
     }
@@ -199,7 +199,7 @@ auto
         // which is the very flicker this fix exists to remove. We still
         // mirror selection into the SGraphEditor below so the framework's
         // selection box updates without rebuilding nodes.
-        (void)_Graph->UpdateRuntimeState(*ActionSet, SelectedActionHandle);
+        (void)_Graph->UpdateRuntimeState(*PlannerInfo, SelectedActionHandle);
         _LastSelectedAction = SelectedActionHandle;
     }
 

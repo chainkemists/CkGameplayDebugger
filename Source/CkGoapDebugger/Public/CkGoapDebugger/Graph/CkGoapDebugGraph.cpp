@@ -31,7 +31,7 @@ namespace
     // Resolves which Action's _Plan should drive in-plan tinting + plan-step
     // numbering. Prefer the user-selected Action (its plan is what the
     // primary pane is showing in the plan-strip); fall back to the
-    // ActionSet's root so the graph always shows a meaningful plan
+    // Planner's root so the graph always shows a meaningful plan
     // visualization even before the user clicks anything.
     //
     // Returns nullptr if neither handle resolves to a catalog entry — in
@@ -144,7 +144,7 @@ auto
     -> bool
 {
     // In-plan tinting + plan-step numbering reflect the currently-selected
-    // action's _Plan (or the ActionSet's root plan when nothing is selected).
+    // action's _Plan (or the Planner's root plan when nothing is selected).
     //
     // CRITICAL: this is NOT the same as the active chain. In the unified
     // model the active chain only contains composite/root Actions (the
@@ -295,7 +295,7 @@ auto
     auto EffectKeyToProducer = TMap<FGameplayTag, TArray<int32>>{};
 
     // Plan-step numbering + in-plan tinting are driven by the currently-
-    // selected Action's _Plan (or the ActionSet's root plan when nothing
+    // selected Action's _Plan (or the Planner's root plan when nothing
     // is selected). See UpdateRuntimeState's matching comment for the
     // rationale — _Plan is NOT the active chain.
     const auto* PlanDriver = Resolve_PlanDriverAction(InPlanner, InSelectedActionHandle);

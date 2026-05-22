@@ -285,7 +285,7 @@ struct FCkGoapDebugger_EntitySnapshot
 // ====================================================================================================================
 // HISTORY EVENT — entries on the bottom rail / scrub timeline. Each kind tags
 // the source so the rail can colour-code. SnapshotAtEvent captures the
-// ActionSet's state at fire-time for scrub-mode inspection.
+// Planner's state at fire-time for scrub-mode inspection.
 // ====================================================================================================================
 
 enum class ECkGoapDebugger_HistoryEventKind : uint8

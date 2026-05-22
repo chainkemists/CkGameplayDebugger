@@ -8,7 +8,7 @@
 #include "CkGoapDebugNode_Action.generated.h"
 
 // ====================================================================================================================
-// UEdGraphNode subclass — one per Action in the selected ActionSet's catalog.
+// UEdGraphNode subclass — one per Action in the selected Planner's catalog.
 // Stores a snapshot of FCkGoapDebugger_ActionInfo plus per-render hints
 // (plan-step index, selection, failure flag) that the Slate visual reads.
 //

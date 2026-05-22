@@ -67,8 +67,8 @@ namespace ck_goap_debugger_gateway_internal
         }
     }
 
-    // Compute the "headline" plan status for an ActionSet — used by the dot in
-    // the ActionSet list. Picks the deepest active chain entry's status when
+    // Compute the "headline" plan status for a Planner — used by the dot in
+    // the Planner list. Picks the deepest active chain entry's status when
     // available; otherwise falls back to the root's status.
     static auto
     HeadlineStatus(
@@ -102,7 +102,7 @@ namespace ck_goap_debugger_gateway_internal
             [&LeafHandle](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == LeafHandle; });
     }
 
-    // Small colored dot used in the ActionSet list rows + the leaf-status indicator.
+    // Small colored dot used in the Planner list rows + the leaf-status indicator.
     static auto
     MakeStatusDot(
         const FLinearColor& InColor,
@@ -383,7 +383,7 @@ auto
         .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
         [
             SNew(STextBlock)
-                .Text(FText::FromString(FString::Printf(TEXT("ACTIONSETS - %d"), InSnapshot.ActionSets.Num())))
+                .Text(FText::FromString(FString::Printf(TEXT("PLANNERS - %d"), InSnapshot.ActionSets.Num())))
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
         ];

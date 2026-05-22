@@ -86,6 +86,12 @@ public:
     auto Get_ActionCount() const -> int32;
     auto Get_EdgeCount()   const -> int32;
 
+    // Returns true if the (Output, Input) pin pair was added as a parent →
+    // child tree edge during RebuildFromSnapshot. The connection policy uses
+    // this to apply dashed wire styling to tree edges so they read distinctly
+    // from solid dependency edges. Cheap O(log N) lookup on the side set.
+    auto Is_TreeEdge(UEdGraphPin* InOutputPin, UEdGraphPin* InInputPin) const -> bool;
+
     // UEdGraph — suppress change notifications during batch population.
     auto SetSuppressNotifications(bool bSuppress) -> void { _SuppressNotifications = bSuppress; }
     virtual void NotifyGraphChanged() override
@@ -98,6 +104,12 @@ private:
 
     UPROPERTY()
     TObjectPtr<UCkGoapDebugNode_Goal> _GoalNode = nullptr;
+
+    // Side set of parent → child tree-edge pin pairs added by
+    // RebuildFromSnapshot. NOT a UPROPERTY — pin pointers are owned by the
+    // EdGraphNodes, which are themselves rooted via the UEdGraph::Nodes array.
+    // ForceClear / RebuildFromSnapshot reset this in lockstep with Nodes.
+    TSet<TPair<UEdGraphPin*, UEdGraphPin*>> _TreeEdgePins_Graph;
 };
 
 // ====================================================================================================================

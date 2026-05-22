@@ -67,8 +67,8 @@ public:
     auto SetSelectedEntity(FCk_Handle InHandle) -> void;
     auto GetSelectedEntity() const -> FCk_Handle;
 
-    auto SetSelectedActionSet(FCk_Handle_Goap_ActionSet InHandle) -> void;
-    auto GetSelectedActionSet() const -> FCk_Handle_Goap_ActionSet;
+    auto SetSelectedActionSet(FCk_Handle_Goap_Planner InHandle) -> void;
+    auto GetSelectedActionSet() const -> FCk_Handle_Goap_Planner;
 
     auto SetSelectedAction(FCk_Handle_Goap_Action InHandle) -> void;
     auto GetSelectedAction() const -> FCk_Handle_Goap_Action;
@@ -109,7 +109,7 @@ private:
     TArray<FCkGoapDebugger_EntitySnapshot> _AllSnapshots;
 
     FCk_Handle                _SelectedEntity;
-    FCk_Handle_Goap_ActionSet _SelectedActionSet;
+    FCk_Handle_Goap_Planner _SelectedActionSet;
     FCk_Handle_Goap_Action    _SelectedAction;
 
     EMode _Mode = EMode::Live;

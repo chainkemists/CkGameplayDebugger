@@ -68,7 +68,7 @@ private:
         ENodeKind Kind = ENodeKind::ActionSet;
 
         // ActionSet rows
-        FCk_Handle_Goap_ActionSet ActionSetHandle;
+        FCk_Handle_Goap_Planner ActionSetHandle;
         FString                   ActionSetDebugName;
 
         // Action rows

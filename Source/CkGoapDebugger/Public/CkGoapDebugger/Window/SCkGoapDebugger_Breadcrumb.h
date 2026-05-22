@@ -21,7 +21,7 @@ class STextBlock;
 // Click semantics:
 //   - Segment click → ViewModel::SetSelectedAction.
 //   - Reset link    → logs a warning (D3 stub — wiring to
-//                     utils_goap_action_set::Request_ResetActiveChain is a
+//                     utils_goap_planner::Request_ResetActiveChain is a
 //                     follow-up).
 // ====================================================================================================================
 

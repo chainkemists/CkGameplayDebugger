@@ -49,7 +49,7 @@ public:
     // - Wires effect-producer -> precondition-consumer pins.
     auto
     RebuildFromSnapshot(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCkGoapDebugger_ActionSetInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle) -> void;
 
     // Updates per-Action render hints (IsInPlan / PlanStepIndex / IsSelected /
@@ -61,7 +61,7 @@ public:
     // changed (caller can decide whether to NotifyGraphChanged).
     auto
     UpdateRuntimeState(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCkGoapDebugger_ActionSetInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle) -> bool;
 
     // Topology hash — captures everything that affects WHICH nodes exist and
@@ -71,7 +71,7 @@ public:
     // between a fast in-place update and a full destructive rebuild.
     static auto
     ComputeTopologyHash(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet) -> uint32;
+        const FCkGoapDebugger_ActionSetInfo& InPlanner) -> uint32;
 
     // Drops all nodes and clears the topology cache. Must be called from
     // the pane widget's PIE-teardown path so the FCk_Handle copies inside

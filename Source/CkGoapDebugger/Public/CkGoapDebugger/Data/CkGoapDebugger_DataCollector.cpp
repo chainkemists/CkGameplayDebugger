@@ -10,10 +10,10 @@
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
 #include "CkGoap/CkGoap_Fragment.h"
-#include "CkGoap/CkGoap_Utils.h"
+#include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
-#include "CkGoap/ActionSet/CkGoap_ActionSet_Fragment.h"
-#include "CkGoap/ActionSet/CkGoap_ActionSet_Record_Internal.h"  // FFragment_RecordOfGoapActionSets + utils
+#include "CkGoap/Planner/CkGoap_Planner_Fragment.h"
+#include "CkGoap/Planner/CkGoap_Planner_Record_Internal.h"  // FFragment_RecordOfGoapPlanners + utils
 #include "CkGoap/Action/CkGoap_Action_Fragment.h"
 #include "CkGoap/Action/CkGoap_Action_Record_Internal.h"        // FFragment_RecordOfGoapActions + utils
 #include "CkGoap/WorldState/CkGoap_WorldState_Fragment.h"
@@ -329,7 +329,7 @@ namespace ck_goap_debugger_data_collector_internal
 
     static auto
     BuildActionSetInfo(
-        const FCk_Handle_Goap_ActionSet& InActionSetHandle,
+        const FCk_Handle_Goap_Planner& InActionSetHandle,
         const FCkGoapDebugger_EntitySnapshot* InPrevSnapshot,
         int64 InCurrentFrame) -> FCkGoapDebugger_ActionSetInfo
     {
@@ -339,10 +339,10 @@ namespace ck_goap_debugger_data_collector_internal
         if (NOT ck::IsValid(InActionSetHandle)) { return Info; }
 
         // ---- Identity (tag + debug name) -------------------------------------------
-        if (InActionSetHandle.Has<ck::FFragment_Goap_ActionSet_Params>())
+        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_Params>())
         {
-            const auto& Params = InActionSetHandle.Get<ck::FFragment_Goap_ActionSet_Params>();
-            Info.ActionSetTag = Params.Get_ActionSetTag();
+            const auto& Params = InActionSetHandle.Get<ck::FFragment_Goap_Planner_Params>();
+            Info.ActionSetTag = Params.Get_PlannerTag();
             Info.EnableToggle = Params.Get_InitialToggle();
         }
 
@@ -362,9 +362,9 @@ namespace ck_goap_debugger_data_collector_internal
         }
 
         // ---- Current (enable toggle, dependency cycles, root) ----------------------
-        if (InActionSetHandle.Has<ck::FFragment_Goap_ActionSet_Current>())
+        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_Current>())
         {
-            const auto& Current = InActionSetHandle.Get<ck::FFragment_Goap_ActionSet_Current>();
+            const auto& Current = InActionSetHandle.Get<ck::FFragment_Goap_Planner_Current>();
             Info.EnableToggle    = Current.Get_EnableToggle();
             Info.RootActionHandle = Current.Get_RootAction();
 
@@ -381,17 +381,17 @@ namespace ck_goap_debugger_data_collector_internal
         }
 
         // ---- Active chain -----------------------------------------------------------
-        if (InActionSetHandle.Has<ck::FFragment_Goap_ActionSet_ActiveChain>())
+        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_ActiveChain>())
         {
-            const auto& Chain = InActionSetHandle.Get<ck::FFragment_Goap_ActionSet_ActiveChain>();
+            const auto& Chain = InActionSetHandle.Get<ck::FFragment_Goap_Planner_ActiveChain>();
             Info.ActiveChainHandles = Chain.Get_Chain();
         }
 
         // ---- WS source --------------------------------------------------------------
         auto WsHandle = FCk_Handle_Goap_WorldState{};
-        if (InActionSetHandle.Has<ck::FFragment_Goap_ActionSet_WorldStateSource>())
+        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
         {
-            const auto& Src = InActionSetHandle.Get<ck::FFragment_Goap_ActionSet_WorldStateSource>();
+            const auto& Src = InActionSetHandle.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
             WsHandle = Src.Get_WorldStateSource();
         }
 
@@ -472,7 +472,7 @@ namespace ck_goap_debugger_data_collector_internal
     static auto
     BuildEntitySnapshot(
         const FCk_Handle& InEntityHandle,
-        const FCk_Handle_Goap& InGoapHandle,
+        const FCk_Handle_Goap_Planner& InGoapHandle,
         UWorld* InWorld,
         const FCkGoapDebugger_EntitySnapshot* InPrevSnapshot) -> FCkGoapDebugger_EntitySnapshot
     {
@@ -491,13 +491,13 @@ namespace ck_goap_debugger_data_collector_internal
 
         // Enumerate ActionSets from the private record-of-actionsets.
         auto MutableGoap = InGoapHandle;
-        ck::goap::internal_root::FRecordOfGoapActionSets_Utils::ForEach_ValidEntry(
+        ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
             MutableGoap,
-            [&Snapshot, InPrevSnapshot](FCk_Handle_Goap_ActionSet InActionSet)
+            [&Snapshot, InPrevSnapshot](FCk_Handle_Goap_Planner InPlanner)
             {
-                if (NOT ck::IsValid(InActionSet)) { return; }
+                if (NOT ck::IsValid(InPlanner)) { return; }
 
-                auto AsInfo = BuildActionSetInfo(InActionSet, InPrevSnapshot, Snapshot.FrameNumber);
+                auto AsInfo = BuildActionSetInfo(InPlanner, InPrevSnapshot, Snapshot.FrameNumber);
                 Snapshot.ActionSets.Add(MoveTemp(AsInfo));
             });
 
@@ -723,18 +723,18 @@ auto
     // entries whose entities have been destroyed.
     auto SeenThisPass = TSet<FCk_Handle>{};
 
-    // The Goap root entity holds FFragment_RecordOfGoapActionSets. Iterate
+    // The Goap root entity holds FFragment_RecordOfGoapPlanners. Iterate
     // those — the OWNER of each Goap root is the gameplay entity the debugger
     // surfaces; the Goap root itself is a typesafe child entity.
-    TransientEntity.View<ck::FFragment_RecordOfGoapActionSets>().ForEach(
-        [&Out, &SeenThisPass, &TransientEntity, InWorld](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapActionSets&)
+    TransientEntity.View<ck::FFragment_RecordOfGoapPlanners>().ForEach(
+        [&Out, &SeenThisPass, &TransientEntity, InWorld](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
         {
             const auto GoapEntityHandle = ck::MakeHandle(InEntity, TransientEntity);
             if (NOT ck::IsValid(GoapEntityHandle)) { return; }
 
             // Resolve the owner entity — that's the gameplay entity we surface.
             // Goap roots are spawned as typesafe children of the owner via
-            // Request_CreateEntity_AsTypeSafe<FCk_Handle_Goap>. The owner is
+            // Request_CreateEntity_AsTypeSafe<FCk_Handle_Goap_Planner>. The owner is
             // therefore the lifetime owner of this entity. Fall back to the
             // Goap entity itself if no owner is found (defensive).
             auto OwnerHandle = FCk_Handle{};
@@ -744,7 +744,7 @@ auto
             }
             if (NOT ck::IsValid(OwnerHandle)) { OwnerHandle = GoapEntityHandle; }
 
-            const auto GoapTypedHandle = UCk_Utils_Goap_UE::CastChecked(GoapEntityHandle);
+            const auto GoapTypedHandle = UCk_Utils_Goap_Planner_UE::CastChecked(GoapEntityHandle);
 
             const auto* PrevSnapshot = GPrevSnapshotByEntity.Find(OwnerHandle);
 

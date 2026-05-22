@@ -14,20 +14,37 @@ class STextBlock;
 class SBox;
 
 // ====================================================================================================================
-// SCkGoapDebugger_PrimaryPane — the big inspector pane in the centre column.
+// SCkGoapDebugger_PrimaryPane (U11.7-C)
 //
-// Vertical stack:
-//   1. Header bar — action name, role, status, cost, attempts, last replan
-//   2. Plan strip — horizontal cards (via SCkGoapDebugger_PlanStrip)
-//   3. Goal section — list of goal conditions, sat/unsat against resolved WS
-//   4. Drilldown — visible when SelectedAction != header action; preconditions,
-//      effects, cost columns
-//   5. (Right rail in the horizontal pair) — WS source, parent, invalid goals,
-//      dependency cycles, OR failure-variant when PlanFailed
+// Inspector pane for the currently selected Planner (which may be top-level or
+// any sub-Planner — selection is driven by the Sidebar tree). Layout matches
+// mockup G:
 //
-// The pane subscribes to ViewModel::OnChanged via RefreshFromViewModel().
-// All sub-content lives inside _LeftBody / _RightRail SVerticalBox slots that
-// are cleared and re-populated on each refresh.
+//   ┌────────────────────────────────────────────────────────┬──────────────┐
+//   │  Title (DisplayName)  [PLANNER] [ACTION?]              │  Right rail  │
+//   │  Tier label · parent name                              │              │
+//   │                                                        │              │
+//   │  ▸ Status pill · Cost · Attempts · Last replan         │              │
+//   │                                                        │              │
+//   │  PLAN  ── horizontal strip ──                          │              │
+//   │  ┌────┐  ▸  ┌────┐  ▸  ┌────┐                          │              │
+//   │  │ #1 │     │ #2 │     │ #3 │                          │              │
+//   │  └────┘     └────┘     └────┘                          │              │
+//   │  (Plan[0] highlighted ACTIVE)                          │              │
+//   │                                                        │              │
+//   │  GOAL  ── per-tier conditions                          │              │
+//   │  ✓/✗  Key = Value                                      │              │
+//   └────────────────────────────────────────────────────────┴──────────────┘
+//
+// Drilldown is integrated through the PlanStrip — clicking a plan card that
+// represents a Planner-role step calls SetSelectedActionSet(handle), which
+// updates this pane in place via the normal OnChanged broadcast.
+//
+// Refresh discipline (CkDebuggerCommon CLAUDE.md):
+//   - Cached SBox / SVerticalBox host slots populated at Construct.
+//   - SetContent / ClearChildren only in refresh paths — never destructive
+//     ChildSlot reassignment.
+//   - Structural-hash gate before rebuild.
 // ====================================================================================================================
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_PrimaryPane : public SCompoundWidget
@@ -40,23 +57,15 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     ~SCkGoapDebugger_PrimaryPane();
 
-    // Called by the parent window on ViewModel::OnChanged. Rebuilds the
-    // header + left body + right rail. Plan strip refreshes itself.
+    // Called by the parent window on ViewModel::OnChanged.
     auto RefreshFromViewModel() -> void;
 
 private:
-    // -----------------------------------------------------------------------------------------------------------------
-    // Build helpers — operate on the current ViewModel snapshot. Each returns
-    // a fresh widget tree that lives inside the corresponding host slot.
-    // -----------------------------------------------------------------------------------------------------------------
-
-    auto BuildEmptyState() -> TSharedRef<SWidget>;
-    auto BuildHeader(const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
-    auto BuildGoalSection(const FCkGoapDebugger_ActionSetInfo& InAs, const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
-    auto BuildDrilldown(const FCkGoapDebugger_ActionSetInfo& InAs, const FCkGoapDebugger_ActionInfo& InSelected) -> TSharedRef<SWidget>;
-
-    auto BuildRightRail_Normal(const FCkGoapDebugger_ActionSetInfo& InAs, const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
-    auto BuildRightRail_Failure(const FCkGoapDebugger_ActionSetInfo& InAs, const FCkGoapDebugger_ActionInfo& InAction) -> TSharedRef<SWidget>;
+    auto BuildEmptyState()                                                  -> TSharedRef<SWidget>;
+    auto BuildHeader(const FCkGoapDebugger_PlannerInfo& InPlanner)          -> TSharedRef<SWidget>;
+    auto BuildStatusRow(const FCkGoapDebugger_PlannerInfo& InPlanner)       -> TSharedRef<SWidget>;
+    auto BuildGoalSection(const FCkGoapDebugger_PlannerInfo& InPlanner)     -> TSharedRef<SWidget>;
+    auto BuildRightRail(const FCkGoapDebugger_PlannerInfo& InPlanner)       -> TSharedRef<SWidget>;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -66,16 +75,10 @@ private:
     TSharedPtr<SVerticalBox>  _LeftBody;
     TSharedPtr<SBox>          _RightRailHost;
 
-    // Plan strip — its own widget; just call RefreshFromViewModel on it.
+    // Plan strip — owns its own hash gate. Always forward refresh, even when
+    // our outer hash didn't change, so live Plan flips still propagate.
     TSharedPtr<SCkGoapDebugger_PlanStrip> _PlanStrip;
 
-    // Content-hash gate. The pane rebuilds three subtrees (header, left
-    // body, right rail) per refresh — each build allocates a fresh widget
-    // tree. Without this gate every ViewModel broadcast (every plan
-    // attempt or selection echo) tore down + re-laid-out the whole pane,
-    // which manifested as the scrunched / overlapping labels users saw.
-    // Hash captures everything that affects which widget tree we'd build;
-    // when it matches the last refresh we early-return.
     uint32 _LastContentHash = 0;
     bool   _HasMaterialized = false;
 };

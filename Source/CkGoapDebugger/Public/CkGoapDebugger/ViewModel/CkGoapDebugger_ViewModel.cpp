@@ -294,6 +294,57 @@ auto
 }
 
 // ====================================================================================================================
+// PLANNER INFO LOOKUP (U11.7-C)
+// ====================================================================================================================
+
+namespace ck_goap_debugger_viewmodel_internal
+{
+    // Recursive walk over a TopLevelPlanners forest. Returns a pointer to the
+    // matching PlannerInfo, or nullptr when the handle is not found. The
+    // const_cast trick is intentional — the source array is held in a const
+    // EntitySnapshot returned by const accessors; we want the pointer itself
+    // const-but-mutable across the recursion so consumers receive a stable
+    // pointer into the snapshot.
+    static auto
+    FindPlannerInfo_Recursive(
+        const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners,
+        const FCk_Handle_Goap_Planner& InHandle) -> const FCkGoapDebugger_PlannerInfo*
+    {
+        for (const auto& P : InPlanners)
+        {
+            if (P.PlannerHandle == InHandle) { return &P; }
+            if (auto* InChild = FindPlannerInfo_Recursive(P.ChildPlanners, InHandle))
+            { return InChild; }
+        }
+        return nullptr;
+    }
+}
+
+auto
+    FCkGoapDebugger_ViewModel::
+    GetPlannerInfoByHandle(
+        FCk_Handle_Goap_Planner InHandle) const
+    -> const FCkGoapDebugger_PlannerInfo*
+{
+    using namespace ck_goap_debugger_viewmodel_internal;
+
+    if (NOT ck::IsValid(InHandle)) { return nullptr; }
+
+    const auto* Snap = GetCurrentEntitySnapshot();
+    if (Snap == nullptr) { return nullptr; }
+
+    return FindPlannerInfo_Recursive(Snap->TopLevelPlanners, InHandle);
+}
+
+auto
+    FCkGoapDebugger_ViewModel::
+    GetSelectedPlannerInfo() const
+    -> const FCkGoapDebugger_PlannerInfo*
+{
+    return GetPlannerInfoByHandle(_SelectedActionSet);
+}
+
+// ====================================================================================================================
 // MODE + SCRUB
 // ====================================================================================================================
 

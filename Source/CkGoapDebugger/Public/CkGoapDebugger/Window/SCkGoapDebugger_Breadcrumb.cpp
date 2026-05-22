@@ -13,22 +13,30 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SHyperlink.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
+// Internal helpers — file-prefixed (`_Breadcrumb`) so the Adaptive-Unity build
+// doesn't collide them with same-named helpers in other widget .cpp files.
+// ====================================================================================================================
 
-namespace ck_goap_debugger_breadcrumb_internal
+namespace
 {
-    // Locate the catalog entry matching a chain handle in the selected
-    // ActionSet. nullptr when not present.
-    auto FindAction(
+    // Locate an ActionInfo by handle within the selected top-level Planner's
+    // legacy ActionSetInfo Catalog. Returns nullptr if not present.
+    auto FindActionInCatalog_Breadcrumb(
         const FCkGoapDebugger_ActionSetInfo* InAs,
         const FCk_Handle_Goap_Action& InHandle) -> const FCkGoapDebugger_ActionInfo*
     {
         if (InAs == nullptr) { return nullptr; }
         return InAs->Catalog.FindByPredicate(
             [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InHandle; });
+    }
+
+    // Compute the per-step depth label (T0, T1, T2 ...).
+    auto TierLabel_Breadcrumb(int32 InTier) -> FString
+    {
+        return FString::Printf(TEXT("T%d"), InTier);
     }
 }
 
@@ -48,51 +56,9 @@ auto
     [
         SNew(SBorder)
             .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
+            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large, FCkGoapDebuggerStyle::Padding_Small))
             [
-                SNew(SHorizontalBox)
-
-                    // "Chain:" label
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(TEXT("Chain:")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                        ]
-
-                    // Segments box (rebuilt on change)
-                    + SHorizontalBox::Slot()
-                        .FillWidth(1.0f)
-                        .VAlign(VAlign_Center)
-                        [
-                            SAssignNew(_SegmentsBox, SHorizontalBox)
-                        ]
-
-                    // Meta + Reset chain link
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
-                        [
-                            SAssignNew(_MetaText, STextBlock)
-                                .Text(FText::FromString(TEXT("")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                        ]
-
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(SButton)
-                                .Text(FText::FromString(TEXT("Reset chain")))
-                                .ToolTipText(FText::FromString(TEXT("Stub — wiring to utils_goap_planner::Request_ResetActiveChain is a follow-up")))
-                                .OnClicked(this, &SCkGoapDebugger_Breadcrumb::OnResetChainClicked)
-                        ]
+                SAssignNew(_RowsBox, SVerticalBox)
             ]
     ];
 
@@ -112,45 +78,31 @@ auto
 {
     if (NOT _ViewModel.IsValid()) { return; }
 
-    using namespace ck_goap_debugger_breadcrumb_internal;
+    const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
+    const auto  SelPlanner = _ViewModel->GetSelectedActionSet();
 
-    const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo();
-    const auto  SelAction = _ViewModel->GetSelectedAction();
-
-    // Compute a structural hash — only rebuild when the chain or selection
-    // changes. Per-frame status text on the segments doesn't need a rebuild
-    // (we render only the (name + tag) text per segment, both class-derived).
+    // Structural hash. Captures every chain entry across every top-level
+    // Planner + the selected planner handle (drives the highlight pip).
     auto NewHash = uint32{0};
-    if (AsInfo != nullptr)
+    if (Snap != nullptr)
     {
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(AsInfo->Handle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->ActiveChainHandles.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->Catalog.Num()));
-        for (const auto& H : AsInfo->ActiveChainHandles)
-        { NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(H))); }
-    }
-    NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelAction)));
-
-    // Meta string is cheap to refresh every time.
-    if (_MetaText.IsValid())
-    {
-        if (AsInfo != nullptr)
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->EntityHandle));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->ActionSets.Num()));
+        for (const auto& As : Snap->ActionSets)
         {
-            _MetaText->SetText(FText::FromString(FString::Printf(
-                TEXT("Catalog: %d actions · Active: %d ·"),
-                AsInfo->Catalog.Num(), AsInfo->ActiveChainHandles.Num())));
-        }
-        else
-        {
-            _MetaText->SetText(FText::FromString(TEXT("(no ActionSet selected) ·")));
+            NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(As.Handle)));
+            NewHash = HashCombine(NewHash, ::GetTypeHash(As.ActiveChainHandles.Num()));
+            for (const auto& H : As.ActiveChainHandles)
+            { NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(H))); }
         }
     }
+    NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelPlanner)));
 
-    if (_HasMaterialized && NewHash == _LastSegmentsHash) { return; }
-    _LastSegmentsHash = NewHash;
-    _HasMaterialized  = true;
+    if (_HasMaterialized && NewHash == _LastHash) { return; }
+    _LastHash        = NewHash;
+    _HasMaterialized = true;
 
-    RebuildSegments();
+    RebuildRows();
 }
 
 // ====================================================================================================================
@@ -159,40 +111,23 @@ auto
 
 auto
     SCkGoapDebugger_Breadcrumb::
-    RebuildSegments()
+    RebuildRows()
     -> void
 {
-    using namespace ck_goap_debugger_breadcrumb_internal;
+    if (NOT _RowsBox.IsValid() || NOT _ViewModel.IsValid()) { return; }
 
-    if (NOT _SegmentsBox.IsValid() || NOT _ViewModel.IsValid()) { return; }
+    _RowsBox->ClearChildren();
 
-    _SegmentsBox->ClearChildren();
+    const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
+    const auto  SelPlanner = _ViewModel->GetSelectedActionSet();
 
-    const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo();
-    const auto  SelAction = _ViewModel->GetSelectedAction();
-
-    if (AsInfo == nullptr)
+    if (Snap == nullptr || Snap->ActionSets.Num() == 0)
     {
-        _SegmentsBox->AddSlot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
+        _RowsBox->AddSlot()
+            .AutoHeight()
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(no chain — select an ActionSet)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-            ];
-        return;
-    }
-
-    if (AsInfo->ActiveChainHandles.Num() == 0)
-    {
-        _SegmentsBox->AddSlot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(no active chain)")))
+                    .Text(FText::FromString(TEXT("(no entity selected)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
             ];
@@ -201,103 +136,184 @@ auto
 
     const auto WeakVM = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
 
-    for (auto Idx = 0; Idx < AsInfo->ActiveChainHandles.Num(); ++Idx)
+    // One row per top-level Planner on the entity.
+    for (auto AsIdx = 0; AsIdx < Snap->ActionSets.Num(); ++AsIdx)
     {
-        const auto Handle = AsInfo->ActiveChainHandles[Idx];
-        const auto* Action = FindAction(AsInfo, Handle);
+        const auto& As = Snap->ActionSets[AsIdx];
 
-        const auto ClassName = (Action != nullptr && NOT Action->ClassName.IsEmpty())
-            ? Action->ClassName
-            : FString(TEXT("(unknown)"));
-        const auto TagText   = (Action != nullptr && Action->ActionTag.IsValid())
-            ? Action->ActionTag.ToString()
-            : FString{};
+        auto Row = SNew(SHorizontalBox);
 
-        const auto IsSelected = (Handle == SelAction);
-
-        const auto BrushName  = IsSelected
-            ? FName(TEXT("CkGoap.Crumb.Selected"))
-            : FName(TEXT("CkGoap.Crumb.Default"));
-
-        const auto NameColor  = IsSelected
-            ? FCkGoapDebuggerStyle::Color_Status_Selected
-            : FCkGoapDebuggerStyle::Color_Text_Primary;
-
-        const auto SegHandle = Handle;
-
-        // Segment button
-        _SegmentsBox->AddSlot()
+        // Per-row label — only on the first row, to mimic the mockup's
+        // "ACTIVE CHAIN ·" lead-in. Subsequent rows get a thin spacer.
+        Row->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
             [
-                SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, FCkGoapDebuggerStyle::Padding_XSmall))
-                    .ToolTipText(FText::FromString(FString::Printf(
-                        TEXT("Click to inspect %s"), *ClassName)))
-                    .OnClicked_Lambda([WeakVM, SegHandle]() -> FReply
-                    {
-                        if (const auto VM = WeakVM.Pin())
-                        { VM->SetSelectedAction(SegHandle); }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(SBorder)
-                            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(BrushName))
-                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
-                            [
-                                SNew(SVerticalBox)
-                                    + SVerticalBox::Slot().AutoHeight()
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(ClassName))
-                                                .Font(IsSelected
-                                                    ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
-                                                    : FCoreStyle::GetDefaultFontStyle("Regular", 10))
-                                                .ColorAndOpacity(FSlateColor(NameColor))
-                                        ]
-                                    + SVerticalBox::Slot().AutoHeight()
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(TagText))
-                                                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
-                                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
-                                        ]
-                            ]
-                    ]
+                SNew(STextBlock)
+                    .Text(FText::FromString(AsIdx == 0
+                        ? FString(TEXT("ACTIVE CHAIN ·"))
+                        : FString(TEXT("            ·"))))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
             ];
 
-        // Arrow separator (skip after last segment)
-        if (Idx + 1 < AsInfo->ActiveChainHandles.Num())
+        // Build a flat list of (Tier, DisplayName, Handle) crumbs by walking
+        // the runtime active chain. Get_ActiveChain (legacy ActiveChainHandles)
+        // already yields the Plan[0] walk starting from the root Action —
+        // which IS the top-level Planner's underlying entity. So index 0 is
+        // Tier 0; we don't synthesize an extra entry for the Planner itself.
+        struct FCrumb
         {
-            _SegmentsBox->AddSlot()
+            int32                   Tier         = 0;
+            FString                 Name;
+            FCk_Handle_Goap_Planner PlannerHandle;     // valid → clickable
+            bool                    IsSelected   = false;
+        };
+        auto Crumbs = TArray<FCrumb>{};
+
+        for (auto Step = 0; Step < As.ActiveChainHandles.Num(); ++Step)
+        {
+            const auto& StepHandle = As.ActiveChainHandles[Step];
+            if (NOT ck::IsValid(StepHandle)) { continue; }
+
+            const auto* StepInfo = FindActionInCatalog_Breadcrumb(&As, StepHandle);
+
+            auto C = FCrumb{};
+            C.Tier = Step;
+
+            // Tier 0 — the top-level Planner. Prefer the ActionSet DebugName
+            // (which is the Planner's display name) over the raw class name
+            // from the Catalog (the root Action's class is an implementation
+            // detail at this level).
+            if (Step == 0)
+            {
+                C.Name = As.DebugName.IsEmpty()
+                    ? (StepInfo != nullptr ? StepInfo->ClassName : As.ActionSetTag.ToString())
+                    : As.DebugName;
+                C.PlannerHandle = As.Handle;
+                C.IsSelected    = (As.Handle == SelPlanner);
+            }
+            else
+            {
+                C.Name = (StepInfo != nullptr && NOT StepInfo->ClassName.IsEmpty())
+                    ? StepInfo->ClassName
+                    : FString(TEXT("(unknown)"));
+
+                // Dual-role steps are themselves Planners; build the typesafe
+                // Planner handle from the shared FCk_Handle.
+                if (StepInfo != nullptr && StepInfo->IsPlannerRole)
+                {
+                    const auto AsPlanner = ck::StaticCast<FCk_Handle_Goap_Planner>(static_cast<FCk_Handle>(StepHandle));
+                    C.PlannerHandle = AsPlanner;
+                    C.IsSelected    = (AsPlanner == SelPlanner);
+                }
+            }
+            Crumbs.Add(MoveTemp(C));
+        }
+
+        // Emit pills + separators.
+        for (auto CrumbIdx = 0; CrumbIdx < Crumbs.Num(); ++CrumbIdx)
+        {
+            const auto& Crumb = Crumbs[CrumbIdx];
+
+            const auto CanSelect   = ck::IsValid(Crumb.PlannerHandle);
+            const auto NameColor   = Crumb.IsSelected
+                ? FCkGoapDebuggerStyle::Color_Status_Selected
+                : (CanSelect ? FCkGoapDebuggerStyle::Color_Text_Primary
+                             : FCkGoapDebuggerStyle::Color_Text_Secondary);
+            const auto BorderBrush = Crumb.IsSelected
+                ? FName(TEXT("CkGoap.Crumb.Selected"))
+                : FName(TEXT("CkGoap.Crumb.Default"));
+
+            const auto SegHandle = Crumb.PlannerHandle;
+
+            auto Pill = SNew(SButton)
+                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, FCkGoapDebuggerStyle::Padding_XSmall))
+                .IsEnabled(CanSelect)
+                .ToolTipText(FText::FromString(CanSelect
+                    ? FString::Printf(TEXT("Click to inspect %s"), *Crumb.Name)
+                    : FString::Printf(TEXT("%s — atomic step"), *Crumb.Name)))
+                .OnClicked_Lambda([WeakVM, SegHandle]() -> FReply
+                {
+                    if (const auto VM = WeakVM.Pin())
+                    {
+                        if (ck::IsValid(SegHandle))
+                        { VM->SetSelectedActionSet(SegHandle); }
+                    }
+                    return FReply::Handled();
+                })
+                [
+                    SNew(SBorder)
+                        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(BorderBrush))
+                        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_XSmall))
+                        [
+                            SNew(SHorizontalBox)
+
+                                // Tier badge (T0 / T1 / ...)
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
+                                    [
+                                        SNew(SBorder)
+                                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                            .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+                                            .Padding(FMargin(3.0f, 1.0f))
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(FText::FromString(TierLabel_Breadcrumb(Crumb.Tier)))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
+                                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                            ]
+                                    ]
+
+                                // Display name
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text(FText::FromString(Crumb.Name))
+                                            .Font(Crumb.IsSelected
+                                                ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
+                                                : FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                                            .ColorAndOpacity(FSlateColor(NameColor))
+                                    ]
+                        ]
+                ];
+
+            Row->AddSlot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
-                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
                 [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("▸")))   // ▸
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
+                    Pill
                 ];
+
+            // Arrow separator between pills inside a row.
+            if (CrumbIdx + 1 < Crumbs.Num())
+            {
+                Row->AddSlot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("▸")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
+                    ];
+            }
         }
+
+        _RowsBox->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_XSmall))
+            [
+                Row
+            ];
     }
-}
-
-// ====================================================================================================================
-// COMMANDS
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_Breadcrumb::
-    OnResetChainClicked()
-    -> FReply
-{
-    // D3 stub. Wiring this to utils_goap_planner::Request_ResetActiveChain
-    // requires an editor-safe path through the request layer; deferred.
-    UE_LOG(LogTemp, Warning,
-        TEXT("[CkGoapDebugger] Reset chain clicked — wiring deferred (see D3)."));
-    return FReply::Handled();
 }
 
 // ====================================================================================================================

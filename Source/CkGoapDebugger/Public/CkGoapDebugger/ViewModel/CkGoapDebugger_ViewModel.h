@@ -82,6 +82,15 @@ public:
     auto GetSelectedActionSetInfo() const -> const FCkGoapDebugger_ActionSetInfo*;
     auto GetSelectedActionInfo()    const -> const FCkGoapDebugger_ActionInfo*;
 
+    // U11.7-C: per-Planner snapshot accessor. The Sidebar drives selection via
+    // SetSelectedActionSet(PlannerHandle) for both top-level Planners and
+    // every nested sub-Planner. This walker descends the TopLevelPlanners
+    // forest recursively, so an arbitrary sub-Planner selection resolves
+    // without going through the legacy ActionSets[] shim (which only carries
+    // top-level entries).
+    auto GetSelectedPlannerInfo() const -> const FCkGoapDebugger_PlannerInfo*;
+    auto GetPlannerInfoByHandle(FCk_Handle_Goap_Planner InHandle) const -> const FCkGoapDebugger_PlannerInfo*;
+
     auto GetAllEntitySnapshots() const -> const TArray<FCkGoapDebugger_EntitySnapshot>&;
 
     // -----------------------------------------------------------------------------------------------------------------

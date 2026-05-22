@@ -6,6 +6,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
@@ -18,18 +20,43 @@
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
+// Internal helpers — file-prefixed (`_PlanStrip`) so Adaptive-Unity can't
+// merge them with same-named helpers in sibling .cpp files.
+// ====================================================================================================================
 
-namespace ck_goap_debugger_planstrip_internal
+namespace
 {
-    // Look up a plan entry (by class name) in the ActionSet's catalog. Returns
-    // nullptr when no match found.
-    auto FindCatalogEntryByName(
+    // Locate an ActionInfo in the selected top-level Planner's legacy Catalog
+    // by handle. Returns nullptr when absent. The legacy Catalog still carries
+    // the per-Action class name + role flags we need to label and click into
+    // plan-step cards while the dispatch hasn't migrated DataCollector yet.
+    auto FindCatalogEntry_PlanStrip(
         const FCkGoapDebugger_ActionSetInfo* InAs,
-        const FString& InClassName) -> const FCkGoapDebugger_ActionInfo*
+        const FCk_Handle_Goap_Action& InHandle) -> const FCkGoapDebugger_ActionInfo*
     {
-        if (InAs == nullptr || InClassName.IsEmpty()) { return nullptr; }
+        if (InAs == nullptr || NOT ck::IsValid(InHandle)) { return nullptr; }
         return InAs->Catalog.FindByPredicate(
-            [&](const FCkGoapDebugger_ActionInfo& In) { return In.ClassName == InClassName; });
+            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InHandle; });
+    }
+
+    // Find the top-level ActionSetInfo whose Catalog contains the given
+    // Planner-or-Action handle. Used because the selected Planner may be a
+    // sub-Planner whose Catalog isn't surfaced directly — falls back to the
+    // top-level Planner's Catalog.
+    auto FindOwningActionSet_PlanStrip(
+        const FCkGoapDebugger_EntitySnapshot* InSnap,
+        const FCk_Handle_Goap_Planner& InHandle) -> const FCkGoapDebugger_ActionSetInfo*
+    {
+        if (InSnap == nullptr || NOT ck::IsValid(InHandle)) { return nullptr; }
+        for (const auto& As : InSnap->ActionSets)
+        {
+            if (As.Handle == InHandle) { return &As; }
+            const auto AsAction = ck::StaticCast<FCk_Handle_Goap_Action>(static_cast<FCk_Handle>(InHandle));
+            if (As.Catalog.ContainsByPredicate(
+                [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == AsAction; }))
+            { return &As; }
+        }
+        return nullptr;
     }
 }
 
@@ -71,18 +98,21 @@ auto
 {
     if (NOT _ViewModel.IsValid()) { return; }
 
-    const auto* Action = _ViewModel->GetSelectedActionInfo();
-    const auto  SelAction = _ViewModel->GetSelectedAction();
+    const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
 
+    // Structural hash — Plan content + selected Planner handle. Plan[0] gets
+    // visually distinct treatment, so reorderings need a rebuild.
     auto NewHash = uint32{0};
-    if (Action != nullptr)
+    if (Planner != nullptr)
     {
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(Action->Handle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(Action->PlanClassNames.Num()));
-        for (const auto& Name : Action->PlanClassNames)
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(Planner->PlannerHandle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->PlanHandles.Num()));
+        for (const auto& H : Planner->PlanHandles)
+        { NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(H))); }
+        for (const auto& Name : Planner->PlanClassNames)
         { NewHash = HashCombine(NewHash, GetTypeHash(Name)); }
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(Planner->PlanStatus)));
     }
-    NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelAction)));
 
     if (_HasMaterialized && NewHash == _LastStripHash) { return; }
     _LastStripHash = NewHash;
@@ -100,173 +130,234 @@ auto
     RebuildCards()
     -> void
 {
-    using namespace ck_goap_debugger_planstrip_internal;
-
     if (NOT _CardsBox.IsValid() || NOT _ViewModel.IsValid()) { return; }
 
     _CardsBox->ClearChildren();
 
-    const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo();
-    const auto* Action = _ViewModel->GetSelectedActionInfo();
-    const auto  SelAction = _ViewModel->GetSelectedAction();
+    const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
+    const auto* Snap    = _ViewModel->GetCurrentEntitySnapshot();
 
-    if (Action == nullptr)
+    if (Planner == nullptr)
     {
         _CardsBox->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small))
+            .Padding(FCkGoapDebuggerStyle::Padding_Small)
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(no action selected)")))
+                    .Text(FText::FromString(TEXT("(no planner selected)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
             ];
         return;
     }
 
-    if (Action->PlanClassNames.Num() == 0)
+    if (Planner->PlanHandles.Num() == 0)
     {
+        const auto IsFailure = Planner->PlanStatus == ECk_GoapPlanStatus::PlanFailed
+                            || Planner->PlanStatus == ECk_GoapPlanStatus::CostThresholdReached;
+        const auto Msg   = IsFailure
+            ? FString(TEXT("✗ No path to goal from current WorldState."))
+            : FString(TEXT("✓ Goal already satisfied; plan empty."));
+        const auto Color = IsFailure
+            ? FCkGoapDebuggerStyle::Color_Status_Failed
+            : FCkGoapDebuggerStyle::Color_Status_PlanFound;
+
         _CardsBox->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small))
+            .Padding(FCkGoapDebuggerStyle::Padding_Small)
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(empty plan — goal satisfied)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                SNew(SBorder)
+                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+                    .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(Msg))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
+                            .ColorAndOpacity(FSlateColor(Color))
+                    ]
             ];
         return;
     }
 
-    const auto WeakVM = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
+    const auto* OwningAs = FindOwningActionSet_PlanStrip(Snap, Planner->PlannerHandle);
+    const auto WeakVM   = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
 
-    // Cache the (planEntryName -> catalog match) lookup once per render.
-    auto Matched = TArray<const FCkGoapDebugger_ActionInfo*>{};
-    Matched.Reserve(Action->PlanClassNames.Num());
-    for (const auto& Name : Action->PlanClassNames)
-    { Matched.Add(FindCatalogEntryByName(AsInfo, Name)); }
-
-    for (auto Idx = 0; Idx < Action->PlanClassNames.Num(); ++Idx)
+    const auto StepCount = Planner->PlanHandles.Num();
+    for (auto Idx = 0; Idx < StepCount; ++Idx)
     {
-        const auto& ClassName = Action->PlanClassNames[Idx];
-        const auto* Match = Matched[Idx];
+        const auto& StepHandle = Planner->PlanHandles[Idx];
+        const auto  Name       = Planner->PlanClassNames.IsValidIndex(Idx)
+            ? Planner->PlanClassNames[Idx]
+            : FString(TEXT("(unknown)"));
 
-        const auto IsComposite = (Match != nullptr && Match->ChildActionHandles.Num() > 0);
-        const auto MatchHandle = (Match != nullptr) ? Match->Handle : FCk_Handle_Goap_Action{};
-        const auto IsSelected  = ck::IsValid(MatchHandle) && (MatchHandle == SelAction);
-        const auto Cost        = (Match != nullptr) ? Match->Cost : 0.0f;
+        const auto* StepInfo = FindCatalogEntry_PlanStrip(OwningAs, StepHandle);
 
-        const auto CardColor = IsComposite
+        const auto IsActive       = (Idx == 0);
+        const auto IsPlannerStep  = (StepInfo != nullptr && StepInfo->IsPlannerRole);
+        const auto IsDualRole     = (StepInfo != nullptr && StepInfo->IsActionRole && StepInfo->IsPlannerRole);
+        const auto Cost           = (StepInfo != nullptr) ? StepInfo->Cost : 0.0f;
+
+        // Visual: composite (purple) for Planner-role steps, atomic (blue)
+        // for action-only. Plan[0] gets a green "active" overlay border.
+        const auto CardAccent = IsPlannerStep
             ? FCkGoapDebuggerStyle::Color_Status_Composite
             : FCkGoapDebuggerStyle::Color_Status_PlanningBdr;
-        const auto BorderColor = IsSelected
-            ? FCkGoapDebuggerStyle::Color_Status_Selected
-            : CardColor;
+        const auto BorderColor = IsActive
+            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+            : CardAccent;
 
-        auto LeafChildName = FString{};
-        if (IsComposite && Match != nullptr && Match->ChildActionHandles.Num() > 0 && AsInfo != nullptr)
+        // Click handler: drill into the Planner if the step is one.
+        const auto AsPlanner = IsPlannerStep
+            ? ck::StaticCast<FCk_Handle_Goap_Planner>(static_cast<FCk_Handle>(StepHandle))
+            : FCk_Handle_Goap_Planner{};
+
+        // ---- Card content ------------------------------------------------------
+        // Header row: step number + role badges.
+        auto BadgeBox = SNew(SHorizontalBox);
+        if (IsPlannerStep)
         {
-            const auto FirstChild = Match->ChildActionHandles[0];
-            if (const auto* ChildInfo = AsInfo->Catalog.FindByPredicate(
-                    [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == FirstChild; }))
-            {
-                LeafChildName = FString(TEXT("▸ ")) + ChildInfo->ClassName;
-            }
+            BadgeBox->AddSlot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f))
+                [
+                    SNew(SCkDebug_StatusPill)
+                        .Text(FText::FromString(TEXT("PLANNER")))
+                        .Tone(ECkDebug_Tone::Accent)
+                        .ShowDot(false)
+                ];
+        }
+        if (StepInfo != nullptr && StepInfo->IsActionRole && (NOT IsPlannerStep || IsDualRole))
+        {
+            BadgeBox->AddSlot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SCkDebug_StatusPill)
+                        .Text(FText::FromString(TEXT("ACTION")))
+                        .Tone(ECkDebug_Tone::Info)
+                        .ShowDot(false)
+                ];
         }
 
-        auto CardContent = SNew(SVerticalBox)
-            // Step number (small badge text)
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .HAlign(HAlign_Left)
+        // Optional ACTIVE pill — added to the top row only on Plan[0].
+        auto TopRow = SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f))
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(TEXT("%d"), Idx + 1)))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(CardColor))
-                ]
-            // Class name
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .HAlign(HAlign_Center)
-                .Padding(FMargin(0.0f, 2.0f))
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(ClassName))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                        .ColorAndOpacity(FSlateColor(CardAccent))
                 ]
-            // Cost
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .HAlign(HAlign_Center)
+            + SHorizontalBox::Slot()
+                .FillWidth(1.0f)
+                .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(FString::Printf(TEXT("$%d"), FMath::RoundToInt(Cost))))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                    BadgeBox
                 ];
 
-        if (IsComposite && NOT LeafChildName.IsEmpty())
+        if (IsActive)
         {
-            CardContent->AddSlot()
-                .AutoHeight()
-                .HAlign(HAlign_Center)
-                .Padding(FMargin(0.0f, 2.0f, 0.0f, 0.0f))
+            TopRow->AddSlot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(LeafChildName))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Composite))
+                    SNew(SCkDebug_StatusPill)
+                        .Text(FText::FromString(TEXT("ACTIVE")))
+                        .Tone(ECkDebug_Tone::Ok)
+                        .ShowDot(false)
                 ];
         }
 
-        _CardsBox->AddSlot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
+        auto CardBody = SNew(SVerticalBox)
+
+            // Top row — step number + role badges + (optional) ACTIVE pill.
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    TopRow
+                ]
+
+            // Name
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall))
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(Name))
+                        .Font(IsActive
+                            ? FCoreStyle::GetDefaultFontStyle("Bold", 11)
+                            : FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                ]
+
+            // Kind + cost meta
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(FString::Printf(
+                            TEXT("%s · cost $%d"),
+                            IsPlannerStep ? TEXT("composite · sub-planner") : TEXT("atomic"),
+                            FMath::RoundToInt(Cost))))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                ];
+
+        // Two-layer border to render a tinted edge + dark surface.
+        auto Card = SNew(SBox)
+            .WidthOverride(IsActive ? 160.0f : 140.0f)
             [
-                SNew(SBox)
-                    .WidthOverride(140.0f)
+                SNew(SButton)
+                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                    .ContentPadding(FMargin(0.0f))
+                    .IsEnabled(IsPlannerStep)
+                    .ToolTipText(FText::FromString(IsPlannerStep
+                        ? FString::Printf(TEXT("Click to inspect sub-Planner %s"), *Name)
+                        : FString::Printf(TEXT("%s — atomic step (no drilldown)"), *Name)))
+                    .OnClicked_Lambda([WeakVM, AsPlanner]() -> FReply
+                    {
+                        if (const auto VM = WeakVM.Pin())
+                        {
+                            if (ck::IsValid(AsPlanner))
+                            { VM->SetSelectedActionSet(AsPlanner); }
+                        }
+                        return FReply::Handled();
+                    })
                     [
-                        SNew(SButton)
-                            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                            .ContentPadding(FMargin(0.0f))
-                            .IsEnabled(Match != nullptr)
-                            .ToolTipText(FText::FromString(Match != nullptr
-                                ? FString::Printf(TEXT("Click to inspect %s"), *ClassName)
-                                : FString::Printf(TEXT("%s — not in current catalog"), *ClassName)))
-                            .OnClicked_Lambda([WeakVM, MatchHandle]() -> FReply
-                            {
-                                if (const auto VM = WeakVM.Pin())
-                                {
-                                    if (ck::IsValid(MatchHandle))
-                                    { VM->SetSelectedAction(MatchHandle); }
-                                }
-                                return FReply::Handled();
-                            })
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(BorderColor)
+                            .Padding(FMargin(IsActive ? FCkGoapDebuggerStyle::Border_Strong
+                                                      : FCkGoapDebuggerStyle::Border_Standard))
                             [
                                 SNew(SBorder)
                                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                    .BorderBackgroundColor(BorderColor)
-                                    .Padding(FMargin(FCkGoapDebuggerStyle::Border_Standard))
+                                    .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+                                    .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
+                                                     FCkGoapDebuggerStyle::Padding_Small))
                                     [
-                                        SNew(SBorder)
-                                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                            .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
-                                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
-                                                             FCkGoapDebuggerStyle::Padding_Small))
-                                            [
-                                                CardContent
-                                            ]
+                                        CardBody
                                     ]
                             ]
                     ]
             ];
 
-        // Arrow separator
-        if (Idx + 1 < Action->PlanClassNames.Num())
+        _CardsBox->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                Card
+            ];
+
+        // Arrow separator between cards.
+        if (Idx + 1 < StepCount)
         {
             _CardsBox->AddSlot()
                 .AutoWidth()

@@ -49,6 +49,15 @@ public:
     auto Set_IsSelected(bool InValue)       -> void { _IsSelected = InValue; }
     auto Set_IsFailureBlocked(bool InValue) -> void { _IsFailureBlocked = InValue; }
 
+    // Tree-edge pin accessors (U11.7-D). Each Action node has a hidden TreeIn
+    // and TreeOut pin in addition to its precondition/effect pins. Parent →
+    // child tree edges live on these pins so the connection policy can match
+    // them by pin name and apply dashed wire styling.
+    static auto GetTreeInPinName()  -> FName { return TEXT("__GoapTreeIn__"); }
+    static auto GetTreeOutPinName() -> FName { return TEXT("__GoapTreeOut__"); }
+    auto Get_TreeInPin()  const -> UEdGraphPin*;
+    auto Get_TreeOutPin() const -> UEdGraphPin*;
+
 private:
     // Snapshot is NOT a UPROPERTY — it contains plain (non-USTRUCT) types.
     // The graph rebuild path overwrites these on every refresh.

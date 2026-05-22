@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
@@ -217,6 +219,15 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     using namespace ck_goap_debugger_gateway_internal;
+
+    // Honour the per-window refresh gate. The gateway lives inside the
+    // EcsDebugger entity inspector, so it consults that window's gate id —
+    // matching SCkDebuggerWindow_Main::WindowId. Without this, CollectSnapshots
+    // (which walks every entity in the world) runs every editor tick even
+    // when the user has set "OnlyWhenVisible" or a Hz cap on the EcsDebugger.
+    static const auto EcsDebuggerWindowId = FName(TEXT("EcsDebugger"));
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(EcsDebuggerWindowId))
+    { return; }
 
     if (ck::Is_NOT_Valid(_Entity)) { return; }
 

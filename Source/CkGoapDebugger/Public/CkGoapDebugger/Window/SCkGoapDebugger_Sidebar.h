@@ -152,6 +152,13 @@ private:
 
     // Track the entity whose tree is currently materialized.
     FCk_Handle _MaterializedEntity;
+
+    // Track the entity whose History list is currently materialized. On entity
+    // change we hard-reset the history items + key map + hash so stale row
+    // TSharedPtrs from the previous entity's events don't survive into the new
+    // entity's SListView (which would trip ValidateWidgetGeneration's checkf
+    // when the WidgetMap references items no longer in the source array).
+    FCk_Handle _LastHistoryEntity;
 };
 
 // ====================================================================================================================

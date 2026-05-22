@@ -109,7 +109,9 @@ struct FCkGoapDebugger_ActionInfo
     float                             Cost = 1.0f;
 
     // Goal / WS ---------------------------------------------------------------
-    // _Goal (effects, or _InitialGoal_RootOnly for the root).
+    // Resolved _Goal — per-Planner, authored at construction (PlannerParams._Goal)
+    // or via Request_SetGoal. Independent of any Action-role effects this entity
+    // may carry (U11.1 removed the goal=effects coupling).
     TArray<FCkGoapDebugger_Condition> Goal;
     // Effects referencing unregistered WS keys — populated at Setup.
     TArray<FCkGoapDebugger_Condition> InvalidGoal;

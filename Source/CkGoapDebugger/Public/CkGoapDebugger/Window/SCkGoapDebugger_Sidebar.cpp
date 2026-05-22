@@ -447,6 +447,7 @@ auto
     _RootNodes.Empty();
     _RowItemsByHandle.Empty();
     _HistoryItems.Empty();
+    _HistoryItemsByKey.Empty();
     _MaterializedEntity = FCk_Handle{};
     _LastTreeStructureHash = 0;
     _LastHistoryHash       = 0;
@@ -858,10 +859,41 @@ auto
 
     static constexpr auto MaxRowsToShow = 200;
 
-    _HistoryItems.Empty();
+    // Stable-identity rebuild: reuse existing TSharedPtr entries by key so
+    // SListView selection / hover state survives every tick.
+    // Key = (FrameNumber, EventKind) — unique per recorded event because events
+    // fire at different frames; Kind disambiguates same-frame edge cases.
     const auto Start = FMath::Max(0, Hist.Num() - MaxRowsToShow);
+
+    // Build the next map from the live history window.
+    auto NextByKey = TMap<FHistoryKey, FHistoryItemPtr>{};
+    NextByKey.Reserve(Hist.Num() - Start);
+
+    _HistoryItems.Empty(Hist.Num() - Start);
     for (auto Idx = Hist.Num() - 1; Idx >= Start; --Idx)
-    { _HistoryItems.Add(MakeShared<FCkGoapDebugger_HistoryEvent>(Hist[Idx])); }
+    {
+        const auto& Ev  = Hist[Idx];
+        const auto  Key = FHistoryKey{ Ev.FrameNumber, Ev.Kind };
+
+        FHistoryItemPtr Item;
+        if (auto* Found = _HistoryItemsByKey.Find(Key))
+        {
+            Item = *Found;
+            // Update in-place so any changed metadata (Title, Meta, Snapshot)
+            // is reflected without reallocating the TSharedPtr.
+            *Item = Ev;
+        }
+        else
+        {
+            Item = MakeShared<FCkGoapDebugger_HistoryEvent>(Ev);
+        }
+
+        NextByKey.Add(Key, Item);
+        _HistoryItems.Add(Item);
+    }
+
+    // Evict keys no longer in the visible window.
+    _HistoryItemsByKey = MoveTemp(NextByKey);
 
     if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
 }

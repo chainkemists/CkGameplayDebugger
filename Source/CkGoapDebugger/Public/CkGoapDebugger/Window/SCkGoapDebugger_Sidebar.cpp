@@ -770,7 +770,7 @@ auto
     if (NOT _ViewModel.IsValid() || NOT InItem.IsValid()) { return; }
 
     // The new selection state is the Planner handle. We also synthesize the
-    // legacy ActionSet selection so the existing PrimaryPane / Breadcrumb /
+    // legacy Planner selection so the existing PrimaryPane / Breadcrumb /
     // Graph (which still read SelectedActionSet) keep working until they get
     // migrated in U11.7-C/D.
     _ViewModel->SetSelectedActionSet(InItem->PlannerHandle);

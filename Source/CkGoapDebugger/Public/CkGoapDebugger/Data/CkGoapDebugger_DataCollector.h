@@ -14,7 +14,7 @@ class UWorld;
 // Snapshots every entity with a Goap root into a TArray<FCkGoapDebugger_EntitySnapshot>
 // on demand and maintains a per-entity ring buffer of FCkGoapDebugger_HistoryEvent
 // derived from frame-to-frame diffs (chain mutations, plan-status transitions,
-// ActionSet enable toggle flips).
+// Planner enable toggle flips).
 //
 // Lifetime:
 //   - One process-global instance (singleton, all members are file-static).

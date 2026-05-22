@@ -15,7 +15,7 @@ class SVerticalBox;
 // ====================================================================================================================
 // SCkGoapDebugger_WorldStateRail — fixed-width right rail mirroring the
 // mockup's `.ws-rail` panel. Shows the resolved WorldState for the currently
-// selected Action (or the selected ActionSet's WS as a fallback when no
+// selected Action (or the selected Planner's WS as a fallback when no
 // specific Action is selected).
 //
 // Layout (top-to-bottom):
@@ -52,7 +52,7 @@ private:
     auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry) -> TSharedRef<SWidget>;
 
     // Resolve which WS list to show + the label/source. Returns false when no
-    // entity / ActionSet is selected.
+    // entity / Planner is selected.
     auto Resolve_DisplayedWorldState(
         const TArray<FCkGoapDebugger_WorldStateEntry>*& OutEntries,
         FString& OutLabel) const -> bool;
@@ -68,7 +68,7 @@ private:
     // Content-hash gate. The rail rebuilds three subtrees per refresh; on a
     // typical Live tick the WS entries don't change, so we early-out unless
     // the snapshot actually differs from the last render. Captures (entity,
-    // ActionSet, key set + values + RecentlyChanged flag, label).
+    // Planner, key set + values + RecentlyChanged flag, label).
     uint32 _LastContentHash = 0;
     bool   _HasMaterialized = false;
 };

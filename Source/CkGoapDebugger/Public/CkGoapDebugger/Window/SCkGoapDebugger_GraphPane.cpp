@@ -142,9 +142,9 @@ auto
     const auto* ActionSet = _ViewModel.IsValid() ? _ViewModel->GetSelectedActionSetInfo() : nullptr;
     if (ActionSet == nullptr)
     {
-        // No ActionSet selected — drop everything once, then short-circuit.
-        // Clearing the cached topology hash forces a rebuild when an
-        // ActionSet eventually arrives.
+        // No Planner selected — drop everything once, then short-circuit.
+        // Clearing the cached topology hash forces a rebuild when a
+        // Planner eventually arrives.
         if (_LastTopologyHash != 0)
         {
             _Graph->ForceClear();
@@ -155,7 +155,7 @@ auto
 
         if (_HeaderText.IsValid())
         {
-            _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no ActionSet selected)")));
+            _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no Planner selected)")));
         }
         return;
     }

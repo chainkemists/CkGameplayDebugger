@@ -32,7 +32,7 @@ class SCkGoapDebugger_ScrubTrack;
 //   STreeView selection & expansion state survives ticks. Only when the set
 //   of planner handles changes do we call RequestTreeRefresh.
 //
-// Selection drives BOTH the new selection state and the legacy ActionSet
+// Selection drives BOTH the new selection state and the legacy Planner
 // selection (synthesized from the Planner) so the existing PrimaryPane /
 // Breadcrumb / Graph keep working until U11.7-C/D retire them.
 // ====================================================================================================================

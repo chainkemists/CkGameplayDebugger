@@ -4,7 +4,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkGoap/CkGoap_Utils.h"
+#include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 
 #include "Widgets/Text/STextBlock.h"
 
@@ -37,7 +37,7 @@ auto
     // The Create-as-child shape (planner on a child entity) is not surfaced
     // here yet — the gateway always renders for the entity selected in the
     // ECS inspector, so the user should select the planner-bearing entity.
-    return UCk_Utils_Goap_UE::Has(Entity);
+    return UCk_Utils_Goap_Planner_UE::Has(Entity);
 }
 
 auto

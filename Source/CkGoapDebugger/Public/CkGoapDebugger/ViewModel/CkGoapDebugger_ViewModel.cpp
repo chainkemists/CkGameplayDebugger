@@ -16,7 +16,7 @@ namespace ck_goap_debugger_viewmodel_internal
     HashState(
         const TArray<FCkGoapDebugger_EntitySnapshot>& InSnapshots,
         const FCk_Handle& InSelectedEntity,
-        const FCk_Handle_Goap_ActionSet& InSelectedActionSet,
+        const FCk_Handle_Goap_Planner& InSelectedActionSet,
         const FCk_Handle_Goap_Action& InSelectedAction,
         FCkGoapDebugger_ViewModel::EMode InMode,
         int32 InScrubIndex) -> uint32
@@ -94,14 +94,14 @@ auto
         if (_AllSnapshots.Num() > 0)
         {
             _SelectedEntity    = _AllSnapshots[0].EntityHandle;
-            _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+            _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
             SelectedSnapshot   = &_AllSnapshots[0];
         }
         else
         {
             _SelectedEntity    = FCk_Handle{};
-            _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+            _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
         }
     }
@@ -113,13 +113,13 @@ auto
             [this](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == _SelectedActionSet; });
         if (Found == nullptr)
         {
-            _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+            _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
         }
     }
     else if (SelectedSnapshot == nullptr)
     {
-        _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+        _SelectedActionSet = FCk_Handle_Goap_Planner{};
         _SelectedAction    = FCk_Handle_Goap_Action{};
     }
 
@@ -170,7 +170,7 @@ auto
 {
     _AllSnapshots.Reset();
     _SelectedEntity    = FCk_Handle{};
-    _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+    _SelectedActionSet = FCk_Handle_Goap_Planner{};
     _SelectedAction    = FCk_Handle_Goap_Action{};
     _Mode              = EMode::Live;
     _ScrubEventIndex   = INDEX_NONE;
@@ -188,7 +188,7 @@ auto FCkGoapDebugger_ViewModel::SetSelectedEntity(FCk_Handle InHandle) -> void
 {
     if (_SelectedEntity == InHandle) { return; }
     _SelectedEntity    = InHandle;
-    _SelectedActionSet = FCk_Handle_Goap_ActionSet{};
+    _SelectedActionSet = FCk_Handle_Goap_Planner{};
     _SelectedAction    = FCk_Handle_Goap_Action{};
     BroadcastIfChanged();
 }
@@ -198,7 +198,7 @@ auto FCkGoapDebugger_ViewModel::GetSelectedEntity() const -> FCk_Handle
     return _SelectedEntity;
 }
 
-auto FCkGoapDebugger_ViewModel::SetSelectedActionSet(FCk_Handle_Goap_ActionSet InHandle) -> void
+auto FCkGoapDebugger_ViewModel::SetSelectedActionSet(FCk_Handle_Goap_Planner InHandle) -> void
 {
     if (_SelectedActionSet == InHandle) { return; }
     _SelectedActionSet = InHandle;
@@ -206,7 +206,7 @@ auto FCkGoapDebugger_ViewModel::SetSelectedActionSet(FCk_Handle_Goap_ActionSet I
     BroadcastIfChanged();
 }
 
-auto FCkGoapDebugger_ViewModel::GetSelectedActionSet() const -> FCk_Handle_Goap_ActionSet
+auto FCkGoapDebugger_ViewModel::GetSelectedActionSet() const -> FCk_Handle_Goap_Planner
 {
     return _SelectedActionSet;
 }

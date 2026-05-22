@@ -448,12 +448,13 @@ auto
     _RowItemsByHandle.Empty();
     _HistoryItems.Empty();
     _HistoryItemsByKey.Empty();
-    _MaterializedEntity = FCk_Handle{};
-    _LastTreeStructureHash = 0;
-    _LastHistoryHash       = 0;
+    _MaterializedEntity     = FCk_Handle{};
+    _LastHistoryEntity      = FCk_Handle{};
+    _LastTreeStructureHash  = 0;
+    _LastHistoryHash        = 0;
 
     if (_TreeView.IsValid())        { _TreeView->RequestTreeRefresh(); }
-    if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
+    if (_HistoryListView.IsValid()) { _HistoryListView->RebuildList(); }
 }
 
 auto
@@ -833,24 +834,47 @@ auto
 {
     if (NOT _ViewModel.IsValid())
     {
-        if (_HistoryItems.Num() == 0) { return; }
+        if (_HistoryItems.Num() == 0 && NOT ck::IsValid(_LastHistoryEntity)) { return; }
         _HistoryItems.Empty();
-        if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
+        _HistoryItemsByKey.Empty();
+        _LastHistoryEntity = FCk_Handle{};
+        _LastHistoryHash   = 0;
+        if (_HistoryListView.IsValid()) { _HistoryListView->RebuildList(); }
         return;
     }
 
     const auto Entity = _ViewModel->GetSelectedEntity();
+
+    // Entity-switch hard reset. The stable-TSharedPtr-by-key scheme below is
+    // safe within one entity's session, but row items keyed by FrameNumber+Kind
+    // from the previous entity would otherwise be evicted only *after* SListView
+    // had a chance to see a smaller source array containing keys it doesn't
+    // know — tripping FWidgetGenerator::ValidateWidgetGeneration. RebuildList
+    // (not RequestListRefresh) is what evicts the WidgetMap entries.
+    if (Entity != _LastHistoryEntity)
+    {
+        _HistoryItems.Empty();
+        _HistoryItemsByKey.Empty();
+        _LastHistoryHash   = 0;
+        _LastHistoryEntity = Entity;
+        if (_HistoryListView.IsValid()) { _HistoryListView->RebuildList(); }
+    }
+
     if (NOT ck::IsValid(Entity))
     {
         if (_HistoryItems.Num() == 0) { return; }
         _HistoryItems.Empty();
-        if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
+        _HistoryItemsByKey.Empty();
+        if (_HistoryListView.IsValid()) { _HistoryListView->RebuildList(); }
         return;
     }
 
     const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
 
     auto NewHash = uint32{0};
+    // Fold entity handle into the hash so future same-count + same-last-frame
+    // edge cases on a different entity don't masquerade as "no change".
+    NewHash = HashCombine(NewHash, ::GetTypeHash(Entity));
     NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Num()));
     if (Hist.Num() > 0) { NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Last().FrameNumber)); }
 

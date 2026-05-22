@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
@@ -20,55 +22,48 @@
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
-// Internal helpers
+// Internal helpers — file-prefixed (`_PrimaryPane`) to avoid Adaptive-Unity
+// anonymous-namespace collisions with the Sidebar / PlanStrip / Breadcrumb
+// helpers that share these names by convention (MakeBadge, ResolveStatusBadge,
+// etc.).
 // ====================================================================================================================
 
-namespace ck_goap_debugger_primary_internal
+namespace
 {
-    auto RoleLabel(ECkGoapDebugger_ActionRole InRole) -> FString
-    {
-        switch (InRole)
-        {
-        case ECkGoapDebugger_ActionRole::Root:    return TEXT("root action");
-        case ECkGoapDebugger_ActionRole::Mid:     return TEXT("mid action");
-        case ECkGoapDebugger_ActionRole::Leaf:    return TEXT("leaf action");
-        case ECkGoapDebugger_ActionRole::Catalog: return TEXT("catalog action");
-        default:                                  return TEXT("");
-        }
-    }
-
-    struct FStatusBadge
-    {
-        FString      Label;
-        FLinearColor Color;
-        FName        BrushName;
-    };
-
-    auto ResolveStatusBadge(ECk_GoapPlanStatus InStatus) -> FStatusBadge
+    auto ToneForPlanStatus_PrimaryPane(ECk_GoapPlanStatus InStatus) -> ECkDebug_Tone
     {
         switch (InStatus)
         {
-        case ECk_GoapPlanStatus::PlanFound:
-            return {TEXT("PlanFound"), FCkGoapDebuggerStyle::Color_Status_PlanFound, FName(TEXT("CkGoap.Badge.Found"))};
-        case ECk_GoapPlanStatus::Planning:
-            return {TEXT("Planning"),  FCkGoapDebuggerStyle::Color_Status_Planning,  FName(TEXT("CkGoap.Badge.Planning"))};
-        case ECk_GoapPlanStatus::PlanFailed:
-            return {TEXT("PlanFailed"), FCkGoapDebuggerStyle::Color_Status_Failed,   FName(TEXT("CkGoap.Badge.Failed"))};
-        case ECk_GoapPlanStatus::CostThresholdReached:
-            return {TEXT("CostThresh"), FCkGoapDebuggerStyle::Color_Status_Selected, FName(TEXT("CkGoap.Badge.Failed"))};
+        case ECk_GoapPlanStatus::PlanFound:            return ECkDebug_Tone::Ok;
+        case ECk_GoapPlanStatus::Planning:             return ECkDebug_Tone::Info;
+        case ECk_GoapPlanStatus::PlanFailed:           return ECkDebug_Tone::Err;
+        case ECk_GoapPlanStatus::CostThresholdReached: return ECkDebug_Tone::Warn;
         case ECk_GoapPlanStatus::Idle:
-        default:
-            return {TEXT("Idle"), FCkGoapDebuggerStyle::Color_Text_Muted, FName(TEXT("CkGoap.Badge.Idle"))};
+        default:                                       return ECkDebug_Tone::Neutral;
         }
     }
 
-    // Find the resolved WS value for a given tag in the ActionSet's snapshot.
-    // Returns TOptional empty when the tag isn't in the WS.
-    auto LookupWsValue(
-        const FCkGoapDebugger_ActionSetInfo& InAs,
+    auto LabelForPlanStatus_PrimaryPane(ECk_GoapPlanStatus InStatus) -> FString
+    {
+        switch (InStatus)
+        {
+        case ECk_GoapPlanStatus::PlanFound:            return TEXT("PlanFound");
+        case ECk_GoapPlanStatus::Planning:             return TEXT("Planning");
+        case ECk_GoapPlanStatus::PlanFailed:           return TEXT("PlanFailed");
+        case ECk_GoapPlanStatus::CostThresholdReached: return TEXT("CostThresh");
+        case ECk_GoapPlanStatus::Idle:
+        default:                                       return TEXT("Idle");
+        }
+    }
+
+    // Resolve a goal condition's satisfied state against the Planner's
+    // resolved-WS snapshot (carried on the PlannerInfo when DataCollector
+    // populates it; falls back to empty TOptional otherwise).
+    auto LookupWsValue_PrimaryPane(
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
         const FGameplayTag& InKey) -> TOptional<bool>
     {
-        for (const auto& Entry : InAs.WorldState)
+        for (const auto& Entry : InPlanner.WorldState)
         {
             if (Entry.Key == InKey)
             { return TOptional<bool>(Entry.Value); }
@@ -76,11 +71,10 @@ namespace ck_goap_debugger_primary_internal
         return TOptional<bool>{};
     }
 
-    // Section header — uppercase muted label with letter-spacing-ish margin.
-    auto MakeSectionHeader(const FString& InText) -> TSharedRef<SWidget>
+    auto MakeSectionHeader_PrimaryPane(const FString& InText) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
-            .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall))
+            .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(InText.ToUpper()))
@@ -89,23 +83,8 @@ namespace ck_goap_debugger_primary_internal
             ];
     }
 
-    // A small text badge with a brush background.
-    auto MakeBadge(const FString& InText, const FLinearColor& InColor, const FName& InBrushName) -> TSharedRef<SWidget>
-    {
-        return SNew(SBorder)
-            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(InBrushName))
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_XSmall))
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(InText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FSlateColor(InColor))
-            ];
-    }
-
-    // Condition row: ✓/✗/⚠ + tag-text + value.
-    auto MakeConditionRow(
+    // Goal / condition row: ✓ or ✗ glyph + "Key = Value".
+    auto MakeGoalRow_PrimaryPane(
         const FString& InGlyph,
         const FString& InText,
         const FLinearColor& InColor) -> TSharedRef<SWidget>
@@ -118,7 +97,7 @@ namespace ck_goap_debugger_primary_internal
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(InGlyph))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                         .ColorAndOpacity(FSlateColor(InColor))
                 ]
             + SHorizontalBox::Slot()
@@ -127,8 +106,35 @@ namespace ck_goap_debugger_primary_internal
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(InText))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
                         .ColorAndOpacity(FSlateColor(InColor))
+                ];
+    }
+
+    auto MakeRailBlock_PrimaryPane(
+        const FString& InLabel,
+        const FString& InValue,
+        const FLinearColor& InValueColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(InLabel.ToUpper()))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                ]
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(InValue.IsEmpty() ? FString(TEXT("(none)")) : InValue))
+                        .Font(InValue.IsEmpty()
+                            ? FCoreStyle::GetDefaultFontStyle("Italic", 10)
+                            : FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                        .ColorAndOpacity(FSlateColor(InValueColor))
                 ];
     }
 }
@@ -153,7 +159,7 @@ auto
             [
                 SNew(SVerticalBox)
 
-                    // ---- Header bar -------------------------------------------------
+                    // ---- Header bar (title + role badges + sub-head) -----------------
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
@@ -168,7 +174,7 @@ auto
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
                         ]
 
-                    // ---- Body: left scrollable column + right rail -----------------
+                    // ---- Body: left scrollable column + right rail -------------------
                     + SVerticalBox::Slot()
                         .FillHeight(1.0f)
                         [
@@ -220,80 +226,42 @@ auto
 {
     if (NOT _ViewModel.IsValid()) { return; }
 
-    using namespace ck_goap_debugger_primary_internal;
+    const auto* Planner = _ViewModel->GetSelectedPlannerInfo();
 
-    const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo();
-    const auto* SelAction = _ViewModel->GetSelectedActionInfo();
-
-    // Decide which Action to use for the header. Prefer the explicitly-selected
-    // Action; fall back to the ActionSet's root.
-    const auto* HeaderAction = SelAction;
-    if (HeaderAction == nullptr && AsInfo != nullptr)
-    {
-        HeaderAction = AsInfo->Catalog.FindByPredicate(
-            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == AsInfo->RootActionHandle; });
-    }
-
-    // -----------------------------------------------------------------------
-    // Content-hash gate. Captures every field the rebuild paths read so we
-    // can skip the destructive SetContent + ClearChildren cascade when the
-    // current snapshot would render the same tree as last time.
-    //
-    // Critically, the plan strip is a child widget that hash-debounces
-    // itself, so we forward the refresh to it even when our own gate fires
-    // — that way live plan changes still propagate without rebuilding our
-    // header / drilldown / right rail every tick.
-    // -----------------------------------------------------------------------
+    // Structural hash — every field the build paths read. Plan content is
+    // delegated to the embedded PlanStrip (which has its own hash gate), so
+    // PlanHandles/Names don't contribute here.
     auto NewHash = uint32{0};
-    if (AsInfo != nullptr)
+    if (Planner != nullptr)
     {
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(AsInfo->Handle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(AsInfo->RootActionHandle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->Catalog.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->ActiveChainHandles.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->DependencyCycles.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(AsInfo->WorldState.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(Planner->PlannerHandle)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(Planner->PlanStatus)));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->PlanCost));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->PlanAttemptCount));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->IsActionRole));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->GoalResolved.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->InvalidGoalAuthored.Num()));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->DependencyCyclesDisplay.Num()));
+        NewHash = HashCombine(NewHash, GetTypeHash(Planner->WorldStateSourceLabel));
 
-        // World-state values feed the goal / precondition tick-marks in the
-        // drilldown — fold them in so satisfied/unmet badges refresh on flips.
-        for (const auto& WS : AsInfo->WorldState)
+        // Fold WS values into the hash so goal sat/unsat flips re-render.
+        for (const auto& Ws : Planner->WorldState)
         {
-            auto Pair = GetTypeHash(WS.Key);
-            Pair = HashCombine(Pair, ::GetTypeHash(WS.Value ? 1 : 0));
-            NewHash ^= Pair;  // commutative — map iteration order doesn't matter
+            auto Pair = GetTypeHash(Ws.Key);
+            Pair = HashCombine(Pair, ::GetTypeHash(Ws.Value ? 1 : 0));
+            NewHash ^= Pair;
         }
     }
-    if (HeaderAction != nullptr)
-    {
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(HeaderAction->Handle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(HeaderAction->PlanStatus)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(HeaderAction->Role)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->PlanCost));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->PlanAttemptCount));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->Goal.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(HeaderAction->InvalidGoal.Num()));
-    }
-    if (SelAction != nullptr && SelAction != HeaderAction)
-    {
-        // Drilldown sub-tree differs when the user clicks a sibling node.
-        NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelAction->Handle)));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Preconditions.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Effects.Num()));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(SelAction->Cost));
-    }
 
-    // Always forward to the plan strip; it has its own hash gate and is
-    // visually independent from the rest of this pane.
+    // Always forward to the plan strip — it has its own gate.
     if (_PlanStrip.IsValid())
     { _PlanStrip->RefreshFromViewModel(); }
 
-    if (_HasMaterialized && NewHash == _LastContentHash)
-    { return; }
+    if (_HasMaterialized && NewHash == _LastContentHash) { return; }
     _LastContentHash = NewHash;
     _HasMaterialized = true;
 
-    // ---- Empty state ----------------------------------------------------------
-    if (AsInfo == nullptr || HeaderAction == nullptr)
+    if (Planner == nullptr)
     {
         if (_HeaderHost.IsValid())    { _HeaderHost->SetContent(BuildEmptyState()); }
         if (_LeftBody.IsValid())      { _LeftBody->ClearChildren(); }
@@ -303,20 +271,29 @@ auto
 
     // ---- Header ---------------------------------------------------------------
     if (_HeaderHost.IsValid())
-    { _HeaderHost->SetContent(BuildHeader(*HeaderAction)); }
+    { _HeaderHost->SetContent(BuildHeader(*Planner)); }
 
     // ---- Left body ------------------------------------------------------------
     if (_LeftBody.IsValid())
     {
         _LeftBody->ClearChildren();
 
-        // Plan strip section
+        // Status row (status pill + cost + attempts + replan)
+        _LeftBody->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
+            [
+                BuildStatusRow(*Planner)
+            ];
+
+        // PLAN section header
         _LeftBody->AddSlot()
             .AutoHeight()
             [
-                MakeSectionHeader(TEXT("Plan"))
+                MakeSectionHeader_PrimaryPane(TEXT("Plan (multi-step possible; Plan[0] is the active step)"))
             ];
 
+        // Embedded plan strip
         _LeftBody->AddSlot()
             .AutoHeight()
             .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
@@ -325,35 +302,18 @@ auto
                     .ViewModel(_ViewModel)
             ];
 
-        // Goal section
+        // GOAL section
         _LeftBody->AddSlot()
             .AutoHeight()
             [
-                BuildGoalSection(*AsInfo, *HeaderAction)
+                BuildGoalSection(*Planner)
             ];
-
-        // Drilldown — visible only if SelectedAction is set AND it differs from
-        // the header action (i.e. user clicked a different node in the plan strip).
-        if (SelAction != nullptr && (HeaderAction != SelAction))
-        {
-            _LeftBody->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-                [
-                    BuildDrilldown(*AsInfo, *SelAction)
-                ];
-        }
     }
 
     // ---- Right rail -----------------------------------------------------------
     if (_RightRailHost.IsValid())
     {
-        const auto IsFailure = HeaderAction->PlanStatus == ECk_GoapPlanStatus::PlanFailed
-                            || HeaderAction->PlanStatus == ECk_GoapPlanStatus::CostThresholdReached;
-
-        _RightRailHost->SetContent(IsFailure
-            ? BuildRightRail_Failure(*AsInfo, *HeaderAction)
-            : BuildRightRail_Normal(*AsInfo, *HeaderAction));
+        _RightRailHost->SetContent(BuildRightRail(*Planner));
     }
 }
 
@@ -373,7 +333,7 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Select an entity and an ActionSet to inspect a plan.")))
+                .Text(FText::FromString(TEXT("Select an entity and a Planner to inspect a plan.")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
         ];
@@ -386,107 +346,143 @@ auto
 auto
     SCkGoapDebugger_PrimaryPane::
     BuildHeader(
-        const FCkGoapDebugger_ActionInfo& InAction)
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
     -> TSharedRef<SWidget>
 {
-    using namespace ck_goap_debugger_primary_internal;
+    // Title — uses DisplayName; falls back to PlannerTag string.
+    const auto TitleText = InPlanner.DisplayName.IsEmpty()
+        ? (InPlanner.PlannerTag.IsValid() ? InPlanner.PlannerTag.ToString() : FString(TEXT("(unknown planner)")))
+        : InPlanner.DisplayName;
 
-    const auto NameColor = (InAction.Role == ECkGoapDebugger_ActionRole::Root)
-        ? FCkGoapDebuggerStyle::Color_Status_Selected
-        : FCkGoapDebuggerStyle::Color_Text_Primary;
+    // Sub-head — "Parent: ..." or "(top-level)".
+    const auto IsTopLevel = NOT ck::IsValid(InPlanner.ParentPlanner);
+    const auto SubText    = IsTopLevel
+        ? FString(TEXT("(top-level Planner)"))
+        : FString::Printf(TEXT("sub-Planner · parent: %s"),
+            *(InPlanner.ParentPlanner.ToString()));
 
-    const auto Badge = ResolveStatusBadge(InAction.PlanStatus);
+    // Role badge cluster.
+    auto BadgeBox = SNew(SHorizontalBox);
+
+    BadgeBox->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f))
+        [
+            SNew(SCkDebug_StatusPill)
+                .Text(FText::FromString(TEXT("PLANNER")))
+                .Tone(ECkDebug_Tone::Accent)
+                .ShowDot(false)
+        ];
+
+    if (InPlanner.IsActionRole)
+    {
+        BadgeBox->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_StatusPill)
+                    .Text(FText::FromString(TEXT("ACTION")))
+                    .Tone(ECkDebug_Tone::Info)
+                    .ShowDot(false)
+            ];
+    }
 
     return SNew(SBorder)
         .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large, FCkGoapDebuggerStyle::Padding_Medium))
         [
-            SNew(SHorizontalBox)
+            SNew(SVerticalBox)
 
-                // Action name (prominent)
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                // Title row (name + role badges + tag)
+                + SVerticalBox::Slot()
+                    .AutoHeight()
                     [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(InAction.ClassName.IsEmpty()
-                                ? TEXT("(unknown action)") : InAction.ClassName))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
-                            .ColorAndOpacity(FSlateColor(NameColor))
+                        SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                                [
+                                    SNew(STextBlock)
+                                        .Text(FText::FromString(TitleText))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
+                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                                ]
+                            + SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                                [
+                                    BadgeBox
+                                ]
+                            + SHorizontalBox::Slot()
+                                .FillWidth(1.0f)
+                                .VAlign(VAlign_Center)
+                                [
+                                    SNew(STextBlock)
+                                        .Text(FText::FromString(InPlanner.PlannerTag.IsValid()
+                                            ? InPlanner.PlannerTag.ToString() : FString{}))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                                ]
                     ]
 
-                // Role label
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                // Sub-head
+                + SVerticalBox::Slot()
+                    .AutoHeight()
+                    .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f))
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(FString(TEXT("· ")) + RoleLabel(InAction.Role)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                    ]
-
-                // Tag
-                + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(InAction.ActionTag.IsValid()
-                                ? InAction.ActionTag.ToString() : FString{}))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                    ]
-
-                // Status badge
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
-                    [
-                        MakeBadge(Badge.Label, Badge.Color, Badge.BrushName)
-                    ]
-
-                // Cost
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("Cost: $%d"),
-                                FMath::RoundToInt(InAction.PlanCost))))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
-                    ]
-
-                // Attempts
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("Attempts: %d"),
-                                InAction.PlanAttemptCount)))
+                            .Text(FText::FromString(SubText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
                     ]
-
-                // Last replan
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("Last replan: %.1fs ago"),
-                                InAction.SecondsSinceLastReplan)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                    ]
         ];
+}
+
+// ====================================================================================================================
+// BUILD — STATUS ROW
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_PrimaryPane::
+    BuildStatusRow(
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
+    -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+            [
+                SNew(SCkDebug_StatusPill)
+                    .Text(FText::FromString(LabelForPlanStatus_PrimaryPane(InPlanner.PlanStatus)))
+                    .Tone(ToneForPlanStatus_PrimaryPane(InPlanner.PlanStatus))
+                    .ShowDot(true)
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("Cost: $%d"),
+                        FMath::RoundToInt(InPlanner.PlanCost))))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+            ]
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("Attempts: %d"),
+                        InPlanner.PlanAttemptCount)))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+            ];
 }
 
 // ====================================================================================================================
@@ -496,51 +492,43 @@ auto
 auto
     SCkGoapDebugger_PrimaryPane::
     BuildGoalSection(
-        const FCkGoapDebugger_ActionSetInfo& InAs,
-        const FCkGoapDebugger_ActionInfo& InAction)
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
     -> TSharedRef<SWidget>
 {
-    using namespace ck_goap_debugger_primary_internal;
-
-    auto HeaderLabel = FString(TEXT("Goal"));
-    if (InAction.Role == ECkGoapDebugger_ActionRole::Root)
-    {
-        HeaderLabel = TEXT("Goal (initial — root action)");
-    }
-    else if (NOT InAction.ParentClassName.IsEmpty())
-    {
-        HeaderLabel = FString::Printf(TEXT("Goal (injected from %s)"), *InAction.ParentClassName);
-    }
-
     auto Box = SNew(SVerticalBox);
 
     Box->AddSlot()
         .AutoHeight()
         [
-            MakeSectionHeader(HeaderLabel)
+            MakeSectionHeader_PrimaryPane(TEXT("Goal (this tier — independent of any other tier)"))
         ];
 
-    if (InAction.Goal.Num() == 0 && InAction.InvalidGoal.Num() == 0)
+    const auto HasResolved = InPlanner.GoalResolved.Num() > 0;
+    const auto HasInvalid  = InPlanner.InvalidGoalAuthored.Num() > 0;
+
+    if (NOT HasResolved && NOT HasInvalid)
     {
         Box->AddSlot()
             .AutoHeight()
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(no goal conditions)")))
+                    .Text(FText::FromString(TEXT("(no goal set — Planner stays Idle)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
             ];
         return Box;
     }
 
-    for (const auto& Cond : InAction.Goal)
+    for (const auto& Cond : InPlanner.GoalResolved)
     {
-        const auto WsOpt = LookupWsValue(InAs, Cond.Key);
+        const auto WsOpt = LookupWsValue_PrimaryPane(InPlanner, Cond.Key);
         const auto Sat   = WsOpt.IsSet() && (WsOpt.GetValue() == Cond.Value);
 
         const auto Glyph = Sat ? FString(TEXT("✓")) : FString(TEXT("✗"));
-        const auto Color = Sat ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-                               : FCkGoapDebuggerStyle::Color_Status_Failed;
+        const auto Color = Sat
+            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+            : FCkGoapDebuggerStyle::Color_Status_Failed;
+
         const auto Text  = FString::Printf(TEXT("%s = %s"),
             *Cond.Key.ToString(),
             Cond.Value ? TEXT("true") : TEXT("false"));
@@ -549,21 +537,23 @@ auto
             .AutoHeight()
             .Padding(FMargin(0.0f, 1.0f))
             [
-                MakeConditionRow(Glyph, Text, Color)
+                MakeGoalRow_PrimaryPane(Glyph, Text, Color)
             ];
     }
 
-    for (const auto& Cond : InAction.InvalidGoal)
+    // _InvalidGoal — authored conditions referencing keys not in the
+    // resolved WS registry. Render with a warning glyph.
+    for (const auto& Cond : InPlanner.InvalidGoalAuthored)
     {
-        const auto Text = FString::Printf(TEXT("%s = %s  (unregistered)"),
-            *Cond.Key.ToString(),
-            Cond.Value ? TEXT("true") : TEXT("false"));
+        const auto Text = FString::Printf(TEXT("%s = %s  (unregistered key)"),
+            *Cond.Get_Key().ToString(),
+            Cond.Get_Value() ? TEXT("true") : TEXT("false"));
 
         Box->AddSlot()
             .AutoHeight()
             .Padding(FMargin(0.0f, 1.0f))
             [
-                MakeConditionRow(TEXT("⚠"), Text, FCkGoapDebuggerStyle::Color_Status_Selected)
+                MakeGoalRow_PrimaryPane(TEXT("⚠"), Text, FCkGoapDebuggerStyle::Color_Status_Selected)
             ];
     }
 
@@ -571,565 +561,195 @@ auto
 }
 
 // ====================================================================================================================
-// BUILD — DRILLDOWN
+// BUILD — RIGHT RAIL
 // ====================================================================================================================
 
 auto
     SCkGoapDebugger_PrimaryPane::
-    BuildDrilldown(
-        const FCkGoapDebugger_ActionSetInfo& InAs,
-        const FCkGoapDebugger_ActionInfo& InSelected)
+    BuildRightRail(
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
     -> TSharedRef<SWidget>
 {
-    using namespace ck_goap_debugger_primary_internal;
+    auto Box = SNew(SVerticalBox);
 
-    // Preconditions column
-    auto PreColumn = SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                MakeSectionHeader(TEXT("Preconditions"))
-            ];
+    // WS source -----------------------------------------------------------------
+    Box->AddSlot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
+        [
+            MakeRailBlock_PrimaryPane(
+                TEXT("WorldState source"),
+                InPlanner.WorldStateSourceLabel.IsEmpty()
+                    ? FString(TEXT("(inherited)"))
+                    : InPlanner.WorldStateSourceLabel,
+                FCkGoapDebuggerStyle::Color_Status_Selected)
+        ];
 
-    if (InSelected.Preconditions.Num() == 0)
+    // Parent planner ------------------------------------------------------------
+    const auto ParentText = ck::IsValid(InPlanner.ParentPlanner)
+        ? InPlanner.ParentPlanner.ToString()
+        : FString(TEXT("(none — top-level)"));
+    const auto ParentColor = ck::IsValid(InPlanner.ParentPlanner)
+        ? FCkGoapDebuggerStyle::Color_Text_Primary
+        : FCkGoapDebuggerStyle::Color_Text_Dim;
+
+    Box->AddSlot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
+        [
+            MakeRailBlock_PrimaryPane(TEXT("Parent planner"), ParentText, ParentColor)
+        ];
+
+    // Role role-blocks ----------------------------------------------------------
+    if (InPlanner.IsActionRole)
     {
-        PreColumn->AddSlot()
+        Box->AddSlot()
             .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(none)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-            ];
-    }
-    else
-    {
-        for (const auto& Cond : InSelected.Preconditions)
-        {
-            const auto WsOpt = LookupWsValue(InAs, Cond.Key);
-            const auto Sat   = WsOpt.IsSet() && (WsOpt.GetValue() == Cond.Value);
-
-            const auto Glyph = Sat ? FString(TEXT("✓")) : FString(TEXT("✗"));
-            const auto Color = Sat ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-                                   : FCkGoapDebuggerStyle::Color_Status_Failed;
-            const auto Text = FString::Printf(TEXT("%s = %s"),
-                *Cond.Key.ToString(),
-                Cond.Value ? TEXT("true") : TEXT("false"));
-
-            PreColumn->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
-                [
-                    MakeConditionRow(Glyph, Text, Color)
-                ];
-        }
-    }
-
-    // Effects column
-    auto EffColumn = SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                MakeSectionHeader(TEXT("Effects"))
-            ];
-
-    if (InSelected.Effects.Num() == 0)
-    {
-        EffColumn->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(none)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("ACTION ROLE")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                        ]
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("Picked by parent Planner when its plan includes this Action.")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .AutoWrapText(true)
+                        ]
             ];
     }
-    else
+
     {
-        for (const auto& Eff : InSelected.Effects)
-        {
-            const auto Text = FString::Printf(TEXT("→ %s := %s"),
-                *Eff.Key.ToString(),
-                Eff.Value ? TEXT("true") : TEXT("false"));
+        const auto ChildText = FString::Printf(TEXT("%d child Action%s registered."),
+            InPlanner.ChildActions.Num(),
+            InPlanner.ChildActions.Num() == 1 ? TEXT("") : TEXT("s"));
 
-            EffColumn->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(Text))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
-                ];
-        }
-    }
-
-    // Cost column
-    auto CostColumn = SNew(SVerticalBox)
-        + SVerticalBox::Slot()
+        Box->AddSlot()
             .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
             [
-                MakeSectionHeader(TEXT("Cost"))
-            ]
-        + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(FString::Printf(TEXT("$%d"), FMath::RoundToInt(InSelected.Cost))))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 18))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                SNew(SVerticalBox)
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("PLANNER ROLE")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                        ]
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(ChildText))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                        ]
             ];
-
-    // Contributing-to-goals — simple: list of catalog actions whose Goal
-    // overlaps with this action's Effects keys.
-    auto Contributes = TArray<FString>{};
-    for (const auto& Other : InAs.Catalog)
-    {
-        if (Other.Handle == InSelected.Handle) { continue; }
-        for (const auto& EffKey : InSelected.Effects)
-        {
-            const auto Hits = Other.Goal.ContainsByPredicate(
-                [&](const FCkGoapDebugger_Condition& In) { return In.Key == EffKey.Key; });
-            if (Hits) { Contributes.AddUnique(Other.ClassName); break; }
-        }
     }
 
-    // Alternative actions — other catalog actions sharing at least one effect key.
-    auto Alternatives = TArray<FString>{};
-    for (const auto& Other : InAs.Catalog)
+    // Invalid goal keys ---------------------------------------------------------
     {
-        if (Other.Handle == InSelected.Handle) { continue; }
-        for (const auto& EffA : InSelected.Effects)
-        {
-            const auto Match = Other.Effects.ContainsByPredicate(
-                [&](const FCkGoapDebugger_Condition& In) { return In.Key == EffA.Key && In.Value == EffA.Value; });
-            if (Match) { Alternatives.AddUnique(Other.ClassName); break; }
-        }
-    }
-
-    auto MakeStringListSection = [](const FString& Title, const TArray<FString>& Items) -> TSharedRef<SWidget>
-    {
-        auto Box = SNew(SVerticalBox)
+        auto Block = SNew(SVerticalBox)
             + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    MakeSectionHeader(Title)
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("INVALID GOAL KEYS")))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                 ];
 
-        if (Items.Num() == 0)
+        if (InPlanner.InvalidGoalAuthored.Num() == 0)
         {
-            Box->AddSlot()
+            Block->AddSlot()
                 .AutoHeight()
                 [
                     SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("(none)")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                        .Text(FText::FromString(TEXT("None ✓")))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
                 ];
         }
         else
         {
-            for (const auto& Item : Items)
+            for (const auto& Cond : InPlanner.InvalidGoalAuthored)
             {
-                Box->AddSlot()
+                Block->AddSlot()
                     .AutoHeight()
                     .Padding(FMargin(0.0f, 1.0f))
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(Item))
+                            .Text(FText::FromString(FString::Printf(TEXT("⚠ %s"),
+                                *Cond.Get_Key().ToString())))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
                     ];
             }
         }
-        return Box;
-    };
-
-    return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Surface.Rounded")))
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium))
-        [
-            SNew(SVerticalBox)
-
-                // Title
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("Selected action: %s"), *InSelected.ClassName)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
-                    ]
-
-                // Three columns: Pre · Effects · Cost
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot()
-                                .FillWidth(1.0f)
-                                .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f))
-                                [
-                                    PreColumn
-                                ]
-                            + SHorizontalBox::Slot()
-                                .FillWidth(1.0f)
-                                .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f))
-                                [
-                                    EffColumn
-                                ]
-                            + SHorizontalBox::Slot()
-                                .AutoWidth()
-                                [
-                                    CostColumn
-                                ]
-                    ]
-
-                // Mini-sections row: Contributing · Alternatives
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-                    [
-                        SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot()
-                                .FillWidth(1.0f)
-                                .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f))
-                                [
-                                    MakeStringListSection(TEXT("Contributing to goals"), Contributes)
-                                ]
-                            + SHorizontalBox::Slot()
-                                .FillWidth(1.0f)
-                                [
-                                    MakeStringListSection(TEXT("Alternative actions"), Alternatives)
-                                ]
-                    ]
-
-                // Plan frequency placeholder
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(FString::Printf(TEXT("Plan frequency: %d attempts"),
-                                InSelected.PlanAttemptCount)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                    ]
-        ];
-}
-
-// ====================================================================================================================
-// BUILD — RIGHT RAIL (NORMAL)
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_PrimaryPane::
-    BuildRightRail_Normal(
-        const FCkGoapDebugger_ActionSetInfo& InAs,
-        const FCkGoapDebugger_ActionInfo& InAction)
-    -> TSharedRef<SWidget>
-{
-    using namespace ck_goap_debugger_primary_internal;
-
-    auto Box = SNew(SVerticalBox);
-
-    // WS source -------------------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        [
-            MakeSectionHeader(TEXT("WS source"))
-        ];
-
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, 1.0f))
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(FString::Printf(TEXT("Resolved: %s"),
-                    InAction.WorldStateSourceLabel.IsEmpty()
-                        ? TEXT("(inherited)") : *InAction.WorldStateSourceLabel)))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
-        ];
-
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, 1.0f))
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(InAction.Role == ECkGoapDebugger_ActionRole::Root
-                    ? FString(TEXT("Override: root — explicit WS"))
-                    : FString(TEXT("Override: inherits parent"))))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-        ];
-
-    // Parent action ---------------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-        [
-            MakeSectionHeader(TEXT("Parent action"))
-        ];
-
-    if (InAction.ParentClassName.IsEmpty())
-    {
-        Box->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(none — this is the root)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-            ];
-    }
-    else
-    {
-        const auto WeakVM = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
-        const auto ParentHandle = InAction.ParentActionHandle;
 
         Box->AddSlot()
             .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
             [
-                SNew(SButton)
-                    .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                    .ContentPadding(FMargin(0.0f, 1.0f))
-                    .ToolTipText(FText::FromString(FString::Printf(
-                        TEXT("Click to select parent action %s"), *InAction.ParentClassName)))
-                    .OnClicked_Lambda([WeakVM, ParentHandle]() -> FReply
-                    {
-                        if (const auto VM = WeakVM.Pin())
-                        {
-                            if (ck::IsValid(ParentHandle))
-                            { VM->SetSelectedAction(ParentHandle); }
-                        }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(InAction.ParentClassName))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
-                    ]
-            ];
-
-        Box->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(WS inherited unless overridden)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                Block
             ];
     }
 
-    // Invalid goal keys -----------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-        [
-            MakeSectionHeader(TEXT("Invalid goal keys"))
-        ];
-
-    if (InAction.InvalidGoal.Num() == 0)
+    // Dependency cycles ---------------------------------------------------------
     {
-        Box->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("None ✓")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
-            ];
-    }
-    else
-    {
-        for (const auto& Cond : InAction.InvalidGoal)
-        {
-            Box->AddSlot()
+        auto Block = SNew(SVerticalBox)
+            + SVerticalBox::Slot()
                 .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
                 [
                     SNew(STextBlock)
-                        .Text(FText::FromString(FString::Printf(TEXT("⚠ %s"), *Cond.Key.ToString())))
+                        .Text(FText::FromString(TEXT("DEPENDENCY CYCLES")))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                ];
+
+        if (InPlanner.DependencyCyclesDisplay.Num() == 0)
+        {
+            Block->AddSlot()
+                .AutoHeight()
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("None ✓")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
                 ];
         }
-    }
+        else
+        {
+            for (const auto& Cycle : InPlanner.DependencyCyclesDisplay)
+            {
+                const auto Joined = FString::Join(Cycle.ActionsInCycle, TEXT(" → "));
+                Block->AddSlot()
+                    .AutoHeight()
+                    .Padding(FMargin(0.0f, 1.0f))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(Joined))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
+                    ];
+            }
+        }
 
-    // Dependency cycles -----------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-        [
-            MakeSectionHeader(TEXT("Dependency cycles"))
-        ];
-
-    if (InAs.DependencyCycles.Num() == 0)
-    {
         Box->AddSlot()
             .AutoHeight()
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("None ✓")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
+                Block
             ];
-    }
-    else
-    {
-        for (const auto& Cycle : InAs.DependencyCycles)
-        {
-            const auto Joined = FString::Join(Cycle.ActionsInCycle, TEXT(" → "));
-            Box->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(Joined))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
-                ];
-        }
-    }
-
-    return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large, FCkGoapDebuggerStyle::Padding_Medium))
-        [
-            SNew(SScrollBox)
-                .Orientation(Orient_Vertical)
-                + SScrollBox::Slot()
-                [
-                    Box
-                ]
-        ];
-}
-
-// ====================================================================================================================
-// BUILD — RIGHT RAIL (FAILURE VARIANT)
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_PrimaryPane::
-    BuildRightRail_Failure(
-        const FCkGoapDebugger_ActionSetInfo& InAs,
-        const FCkGoapDebugger_ActionInfo& InAction)
-    -> TSharedRef<SWidget>
-{
-    using namespace ck_goap_debugger_primary_internal;
-
-    auto Box = SNew(SVerticalBox);
-
-    // Header (red) ---------------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(TEXT("⚠ Failure analysis")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
-        ];
-
-    // Unreachable goal keys -----------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        [
-            MakeSectionHeader(TEXT("Unreachable goal keys"))
-        ];
-
-    // Collect: explicit invalid goals + unsatisfied conditions.
-    auto Unreached = TArray<FString>{};
-    for (const auto& Cond : InAction.InvalidGoal)
-    { Unreached.AddUnique(Cond.Key.ToString()); }
-    for (const auto& Cond : InAction.Goal)
-    {
-        const auto WsOpt = LookupWsValue(InAs, Cond.Key);
-        if (NOT WsOpt.IsSet() || WsOpt.GetValue() != Cond.Value)
-        { Unreached.AddUnique(Cond.Key.ToString()); }
-    }
-
-    if (Unreached.Num() == 0)
-    {
-        Box->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("(none surfaced)")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-            ];
-    }
-    else
-    {
-        for (const auto& Key : Unreached)
-        {
-            Box->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(FString(TEXT("• ")) + Key))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
-                ];
-        }
-    }
-
-    // Plan tree (why not?) — placeholder ----------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-        [
-            MakeSectionHeader(TEXT("Plan tree (why not?)"))
-        ];
-
-    Box->AddSlot()
-        .AutoHeight()
-        [
-            SNew(STextBlock)
-                .Text(FText::FromString(TEXT("(plan-tree introspection — D6 follow-up)")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-        ];
-
-    // Suggested fixes ------------------------------------------------------
-    Box->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f))
-        [
-            MakeSectionHeader(TEXT("Suggested fixes"))
-        ];
-
-    if (Unreached.Num() == 0)
-    {
-        Box->AddSlot()
-            .AutoHeight()
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Force replan when WS satisfies goal.")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
-            ];
-    }
-    else
-    {
-        for (const auto& Key : Unreached)
-        {
-            Box->AddSlot()
-                .AutoHeight()
-                .Padding(FMargin(0.0f, 1.0f))
-                [
-                    SNew(STextBlock)
-                        .Text(FText::FromString(FString::Printf(
-                            TEXT("• Verify %s reaches the action's WS."), *Key)))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
-                ];
-        }
     }
 
     return SNew(SBorder)

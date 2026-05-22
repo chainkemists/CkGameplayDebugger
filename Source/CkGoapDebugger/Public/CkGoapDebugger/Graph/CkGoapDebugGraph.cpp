@@ -37,7 +37,7 @@ namespace
     // Returns nullptr if neither handle resolves to a catalog entry — in
     // that case the caller treats no node as in-plan.
     auto Resolve_PlanDriverAction(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCkGoapDebugger_ActionSetInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
         -> const FCkGoapDebugger_ActionInfo*
     {
@@ -45,13 +45,13 @@ namespace
             -> const FCkGoapDebugger_ActionInfo*
         {
             if (ck::Is_NOT_Valid(H)) { return nullptr; }
-            return InActionSet.Catalog.FindByPredicate(
+            return InPlanner.Catalog.FindByPredicate(
                 [&](const FCkGoapDebugger_ActionInfo& A) { return A.Handle == H; });
         };
 
         if (auto* Selected = Find(InSelectedActionHandle))
         { return Selected; }
-        return Find(InActionSet.RootActionHandle);
+        return Find(InPlanner.RootActionHandle);
     }
 }
 
@@ -71,7 +71,7 @@ auto
 auto
     UCkGoapDebugGraph::
     ComputeTopologyHash(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet)
+        const FCkGoapDebugger_ActionSetInfo& InPlanner)
     -> uint32
 {
     // Capture identity of every catalog node + its pin shape (precondition
@@ -79,11 +79,11 @@ auto
     // per-tick fields (PlanStatus, ActiveChain, selection) so the fast-path
     // UpdateRuntimeState handles those without a full rebuild.
     auto Hash = uint32{0};
-    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InActionSet.Handle)));
-    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InActionSet.RootActionHandle)));
-    Hash = HashCombine(Hash, ::GetTypeHash(InActionSet.Catalog.Num()));
+    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.Handle)));
+    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.RootActionHandle)));
+    Hash = HashCombine(Hash, ::GetTypeHash(InPlanner.Catalog.Num()));
 
-    for (const auto& Action : InActionSet.Catalog)
+    for (const auto& Action : InPlanner.Catalog)
     {
         Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Action.Handle)));
         Hash = HashCombine(Hash, GetTypeHash(Action.ClassName));
@@ -115,7 +115,7 @@ auto
 auto
     UCkGoapDebugGraph::
     UpdateRuntimeState(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCkGoapDebugger_ActionSetInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
     -> bool
 {
@@ -128,7 +128,7 @@ auto
     // classes the planner chose to satisfy the selected Action's goal.
     // Atomic operators that satisfy the goal directly (e.g. all four
     // MakeTea steps) live in _Plan but never appear in ActiveChain.
-    const auto* PlanDriver = Resolve_PlanDriverAction(InActionSet, InSelectedActionHandle);
+    const auto* PlanDriver = Resolve_PlanDriverAction(InPlanner, InSelectedActionHandle);
     auto PlanStepByClassName = TMap<FString, int32>{};
     if (PlanDriver != nullptr)
     {
@@ -150,7 +150,7 @@ auto
         // to leaving the existing values alone if the snapshot's catalog
         // doesn't include this handle (shouldn't happen given topology hash
         // matched, but be defensive).
-        const auto* Catalog = InActionSet.Catalog.FindByPredicate(
+        const auto* Catalog = InPlanner.Catalog.FindByPredicate(
             [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == Handle; });
         if (Catalog == nullptr) { continue; }
 
@@ -243,7 +243,7 @@ auto
 auto
     UCkGoapDebugGraph::
     RebuildFromSnapshot(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet,
+        const FCkGoapDebugger_ActionSetInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle)
     -> void
 {
@@ -254,7 +254,7 @@ auto
     _GoalNode = nullptr;
     Nodes.Empty();
 
-    const auto& Catalog = InActionSet.Catalog;
+    const auto& Catalog = InPlanner.Catalog;
     const auto ActionCount = Catalog.Num();
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -273,7 +273,7 @@ auto
     // selected Action's _Plan (or the ActionSet's root plan when nothing
     // is selected). See UpdateRuntimeState's matching comment for the
     // rationale — _Plan is NOT the active chain.
-    const auto* PlanDriver = Resolve_PlanDriverAction(InActionSet, InSelectedActionHandle);
+    const auto* PlanDriver = Resolve_PlanDriverAction(InPlanner, InSelectedActionHandle);
     auto PlanStepByClassName = TMap<FString, int32>{};
     if (PlanDriver != nullptr)
     {
@@ -467,11 +467,11 @@ auto
         }
     }
 
-    if (NOT GoalSource && ck::IsValid(InActionSet.RootActionHandle))
+    if (NOT GoalSource && ck::IsValid(InPlanner.RootActionHandle))
     {
         for (const auto& A : Catalog)
         {
-            if (A.Handle == InActionSet.RootActionHandle) { GoalSource = &A; GoalOwnerName = A.ClassName; break; }
+            if (A.Handle == InPlanner.RootActionHandle) { GoalSource = &A; GoalOwnerName = A.ClassName; break; }
         }
     }
 

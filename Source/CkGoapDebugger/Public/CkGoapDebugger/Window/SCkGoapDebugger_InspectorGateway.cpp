@@ -460,20 +460,20 @@ auto
 auto
     SCkGoapDebugger_InspectorGateway::
     Build_ActiveChain(
-        const FCkGoapDebugger_ActionSetInfo& InActionSet)
+        const FCkGoapDebugger_ActionSetInfo& InPlanner)
     -> TSharedRef<SWidget>
 {
-    auto HeaderText = FString::Printf(TEXT("ACTIVE CHAIN - %s"), *InActionSet.DebugName);
+    auto HeaderText = FString::Printf(TEXT("ACTIVE CHAIN - %s"), *InPlanner.DebugName);
 
     // Compose the breadcrumb. Leaf gets highlighted in amber per the mockup.
     auto BreadcrumbBox = SNew(SHorizontalBox);
     auto TagChain      = FString{};
 
-    const auto NumEntries = InActionSet.ActiveChainHandles.Num();
+    const auto NumEntries = InPlanner.ActiveChainHandles.Num();
     for (auto i = 0; i < NumEntries; ++i)
     {
-        const auto& Handle = InActionSet.ActiveChainHandles[i];
-        const auto* Info = InActionSet.Catalog.FindByPredicate(
+        const auto& Handle = InPlanner.ActiveChainHandles[i];
+        const auto* Info = InPlanner.Catalog.FindByPredicate(
             [&Handle](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == Handle; });
 
         auto ClassName = (Info != nullptr) ? Info->ClassName : FString(TEXT("(?)"));

@@ -57,7 +57,7 @@ private:
     // Section helpers — separate so the rebuild path stays readable.
     auto Build_Header(const FCkGoapDebugger_EntitySnapshot& InSnapshot)         -> TSharedRef<SWidget>;
     auto Build_ActionSetList(const FCkGoapDebugger_EntitySnapshot& InSnapshot)  -> TSharedRef<SWidget>;
-    auto Build_ActiveChain(const FCkGoapDebugger_ActionSetInfo& InActionSet)    -> TSharedRef<SWidget>;
+    auto Build_ActiveChain(const FCkGoapDebugger_ActionSetInfo& InPlanner)    -> TSharedRef<SWidget>;
     auto Build_LeafAction(const FCkGoapDebugger_ActionInfo& InLeaf)             -> TSharedRef<SWidget>;
     auto Build_PlanPreview(const FCkGoapDebugger_ActionInfo& InLeaf)            -> TSharedRef<SWidget>;
     auto Build_EmptyStub()                                                       -> TSharedRef<SWidget>;

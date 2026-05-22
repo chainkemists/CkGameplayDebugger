@@ -90,7 +90,7 @@ auto
                         [
                             SNew(SButton)
                                 .Text(FText::FromString(TEXT("Reset chain")))
-                                .ToolTipText(FText::FromString(TEXT("Stub — wiring to utils_goap_action_set::Request_ResetActiveChain is a follow-up")))
+                                .ToolTipText(FText::FromString(TEXT("Stub — wiring to utils_goap_planner::Request_ResetActiveChain is a follow-up")))
                                 .OnClicked(this, &SCkGoapDebugger_Breadcrumb::OnResetChainClicked)
                         ]
             ]
@@ -293,7 +293,7 @@ auto
     OnResetChainClicked()
     -> FReply
 {
-    // D3 stub. Wiring this to utils_goap_action_set::Request_ResetActiveChain
+    // D3 stub. Wiring this to utils_goap_planner::Request_ResetActiveChain
     // requires an editor-safe path through the request layer; deferred.
     UE_LOG(LogTemp, Warning,
         TEXT("[CkGoapDebugger] Reset chain clicked — wiring deferred (see D3)."));

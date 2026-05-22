@@ -4,9 +4,9 @@
 #include "GameplayTagContainer.h"
 
 #include "CkEcs/Handle/CkHandle.h"
-#include "CkGoap/CkGoap_Fragment_Data.h"             // ECk_GoapPlanStatus, FCk_Handle_Goap
+#include "CkGoap/CkGoap_Fragment_Data.h"             // ECk_GoapPlanStatus, FCk_Handle_Goap_Planner
 #include "CkGoap/Action/CkGoap_Action_Fragment_Data.h"   // FCk_Handle_Goap_Action
-#include "CkGoap/ActionSet/CkGoap_ActionSet_Fragment_Data.h" // FCk_Handle_Goap_ActionSet
+#include "CkGoap/Planner/CkGoap_Planner_Fragment_Data.h" // FCk_Handle_Goap_Planner
 #include "CkCore/Enums/CkEnums.h"                    // ECk_EnableDisable
 
 class UCk_GoapAction_EntityScript;
@@ -133,7 +133,7 @@ struct FCkGoapDebugger_ActionInfo
 
 struct FCkGoapDebugger_ActionSetInfo
 {
-    FCk_Handle_Goap_ActionSet Handle;
+    FCk_Handle_Goap_Planner Handle;
     FString                   DebugName;        // ActionSetTag.LeafAsString()
     FGameplayTag              ActionSetTag;
     ECk_EnableDisable         EnableToggle = ECk_EnableDisable::Enable;
@@ -161,7 +161,7 @@ struct FCkGoapDebugger_EntitySnapshot
     // The owner entity that ultimately carries the Goap feature (NPC, pawn).
     FCk_Handle      EntityHandle;
     FString         DebugName;        // owner's display name (label tag, etc.)
-    FCk_Handle_Goap GoapHandle;       // the Goap root for this entity
+    FCk_Handle_Goap_Planner GoapHandle;       // the Goap root for this entity
 
     TArray<FCkGoapDebugger_ActionSetInfo> ActionSets;
 
@@ -191,7 +191,7 @@ struct FCkGoapDebugger_HistoryEvent
 {
     ECkGoapDebugger_HistoryEventKind Kind = ECkGoapDebugger_HistoryEventKind::ChainActivated;
 
-    FCk_Handle_Goap_ActionSet ActionSetHandle;
+    FCk_Handle_Goap_Planner ActionSetHandle;
     FCk_Handle_Goap_Action    ActionHandle;
 
     FString Title;

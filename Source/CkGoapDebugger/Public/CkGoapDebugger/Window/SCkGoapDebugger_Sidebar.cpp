@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
@@ -17,52 +19,24 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
+#include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Rendering/DrawElements.h"
 
 // ====================================================================================================================
-// Internal helpers
+// Internal helpers (file-prefixed to dodge anonymous-namespace unity collisions
+// — recurring across debugger .cpp files when names like MakeBadge, MakeRow,
+// Duration_OneFrame are reused).
 // ====================================================================================================================
 
 namespace
 {
-    // ---- Status badge helpers --------------------------------------------------
+    // ---- Per-Planner status colour (drives left dot) -------------------------
 
-    struct FStatusBadge
+    auto ResolveStatusColor_Sidebar(ECk_GoapPlanStatus InStatus) -> FLinearColor
     {
-        FString        Label;
-        FLinearColor   Color;
-    };
-
-    auto ResolveActionSetBadge(const FCkGoapDebugger_ActionSetInfo& InAs) -> FStatusBadge
-    {
-        if (InAs.EnableToggle == ECk_EnableDisable::Disable)
-        { return {TEXT("Disabled"), FCkGoapDebuggerStyle::Color_Text_Faint}; }
-
-        // Derive from the root Action's PlanStatus when available.
-        auto Status = ECk_GoapPlanStatus::Idle;
-        for (const auto& Action : InAs.Catalog)
-        {
-            if (Action.Handle == InAs.RootActionHandle)
-            {
-                Status = Action.PlanStatus;
-                break;
-            }
-        }
-
-        switch (Status)
-        {
-        case ECk_GoapPlanStatus::PlanFound:  return {TEXT("PlanFound"), FCkGoapDebuggerStyle::Color_Status_PlanFound};
-        case ECk_GoapPlanStatus::Planning:   return {TEXT("Planning"),  FCkGoapDebuggerStyle::Color_Status_Planning};
-        case ECk_GoapPlanStatus::PlanFailed: return {TEXT("Failed"),    FCkGoapDebuggerStyle::Color_Status_Failed};
-        default:                             return {TEXT("Idle"),      FCkGoapDebuggerStyle::Color_Text_Muted};
-        }
-    }
-
-    auto ResolveActionStatusColor(const FCkGoapDebugger_ActionInfo& InAction) -> FLinearColor
-    {
-        switch (InAction.PlanStatus)
+        switch (InStatus)
         {
         case ECk_GoapPlanStatus::PlanFound:  return FCkGoapDebuggerStyle::Color_Status_PlanFound;
         case ECk_GoapPlanStatus::Planning:   return FCkGoapDebuggerStyle::Color_Status_Planning;
@@ -71,19 +45,7 @@ namespace
         }
     }
 
-    auto RoleLabel(ECkGoapDebugger_ActionRole InRole) -> FString
-    {
-        switch (InRole)
-        {
-        case ECkGoapDebugger_ActionRole::Root:    return TEXT("root");
-        case ECkGoapDebugger_ActionRole::Mid:     return TEXT("mid");
-        case ECkGoapDebugger_ActionRole::Leaf:    return TEXT("leaf");
-        case ECkGoapDebugger_ActionRole::Catalog: return TEXT("catalog");
-        default:                                  return TEXT("");
-        }
-    }
-
-    auto HistoryEventColor(ECkGoapDebugger_HistoryEventKind InKind) -> FLinearColor
+    auto HistoryEventColor_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FLinearColor
     {
         switch (InKind)
         {
@@ -95,28 +57,7 @@ namespace
         }
     }
 
-    // ---- Tiny rounded badge (text inside a tinted rounded border) -----------
-
-    auto MakeBadge(const FString& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
-    {
-        const auto BgColor = FLinearColor(InColor.R, InColor.G, InColor.B, 0.13f);
-
-        return SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-            .BorderBackgroundColor(BgColor)
-            .Padding(FMargin(6.0f, 1.0f))
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(InText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                    .ColorAndOpacity(FSlateColor(InColor))
-            ];
-    }
-
-    // ---- Small colored dot ---------------------------------------------------
-
-    auto MakeStatusDot(const FLinearColor& InColor, float InSize = 8.0f) -> TSharedRef<SWidget>
+    auto MakeStatusDot_Sidebar(const FLinearColor& InColor, float InSize = 8.0f) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
             .WidthOverride(InSize)
@@ -132,9 +73,7 @@ namespace
             ];
     }
 
-    // ---- Format a timestamp (seconds) into a short HH:MM:SS.ms-ish label ----
-
-    auto FormatTimestamp(double InWorldTime) -> FString
+    auto FormatTimestamp_Sidebar(double InWorldTime) -> FString
     {
         const auto Total = FMath::Max(0.0, InWorldTime);
         const auto Minutes = static_cast<int32>(Total) / 60;
@@ -143,7 +82,7 @@ namespace
         return FString::Printf(TEXT("%02d:%02d.%03d"), Minutes, Seconds, Ms);
     }
 
-    auto HistoryKindLabel(ECkGoapDebugger_HistoryEventKind InKind) -> FString
+    auto HistoryKindLabel_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FString
     {
         switch (InKind)
         {
@@ -158,15 +97,26 @@ namespace
         default:                                                  return TEXT("?");
         }
     }
+
+    // ---- Recursive planner-set walker ----------------------------------------
+    // Counts every Planner in the forest (top-level + descendants) so the
+    // header can show "N top-level · M total Planners".
+    auto CountAllPlanners_Sidebar(const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners) -> int32
+    {
+        auto N = 0;
+        for (const auto& P : InPlanners)
+        {
+            ++N;
+            N += CountAllPlanners_Sidebar(P.ChildPlanners);
+        }
+        return N;
+    }
 }
 
 // ====================================================================================================================
 // SCRUB TRACK — custom leaf widget. Paints chain/failure dots positioned
-// proportionally along a thin horizontal track. Hit-tests OnMouseButtonDown
-// against each dot and forwards to OnEventClicked(histIdx).
-//
-// The track reads the history every paint via a weak ViewModel pointer so it
-// reflects the live ring buffer without needing the parent to push updates.
+// proportionally along a thin horizontal track. Same behaviour as pre-U11.7-B;
+// only renamed where collisions might emerge.
 // ====================================================================================================================
 
 class SCkGoapDebugger_ScrubTrack : public SLeafWidget
@@ -202,7 +152,6 @@ public:
         const auto TrackThickness = 2.0f;
         const auto* WhiteBrush = FAppStyle::GetBrush(TEXT("WhiteBrush"));
 
-        // Background bar
         FSlateDrawElement::MakeBox(
             OutDrawElements,
             LayerId,
@@ -213,7 +162,6 @@ public:
             ESlateDrawEffect::None,
             FCkGoapDebuggerStyle::Color_Border_Subtle);
 
-        // "now" indicator — green vertical bar at the right edge
         constexpr auto NowBarWidth = 2.0f;
         constexpr auto NowBarHeight = 14.0f;
         FSlateDrawElement::MakeBox(
@@ -226,7 +174,6 @@ public:
             ESlateDrawEffect::None,
             FCkGoapDebuggerStyle::Color_Status_PlanFound);
 
-        // Dots
         const auto VM = _ViewModel.Pin();
         if (NOT VM.IsValid())
         { return LayerId + 2; }
@@ -255,9 +202,8 @@ public:
             const auto IsSelected = (i == SelectedIdx);
             const auto R = IsSelected ? SelectedDotRadius : DotRadius;
 
-            const auto Color = HistoryEventColor(Ev.Kind);
+            const auto Color = HistoryEventColor_Sidebar(Ev.Kind);
 
-            // Selected outline ring
             if (IsSelected)
             {
                 const auto Ring = R + OutlineThickness;
@@ -307,7 +253,6 @@ public:
         const auto LocalP  = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
         const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
 
-        // Generous hit radius so users don't need pixel precision.
         constexpr auto HitRadius = 10.0f;
         auto BestIdx  = int32{INDEX_NONE};
         auto BestDist = HitRadius;
@@ -332,8 +277,6 @@ public:
     }
 
 private:
-    // Compute the x-pixel center of each event's dot, proportional to
-    // WorldTimeSeconds across [first..last] with edge padding.
     static auto ComputeTrackPositions(
         const TArray<FCkGoapDebugger_HistoryEvent>& InHist,
         float InWidth) -> TArray<float>
@@ -382,94 +325,110 @@ auto
 {
     _ViewModel = InViewModel;
 
+    // Cache leaf widgets at Construct (never destructively reset ChildSlot in
+    // refresh paths — call RequestTreeRefresh / RequestListRefresh instead).
+    auto TreeView = SAssignNew(_TreeView, STreeView<FRowItemPtr>)
+        .TreeItemsSource(&_RootNodes)
+        .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateRow)
+        .OnGetChildren(this, &SCkGoapDebugger_Sidebar::GetTreeChildren)
+        .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnSelectionChanged)
+        .SelectionMode(ESelectionMode::Single);
+
+    auto HistoryList = SAssignNew(_HistoryListView, SListView<FHistoryItemPtr>)
+        .ListItemsSource(&_HistoryItems)
+        .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateHistoryRow)
+        .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnHistoryRowSelectionChanged)
+        .SelectionMode(ESelectionMode::Single);
+
+    auto ScrubTrack = SAssignNew(_ScrubTrack, SCkGoapDebugger_ScrubTrack,
+                                 TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel))
+        .OnEventClicked(SCkGoapDebugger_ScrubTrack::FOnEventClicked::CreateSP(
+            this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent));
+
     ChildSlot
     [
         SNew(SBorder)
             .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
             .Padding(FMargin(0.0f))
             [
-                SNew(SVerticalBox)
+                // Vertical splitter: tree (top) | history block (bottom).
+                // User can drag the divider to resize either pane.
+                SNew(SSplitter)
+                    .Orientation(Orient_Vertical)
 
-                // ---- ACTIONSETS header --------------------------------------
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Medium,
-                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]() { return GetActionSetsHeaderText(); })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                    ]
+                    // ---- TOP : PLANNER TREE -------------------------------------
+                    + SSplitter::Slot()
+                        .Value(0.62f)
+                        .MinSize(80.0f)
+                        [
+                            SNew(SVerticalBox)
 
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(SSeparator)
-                            .Thickness(1.0f)
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
-                    ]
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Medium,
+                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                    ]
 
-                // ---- ActionSet / chain tree (top, fills) --------------------
-                + SVerticalBox::Slot()
-                    .FillHeight(1.0f)
-                    .Padding(FMargin(0.0f))
-                    [
-                        SAssignNew(_TreeView, STreeView<TSharedPtr<FNode>>)
-                            .TreeItemsSource(&_RootNodes)
-                            .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateRow)
-                            .OnGetChildren(this, &SCkGoapDebugger_Sidebar::GetTreeChildren)
-                            .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnSelectionChanged)
-                            .SelectionMode(ESelectionMode::Single)
-                    ]
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    [
+                                        SNew(SSeparator)
+                                            .Thickness(1.0f)
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
+                                    ]
 
-                // ---- Divider between tree and history -----------------------
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(SSeparator)
-                            .Thickness(1.0f)
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Strong))
-                    ]
+                                + SVerticalBox::Slot()
+                                    .FillHeight(1.0f)
+                                    [
+                                        TreeView
+                                    ]
+                        ]
 
-                // ---- HISTORY header -----------------------------------------
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
-                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]() { return GetHistoryHeaderText(); })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                    ]
+                    // ---- BOTTOM : HISTORY (header + scrub + list) ---------------
+                    + SSplitter::Slot()
+                        .Value(0.38f)
+                        .MinSize(80.0f)
+                        [
+                            SNew(SVerticalBox)
 
-                // ---- Interactive scrub track --------------------------------
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f,
-                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                    [
-                        SAssignNew(_ScrubTrack, SCkGoapDebugger_ScrubTrack,
-                                   TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel))
-                            .OnEventClicked(SCkGoapDebugger_ScrubTrack::FOnEventClicked::CreateSP(
-                                this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent))
-                    ]
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    [
+                                        SNew(SSeparator)
+                                            .Thickness(1.0f)
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Strong))
+                                    ]
 
-                // ---- History list (bottom, fixed height) --------------------
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    [
-                        SNew(SBox)
-                            .HeightOverride(FCkGoapDebuggerStyle::SidebarBottomHeight)
-                            [
-                                SAssignNew(_HistoryListView, SListView<FHistoryItemPtr>)
-                                    .ListItemsSource(&_HistoryItems)
-                                    .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateHistoryRow)
-                                    .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnHistoryRowSelectionChanged)
-                                    .SelectionMode(ESelectionMode::Single)
-                            ]
-                    ]
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
+                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
+                                    [
+                                        SNew(STextBlock)
+                                            .Text_Lambda([this]() { return GetHistoryHeaderText(); })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                    ]
+
+                                + SVerticalBox::Slot()
+                                    .AutoHeight()
+                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f,
+                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
+                                    [
+                                        ScrubTrack
+                                    ]
+
+                                + SVerticalBox::Slot()
+                                    .FillHeight(1.0f)
+                                    [
+                                        HistoryList
+                                    ]
+                        ]
             ]
     ];
 }
@@ -485,15 +444,14 @@ auto
     Reset_ForWorldChange()
     -> void
 {
-    // Drop shared-ptr tree/list items so embedded FCk_Handle copies release
-    // their registry refs before the registry dies.
     _RootNodes.Empty();
+    _RowItemsByHandle.Empty();
     _HistoryItems.Empty();
     _MaterializedEntity = FCk_Handle{};
     _LastTreeStructureHash = 0;
     _LastHistoryHash       = 0;
 
-    if (_TreeView.IsValid())  { _TreeView->RequestTreeRefresh(); }
+    if (_TreeView.IsValid())        { _TreeView->RequestTreeRefresh(); }
     if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
 }
 
@@ -504,27 +462,18 @@ auto
 {
     if (NOT _ViewModel.IsValid()) { return; }
 
-    const auto TreeChanged    = RebuildTreeStructure();
+    const auto StructureChanged = RebuildTreeStructure();
     RebuildHistoryItems();
 
-    if (TreeChanged && _TreeView.IsValid())
+    if (StructureChanged && _TreeView.IsValid())
     {
         _TreeView->RequestTreeRefresh();
-
-        // Default-expand all ActionSet rows so the chain is visible.
-        for (const auto& Root : _RootNodes)
-        {
-            if (Root.IsValid())
-            { _TreeView->SetItemExpansion(Root, true); }
-        }
+        ExpandAll(_RootNodes);
     }
 
-    // Mirror the ViewModel scrub selection into the list's row selection so
-    // dot-highlight and row-tint stay in sync.
+    SyncTreeSelectionFromViewModel();
     SyncHistoryListSelectionFromViewModel();
 
-    // Repaint the scrub track — its dot layout & selection depend on history
-    // contents we may have just rebuilt.
     if (_ScrubTrack.IsValid())
     { _ScrubTrack->Invalidate(EInvalidateWidgetReason::Paint); }
 }
@@ -535,18 +484,22 @@ auto
 
 auto
     SCkGoapDebugger_Sidebar::
-    GetActionSetsHeaderText() const
+    GetPlannerTreeHeaderText() const
     -> FText
 {
     if (NOT _ViewModel.IsValid())
-    { return FText::FromString(TEXT("ACTIONSETS")); }
+    { return FText::FromString(TEXT("PLANNER TREE")); }
 
     const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
     if (Snap == nullptr)
-    { return FText::FromString(TEXT("ACTIONSETS · 0")); }
+    { return FText::FromString(TEXT("PLANNER TREE · 0")); }
+
+    const auto TopCount   = Snap->TopLevelPlanners.Num();
+    const auto TotalCount = CountAllPlanners_Sidebar(Snap->TopLevelPlanners);
 
     return FText::FromString(FString::Printf(
-        TEXT("ACTIONSETS · %d (%s)"), Snap->ActionSets.Num(), *Snap->DebugName));
+        TEXT("PLANNER TREE · %d top-level · %d total (%s)"),
+        TopCount, TotalCount, *Snap->DebugName));
 }
 
 auto
@@ -562,6 +515,52 @@ auto
 // PRIVATE — tree build
 // ====================================================================================================================
 
+namespace
+{
+    // Walk the snapshot's PlannerInfo forest and produce (or refresh) a parallel
+    // FRowItemPtr tree, reusing existing items by PlannerHandle so STreeView
+    // selection identity is preserved across refreshes.
+    auto BuildOrUpdateRowTree_Sidebar(
+        const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners,
+        int32 InDepth,
+        TMap<FCk_Handle_Goap_Planner, SCkGoapDebugger_Sidebar::FRowItemPtr>& InExisting,
+        TMap<FCk_Handle_Goap_Planner, SCkGoapDebugger_Sidebar::FRowItemPtr>& OutNext)
+        -> TArray<SCkGoapDebugger_Sidebar::FRowItemPtr>
+    {
+        auto Out = TArray<SCkGoapDebugger_Sidebar::FRowItemPtr>{};
+        Out.Reserve(InPlanners.Num());
+
+        for (const auto& P : InPlanners)
+        {
+            auto Item = SCkGoapDebugger_Sidebar::FRowItemPtr{};
+            if (auto* Found = InExisting.Find(P.PlannerHandle))
+            {
+                Item = *Found;
+            }
+            else
+            {
+                Item = MakeShared<SCkGoapDebugger_Sidebar::FRowItem>();
+            }
+
+            Item->PlannerHandle    = P.PlannerHandle;
+            Item->DisplayName      = P.DisplayName.IsEmpty()
+                ? P.PlannerTag.ToString()
+                : P.DisplayName;
+            Item->PlannerTag       = P.PlannerTag;
+            Item->IsActionRole     = P.IsActionRole;
+            Item->IsInActiveChain  = P.IsInActiveChain;
+            Item->PlanStatus       = P.PlanStatus;
+            Item->Depth            = InDepth;
+            Item->Children         = BuildOrUpdateRowTree_Sidebar(
+                P.ChildPlanners, InDepth + 1, InExisting, OutNext);
+
+            OutNext.Add(P.PlannerHandle, Item);
+            Out.Add(Item);
+        }
+        return Out;
+    }
+}
+
 auto
     SCkGoapDebugger_Sidebar::
     RebuildTreeStructure()
@@ -569,34 +568,37 @@ auto
 {
     if (NOT _ViewModel.IsValid())
     {
-        if (_RootNodes.Num() == 0) { return false; }
+        if (_RootNodes.Num() == 0 && _RowItemsByHandle.Num() == 0) { return false; }
         _RootNodes.Empty();
-        _MaterializedEntity = FCk_Handle{};
+        _RowItemsByHandle.Empty();
+        _MaterializedEntity    = FCk_Handle{};
         _LastTreeStructureHash = 0;
         return true;
     }
 
     const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
 
-    // Compute structural hash — entity + per-ActionSet (handle, chain length,
-    // catalog length, chain handles). This intentionally excludes per-frame
-    // status values so we don't rebuild every tick.
+    // Compute structural hash — entity + recursive PlannerHandle set + role
+    // bits. Plan status is intentionally excluded so we don't rebuild every
+    // tick; per-row visuals re-read it via TAttribute lambdas.
     auto NewHash = uint32{0};
+    auto HashPlanners = static_cast<TFunction<void(const TArray<FCkGoapDebugger_PlannerInfo>&)>>(nullptr);
+    HashPlanners = [&NewHash, &HashPlanners](const TArray<FCkGoapDebugger_PlannerInfo>& InP) -> void
+    {
+        NewHash = HashCombine(NewHash, ::GetTypeHash(InP.Num()));
+        for (const auto& P : InP)
+        {
+            NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(P.PlannerHandle)));
+            NewHash = HashCombine(NewHash, ::GetTypeHash(P.IsActionRole));
+            NewHash = HashCombine(NewHash, ::GetTypeHash(P.IsInActiveChain));
+            HashPlanners(P.ChildPlanners);
+        }
+    };
 
     if (Snap != nullptr)
     {
         NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->EntityHandle));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->ActionSets.Num()));
-
-        for (const auto& As : Snap->ActionSets)
-        {
-            NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(As.Handle)));
-            NewHash = HashCombine(NewHash, ::GetTypeHash(As.ActiveChainHandles.Num()));
-            NewHash = HashCombine(NewHash, ::GetTypeHash(As.Catalog.Num()));
-
-            for (const auto& ChainHandle : As.ActiveChainHandles)
-            { NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(ChainHandle))); }
-        }
+        HashPlanners(Snap->TopLevelPlanners);
     }
 
     if (NewHash == _LastTreeStructureHash && (Snap == nullptr ? NOT ck::IsValid(_MaterializedEntity)
@@ -606,55 +608,20 @@ auto
     _LastTreeStructureHash = NewHash;
     _MaterializedEntity    = (Snap != nullptr) ? Snap->EntityHandle : FCk_Handle{};
 
-    _RootNodes.Empty();
-    if (Snap == nullptr) { return true; }
-
-    for (const auto& As : Snap->ActionSets)
+    // Reuse-by-handle: walk the snapshot, pulling existing FRowItemPtr entries
+    // when their PlannerHandle still exists. Vanished entries fall out because
+    // OutNext omits them.
+    auto NextByHandle = TMap<FCk_Handle_Goap_Planner, FRowItemPtr>{};
+    if (Snap != nullptr)
     {
-        auto AsNode = MakeShared<FNode>();
-        AsNode->Kind               = ENodeKind::ActionSet;
-        AsNode->ActionSetHandle    = As.Handle;
-        AsNode->ActionSetDebugName = As.DebugName;
-
-        // Build chain children in order. ActiveChainHandles is empty when
-        // there's no plan; we still always show the root if it exists in
-        // the catalog so the user can pick it.
-        auto HandlesToShow = TArray<FCk_Handle_Goap_Action>{};
-        if (As.ActiveChainHandles.Num() > 0)
-        {
-            HandlesToShow = As.ActiveChainHandles;
-        }
-        else if (ck::IsValid(As.RootActionHandle))
-        {
-            HandlesToShow.Add(As.RootActionHandle);
-        }
-
-        for (auto ChainIdx = 0; ChainIdx < HandlesToShow.Num(); ++ChainIdx)
-        {
-            const auto& ChainHandle = HandlesToShow[ChainIdx];
-
-            // Look up the matching ActionInfo from the catalog.
-            const auto* ActionInfo = As.Catalog.FindByPredicate(
-                [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == ChainHandle; });
-            if (ActionInfo == nullptr) { continue; }
-
-            auto ActNode = MakeShared<FNode>();
-            ActNode->Kind            = ENodeKind::Action;
-            ActNode->ActionHandle    = ActionInfo->Handle;
-            ActNode->ActionClassName = ActionInfo->ClassName.IsEmpty()
-                ? TEXT("(unknown class)")
-                : ActionInfo->ClassName;
-            ActNode->ActionTagText   = ActionInfo->ActionTag.IsValid()
-                ? ActionInfo->ActionTag.ToString()
-                : FString{};
-            ActNode->Role            = ActionInfo->Role;
-            ActNode->ChainDepth      = ActionInfo->ChainDepth >= 0 ? ActionInfo->ChainDepth : ChainIdx;
-
-            AsNode->Children.Add(MoveTemp(ActNode));
-        }
-
-        _RootNodes.Add(MoveTemp(AsNode));
+        _RootNodes = BuildOrUpdateRowTree_Sidebar(
+            Snap->TopLevelPlanners, /*Depth=*/0, _RowItemsByHandle, NextByHandle);
     }
+    else
+    {
+        _RootNodes.Empty();
+    }
+    _RowItemsByHandle = MoveTemp(NextByHandle);
 
     return true;
 }
@@ -666,11 +633,11 @@ auto
 auto
     SCkGoapDebugger_Sidebar::
     GenerateRow(
-        TSharedPtr<FNode> InItem,
+        FRowItemPtr InItem,
         const TSharedRef<STableViewBase>& InOwnerTable)
     -> TSharedRef<ITableRow>
 {
-    using FRowType = STableRow<TSharedPtr<FNode>>;
+    using FRowType = STableRow<FRowItemPtr>;
 
     if (NOT InItem.IsValid())
     {
@@ -681,243 +648,109 @@ auto
             ];
     }
 
-    if (InItem->Kind == ENodeKind::ActionSet)
+    const auto WeakItem = TWeakPtr<FRowItem>(InItem);
+
+    // Indent: STreeView already supplies a chevron-indent; add a small extra
+    // shim so deeper nodes read clearly.
+    const auto ExtraIndent = static_cast<float>(InItem->Depth) * 4.0f;
+
+    // Role badge cluster. The mockup shows two states:
+    //   - PLANNER          (planner-only)
+    //   - PLANNER + ACTION (dual-role; mid-tier composite)
+    auto BadgeBox = SNew(SHorizontalBox);
+
+    BadgeBox->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(FMargin(0.0f, 0.0f, 4.0f, 0.0f))
+        [
+            SNew(SCkDebug_StatusPill)
+                .Text(FText::FromString(TEXT("PLANNER")))
+                .Tone(ECkDebug_Tone::Accent)
+                .ShowDot(false)
+        ];
+
+    if (InItem->IsActionRole)
     {
-        const auto WeakItem = TWeakPtr<FNode>(InItem);
-        const auto WeakVM   = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
-
-        const auto AsHandle = InItem->ActionSetHandle;
-
-        auto BadgeBox = SNew(SHorizontalBox);
-
-        // Bind badge text/color via a lambda over the catalog re-fetched each
-        // paint. Keeps the badge live without rebuilding the row.
         BadgeBox->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(SBorder)
-                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                    .BorderBackgroundColor_Lambda([WeakVM, AsHandle]() -> FSlateColor
-                    {
-                        auto Color = FCkGoapDebuggerStyle::Color_Text_Muted;
-                        if (const auto VM = WeakVM.Pin())
-                        {
-                            if (const auto* Snap = VM->GetCurrentEntitySnapshot())
-                            {
-                                if (const auto* As = Snap->ActionSets.FindByPredicate(
-                                    [&](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == AsHandle; }))
-                                {
-                                    Color = ResolveActionSetBadge(*As).Color;
-                                }
-                            }
-                        }
-                        return FSlateColor(FLinearColor(Color.R, Color.G, Color.B, 0.13f));
-                    })
-                    .Padding(FMargin(6.0f, 1.0f))
+                SNew(SCkDebug_StatusPill)
+                    .Text(FText::FromString(TEXT("ACTION")))
+                    .Tone(ECkDebug_Tone::Info)
+                    .ShowDot(false)
+            ];
+    }
+
+    return SNew(FRowType, InOwnerTable)
+        .Padding(FMargin(2.0f, 2.0f))
+        .ShowSelection(true)
+        [
+            SNew(SHorizontalBox)
+
+                // Optional depth shim
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    [
+                        SNew(SBox).WidthOverride(ExtraIndent)
+                    ]
+
+                // Status dot (live PlanStatus via lambda)
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
                     .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, 6.0f, 0.0f)
+                    [
+                        SNew(SBox)
+                            .WidthOverride(8.0f)
+                            .HeightOverride(8.0f)
+                            [
+                                SNew(SBorder)
+                                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                    .BorderBackgroundColor_Lambda([WeakItem]() -> FSlateColor
+                                    {
+                                        const auto Item = WeakItem.Pin();
+                                        if (NOT Item.IsValid())
+                                        { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted); }
+                                        return FSlateColor(ResolveStatusColor_Sidebar(Item->PlanStatus));
+                                    })
+                                    .Padding(FMargin(0.0f))
+                                    [
+                                        SNew(SSpacer)
+                                    ]
+                            ]
+                    ]
+
+                // Planner display name (fills)
+                + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    .Padding(2.0f, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Text_Lambda([WeakVM, AsHandle]() -> FText
-                            {
-                                if (const auto VM = WeakVM.Pin())
-                                {
-                                    if (const auto* Snap = VM->GetCurrentEntitySnapshot())
-                                    {
-                                        if (const auto* As = Snap->ActionSets.FindByPredicate(
-                                            [&](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == AsHandle; }))
-                                        {
-                                            return FText::FromString(ResolveActionSetBadge(*As).Label);
-                                        }
-                                    }
-                                }
-                                return FText::FromString(TEXT("?"));
-                            })
-                            .ColorAndOpacity_Lambda([WeakVM, AsHandle]() -> FSlateColor
-                            {
-                                if (const auto VM = WeakVM.Pin())
-                                {
-                                    if (const auto* Snap = VM->GetCurrentEntitySnapshot())
-                                    {
-                                        if (const auto* As = Snap->ActionSets.FindByPredicate(
-                                            [&](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == AsHandle; }))
-                                        {
-                                            return FSlateColor(ResolveActionSetBadge(*As).Color);
-                                        }
-                                    }
-                                }
-                                return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted);
-                            })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                            .Text(FText::FromString(InItem->DisplayName.IsEmpty()
+                                ? TEXT("(no name)") : InItem->DisplayName))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
                     ]
-            ];
 
-        return SNew(FRowType, InOwnerTable)
-            .Padding(FMargin(2.0f, 2.0f))
-            .ShowSelection(true)
-            [
-                SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot()
-                        .FillWidth(1.0f)
-                        .VAlign(VAlign_Center)
-                        .Padding(2.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(InItem->ActionSetDebugName.IsEmpty()
-                                    ? TEXT("(no name)") : InItem->ActionSetDebugName))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
-                        ]
-
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(4.0f, 0.0f)
-                        [
-                            BadgeBox
-                        ]
-
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(6.0f, 0.0f, 4.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text_Lambda([WeakVM, AsHandle]() -> FText
-                                {
-                                    if (const auto VM = WeakVM.Pin())
-                                    {
-                                        if (const auto* Snap = VM->GetCurrentEntitySnapshot())
-                                        {
-                                            if (const auto* As = Snap->ActionSets.FindByPredicate(
-                                                [&](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == AsHandle; }))
-                                            {
-                                                return FText::FromString(FString::Printf(TEXT("%d actions"), As->Catalog.Num()));
-                                            }
-                                        }
-                                    }
-                                    return FText::GetEmpty();
-                                })
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                        ]
-            ];
-    }
-
-    // Action row
-    {
-        const auto Indent = FMath::Max(0, InItem->ChainDepth) * 10.0f;
-        const auto WeakItem = TWeakPtr<FNode>(InItem);
-        const auto WeakVM   = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
-        const auto ActionHandle = InItem->ActionHandle;
-
-        return SNew(FRowType, InOwnerTable)
-            .Padding(FMargin(2.0f, 1.0f))
-            .ShowSelection(true)
-            [
-                SNew(SHorizontalBox)
-
-                    // Indent
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        [
-                            SNew(SBox).WidthOverride(Indent)
-                        ]
-
-                    // Chain glyph
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(InItem->ChainDepth > 0
-                                    ? FString(TEXT("└▸")) : FString(TEXT("▸"))))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                        ]
-
-                    // Status dot — bound to live PlanStatus
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                        [
-                            SNew(SBox)
-                                .WidthOverride(8.0f)
-                                .HeightOverride(8.0f)
-                                [
-                                    SNew(SBorder)
-                                        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                        .BorderBackgroundColor_Lambda([WeakVM, ActionHandle]() -> FSlateColor
-                                        {
-                                            if (const auto VM = WeakVM.Pin())
-                                            {
-                                                if (const auto* Snap = VM->GetCurrentEntitySnapshot())
-                                                {
-                                                    for (const auto& As : Snap->ActionSets)
-                                                    {
-                                                        if (const auto* A = As.Catalog.FindByPredicate(
-                                                            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == ActionHandle; }))
-                                                        {
-                                                            return FSlateColor(ResolveActionStatusColor(*A));
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted);
-                                        })
-                                        .Padding(FMargin(0.0f))
-                                        [
-                                            SNew(SSpacer)
-                                        ]
-                                ]
-                        ]
-
-                    // Class name
-                    + SHorizontalBox::Slot()
-                        .FillWidth(1.0f)
-                        .VAlign(VAlign_Center)
-                        .Padding(2.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(InItem->ActionClassName))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
-                        ]
-
-                    // Tag (monospace, muted)
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(4.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(InItem->ActionTagText))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
-                        ]
-
-                    // Role tag
-                    + SHorizontalBox::Slot()
-                        .AutoWidth()
-                        .VAlign(VAlign_Center)
-                        .Padding(6.0f, 0.0f, 4.0f, 0.0f)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(RoleLabel(InItem->Role)))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                        ]
-            ];
-    }
+                // Role badge cluster (right-aligned)
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(6.0f, 0.0f, 4.0f, 0.0f)
+                    [
+                        BadgeBox
+                    ]
+        ];
 }
 
 auto
     SCkGoapDebugger_Sidebar::
     GetTreeChildren(
-        TSharedPtr<FNode> InItem,
-        TArray<TSharedPtr<FNode>>& OutChildren)
+        FRowItemPtr InItem,
+        TArray<FRowItemPtr>& OutChildren)
     -> void
 {
     if (NOT InItem.IsValid()) { return; }
@@ -927,39 +760,64 @@ auto
 auto
     SCkGoapDebugger_Sidebar::
     OnSelectionChanged(
-        TSharedPtr<FNode> InItem,
+        FRowItemPtr InItem,
         ESelectInfo::Type InSelectInfo)
     -> void
 {
-    if (_SuppressSelectionEcho) { return; }
+    if (_SuppressSelectionEcho)        { return; }
+    if (InSelectInfo == ESelectInfo::Direct) { return; }
     if (NOT _ViewModel.IsValid() || NOT InItem.IsValid()) { return; }
 
-    if (InItem->Kind == ENodeKind::ActionSet)
-    {
-        _ViewModel->SetSelectedActionSet(InItem->ActionSetHandle);
-    }
-    else
-    {
-        // Selecting an Action also selects its owning ActionSet so panels
-        // downstream don't lose context.
-        // The Sidebar tree's nodes don't directly know their parent — but the
-        // ViewModel's per-snapshot lookup is fine: walk the snapshot to find
-        // which ActionSet contains this Action.
-        if (const auto* Snap = _ViewModel->GetCurrentEntitySnapshot())
-        {
-            for (const auto& As : Snap->ActionSets)
-            {
-                const auto* Match = As.Catalog.FindByPredicate(
-                    [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InItem->ActionHandle; });
-                if (Match != nullptr)
-                {
-                    _ViewModel->SetSelectedActionSet(As.Handle);
-                    break;
-                }
-            }
-        }
+    // The new selection state is the Planner handle. We also synthesize the
+    // legacy ActionSet selection so the existing PrimaryPane / Breadcrumb /
+    // Graph (which still read SelectedActionSet) keep working until they get
+    // migrated in U11.7-C/D.
+    _ViewModel->SetSelectedActionSet(InItem->PlannerHandle);
 
-        _ViewModel->SetSelectedAction(InItem->ActionHandle);
+    // Clear any stale Action selection — the new tree is Planner-only.
+    _ViewModel->SetSelectedAction(FCk_Handle_Goap_Action{});
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    SyncTreeSelectionFromViewModel()
+    -> void
+{
+    if (NOT _TreeView.IsValid())    { return; }
+    if (NOT _ViewModel.IsValid())   { return; }
+
+    const auto Target = _ViewModel->GetSelectedActionSet();
+    auto Guard = TGuardValue<bool>(_SuppressSelectionEcho, true);
+
+    if (NOT ck::IsValid(Target))
+    {
+        _TreeView->ClearSelection();
+        return;
+    }
+
+    if (auto* Found = _RowItemsByHandle.Find(Target))
+    {
+        const auto Cur = _TreeView->GetSelectedItems();
+        const auto AlreadySelected = (Cur.Num() == 1 && Cur[0] == *Found);
+        if (NOT AlreadySelected)
+        { _TreeView->SetItemSelection(*Found, true, ESelectInfo::Direct); }
+    }
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    ExpandAll(
+        const TArray<FRowItemPtr>& InNodes)
+    -> void
+{
+    if (NOT _TreeView.IsValid()) { return; }
+
+    for (const auto& N : InNodes)
+    {
+        if (NOT N.IsValid()) { continue; }
+        _TreeView->SetItemExpansion(N, true);
+        if (N->Children.Num() > 0)
+        { ExpandAll(N->Children); }
     }
 }
 
@@ -991,7 +849,6 @@ auto
 
     const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
 
-    // Hash on (count, last frame) — coarse but adequate for D2.
     auto NewHash = uint32{0};
     NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Num()));
     if (Hist.Num() > 0) { NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Last().FrameNumber)); }
@@ -999,7 +856,6 @@ auto
     if (NewHash == _LastHistoryHash) { return; }
     _LastHistoryHash = NewHash;
 
-    // Show most-recent first. Cap at a sensible number for the bottom panel.
     static constexpr auto MaxRowsToShow = 200;
 
     _HistoryItems.Empty();
@@ -1022,9 +878,9 @@ auto
     if (NOT InItem.IsValid())
     { return SNew(FRowType, InOwnerTable); }
 
-    const auto DotColor = HistoryEventColor(InItem->Kind);
+    const auto DotColor = HistoryEventColor_Sidebar(InItem->Kind);
     const auto TitleText = InItem->Title.IsEmpty()
-        ? HistoryKindLabel(InItem->Kind)
+        ? HistoryKindLabel_Sidebar(InItem->Kind)
         : InItem->Title;
 
     return SNew(FRowType, InOwnerTable)
@@ -1037,7 +893,7 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(4.0f, 0.0f)
                     [
-                        MakeStatusDot(DotColor, 8.0f)
+                        MakeStatusDot_Sidebar(DotColor, 8.0f)
                     ]
 
                 + SHorizontalBox::Slot()
@@ -1068,7 +924,7 @@ auto
                     .Padding(4.0f, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(FormatTimestamp(InItem->WorldTimeSeconds)))
+                            .Text(FText::FromString(FormatTimestamp_Sidebar(InItem->WorldTimeSeconds)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
                     ]
@@ -1087,10 +943,10 @@ auto
     -> void
 {
     if (_SuppressSelectionEcho) { return; }
+    if (InSelectInfo == ESelectInfo::Direct) { return; }
     if (NOT InItem.IsValid())   { return; }
     if (NOT _ViewModel.IsValid()) { return; }
 
-    // _HistoryItems is reverse-chronological. Map row index → hist index.
     const auto RowIdx = _HistoryItems.IndexOfByKey(InItem);
     if (RowIdx == INDEX_NONE) { return; }
 
@@ -1118,8 +974,6 @@ auto
     const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
     if (NOT Hist.IsValidIndex(InHistIdx)) { return; }
 
-    // Adopt the event's ActionSet so the rest of the window snaps to the
-    // snapshot's owner.
     const auto& Event = Hist[InHistIdx];
     if (ck::IsValid(Event.ActionSetHandle))
     { _ViewModel->SetSelectedActionSet(Event.ActionSetHandle); }
@@ -1155,7 +1009,6 @@ auto
     if (NOT Hist.IsValidIndex(HistIdx))
     { _HistoryListView->ClearSelection(); return; }
 
-    // Row index for the (potentially truncated to MaxRowsToShow) reverse list.
     const auto RowIdx = Hist.Num() - 1 - HistIdx;
     if (NOT _HistoryItems.IsValidIndex(RowIdx))
     { _HistoryListView->ClearSelection(); return; }

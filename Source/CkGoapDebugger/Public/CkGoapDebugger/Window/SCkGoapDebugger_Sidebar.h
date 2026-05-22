@@ -15,21 +15,26 @@ class SBox;
 class SCkGoapDebugger_ScrubTrack;
 
 // ====================================================================================================================
-// CkGoap Debugger — Sidebar.
+// CkGoap Debugger — Sidebar (U11.7-B).
 //
-// Two stacked sections:
-//   - TOP    : STreeView of ActionSets for the currently selected entity. Each
-//              ActionSet is a parent row, expandable; children are the ordered
-//              chain (Root, Mid..., Leaf). Click-to-select drives the
-//              ViewModel's ActionSet + Action selection.
+// Two stacked sections inside a vertical SSplitter (user-resizable):
+//   - TOP    : STreeView of FCkGoapDebugger_PlannerInfo for the currently
+//              selected entity. Recursive — each Planner row is a tree row;
+//              its ChildPlanners are nested children. Role badges (PLANNER /
+//              PLANNER + ACTION for dual-role) sit at the right of each row.
 //   - BOTTOM : SListView of FCkGoapDebugger_HistoryEvent for the selected
-//              entity. Read-only for D2; D6 wires scrub interaction.
+//              entity. Same scrub/history behaviour as before; the splitter
+//              between top and bottom is user-draggable.
 //
-// Rebuild strategy:
-//   - Tree structure is rebuilt only when the structural shape changes
-//     (different entity / different ActionSet handles / chain handles).
-//   - Per-row dynamic values (status badges, chain length text) bind via
-//     TAttribute lambdas reading live from the ViewModel.
+// Row identity:
+//   Source items are TSharedPtr<FRowItem> keyed by the underlying
+//   FCk_Handle_Goap_Planner. The map across refreshes is preserved so that
+//   STreeView selection & expansion state survives ticks. Only when the set
+//   of planner handles changes do we call RequestTreeRefresh.
+//
+// Selection drives BOTH the new selection state and the legacy ActionSet
+// selection (synthesized from the Planner) so the existing PrimaryPane /
+// Breadcrumb / Graph keep working until U11.7-C/D retire them.
 // ====================================================================================================================
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_Sidebar : public SCompoundWidget
@@ -50,49 +55,47 @@ public:
     // attribute lambdas.
     auto RefreshFromViewModel() -> void;
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // Tree row item — a stable per-Planner record. The fields are updated
+    // in place across refreshes so STreeView preserves selection identity.
+    // Public so file-local helpers in the .cpp can spell its name.
+    // -----------------------------------------------------------------------------------------------------------------
+
+    struct FRowItem
+    {
+        FCk_Handle_Goap_Planner             PlannerHandle;
+        FString                             DisplayName;
+        FGameplayTag                        PlannerTag;
+        bool                                IsActionRole       = false;
+        bool                                IsInActiveChain    = false;
+        ECk_GoapPlanStatus                  PlanStatus         = ECk_GoapPlanStatus::Idle;
+        int32                               Depth              = 0;
+        TArray<TSharedPtr<FRowItem>>        Children;
+    };
+
+    using FRowItemPtr = TSharedPtr<FRowItem>;
+
 private:
-    // -----------------------------------------------------------------------------------------------------------------
-    // Tree node — discriminated union between ActionSet rows and Action rows.
-    // ActionSet rows expose a child-list (the ordered active chain); Action
-    // rows have no children.
-    // -----------------------------------------------------------------------------------------------------------------
-
-    enum class ENodeKind : uint8
-    {
-        ActionSet,
-        Action
-    };
-
-    struct FNode
-    {
-        ENodeKind Kind = ENodeKind::ActionSet;
-
-        // ActionSet rows
-        FCk_Handle_Goap_Planner ActionSetHandle;
-        FString                   ActionSetDebugName;
-
-        // Action rows
-        FCk_Handle_Goap_Action    ActionHandle;
-        FString                   ActionClassName;
-        FString                   ActionTagText;
-        ECkGoapDebugger_ActionRole Role = ECkGoapDebugger_ActionRole::Catalog;
-        int32                     ChainDepth = -1;
-
-        // Children only populated for ActionSet nodes (the ordered chain).
-        TArray<TSharedPtr<FNode>> Children;
-    };
-
     // -----------------------------------------------------------------------------------------------------------------
     // Tree plumbing
     // -----------------------------------------------------------------------------------------------------------------
 
-    auto GenerateRow(TSharedPtr<FNode> InItem, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
-    auto GetTreeChildren(TSharedPtr<FNode> InItem, TArray<TSharedPtr<FNode>>& OutChildren) -> void;
-    auto OnSelectionChanged(TSharedPtr<FNode> InItem, ESelectInfo::Type InSelectInfo) -> void;
+    auto GenerateRow(FRowItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
+    auto GetTreeChildren(FRowItemPtr InItem, TArray<FRowItemPtr>& OutChildren) -> void;
+    auto OnSelectionChanged(FRowItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
 
     // Rebuild _RootNodes from the currently selected entity's snapshot.
-    // Returns true if the structural shape changed.
+    // Reuses existing FRowItemPtr entries keyed by PlannerHandle to keep
+    // STreeView selection / expansion stable. Returns true when the set of
+    // planner handles changed (i.e. structural rebuild needed).
     auto RebuildTreeStructure() -> bool;
+
+    // Synchronize STreeView selection with the ViewModel's selected planner.
+    // No-op when already matching.
+    auto SyncTreeSelectionFromViewModel() -> void;
+
+    // Recursively re-expand all rows so the nested Planner forest is visible.
+    auto ExpandAll(const TArray<FRowItemPtr>& InNodes) -> void;
 
     // -----------------------------------------------------------------------------------------------------------------
     // History list plumbing
@@ -105,28 +108,26 @@ private:
     auto OnHistoryRowSelectionChanged(FHistoryItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
 
     // ---- Scrub interaction ---------------------------------------------------
-    // Reverse-order list maps to history indices via: histIdx = Hist.Num()-1-rowIdx.
-    // Called by the scrub track (chronological hist index) and the events list
-    // (chronological hist index translated from row).
     auto SelectHistoryEvent(int32 InHistIdx) -> void;
-
-    // Push the scrub selection into the SListView selection so the row tint
-    // matches the dot highlight.
     auto SyncHistoryListSelectionFromViewModel() -> void;
 
     // -----------------------------------------------------------------------------------------------------------------
-    // Header text helpers — Bind via TAttribute<FText> on header labels so we
-    // don't have to rebuild the header on every refresh.
+    // Header text helpers
     // -----------------------------------------------------------------------------------------------------------------
 
-    auto GetActionSetsHeaderText() const -> FText;
+    auto GetPlannerTreeHeaderText() const -> FText;
     auto GetHistoryHeaderText() const -> FText;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 
-    TSharedPtr<STreeView<TSharedPtr<FNode>>> _TreeView;
-    TArray<TSharedPtr<FNode>>                _RootNodes;
+    TSharedPtr<STreeView<FRowItemPtr>>      _TreeView;
+    TArray<FRowItemPtr>                     _RootNodes;
+
+    // Stable PlannerHandle -> FRowItemPtr map. Used to reuse existing
+    // TSharedPtr identity across RebuildTreeStructure passes so STreeView
+    // selection survives every Tick.
+    TMap<FCk_Handle_Goap_Planner, FRowItemPtr> _RowItemsByHandle;
 
     TSharedPtr<SListView<FHistoryItemPtr>>   _HistoryListView;
     TArray<FHistoryItemPtr>                  _HistoryItems;

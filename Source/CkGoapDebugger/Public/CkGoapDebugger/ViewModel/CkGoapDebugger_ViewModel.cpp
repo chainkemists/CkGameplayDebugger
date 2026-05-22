@@ -106,6 +106,23 @@ auto
         }
     }
 
+    // Auto-select the first top-level Planner if none is currently selected.
+    // Covers two cases:
+    //   1. Entity change: the entity-validation block above cleared
+    //      _SelectedActionSet; without this, PrimaryPane/GraphPane/WorldStateRail
+    //      show empty placeholders because GetSelectedPlannerInfo() is nullptr.
+    //   2. Same entity, but _SelectedActionSet was cleared (user action,
+    //      Reset_ForWorldChange) and at least one top-level Planner exists.
+    // Runs BEFORE the Planner-validation block below; the validation block
+    // no-ops on a valid auto-selected handle.
+    if (NOT ck::IsValid(_SelectedActionSet) && SelectedSnapshot != nullptr)
+    {
+        if (SelectedSnapshot->TopLevelPlanners.Num() > 0)
+        {
+            _SelectedActionSet = SelectedSnapshot->TopLevelPlanners[0].PlannerHandle;
+        }
+    }
+
     // Planner: if no longer in the selected entity's snapshot, clear.
     if (SelectedSnapshot != nullptr && ck::IsValid(_SelectedActionSet))
     {

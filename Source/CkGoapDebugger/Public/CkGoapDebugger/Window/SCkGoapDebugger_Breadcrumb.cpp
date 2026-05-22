@@ -22,21 +22,39 @@
 
 namespace
 {
-    // Locate an ActionInfo by handle within the selected top-level Planner's
-    // legacy ActionSetInfo Catalog. Returns nullptr if not present.
-    auto FindActionInCatalog_Breadcrumb(
-        const FCkGoapDebugger_ActionSetInfo* InAs,
-        const FCk_Handle_Goap_Action& InHandle) -> const FCkGoapDebugger_ActionInfo*
-    {
-        if (InAs == nullptr) { return nullptr; }
-        return InAs->Catalog.FindByPredicate(
-            [&](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InHandle; });
-    }
-
     // Compute the per-step depth label (T0, T1, T2 ...).
     auto TierLabel_Breadcrumb(int32 InTier) -> FString
     {
         return FString::Printf(TEXT("T%d"), InTier);
+    }
+
+    // Find the active child Planner under a PlannerInfo (the one tagged
+    // IsInActiveChain = true). Returns nullptr if no active child.
+    auto FindActiveChildPlanner_Breadcrumb(
+        const FCkGoapDebugger_PlannerInfo& InPlanner)
+        -> const FCkGoapDebugger_PlannerInfo*
+    {
+        for (const auto& Child : InPlanner.ChildPlanners)
+        {
+            if (Child.IsInActiveChain) { return &Child; }
+        }
+        return nullptr;
+    }
+
+    // Recursive structural hash of a PlannerInfo subtree's active-chain trail.
+    auto HashActiveTrail_Breadcrumb(
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
+        uint32& InOutHash) -> void
+    {
+        InOutHash = HashCombine(InOutHash, ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.PlannerHandle)));
+        InOutHash = HashCombine(InOutHash, ::GetTypeHash(InPlanner.PlanHandles.Num()));
+        if (InPlanner.PlanHandles.Num() > 0)
+        {
+            InOutHash = HashCombine(InOutHash,
+                ::GetTypeHash(static_cast<FCk_Handle>(InPlanner.PlanHandles[0])));
+        }
+        if (const auto* ActiveChild = FindActiveChildPlanner_Breadcrumb(InPlanner))
+        { HashActiveTrail_Breadcrumb(*ActiveChild, InOutHash); }
     }
 }
 
@@ -81,20 +99,15 @@ auto
     const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
     const auto  SelPlanner = _ViewModel->GetSelectedActionSet();
 
-    // Structural hash. Captures every chain entry across every top-level
-    // Planner + the selected planner handle (drives the highlight pip).
+    // Structural hash. Captures every active-chain entry across every
+    // top-level Planner + the selected planner handle (drives the highlight pip).
     auto NewHash = uint32{0};
     if (Snap != nullptr)
     {
         NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->EntityHandle));
-        NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->ActionSets.Num()));
-        for (const auto& As : Snap->ActionSets)
-        {
-            NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(As.Handle)));
-            NewHash = HashCombine(NewHash, ::GetTypeHash(As.ActiveChainHandles.Num()));
-            for (const auto& H : As.ActiveChainHandles)
-            { NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(H))); }
-        }
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Snap->TopLevelPlanners.Num()));
+        for (const auto& Top : Snap->TopLevelPlanners)
+        { HashActiveTrail_Breadcrumb(Top, NewHash); }
     }
     NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelPlanner)));
 
@@ -121,7 +134,7 @@ auto
     const auto* Snap = _ViewModel->GetCurrentEntitySnapshot();
     const auto  SelPlanner = _ViewModel->GetSelectedActionSet();
 
-    if (Snap == nullptr || Snap->ActionSets.Num() == 0)
+    if (Snap == nullptr || Snap->TopLevelPlanners.Num() == 0)
     {
         _RowsBox->AddSlot()
             .AutoHeight()
@@ -137,9 +150,9 @@ auto
     const auto WeakVM = TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel);
 
     // One row per top-level Planner on the entity.
-    for (auto AsIdx = 0; AsIdx < Snap->ActionSets.Num(); ++AsIdx)
+    for (auto AsIdx = 0; AsIdx < Snap->TopLevelPlanners.Num(); ++AsIdx)
     {
-        const auto& As = Snap->ActionSets[AsIdx];
+        const auto& TopPlanner = Snap->TopLevelPlanners[AsIdx];
 
         auto Row = SNew(SHorizontalBox);
 
@@ -159,10 +172,12 @@ auto
             ];
 
         // Build a flat list of (Tier, DisplayName, Handle) crumbs by walking
-        // the runtime active chain. Get_ActiveChain (legacy ActiveChainHandles)
-        // already yields the Plan[0] walk starting from the root Action —
-        // which IS the top-level Planner's underlying entity. So index 0 is
-        // Tier 0; we don't synthesize an extra entry for the Planner itself.
+        // the active-chain trail. Mirrors the legacy ActiveChainHandles walk,
+        // but sourced from the per-spec PlannerInfo forest:
+        //   - Tier 0 = top-level Planner itself.
+        //   - Each subsequent tier = the child Planner with IsInActiveChain.
+        //   - Final tier (if PlanHandles[0] is a non-Planner atomic Action) =
+        //     a non-clickable atomic leaf.
         struct FCrumb
         {
             int32                   Tier         = 0;
@@ -172,44 +187,66 @@ auto
         };
         auto Crumbs = TArray<FCrumb>{};
 
-        for (auto Step = 0; Step < As.ActiveChainHandles.Num(); ++Step)
+        // Walk the active-chain Planner trail.
+        const FCkGoapDebugger_PlannerInfo* Cursor = &TopPlanner;
+        auto Tier = 0;
+        while (Cursor != nullptr)
         {
-            const auto& StepHandle = As.ActiveChainHandles[Step];
-            if (NOT ck::IsValid(StepHandle)) { continue; }
-
-            const auto* StepInfo = FindActionInCatalog_Breadcrumb(&As, StepHandle);
-
             auto C = FCrumb{};
-            C.Tier = Step;
+            C.Tier          = Tier;
+            C.Name          = Cursor->DisplayName.IsEmpty()
+                ? Cursor->PlannerTag.ToString()
+                : Cursor->DisplayName;
+            C.PlannerHandle = Cursor->PlannerHandle;
+            C.IsSelected    = (Cursor->PlannerHandle == SelPlanner);
+            Crumbs.Add(MoveTemp(C));
 
-            // Tier 0 — the top-level Planner. Prefer the Planner's DebugName
-            // (which is the Planner's display name) over the raw class name
-            // from the Catalog (the root Action's class is an implementation
-            // detail at this level).
-            if (Step == 0)
+            const auto* ActiveChild = FindActiveChildPlanner_Breadcrumb(*Cursor);
+            if (ActiveChild != nullptr)
             {
-                C.Name = As.DebugName.IsEmpty()
-                    ? (StepInfo != nullptr ? StepInfo->ClassName : As.ActionSetTag.ToString())
-                    : As.DebugName;
-                C.PlannerHandle = As.Handle;
-                C.IsSelected    = (As.Handle == SelPlanner);
+                Cursor = ActiveChild;
+                ++Tier;
+                continue;
             }
-            else
-            {
-                C.Name = (StepInfo != nullptr && NOT StepInfo->ClassName.IsEmpty())
-                    ? StepInfo->ClassName
-                    : FString(TEXT("(unknown)"));
 
-                // Dual-role steps are themselves Planners; build the typesafe
-                // Planner handle from the shared FCk_Handle.
-                if (StepInfo != nullptr && StepInfo->IsPlannerRole)
+            // No active child Planner — if the leaf Planner's current plan
+            // step (PlanHandles[0]) resolves to a registered ChildAction that
+            // is itself NOT a Planner (atomic), emit a final leaf crumb.
+            // Dual-role children would have been picked up as ActiveChild
+            // above, so this branch is atomic-only.
+            if (Cursor->PlanHandles.Num() > 0)
+            {
+                const auto& LeafStep = Cursor->PlanHandles[0];
+                if (ck::IsValid(LeafStep))
                 {
-                    const auto AsPlanner = ck::StaticCast<FCk_Handle_Goap_Planner>(static_cast<FCk_Handle>(StepHandle));
-                    C.PlannerHandle = AsPlanner;
-                    C.IsSelected    = (AsPlanner == SelPlanner);
+                    const auto* LeafActionInfo = Cursor->ChildActions.FindByPredicate(
+                        [&LeafStep](const FCkGoapDebugger_ActionInfo& In)
+                        { return In.Handle == LeafStep; });
+
+                    if (LeafActionInfo != nullptr && NOT LeafActionInfo->IsPlannerRole)
+                    {
+                        auto Leaf = FCrumb{};
+                        Leaf.Tier = Tier + 1;
+                        Leaf.Name = LeafActionInfo->ClassName.IsEmpty()
+                            ? FString(TEXT("(unknown)"))
+                            : LeafActionInfo->ClassName;
+                        // No PlannerHandle → not clickable (atomic step).
+                        Crumbs.Add(MoveTemp(Leaf));
+                    }
+                    else if (LeafActionInfo == nullptr)
+                    {
+                        // Plan step doesn't live in ChildActions (rare —
+                        // grandchild Action under a sub-Planner). Show as
+                        // unknown atomic so the trail isn't silently truncated.
+                        auto Leaf = FCrumb{};
+                        Leaf.Tier = Tier + 1;
+                        Leaf.Name = FString(TEXT("(unknown)"));
+                        Crumbs.Add(MoveTemp(Leaf));
+                    }
                 }
             }
-            Crumbs.Add(MoveTemp(C));
+
+            Cursor = nullptr;
         }
 
         // Emit pills + separators.

@@ -230,16 +230,16 @@ namespace ck_goap_debugger_data_collector_internal
             }
         }
 
-        // ---- Current (live runtime state) ------------------------------------------
-        if (InActionHandle.Has<ck::FFragment_Goap_Action_Current>())
+        // ---- Planner-role live runtime state (PlanState + Goal + WS) ---------------
+        if (InActionHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
         {
-            const auto& Current = InActionHandle.Get<ck::FFragment_Goap_Action_Current>();
+            const auto& PlanState = InActionHandle.Get<ck::FFragment_Goap_Planner_PlanState>();
 
-            Info.PlanStatus       = Current.Get_PlanStatus();
-            Info.PlanCost         = Current.Get_PlanCost();
-            Info.PlanAttemptCount = Current.Get_PlanAttemptCount();
+            Info.PlanStatus       = PlanState.Get_PlanStatus();
+            Info.PlanCost         = PlanState.Get_PlanCost();
+            Info.PlanAttemptCount = PlanState.Get_PlanAttemptCount();
 
-            for (const auto& ChildHandle : Current.Get_Plan())
+            for (const auto& ChildHandle : PlanState.Get_Plan())
             {
                 if (NOT ck::IsValid(ChildHandle)) { continue; }
                 if (NOT ChildHandle.Has<ck::FFragment_Goap_Action_Params>()) { continue; }
@@ -247,21 +247,31 @@ namespace ck_goap_debugger_data_collector_internal
                 const auto& ChildParams = ChildHandle.Get<ck::FFragment_Goap_Action_Params>();
                 Info.PlanClassNames.Add(GetCleanClassName(ChildParams.Get_ActionClass().Get()));
             }
+        }
 
-            for (const auto& InvalidEntry : Current.Get_InvalidGoal())
+        if (InActionHandle.Has<ck::FFragment_Goap_Planner_Goal>())
+        {
+            const auto& GoalFrag = InActionHandle.Get<ck::FFragment_Goap_Planner_Goal>();
+
+            for (const auto& InvalidEntry : GoalFrag.Get_InvalidGoal())
             {
                 Info.InvalidGoal.Add(AuthoredFromCkAuthored(InvalidEntry));
             }
 
             // Goal display: the unified model populates _Goal as
             // ck::goap::FWorldStateCondition (key as FCk_GoapKey int). To present
-            // tag-form we'd need the resolved WS registry — fall back to the
-            // tag-form _GoalFromEffects on the Definition fragment if available.
-            const auto WsHandle = Current.Get_WorldStateSource_Resolved();
+            // tag-form we'd need the resolved WS registry.
+            auto WsHandle = FCk_Handle_Goap_WorldState{};
+            if (InActionHandle.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
+            {
+                const auto& WSSource = InActionHandle.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
+                WsHandle = WSSource.Get_Resolved();
+            }
+
             if (ck::IsValid(WsHandle) && WsHandle.Has<ck::FFragment_Goap_WorldState_KeyRegistry>())
             {
                 const auto& Registry = WsHandle.Get<ck::FFragment_Goap_WorldState_KeyRegistry>().Get_Registry();
-                for (const auto& Cond : Current.Get_Goal())
+                for (const auto& Cond : GoalFrag.Get_Goal())
                 {
                     auto Display = FCkGoapDebugger_Condition{};
                     Display.Key   = Registry.GetTag(Cond.Key);

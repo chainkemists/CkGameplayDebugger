@@ -365,6 +365,18 @@ namespace ck_goap_debugger_data_collector_internal
     // child Planners under their parent) and the parent's ChildActions list.
     // ----------------------------------------------------------------------------------------------------------------
 
+    // Forward decl — BuildPlannerInfo recurses via BuildPlannerInfo_Recursive
+    // which itself recurses back into BuildPlannerInfo for nested sub-Planners.
+    static auto
+    BuildPlannerInfo_Recursive(
+        const FCk_Handle_Goap_Planner& InPlannerHandle,
+        const FCk_Handle_Goap_Planner& InParentPlannerHandle,
+        const TArray<FCk_Handle_Goap_Action>& InActiveChainHandles,
+        const TMap<FCk_Handle_Goap_Action, int32>& InChainDepthByHandle,
+        const FCkGoapDebugger_EntitySnapshot* InPrevSnapshot,
+        int64 InCurrentFrame,
+        TSet<FCk_Handle_Goap_Planner>& InOutVisited) -> FCkGoapDebugger_PlannerInfo;
+
     static auto
     BuildPlannerInfo(
         const FCk_Handle_Goap_Planner& InPlannerHandle,
@@ -372,11 +384,47 @@ namespace ck_goap_debugger_data_collector_internal
         const TArray<FCk_Handle_Goap_Action>& InActiveChainHandles,
         int32 InActiveChainDepthHint) -> FCkGoapDebugger_PlannerInfo
     {
+        // Compatibility wrapper used by older callers that don't pass WS prev /
+        // depth map. WS-recently-changed markup falls through unset; sub-Planner
+        // recursion uses an empty depth map (chain membership only on top-level).
+        auto DepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+        for (auto Idx = 0; Idx < InActiveChainHandles.Num(); ++Idx)
+        { DepthByHandle.Add(InActiveChainHandles[Idx], Idx); }
+
+        auto Visited = TSet<FCk_Handle_Goap_Planner>{};
+        return BuildPlannerInfo_Recursive(
+            InPlannerHandle,
+            InParentPlannerHandle,
+            InActiveChainHandles,
+            DepthByHandle,
+            /*InPrevSnapshot=*/ nullptr,
+            /*InCurrentFrame=*/ 0,
+            Visited);
+        (void)InActiveChainDepthHint;
+    }
+
+    static auto
+    BuildPlannerInfo_Recursive(
+        const FCk_Handle_Goap_Planner& InPlannerHandle,
+        const FCk_Handle_Goap_Planner& InParentPlannerHandle,
+        const TArray<FCk_Handle_Goap_Action>& InActiveChainHandles,
+        const TMap<FCk_Handle_Goap_Action, int32>& InChainDepthByHandle,
+        const FCkGoapDebugger_EntitySnapshot* InPrevSnapshot,
+        int64 InCurrentFrame,
+        TSet<FCk_Handle_Goap_Planner>& InOutVisited) -> FCkGoapDebugger_PlannerInfo
+    {
         auto Info = FCkGoapDebugger_PlannerInfo{};
         Info.PlannerHandle = InPlannerHandle;
         Info.ParentPlanner = InParentPlannerHandle;
 
         if (NOT ck::IsValid(InPlannerHandle)) { return Info; }
+
+        // Defensive cycle guard. The tree is acyclic by construction (a Planner
+        // can only be promoted from an Action whose _ParentAction is unrelated
+        // to this Planner's identity) but PIE corruption / debugger edge cases
+        // shouldn't recurse forever.
+        if (InOutVisited.Contains(InPlannerHandle)) { return Info; }
+        InOutVisited.Add(InPlannerHandle);
 
         // ---- Identity ---------------------------------------------------------------
         if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Params>())
@@ -441,7 +489,16 @@ namespace ck_goap_debugger_data_collector_internal
             const auto& Activation = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Activation>();
             Info.IsActive = Activation.Get_IsActive();
         }
-        Info.IsInActiveChain = (InActiveChainDepthHint >= 0);
+
+        // A sub-Planner is in the active chain when the entity carrying its
+        // Action role (same handle, different cast) appears in the top-level
+        // chain. For top-level Planners themselves (no Action role) treat
+        // IsActive as the answer.
+        {
+            const auto AsAction = ck::StaticCast<FCk_Handle_Goap_Action>(
+                static_cast<FCk_Handle>(InPlannerHandle));
+            Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
+        }
 
         // ---- Plan + goal (Planner role) --------------------------------------------
         if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
@@ -503,6 +560,99 @@ namespace ck_goap_debugger_data_collector_internal
                     Display.Key   = Registry.GetTag(Cond.Key);
                     Display.Value = Cond.Value;
                     Info.GoalResolved.Add(MoveTemp(Display));
+                }
+            }
+        }
+
+        // ---- WorldState entries (resolved registry + values) -----------------------
+        // Mirrors what the legacy ActionSetInfo path produced — Planner consumers
+        // (WorldStateRail) read this list directly off PlannerInfo so the legacy
+        // shim can be retired.
+        {
+            const TArray<FCkGoapDebugger_WorldStateEntry>* PrevEntries = nullptr;
+            if (InPrevSnapshot != nullptr)
+            {
+                // Walk prior snapshot's TopLevelPlanners forest to find this
+                // Planner's previous WorldState entries (used for recently-
+                // changed markup).
+                auto FindPrevWs =
+                    [&](auto& InSelf,
+                        const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners)
+                    -> const TArray<FCkGoapDebugger_WorldStateEntry>*
+                    {
+                        for (const auto& P : InPlanners)
+                        {
+                            if (P.PlannerHandle == InPlannerHandle)
+                            { return &P.WorldState; }
+                            if (const auto* Found = InSelf(InSelf, P.ChildPlanners))
+                            { return Found; }
+                        }
+                        return nullptr;
+                    };
+                PrevEntries = FindPrevWs(FindPrevWs, InPrevSnapshot->TopLevelPlanners);
+            }
+            Info.WorldState = BuildWorldStateEntries(WsForDisplay, PrevEntries, InCurrentFrame);
+        }
+
+        // ---- Direct children (U11.7 B.4) -------------------------------------------
+        // Build a fully-populated tree so downstream widgets can navigate without
+        // falling back to the legacy ActionSetInfo catalog. "Direct children" per
+        // spec §7.2 / FProcessor_Goap_Planner_Setup:
+        //   - Promoted Action-Planner (dual-role host): host._ChildActions.
+        //   - Top-level Planner: rootAction._ChildActions.
+        // Each direct child becomes an ActionInfo; dual-role children additionally
+        // get an entry in ChildPlanners.
+        {
+            using ActionHandle = FCk_Handle_Goap_Action;
+            auto DirectChildren = TArray<ActionHandle>{};
+
+            if (InPlannerHandle.Has<ck::FFragment_Goap_Action_Tree>())
+            {
+                const auto& Tree = InPlannerHandle.Get<ck::FFragment_Goap_Action_Tree>();
+                DirectChildren = Tree.Get_ChildActions();
+            }
+            else if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
+            {
+                const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Current>();
+                const auto Root = Current.Get_RootAction();
+                if (ck::IsValid(Root) && Root.Has<ck::FFragment_Goap_Action_Tree>())
+                {
+                    const auto& RootTree = Root.Get<ck::FFragment_Goap_Action_Tree>();
+                    DirectChildren = RootTree.Get_ChildActions();
+                }
+            }
+
+            Info.ChildActions.Reserve(DirectChildren.Num());
+            for (const auto& ChildAction : DirectChildren)
+            {
+                if (NOT ck::IsValid(ChildAction)) { continue; }
+
+                const auto* DepthPtr  = InChainDepthByHandle.Find(ChildAction);
+                const bool  IsInChain = DepthPtr != nullptr;
+                const auto  Depth     = IsInChain ? *DepthPtr : -1;
+
+                auto ChildInfo = BuildActionInfo(ChildAction, Depth, IsInChain);
+                Info.ChildActions.Add(MoveTemp(ChildInfo));
+
+                // Dual-role child: also surface as a sub-Planner. The Planner-
+                // role discriminator is FFragment_Goap_Planner_Params (set by
+                // PromoteActionToPlanner and the top-level Add path).
+                if (ChildAction.Has<ck::FFragment_Goap_Planner_Params>())
+                {
+                    const auto ChildAsPlanner =
+                        UCk_Utils_Goap_Planner_UE::CastChecked(ChildAction);
+                    if (ck::IsValid(ChildAsPlanner))
+                    {
+                        auto SubPlanner = BuildPlannerInfo_Recursive(
+                            ChildAsPlanner,
+                            InPlannerHandle,
+                            InActiveChainHandles,
+                            InChainDepthByHandle,
+                            InPrevSnapshot,
+                            InCurrentFrame,
+                            InOutVisited);
+                        Info.ChildPlanners.Add(MoveTemp(SubPlanner));
+                    }
                 }
             }
         }
@@ -685,14 +835,23 @@ namespace ck_goap_debugger_data_collector_internal
                 if (NOT ck::IsValid(InPlanner)) { return; }
 
                 // New shape (spec §2.1). Top-level Planners have invalid ParentPlanner
-                // by construction. Active chain depth hint = 0 (top-level Planners
-                // are root of their own activation chain).
+                // by construction. Build the full recursive tree with WS-prev linkage
+                // so recently-changed markers carry across frames.
                 auto ActiveChain = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(InPlanner);
-                auto PlannerInfo = BuildPlannerInfo(
+
+                auto ChainDepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+                for (auto Idx = 0; Idx < ActiveChain.Num(); ++Idx)
+                { ChainDepthByHandle.Add(ActiveChain[Idx], Idx); }
+
+                auto Visited = TSet<FCk_Handle_Goap_Planner>{};
+                auto PlannerInfo = BuildPlannerInfo_Recursive(
                     InPlanner,
                     FCk_Handle_Goap_Planner{},
                     ActiveChain,
-                    /*InActiveChainDepthHint=*/0);
+                    ChainDepthByHandle,
+                    InPrevSnapshot,
+                    Snapshot.FrameNumber,
+                    Visited);
                 Snapshot.TopLevelPlanners.Add(MoveTemp(PlannerInfo));
 
                 // Legacy shim — synthesize ActionSetInfo for the existing widgets.

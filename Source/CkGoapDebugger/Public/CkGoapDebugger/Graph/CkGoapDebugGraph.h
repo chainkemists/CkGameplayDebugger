@@ -42,36 +42,36 @@ class CKGOAPDEBUGGER_API UCkGoapDebugGraph : public UEdGraph
 public:
     // Rebuilds the graph from the supplied Planner snapshot.
     // - Clears existing nodes.
-    // - Creates one UCkGoapDebugNode_Action per Catalog entry.
-    // - Creates a UCkGoapDebugNode_Goal for the selected Action's goal
-    //   (or the root Action's goal when no selection is provided).
+    // - Creates one UCkGoapDebugNode_Action per Action found by recursing
+    //   ChildActions + ChildPlanners of the supplied PlannerInfo.
+    // - Creates a UCkGoapDebugNode_Goal for the Planner's goal (the selected
+    //   PlannerInfo's GoalResolved drives the goal pins).
     // - Lays out nodes in a layered DAG (precondition -> effect chain).
-    // - Wires effect-producer -> precondition-consumer pins.
+    // - Wires effect-producer -> precondition-consumer pins + tree edges.
     auto
     RebuildFromSnapshot(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner,
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle) -> void;
 
     // Updates per-Action render hints (IsInPlan / PlanStepIndex / IsSelected /
     // IsFailureBlocked) in place on the existing nodes. Cheap fast-path used
-    // when only the active chain or selection changed but topology (Catalog
-    // identity + edges + goal owner) did not — avoids tearing down the
-    // SGraphEditor scene every refresh, which was the cause of action-graph
-    // flicker. Returns true when any node's render-hint state actually
-    // changed (caller can decide whether to NotifyGraphChanged).
+    // when only the plan / selection changed but topology (catalog identity +
+    // edges + goal owner) did not — avoids tearing down the SGraphEditor
+    // scene every refresh, which was the cause of action-graph flicker.
+    // Returns true when any node's render-hint state actually changed.
     auto
     UpdateRuntimeState(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner,
+        const FCkGoapDebugger_PlannerInfo& InPlanner,
         const FCk_Handle_Goap_Action& InSelectedActionHandle) -> bool;
 
     // Topology hash — captures everything that affects WHICH nodes exist and
     // HOW they're wired (catalog identity, preconditions/effects, goal owner).
-    // Excludes mutable per-tick state (PlanStatus, ActiveChain, selection)
+    // Excludes mutable per-tick state (PlanStatus, plan handles, selection)
     // which UpdateRuntimeState handles in place. The pane uses this to decide
     // between a fast in-place update and a full destructive rebuild.
     static auto
     ComputeTopologyHash(
-        const FCkGoapDebugger_ActionSetInfo& InPlanner) -> uint32;
+        const FCkGoapDebugger_PlannerInfo& InPlanner) -> uint32;
 
     // Drops all nodes and clears the topology cache. Must be called from
     // the pane widget's PIE-teardown path so the FCk_Handle copies inside

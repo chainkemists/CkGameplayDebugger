@@ -391,11 +391,9 @@ namespace ck_goap_debugger_data_collector_internal
         }
 
         // ---- Active chain -----------------------------------------------------------
-        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_ActiveChain>())
-        {
-            const auto& Chain = InActionSetHandle.Get<ck::FFragment_Goap_Planner_ActiveChain>();
-            Info.ActiveChainHandles = Chain.Get_Chain();
-        }
+        // U11.2: the active chain is no longer stored in a fragment — derive it
+        // from the runtime walk exposed by UCk_Utils_Goap_Planner_UE::Get_ActiveChain.
+        Info.ActiveChainHandles = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(InActionSetHandle);
 
         // ---- WS source --------------------------------------------------------------
         auto WsHandle = FCk_Handle_Goap_WorldState{};

@@ -8,21 +8,27 @@
 // ====================================================================================================================
 
 class FCkGoapDebugger_ViewModel;
-class SHorizontalBox;
+class SVerticalBox;
 class STextBlock;
 
 // ====================================================================================================================
-// SCkGoapDebugger_Breadcrumb — top-of-center widget that visualises the
-// currently-selected ActionSet's active chain as a row of clickable segments.
+// SCkGoapDebugger_Breadcrumb (U11.7-C)
 //
-// Layout:
-//   "Chain:"  [Root] ▸ [Mid] ▸ [Leaf]   (right-aligned) Catalog: N · Active: M · Reset chain
+// Top-of-center widget. One row per top-level Planner on the currently
+// selected entity, each row showing that Planner's runtime active chain as a
+// horizontal trail of pills. Clicking a pill selects the corresponding
+// Planner (or no-op if the step is an atomic Action that isn't a Planner).
 //
-// Click semantics:
-//   - Segment click → ViewModel::SetSelectedAction.
-//   - Reset link    → logs a warning (D3 stub — wiring to
-//                     utils_goap_planner::Request_ResetActiveChain is a
-//                     follow-up).
+// Layout per row:
+//   "ACTIVE CHAIN ·"  [T0 AliveBrain]  ▸  [T1 Engage]  ▸  [T2 LightAttacks]
+//
+// Multiple top-level Planners stack vertically.
+//
+// Refresh discipline (CkDebuggerCommon CLAUDE.md):
+//   - Leaf widgets cached at Construct (SVerticalBox of rows).
+//   - Structural hash gate per RefreshFromViewModel; rebuild only on change.
+//   - Refresh-gate (Should_RefreshNow) is enforced at the Window level — every
+//     OnChanged broadcast already passed the gate.
 // ====================================================================================================================
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_Breadcrumb : public SCompoundWidget
@@ -35,23 +41,21 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     ~SCkGoapDebugger_Breadcrumb();
 
-    // Called externally by the parent on ViewModel::OnChanged.
+    // Called by parent on ViewModel::OnChanged.
     auto RefreshFromViewModel() -> void;
 
 private:
-    auto RebuildSegments() -> void;
-    auto OnResetChainClicked() -> FReply;
+    auto RebuildRows() -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 
-    TSharedPtr<SHorizontalBox> _SegmentsBox;
-    TSharedPtr<STextBlock>     _MetaText;
+    // Vertical stack of per-top-level-Planner rows.
+    TSharedPtr<SVerticalBox> _RowsBox;
 
-    // Structural hash of the chain (set of handles + selected handle). Rebuild
-    // only when this changes.
-    uint32 _LastSegmentsHash = 0;
-    bool   _HasMaterialized  = false;
+    // Structural hash — handles in every top-level chain + selected planner.
+    uint32 _LastHash        = 0;
+    bool   _HasMaterialized = false;
 };
 
 // ====================================================================================================================

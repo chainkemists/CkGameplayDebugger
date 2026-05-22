@@ -182,7 +182,7 @@ auto
             auto C = FCrumb{};
             C.Tier = Step;
 
-            // Tier 0 — the top-level Planner. Prefer the ActionSet DebugName
+            // Tier 0 — the top-level Planner. Prefer the Planner's DebugName
             // (which is the Planner's display name) over the raw class name
             // from the Catalog (the root Action's class is an implementation
             // detail at this level).

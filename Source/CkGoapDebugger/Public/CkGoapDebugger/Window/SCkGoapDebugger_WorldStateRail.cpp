@@ -117,7 +117,7 @@ auto
     const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo();
     if (AsInfo == nullptr) { return false; }
 
-    // Prefer the selected Action's WS source label when set; the per-ActionSet
+    // Prefer the selected Action's WS source label when set; the per-Planner
     // WS array remains the source of resolved values (we don't yet collect a
     // per-Action override on FCkGoapDebugger_ActionInfo).
     const auto* SelAction = _ViewModel->GetSelectedActionInfo();
@@ -303,7 +303,7 @@ auto
         if (ck::IsValid(_ViewModel->GetSelectedEntity()))
         {
             if (_ViewModel->GetSelectedActionSetInfo() == nullptr)
-            { Message = TEXT("No ActionSet selected"); }
+            { Message = TEXT("No Planner selected"); }
             else
             { Message = TEXT("(WorldState empty)"); }
         }

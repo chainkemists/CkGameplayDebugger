@@ -14,7 +14,7 @@ class UCkGoapDebugNode_Goal;
 
 // ====================================================================================================================
 // UEdGraph subclass — owns the action node + goal anchor + edges that
-// visualise the selected ActionSet's catalog. Rebuilt from the data layer
+// visualise the selected Planner's catalog. Rebuilt from the data layer
 // snapshot every time the ViewModel changes (cheap; node count is bounded
 // by the catalog size, typically << 100).
 //
@@ -40,7 +40,7 @@ class CKGOAPDEBUGGER_API UCkGoapDebugGraph : public UEdGraph
     GENERATED_BODY()
 
 public:
-    // Rebuilds the graph from the supplied ActionSet snapshot.
+    // Rebuilds the graph from the supplied Planner snapshot.
     // - Clears existing nodes.
     // - Creates one UCkGoapDebugNode_Action per Catalog entry.
     // - Creates a UCkGoapDebugNode_Goal for the selected Action's goal

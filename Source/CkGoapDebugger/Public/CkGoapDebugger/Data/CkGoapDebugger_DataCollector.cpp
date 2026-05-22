@@ -123,7 +123,7 @@ namespace ck_goap_debugger_data_collector_internal
     }
 
     // ----------------------------------------------------------------------------------------------------------------
-    // ActionSet world-state snapshot — reads the resolved WS handle's registry
+    // Planner world-state snapshot — reads the resolved WS handle's registry
     // + values, cross-references previous tick's snapshot for recently-changed
     // markers.
     // ----------------------------------------------------------------------------------------------------------------
@@ -599,7 +599,7 @@ namespace ck_goap_debugger_data_collector_internal
             Info.WorldState = BuildWorldStateEntries(WsHandle, PrevEntries, InCurrentFrame);
         }
 
-        // ---- Catalog walk: gather all Action entities in the ActionSet --------------
+        // ---- Catalog walk: gather all Action entities in the Planner ---------------
         // Determine chain membership + depth from ActiveChainHandles.
         auto ChainDepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
         for (auto Index = 0; Index < Info.ActiveChainHandles.Num(); ++Index)
@@ -651,7 +651,7 @@ namespace ck_goap_debugger_data_collector_internal
 
     // ----------------------------------------------------------------------------------------------------------------
     // Per-entity snapshot. Walks the Goap root's RecordOfGoapActionSets to
-    // gather every ActionSet entity.
+    // gather every Planner entity.
     // ----------------------------------------------------------------------------------------------------------------
 
     static auto

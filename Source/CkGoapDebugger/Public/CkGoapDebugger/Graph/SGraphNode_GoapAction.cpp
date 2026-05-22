@@ -305,7 +305,7 @@ auto
     // arbitrary "sat" check is non-trivial; for D5 use red/green based on
     // whether the condition's Value field is true (treating the snapshot
     // truthiness as a quick visual signal). A future revision should pull
-    // from the parent ActionSet's WorldState array.
+    // from the parent Planner's WorldState array.
     for (const auto& Pre : Snap.Preconditions)
     {
         const auto Sat = Pre.Value;

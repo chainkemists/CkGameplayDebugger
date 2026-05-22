@@ -17,7 +17,7 @@ class UWorld;
 // When CkEcsDebugger selects an entity that carries a Goap root, the gateway
 // renders a compact card showing:
 //   - Header  : "GOAP <root badge>" + "Open in Goap Debugger" button
-//   - Section : ActionSet list (status dot + name + count of active actions)
+//   - Section : Planner list (status dot + name + count of active actions)
 //   - Section : Active chain (Strategic ▸ OperateShop ▸ ServeCustomer) with
 //               leaf highlighted; tag chain on a sub-line
 //   - Section : Leaf action — status / cost / plan length
@@ -65,9 +65,9 @@ private:
     // Open the standalone GoapDebugger and select this entity.
     auto OnClicked_OpenInGoapDebugger() -> FReply;
 
-    // Pick the ActionSet whose chain we render. Priority: PlanFound > Planning >
-    // any enabled with a non-empty chain > first ActionSet. Returns nullptr if
-    // the snapshot has no ActionSets.
+    // Pick the Planner whose chain we render. Priority: PlanFound > Planning >
+    // any enabled with a non-empty chain > first Planner. Returns nullptr if
+    // the snapshot has no Planners.
     auto Pick_DisplayActionSet(const FCkGoapDebugger_EntitySnapshot& InSnapshot) const
         -> const FCkGoapDebugger_ActionSetInfo*;
 

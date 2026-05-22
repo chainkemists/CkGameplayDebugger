@@ -12,7 +12,7 @@ class UWorld;
 // ====================================================================================================================
 // CkGoap Debugger — ViewModel.
 //
-// Holds the UI's mutable selection state (entity / ActionSet / Action) plus
+// Holds the UI's mutable selection state (entity / Planner / Action) plus
 // the latest snapshot batch pulled from FCkGoapDebugger_DataCollector. The
 // debugger window owns one instance and ticks it from its own Tick.
 //

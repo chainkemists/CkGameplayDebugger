@@ -22,7 +22,7 @@ template <typename> class SComboBox;
 // NomadTab. Owns:
 //
 //   - The ViewModel (selection state, mode, snapshot batch).
-//   - The Sidebar (ActionSet tree + history list).
+//   - The Sidebar (Planner tree + history list).
 //   - Center column (breadcrumb + primary + graph stub) and the WS rail.
 //   - Toolbar (entity picker, Live/Scrub toggle, Force replan).
 //   - Mode bar (Standalone vs ECS-Inspector — only Standalone implemented in D2).

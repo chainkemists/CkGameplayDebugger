@@ -25,7 +25,7 @@ class UCkGoapDebugGraph;
 //
 // Lifecycle:
 //   - Subscribes to ViewModel->OnChanged and rebuilds the graph from the
-//     currently selected ActionSet snapshot.
+//     currently selected Planner snapshot.
 //   - Restores selection by Action handle when the previously-selected
 //     node still exists after a rebuild.
 //   - Propagates SGraphEditor selection changes back to the ViewModel.

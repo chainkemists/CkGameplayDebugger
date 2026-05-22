@@ -106,7 +106,7 @@ auto
         }
     }
 
-    // ActionSet: if no longer in the selected entity's snapshot, clear.
+    // Planner: if no longer in the selected entity's snapshot, clear.
     if (SelectedSnapshot != nullptr && ck::IsValid(_SelectedActionSet))
     {
         const auto* Found = SelectedSnapshot->ActionSets.FindByPredicate(
@@ -123,7 +123,7 @@ auto
         _SelectedAction    = FCk_Handle_Goap_Action{};
     }
 
-    // Action: if no longer in the selected ActionSet's catalog, clear.
+    // Action: if no longer in the selected Planner's catalog, clear.
     if (ck::IsValid(_SelectedAction))
     {
         const auto* AsInfo = GetSelectedActionSetInfo();

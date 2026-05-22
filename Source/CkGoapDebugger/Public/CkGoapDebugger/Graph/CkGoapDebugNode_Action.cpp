@@ -30,6 +30,46 @@ auto
 
     if (_Snapshot.Effects.Num() == 0)
     { CreatePin(EGPD_Output, TEXT("GoapDefault"), NAME_None); }
+
+    // Dedicated tree pins for parent → child edges (U11.7-D). Hidden from the
+    // Slate visual (SGraphNode_GoapAction only renders a single anchor pin
+    // and the connection policy resolves geometry node-to-node), but the
+    // connection policy detects them via Get_TreePinNames so it can apply
+    // dashed wire styling distinct from dependency edges.
+    CreatePin(EGPD_Input,  TEXT("GoapTree"), GetTreeInPinName())->bHidden  = true;
+    CreatePin(EGPD_Output, TEXT("GoapTree"), GetTreeOutPinName())->bHidden = true;
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugNode_Action::
+    Get_TreeInPin() const
+    -> UEdGraphPin*
+{
+    const auto Target = GetTreeInPinName();
+    for (auto* Pin : Pins)
+    {
+        if (Pin && Pin->Direction == EGPD_Input && Pin->PinName == Target)
+        { return Pin; }
+    }
+    return nullptr;
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugNode_Action::
+    Get_TreeOutPin() const
+    -> UEdGraphPin*
+{
+    const auto Target = GetTreeOutPinName();
+    for (auto* Pin : Pins)
+    {
+        if (Pin && Pin->Direction == EGPD_Output && Pin->PinName == Target)
+        { return Pin; }
+    }
+    return nullptr;
 }
 
 // ====================================================================================================================

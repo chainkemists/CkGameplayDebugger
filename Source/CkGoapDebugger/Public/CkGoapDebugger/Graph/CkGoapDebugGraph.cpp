@@ -63,7 +63,21 @@ auto
     -> void
 {
     _GoalNode = nullptr;
+    _TreeEdgePins_Graph.Reset();
     Nodes.Empty();
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugGraph::
+    Is_TreeEdge(
+        UEdGraphPin* InOutputPin,
+        UEdGraphPin* InInputPin) const
+    -> bool
+{
+    if (NOT InOutputPin || NOT InInputPin) { return false; }
+    return _TreeEdgePins_Graph.Contains(TPair<UEdGraphPin*, UEdGraphPin*>{InOutputPin, InInputPin});
 }
 
 // ====================================================================================================================
@@ -106,6 +120,16 @@ auto
             Hash = HashCombine(Hash, GetTypeHash(G.Key));
             Hash = HashCombine(Hash, ::GetTypeHash(G.Value ? 1 : 0));
         }
+
+        // U11.7-D: parent/child tree structure participates in topology.
+        // Re-parenting an Action, or adding/removing a child, must trigger a
+        // full graph rebuild so the tree edges and per-pin connections track
+        // the new shape. Selection deliberately does NOT enter the hash —
+        // selection-only changes route through UpdateRuntimeState.
+        Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Action.ParentActionHandle)));
+        Hash = HashCombine(Hash, ::GetTypeHash(Action.ChildActionHandles.Num()));
+        for (const auto& Child : Action.ChildActionHandles)
+        { Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Child))); }
     }
     return Hash;
 }
@@ -252,6 +276,7 @@ auto
     SetSuppressNotifications(true);
 
     _GoalNode = nullptr;
+    _TreeEdgePins_Graph.Reset();
     Nodes.Empty();
 
     const auto& Catalog = InPlanner.Catalog;
@@ -447,6 +472,46 @@ auto
                 if (auto* EffPin = FindEffectPin(ActionNodes[ProducerIdx], Pre.Key))
                 { EffPin->MakeLinkTo(PrePin); }
             }
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Phase 4b: Tree edges (U11.7-D). For each Action that owns direct children
+    //           in the tree (composite Actions / Planner roots), add an edge
+    //           from this node's hidden TreeOut pin to each child's TreeIn pin.
+    //           Record the (Out, In) pin pair in _TreeEdgePins_Graph so the
+    //           connection policy can identify and style these wires as dashed,
+    //           coexisting with the solid dependency edges from Phase 4.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto FindActionIndex = [&](const FCk_Handle_Goap_Action& InH) -> int32
+    {
+        if (ck::Is_NOT_Valid(InH)) { return INDEX_NONE; }
+        for (auto Idx = 0; Idx < ActionCount; ++Idx)
+        {
+            if (Catalog[Idx].Handle == InH) { return Idx; }
+        }
+        return INDEX_NONE;
+    };
+
+    for (auto i = 0; i < ActionCount; ++i)
+    {
+        const auto& Action = Catalog[i];
+        if (Action.ChildActionHandles.Num() == 0) { continue; }
+
+        auto* ParentOutPin = ActionNodes[i]->Get_TreeOutPin();
+        if (NOT ParentOutPin) { continue; }
+
+        for (const auto& ChildHandle : Action.ChildActionHandles)
+        {
+            const auto ChildIdx = FindActionIndex(ChildHandle);
+            if (ChildIdx == INDEX_NONE) { continue; }   // child not in catalog (shouldn't happen)
+
+            auto* ChildInPin = ActionNodes[ChildIdx]->Get_TreeInPin();
+            if (NOT ChildInPin) { continue; }
+
+            ParentOutPin->MakeLinkTo(ChildInPin);
+            _TreeEdgePins_Graph.Add(TPair<UEdGraphPin*, UEdGraphPin*>{ParentOutPin, ChildInPin});
         }
     }
 

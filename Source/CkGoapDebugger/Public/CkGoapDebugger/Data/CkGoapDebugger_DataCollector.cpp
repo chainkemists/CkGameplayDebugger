@@ -298,7 +298,25 @@ namespace ck_goap_debugger_data_collector_internal
             }
 
             Info.ChildActionHandles = Tree.Get_ChildActions();
+
+            // U11.7-A: Parent Planner. In the transitional model, the parent
+            // Action entity may itself carry the Planner role; if so, it IS
+            // the parent Planner. (Top-level Actions registered directly under
+            // a Planner have an invalid _ParentAction — the Planner is then
+            // the registering entity, not derivable from the Action's _Tree.)
+            if (ck::IsValid(Info.ParentActionHandle) &&
+                Info.ParentActionHandle.Has<ck::FFragment_Goap_Planner_Params>())
+            {
+                Info.ParentPlanner =
+                    UCk_Utils_Goap_Planner_UE::CastChecked(Info.ParentActionHandle);
+            }
         }
+
+        // ---- Role badges (U11.7-A) ---------------------------------------------------
+        // Action role is by definition (we got here via an Action handle). Dual-role if
+        // this entity also carries the Planner discriminator.
+        Info.IsActionRole  = true;
+        Info.IsPlannerRole = InActionHandle.Has<ck::FFragment_Goap_Planner_Params>();
 
         // ---- Replan throttle (seconds-since-last) ----------------------------------
         if (InActionHandle.Has<ck::FFragment_Goap_Action_ReplanThrottle>())
@@ -334,7 +352,166 @@ namespace ck_goap_debugger_data_collector_internal
     }
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Per-ActionSet snapshot.
+    // Per-Planner snapshot (U11.7-A, spec §3.4 / §4).
+    //
+    // Walks: identity → goal/plan/WS → role badges → child Actions (direct children
+    // via Action_Tree under the Planner's root) → recursive sub-Planners.
+    //
+    // In the transitional U11 model every Action entity carries the Planner-role
+    // fragment cluster. The discriminator for "this entity should be surfaced as
+    // a Planner in the debugger" is FFragment_Goap_Planner_Params (set by
+    // UCk_Utils_Goap_Planner_UE::Add and Promote). Sub-Planners that arise from
+    // PromoteActionToPlanner are dual-role and surface in BOTH this tree (as
+    // child Planners under their parent) and the parent's ChildActions list.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    static auto
+    BuildPlannerInfo(
+        const FCk_Handle_Goap_Planner& InPlannerHandle,
+        const FCk_Handle_Goap_Planner& InParentPlannerHandle,
+        const TArray<FCk_Handle_Goap_Action>& InActiveChainHandles,
+        int32 InActiveChainDepthHint) -> FCkGoapDebugger_PlannerInfo
+    {
+        auto Info = FCkGoapDebugger_PlannerInfo{};
+        Info.PlannerHandle = InPlannerHandle;
+        Info.ParentPlanner = InParentPlannerHandle;
+
+        if (NOT ck::IsValid(InPlannerHandle)) { return Info; }
+
+        // ---- Identity ---------------------------------------------------------------
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Params>())
+        {
+            const auto& Params = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Params>();
+            Info.PlannerTag = Params.Get_PlannerTag();
+            Info.EnableToggle = Params.Get_InitialToggle();
+        }
+        if (Info.PlannerTag.IsValid())
+        {
+            auto TagString = Info.PlannerTag.ToString();
+            auto LastDot = int32{INDEX_NONE};
+            if (TagString.FindLastChar(TEXT('.'), LastDot))
+            {
+                Info.DisplayName = TagString.RightChop(LastDot + 1);
+            }
+            else
+            {
+                Info.DisplayName = TagString;
+            }
+        }
+
+        // ---- Role badges ------------------------------------------------------------
+        Info.IsPlannerRole = true;
+        Info.IsActionRole  = InPlannerHandle.Has<ck::FFragment_Goap_Action_Definition>();
+
+        // ---- Action-role payload (only when dual-role) ------------------------------
+        if (Info.IsActionRole)
+        {
+            const auto& Def = InPlannerHandle.Get<ck::FFragment_Goap_Action_Definition>();
+            Info.Cost = Def.Get_Cost();
+            for (const auto& Raw : Def.Get_Preconditions())
+            {
+                Info.Preconditions.Add(AuthoredFromRawCondition(Raw));
+            }
+            for (const auto& Raw : Def.Get_Effects())
+            {
+                Info.Effects.Add(AuthoredFromRawEffect(Raw));
+            }
+        }
+
+        // ---- Enable + activation ----------------------------------------------------
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
+        {
+            const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Current>();
+            Info.EnableToggle = Current.Get_EnableToggle();
+
+            Info.DependencyCycles = Current.Get_DependencyCycles();
+            for (const auto& Cycle : Info.DependencyCycles)
+            {
+                auto CycleInfo = FCkGoapDebugger_CycleInfo{};
+                for (const auto& InCycleClass : Cycle.Get_ActionsInCycle())
+                {
+                    CycleInfo.ActionsInCycle.Add(GetCleanClassName(InCycleClass.Get()));
+                }
+                CycleInfo.CycleConditions = Cycle.Get_CycleConditions();
+                Info.DependencyCyclesDisplay.Add(MoveTemp(CycleInfo));
+            }
+        }
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Activation>())
+        {
+            const auto& Activation = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Activation>();
+            Info.IsActive = Activation.Get_IsActive();
+        }
+        Info.IsInActiveChain = (InActiveChainDepthHint >= 0);
+
+        // ---- Plan + goal (Planner role) --------------------------------------------
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
+        {
+            const auto& PlanState = InPlannerHandle.Get<ck::FFragment_Goap_Planner_PlanState>();
+            Info.PlanStatus       = PlanState.Get_PlanStatus();
+            Info.PlanCost         = PlanState.Get_PlanCost();
+            Info.PlanAttemptCount = PlanState.Get_PlanAttemptCount();
+            Info.PlanHandles      = PlanState.Get_Plan();
+
+            for (const auto& ChildHandle : Info.PlanHandles)
+            {
+                if (NOT ck::IsValid(ChildHandle))
+                {
+                    Info.PlanClassNames.Add(FString{});
+                    continue;
+                }
+                if (NOT ChildHandle.Has<ck::FFragment_Goap_Action_Params>())
+                {
+                    Info.PlanClassNames.Add(FString{});
+                    continue;
+                }
+                const auto& ChildParams = ChildHandle.Get<ck::FFragment_Goap_Action_Params>();
+                Info.PlanClassNames.Add(GetCleanClassName(ChildParams.Get_ActionClass().Get()));
+            }
+        }
+
+        // ---- WS source -------------------------------------------------------------
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
+        {
+            const auto& WSSource = InPlannerHandle.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
+            Info.WorldStateSourceOverride = WSSource.Get_WorldStateSource();
+            Info.WorldStateSourceResolved = WSSource.Get_Resolved();
+        }
+
+        const auto WsForDisplay = ck::IsValid(Info.WorldStateSourceResolved)
+            ? Info.WorldStateSourceResolved
+            : Info.WorldStateSourceOverride;
+        if (ck::IsValid(WsForDisplay))
+        {
+            Info.WorldStateSourceLabel = UCk_Utils_Handle_UE::Get_DebugName(WsForDisplay).ToString();
+        }
+
+        // ---- Goal ------------------------------------------------------------------
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Goal>())
+        {
+            const auto& GoalFrag = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Goal>();
+            Info.GoalAuthored        = GoalFrag.Get_GoalAuthored();
+            Info.InvalidGoalAuthored = GoalFrag.Get_InvalidGoal();
+
+            if (ck::IsValid(WsForDisplay) &&
+                WsForDisplay.Has<ck::FFragment_Goap_WorldState_KeyRegistry>())
+            {
+                const auto& Registry = WsForDisplay
+                    .Get<ck::FFragment_Goap_WorldState_KeyRegistry>().Get_Registry();
+                for (const auto& Cond : GoalFrag.Get_Goal())
+                {
+                    auto Display = FCkGoapDebugger_Condition{};
+                    Display.Key   = Registry.GetTag(Cond.Key);
+                    Display.Value = Cond.Value;
+                    Info.GoalResolved.Add(MoveTemp(Display));
+                }
+            }
+        }
+
+        return Info;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Per-ActionSet snapshot (LEGACY SHIM — pre-U11 widget consumers).
     // ----------------------------------------------------------------------------------------------------------------
 
     static auto
@@ -497,14 +674,28 @@ namespace ck_goap_debugger_data_collector_internal
         Snapshot.FrameNumber      = static_cast<int64>(GFrameCounter);
         Snapshot.WorldTimeSeconds = (InWorld != nullptr) ? InWorld->GetTimeSeconds() : 0.0;
 
-        // Enumerate ActionSets from the private record-of-actionsets.
-        auto MutableGoap = InGoapHandle;
+        // Enumerate Planners from the private record-of-planners.
+        // Each top-level Planner contributes ONE PlannerInfo (new shape) AND ONE
+        // legacy ActionSetInfo (shim).
+        auto MutableOwner = InEntityHandle;
         ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
-            MutableGoap,
+            MutableOwner,
             [&Snapshot, InPrevSnapshot](FCk_Handle_Goap_Planner InPlanner)
             {
                 if (NOT ck::IsValid(InPlanner)) { return; }
 
+                // New shape (spec §2.1). Top-level Planners have invalid ParentPlanner
+                // by construction. Active chain depth hint = 0 (top-level Planners
+                // are root of their own activation chain).
+                auto ActiveChain = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(InPlanner);
+                auto PlannerInfo = BuildPlannerInfo(
+                    InPlanner,
+                    FCk_Handle_Goap_Planner{},
+                    ActiveChain,
+                    /*InActiveChainDepthHint=*/0);
+                Snapshot.TopLevelPlanners.Add(MoveTemp(PlannerInfo));
+
+                // Legacy shim — synthesize ActionSetInfo for the existing widgets.
                 auto AsInfo = BuildActionSetInfo(InPlanner, InPrevSnapshot, Snapshot.FrameNumber);
                 Snapshot.ActionSets.Add(MoveTemp(AsInfo));
             });
@@ -731,32 +922,35 @@ auto
     // entries whose entities have been destroyed.
     auto SeenThisPass = TSet<FCk_Handle>{};
 
-    // The Goap root entity holds FFragment_RecordOfGoapPlanners. Iterate
-    // those — the OWNER of each Goap root is the gameplay entity the debugger
-    // surfaces; the Goap root itself is a typesafe child entity.
+    // U11.7-A: An owner entity holds FFragment_RecordOfGoapPlanners whose entries
+    // are the typesafe FCk_Handle_Goap_Planner sub-entities. Iterate those owners,
+    // build a snapshot for the owner with its forest of top-level Planners.
     TransientEntity.View<ck::FFragment_RecordOfGoapPlanners>().ForEach(
         [&Out, &SeenThisPass, &TransientEntity, InWorld](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
         {
-            const auto GoapEntityHandle = ck::MakeHandle(InEntity, TransientEntity);
-            if (NOT ck::IsValid(GoapEntityHandle)) { return; }
-
-            // Resolve the owner entity — that's the gameplay entity we surface.
-            // Goap roots are spawned as typesafe children of the owner via
-            // Request_CreateEntity_AsTypeSafe<FCk_Handle_Goap_Planner>. The owner is
-            // therefore the lifetime owner of this entity. Fall back to the
-            // Goap entity itself if no owner is found (defensive).
-            auto OwnerHandle = FCk_Handle{};
-            if (GoapEntityHandle.Has<ck::FFragment_LifetimeOwner>())
-            {
-                OwnerHandle = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(GoapEntityHandle);
-            }
-            if (NOT ck::IsValid(OwnerHandle)) { OwnerHandle = GoapEntityHandle; }
-
-            const auto GoapTypedHandle = UCk_Utils_Goap_Planner_UE::CastChecked(GoapEntityHandle);
+            const auto OwnerHandle = ck::MakeHandle(InEntity, TransientEntity);
+            if (NOT ck::IsValid(OwnerHandle)) { return; }
 
             const auto* PrevSnapshot = GPrevSnapshotByEntity.Find(OwnerHandle);
 
-            auto Snapshot = BuildEntitySnapshot(OwnerHandle, GoapTypedHandle, InWorld, PrevSnapshot);
+            // GoapHandle is the first valid Planner in the owner's record — kept
+            // as a legacy field on the snapshot for widgets that still rely on
+            // it as a stable per-entity identifier.
+            auto FirstPlannerHandle = FCk_Handle_Goap_Planner{};
+            {
+                auto MutableOwner = OwnerHandle;
+                ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
+                    MutableOwner,
+                    [&FirstPlannerHandle](FCk_Handle_Goap_Planner InPlanner)
+                    {
+                        if (NOT ck::IsValid(FirstPlannerHandle) && ck::IsValid(InPlanner))
+                        {
+                            FirstPlannerHandle = InPlanner;
+                        }
+                    });
+            }
+
+            auto Snapshot = BuildEntitySnapshot(OwnerHandle, FirstPlannerHandle, InWorld, PrevSnapshot);
 
             DetectAndPushEvents(
                 OwnerHandle,

@@ -132,6 +132,13 @@ private:
     TSharedPtr<SListView<FHistoryItemPtr>>   _HistoryListView;
     TArray<FHistoryItemPtr>                  _HistoryItems;
 
+    // Stable (FrameNumber, EventKind) -> FHistoryItemPtr map. Reused across
+    // RebuildHistoryItems passes so SListView row identity (selection, hover,
+    // widget reuse) is preserved when the history set has not structurally
+    // changed. Mirrors the _RowItemsByHandle pattern used for the Planner tree.
+    using FHistoryKey = TTuple<int64, ECkGoapDebugger_HistoryEventKind>;
+    TMap<FHistoryKey, FHistoryItemPtr>       _HistoryItemsByKey;
+
     TSharedPtr<SCkGoapDebugger_ScrubTrack>   _ScrubTrack;
 
     // Selection-restore guard — suppress OnSelectionChanged echoes that

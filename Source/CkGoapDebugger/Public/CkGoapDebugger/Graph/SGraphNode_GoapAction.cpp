@@ -38,7 +38,11 @@ namespace
         return Full;
     }
 
-    // Outer border color for the action card.
+    // Outer border color for the action card. Priority: selected > failed >
+    // in-plan > composite > atomic leaf. The atomic-leaf tint matches the
+    // legend's "Leaf — atomic action" swatch (blue #60a5fa). Falls back to
+    // Color_Border_Strong only if the node pointer is null (invariant
+    // violation — every real action node carries the leaf path).
     auto Compute_BorderColor(const UCkGoapDebugNode_Action* InNode) -> FLinearColor
     {
         if (NOT InNode) { return FCkGoapDebuggerStyle::Color_Border_Strong; }
@@ -55,7 +59,8 @@ namespace
         if (InNode->Get_IsComposite())
         { return FCkGoapDebuggerStyle::Color_Status_Composite; }
 
-        return FCkGoapDebuggerStyle::Color_Border_Strong;
+        // Atomic leaf — explicit tint matching the legend.
+        return FCkGoapDebuggerStyle::Color_Status_Planning;
     }
 
     // Small filled circle for port indicator dots.

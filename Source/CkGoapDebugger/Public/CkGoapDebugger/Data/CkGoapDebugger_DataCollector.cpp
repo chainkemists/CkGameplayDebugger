@@ -505,10 +505,38 @@ namespace ck_goap_debugger_data_collector_internal
             Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
         }
 
-        // ---- Plan + goal (Planner role) --------------------------------------------
-        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
+        // ---- Canonical-state entity resolution (Path A workaround) -----------------
+        //
+        // Under Path A (current internal state), top-level Planners delegate
+        // their A* + PlanState/Goal/WorldStateSource storage to an implicit-root
+        // Action entity referenced by `Planner._Current._RootAction`. The
+        // Planner entity *also* carries these fragments but they're stale
+        // duplicate stubs (CTO review finding A5). Reading them here yields
+        // "no goal set" and "Idle" status even when the root Action is
+        // actively planning / has failed / has a goal.
+        //
+        // For promoted mid-tier Planners, `_RootAction` is invalid and the
+        // fragments DO live on the host entity itself.
+        //
+        // Resolve the canonical entity once and read PlanState/Goal/WSSource
+        // from there. When PR-B.1b lands and fragments fully relocate onto
+        // the Planner entity, this redirection becomes a no-op (the root
+        // Action handle goes away, fallback hits the Planner directly).
+        auto CanonicalHandle = static_cast<FCk_Handle>(InPlannerHandle);
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
         {
-            const auto& PlanState = InPlannerHandle.Get<ck::FFragment_Goap_Planner_PlanState>();
+            const auto RootAction = InPlannerHandle
+                .Get<ck::FFragment_Goap_Planner_Current>().Get_RootAction();
+            if (ck::IsValid(RootAction))
+            {
+                CanonicalHandle = static_cast<FCk_Handle>(RootAction);
+            }
+        }
+
+        // ---- Plan + goal (Planner role) — read from the canonical entity ----------
+        if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
+        {
+            const auto& PlanState = CanonicalHandle.Get<ck::FFragment_Goap_Planner_PlanState>();
             Info.PlanStatus       = PlanState.Get_PlanStatus();
             Info.PlanCost         = PlanState.Get_PlanCost();
             Info.PlanAttemptCount = PlanState.Get_PlanAttemptCount();
@@ -531,10 +559,10 @@ namespace ck_goap_debugger_data_collector_internal
             }
         }
 
-        // ---- WS source -------------------------------------------------------------
-        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
+        // ---- WS source (canonical entity) ------------------------------------------
+        if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
         {
-            const auto& WSSource = InPlannerHandle.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
+            const auto& WSSource = CanonicalHandle.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
             Info.WorldStateSourceOverride = WSSource.Get_WorldStateSource();
             Info.WorldStateSourceResolved = WSSource.Get_Resolved();
         }
@@ -547,10 +575,10 @@ namespace ck_goap_debugger_data_collector_internal
             Info.WorldStateSourceLabel = UCk_Utils_Handle_UE::Get_DebugName(WsForDisplay).ToString();
         }
 
-        // ---- Goal ------------------------------------------------------------------
-        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Goal>())
+        // ---- Goal (canonical entity) -----------------------------------------------
+        if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_Goal>())
         {
-            const auto& GoalFrag = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Goal>();
+            const auto& GoalFrag = CanonicalHandle.Get<ck::FFragment_Goap_Planner_Goal>();
             Info.GoalAuthored        = GoalFrag.Get_GoalAuthored();
             Info.InvalidGoalAuthored = GoalFrag.Get_InvalidGoal();
 

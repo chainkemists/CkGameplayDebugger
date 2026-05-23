@@ -6,9 +6,13 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
+
 #include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
 
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -23,14 +27,19 @@
 namespace ck_goap_debugger_wsrail_internal
 {
     // Cap displayed key text so very long tags don't blow out the 300px rail.
-    constexpr int32 MaxKeyChars = 28;
+    constexpr int32 WsRail_MaxKeyChars = 28;
+
+    // Layer name used by the WS rail when pushing single-key debug overrides.
+    // AI-deliberation layers use their own ad-hoc names; "DebugUI" is reserved
+    // for hands-on toggles from the rail.
+    static const FName WsRail_DebugUiLayerName = FName{TEXT("DebugUI")};
 
     auto TruncateKey(const FString& InKey) -> FString
     {
-        if (InKey.Len() <= MaxKeyChars) { return InKey; }
+        if (InKey.Len() <= WsRail_MaxKeyChars) { return InKey; }
         // Show the leaf bit by preferring the right side of the tag, since
         // GameplayTag tail-segments tend to be the discriminating identifier.
-        const auto Tail = InKey.Right(MaxKeyChars - 1);
+        const auto Tail = InKey.Right(WsRail_MaxKeyChars - 1);
         return FString(TEXT("…")) + Tail;
     }
 }
@@ -145,6 +154,16 @@ auto
     auto Label = FString{};
     const auto HasSelection = Resolve_DisplayedWorldState(Entries, Label);
 
+    // Cache the resolved WS handle for click handlers + TAttribute lambdas.
+    // The handle is read straight from the ActionSet info populated by the
+    // data collector (no ECS lookups in this hot path).
+    _CurrentWorldState = FCk_Handle_Goap_WorldState{};
+    if (HasSelection && _ViewModel.IsValid())
+    {
+        if (const auto* AsInfo = _ViewModel->GetSelectedActionSetInfo())
+        { _CurrentWorldState = AsInfo->WorldStateHandle; }
+    }
+
     // ----------------------------------------------------------------------
     // Content-hash gate — skip the destructive SetContent / ClearChildren
     // cascade when this snapshot would render identical to the last one.
@@ -215,9 +234,79 @@ auto
 
     if (_HeaderHost.IsValid())
     {
-        const auto HeaderText = FString::Printf(TEXT("WORLDSTATE · %s"),
-            Label.IsEmpty() ? TEXT("(unresolved)") : *Label);
         const auto CountText = FString::Printf(TEXT("%d keys"), KeyCount);
+
+        // The "[+N layer]" suffix is bound via TAttribute so push/pop of the
+        // DebugUI layer updates the header text live, without forcing the
+        // rail to rebuild. Per CkDebuggerCommon SGraphNode live-bind invariant.
+        auto HeaderTextAttr = TAttribute<FText>::Create(
+            TAttribute<FText>::FGetter::CreateLambda(
+                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
+                 Label]() -> FText
+                {
+                    const auto Pinned = WeakThis.Pin();
+                    if (NOT Pinned.IsValid())
+                    { return FText::FromString(TEXT("WORLDSTATE")); }
+
+                    auto Base = FString::Printf(TEXT("WORLDSTATE · %s"),
+                        Label.IsEmpty() ? TEXT("(unresolved)") : *Label);
+
+                    auto WsHandle = Pinned->_CurrentWorldState;
+                    if (ck::IsValid(WsHandle))
+                    {
+                        const auto Depth = UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(WsHandle);
+                        if (Depth > 0)
+                        {
+                            Base += FString::Printf(TEXT("  [+%d layer%s]"),
+                                Depth, Depth == 1 ? TEXT("") : TEXT("s"));
+                        }
+                    }
+                    return FText::FromString(Base);
+                }));
+
+        // Reset button visibility: only when DebugUI layer is active.
+        auto ResetVisibilityAttr = TAttribute<EVisibility>::Create(
+            TAttribute<EVisibility>::FGetter::CreateLambda(
+                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this))]() -> EVisibility
+                {
+                    const auto Pinned = WeakThis.Pin();
+                    if (NOT Pinned.IsValid()) { return EVisibility::Collapsed; }
+
+                    auto WsHandle = Pinned->_CurrentWorldState;
+                    if (NOT ck::IsValid(WsHandle)) { return EVisibility::Collapsed; }
+
+                    return UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(WsHandle) > 0
+                        ? EVisibility::Visible
+                        : EVisibility::Collapsed;
+                }));
+
+        // Reset tooltip: list currently-pushed layer names (live).
+        auto ResetTooltipAttr = TAttribute<FText>::Create(
+            TAttribute<FText>::FGetter::CreateLambda(
+                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this))]() -> FText
+                {
+                    const auto Pinned = WeakThis.Pin();
+                    if (NOT Pinned.IsValid())
+                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
+
+                    auto WsHandle = Pinned->_CurrentWorldState;
+                    if (NOT ck::IsValid(WsHandle))
+                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
+
+                    const auto Layers = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(WsHandle);
+                    if (Layers.Num() == 0)
+                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
+
+                    auto Joined = FString{};
+                    for (auto Idx = 0; Idx < Layers.Num(); ++Idx)
+                    {
+                        if (Idx > 0) { Joined += TEXT(", "); }
+                        Joined += Layers[Idx].ToString();
+                    }
+                    return FText::FromString(FString::Printf(
+                        TEXT("Pop the \"DebugUI\" override layer.\nActive layers: %s"),
+                        *Joined));
+                }));
 
         _HeaderHost->SetContent(
             SNew(SBorder)
@@ -232,7 +321,7 @@ auto
                             .VAlign(VAlign_Center)
                             [
                                 SNew(STextBlock)
-                                    .Text(FText::FromString(HeaderText))
+                                    .Text(HeaderTextAttr)
                                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                             ]
@@ -240,6 +329,25 @@ auto
                         + SHorizontalBox::Slot()
                             .AutoWidth()
                             .VAlign(VAlign_Center)
+                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+                            [
+                                SNew(SButton)
+                                    .Visibility(ResetVisibilityAttr)
+                                    .ToolTipText(ResetTooltipAttr)
+                                    .OnClicked(this, &SCkGoapDebugger_WorldStateRail::HandleClick_ResetDebugUiLayer)
+                                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                                    [
+                                        SNew(STextBlock)
+                                            .Text(FText::FromString(TEXT("Reset")))
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                                    ]
+                            ]
+
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(CountText))
@@ -334,11 +442,36 @@ auto
     using namespace ck_goap_debugger_wsrail_internal;
 
     const auto KeyText  = TruncateKey(InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString(TEXT("(invalid)")));
-    const auto ValueStr = InEntry.Value ? FString(TEXT("TRUE")) : FString(TEXT("false"));
-    const auto ValueCol = InEntry.Value
+    const auto KeyCol   = FCkGoapDebuggerStyle::Color_Text_Secondary;
+    const auto EntryKey = InEntry.Key;
+    const bool EffectiveValue = InEntry.Value;
+
+    // The displayed value follows the resolved (post-override) WS view that
+    // the data collector already flattened into _Entries.Value. It stays in
+    // sync with the snapshot, so on click we flip from THAT value.
+    const auto ValueStr = EffectiveValue ? FString(TEXT("TRUE")) : FString(TEXT("false"));
+    const auto ValueCol = EffectiveValue
         ? FCkGoapDebuggerStyle::Color_Status_PlanFound
         : FCkGoapDebuggerStyle::Color_Text_Dim;
-    const auto KeyCol = FCkGoapDebuggerStyle::Color_Text_Secondary;
+
+    // ---- TAttribute lambdas — live updates without rail rebuild -------------
+    // OVERRIDE pill visibility: appears when Has_KeyOverride is true for this
+    // key. Driven by the live override stack so push/pop reflects immediately.
+    auto OverrideVisibilityAttr = TAttribute<EVisibility>::Create(
+        TAttribute<EVisibility>::FGetter::CreateLambda(
+            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
+             EntryKey]() -> EVisibility
+            {
+                const auto Pinned = WeakThis.Pin();
+                if (NOT Pinned.IsValid()) { return EVisibility::Collapsed; }
+
+                auto WsHandle = Pinned->_CurrentWorldState;
+                if (NOT ck::IsValid(WsHandle)) { return EVisibility::Collapsed; }
+
+                return UCk_Utils_Goap_WorldState_UE::Has_KeyOverride(WsHandle, EntryKey)
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            }));
 
     auto RowContent = SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
@@ -368,27 +501,125 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(ValueStr))
-                    .Font(InEntry.Value
+                    .Font(EffectiveValue
                         ? FCoreStyle::GetDefaultFontStyle("Bold", 9)
                         : FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     .ColorAndOpacity(FSlateColor(ValueCol))
-            ];
-
-    if (InEntry.RecentlyChanged)
-    {
-        return SNew(SBorder)
-            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+            ]
+        // OVERRIDE pill — TAttribute-driven visibility. Amber (#f59e0b ~ Color_Status_Selected).
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
             [
-                RowContent
+                SNew(SBorder)
+                    .Visibility(OverrideVisibilityAttr)
+                    .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
+                    .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
+                    .ToolTipText(FText::FromString(TEXT("This key is shadowed by a debug override.\nClick the Reset button at the top to clear the DebugUI layer.")))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("OVERRIDE")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                    ]
             ];
-    }
 
-    return SNew(SBox)
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+    // The row background. Pick the "recently changed" amber brush when either
+    // RecentlyChanged OR an override is active on this key. The background
+    // tint matches the spec — a single brush for both "debug-shadowed" and
+    // "recently changed" reads naturally as "this row has something to look at".
+    auto BorderBrushAttr = TAttribute<const FSlateBrush*>::Create(
+        TAttribute<const FSlateBrush*>::FGetter::CreateLambda(
+            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
+             EntryKey,
+             RecentlyChanged = InEntry.RecentlyChanged]() -> const FSlateBrush*
+            {
+                if (RecentlyChanged)
+                {
+                    return FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent"));
+                }
+                const auto Pinned = WeakThis.Pin();
+                if (Pinned.IsValid())
+                {
+                    auto WsHandle = Pinned->_CurrentWorldState;
+                    if (ck::IsValid(WsHandle) &&
+                        UCk_Utils_Goap_WorldState_UE::Has_KeyOverride(WsHandle, EntryKey))
+                    {
+                        return FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent"));
+                    }
+                }
+                return FStyleDefaults::GetNoBrush();
+            }));
+
+    // The clickable row — SButton wraps the content so left-click invokes the
+    // toggle. Style-wise we use a transparent button to preserve the rail's
+    // visual cadence; the row's amber tint is what signals override state.
+    return SNew(SBorder)
+        .BorderImage(BorderBrushAttr)
+        .Padding(FMargin(0.0f))
         [
-            RowContent
+            SNew(SButton)
+                .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+                .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                .ToolTipText(FText::FromString(TEXT("Click to push a DebugUI override that flips this key.\nClick again to flip back.")))
+                .OnClicked(FOnClicked::CreateSP(
+                    this,
+                    &SCkGoapDebugger_WorldStateRail::HandleClick_ToggleKeyOverride,
+                    EntryKey,
+                    EffectiveValue))
+                [
+                    RowContent
+                ]
         ];
+}
+
+// ====================================================================================================================
+// CLICK HANDLERS — DebugUI override layer
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_ToggleKeyOverride(
+        FGameplayTag InKey,
+        bool InCurrentEffectiveValue)
+    -> FReply
+{
+    using namespace ck_goap_debugger_wsrail_internal;
+
+    if (NOT ck::IsValid(_CurrentWorldState)) { return FReply::Handled(); }
+    if (NOT InKey.IsValid())                 { return FReply::Handled(); }
+
+    // Push or update the DebugUI layer with the flipped value. The API is
+    // idempotent and creates the layer on first call; subsequent clicks on
+    // the same key update the override in place. Click again to flip back.
+    auto MutableWs = _CurrentWorldState;
+    UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey(
+        MutableWs,
+        WsRail_DebugUiLayerName,
+        InKey,
+        NOT InCurrentEffectiveValue);
+
+    return FReply::Handled();
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_ResetDebugUiLayer()
+    -> FReply
+{
+    using namespace ck_goap_debugger_wsrail_internal;
+
+    if (NOT ck::IsValid(_CurrentWorldState)) { return FReply::Handled(); }
+
+    // Pop ONLY the DebugUI layer — preserves any AI-deliberation layers that
+    // might have been pushed concurrently (e.g., hypothesis scopes).
+    auto MutableWs = _CurrentWorldState;
+    UCk_Utils_Goap_WorldState_UE::Pop_Override_ByName(
+        MutableWs,
+        WsRail_DebugUiLayerName);
+
+    return FReply::Handled();
 }
 
 // ====================================================================================================================

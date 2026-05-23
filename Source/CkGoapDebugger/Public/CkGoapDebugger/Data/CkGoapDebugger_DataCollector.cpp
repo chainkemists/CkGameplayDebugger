@@ -733,6 +733,7 @@ namespace ck_goap_debugger_data_collector_internal
         if (ck::IsValid(WsHandle))
         {
             Info.WorldStateSourceLabel = UCk_Utils_Handle_UE::Get_DebugName(WsHandle).ToString();
+            Info.WorldStateHandle      = WsHandle;
 
             const TArray<FCkGoapDebugger_WorldStateEntry>* PrevEntries = nullptr;
             if (InPrevSnapshot != nullptr)

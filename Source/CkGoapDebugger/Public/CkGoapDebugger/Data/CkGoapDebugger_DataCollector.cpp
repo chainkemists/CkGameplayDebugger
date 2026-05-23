@@ -17,6 +17,7 @@
 #include "CkGoap/Action/CkGoap_Action_Fragment.h"
 #include "CkGoap/Action/CkGoap_Action_Record_Internal.h"        // FFragment_RecordOfGoapActions + utils
 #include "CkGoap/WorldState/CkGoap_WorldState_Fragment.h"
+#include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -141,10 +142,8 @@ namespace ck_goap_debugger_data_collector_internal
         if (NOT InWsHandle.Has<ck::FFragment_Goap_WorldState_Values>())      { return Out; }
 
         const auto& RegFrag = InWsHandle.Get<ck::FFragment_Goap_WorldState_KeyRegistry>();
-        const auto& ValFrag = InWsHandle.Get<ck::FFragment_Goap_WorldState_Values>();
 
         const auto& Registry = RegFrag.Get_Registry();
-        const auto& Values   = ValFrag.Get_Values();
 
         const auto& AllTags = Registry.GetAllTags();
         Out.Reserve(AllTags.Num());
@@ -153,7 +152,13 @@ namespace ck_goap_debugger_data_collector_internal
         {
             auto Entry = FCkGoapDebugger_WorldStateEntry{};
             Entry.Key   = AllTags[Index];
-            Entry.Value = Values.Get(Index);
+            // Read through the public Get_Value API so the override stack is
+            // walked top-down. Reading FFragment_Goap_WorldState_Values
+            // directly would return only the base store and miss DebugUI
+            // overrides — the rail would display stale values, and the click
+            // handler (which captures the displayed value) would push
+            // idempotent no-ops on every subsequent click.
+            Entry.Value = UCk_Utils_Goap_WorldState_UE::Get_Value(InWsHandle, Entry.Key);
 
             // Carry over recently-changed annotation: if prev had a different
             // value, this entry just changed.

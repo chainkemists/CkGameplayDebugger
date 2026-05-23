@@ -10,6 +10,14 @@
 
 namespace ck_goap_debugger_viewmodel_internal
 {
+    // Forward decl — defined further down. Used in Tick's selection-validation
+    // block to walk the recursive PlannerInfo tree (top-level + nested) so
+    // promoted mid-tier Planners are recognised, not just top-level.
+    static auto
+    FindPlannerInfo_Recursive(
+        const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners,
+        const FCk_Handle_Goap_Planner& InHandle) -> const FCkGoapDebugger_PlannerInfo*;
+
     // Cheap hash of the observable view-model state. Used to debounce
     // OnChanged broadcasts.
     static auto
@@ -124,10 +132,15 @@ auto
     }
 
     // Planner: if no longer in the selected entity's snapshot, clear.
+    //
+    // Walk TopLevelPlanners RECURSIVELY (via the same helper GetPlannerInfoByHandle
+    // uses) so promoted mid-tier sub-Planners validate too. The legacy
+    // ActionSets[] shim is top-level-only — searching it here would clobber any
+    // child-Planner selection on the very next Tick after the user clicks it.
     if (SelectedSnapshot != nullptr && ck::IsValid(_SelectedActionSet))
     {
-        const auto* Found = SelectedSnapshot->ActionSets.FindByPredicate(
-            [this](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == _SelectedActionSet; });
+        const auto* Found = ck_goap_debugger_viewmodel_internal::FindPlannerInfo_Recursive(
+            SelectedSnapshot->TopLevelPlanners, _SelectedActionSet);
         if (Found == nullptr)
         {
             _SelectedActionSet = FCk_Handle_Goap_Planner{};

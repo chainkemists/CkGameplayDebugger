@@ -132,11 +132,23 @@ private:
     TSharedPtr<SListView<FHistoryItemPtr>>   _HistoryListView;
     TArray<FHistoryItemPtr>                  _HistoryItems;
 
-    // Stable (FrameNumber, EventKind) -> FHistoryItemPtr map. Reused across
+    // Stable per-event key -> FHistoryItemPtr map. Reused across
     // RebuildHistoryItems passes so SListView row identity (selection, hover,
     // widget reuse) is preserved when the history set has not structurally
     // changed. Mirrors the _RowItemsByHandle pattern used for the Planner tree.
-    using FHistoryKey = TTuple<int64, ECkGoapDebugger_HistoryEventKind>;
+    //
+    // Key composition: (FrameNumber, Kind, HistIndex).
+    // HistIndex is the event's position in the DataCollector's per-entity
+    // history array. The DataCollector appends events; it never reorders, so
+    // the index is stable for an event's entire lifetime in the buffer. The
+    // (FrameNumber, Kind) pair alone is NOT unique — multiple events can fire
+    // on the same frame with the same kind (e.g., the cluster of PlanFound
+    // events emitted during initial Setup propagation). When that happens, a
+    // collision-free key is essential to keep TSharedPtr identity unique per
+    // event; otherwise SListView's WidgetMapToItem desyncs from its
+    // ItemsWithGeneratedWidgets set and FWidgetGenerator::ValidateWidgetGeneration
+    // fires on the next paint.
+    using FHistoryKey = TTuple<int64, ECkGoapDebugger_HistoryEventKind, int32>;
     TMap<FHistoryKey, FHistoryItemPtr>       _HistoryItemsByKey;
 
     TSharedPtr<SCkGoapDebugger_ScrubTrack>   _ScrubTrack;

@@ -898,7 +898,10 @@ auto
     for (auto Idx = Hist.Num() - 1; Idx >= Start; --Idx)
     {
         const auto& Ev  = Hist[Idx];
-        const auto  Key = FHistoryKey{ Ev.FrameNumber, Ev.Kind };
+        // Idx is the third tuple element — see FHistoryKey doc-comment in the
+        // header. (FrameNumber, Kind) alone collides when multiple events fire
+        // on the same frame with the same kind.
+        const auto  Key = FHistoryKey{ Ev.FrameNumber, Ev.Kind, Idx };
 
         FHistoryItemPtr Item;
         if (auto* Found = _HistoryItemsByKey.Find(Key))

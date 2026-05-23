@@ -884,7 +884,8 @@ auto
     static constexpr auto MaxRowsToShow = 200;
 
     // Stable-identity rebuild: reuse existing TSharedPtr entries by key so
-    // SListView selection / hover state survives every tick.
+    // SListView selection / hover state survives across ticks when the item
+    // set is unchanged (just data updates).
     // Key = (FrameNumber, EventKind) — unique per recorded event because events
     // fire at different frames; Kind disambiguates same-frame edge cases.
     const auto Start = FMath::Max(0, Hist.Num() - MaxRowsToShow);
@@ -916,10 +917,28 @@ auto
         _HistoryItems.Add(Item);
     }
 
-    // Evict keys no longer in the visible window.
+    // Detect membership change. SListView's FWidgetGenerator caches widgets
+    // by item pointer; when items are added or evicted (not just mutated in
+    // place), RequestListRefresh isn't enough — Slate's WidgetMapToItem may
+    // still hold widgets for evicted source items, tripping
+    // ValidateWidgetGeneration on the next paint. RebuildList() does a full
+    // widget-map eviction. Use it whenever the key set changes; keep the
+    // stable-identity refresh for pure data updates.
+    const auto MembershipChanged =
+        NextByKey.Num() != _HistoryItemsByKey.Num()
+        || [&]() {
+            for (const auto& Kv : NextByKey)
+            { if (NOT _HistoryItemsByKey.Contains(Kv.Key)) { return true; } }
+            return false;
+        }();
+
     _HistoryItemsByKey = MoveTemp(NextByKey);
 
-    if (_HistoryListView.IsValid()) { _HistoryListView->RequestListRefresh(); }
+    if (_HistoryListView.IsValid())
+    {
+        if (MembershipChanged) { _HistoryListView->RebuildList(); }
+        else                   { _HistoryListView->RequestListRefresh(); }
+    }
 }
 
 auto

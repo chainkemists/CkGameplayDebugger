@@ -73,9 +73,11 @@ auto
     OutParams.bDrawBubbles   = false;
     OutParams.bUserFlag1     = false;
 
-    // Defaults — muted off-plan edge.
+    // Defaults — muted off-plan edge. Alpha bumped 0.40 → 0.65 so the
+    // dependency graph stays readable even when no plan is active (e.g., when
+    // the goal is already satisfied and Plan[0] is invalid).
     OutParams.WireColor     = FCkGoapDebuggerStyle::Color_Border_Subtle;
-    OutParams.WireColor.A   = 0.40f;
+    OutParams.WireColor.A   = 0.65f;
     OutParams.WireThickness = 1.0f;
 
     if (NOT InOutputPin || NOT InInputPin) { return; }

@@ -185,6 +185,25 @@ CkGoapDebugger/
 
 ---
 
+## WorldState rail: debug-toggle behavior
+
+Each WS key row in `SCkGoapDebugger_WorldStatePanel` is clickable. A click flips the key's effective value by pushing the new value into a named layer `"DebugUI"` via `UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey(WS, "DebugUI", Key, !CurrentEffectiveValue)`. The layer is auto-created on the first click; subsequent clicks on the same key update it in place — same-name push is idempotent per the override stack rules (see CkGoap `CLAUDE.md` §"World State override stack").
+
+**Override-active visuals.** All override-driven visuals are `TAttribute`-bound and update live as the user clicks, without forcing a rail rebuild:
+
+- Rows where `Has_KeyOverride(WS, Key)` returns true render with an amber tint and an `OVERRIDE` pill.
+- A `[+N layer(s)]` badge in the rail header reflects `Get_OverrideDepth(WS)` live.
+- A Reset button appears next to the rail header when `Get_OverrideDepth(WS) > 0`. Clicking it calls `Pop_Override_ByName(WS, "DebugUI")` — narrow pop that preserves any AI-deliberation layers that may coexist.
+- The Reset button's tooltip lists the names of all currently-pushed layers (from `Get_OverrideLayerNames(WS)`).
+
+This is the canonical pattern for runtime debugger visuals that must not trigger destructive widget re-creation. See also `SGraphNode_GoapAction` border color (`CkDebuggerCommon/CLAUDE.md` SGraphNode live-bind invariant) for the equivalent pattern in the graph pane.
+
+**Snapshot click semantics.** Per-row click handlers capture the effective value at row-build time. Rapid double-clicks before the next collector tick rebuilds the rows will re-push the same value. That is a quiet no-op per the override stack's idempotent semantics — no spurious replans result.
+
+**PIE lifecycle.** Override layers reset on PIE start. The Reset button disappears automatically as `Get_OverrideDepth(WS)` returns to zero after the reset.
+
+---
+
 ## See also
 
 - `CkDebuggerCommon/CLAUDE.md` — cross-debugger conventions (copy text, entity refs, list rows, search bars, PIE lifecycle, PMG overlays, safety rules).

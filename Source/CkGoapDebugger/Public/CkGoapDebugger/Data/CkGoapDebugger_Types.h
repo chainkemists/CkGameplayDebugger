@@ -252,6 +252,9 @@ struct FCkGoapDebugger_ActionSetInfo
 
     FCk_Handle_Goap_Action             RootActionHandle;
     FString                            WorldStateSourceLabel;
+    // Resolved WS handle for this Planner. Used by the WS rail to consult /
+    // mutate the override stack live (Push_Override_SingleKey, etc.).
+    FCk_Handle_Goap_WorldState         WorldStateHandle;
     TArray<FCkGoapDebugger_WorldStateEntry> WorldState;
 
     TArray<FCkGoapDebugger_CycleInfo>  DependencyCycles;

@@ -2,6 +2,8 @@
 
 #include "CkGoapDebugger/Data/CkGoapDebugger_Types.h"
 
+#include "CkGoap/WorldState/CkGoap_WorldState_Fragment_Data.h"   // FCk_Handle_Goap_WorldState
+
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -57,6 +59,22 @@ private:
         const TArray<FCkGoapDebugger_WorldStateEntry>*& OutEntries,
         FString& OutLabel) const -> bool;
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // Debug-override stack helpers
+    //
+    // The rail acts as a hands-on shadow for `Goap.WorldState`. Each key row is
+    // clickable: click pushes a single-key override into the layer named
+    // "DebugUI" via `UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey`.
+    // Click again to flip back; a header "Reset" button pops the whole layer.
+    //
+    // The currently-shown WS handle is cached at refresh time (in
+    // `_CurrentWorldState`) so click handlers and TAttribute-bound visuals can
+    // touch the API without re-resolving from the ViewModel mid-event.
+    // -----------------------------------------------------------------------------------------------------------------
+
+    auto HandleClick_ToggleKeyOverride(FGameplayTag InKey, bool InCurrentEffectiveValue) -> FReply;
+    auto HandleClick_ResetDebugUiLayer() -> FReply;
+
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 
@@ -65,10 +83,21 @@ private:
     TSharedPtr<SVerticalBox> _Body;
     TSharedPtr<SBox>         _FooterHost;
 
+    // Resolved WS handle for the currently-rendered selection. Updated each
+    // refresh; used by click handlers and TAttribute lambdas that consult the
+    // override stack live.
+    FCk_Handle_Goap_WorldState _CurrentWorldState{};
+
     // Content-hash gate. The rail rebuilds three subtrees per refresh; on a
     // typical Live tick the WS entries don't change, so we early-out unless
     // the snapshot actually differs from the last render. Captures (entity,
     // Planner, key set + values + RecentlyChanged flag, label).
+    //
+    // NOTE: override-state visuals (per-row OVERRIDE pill / tint, header
+    // "[+N layer]" badge, Reset button visibility + tooltip) are bound via
+    // TAttribute lambdas so they update live without forcing a rebuild. They
+    // are deliberately NOT folded into _LastContentHash — pushing/popping the
+    // DebugUI layer must not trigger a destructive subtree rebuild.
     uint32 _LastContentHash = 0;
     bool   _HasMaterialized = false;
 };

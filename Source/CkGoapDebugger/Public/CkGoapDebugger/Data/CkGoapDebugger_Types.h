@@ -216,6 +216,15 @@ struct FCkGoapDebugger_PlannerInfo
     bool                                       IsActive        = false;
     bool                                       IsInActiveChain = false;
 
+    // Opt-out: when AllowPlanFailed=true, a PlanFailed status is intentional
+    // (the Planner explicitly tolerates "no plan possible"). Sourced from
+    // FFragment_Goap_Planner_Params::Get_AllowPlanFailed.
+    // HasUnconditionalFallback is a cached bool on FFragment_Goap_Planner_Current —
+    // true when the Planner has at least one Action with empty preconditions
+    // (an always-applicable fallback). Surfaced for tooltip / future polish.
+    bool                                       AllowPlanFailed         = false;
+    bool                                       HasUnconditionalFallback = false;
+
     // Action role fields (only valid if IsActionRole — populated from the
     // dual-role entity's FFragment_Goap_Action_Definition).
     TArray<FCkGoapDebugger_Condition>          Preconditions;

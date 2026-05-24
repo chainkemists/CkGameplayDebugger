@@ -43,6 +43,18 @@ namespace
         }
     }
 
+    // Variant that honours the per-Planner _AllowPlanFailed opt-out — when the
+    // Planner explicitly tolerates "no plan possible", swap the error tone for
+    // a Warn (amber) tone so PlanFailed reads as policy, not bug.
+    auto ToneForPlanStatusWithOptOut_PrimaryPane(
+        ECk_GoapPlanStatus InStatus,
+        bool InAllowPlanFailed) -> ECkDebug_Tone
+    {
+        if (InStatus == ECk_GoapPlanStatus::PlanFailed && InAllowPlanFailed)
+        { return ECkDebug_Tone::Warn; }
+        return ToneForPlanStatus_PrimaryPane(InStatus);
+    }
+
     auto LabelForPlanStatus_PrimaryPane(ECk_GoapPlanStatus InStatus) -> FString
     {
         switch (InStatus)
@@ -239,6 +251,7 @@ auto
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->PlanCost));
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->PlanAttemptCount));
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->IsActionRole));
+        NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->AllowPlanFailed));
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->GoalResolved.Num()));
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->InvalidGoalAuthored.Num()));
         NewHash = HashCombine(NewHash, ::GetTypeHash(Planner->DependencyCyclesDisplay.Num()));
@@ -383,10 +396,27 @@ auto
         BadgeBox->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f))
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("ACTION")))
                     .Tone(ECkDebug_Tone::Info)
+                    .ShowDot(false)
+            ];
+    }
+
+    // Opt-out badge — Planner explicitly tolerates PlanFailed (no plan possible
+    // is by design). Shown in PrimaryPane header so users inspecting the plan
+    // see the policy at a glance.
+    if (InPlanner.AllowPlanFailed)
+    {
+        BadgeBox->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_StatusPill)
+                    .Text(FText::FromString(TEXT("OPT-OUT · PlanFailed allowed")))
+                    .Tone(ECkDebug_Tone::Warn)
                     .ShowDot(false)
             ];
     }
@@ -462,7 +492,8 @@ auto
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(LabelForPlanStatus_PrimaryPane(InPlanner.PlanStatus)))
-                    .Tone(ToneForPlanStatus_PrimaryPane(InPlanner.PlanStatus))
+                    .Tone(ToneForPlanStatusWithOptOut_PrimaryPane(
+                        InPlanner.PlanStatus, InPlanner.AllowPlanFailed))
                     .ShowDot(true)
             ]
         + SHorizontalBox::Slot()

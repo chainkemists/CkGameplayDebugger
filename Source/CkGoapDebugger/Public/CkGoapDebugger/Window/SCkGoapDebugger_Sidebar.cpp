@@ -46,6 +46,19 @@ namespace
         }
     }
 
+    // Variant that honours the per-Planner _AllowPlanFailed opt-out: when the
+    // Planner explicitly tolerates PlanFailed, we render the status dot in
+    // amber (Color_Status_Selected) instead of error red, so users don't read
+    // the row as a misconfiguration.
+    auto ResolveStatusColorWithOptOut_Sidebar(
+        ECk_GoapPlanStatus InStatus,
+        bool InAllowPlanFailed) -> FLinearColor
+    {
+        if (InStatus == ECk_GoapPlanStatus::PlanFailed && InAllowPlanFailed)
+        { return FCkGoapDebuggerStyle::Color_Status_Selected; }
+        return ResolveStatusColor_Sidebar(InStatus);
+    }
+
     auto HistoryEventColor_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FLinearColor
     {
         switch (InKind)
@@ -561,6 +574,7 @@ namespace
             Item->PlannerTag       = P.PlannerTag;
             Item->IsActionRole     = P.IsActionRole;
             Item->IsInActiveChain  = P.IsInActiveChain;
+            Item->AllowPlanFailed  = P.AllowPlanFailed;
             Item->PlanStatus       = P.PlanStatus;
             Item->Depth            = InDepth;
             Item->Children         = BuildOrUpdateRowTree_Sidebar(
@@ -603,6 +617,7 @@ auto
             NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(P.PlannerHandle)));
             NewHash = HashCombine(NewHash, ::GetTypeHash(P.IsActionRole));
             NewHash = HashCombine(NewHash, ::GetTypeHash(P.IsInActiveChain));
+            NewHash = HashCombine(NewHash, ::GetTypeHash(P.AllowPlanFailed));
             HashPlanners(P.ChildPlanners);
         }
     };
@@ -687,10 +702,27 @@ auto
         BadgeBox->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, 4.0f, 0.0f))
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("ACTION")))
                     .Tone(ECkDebug_Tone::Info)
+                    .ShowDot(false)
+            ];
+    }
+
+    // Opt-out badge — visible when the Planner has _AllowPlanFailed=true.
+    // Surfaces "PlanFailed here is intentional, not a misconfiguration."
+    // Positioned to the right of PLANNER/ACTION so it stands out.
+    if (InItem->AllowPlanFailed)
+    {
+        BadgeBox->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_StatusPill)
+                    .Text(FText::FromString(TEXT("OPT-OUT")))
+                    .Tone(ECkDebug_Tone::Warn)
                     .ShowDot(false)
             ];
     }
@@ -725,7 +757,8 @@ auto
                                         const auto Item = WeakItem.Pin();
                                         if (NOT Item.IsValid())
                                         { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted); }
-                                        return FSlateColor(ResolveStatusColor_Sidebar(Item->PlanStatus));
+                                        return FSlateColor(ResolveStatusColorWithOptOut_Sidebar(
+                                            Item->PlanStatus, Item->AllowPlanFailed));
                                     })
                                     .Padding(FMargin(0.0f))
                                     [

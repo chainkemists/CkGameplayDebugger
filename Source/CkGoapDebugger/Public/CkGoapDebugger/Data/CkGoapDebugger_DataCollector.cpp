@@ -324,9 +324,12 @@ namespace ck_goap_debugger_data_collector_internal
         Info.IsPlannerRole = InActionHandle.Has<ck::FFragment_Goap_Planner_Params>();
 
         // ---- Replan throttle (seconds-since-last) ----------------------------------
-        if (InActionHandle.Has<ck::FFragment_Goap_Action_ReplanThrottle>())
+        // PR-B.1b Stage 5: ReplanThrottle lives on the Planner entity. Read it
+        // here only for promoted mid-tier Planners (the Action handle that
+        // also carries the Planner role).
+        if (InActionHandle.Has<ck::FFragment_Goap_Planner_ReplanThrottle>())
         {
-            const auto& Throttle = InActionHandle.Get<ck::FFragment_Goap_Action_ReplanThrottle>();
+            const auto& Throttle = InActionHandle.Get<ck::FFragment_Goap_Planner_ReplanThrottle>();
             Info.SecondsSinceLastReplan = Throttle.Get_SecondsSinceLastReplan();
         }
 
@@ -505,35 +508,12 @@ namespace ck_goap_debugger_data_collector_internal
             Info.IsInActiveChain = InChainDepthByHandle.Contains(AsAction) || Info.IsActive;
         }
 
-        // ---- Canonical-state entity resolution (Path A workaround) -----------------
-        //
-        // Under Path A (current internal state), top-level Planners delegate
-        // their A* + PlanState/Goal/WorldStateSource storage to an implicit-root
-        // Action entity referenced by `Planner._Current._RootAction`. The
-        // Planner entity *also* carries these fragments but they're stale
-        // duplicate stubs (CTO review finding A5). Reading them here yields
-        // "no goal set" and "Idle" status even when the root Action is
-        // actively planning / has failed / has a goal.
-        //
-        // For promoted mid-tier Planners, `_RootAction` is invalid and the
-        // fragments DO live on the host entity itself.
-        //
-        // Resolve the canonical entity once and read PlanState/Goal/WSSource
-        // from there. When PR-B.1b lands and fragments fully relocate onto
-        // the Planner entity, this redirection becomes a no-op (the root
-        // Action handle goes away, fallback hits the Planner directly).
+        // PR-B.1b Stage 5: the canonical-entity redirect is gone. PlanState /
+        // Goal / WorldStateSource live on the Planner entity directly for
+        // both top-level Planners and promoted mid-tier Planners.
         auto CanonicalHandle = static_cast<FCk_Handle>(InPlannerHandle);
-        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
-        {
-            const auto RootAction = InPlannerHandle
-                .Get<ck::FFragment_Goap_Planner_Current>().Get_RootAction();
-            if (ck::IsValid(RootAction))
-            {
-                CanonicalHandle = static_cast<FCk_Handle>(RootAction);
-            }
-        }
 
-        // ---- Plan + goal (Planner role) — read from the canonical entity ----------
+        // ---- Plan + goal (Planner role) — read from the Planner entity ----------
         if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_PlanState>())
         {
             const auto& PlanState = CanonicalHandle.Get<ck::FFragment_Goap_Planner_PlanState>();
@@ -644,14 +624,15 @@ namespace ck_goap_debugger_data_collector_internal
                 const auto& Tree = InPlannerHandle.Get<ck::FFragment_Goap_Action_Tree>();
                 DirectChildren = Tree.Get_ChildActions();
             }
-            else if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
+            else if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_ActionCatalogIndex>())
             {
-                const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Current>();
-                const auto Root = Current.Get_RootAction();
-                if (ck::IsValid(Root) && Root.Has<ck::FFragment_Goap_Action_Tree>())
+                // PR-B.1b Stage 5: top-level Planners' direct children come from
+                // the ActionCatalogIndex (every AddAction registers there).
+                const auto& Index = InPlannerHandle.Get<ck::FFragment_Goap_Planner_ActionCatalogIndex>();
+                DirectChildren.Reserve(Index.Get_TagToAction().Num());
+                for (const auto& Pair : Index.Get_TagToAction())
                 {
-                    const auto& RootTree = Root.Get<ck::FFragment_Goap_Action_Tree>();
-                    DirectChildren = RootTree.Get_ChildActions();
+                    if (ck::IsValid(Pair.Value)) { DirectChildren.Add(Pair.Value); }
                 }
             }
 
@@ -731,12 +712,14 @@ namespace ck_goap_debugger_data_collector_internal
             }
         }
 
-        // ---- Current (enable toggle, dependency cycles, root) ----------------------
+        // ---- Current (enable toggle, dependency cycles) ----------------------------
+        // PR-B.1b Stage 5: _RootAction is gone; RootActionHandle stays invalid
+        // (the field is preserved on FCkGoapDebugger_ActionSetInfo for now to
+        // avoid breaking downstream widget consumers).
         if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_Current>())
         {
             const auto& Current = InActionSetHandle.Get<ck::FFragment_Goap_Planner_Current>();
             Info.EnableToggle    = Current.Get_EnableToggle();
-            Info.RootActionHandle = Current.Get_RootAction();
 
             for (const auto& Cycle : Current.Get_DependencyCycles())
             {

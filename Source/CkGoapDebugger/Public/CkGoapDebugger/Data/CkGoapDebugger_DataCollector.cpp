@@ -440,6 +440,7 @@ namespace ck_goap_debugger_data_collector_internal
             const auto& Params = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Params>();
             Info.PlannerTag = Params.Get_PlannerTag();
             Info.EnableToggle = Params.Get_InitialToggle();
+            Info.AllowPlanFailed = Params.Get_AllowPlanFailed();
         }
         if (Info.PlannerTag.IsValid())
         {
@@ -479,6 +480,7 @@ namespace ck_goap_debugger_data_collector_internal
         {
             const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Current>();
             Info.EnableToggle = Current.Get_EnableToggle();
+            Info.HasUnconditionalFallback = Current.Get_HasUnconditionalFallback();
 
             Info.DependencyCycles = Current.Get_DependencyCycles();
             for (const auto& Cycle : Info.DependencyCycles)

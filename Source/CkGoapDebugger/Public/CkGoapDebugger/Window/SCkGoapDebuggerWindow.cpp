@@ -14,6 +14,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 
 #include "Styling/AppStyle.h"
@@ -71,7 +72,7 @@ namespace
                 .AutoWidth()
                 .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InText))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -376,7 +377,7 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Entity:")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -478,6 +479,77 @@ auto
                 + SHorizontalBox::Slot()
                     .FillWidth(1.0f)
 
+                // Name depth verbosity:  [Name]  [<]  value  [>]
+                // Shared with the graph pane via the ViewModel — clicking these
+                // mutates _ViewModel->_NameDepth and broadcasts a Changed event
+                // so every pane that renders class names re-renders. Mirrors
+                // the SM debugger's name-depth toolbar layout.
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
+                    [
+                        SNew(SCkDebug_SelectableLabel)
+                            .Text(FText::FromString(TEXT("Name")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                            .Text(FText::FromString(TEXT("\x25C0")))  // ◀
+                            .ToolTipText(FText::FromString(TEXT("Shorter display name (fewer segments)")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                                const auto Depth = _ViewModel->Get_NameDepth();
+                                const auto MaxDepth = _GraphPane.IsValid() ? _GraphPane->Get_MaxNameDepth() : 1;
+                                // Cycle: Full(0) -> MaxDepth -> ... -> 2 -> 1 -> Full(0)
+                                const auto NewDepth = (Depth == 0) ? MaxDepth : (Depth - 1);
+                                _ViewModel->Set_NameDepth(NewDepth);
+                                _ViewModel->Broadcast_Changed();
+                                return FReply::Handled();
+                            })
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                            .Text_Lambda([this]() -> FText
+                            {
+                                if (NOT _ViewModel.IsValid()) { return FText::FromString(TEXT("1")); }
+                                const auto D = _ViewModel->Get_NameDepth();
+                                return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
+                            })
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                            .Justification(ETextJustify::Center)
+                            .MinDesiredWidth(28.0f)
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                    [
+                        SNew(SButton)
+                            .Text(FText::FromString(TEXT("\x25B6")))  // ▶
+                            .ToolTipText(FText::FromString(TEXT("Longer display name (more segments)")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+                                const auto Depth = _ViewModel->Get_NameDepth();
+                                const auto MaxDepth = _GraphPane.IsValid() ? _GraphPane->Get_MaxNameDepth() : 1;
+                                // Cycle: Full(0) -> 1 -> 2 -> ... -> MaxDepth -> Full(0)
+                                const auto NewDepth = (Depth >= MaxDepth) ? 0 : (Depth + 1);
+                                _ViewModel->Set_NameDepth(NewDepth);
+                                _ViewModel->Broadcast_Changed();
+                                return FReply::Handled();
+                            })
+                    ]
+
                 // Force replan — disabled in Scrub mode (historical chain).
                 + SHorizontalBox::Slot()
                     .AutoWidth()
@@ -526,7 +598,7 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Action color:")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -562,7 +634,7 @@ auto
                     .AutoWidth()
                     .VAlign(VAlign_Center)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Hover any action to see full path")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))

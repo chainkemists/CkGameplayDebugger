@@ -111,6 +111,24 @@ public:
     // is invalid.
     auto ForceReplanOnSelected() -> void;
 
+    // Force an OnChanged broadcast — used when a non-snapshot piece of UI
+    // state (e.g., name-depth verbosity) changes and every subscribed pane
+    // needs to re-render.
+    auto Broadcast_Changed() -> void { OnChanged.Broadcast(); }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // UI presentation state — shared across panes that render class names.
+    // The graph pane's name-depth toolbar mutates this through Set_NameDepth
+    // then calls Broadcast_Changed so the sidebar / plan strip / primary pane
+    // / breadcrumb / history rail all re-render with the new verbosity.
+    //
+    // Depth semantics (mirrors FCkGoapDebugger_NameParams::ComputeDisplayName):
+    //   0 = full joined name (every segment), 1 = leaf, 2 = last two, ...
+    // -----------------------------------------------------------------------------------------------------------------
+
+    auto Get_NameDepth() const -> int32 { return _NameDepth; }
+    auto Set_NameDepth(int32 InDepth) -> void { _NameDepth = FMath::Max(0, InDepth); }
+
 private:
     auto BroadcastIfChanged() -> void;
 
@@ -127,6 +145,11 @@ private:
     // Hash of the last broadcast state — used to suppress no-op OnChanged.
     uint32 _LastBroadcastHash = 0;
     bool   _HasBroadcast      = false;
+
+    // UI presentation state — class-name verbosity. Owned here so every pane
+    // that renders class names converges on one source of truth, and the
+    // graph pane's toolbar control becomes the single editor for it.
+    int32 _NameDepth = 1;
 };
 
 // ====================================================================================================================

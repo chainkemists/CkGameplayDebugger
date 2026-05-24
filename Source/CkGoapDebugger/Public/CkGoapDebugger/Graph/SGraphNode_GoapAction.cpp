@@ -2,6 +2,7 @@
 
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
@@ -18,17 +19,6 @@
 
 namespace
 {
-    // Truncate a class name like "Ck_GoapAction_Wander_C" to its leaf segment "Wander".
-    auto Compute_ShortName(const FString& InClassName) -> FString
-    {
-        auto Name = InClassName;
-        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
-        auto Segments = TArray<FString>{};
-        Name.ParseIntoArray(Segments, TEXT("_"), true);
-        if (Segments.Num() == 0) { return Name; }
-        return Segments.Last();
-    }
-
     auto Compute_TagLeaf(const FGameplayTag& InTag) -> FString
     {
         const auto Full = InTag.ToString();
@@ -127,7 +117,17 @@ auto
 
     // Header row: name + cost. ClassName and Cost are snapshot fields that
     // only change on topology rebuild (which spawns a new widget), so they
-    // are safe to capture at construction time.
+    // are safe to capture at construction time. The display-depth is read
+    // off the owning graph so toggling the toolbar's name-depth control
+    // re-renders every action card (the topology hash includes NameDepth, so
+    // a depth change forces a rebuild via the graph pane's gate).
+    const auto OwningDepth = [this]() -> int32
+    {
+        if (auto* G = Cast<UCkGoapDebugGraph>(GraphNode != nullptr ? GraphNode->GetGraph() : nullptr))
+        { return G->NameDepth; }
+        return 1;
+    }();
+
     auto Header = SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot()
@@ -135,7 +135,7 @@ auto
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(Compute_ShortName(Snap.ClassName)))
+                    .Text(FText::FromString(FCkGoapDebugger_NameParams::ComputeDisplayName(Snap.ClassName, OwningDepth)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)

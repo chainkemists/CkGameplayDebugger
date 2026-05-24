@@ -1,6 +1,7 @@
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Breadcrumb.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"  // FCkGoapDebugger_NameParams
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -110,6 +111,8 @@ auto
         { HashActiveTrail_Breadcrumb(Top, NewHash); }
     }
     NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<FCk_Handle>(SelPlanner)));
+    // Re-render when name-depth verbosity changes.
+    NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth()));
 
     if (_HasMaterialized && NewHash == _LastHash) { return; }
     _LastHash        = NewHash;
@@ -229,7 +232,9 @@ auto
                         Leaf.Tier = Tier + 1;
                         Leaf.Name = LeafActionInfo->ClassName.IsEmpty()
                             ? FString(TEXT("(unknown)"))
-                            : LeafActionInfo->ClassName;
+                            : FCkGoapDebugger_NameParams::ComputeDisplayName(
+                                LeafActionInfo->ClassName,
+                                _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1);
                         // No PlannerHandle → not clickable (atomic step).
                         Crumbs.Add(MoveTemp(Leaf));
                     }

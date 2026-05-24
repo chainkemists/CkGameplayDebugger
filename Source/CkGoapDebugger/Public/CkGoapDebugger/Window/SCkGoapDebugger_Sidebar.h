@@ -162,6 +162,11 @@ private:
     uint32 _LastTreeStructureHash = 0;
     uint32 _LastHistoryHash       = 0;
 
+    // Last name-depth a row set was generated at. A depth change forces a
+    // full RebuildList (row Text widgets cached the display name at
+    // construction time, RequestListRefresh alone would not redraw them).
+    int32  _LastHistoryNameDepth  = -1;
+
     // Track the entity whose tree is currently materialized.
     FCk_Handle _MaterializedEntity;
 

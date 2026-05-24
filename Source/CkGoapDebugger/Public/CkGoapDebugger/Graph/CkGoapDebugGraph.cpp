@@ -295,6 +295,30 @@ auto
 
 auto
     UCkGoapDebugGraph::
+    Get_MaxNameDepth() const
+    -> int32
+{
+    auto Max = 1;
+    for (UEdGraphNode* Node : Nodes)
+    {
+        auto* ActionNode = Cast<UCkGoapDebugNode_Action>(Node);
+        if (NOT ActionNode) { continue; }
+
+        auto Name = ActionNode->Get_Snapshot().ClassName;
+        if (Name.StartsWith(TEXT("Default__"))) { Name = Name.RightChop(9); }
+        if (Name.EndsWith(TEXT("_C")))          { Name = Name.LeftChop(2); }
+
+        TArray<FString> Segs;
+        Name.ParseIntoArray(Segs, TEXT("_"), true);
+        if (Segs.Num() > Max) { Max = Segs.Num(); }
+    }
+    return Max;
+}
+
+// ====================================================================================================================
+
+auto
+    UCkGoapDebugGraph::
     FindActionNode(
         const FCk_Handle_Goap_Action& InHandle) const
     -> UCkGoapDebugNode_Action*

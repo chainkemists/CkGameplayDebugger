@@ -1,6 +1,7 @@
 #include "CkGoapDebugger/Window/SCkGoapDebugger_PlanStrip.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"  // FCkGoapDebugger_NameParams
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -113,6 +114,9 @@ auto
         { NewHash = HashCombine(NewHash, GetTypeHash(Name)); }
         NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(Planner->PlanStatus)));
     }
+    // Re-render when name-depth verbosity changes — every card's label is
+    // derived from the shared depth.
+    NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth()));
 
     if (_HasMaterialized && NewHash == _LastStripHash) { return; }
     _LastStripHash = NewHash;
@@ -189,9 +193,11 @@ auto
     for (auto Idx = 0; Idx < StepCount; ++Idx)
     {
         const auto& StepHandle = Planner->PlanHandles[Idx];
-        const auto  Name       = Planner->PlanClassNames.IsValidIndex(Idx)
+        const auto  RawName    = Planner->PlanClassNames.IsValidIndex(Idx)
             ? Planner->PlanClassNames[Idx]
             : FString(TEXT("(unknown)"));
+        const auto  Name       = FCkGoapDebugger_NameParams::ComputeDisplayName(
+            RawName, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1);
 
         const auto* StepInfo = FindCatalogEntry_PlanStrip(OwningAs, StepHandle);
 

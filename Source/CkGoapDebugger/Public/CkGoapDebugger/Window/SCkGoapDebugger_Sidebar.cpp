@@ -2,6 +2,7 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"   // FCkGoapDebugger_NameParams
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -534,6 +535,15 @@ namespace
 
         for (const auto& P : InPlanners)
         {
+            // Dedupe defence: if the data collector ever surfaces the same
+            // PlannerHandle twice within a single forest level (e.g. via a
+            // future bug in the recursive walker), reusing the same
+            // FRowItemPtr in Out would let STreeView treat both visual
+            // positions as a single selection target — clicking one row
+            // would highlight every occurrence. Skip duplicates here so each
+            // PlannerHandle is rendered exactly once per level.
+            if (OutNext.Contains(P.PlannerHandle)) { continue; }
+
             auto Item = SCkGoapDebugger_Sidebar::FRowItemPtr{};
             if (auto* Found = InExisting.Find(P.PlannerHandle))
             {
@@ -877,6 +887,8 @@ auto
     NewHash = HashCombine(NewHash, ::GetTypeHash(Entity));
     NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Num()));
     if (Hist.Num() > 0) { NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Last().FrameNumber)); }
+    // Re-render rows when name-depth verbosity changes.
+    NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth()));
 
     if (NewHash == _LastHistoryHash) { return; }
     _LastHistoryHash = NewHash;
@@ -927,8 +939,13 @@ auto
     // ValidateWidgetGeneration on the next paint. RebuildList() does a full
     // widget-map eviction. Use it whenever the key set changes; keep the
     // stable-identity refresh for pure data updates.
+    const auto CurrentNameDepth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
+    const auto NameDepthChanged = (_LastHistoryNameDepth != CurrentNameDepth);
+    _LastHistoryNameDepth = CurrentNameDepth;
+
     const auto MembershipChanged =
-        NextByKey.Num() != _HistoryItemsByKey.Num()
+        NameDepthChanged
+        || NextByKey.Num() != _HistoryItemsByKey.Num()
         || [&]() {
             for (const auto& Kv : NextByKey)
             { if (NOT _HistoryItemsByKey.Contains(Kv.Key)) { return true; } }
@@ -957,9 +974,24 @@ auto
     { return SNew(FRowType, InOwnerTable); }
 
     const auto DotColor = HistoryEventColor_Sidebar(InItem->Kind);
-    const auto TitleText = InItem->Title.IsEmpty()
-        ? HistoryKindLabel_Sidebar(InItem->Kind)
-        : InItem->Title;
+
+    // If the event carries an ActionClassName, re-derive the row title from
+    // the live name-depth so toolbar changes flow through history rows.
+    auto TitleText = FString{};
+    if (NOT InItem->ActionClassName.IsEmpty())
+    {
+        const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
+        const auto ShortName = FCkGoapDebugger_NameParams::ComputeDisplayName(
+            InItem->ActionClassName, Depth);
+        const auto Prefix = HistoryKindLabel_Sidebar(InItem->Kind);
+        TitleText = FString::Printf(TEXT("%s: %s"), *Prefix, *ShortName);
+    }
+    else
+    {
+        TitleText = InItem->Title.IsEmpty()
+            ? HistoryKindLabel_Sidebar(InItem->Kind)
+            : InItem->Title;
+    }
 
     return SNew(FRowType, InOwnerTable)
         .Padding(FMargin(2.0f, 1.0f))

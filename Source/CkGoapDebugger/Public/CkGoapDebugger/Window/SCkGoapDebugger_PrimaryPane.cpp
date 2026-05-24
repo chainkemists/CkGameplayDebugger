@@ -252,6 +252,9 @@ auto
             NewHash ^= Pair;
         }
     }
+    // Re-render when name-depth verbosity changes — pickups any class-name
+    // dependent strings nested in build paths below.
+    NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth()));
 
     // Always forward to the plan strip — it has its own gate.
     if (_PlanStrip.IsValid())

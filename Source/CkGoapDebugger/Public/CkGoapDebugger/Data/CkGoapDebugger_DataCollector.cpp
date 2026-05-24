@@ -935,6 +935,7 @@ namespace ck_goap_debugger_data_collector_internal
                 // Title = action class name (looked up in the current catalog).
                 const auto* ActionInfo = CurAs.Catalog.FindByPredicate(
                     [&CurEntry](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == CurEntry; });
+                Event.ActionClassName = (ActionInfo != nullptr) ? ActionInfo->ClassName : FString{};
                 Event.Title = (ActionInfo != nullptr && NOT ActionInfo->ClassName.IsEmpty())
                     ? FString::Printf(TEXT("Activated: %s"), *ActionInfo->ClassName)
                     : TEXT("Activated");
@@ -959,6 +960,7 @@ namespace ck_goap_debugger_data_collector_internal
                     ? PrevAs->Catalog.FindByPredicate(
                           [&PrevEntry](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == PrevEntry; })
                     : nullptr;
+                Event.ActionClassName = (ActionInfo != nullptr) ? ActionInfo->ClassName : FString{};
                 Event.Title = (ActionInfo != nullptr && NOT ActionInfo->ClassName.IsEmpty())
                     ? FString::Printf(TEXT("Deactivated: %s"), *ActionInfo->ClassName)
                     : TEXT("Deactivated");

@@ -94,6 +94,9 @@ auto
 
     if (_ViewModel.IsValid())
     {
+        // Seed the graph from the ViewModel's shared name-depth so both stay
+        // in sync on first paint.
+        _Graph->NameDepth = _ViewModel->Get_NameDepth();
         _OnChangedHandle = _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
     }
 
@@ -134,6 +137,14 @@ auto
     -> void
 {
     if (NOT _Graph) { return; }
+
+    // Keep the graph's NameDepth in sync with the ViewModel's shared value so
+    // the action card widgets see the active depth at construction time.
+    if (_ViewModel.IsValid() && _Graph->NameDepth != _ViewModel->Get_NameDepth())
+    {
+        _Graph->NameDepth = _ViewModel->Get_NameDepth();
+        _LastTopologyHash = 0;  // force a rebuild so existing nodes re-render
+    }
 
     auto SelectedActionName = FString(TEXT("(none)"));
     auto ActionCount = 0;
@@ -321,6 +332,84 @@ auto
                             .ToolTipText(FText::FromString(TEXT("Hide off-plan nodes (D5 stub)")))
                             .OnClicked_Lambda([]() -> FReply
                             {
+                                return FReply::Handled();
+                            })
+                    ]
+
+                // ---- Name depth cycler -----------------------------------
+                // Cycle: Full(0) → 1 → 2 → ... → MaxDepth → Full(0). Mirrors
+                // the SM debugger's name-depth control. Setting depth flips
+                // the topology hash via _LastTopologyHash reset so every
+                // action card + the goal label re-render through the rebuild
+                // path. Every other pane that renders class names reads from
+                // the same Get_NameDepth source of truth.
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("Name")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                            .Text(FText::FromString(TEXT("\x25C0")))  // ◀
+                            .ToolTipText(FText::FromString(TEXT("Shorter display name (fewer segments)")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (_Graph != nullptr)
+                                {
+                                    auto& Depth = _Graph->NameDepth;
+                                    const auto MaxDepth = _Graph->Get_MaxNameDepth();
+                                    Depth = (Depth == 0) ? MaxDepth : (Depth - 1);
+                                    if (_ViewModel.IsValid()) { _ViewModel->Set_NameDepth(Depth); }
+                                    _LastTopologyHash = 0;
+                                    RefreshFromViewModel();
+                                    if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); }
+                                }
+                                return FReply::Handled();
+                            })
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                            .Text_Lambda([this]() -> FText
+                            {
+                                if (_Graph == nullptr) { return FText::FromString(TEXT("1")); }
+                                const auto D = _Graph->NameDepth;
+                                return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
+                            })
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                            .Justification(ETextJustify::Center)
+                            .MinDesiredWidth(28.0f)
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                    ]
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                            .Text(FText::FromString(TEXT("\x25B6")))  // ▶
+                            .ToolTipText(FText::FromString(TEXT("Longer display name (more segments)")))
+                            .OnClicked_Lambda([this]() -> FReply
+                            {
+                                if (_Graph != nullptr)
+                                {
+                                    auto& Depth = _Graph->NameDepth;
+                                    const auto MaxDepth = _Graph->Get_MaxNameDepth();
+                                    Depth = (Depth >= MaxDepth) ? 0 : (Depth + 1);
+                                    if (_ViewModel.IsValid()) { _ViewModel->Set_NameDepth(Depth); }
+                                    _LastTopologyHash = 0;
+                                    RefreshFromViewModel();
+                                    if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); }
+                                }
                                 return FReply::Handled();
                             })
                     ]

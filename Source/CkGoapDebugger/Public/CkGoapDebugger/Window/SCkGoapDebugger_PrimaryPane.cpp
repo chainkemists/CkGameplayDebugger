@@ -7,6 +7,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "Styling/AppStyle.h"
@@ -88,7 +89,7 @@ namespace
         return SNew(SBox)
             .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(InText.ToUpper()))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -107,7 +108,7 @@ namespace
                 .VAlign(VAlign_Center)
                 .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InGlyph))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                         .ColorAndOpacity(FSlateColor(InColor))
@@ -116,7 +117,7 @@ namespace
                 .FillWidth(1.0f)
                 .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InText))
                         .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
                         .ColorAndOpacity(FSlateColor(InColor))
@@ -133,7 +134,7 @@ namespace
                 .AutoHeight()
                 .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InLabel.ToUpper()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -141,7 +142,7 @@ namespace
             + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InValue.IsEmpty() ? FString(TEXT("(none)")) : InValue))
                         .Font(InValue.IsEmpty()
                             ? FCoreStyle::GetDefaultFontStyle("Italic", 10)
@@ -348,7 +349,7 @@ auto
         .HAlign(HAlign_Center)
         .VAlign(VAlign_Center)
         [
-            SNew(STextBlock)
+            SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(TEXT("Select an entity and a Planner to inspect a plan.")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -437,7 +438,7 @@ auto
                                 .VAlign(VAlign_Center)
                                 .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
                                 [
-                                    SNew(STextBlock)
+                                    SNew(SCkDebug_SelectableLabel)
                                         .Text(FText::FromString(TitleText))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
                                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
@@ -453,7 +454,7 @@ auto
                                 .FillWidth(1.0f)
                                 .VAlign(VAlign_Center)
                                 [
-                                    SNew(STextBlock)
+                                    SNew(SCkDebug_SelectableLabel)
                                         .Text(FText::FromString(InPlanner.PlannerTag.IsValid()
                                             ? InPlanner.PlannerTag.ToString() : FString{}))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
@@ -466,7 +467,7 @@ auto
                     .AutoHeight()
                     .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(SubText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -501,7 +502,7 @@ auto
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(FString::Printf(TEXT("Cost: $%d"),
                         FMath::RoundToInt(InPlanner.PlanCost))))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
@@ -511,7 +512,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(FString::Printf(TEXT("Attempts: %d"),
                         InPlanner.PlanAttemptCount)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
@@ -545,7 +546,7 @@ auto
         Box->AddSlot()
             .AutoHeight()
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no goal set — Planner stays Idle)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -645,7 +646,7 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(TEXT("ACTION ROLE")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -675,7 +676,7 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(TEXT("PLANNER ROLE")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -683,7 +684,7 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(ChildText))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -697,7 +698,7 @@ auto
             + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("INVALID GOAL KEYS")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -708,7 +709,7 @@ auto
             Block->AddSlot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("None ✓")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
@@ -722,7 +723,7 @@ auto
                     .AutoHeight()
                     .Padding(FMargin(0.0f, 1.0f))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(FString::Printf(TEXT("⚠ %s"),
                                 *Cond.Get_Key().ToString())))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
@@ -745,7 +746,7 @@ auto
             + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("DEPENDENCY CYCLES")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -756,7 +757,7 @@ auto
             Block->AddSlot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("None ✓")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanFound))
@@ -771,7 +772,7 @@ auto
                     .AutoHeight()
                     .Padding(FMargin(0.0f, 1.0f))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(Joined))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))

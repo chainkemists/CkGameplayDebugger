@@ -9,6 +9,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 #include "GraphEditor.h"
 #include "GraphEditorActions.h"
 
@@ -127,6 +129,16 @@ auto
     {
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
     }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_GraphPane::
+    Get_MaxNameDepth() const
+    -> int32
+{
+    return _Graph != nullptr ? _Graph->Get_MaxNameDepth() : 1;
 }
 
 // ====================================================================================================================
@@ -285,7 +297,7 @@ auto
                     .FillWidth(1.0f)
                     .VAlign(VAlign_Center)
                     [
-                        SAssignNew(_HeaderText, STextBlock)
+                        SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Action graph - (no selection)")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
@@ -348,7 +360,7 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Name")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))

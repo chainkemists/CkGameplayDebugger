@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
@@ -142,7 +144,7 @@ auto
         _RowsBox->AddSlot()
             .AutoHeight()
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no entity selected)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -166,7 +168,7 @@ auto
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(AsIdx == 0
                         ? FString(TEXT("ACTIVE CHAIN ·"))
                         : FString(TEXT("            ·"))))
@@ -304,7 +306,7 @@ auto
                                             .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
                                             .Padding(FMargin(3.0f, 1.0f))
                                             [
-                                                SNew(STextBlock)
+                                                SNew(SCkDebug_SelectableLabel)
                                                     .Text(FText::FromString(TierLabel_Breadcrumb(Crumb.Tier)))
                                                     .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
                                                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -316,7 +318,7 @@ auto
                                     .AutoWidth()
                                     .VAlign(VAlign_Center)
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(Crumb.Name))
                                             .Font(Crumb.IsSelected
                                                 ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
@@ -342,8 +344,8 @@ auto
                     .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("▸")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+                            .Text(FText::FromString(TEXT(">")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
                     ];
             }

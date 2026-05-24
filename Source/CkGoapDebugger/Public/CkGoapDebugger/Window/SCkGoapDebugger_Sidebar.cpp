@@ -8,6 +8,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "Styling/AppStyle.h"
@@ -382,7 +383,7 @@ auto
                                     .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Medium,
                                              FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
                                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -423,7 +424,7 @@ auto
                                     .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
                                              FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text_Lambda([this]() { return GetHistoryHeaderText(); })
                                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))

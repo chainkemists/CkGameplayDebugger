@@ -68,6 +68,10 @@ public:
         FGameplayTag                        PlannerTag;
         bool                                IsActionRole       = false;
         bool                                IsInActiveChain    = false;
+        // Opt-out flag from FFragment_Goap_Planner_Params::Get_AllowPlanFailed.
+        // Drives the OPT-OUT pill on this row and the neutral status-dot
+        // override when PlanStatus is PlanFailed.
+        bool                                AllowPlanFailed    = false;
         ECk_GoapPlanStatus                  PlanStatus         = ECk_GoapPlanStatus::Idle;
         int32                               Depth              = 0;
         TArray<TSharedPtr<FRowItem>>        Children;

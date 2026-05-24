@@ -34,6 +34,42 @@ class UCkGoapDebugNode_Goal;
 //     while the registry is still alive.
 // ====================================================================================================================
 
+// Display-name parameters for the action graph and every other site that
+// renders an EntityScript class name. Mirrors FCkSmLayoutParams::ComputeDisplayName
+// from CkSmDebugger so behaviour is identical between debuggers.
+//
+// Class names are of the form "Default__Ck_GoapGym_Patrol_GoToWaypoint_C" (CDO
+// outers) or "Ck_GoapGym_Patrol_GoToWaypoint_C" (plain class). Both the
+// "Default__" prefix and the trailing "_C" are stripped, then the remaining
+// underscore-separated segments are joined with "." with the last InDepth
+// segments kept. InDepth 0 means the full joined name.
+struct FCkGoapDebugger_NameParams
+{
+    // Class-name → display-name. Examples (depth 1 / 2):
+    //   "Ck_GoapGym_Patrol_GoToWaypoint_C"   → "GoToWaypoint" / "Patrol.GoToWaypoint"
+    //   "Default__Ck_GoapFEARGym_AttackEnemy" → "AttackEnemy" / "GoapFEARGym.AttackEnemy"
+    static auto ComputeDisplayName(const FString& InClassName, int32 InDepth) -> FString
+    {
+        auto Name = InClassName;
+        if (Name.StartsWith(TEXT("Default__"))) { Name = Name.RightChop(9); }
+        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
+
+        TArray<FString> Segments;
+        Name.ParseIntoArray(Segments, TEXT("_"), true);
+
+        if (InDepth <= 0 || InDepth >= Segments.Num())
+        { return FString::Join(Segments, TEXT(".")); }
+
+        auto Result = FString{};
+        for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
+        {
+            if (Result.Len() > 0) { Result += TEXT("."); }
+            Result += Segments[i];
+        }
+        return Result;
+    }
+};
+
 UCLASS()
 class CKGOAPDEBUGGER_API UCkGoapDebugGraph : public UEdGraph
 {
@@ -85,6 +121,18 @@ public:
     auto Get_GoalNode()   const -> UCkGoapDebugNode_Goal* { return _GoalNode; }
     auto Get_ActionCount() const -> int32;
     auto Get_EdgeCount()   const -> int32;
+
+    // Display-name verbosity (0 = full joined name, 1 = leaf segment, 2 = last
+    // two joined, ...). Read by every site that renders an action/planner class
+    // name through FCkGoapDebugger_NameParams::ComputeDisplayName. The graph
+    // pane owns the live value and exposes it via Get_NameDepth so all panes
+    // converge on one source of truth.
+    int32 NameDepth = 1;
+
+    // Largest segment count across every action class name currently in the
+    // graph. Used by the toolbar to clamp the depth-cycle button so we don't
+    // step past meaningful values. Returns at least 1.
+    auto Get_MaxNameDepth() const -> int32;
 
     // Returns true if the (Output, Input) pin pair was added as a parent →
     // child tree edge during RebuildFromSnapshot. The connection policy uses

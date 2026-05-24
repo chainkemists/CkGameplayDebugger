@@ -313,6 +313,12 @@ struct FCkGoapDebugger_HistoryEvent
     FString Title;
     FString Meta;
 
+    // Raw class name of the Action this event refers to (when applicable).
+    // The sidebar's history-row generator runs this through
+    // FCkGoapDebugger_NameParams::ComputeDisplayName(_, NameDepth) so the row
+    // text follows the live name-depth toolbar without re-baking history.
+    FString ActionClassName;
+
     double  WorldTimeSeconds = 0.0;
     int64   FrameNumber      = 0;
 

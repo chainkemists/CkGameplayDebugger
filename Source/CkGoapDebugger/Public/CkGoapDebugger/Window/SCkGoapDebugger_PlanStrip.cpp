@@ -7,6 +7,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "Styling/AppStyle.h"
@@ -148,7 +149,7 @@ auto
             .VAlign(VAlign_Center)
             .Padding(FCkGoapDebuggerStyle::Padding_Small)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no planner selected)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -177,7 +178,7 @@ auto
                     .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
                     .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(Msg))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 10))
                             .ColorAndOpacity(FSlateColor(Color))
@@ -256,7 +257,7 @@ auto
                 .VAlign(VAlign_Center)
                 .Padding(FMargin(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f))
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(FString::Printf(TEXT("%d"), Idx + 1)))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                         .ColorAndOpacity(FSlateColor(CardAccent))
@@ -295,7 +296,7 @@ auto
                 .AutoHeight()
                 .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall))
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(Name))
                         .Font(IsActive
                             ? FCoreStyle::GetDefaultFontStyle("Bold", 11)
@@ -307,7 +308,7 @@ auto
             + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(FString::Printf(
                             TEXT("%s · cost $%d"),
                             IsPlannerStep ? TEXT("composite · sub-planner") : TEXT("atomic"),
@@ -371,8 +372,8 @@ auto
                 .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
                 [
                     SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("▸")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
+                        .Text(FText::FromString(TEXT(">")))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
                 ];
         }

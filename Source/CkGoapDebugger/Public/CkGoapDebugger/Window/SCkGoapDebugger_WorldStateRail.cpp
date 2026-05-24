@@ -6,6 +6,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
 #include "Styling/CoreStyle.h"
@@ -202,7 +204,7 @@ auto
                     .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
                                      FCkGoapDebuggerStyle::Padding_Medium))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("WORLDSTATE")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -320,7 +322,7 @@ auto
                             .FillWidth(1.0f)
                             .VAlign(VAlign_Center)
                             [
-                                SNew(STextBlock)
+                                SNew(SCkDebug_SelectableLabel)
                                     .Text(HeaderTextAttr)
                                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -337,7 +339,7 @@ auto
                                     .OnClicked(this, &SCkGoapDebugger_WorldStateRail::HandleClick_ResetDebugUiLayer)
                                     .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(TEXT("Reset")))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
@@ -349,7 +351,7 @@ auto
                             .VAlign(VAlign_Center)
                             .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
                             [
-                                SNew(STextBlock)
+                                SNew(SCkDebug_SelectableLabel)
                                     .Text(FText::FromString(CountText))
                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
@@ -387,7 +389,7 @@ auto
                         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
                                          FCkGoapDebuggerStyle::Padding_Small))
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(FooterText))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -422,7 +424,7 @@ auto
         .VAlign(VAlign_Center)
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Large))
         [
-            SNew(STextBlock)
+            SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(Message))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -499,7 +501,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(ValueStr))
                     .Font(EffectiveValue
                         ? FCoreStyle::GetDefaultFontStyle("Bold", 9)
@@ -518,7 +520,7 @@ auto
                     .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
                     .ToolTipText(FText::FromString(TEXT("This key is shadowed by a debug override.\nClick the Reset button at the top to clear the DebugUI layer.")))
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("OVERRIDE")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))

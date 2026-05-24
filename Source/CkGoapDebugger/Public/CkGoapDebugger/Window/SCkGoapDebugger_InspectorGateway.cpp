@@ -7,6 +7,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 
 #include "Styling/AppStyle.h"
@@ -131,7 +132,7 @@ namespace ck_goap_debugger_gateway_internal
             .BorderBackgroundColor(InColor.CopyWithNewOpacity(0.18f))
             .Padding(FMargin(6.0f, 1.0f))
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(InText))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                     .ColorAndOpacity(FSlateColor(InColor))
@@ -339,7 +340,7 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("GOAP")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
@@ -382,7 +383,7 @@ auto
         .AutoHeight()
         .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
         [
-            SNew(STextBlock)
+            SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(FString::Printf(TEXT("PLANNERS - %d"), InSnapshot.ActionSets.Num())))
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -431,7 +432,7 @@ auto
                                     .VAlign(VAlign_Center)
                                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(As.DebugName))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                             .ColorAndOpacity(FSlateColor(NameColor))
@@ -440,7 +441,7 @@ auto
                                     .FillWidth(1.0f)
                                     .VAlign(VAlign_Center)
                                     [
-                                        SNew(STextBlock)
+                                        SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(TagStr))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
                                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
@@ -451,7 +452,7 @@ auto
                         .AutoWidth()
                         .VAlign(VAlign_Center)
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(StatusStr))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -512,7 +513,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(ClassName))
                     .Font(IsLeaf
                         ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
@@ -533,7 +534,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no active chain)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
@@ -551,7 +552,7 @@ auto
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(HeaderText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -574,7 +575,7 @@ auto
                     .AutoHeight()
                     .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(FString::Printf(TEXT("Action tag chain: %s"),
                                 TagChain.IsEmpty() ? TEXT("(none)") : *TagChain)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
@@ -598,7 +599,7 @@ auto
                 .FillWidth(1.0f)
                 .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InLabel))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -607,7 +608,7 @@ auto
                 .AutoWidth()
                 .VAlign(VAlign_Center)
                 [
-                    SNew(STextBlock)
+                    SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InValue))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                         .ColorAndOpacity(FSlateColor(InValueColor))
@@ -631,7 +632,7 @@ auto
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(FString::Printf(TEXT("LEAF ACTION - %s"), *InLeaf.ClassName)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -689,7 +690,7 @@ auto
                         .VAlign(VAlign_Center)
                         .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(FString::Printf(TEXT("%d."), i + 1)))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanningBdr))
@@ -698,7 +699,7 @@ auto
                         .FillWidth(1.0f)
                         .VAlign(VAlign_Center)
                         [
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(Name))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
@@ -710,7 +711,7 @@ auto
                             // We don't have per-plan-entry cost in PlanClassNames; surface a
                             // single "(leaf)" hint since plan entries are always leaves of
                             // the active chain.
-                            SNew(STextBlock)
+                            SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(TEXT("(leaf)")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
@@ -724,7 +725,7 @@ auto
             .AutoHeight()
             .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no plan)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
@@ -737,7 +738,7 @@ auto
             .AutoHeight()
             .Padding(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f)
             [
-                SNew(STextBlock)
+                SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(FString::Printf(TEXT("+ %d more - open the Window to see all"),
                         Total - Preview)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
@@ -756,7 +757,7 @@ auto
                     .AutoHeight()
                     .Padding(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
                     [
-                        SNew(STextBlock)
+                        SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(HeaderText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
@@ -780,7 +781,7 @@ auto
         .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
-            SNew(STextBlock)
+            SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(TEXT("(no Goap root on selected entity)")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))

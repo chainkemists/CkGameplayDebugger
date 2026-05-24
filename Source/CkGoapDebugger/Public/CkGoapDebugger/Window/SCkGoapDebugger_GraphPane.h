@@ -12,6 +12,7 @@ class FCkGoapDebugger_ViewModel;
 class SGraphEditor;
 class SBox;
 class STextBlock;
+class SCkDebug_SelectableLabel;
 class UCkGoapDebugGraph;
 
 // ====================================================================================================================
@@ -52,6 +53,11 @@ public:
     // Drops all graph nodes so handles release while the ECS registry is live.
     auto Reset_ForWorldChange() -> void;
 
+    // Exposes the underlying graph's max-name-depth so the main window's
+    // toolbar +/- buttons can clamp their cycle to the longest class-name
+    // segment count actually present in the current snapshot.
+    auto Get_MaxNameDepth() const -> int32;
+
 private:
     auto BuildHeader() -> TSharedRef<SWidget>;
     auto OnGraphSelectionChanged(const TSet<UObject*>& InSelection) -> void;
@@ -62,7 +68,7 @@ private:
     UCkGoapDebugGraph*       _Graph       = nullptr;
     TSharedPtr<SGraphEditor> _GraphEditor;
     TSharedPtr<SBox>         _GraphHost;
-    TSharedPtr<STextBlock>   _HeaderText;
+    TSharedPtr<SCkDebug_SelectableLabel> _HeaderText;
 
     FDelegateHandle _OnChangedHandle;
 

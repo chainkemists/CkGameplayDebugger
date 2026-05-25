@@ -8,6 +8,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -270,6 +271,14 @@ auto
                 ? FName(TEXT("CkGoap.Crumb.Selected"))
                 : FName(TEXT("CkGoap.Crumb.Default"));
 
+            // Atomic (non-clickable) crumbs render their name italic so it reads
+            // as "leaf / no drill-down available" even at a glance. Active
+            // crumbs always stay bold for emphasis.
+            const auto NameFont = Crumb.IsSelected
+                ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
+                : (CanSelect ? FCoreStyle::GetDefaultFontStyle("Regular", 10)
+                             : FCoreStyle::GetDefaultFontStyle("Italic",  10));
+
             const auto SegHandle = Crumb.PlannerHandle;
 
             auto Pill = SNew(SButton)
@@ -295,22 +304,18 @@ auto
                         [
                             SNew(SHorizontalBox)
 
-                                // Tier badge (T0 / T1 / ...)
+                                // Tier badge (T0 / T1 / ...) — use the shared
+                                // StatusPill in Info tone so it reads as a
+                                // deliberate UI chip, not stray text.
                                 + SHorizontalBox::Slot()
                                     .AutoWidth()
                                     .VAlign(VAlign_Center)
                                     .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
                                     [
-                                        SNew(SBorder)
-                                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                            .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
-                                            .Padding(FMargin(3.0f, 1.0f))
-                                            [
-                                                SNew(SCkDebug_SelectableLabel)
-                                                    .Text(FText::FromString(TierLabel_Breadcrumb(Crumb.Tier)))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 7))
-                                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                                            ]
+                                        SNew(SCkDebug_StatusPill)
+                                            .Text(FText::FromString(TierLabel_Breadcrumb(Crumb.Tier)))
+                                            .Tone(ECkDebug_Tone::Info)
+                                            .ShowDot(false)
                                     ]
 
                                 // Display name
@@ -320,9 +325,7 @@ auto
                                     [
                                         SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(Crumb.Name))
-                                            .Font(Crumb.IsSelected
-                                                ? FCoreStyle::GetDefaultFontStyle("Bold", 10)
-                                                : FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                                            .Font(NameFont)
                                             .ColorAndOpacity(FSlateColor(NameColor))
                                     ]
                         ]
@@ -346,7 +349,7 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT(">")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                     ];
             }
         }

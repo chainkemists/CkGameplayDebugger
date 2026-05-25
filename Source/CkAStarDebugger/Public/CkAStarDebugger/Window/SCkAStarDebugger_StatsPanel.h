@@ -5,6 +5,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class SCkDebug_SelectableLabel;
+class SCkDebug_StatPair;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -24,33 +25,28 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 private:
-    auto BuildMiniStats() -> TSharedRef<SWidget>;
-    auto BuildBudgetMeter() -> TSharedRef<SWidget>;
-    auto BuildExplorationMeter() -> TSharedRef<SWidget>;
-    auto BuildDetailsSection() -> TSharedRef<SWidget>;
-    auto BuildCellDetailSection() -> TSharedRef<SWidget>;
-    auto BuildLegendSection() -> TSharedRef<SWidget>;
-
     auto RefreshFromSearchInfo(const FCkAStarDebugger_SearchInfo& InInfo) -> void;
 
     TSharedPtr<FCkAStarDebugger_ViewModel> _ViewModel;
 
-    TSharedPtr<SCkDebug_SelectableLabel> _IterationsText;
-    TSharedPtr<SCkDebug_SelectableLabel> _OpenText;
-    TSharedPtr<SCkDebug_SelectableLabel> _ClosedText;
-    TSharedPtr<SCkDebug_SelectableLabel> _PathText;
+    // Stacked stat-cards (top 2x2 grid).
+    TSharedPtr<SCkDebug_StatPair> _IterationsStat;
+    TSharedPtr<SCkDebug_StatPair> _OpenStat;
+    TSharedPtr<SCkDebug_StatPair> _ClosedStat;
+    TSharedPtr<SCkDebug_StatPair> _PathStat;
 
-    TSharedPtr<SProgressBar> _BudgetBar;
+    // Inline label-first stat rows (Details section).
+    TSharedPtr<SCkDebug_StatPair> _GridSizeStat;
+    TSharedPtr<SCkDebug_StatPair> _BlockedStat;
+    TSharedPtr<SCkDebug_StatPair> _CostStat;
+    TSharedPtr<SCkDebug_StatPair> _TimeStat;
+    TSharedPtr<SCkDebug_StatPair> _ThresholdStat;
+
+    // Progress bars + their right-aligned percent labels.
+    TSharedPtr<class SProgressBar> _BudgetBar;
     TSharedPtr<SCkDebug_SelectableLabel> _BudgetPctText;
-
-    TSharedPtr<SProgressBar> _ExplorationBar;
+    TSharedPtr<class SProgressBar> _ExplorationBar;
     TSharedPtr<SCkDebug_SelectableLabel> _ExplorationPctText;
-
-    TSharedPtr<SCkDebug_SelectableLabel> _GridSizeText;
-    TSharedPtr<SCkDebug_SelectableLabel> _BlockedText;
-    TSharedPtr<SCkDebug_SelectableLabel> _CostText;
-    TSharedPtr<SCkDebug_SelectableLabel> _TimeText;
-    TSharedPtr<SCkDebug_SelectableLabel> _ThresholdText;
 
     TSharedPtr<SVerticalBox> _CellDetailBox;
     int32 _LastShownCellIndex = -1;

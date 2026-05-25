@@ -4,6 +4,7 @@
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
@@ -632,28 +633,14 @@ auto
 		TAttribute<FSlateColor> InColor)
 	-> TSharedRef<SWidget>
 {
-	return SNew(SHorizontalBox)
-
-		+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
-			[
-				SNew(STextBlock)
-					.Text(InLabel)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
-			]
-
-		+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-					.Text(InValue)
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-					.ColorAndOpacity(InColor)
-			];
+	// Delegates to the shared common-widget. Inline_LabelFirst layout matches
+	// the original here (label · value) and gives us copy-paste on both halves
+	// + consistent typography with every other CkDebugger stat strip.
+	return SNew(SCkDebug_StatPair)
+		.Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+		.Label(InLabel)
+		.Value(InValue)
+		.ValueColor(InColor);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

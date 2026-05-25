@@ -269,18 +269,11 @@ auto
                     BadgeBox
                 ];
 
-        if (IsActive)
-        {
-            TopRow->AddSlot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    SNew(SCkDebug_StatusPill)
-                        .Text(FText::FromString(TEXT("ACTIVE")))
-                        .Tone(ECkDebug_Tone::Ok)
-                        .ShowDot(false)
-                ];
-        }
+        // Note: no separate "ACTIVE" pill — the thick green border below
+        // (BorderColor = Color_Status_PlanFound when IsActive) plus the bold
+        // step name + green-tinted index "1" already signal "this is Plan[0]"
+        // unambiguously, and squeezing a third pill onto the badge row
+        // overflows narrow cards (see Mockup B screenshot feedback).
 
         auto CardBody = SNew(SVerticalBox)
 

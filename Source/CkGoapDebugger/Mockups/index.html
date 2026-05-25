@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CkGoapDebugger — PrimaryPane mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-root: #0a0e17;
+    --bg-panel: #0c1018;
+    --bg-surface: #0f1520;
+    --border-subtle: #1a2332;
+    --border-strong: #2a3342;
+    --text-primary: #e0e0e0;
+    --text-secondary: #aaaaaa;
+    --text-muted: #888888;
+    --text-dim: #666666;
+    --status-selected: #f59e0b;
+    --status-found: #22c55e;
+    --status-composite: #a855f7;
+}
+body {
+    background: var(--bg-root);
+    color: var(--text-primary);
+    font-family: 'Roboto', system-ui, sans-serif;
+    margin: 0; padding: 48px;
+    font-size: 13px;
+}
+h1 {
+    color: var(--status-selected);
+    font-weight: 700;
+    margin: 0 0 8px;
+    font-size: 22px;
+}
+.sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-bottom: 32px;
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 24px;
+    max-width: 1200px;
+}
+.card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 120ms;
+}
+.card:hover { border-color: var(--status-selected); }
+.card .title {
+    color: var(--status-selected);
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 6px;
+}
+.card .tag {
+    color: var(--text-dim);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    margin-bottom: 12px;
+}
+.card .desc {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.card ul {
+    margin: 12px 0 0;
+    padding-left: 18px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.6;
+}
+.notes {
+    margin-top: 48px;
+    padding: 18px 20px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    max-width: 1200px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+}
+.notes h2 {
+    color: var(--status-selected);
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+}
+.notes code {
+    background: var(--bg-surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    color: var(--text-primary);
+}
+</style>
+</head>
+<body>
+
+<h1>CkGoapDebugger — PrimaryPane mockups</h1>
+<p class="sub">Three alternative layouts for the planner-detail view. All three apply the same color/contrast fixes (tier pills, brighter inactive crumbs, brighter separator). Pick the layout direction; the contrast fixes carry across.</p>
+
+<div class="grid">
+
+    <a href="mockup_a_hero.html" class="card">
+        <div class="title">A — Hero header</div>
+        <div class="tag">single-column · side-by-side plan + diagnostics</div>
+        <div class="desc">Boxed hero block groups identity + the 4 quick-stats. Right-rail metadata absorbed inline next to PLAN. No orphan side column.</div>
+        <ul>
+            <li>Best when most planners have ≤ 5 plan steps</li>
+            <li>Single-step (current screenshot) reads as deliberate, not empty</li>
+        </ul>
+    </a>
+
+    <a href="mockup_b_dashboard.html" class="card">
+        <div class="title">B — Dashboard 2×2</div>
+        <div class="tag">grid · four labelled quadrants</div>
+        <div class="desc">Each quadrant does one job: Identity, Plan, Goal, Diagnostics. Easiest to scan visually; hard separation between "what is this" and "what's it doing."</div>
+        <ul>
+            <li>Best when you want hard separation between sections</li>
+            <li>Worst when a plan grows past ~4 steps (top-right squeeze)</li>
+        </ul>
+    </a>
+
+    <a href="mockup_c_vertical.html" class="card">
+        <div class="title">C — Vertical sections</div>
+        <div class="tag">single-column · collapsible groups</div>
+        <div class="desc">PLAN / GOAL / WIRING / DIAGNOSTICS stacked, each collapsible. Diagnostics default-collapsed (usually green). Works at any plan size.</div>
+        <ul>
+            <li>Best when panes get embedded in tight columns</li>
+            <li>Worst when you want metadata in your peripheral vision</li>
+        </ul>
+    </a>
+
+</div>
+
+<div class="notes">
+    <h2>Color / contrast fixes — applied to all 3</h2>
+    <ul>
+        <li><strong>Breadcrumb tier (<code>T0</code>, <code>T1</code>)</strong> — now a small rounded chip with a subtle blue tint, not raw muted text. Reads as a deliberate UI element.</li>
+        <li><strong>Inactive crumb</strong> — text bumped from <code>Color_Text_Dim</code> (#666) to <code>Color_Text_Secondary</code> (#aaa), italicized. Active crumb keeps the amber border so the contrast is "border + primary" vs. "no border + secondary italic".</li>
+        <li><strong>Crumb separator</strong> (<code>&gt;</code>) — bumped from <code>Color_Text_Ghost</code> (#444) to <code>Color_Text_Muted</code> (#888). Was almost invisible at the chosen size.</li>
+        <li><strong>Right-rail values</strong> (where present) — labels stay 8pt muted-uppercase; values bumped to 10pt regular primary color.</li>
+    </ul>
+</div>
+
+</body>
+</html>

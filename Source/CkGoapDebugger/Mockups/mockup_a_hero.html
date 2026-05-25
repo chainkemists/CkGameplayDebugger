@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CkGoapDebugger — Mockup A · Hero header</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-root: #0a0e17;
+    --bg-panel: #0c1018;
+    --bg-surface: #0f1520;
+    --border-subtle: #1a2332;
+    --border-strong: #2a3342;
+    --text-primary: #e0e0e0;
+    --text-secondary: #aaaaaa;
+    --text-muted: #888888;
+    --text-dim: #666666;
+    --text-faint: #555555;
+    --text-ghost: #444444;
+    --status-found: #22c55e;
+    --status-planning: #60a5fa;
+    --status-planning-bdr: #3b82f6;
+    --status-failed: #ef4444;
+    --status-selected: #f59e0b;
+    --status-composite: #a855f7;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    background: var(--bg-root);
+    color: var(--text-primary);
+    font-family: 'Roboto', system-ui, sans-serif;
+    padding: 24px;
+    font-size: 13px;
+    min-height: 100vh;
+}
+.nav {
+    margin-bottom: 18px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.nav a {
+    color: var(--status-selected);
+    text-decoration: none;
+    margin-right: 14px;
+    font-weight: 500;
+}
+.nav a:hover { text-decoration: underline; }
+
+.pane {
+    background: var(--bg-root);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    overflow: hidden;
+    max-width: 1320px;
+}
+
+/* ---- Breadcrumb ---- */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.breadcrumb-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.6px;
+}
+.crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 4px 8px 4px 4px;
+    font-size: 12px;
+}
+.crumb.is-selected {
+    border: 2px solid var(--status-selected);
+    padding: 3px 7px 3px 3px;
+}
+.crumb.is-selected .crumb-name {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.crumb-name {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.crumb-tier {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--status-planning);
+    background: rgba(96, 165, 250, 0.13);
+    border: 1px solid rgba(96, 165, 250, 0.27);
+    border-radius: 3px;
+    padding: 2px 5px;
+    line-height: 1;
+}
+.crumb-sep {
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 13px;
+    user-select: none;
+}
+
+/* ---- Hero header ---- */
+.hero {
+    margin: 14px;
+    padding: 18px 20px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+}
+.hero-top {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.hero-title {
+    color: var(--status-selected);
+    font-weight: 700;
+    font-size: 18px;
+    line-height: 1;
+}
+.hero-subtitle {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-left: auto;
+}
+.hero-tag {
+    color: var(--text-dim);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    margin-bottom: 18px;
+}
+.role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(168, 85, 247, 0.13);
+    border: 1px solid rgba(168, 85, 247, 0.27);
+    border-radius: 8px;
+    padding: 2px 8px;
+    color: var(--status-composite);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.4px;
+}
+.hero-stats {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+.stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.stat-value {
+    font-weight: 700;
+    font-size: 14px;
+}
+.stat-value.found { color: var(--status-found); }
+.stat-value.amber { color: var(--status-selected); }
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.6px;
+}
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(34, 197, 94, 0.13);
+    border: 1px solid rgba(34, 197, 94, 0.27);
+    border-radius: 8px;
+    padding: 4px 10px;
+    color: var(--status-found);
+    font-weight: 700;
+    font-size: 11px;
+}
+.status-pill .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--status-found);
+}
+
+/* ---- Two-column body ---- */
+.body {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 18px;
+    padding: 0 14px 18px;
+}
+.col-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+}
+.col-title .hint {
+    color: var(--text-faint);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 8px;
+}
+
+/* Plan card */
+.plan-card {
+    display: flex;
+    background: var(--bg-surface);
+    border: 2px solid var(--status-found);
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 220px;
+    max-width: 280px;
+}
+.plan-card-index {
+    background: rgba(34, 197, 94, 0.13);
+    color: var(--status-found);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(34, 197, 94, 0.27);
+}
+.plan-card-body {
+    padding: 10px 14px;
+    flex: 1;
+}
+.plan-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 8px;
+    padding: 2px 7px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.badge.action {
+    background: rgba(96, 165, 250, 0.13);
+    color: var(--status-planning);
+    border: 1px solid rgba(96, 165, 250, 0.27);
+}
+.badge.active {
+    background: rgba(34, 197, 94, 0.13);
+    color: var(--status-found);
+    border: 1px solid rgba(34, 197, 94, 0.27);
+}
+.plan-card-name {
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+.plan-card-meta {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+/* Side meta blocks */
+.meta-block {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+.meta-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+.meta-row:last-child { margin-bottom: 0; }
+.goal-fail {
+    color: var(--status-failed);
+    font-weight: 700;
+    font-size: 14px;
+}
+.goal-name {
+    color: var(--text-primary);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 12px;
+}
+.meta-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    font-weight: 700;
+}
+.meta-value {
+    color: var(--text-primary);
+    font-size: 12px;
+}
+.meta-value.mono {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    color: var(--status-selected);
+}
+.meta-value.ok { color: var(--status-found); }
+.diag-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.diag-row .check {
+    color: var(--status-found);
+    font-weight: 700;
+}
+</style>
+</head>
+<body>
+
+<div class="nav"><a href="index.html">← All mockups</a> · <strong style="color:var(--text-primary)">A — Hero header</strong> · <a href="mockup_b_dashboard.html">B</a> · <a href="mockup_c_vertical.html">C</a></div>
+
+<div class="pane">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span class="breadcrumb-label">ACTIVE CHAIN</span>
+        <span class="crumb is-selected">
+            <span class="crumb-tier">T0</span>
+            <span class="crumb-name">CombatBrain</span>
+        </span>
+        <span class="crumb-sep">&gt;</span>
+        <span class="crumb">
+            <span class="crumb-tier">T1</span>
+            <span class="crumb-name">Standby</span>
+        </span>
+    </div>
+
+    <!-- Hero header -->
+    <div class="hero">
+        <div class="hero-top">
+            <div class="hero-title">CombatBrain</div>
+            <span class="role-pill">PLANNER · TOP-LEVEL</span>
+            <span class="hero-subtitle">3 child Actions registered</span>
+        </div>
+        <div class="hero-tag">Gym.Goap.ActionSet.CombatBrain</div>
+
+        <div class="hero-stats">
+            <span class="status-pill"><span class="dot"></span>PlanFound</span>
+            <span class="stat"><span class="stat-value amber">$999</span><span class="stat-label">cost</span></span>
+            <span class="stat"><span class="stat-value">1</span><span class="stat-label">attempt</span></span>
+            <span class="stat"><span class="stat-value">3</span><span class="stat-label">children</span></span>
+        </div>
+    </div>
+
+    <!-- Two-column body -->
+    <div class="body">
+
+        <!-- Plan column -->
+        <div>
+            <div class="col-title">PLAN <span class="hint">multi-step possible · Plan[0] is the active step</span></div>
+            <div class="plan-card">
+                <div class="plan-card-index">1</div>
+                <div class="plan-card-body">
+                    <div class="plan-card-badges">
+                        <span class="badge action">ACTION</span>
+                        <span class="badge active">● ACTIVE</span>
+                    </div>
+                    <div class="plan-card-name">Standby</div>
+                    <div class="plan-card-meta">atomic · cost $999</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Goal + diagnostics column -->
+        <div>
+            <div class="col-title">GOAL <span class="hint">this tier · independent of any other tier</span></div>
+            <div class="meta-block">
+                <div class="meta-row">
+                    <span class="goal-fail">✗</span>
+                    <span class="goal-name">Gym.Goap.WS.CombatBrain.EnemyDead = true</span>
+                </div>
+            </div>
+
+            <div class="col-title">WIRING</div>
+            <div class="meta-block">
+                <div class="meta-label">Worldstate source</div>
+                <div class="meta-value mono">Gym.Goap.WS.CombatBrain</div>
+                <div style="margin-top:10px"></div>
+                <div class="meta-label">Parent planner</div>
+                <div class="meta-value" style="color:var(--text-muted);font-style:italic">none — top-level</div>
+            </div>
+
+            <div class="col-title">DIAGNOSTICS</div>
+            <div class="meta-block">
+                <div class="diag-row"><span class="check">✓</span> no invalid goal keys</div>
+                <div class="diag-row"><span class="check">✓</span> no dependency cycles</div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>

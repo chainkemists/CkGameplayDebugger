@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CkGoapDebugger — Mockup B · Dashboard (plan-strip + meta tiles)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-root: #0a0e17;
+    --bg-panel: #0c1018;
+    --bg-surface: #0f1520;
+    --border-subtle: #1a2332;
+    --border-strong: #2a3342;
+    --text-primary: #e0e0e0;
+    --text-secondary: #aaaaaa;
+    --text-muted: #888888;
+    --text-dim: #666666;
+    --text-faint: #555555;
+    --text-ghost: #444444;
+    --status-found: #22c55e;
+    --status-planning: #60a5fa;
+    --status-planning-bdr: #3b82f6;
+    --status-failed: #ef4444;
+    --status-selected: #f59e0b;
+    --status-composite: #a855f7;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    background: var(--bg-root);
+    color: var(--text-primary);
+    font-family: 'Roboto', system-ui, sans-serif;
+    padding: 24px;
+    font-size: 13px;
+    min-height: 100vh;
+}
+.nav {
+    margin-bottom: 18px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.nav a {
+    color: var(--status-selected);
+    text-decoration: none;
+    margin-right: 14px;
+    font-weight: 500;
+}
+.nav a:hover { text-decoration: underline; }
+
+.pane {
+    background: var(--bg-root);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    overflow: hidden;
+    max-width: 1320px;
+}
+
+/* ---- Breadcrumb ---- */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+}
+.breadcrumb-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.6px;
+}
+.crumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 4px 8px 4px 4px;
+    font-size: 12px;
+}
+.crumb.is-selected {
+    border: 2px solid var(--status-selected);
+    padding: 3px 7px 3px 3px;
+}
+.crumb.is-selected .crumb-name {
+    color: var(--text-primary);
+    font-weight: 500;
+    font-style: normal;
+}
+.crumb-name {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.crumb-tier {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--status-planning);
+    background: rgba(96, 165, 250, 0.13);
+    border: 1px solid rgba(96, 165, 250, 0.27);
+    border-radius: 3px;
+    padding: 2px 5px;
+    line-height: 1;
+}
+.crumb-sep {
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 13px;
+}
+
+/* ---- Page header (compact) ---- */
+.page-header {
+    padding: 14px 18px 10px;
+    background: var(--bg-root);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.page-title {
+    color: var(--status-selected);
+    font-weight: 700;
+    font-size: 18px;
+    line-height: 1;
+}
+.role-pill {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(168, 85, 247, 0.13);
+    border: 1px solid rgba(168, 85, 247, 0.27);
+    border-radius: 8px;
+    padding: 2px 8px;
+    color: var(--status-composite);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.4px;
+}
+.page-tag {
+    color: var(--text-dim);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    margin-left: auto;
+}
+
+/* ---- Tile primitive ---- */
+.tile {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+.tile-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tile-title .hint {
+    color: var(--text-faint);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.tile-title .badge-count {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 2px 7px;
+}
+
+/* ---- Plan full-width strip ---- */
+.plan-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 2px;
+}
+.plan-strip::-webkit-scrollbar { height: 8px; }
+.plan-strip::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.plan-strip::-webkit-scrollbar-track { background: var(--bg-panel); }
+
+.plan-card {
+    display: flex;
+    background: var(--bg-panel);
+    border: 1.5px solid var(--border-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+    min-width: 200px;
+    flex-shrink: 0;
+}
+.plan-card.is-active {
+    border: 2px solid var(--status-found);
+}
+.plan-card-index {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid var(--border-subtle);
+}
+.plan-card.is-active .plan-card-index {
+    background: rgba(34, 197, 94, 0.13);
+    color: var(--status-found);
+    border-right: 1px solid rgba(34, 197, 94, 0.27);
+}
+.plan-card-body {
+    padding: 10px 14px;
+    flex: 1;
+}
+.plan-card-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+.badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 8px;
+    padding: 2px 7px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.badge.action {
+    background: rgba(96, 165, 250, 0.13);
+    color: var(--status-planning);
+    border: 1px solid rgba(96, 165, 250, 0.27);
+}
+.badge.planner {
+    background: rgba(168, 85, 247, 0.13);
+    color: var(--status-composite);
+    border: 1px solid rgba(168, 85, 247, 0.27);
+}
+.badge.active {
+    background: rgba(34, 197, 94, 0.13);
+    color: var(--status-found);
+    border: 1px solid rgba(34, 197, 94, 0.27);
+}
+.plan-card-name {
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 3px;
+}
+.plan-card-meta {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+.plan-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+/* ---- 3-tile meta row ---- */
+.meta-row {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 1fr;
+    gap: 12px;
+}
+
+/* Identity & status tile */
+.identity-stats {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+.stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.stat-value {
+    font-weight: 700;
+    font-size: 16px;
+}
+.stat-value.amber { color: var(--status-selected); }
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.6px;
+}
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(34, 197, 94, 0.13);
+    border: 1px solid rgba(34, 197, 94, 0.27);
+    border-radius: 8px;
+    padding: 4px 10px;
+    color: var(--status-found);
+    font-weight: 700;
+    font-size: 11px;
+}
+.status-pill .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--status-found);
+}
+
+/* Goal tile */
+.goal-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.goal-fail {
+    color: var(--status-failed);
+    font-weight: 700;
+    font-size: 16px;
+}
+.goal-name {
+    color: var(--text-primary);
+    font-family: 'Roboto Mono', monospace;
+    font-size: 12px;
+}
+.goal-empty {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-style: italic;
+}
+
+/* Diagnostics / wiring KV */
+.kv {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 6px 14px;
+    align-items: baseline;
+    font-size: 12px;
+}
+.kv .k {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.kv .v { color: var(--text-primary); }
+.kv .v.mono {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 11px;
+    color: var(--status-selected);
+}
+.kv .v.ok { color: var(--status-found); }
+.kv .v.muted { color: var(--text-muted); font-style: italic; }
+
+/* Pane layout */
+.body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+</style>
+</head>
+<body>
+
+<div class="nav"><a href="index.html">← All mockups</a> · <a href="mockup_a_hero.html">A</a> · <strong style="color:var(--text-primary)">B — Dashboard (plan-strip + meta tiles)</strong> · <a href="mockup_c_vertical.html">C</a></div>
+
+<div class="pane">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+        <span class="breadcrumb-label">ACTIVE CHAIN</span>
+        <span class="crumb is-selected">
+            <span class="crumb-tier">T0</span>
+            <span class="crumb-name">CombatBrain</span>
+        </span>
+        <span class="crumb-sep">&gt;</span>
+        <span class="crumb">
+            <span class="crumb-tier">T1</span>
+            <span class="crumb-name">Standby</span>
+        </span>
+    </div>
+
+    <!-- Compact page header -->
+    <div class="page-header">
+        <div class="page-title">CombatBrain</div>
+        <span class="role-pill">PLANNER · TOP-LEVEL</span>
+        <span class="page-tag">Gym.Goap.ActionSet.CombatBrain</span>
+    </div>
+
+    <div class="body">
+
+        <!-- Plan strip — its own row, full width, horizontal-scrolls when many steps -->
+        <div class="tile">
+            <div class="tile-title">
+                Plan
+                <span class="hint">multi-step possible · plan[0] is the active step</span>
+                <span class="badge-count">1 step · 3 candidates</span>
+            </div>
+            <div class="plan-strip">
+                <div class="plan-card is-active">
+                    <div class="plan-card-index">1</div>
+                    <div class="plan-card-body">
+                        <div class="plan-card-badges">
+                            <span class="badge action">ACTION</span>
+                            <span class="badge active">● ACTIVE</span>
+                        </div>
+                        <div class="plan-card-name">Standby</div>
+                        <div class="plan-card-meta">atomic · cost $999</div>
+                    </div>
+                </div>
+
+                <!-- ghost cards to show what a long plan looks like in this layout -->
+                <span class="plan-arrow">&gt;</span>
+                <div class="plan-card" style="opacity:0.45">
+                    <div class="plan-card-index">2</div>
+                    <div class="plan-card-body">
+                        <div class="plan-card-badges">
+                            <span class="badge planner">PLANNER</span>
+                            <span class="badge action">ACTION</span>
+                        </div>
+                        <div class="plan-card-name">GoToWaypoint</div>
+                        <div class="plan-card-meta">composite · cost $1</div>
+                    </div>
+                </div>
+                <span class="plan-arrow" style="opacity:0.45">&gt;</span>
+                <div class="plan-card" style="opacity:0.45">
+                    <div class="plan-card-index">3</div>
+                    <div class="plan-card-body">
+                        <div class="plan-card-badges">
+                            <span class="badge planner">PLANNER</span>
+                            <span class="badge action">ACTION</span>
+                        </div>
+                        <div class="plan-card-name">Observe</div>
+                        <div class="plan-card-meta">composite · cost $1</div>
+                    </div>
+                </div>
+                <span class="plan-arrow" style="opacity:0.45">&gt;</span>
+                <div class="plan-card" style="opacity:0.45">
+                    <div class="plan-card-index">4</div>
+                    <div class="plan-card-body">
+                        <div class="plan-card-badges">
+                            <span class="badge action">ACTION</span>
+                        </div>
+                        <div class="plan-card-name">MarkDone</div>
+                        <div class="plan-card-meta">atomic · cost $1</div>
+                    </div>
+                </div>
+            </div>
+            <div style="margin-top:6px;color:var(--text-faint);font-size:10px;font-style:italic">
+                (ghosted cards show how a longer plan would render — horizontal scroll on overflow)
+            </div>
+        </div>
+
+        <!-- 3-tile meta row -->
+        <div class="meta-row">
+
+            <!-- Identity & status -->
+            <div class="tile">
+                <div class="tile-title">Identity & status</div>
+                <div class="identity-stats">
+                    <span class="status-pill"><span class="dot"></span>PlanFound</span>
+                    <span class="stat"><span class="stat-value amber">$999</span><span class="stat-label">cost</span></span>
+                    <span class="stat"><span class="stat-value">1</span><span class="stat-label">attempt</span></span>
+                    <span class="stat"><span class="stat-value">3</span><span class="stat-label">children</span></span>
+                </div>
+            </div>
+
+            <!-- Goal -->
+            <div class="tile">
+                <div class="tile-title">
+                    Goal
+                    <span class="hint">this tier</span>
+                </div>
+                <div class="goal-row">
+                    <span class="goal-fail">✗</span>
+                    <span class="goal-name">Gym.Goap.WS.CombatBrain.EnemyDead = true</span>
+                </div>
+                <div class="goal-empty">(no other goal conditions)</div>
+            </div>
+
+            <!-- Diagnostics & wiring -->
+            <div class="tile">
+                <div class="tile-title">Diagnostics & wiring</div>
+                <div class="kv">
+                    <span class="k">Worldstate</span>      <span class="v mono">Gym.Goap.WS.CombatBrain</span>
+                    <span class="k">Parent planner</span>  <span class="v muted">none — top-level</span>
+                    <span class="k">Invalid keys</span>    <span class="v ok">✓ none</span>
+                    <span class="k">Dep. cycles</span>     <span class="v ok">✓ none</span>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>

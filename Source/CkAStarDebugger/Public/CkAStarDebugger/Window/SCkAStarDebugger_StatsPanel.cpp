@@ -11,75 +11,10 @@
 #include "Widgets/Text/STextBlock.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 
 // ====================================================================================================================
-// Helper: stat row (label + value)
-// ====================================================================================================================
-
-static auto
-    MakeStatRow(
-        const FString& InLabel,
-        TSharedPtr<SCkDebug_SelectableLabel>& OutValueText,
-        const FString& InDefaultValue = TEXT("—"))
-    -> TSharedRef<SWidget>
-{
-    return SNew(SHorizontalBox)
-        + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(InLabel))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-                    .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            [
-                SAssignNew(OutValueText, SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(InDefaultValue))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                    .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Primary)
-            ];
-}
-
-// ====================================================================================================================
-// Helper: mini stat card
-// ====================================================================================================================
-
-static auto
-    MakeMiniStat(
-        TSharedPtr<SCkDebug_SelectableLabel>& OutValueText,
-        const FString& InLabel,
-        const FString& InDefaultValue = TEXT("0"))
-    -> TSharedRef<SWidget>
-{
-    return SNew(SBox)
-        .Padding(FMargin(8.0f))
-        [
-            SNew(SVerticalBox)
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .HAlign(HAlign_Center)
-                    [
-                        SAssignNew(OutValueText, SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(InDefaultValue))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
-                            .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Primary)
-                    ]
-                + SVerticalBox::Slot()
-                    .AutoHeight()
-                    .HAlign(HAlign_Center)
-                    [
-                        SNew(SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(InLabel))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                            .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
-                    ]
-        ];
-}
-
-// ====================================================================================================================
-// Helper: section header
+// Helpers
 // ====================================================================================================================
 
 static auto
@@ -114,16 +49,40 @@ auto
                 [
                     SNew(SVerticalBox)
 
-                        // Mini stats grid (2x2)
+                        // Mini-stats grid (2x2 — stacked-card layout via SCkDebug_StatPair)
                         + SVerticalBox::Slot()
                             .AutoHeight()
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot().FillWidth(1.0f) [ MakeMiniStat(_IterationsText, TEXT("ITERATIONS")) ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f) [ MakeMiniStat(_OpenText, TEXT("OPEN")) ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f) [ MakeMiniStat(_ClosedText, TEXT("CLOSED")) ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f) [ MakeMiniStat(_PathText, TEXT("PATH"), TEXT("\u2014")) ]
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                        [
+                                            SAssignNew(_IterationsStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                                                .Value(FText::FromString(TEXT("0")))
+                                                .Label(FText::FromString(TEXT("ITERATIONS")))
+                                        ]
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                        [
+                                            SAssignNew(_OpenStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                                                .Value(FText::FromString(TEXT("0")))
+                                                .Label(FText::FromString(TEXT("OPEN")))
+                                        ]
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                        [
+                                            SAssignNew(_ClosedStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                                                .Value(FText::FromString(TEXT("0")))
+                                                .Label(FText::FromString(TEXT("CLOSED")))
+                                        ]
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                        [
+                                            SAssignNew(_PathStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
+                                                .Value(FText::FromString(TEXT("—")))
+                                                .Label(FText::FromString(TEXT("PATH")))
+                                        ]
                             ]
 
                         // Budget section
@@ -188,18 +147,48 @@ auto
                                         ]
                             ]
 
-                        // Details section
+                        // Details section — label-first inline stat rows.
                         + SVerticalBox::Slot()
                             .AutoHeight()
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SVerticalBox)
                                     + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ MakeSectionHeader(TEXT("Details")) ]
-                                    + SVerticalBox::Slot().AutoHeight() [ MakeStatRow(TEXT("Grid"), _GridSizeText) ]
-                                    + SVerticalBox::Slot().AutoHeight() [ MakeStatRow(TEXT("Blocked"), _BlockedText) ]
-                                    + SVerticalBox::Slot().AutoHeight() [ MakeStatRow(TEXT("Cost"), _CostText) ]
-                                    + SVerticalBox::Slot().AutoHeight() [ MakeStatRow(TEXT("Time"), _TimeText) ]
-                                    + SVerticalBox::Slot().AutoHeight() [ MakeStatRow(TEXT("Threshold"), _ThresholdText, TEXT("disabled")) ]
+                                    + SVerticalBox::Slot().AutoHeight()
+                                        [
+                                            SAssignNew(_GridSizeStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                                                .Label(FText::FromString(TEXT("Grid")))
+                                                .Value(FText::FromString(TEXT("—")))
+                                        ]
+                                    + SVerticalBox::Slot().AutoHeight()
+                                        [
+                                            SAssignNew(_BlockedStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                                                .Label(FText::FromString(TEXT("Blocked")))
+                                                .Value(FText::FromString(TEXT("—")))
+                                        ]
+                                    + SVerticalBox::Slot().AutoHeight()
+                                        [
+                                            SAssignNew(_CostStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                                                .Label(FText::FromString(TEXT("Cost")))
+                                                .Value(FText::FromString(TEXT("—")))
+                                        ]
+                                    + SVerticalBox::Slot().AutoHeight()
+                                        [
+                                            SAssignNew(_TimeStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                                                .Label(FText::FromString(TEXT("Time")))
+                                                .Value(FText::FromString(TEXT("—")))
+                                        ]
+                                    + SVerticalBox::Slot().AutoHeight()
+                                        [
+                                            SAssignNew(_ThresholdStat, SCkDebug_StatPair)
+                                                .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                                                .Label(FText::FromString(TEXT("Threshold")))
+                                                .Value(FText::FromString(TEXT("disabled")))
+                                        ]
                             ]
 
                         // Selected cell section
@@ -282,9 +271,9 @@ auto
 
             auto GStr = Info->GScores.Contains(SelectedCell)
                 ? FString::Printf(TEXT("%.1f"), Info->GScores[SelectedCell])
-                : FString(TEXT("\u2014"));
+                : FString(TEXT("—"));
 
-            auto FStr = FString(TEXT("\u2014"));
+            auto FStr = FString(TEXT("—"));
             if (Info->GScores.Contains(SelectedCell) && Info->GridWidth > 0)
             {
                 auto GoalX = Info->GoalNode % Info->GridWidth;
@@ -298,21 +287,28 @@ auto
                 : FString(TEXT("none"));
 
             auto TitleColor = FCkAStarDebuggerStyle::Color_Cell_Goal;
-            auto Font = FCoreStyle::GetDefaultFontStyle("Regular", 9);
             auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", 9);
 
             _CellDetailBox->AddSlot().AutoHeight()
                 [
                     SNew(SCkDebug_SelectableLabel)
-                        .Text(FText::FromString(FString::Printf(TEXT("Cell (%d, %d) \u2014 #%d"), CellX, CellY, SelectedCell)))
+                        .Text(FText::FromString(FString::Printf(TEXT("Cell (%d, %d) — #%d"), CellX, CellY, SelectedCell)))
                         .Font(BoldFont)
                         .ColorAndOpacity(TitleColor)
                 ];
 
+            // Static per-cell rows — no live updates needed, so we don't keep
+            // handles. Use the shared label-first stat-pair layout for visual
+            // consistency with the Details section above.
             auto AddDetailRow = [&](const FString& InLabel, const FString& InValue)
             {
-                TSharedPtr<SCkDebug_SelectableLabel> Dummy;
-                _CellDetailBox->AddSlot().AutoHeight() [ MakeStatRow(InLabel, Dummy, InValue) ];
+                _CellDetailBox->AddSlot().AutoHeight()
+                    [
+                        SNew(SCkDebug_StatPair)
+                            .Layout(ECkDebug_StatPairLayout::Inline_LabelFirst)
+                            .Label(FText::FromString(InLabel))
+                            .Value(FText::FromString(InValue))
+                    ];
             };
 
             AddDetailRow(TEXT("State"), StateStr);
@@ -333,17 +329,17 @@ auto
         const FCkAStarDebugger_SearchInfo& InInfo)
     -> void
 {
-    _IterationsText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo.TotalIterations)));
-    _OpenText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo.OpenSetSize)));
-    _ClosedText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo.ClosedSetSize)));
+    _IterationsStat->SetValue(FText::FromString(FString::Printf(TEXT("%d"), InInfo.TotalIterations)));
+    _OpenStat->SetValue(FText::FromString(FString::Printf(TEXT("%d"), InInfo.OpenSetSize)));
+    _ClosedStat->SetValue(FText::FromString(FString::Printf(TEXT("%d"), InInfo.ClosedSetSize)));
 
     if (InInfo.Path.Num() > 0)
     {
-        _PathText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo.Path.Num())));
+        _PathStat->SetValue(FText::FromString(FString::Printf(TEXT("%d"), InInfo.Path.Num())));
     }
     else
     {
-        _PathText->SetText(FText::FromString(TEXT("\u2014")));
+        _PathStat->SetValue(FText::FromString(TEXT("—")));
     }
 
     auto BudgetPct = FMath::Clamp(InInfo.BudgetUsagePercent, 0.0f, 100.0f);
@@ -367,36 +363,36 @@ auto
 
     if (InInfo.GridWidth > 0 && InInfo.GridHeight > 0)
     {
-        _GridSizeText->SetText(FText::FromString(FString::Printf(TEXT("%d x %d"), InInfo.GridWidth, InInfo.GridHeight)));
+        _GridSizeStat->SetValue(FText::FromString(FString::Printf(TEXT("%d x %d"), InInfo.GridWidth, InInfo.GridHeight)));
     }
     else
     {
-        _GridSizeText->SetText(FText::FromString(TEXT("\u2014")));
+        _GridSizeStat->SetValue(FText::FromString(TEXT("—")));
     }
 
-    _BlockedText->SetText(FText::FromString(FString::Printf(TEXT("%d"), InInfo.BlockedCells.Num())));
+    _BlockedStat->SetValue(FText::FromString(FString::Printf(TEXT("%d"), InInfo.BlockedCells.Num())));
 
     if (InInfo.TotalCost > 0.0f)
     {
-        _CostText->SetText(FText::FromString(FString::Printf(TEXT("%.1f"), InInfo.TotalCost)));
+        _CostStat->SetValue(FText::FromString(FString::Printf(TEXT("%.1f"), InInfo.TotalCost)));
     }
     else
     {
-        _CostText->SetText(FText::FromString(TEXT("\u2014")));
+        _CostStat->SetValue(FText::FromString(TEXT("—")));
     }
 
-    _TimeText->SetText(FText::FromString(FString::Printf(TEXT("%lld us"), InInfo.TotalTimeMicroseconds)));
+    _TimeStat->SetValue(FText::FromString(FString::Printf(TEXT("%lld us"), InInfo.TotalTimeMicroseconds)));
 
     if (InInfo.CostThreshold > 0.0f)
     {
-        _ThresholdText->SetText(FText::FromString(FString::Printf(TEXT("%.1f"), InInfo.CostThreshold)));
+        _ThresholdStat->SetValue(FText::FromString(FString::Printf(TEXT("%.1f"), InInfo.CostThreshold)));
     }
     else
     {
-        _ThresholdText->SetText(FText::FromString(TEXT("disabled")));
+        _ThresholdStat->SetValue(FText::FromString(TEXT("disabled")));
     }
 
-    _IterationsText->SetColorAndOpacity(CkAStarDebugger::GetStatusColor(InInfo.SearchStatus));
+    _IterationsStat->SetValueColor(CkAStarDebugger::GetStatusColor(InInfo.SearchStatus));
 }
 
 // ====================================================================================================================

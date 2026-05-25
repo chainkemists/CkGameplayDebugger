@@ -44,6 +44,23 @@ namespace ck_goap_debugger_wsrail_internal
         const auto Tail = InKey.Right(WsRail_MaxKeyChars - 1);
         return FString(TEXT("…")) + Tail;
     }
+
+    // Tag-depth truncation: keep the last InDepth dot-separated segments of a
+    // gameplay tag. Depth 0 = full tag (no truncation). Depth 1 = leaf segment.
+    // Mirrors FCkGoapDebugger_NameParams::ComputeDisplayName but operates on
+    // tag-style strings (period-separated) instead of class names.
+    auto TruncateTagByDepth(const FString& InTag, int32 InDepth) -> FString
+    {
+        if (InDepth <= 0) { return InTag; }
+        TArray<FString> Segments;
+        InTag.ParseIntoArray(Segments, TEXT("."), true);
+        if (Segments.Num() <= InDepth) { return InTag; }
+        auto Tail = TArray<FString>{};
+        Tail.Reserve(InDepth);
+        for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
+        { Tail.Add(Segments[i]); }
+        return FString::Join(Tail, TEXT("."));
+    }
 }
 
 // ====================================================================================================================
@@ -187,6 +204,11 @@ auto
             NewHash ^= Pair;  // commutative — entry-order doesn't fake a change
         }
     }
+    // Fold in the shared name-depth so toolbar +/- toggles re-render the rail
+    // with new key truncation. WS keys honour the same depth as planner-tier
+    // display names — see TruncateTagByDepth below.
+    if (_ViewModel.IsValid())
+    { NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth())); }
 
     if (_HasMaterialized && NewHash == _LastContentHash)
     { return; }
@@ -443,7 +465,12 @@ auto
 {
     using namespace ck_goap_debugger_wsrail_internal;
 
-    const auto KeyText  = TruncateKey(InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString(TEXT("(invalid)")));
+    // First apply tag-depth truncation (so toolbar +/- toggles the displayed
+    // segment count), then char-length truncation as a final fallback for
+    // pathologically long single segments.
+    const auto FullKey = InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString(TEXT("(invalid)"));
+    const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 0;
+    const auto KeyText = TruncateKey(TruncateTagByDepth(FullKey, Depth));
     const auto KeyCol   = FCkGoapDebuggerStyle::Color_Text_Secondary;
     const auto EntryKey = InEntry.Key;
     const bool EffectiveValue = InEntry.Value;

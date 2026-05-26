@@ -16,8 +16,8 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityTag)
 
-static const FLinearColor Color_Tag      = FLinearColor(0.6f, 0.85f, 0.55f);
-static const FLinearColor Color_TagCount = FLinearColor(0.5f, 0.7f, 0.45f);
+static const FLinearColor EntityTag_Color_Tag      = FLinearColor(0.6f, 0.85f, 0.55f);
+static const FLinearColor EntityTag_Color_TagCount = FLinearColor(0.5f, 0.7f, 0.45f);
 
 // =====================================================================================================================
 
@@ -58,7 +58,7 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
     Builder.AddRow(
         FText::FromString(TEXT("FName Tag Count:")),
         [N = Tags.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-        Color_TagCount);
+        EntityTag_Color_TagCount);
 
     // One row per FName tag — live presence check
     for (const auto& T : Tags)
@@ -76,7 +76,7 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
             [CapturedTag](const FCk_Handle& E)
             {
                 return UCk_Utils_EntityTag_UE::Has(E, CapturedTag)
-                    ? Color_Tag : CkDebugStyle::Err();
+                    ? EntityTag_Color_Tag : CkDebugStyle::Err();
             });
     }
 
@@ -86,14 +86,14 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
         Builder.AddRow(
             FText::FromString(TEXT("GameplayTag Roots:")),
             [N = GtRoots.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-            Color_TagCount);
+            EntityTag_Color_TagCount);
 
         for (const auto& GT : GtRoots)
         {
             Builder.AddRow(
                 FText::FromName(GT.GetTagName()),
                 [](const FCk_Handle&) { return FText::FromString(TEXT("✓")); },
-                Color_Tag);
+                EntityTag_Color_Tag);
         }
     }
 

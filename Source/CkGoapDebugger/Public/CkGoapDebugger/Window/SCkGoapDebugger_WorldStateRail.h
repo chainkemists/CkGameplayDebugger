@@ -53,6 +53,13 @@ private:
     auto BuildEmptyState() -> TSharedRef<SWidget>;
     auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry) -> TSharedRef<SWidget>;
 
+    // Override-stack inspector — appears above the key rows when one or more
+    // override layers are pushed onto the WS. Each layer is a clickable row
+    // with name + key count + Pop button; click the row to expand a per-key
+    // drilldown showing the keys the layer carries and their values.
+    auto BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs) -> TSharedRef<SWidget>;
+    auto BuildOverrideLayerRow(const FCk_Handle_Goap_WorldState& InWs, FName InLayerName) -> TSharedRef<SWidget>;
+
     // Resolve which WS list to show + the label/source. Returns false when no
     // entity / Planner is selected.
     auto Resolve_DisplayedWorldState(
@@ -74,6 +81,12 @@ private:
 
     auto HandleClick_ToggleKeyOverride(FGameplayTag InKey, bool InCurrentEffectiveValue) -> FReply;
     auto HandleClick_ResetDebugUiLayer() -> FReply;
+
+    // Generic per-layer Pop button — works for any named layer, not just DebugUI.
+    auto HandleClick_PopLayer(FName InLayerName) -> FReply;
+
+    // Toggles whether the layer drilldown is expanded for that layer.
+    auto HandleClick_ToggleLayerExpand(FName InLayerName) -> FReply;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -100,6 +113,11 @@ private:
     // DebugUI layer must not trigger a destructive subtree rebuild.
     uint32 _LastContentHash = 0;
     bool   _HasMaterialized = false;
+
+    // Per-layer expand/collapse state for the override-stack drilldown. Names
+    // present in this set render their key/value listing inline; rest are
+    // collapsed to just the row header.
+    TSet<FName> _ExpandedLayers;
 };
 
 // ====================================================================================================================

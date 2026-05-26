@@ -210,6 +210,23 @@ auto
     if (_ViewModel.IsValid())
     { NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth())); }
 
+    // Fold in the override-stack identity so push/pop/expand triggers a rebuild
+    // of the layers section (different stack contents = different rendered rows).
+    if (ck::IsValid(_CurrentWorldState))
+    {
+        const auto LayerNames = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(_CurrentWorldState);
+        NewHash = HashCombine(NewHash, ::GetTypeHash(LayerNames.Num()));
+        for (const auto& Name : LayerNames)
+        {
+            auto LayerHash = GetTypeHash(Name);
+            LayerHash = HashCombine(LayerHash, ::GetTypeHash(
+                UCk_Utils_Goap_WorldState_UE::Get_LayerKeyCount(_CurrentWorldState, Name)));
+            // Per-layer expand state — collapse/expand must rebuild the row.
+            LayerHash = HashCombine(LayerHash, ::GetTypeHash(_ExpandedLayers.Contains(Name) ? 1 : 0));
+            NewHash ^= LayerHash;  // commutative — stack-order shifts below caught by Num + per-row content
+        }
+    }
+
     if (_HasMaterialized && NewHash == _LastContentHash)
     { return; }
     _LastContentHash = NewHash;
@@ -381,10 +398,25 @@ auto
                 ]);
     }
 
-    // ---- Body (rows) ----------------------------------------------------------
+    // ---- Body (override layers section + rows) -------------------------------
     if (_Body.IsValid())
     {
         _Body->ClearChildren();
+
+        // Override-stack inspector — only visible when one or more layers are
+        // pushed. Sits above the key rows so layer state is the first thing the
+        // user sees when overrides are active.
+        if (ck::IsValid(_CurrentWorldState) &&
+            UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(_CurrentWorldState) > 0)
+        {
+            _Body->AddSlot()
+                .AutoHeight()
+                .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
+                [
+                    BuildOverrideLayersSection(_CurrentWorldState)
+                ];
+        }
+
         for (const auto& Entry : *Entries)
         {
             _Body->AddSlot()
@@ -545,7 +577,28 @@ auto
                     .Visibility(OverrideVisibilityAttr)
                     .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
                     .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
-                    .ToolTipText(FText::FromString(TEXT("This key is shadowed by a debug override.\nClick the Reset button at the top to clear the DebugUI layer.")))
+                    // Live-bound tooltip naming the specific shadowing layer
+                    // instead of the previous generic "a debug override"
+                    // wording — when the gameplay-side picks up override
+                    // layers ("FlierAttract", "KioskBrainwash", etc.) the
+                    // tooltip names them so behaviour is explicable.
+                    .ToolTipText(TAttribute<FText>::Create(
+                        TAttribute<FText>::FGetter::CreateLambda(
+                            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
+                             EntryKey]() -> FText
+                            {
+                                const auto Pinned = WeakThis.Pin();
+                                if (NOT Pinned.IsValid()) { return FText::FromString(TEXT("Shadowed by an override layer.")); }
+                                auto WsHandle = Pinned->_CurrentWorldState;
+                                if (NOT ck::IsValid(WsHandle))
+                                { return FText::FromString(TEXT("Shadowed by an override layer.")); }
+                                const auto LayerName = UCk_Utils_Goap_WorldState_UE::Get_TopOverrideLayerForKey(WsHandle, EntryKey);
+                                if (LayerName.IsNone())
+                                { return FText::FromString(TEXT("Shadowed by an override layer.")); }
+                                return FText::FromString(FString::Printf(
+                                    TEXT("Shadowed by layer: %s\n\nTop-of-stack wins. Pop this layer in the Override Layers section above to reveal the base or next-lower-layer value."),
+                                    *LayerName.ToString()));
+                            })))
                     [
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("OVERRIDE")))
@@ -649,6 +702,232 @@ auto
         WsRail_DebugUiLayerName);
 
     return FReply::Handled();
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_PopLayer(FName InLayerName)
+    -> FReply
+{
+    if (NOT ck::IsValid(_CurrentWorldState)) { return FReply::Handled(); }
+    if (InLayerName.IsNone())                { return FReply::Handled(); }
+
+    auto MutableWs = _CurrentWorldState;
+    UCk_Utils_Goap_WorldState_UE::Pop_Override_ByName(MutableWs, InLayerName);
+
+    // Also clean up our expand-state set so we don't carry stale entries.
+    _ExpandedLayers.Remove(InLayerName);
+
+    return FReply::Handled();
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_ToggleLayerExpand(FName InLayerName)
+    -> FReply
+{
+    if (InLayerName.IsNone()) { return FReply::Handled(); }
+
+    if (_ExpandedLayers.Contains(InLayerName))
+    { _ExpandedLayers.Remove(InLayerName); }
+    else
+    { _ExpandedLayers.Add(InLayerName); }
+
+    // Force a rebuild — the layer-expand state lives in our hash so a manual
+    // refresh wouldn't catch the toggle on its own (no underlying WS change).
+    _HasMaterialized = false;
+    RefreshFromViewModel();
+    return FReply::Handled();
+}
+
+// ====================================================================================================================
+// BUILD — OVERRIDE LAYERS SECTION (top of body when override stack non-empty)
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs)
+    -> TSharedRef<SWidget>
+{
+    const auto LayerNames = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(InWs);
+
+    auto Section = SNew(SVerticalBox);
+
+    // Section header
+    Section->AddSlot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
+        [
+            SNew(SCkDebug_SelectableLabel)
+                .Text(FText::FromString(FString::Printf(
+                    TEXT("OVERRIDE LAYERS · %d"), LayerNames.Num())))
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+        ];
+
+    // One row per layer, rendered top-of-stack first (most recent / wins)
+    for (auto i = LayerNames.Num() - 1; i >= 0; --i)
+    {
+        Section->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, 1.0f))
+            [
+                BuildOverrideLayerRow(InWs, LayerNames[i])
+            ];
+    }
+
+    return SNew(SBorder)
+        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
+        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
+                         FCkGoapDebuggerStyle::Padding_Small))
+        [
+            Section
+        ];
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    BuildOverrideLayerRow(const FCk_Handle_Goap_WorldState& InWs, FName InLayerName)
+    -> TSharedRef<SWidget>
+{
+    const auto IsExpanded = _ExpandedLayers.Contains(InLayerName);
+    const auto KeyCount   = UCk_Utils_Goap_WorldState_UE::Get_LayerKeyCount(InWs, InLayerName);
+
+    // Header — caret + layer name + key count + Pop button. The whole left side
+    // (caret + name + count) is one button so the click target is generous.
+    auto Header = SNew(SHorizontalBox)
+
+        // Expand-toggle row (caret + name + count) — wide click target.
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SButton)
+                    .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    .ToolTipText(FText::FromString(FString::Printf(
+                        TEXT("Click to %s this layer's keys."),
+                        IsExpanded ? TEXT("collapse") : TEXT("expand"))))
+                    .OnClicked(FOnClicked::CreateSP(
+                        this,
+                        &SCkGoapDebugger_WorldStateRail::HandleClick_ToggleLayerExpand,
+                        InLayerName))
+                    [
+                        SNew(SHorizontalBox)
+                            + SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
+                                [
+                                    SNew(STextBlock)
+                                        .Text(FText::FromString(IsExpanded ? TEXT("v") : TEXT(">")))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                ]
+                            + SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                [
+                                    SNew(SCkDebug_SelectableLabel)
+                                        .Text(FText::FromString(InLayerName.ToString()))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                                ]
+                            + SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+                                [
+                                    SNew(SCkDebug_SelectableLabel)
+                                        .Text(FText::FromString(FString::Printf(
+                                            TEXT("· %d key%s"),
+                                            KeyCount, KeyCount == 1 ? TEXT("") : TEXT("s"))))
+                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                ]
+                    ]
+            ]
+
+        // Pop button — narrow, right-aligned.
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+            [
+                SNew(SButton)
+                    .ToolTipText(FText::FromString(FString::Printf(
+                        TEXT("Pop the '%s' layer. Removes it from the stack; the next-lower-layer or base value is revealed for every key it carried."),
+                        *InLayerName.ToString())))
+                    .OnClicked(FOnClicked::CreateSP(
+                        this,
+                        &SCkGoapDebugger_WorldStateRail::HandleClick_PopLayer,
+                        InLayerName))
+                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("Pop")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
+                    ]
+            ];
+
+    auto Row = SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                Header
+            ];
+
+    // Per-key drilldown (visible only when expanded).
+    if (IsExpanded)
+    {
+        const auto Values = UCk_Utils_Goap_WorldState_UE::Get_LayerValues(InWs, InLayerName);
+
+        auto KeysBox = SNew(SVerticalBox);
+        for (const auto& Kv : Values)
+        {
+            const auto ValueStr = Kv.Value ? FString(TEXT("TRUE")) : FString(TEXT("false"));
+            const auto ValueCol = Kv.Value
+                ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+                : FCkGoapDebuggerStyle::Color_Text_Dim;
+
+            KeysBox->AddSlot()
+                .AutoHeight()
+                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, 1.0f, 0.0f, 1.0f))
+                [
+                    SNew(SHorizontalBox)
+                        + SHorizontalBox::Slot()
+                            .FillWidth(1.0f)
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SCkDebug_SelectableLabel)
+                                    .Text(FText::FromString(Kv.Key.ToString()))
+                                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                            ]
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SCkDebug_SelectableLabel)
+                                    .Text(FText::FromString(ValueStr))
+                                    .Font(Kv.Value
+                                        ? FCoreStyle::GetDefaultFontStyle("Bold", 8)
+                                        : FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                    .ColorAndOpacity(FSlateColor(ValueCol))
+                            ]
+                ];
+        }
+
+        Row->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 2.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
+            [
+                KeysBox
+            ];
+    }
+
+    return Row;
 }
 
 // ====================================================================================================================

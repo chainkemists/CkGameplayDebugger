@@ -2,6 +2,7 @@
 
 #include "Widgets/Input/SEditableText.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "InputCoreTypes.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -10,6 +11,12 @@
 // SelectableLabel placed inside a button label or a clickable row no longer
 // traps the click. Ctrl- or Shift-left-click activates normal text selection;
 // right-click still opens the built-in Copy / Select All context menu.
+//
+// Cursor query mirrors the click policy: on plain hover the cursor stays as
+// the default arrow (matches the click pass-through behavior); only when a
+// selection modifier (Ctrl/Shift) is held does the text-edit I-beam appear.
+// Without this, users see the I-beam, expect drag-select to "just work", and
+// get surprised when their plain click activates the parent button instead.
 //
 // This is the project-wide policy for selectable text in debugger UIs: copy-
 // paste should be possible without breaking clickable parents. Hold Ctrl (or
@@ -61,6 +68,33 @@ namespace
             }
 
             return SEditableText::OnMouseButtonDoubleClick(InGeometry, InMouseEvent);
+        }
+
+        virtual auto
+            OnCursorQuery(
+                const FGeometry& InGeometry,
+                const FPointerEvent& InCursorEvent)
+            const -> FCursorReply override
+        {
+            // SEditableText returns the text-edit I-beam cursor on hover, which
+            // misleads the user into thinking a plain click will select text —
+            // but our OnMouseButtonDown deliberately passes plain clicks through
+            // to the clickable parent. Match the cursor to the actual behavior:
+            // show the default arrow until a selection-modifier key is held.
+            //
+            // We read modifier state from FSlateApplication rather than the
+            // InCursorEvent because cursor-query events are synthesized from
+            // mouse-move position and don't always carry up-to-date keyboard
+            // modifier state.
+            const auto& ModKeys = FSlateApplication::Get().GetModifierKeys();
+            const auto ModifierHeld = ModKeys.IsControlDown() || ModKeys.IsShiftDown();
+
+            if (NOT ModifierHeld)
+            {
+                return FCursorReply::Cursor(EMouseCursor::Default);
+            }
+
+            return SEditableText::OnCursorQuery(InGeometry, InCursorEvent);
         }
     };
 }

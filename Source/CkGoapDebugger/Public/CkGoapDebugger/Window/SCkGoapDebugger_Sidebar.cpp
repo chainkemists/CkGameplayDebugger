@@ -847,16 +847,23 @@ auto
         const auto AlreadySelected = (Cur.Num() == 1 && Cur[0] == *Found);
         if (NOT AlreadySelected)
         {
-            // Use SetSelection (NOT SetItemSelection): the former clears prior
-            // selection and sets the new one, which is what we want for a
-            // Single-mode tree. SetItemSelection is the additive API — even in
-            // Single mode it can leave a stale prior selection in place when the
-            // row-pointer Slate has cached briefly diverges from the row pointer
-            // in _RowItemsByHandle (e.g. across a snapshot-rebuild tick between
-            // user click and Sync). Mirrors the pattern at
-            // SCkCrowdDebugger_AgentListPanel.cpp:167 + the history list a few
-            // hundred lines below in this very file (SetSelection).
-            _TreeView->SetSelection(*Found, ESelectInfo::Direct);
+            // CAUTION: this uses SetItemSelection (additive), NOT SetSelection
+            // (replacing). SetSelection IS structurally more correct for a
+            // Single-mode tree, BUT switching to it unmasked a deeper bug: the
+            // ViewModel's Tick validation periodically clears _SelectedActionSet
+            // for sub-Planner handles (the recursive FindPlannerInfo walk works
+            // on paper but something is returning null in practice), then auto-
+            // restores to TopLevelPlanners[0]. With SetSelection, the next Sync
+            // call snaps the visible selection from the user's click to the
+            // first top-level planner — making sub-Planner inspection
+            // impossible. SetItemSelection accidentally "rescues" the user's
+            // click because Slate's internal selection set retains it on top of
+            // the auto-restored first planner; the cosmetic side effect is the
+            // multi-select-stuck symptom reported in 2026-05-27, but the
+            // functional impact (can still inspect sub-Planners) is preferable
+            // to the snap-back. Proper fix lives in the ViewModel's auto-
+            // restore-first logic and/or the snapshot-rebuild path; deferred.
+            _TreeView->SetItemSelection(*Found, true, ESelectInfo::Direct);
         }
     }
 }

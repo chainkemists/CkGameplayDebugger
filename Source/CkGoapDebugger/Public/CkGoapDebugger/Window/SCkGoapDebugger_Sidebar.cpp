@@ -846,7 +846,18 @@ auto
         const auto Cur = _TreeView->GetSelectedItems();
         const auto AlreadySelected = (Cur.Num() == 1 && Cur[0] == *Found);
         if (NOT AlreadySelected)
-        { _TreeView->SetItemSelection(*Found, true, ESelectInfo::Direct); }
+        {
+            // Use SetSelection (NOT SetItemSelection): the former clears prior
+            // selection and sets the new one, which is what we want for a
+            // Single-mode tree. SetItemSelection is the additive API — even in
+            // Single mode it can leave a stale prior selection in place when the
+            // row-pointer Slate has cached briefly diverges from the row pointer
+            // in _RowItemsByHandle (e.g. across a snapshot-rebuild tick between
+            // user click and Sync). Mirrors the pattern at
+            // SCkCrowdDebugger_AgentListPanel.cpp:167 + the history list a few
+            // hundred lines below in this very file (SetSelection).
+            _TreeView->SetSelection(*Found, ESelectInfo::Direct);
+        }
     }
 }
 

@@ -29,6 +29,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkAStar",
             "CkAttribute",
             "CkAudio",
+            "CkCamera",
             "CkCore",
             "CkDebuggerCommon",
             "CkDynamic",

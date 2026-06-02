@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -70,6 +71,7 @@ auto
     -> void
 {
     _ViewModel = MakeShared<FCkEqsDebugger_ViewModel>();
+    _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
 #if WITH_EDITOR
     _EndPIEHandle   = FEditorDelegates::EndPIE.AddSP(this, &SCkEqsDebuggerWindow::OnEndPIE);
@@ -148,6 +150,13 @@ auto
             .Text(FText::FromString(TEXT("CK EQS Debugger")))
             .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+        ]
+
+        // World selector (shared across all CK debuggers)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 12.0f, 0.0f})
+        [
+            SNew(SCkDebug_WorldSelector, _WorldModel)
+            .ShowHeaderLabel(false)
         ]
 
         // Pause toggle — flips ViewModel._IsPaused on click. Color-tinted when paused so it's obvious.
@@ -296,19 +305,8 @@ auto
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
-    auto FoundWorld = static_cast<UWorld*>(nullptr);
-    if (GEngine)
-    {
-        for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
-        {
-            if (It->WorldType == EWorldType::PIE && IsValid(It->World()))
-            {
-                FoundWorld = It->World();
-                break;
-            }
-        }
-    }
-    _CachedWorld = FoundWorld;
+    _WorldModel->Ensure_AutoSelect();
+    _CachedWorld = _WorldModel->Get_SelectedWorld();
 
     if (NOT _CachedWorld)
     {

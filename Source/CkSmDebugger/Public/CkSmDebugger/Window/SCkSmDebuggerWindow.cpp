@@ -38,6 +38,7 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Detail panel — small widget helpers
@@ -368,6 +369,7 @@ auto
 
     _ViewModel = MakeShared<FCkSmDebugger_ViewModel>();
     _DataCollector = MakeShared<FCkSmDebugger_DataCollector>();
+    _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
     // Create the preview pane eagerly so its picker can live in the main toolbar
     // (keeps the preview graph top aligned with the live graph top on the left).
@@ -550,21 +552,10 @@ auto
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
-    // Find PIE world — re-validate each tick since PIE can end at any time
-    {
-        auto FoundWorld = static_cast<UWorld*>(nullptr);
-
-        for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
-        {
-            if (It->WorldType == EWorldType::PIE && ck::IsValid(It->World()) && It->World()->HasBegunPlay())
-            {
-                FoundWorld = It->World();
-                break;
-            }
-        }
-
-        _CachedWorld = FoundWorld;
-    }
+    // Resolve the inspected world via the shared selector (re-validated each tick
+    // since PIE can end at any time).
+    _WorldModel->Ensure_AutoSelect();
+    _CachedWorld = _WorldModel->Get_SelectedWorld();
 
     // Keep the preview pane in sync with the current PIE world so its walker can
     // spawn a throwaway SM entity to discover the graph when a class is picked.
@@ -572,7 +563,7 @@ auto
     { _PreviewPane->Set_WorldContext(_CachedWorld); }
 
     auto* World = _CachedWorld.Get();
-    if (ck::Is_NOT_Valid(World))
+    if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
     { return; }
 
     // Collect data from ECS
@@ -823,6 +814,17 @@ auto
     -> TSharedRef<SWidget>
 {
     return SNew(SHorizontalBox)
+
+        // ── World Selector (shared across all CK debuggers) ──────────────
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SCkDebug_WorldSelector, _WorldModel)
+                    .ShowHeaderLabel(false)
+            ]
 
         // ── SM Selector ──────────────────────────────────────────────────
 

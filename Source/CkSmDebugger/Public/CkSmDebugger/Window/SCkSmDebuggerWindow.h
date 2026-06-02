@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 class FCkSmDebugger_ViewModel;
 class FCkSmDebugger_DataCollector;
@@ -67,6 +68,7 @@ private:
     TArray<FCk_Handle_StateMachine> _SmSelectorHandles;
     TSharedPtr<STextBlock> _SmSelectorLabel;
 
+    TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
     bool _IsTestMode = false;
     bool _IsPreviewOpen = false;

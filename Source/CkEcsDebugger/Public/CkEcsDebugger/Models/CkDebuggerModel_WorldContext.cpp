@@ -4,45 +4,33 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
+// ====================================================================================================================
+
+FCkDebuggerModel_WorldContext::FCkDebuggerModel_WorldContext()
+    : _Selector(MakeShared<FCkDebuggerModel_WorldSelector>())
+{
+    _Selector->OnWorldChanged.AddRaw(this, &FCkDebuggerModel_WorldContext::OnSelectorWorldChanged);
+}
+
 auto FCkDebuggerModel_WorldContext::Set_SelectedWorld(UWorld* InWorld) -> void
 {
-    if (SelectedWorld.Get() == InWorld)
-    { return; }
-
-    SelectedWorld = InWorld;
-    MarkCacheDirty();
-    BroadcastWorldChanged();
+    // Cache invalidation + OnWorldChanged re-broadcast happen in OnSelectorWorldChanged.
+    _Selector->Set_SelectedWorld(InWorld);
 }
 
 auto FCkDebuggerModel_WorldContext::Get_SelectedWorld() const -> UWorld*
 {
-    return SelectedWorld.Get();
+    return _Selector->Get_SelectedWorld();
 }
 
 auto FCkDebuggerModel_WorldContext::Get_AvailableWorlds() const -> TArray<UWorld*>
 {
-    auto Worlds = TArray<UWorld*>{};
+    return _Selector->Get_AvailableWorlds();
+}
 
-    if (ck::Is_NOT_Valid(GEngine))
-    { return Worlds; }
-
-    auto WorldContexts = GEngine->GetWorldContexts();
-
-    for (auto Index = 0; Index < WorldContexts.Num(); ++Index)
-    {
-        const auto& ContextWorld = WorldContexts[Index].World();
-
-        if (ck::Is_NOT_Valid(ContextWorld))
-        { continue; }
-
-        if (auto GameInstance = ContextWorld->GetGameInstance();
-            ck::IsValid(GameInstance))
-        {
-            Worlds.Emplace(ContextWorld);
-        }
-    }
-
-    return Worlds;
+auto FCkDebuggerModel_WorldContext::Get_SelectorModel() const -> TSharedRef<FCkDebuggerModel_WorldSelector>
+{
+    return _Selector;
 }
 
 auto FCkDebuggerModel_WorldContext::Get_CachedEntities() const -> const TArray<FCk_Handle>&
@@ -84,13 +72,14 @@ auto FCkDebuggerModel_WorldContext::IsCacheDirty() const -> bool
     { return true; }
 
     // If the selected world was destroyed (PIE ended), the cache is stale
-    if (NOT CachedEntities.IsEmpty() && NOT SelectedWorld.IsValid())
+    if (NOT CachedEntities.IsEmpty() && ck::Is_NOT_Valid(Get_SelectedWorld()))
     { return true; }
 
     return false;
 }
 
-auto FCkDebuggerModel_WorldContext::BroadcastWorldChanged() -> void
+auto FCkDebuggerModel_WorldContext::OnSelectorWorldChanged(UWorld* InWorld) -> void
 {
-    OnWorldChanged.Broadcast(Get_SelectedWorld());
+    MarkCacheDirty();
+    OnWorldChanged.Broadcast(InWorld);
 }

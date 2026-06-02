@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 // ====================================================================================================================
 
@@ -89,6 +90,7 @@ private:
     TSharedPtr<SCkGoapDebugger_WorldStateRail> _WorldStateRail;
     TSharedPtr<SCkGoapDebugger_GraphPane>   _GraphPane;
 
+    TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
 
     // Entity picker state

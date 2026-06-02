@@ -4,6 +4,7 @@
 #include "CkEqsDebugger/Overlay/CkEqsDebugger_OverlayManager.h"
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 #include "CoreMinimal.h"
 #include "Editor.h"
@@ -56,6 +57,7 @@ private:
     TSharedPtr<SCkDebug_SelectableLabel> _StatusLabel;
     TSharedPtr<SMenuAnchor>              _ViewMenuAnchor;
 
+    TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     UWorld* _CachedWorld = nullptr;
 
     FDelegateHandle _EndPIEHandle;

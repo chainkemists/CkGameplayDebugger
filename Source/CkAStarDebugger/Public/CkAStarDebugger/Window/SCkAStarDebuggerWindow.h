@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -40,6 +41,8 @@ private:
     TSharedPtr<SCkAStarDebugger_GridView> _GridView;
     TSharedPtr<SCkAStarDebugger_StatsPanel> _StatsPanel;
     TSharedPtr<SCkAStarDebugger_SearchHistory> _SearchHistory;
+
+    TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 
     TArray<TSharedPtr<FString>> _EntitySelectorItems;
     TArray<FCk_Handle> _EntitySelectorHandles;

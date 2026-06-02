@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 #include "Widgets/SCompoundWidget.h"
 
@@ -39,6 +40,7 @@ private:
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
+	TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 
 	TSharedPtr<SCkCrowdDebugger_NavmeshStatusPanel> _NavmeshStatusPanel;
 	TSharedPtr<SCkCrowdDebugger_AgentListPanel>     _AgentListPanel;

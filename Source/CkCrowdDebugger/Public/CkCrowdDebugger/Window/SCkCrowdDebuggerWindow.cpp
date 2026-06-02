@@ -7,6 +7,8 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_StatsPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -30,6 +32,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	Register_WithGate();
 
 	_ViewModel = MakeShared<FCkCrowdDebugger_ViewModel>();
+	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
 	_NavmeshStatusPanel = SNew(SCkCrowdDebugger_NavmeshStatusPanel).ViewModel(_ViewModel);
 	_AgentListPanel     = SNew(SCkCrowdDebugger_AgentListPanel).ViewModel(_ViewModel);
@@ -73,20 +76,10 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 	if (NOT _ViewModel.IsValid())
 	{ return; }
 
-	// Find the first PIE world. If none (editor idle, no PIE), the data collector
-	// will early-out.
-	auto* World = static_cast<UWorld*>(nullptr);
-	if (GEngine != nullptr)
-	{
-		for (const auto& Context : GEngine->GetWorldContexts())
-		{
-			if (Context.WorldType == EWorldType::PIE || Context.WorldType == EWorldType::Game)
-			{
-				World = Context.World();
-				break;
-			}
-		}
-	}
+	// Resolve the inspected world via the shared selector. If none (editor idle,
+	// no PIE), the data collector will early-out on a null world.
+	_WorldModel->Ensure_AutoSelect();
+	auto* World = _WorldModel->Get_SelectedWorld();
 
 	_ViewModel->Tick(World, InDeltaTime);
 }
@@ -121,6 +114,12 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
 			[
 				SNew(STextBlock).Text(FText::FromString(TEXT("CK Crowd Debugger")))
+			]
+			// World selector (shared across all CK debuggers)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+			[
+				SNew(SCkDebug_WorldSelector, _WorldModel)
+				.ShowHeaderLabel(false)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
 			[

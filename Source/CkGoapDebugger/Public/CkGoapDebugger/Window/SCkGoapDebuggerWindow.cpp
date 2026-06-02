@@ -15,6 +15,7 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 
 #include "Styling/AppStyle.h"
@@ -132,6 +133,7 @@ auto
     Register_WithGate();
 
     _ViewModel = MakeShared<FCkGoapDebugger_ViewModel>();
+    _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
     _OnBeginPieHandle = FEditorDelegates::BeginPIE.AddLambda([this](bool)
     { HandleWorldTornDown(); });
@@ -238,34 +240,11 @@ auto
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
-    // Pick the most appropriate world: prefer PIE if available, else editor.
-    {
-        auto FoundWorld = static_cast<UWorld*>(nullptr);
-
-        if (GEngine)
-        {
-            for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
-            {
-                if (It->WorldType == EWorldType::PIE && ck::IsValid(It->World()) && It->World()->HasBegunPlay())
-                {
-                    FoundWorld = It->World();
-                    break;
-                }
-            }
-
-            if (FoundWorld == nullptr && GEditor)
-            {
-                auto& EditorCtx = GEditor->GetEditorWorldContext();
-                if (ck::IsValid(EditorCtx.World()))
-                { FoundWorld = EditorCtx.World(); }
-            }
-        }
-
-        _CachedWorld = FoundWorld;
-    }
+    _WorldModel->Ensure_AutoSelect();
+    _CachedWorld = _WorldModel->Get_SelectedWorld();
 
     auto* World = _CachedWorld.Get();
-    if (ck::Is_NOT_Valid(World))
+    if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
     { return; }
 
     _ViewModel->Tick(World);
@@ -370,6 +349,16 @@ auto
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SHorizontalBox)
+
+                // World selector (shared across all CK debuggers)
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
+                    [
+                        SNew(SCkDebug_WorldSelector, _WorldModel)
+                            .ShowHeaderLabel(false)
+                    ]
 
                 // "Entity:" label
                 + SHorizontalBox::Slot()

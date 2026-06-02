@@ -4,6 +4,7 @@
 #include "CkSchedulerDebugger/Pages/ICkSchedulerDebuggerPage.h"
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 #include "Widgets/Layout/SBox.h"
 
@@ -30,7 +31,6 @@ private:
 	auto DoBuildStatsBar() -> TSharedRef<SWidget>;
 	auto DoBuildTabBar() -> TSharedRef<SWidget>;
 	auto DoSwitchToPage(int32 InPageIndex) -> void;
-	auto DoFindBestWorld() const -> UWorld*;
 
 	auto DoMakeStatItem(
 		const FText& InLabel,
@@ -46,8 +46,7 @@ private:
 	TSharedPtr<SBox> _ContentContainer;
 	TSharedPtr<SCkSchedulerDebugger_FrameHistoryBar> _FrameHistoryBar;
 
-	TArray<TSharedPtr<FString>> _WorldOptions;
-	int32 _SelectedWorldIndex = 0;
+	TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 	int32 _FrameHistoryMaxSize = 3000;
 	TWeakObjectPtr<UWorld> _CurrentWorld;
 };

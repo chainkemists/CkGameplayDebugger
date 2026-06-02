@@ -5,6 +5,7 @@
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
@@ -67,9 +68,7 @@ auto
 
 	_ViewModel = MakeShared<FCkSchedulerDebugger_ViewModel>();
 
-	_WorldOptions.Add(MakeShared<FString>(TEXT("Game World")));
-	_WorldOptions.Add(MakeShared<FString>(TEXT("Editor World")));
-	_WorldOptions.Add(MakeShared<FString>(TEXT("PIE World")));
+	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
 	_Pages.Add(MakeShared<FCkSchedulerDebuggerPage_TreeView>());
 
@@ -202,7 +201,8 @@ auto
 	if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
 	{ return; }
 
-	auto World = DoFindBestWorld();
+	_WorldModel->Ensure_AutoSelect();
+	auto* World = _WorldModel->Get_SelectedWorld();
 	_CurrentWorld = World;
 	_ViewModel->Tick(World, InDeltaTime);
 
@@ -248,31 +248,8 @@ auto
 				.VAlign(VAlign_Center)
 				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
 				[
-					SNew(SComboBox<TSharedPtr<FString>>)
-						.OptionsSource(&_WorldOptions)
-						.InitiallySelectedItem(_WorldOptions[0])
-						.OnGenerateWidget_Lambda([](TSharedPtr<FString> InItem) -> TSharedRef<SWidget>
-						{
-							return SNew(STextBlock)
-								.Text(FText::FromString(*InItem))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10));
-						})
-						.OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type InType)
-						{
-							_SelectedWorldIndex = _WorldOptions.IndexOfByKey(InItem);
-						})
-						[
-							SNew(STextBlock)
-								.Text_Lambda([this]() -> FText
-								{
-									if (_WorldOptions.IsValidIndex(_SelectedWorldIndex))
-									{
-										return FText::FromString(*_WorldOptions[_SelectedWorldIndex]);
-									}
-									return FText::FromString(TEXT("Game World"));
-								})
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
-						]
+					SNew(SCkDebug_WorldSelector, _WorldModel)
+						.ShowHeaderLabel(false)
 				]
 
 			+ SHorizontalBox::Slot()
@@ -570,57 +547,6 @@ auto
 
 	_ContentContainer->SetContent(
 		_Pages[_ActivePageIndex]->Build_Content(_ViewModel));
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-	SCkSchedulerDebuggerWindow::
-	DoFindBestWorld() const
-	-> UWorld*
-{
-	if (_SelectedWorldIndex == 2)
-	{
-		if (GEditor)
-		{
-			for (const auto& Context : GEditor->GetWorldContexts())
-			{
-				if (Context.WorldType == EWorldType::PIE && IsValid(Context.World()))
-				{
-					return Context.World();
-				}
-			}
-		}
-	}
-
-	if (_SelectedWorldIndex == 1)
-	{
-		if (GEditor)
-		{
-			return GEditor->GetEditorWorldContext().World();
-		}
-	}
-
-	if (GEditor)
-	{
-		for (const auto& Context : GEditor->GetWorldContexts())
-		{
-			if (Context.WorldType == EWorldType::Game && IsValid(Context.World()))
-			{
-				return Context.World();
-			}
-		}
-
-		for (const auto& Context : GEditor->GetWorldContexts())
-		{
-			if (Context.WorldType == EWorldType::PIE && IsValid(Context.World()))
-			{
-				return Context.World();
-			}
-		}
-	}
-
-	return GWorld;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

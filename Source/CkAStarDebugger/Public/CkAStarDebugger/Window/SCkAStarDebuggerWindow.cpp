@@ -8,6 +8,7 @@
 #include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
@@ -36,6 +37,7 @@ auto
     Register_WithGate();
 
     _ViewModel = MakeShared<FCkAStarDebugger_ViewModel>();
+    _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
     // Layout:
     //   Toolbar (auto-height)
@@ -112,22 +114,10 @@ auto
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
-    {
-        auto FoundWorld = static_cast<UWorld*>(nullptr);
+    _WorldModel->Ensure_AutoSelect();
+    _CachedWorld = _WorldModel->Get_SelectedWorld();
 
-        for (auto It = GEngine->GetWorldContexts().CreateConstIterator(); It; ++It)
-        {
-            if (It->WorldType == EWorldType::PIE && IsValid(It->World()))
-            {
-                FoundWorld = It->World();
-                break;
-            }
-        }
-
-        _CachedWorld = FoundWorld;
-    }
-
-    if (NOT _CachedWorld)
+    if (NOT IsValid(_CachedWorld) || NOT _CachedWorld->HasBegunPlay())
     { return; }
 
     _ViewModel->Tick(_CachedWorld, InDeltaTime);
@@ -159,6 +149,16 @@ auto
     -> TSharedRef<SWidget>
 {
     return SNew(SHorizontalBox)
+
+        // World selector (shared across all CK debuggers)
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f)
+            [
+                SNew(SCkDebug_WorldSelector, _WorldModel)
+                    .ShowHeaderLabel(false)
+            ]
 
         // "Entity:" label
         + SHorizontalBox::Slot()

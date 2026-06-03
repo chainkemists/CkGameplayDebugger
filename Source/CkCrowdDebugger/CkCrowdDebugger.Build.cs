@@ -28,6 +28,7 @@ public class CkCrowdDebugger : CkModuleRules
 
 			"CkCore",
 			"CkEcs",
+			"CkEcsExt",
 			"CkLabel",
 			"CkDebuggerCommon",
 

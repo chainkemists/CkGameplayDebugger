@@ -2,20 +2,33 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+
+#include "CkEcs/Handle/CkHandle.h"
+
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
+
+#include "Styling/CoreStyle.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
-
-#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> void
 {
 	_ViewModel = InArgs._ViewModel;
-	_CachedBody = TEXT("Click an agent in the list to see its details here.\n\n"
-	                   "Identity is the only section populated in Gate 0; subsequent gates fill in\n"
-	                   "Position / Velocity / Goal / Path / Steering / Neighbors / Sleep & Replan.");
 
 	if (_ViewModel.IsValid())
 	{
@@ -23,37 +36,180 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 			SharedThis(this), &SCkCrowdDebugger_AgentDetailPanel::OnAgentDataRefreshed);
 	}
 
+	const auto NumColor    = CkDebugStyle::Value_Numeric();
+	const auto MathColor   = CkDebugStyle::Value_Math();
+	const auto TagColor    = CkDebugStyle::Value_Tag();
+	const auto HandleColor = CkDebugStyle::Value_Handle();
+
+	const auto SectionPad = FMargin(0.0f, CkDebugStyle::SpaceM, 0.0f, CkDebugStyle::SpaceXS);
+
 	ChildSlot
 	[
-		SNew(SBorder).Padding(FMargin(8, 6))
+		SNew(SBorder)
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+		.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+			SNew(SScrollBox)
+			+ SScrollBox::Slot()
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-				[
-					SNew(STextBlock).Text(FText::FromString(TEXT("AGENT DETAIL")))
-				]
-				// Click to open this agent's entity in the CK ECS Debugger.
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-				[
-					SNew(SCkDebug_EntityRef)
-					.ShowName(true)
-					.Entity_Lambda([this]() -> FCk_Handle
-					{
-						if (NOT _ViewModel.IsValid())
-						{ return FCk_Handle{}; }
+				SNew(SVerticalBox)
 
-						return _ViewModel->Get_SelectedHandle();
-					})
+				// ---- Header: pane title + entity pill --------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(TEXT("AGENT DETAIL")))
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(SCkDebug_EntityRef)
+						.ShowName(true)
+						.Entity_Lambda([this]() -> FCk_Handle
+						{
+							return _ViewModel.IsValid() ? _ViewModel->Get_SelectedHandle() : FCk_Handle{};
+						})
+					]
 				]
-			]
-			+ SVerticalBox::Slot().FillHeight(1.0f)
-			[
-				SNew(STextBlock)
-				.Text(this, &SCkCrowdDebugger_AgentDetailPanel::Get_BodyText)
-				.AutoWrapText(true)
+
+				// ---- Stat strip: status pill + key live metrics ---------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, CkDebugStyle::SpaceXS)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[ StatusBadge() ]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SCkDebug_StatPair)
+						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.Label(FText::FromString(TEXT("cm/s")))
+						.Value_Lambda([this]{ return _HasSelection ? FText::AsNumber(FMath::RoundToInt(Diag_Speed())) : FText::FromString(TEXT("—")); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SCkDebug_StatPair)
+						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.Label(FText::FromString(TEXT("nbrs")))
+						.Value_Lambda([this]{ return _HasSelection ? FText::AsNumber(_Snapshot.NeighborCount) : FText::FromString(TEXT("—")); })
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SCkDebug_StatPair)
+						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.Label(FText::FromString(TEXT("turn r")))
+						.Value_Lambda([this]{ return _HasSelection ? FText::FromString(FString::Printf(TEXT("%.0f"), Diag_TurnRadius())) : FText::FromString(TEXT("—")); })
+					]
+				]
+
+				// ---- Identity --------------------------------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Identity"))) ]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SCkDebug_KeyValueRow)
+					.KeyText(FText::FromString(TEXT("Entity")))
+					.Tone(ECkDebug_KeyValueTone::Custom)
+					.ValueWidget()
+					[
+						SNew(SCkDebug_EntityRef)
+						.ShowName(false)
+						.Entity_Lambda([this]() -> FCk_Handle { return _HasSelection ? _Snapshot.Handle : FCk_Handle{}; })
+					]
+				]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Primary tag"), [this]{ return _Snapshot.PrimaryTag; }, TagColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Tag count"),   [this]{ return FString::FromInt(_Snapshot.Tags.Num()); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Radius"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Radius); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Height"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Height); }, NumColor) ]
+
+				// ---- Orbit Diagnosis -------------------------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Orbit Diagnosis"))) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("MaxSpeed"),       [this]{ return FString::Printf(TEXT("%.0f cm/s"), _Snapshot.MaxSpeed); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("MaxTurnRate"),    [this]{ return FString::Printf(TEXT("%.2f rad/s"), _Snapshot.MaxTurnRate); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Speed (now)"),    [this]{ return FString::Printf(TEXT("%.0f cm/s"), Diag_Speed()); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Arrival r"),      [this]{ return FString::Printf(TEXT("%.0f cm"), Diag_EffArrival()); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Turn radius"),    [this]{ return FString::Printf(TEXT("%.0f cm"), Diag_TurnRadius()); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Orbit r (pred)"), [this]{ return FString::Printf(TEXT("%.0f cm"), Diag_PredictedOrbit()); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Dist to goal"),   [this]{ return _Snapshot.IsWalking ? FString::Printf(TEXT("%.0f cm"), FVector::Dist(_Snapshot.ActiveGoal, _Snapshot.Position)) : FString(TEXT("—")); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(CkDebugStyle::GetRoundedBrush())
+					.BorderBackgroundColor_Lambda([this]
+					{
+						const auto Tone = (_HasSelection && Diag_WillOrbit()) ? CkDebugStyle::Err() : CkDebugStyle::Ok();
+						return FSlateColor(CkDebugStyle::OverlayOf(Tone, 0.20f));
+					})
+					.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+					[
+						SNew(STextBlock)
+						.Justification(ETextJustify::Center)
+						.AutoWrapText(true)
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+						.ColorAndOpacity_Lambda([this]
+						{
+							return FSlateColor((_HasSelection && Diag_WillOrbit()) ? CkDebugStyle::Err() : CkDebugStyle::Ok());
+						})
+						.Text_Lambda([this]
+						{
+							if (NOT _HasSelection) { return FText::FromString(TEXT("(no agent selected)")); }
+							return Diag_WillOrbit()
+								? FText::FromString(FString::Printf(TEXT("WILL ORBIT — turn radius %.0f > arrival %.0f cm"), Diag_PredictedOrbit(), Diag_EffArrival()))
+								: FText::FromString(TEXT("CAN SETTLE — turn radius fits the stop-ring"));
+						})
+					]
+				]
+
+				// ---- Debug Control (take over the agent) -----------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Debug Control"))) ]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 1.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(SButton)
+						.IsEnabled_Lambda([this]{ return _HasSelection; })
+						.OnClicked(this, &SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride)
+						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent so you can drive it from the viewport (left-click to set a goal). Release hands control back to the AI.")))
+						[
+							SNew(STextBlock).Text_Lambda([this]{ return Get_OverrideButtonText(); })
+						]
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.AutoWrapText(true)
+						.ColorAndOpacity(FSlateColor(CkDebugStyle::Err()))
+						.Text_Lambda([this]
+						{
+							return Get_HasDebugOverride()
+								? FText::FromString(TEXT("DEBUG OVERRIDE — left-click in the viewport to set a goal"))
+								: FText::GetEmpty();
+						})
+					]
+				]
+
+				// ---- Steering / Neighbors --------------------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Steering / Neighbors"))) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Neighbors"),  [this]{ return FString::FromInt(_Snapshot.NeighborCount); }, NumColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Separation"), [this]{ return FString::Printf(TEXT("|%.0f|  w=%.2f"), _Snapshot.SeparationForce.Size(), _Snapshot.SeparationWeight); }, MathColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Sep radius"), [this]{ return FString::Printf(TEXT("%.0f cm"), _Snapshot.SeparationRadius); }, NumColor) ]
+
+				// ---- Tuners ----------------------------------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Tuners (live)"))) ]
+				+ SVerticalBox::Slot().AutoHeight()[ MakeTunerRow(TEXT("MaxSpeed"),        [this]{ return _Tuner_MaxSpeed; },        [this](float InV){ _Tuner_MaxSpeed = InV; WriteSelectedParams(); },        60.0f, 600.0f, 10.0f) ]
+				+ SVerticalBox::Slot().AutoHeight()[ MakeTunerRow(TEXT("MaxTurnRate"),     [this]{ return _Tuner_MaxTurnRate; },     [this](float InV){ _Tuner_MaxTurnRate = InV; WriteSelectedParams(); },     0.5f, 20.0f, 0.1f) ]
+				+ SVerticalBox::Slot().AutoHeight()[ MakeTunerRow(TEXT("MaxAcceleration"), [this]{ return _Tuner_MaxAcceleration; }, [this](float InV){ _Tuner_MaxAcceleration = InV; WriteSelectedParams(); }, 120.0f, 2000.0f, 20.0f) ]
+				+ SVerticalBox::Slot().AutoHeight()[ MakeTunerRow(TEXT("ArrivalRadius"),   [this]{ return _Tuner_ArrivalRadius; },   [this](float InV){ _Tuner_ArrivalRadius = InV; WriteSelectedParams(); },   10.0f, 120.0f, 5.0f) ]
+				+ SVerticalBox::Slot().AutoHeight()[ MakeTunerRow(TEXT("SeparationRadius"),[this]{ return _Tuner_SeparationRadius; },[this](float InV){ _Tuner_SeparationRadius = InV; WriteSelectedParams(); },40.0f, 200.0f, 10.0f) ]
 			]
 		]
 	];
@@ -71,9 +227,185 @@ SCkCrowdDebugger_AgentDetailPanel::~SCkCrowdDebugger_AgentDetailPanel()
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto SCkCrowdDebugger_AgentDetailPanel::Get_BodyText() const -> FText
+auto SCkCrowdDebugger_AgentDetailPanel::Kv(
+	const FString& InKey,
+	TFunction<FString()> InValue,
+	FLinearColor InColor)
+	-> TSharedRef<SWidget>
 {
-	return FText::FromString(_CachedBody);
+	return SNew(SCkDebug_KeyValueRow)
+		.KeyText(FText::FromString(InKey))
+		.Tone(ECkDebug_KeyValueTone::Custom)
+		.CustomValueColor(InColor)
+		.ValueText_Lambda([this, InValue]()
+		{
+			return _HasSelection ? FText::FromString(InValue()) : FText::FromString(TEXT("—"));
+		});
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::Status_Text() const -> FText
+{
+	if (NOT _HasSelection) { return FText::FromString(TEXT("—")); }
+	switch (_Snapshot.Status)
+	{
+		case ECkCrowdDebugger_AgentStatus::Walking:     return FText::FromString(TEXT("Walking"));
+		case ECkCrowdDebugger_AgentStatus::Idle:        return FText::FromString(TEXT("Idle"));
+		case ECkCrowdDebugger_AgentStatus::Replanning:  return FText::FromString(TEXT("Pending"));
+		case ECkCrowdDebugger_AgentStatus::Failed:      return FText::FromString(TEXT("Failed"));
+		case ECkCrowdDebugger_AgentStatus::Asleep:      return FText::FromString(TEXT("Asleep"));
+		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return FText::FromString(TEXT("Proxy"));
+		default:                                        return FText::FromString(TEXT("—"));
+	}
+}
+
+auto SCkCrowdDebugger_AgentDetailPanel::Status_Color() const -> FLinearColor
+{
+	if (NOT _HasSelection) { return CkDebugStyle::TextMute(); }
+	switch (_Snapshot.Status)
+	{
+		case ECkCrowdDebugger_AgentStatus::Walking:     return CkDebugStyle::Info();
+		case ECkCrowdDebugger_AgentStatus::Replanning:  return CkDebugStyle::Warn();
+		case ECkCrowdDebugger_AgentStatus::Failed:      return CkDebugStyle::Err();
+		case ECkCrowdDebugger_AgentStatus::Asleep:      return CkDebugStyle::TextMute();
+		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkDebugStyle::Accent();
+		default:                                        return CkDebugStyle::TextDim();
+	}
+}
+
+auto SCkCrowdDebugger_AgentDetailPanel::StatusBadge() -> TSharedRef<SWidget>
+{
+	return SNew(SBorder)
+		.BorderImage(CkDebugStyle::GetRoundedBrush())
+		.BorderBackgroundColor_Lambda([this]{ return FSlateColor(CkDebugStyle::OverlayOf(Status_Color(), 0.22f)); })
+		.Padding(FMargin(CkDebugStyle::SpaceM, 2.0f))
+		.VAlign(VAlign_Center)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+			[
+				SNew(SBox).WidthOverride(8.0f).HeightOverride(8.0f)
+				[
+					SNew(SImage)
+					.Image(CkDebugStyle::GetRoundedBrush())
+					.ColorAndOpacity_Lambda([this]{ return FSlateColor(Status_Color()); })
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+				.ColorAndOpacity_Lambda([this]{ return FSlateColor(Status_Color()); })
+				.Text_Lambda([this]{ return Status_Text(); })
+			]
+		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::Diag_EffArrival() const -> float
+{ return _Snapshot.IsWalking ? _Snapshot.ActiveArrivalRadius : _Snapshot.ArrivalRadius; }
+
+auto SCkCrowdDebugger_AgentDetailPanel::Diag_Speed() const -> double
+{ return _Snapshot.Velocity.Size(); }
+
+auto SCkCrowdDebugger_AgentDetailPanel::Diag_TurnRadius() const -> double
+{ return _Snapshot.MaxTurnRate > 0.0f ? Diag_Speed() / _Snapshot.MaxTurnRate : 0.0; }
+
+auto SCkCrowdDebugger_AgentDetailPanel::Diag_PredictedOrbit() const -> float
+{ return _Snapshot.MaxTurnRate > 0.0f ? _Snapshot.MaxSpeed / _Snapshot.MaxTurnRate : 0.0f; }
+
+auto SCkCrowdDebugger_AgentDetailPanel::Diag_WillOrbit() const -> bool
+{ return _Snapshot.MaxTurnRate > 0.0f && Diag_PredictedOrbit() > Diag_EffArrival(); }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::MakeTunerRow(
+	const FString& InLabel,
+	TFunction<float()> InGet,
+	TFunction<void(float)> InSet,
+	float InMin,
+	float InMax,
+	float InDelta)
+	-> TSharedRef<SWidget>
+{
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(0.45f).VAlign(VAlign_Center).Padding(0.0f, 1.0f, CkDebugStyle::SpaceM, 1.0f)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(InLabel))
+			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+		]
+		+ SHorizontalBox::Slot().FillWidth(0.55f).VAlign(VAlign_Center).Padding(0.0f, 1.0f)
+		[
+			SNew(SSpinBox<float>)
+			.MinValue(InMin).MaxValue(InMax)
+			.MinSliderValue(InMin).MaxSliderValue(InMax)
+			.Delta(InDelta)
+			.IsEnabled_Lambda([this]() { return Get_TunersEnabled(); })
+			.Value_Lambda([InGet]() { return InGet(); })
+			.OnValueChanged_Lambda([InSet](float InV) { InSet(InV); })
+		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::Get_TunersEnabled() const -> bool
+{ return _HasSelection; }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::WriteSelectedParams() -> void
+{
+	if (NOT _ViewModel.IsValid())
+	{ return; }
+
+	auto Handle = _ViewModel->Get_SelectedHandle();
+	if (ck::Is_NOT_Valid(Handle))
+	{ return; }
+
+	if (NOT Handle.Has<ck::FFragment_CrowdAgent_Params>())
+	{ return; }
+
+	auto& Params = Handle.Get<ck::FFragment_CrowdAgent_Params>();
+	Params.Set_MaxSpeed(_Tuner_MaxSpeed);
+	Params.Set_MaxTurnRate(_Tuner_MaxTurnRate);
+	Params.Set_MaxAcceleration(_Tuner_MaxAcceleration);
+	Params.Set_ArrivalRadius(_Tuner_ArrivalRadius);
+	Params.Set_SeparationRadius(_Tuner_SeparationRadius);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentDetailPanel::Get_HasDebugOverride() const -> bool
+{
+	if (NOT _ViewModel.IsValid())
+	{ return false; }
+	auto Handle = _ViewModel->Get_SelectedHandle();
+	auto Agent = UCk_Utils_CrowdAgent_UE::Cast(Handle);
+	return ck::IsValid(Agent) && UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent);
+}
+
+auto SCkCrowdDebugger_AgentDetailPanel::Get_OverrideButtonText() const -> FText
+{
+	return Get_HasDebugOverride()
+		? FText::FromString(TEXT("Release to AI"))
+		: FText::FromString(TEXT("Take Control"));
+}
+
+auto SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride() -> FReply
+{
+	if (NOT _ViewModel.IsValid())
+	{ return FReply::Handled(); }
+	auto Handle = _ViewModel->Get_SelectedHandle();
+	auto Agent = UCk_Utils_CrowdAgent_UE::Cast(Handle);
+	if (ck::Is_NOT_Valid(Agent))
+	{ return FReply::Handled(); }
+
+	const auto NewOverride = NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent);
+	UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, NewOverride);
+	return FReply::Handled();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -84,70 +416,17 @@ auto SCkCrowdDebugger_AgentDetailPanel::OnAgentDataRefreshed(
 {
 	if (InSnapshot == nullptr)
 	{
-		_CachedBody = TEXT("(no agent selected)\n\n"
-		                   "Click an agent in the list to populate this panel.");
+		_HasSelection = false;
 		return;
 	}
 
-	auto Body = FString::Printf(
-		TEXT("Identity\n"
-		     "  Handle id    : #%05u\n"
-		     "  Primary tag  : %s\n"
-		     "  Tag count    : %d\n"
-		     "  Radius       : %.1f cm\n"
-		     "  Height       : %.1f cm\n"),
-		GetTypeHash(InSnapshot->Handle),
-		*InSnapshot->PrimaryTag,
-		InSnapshot->Tags.Num(),
-		InSnapshot->Radius,
-		InSnapshot->Height);
-
-	// Gate 3 — Steering Forces. Only the Separation row is wired up in this gate; PathFollow
-	// + Pierce + PlayerYield rows land in their respective gates. Magnitude is shown alongside
-	// the vector so a quick glance answers "is separation active?" without parsing 3 floats.
-	const auto SepMag = InSnapshot->SeparationForce.Size();
-	Body += FString::Printf(
-		TEXT("\nSteering Forces\n"
-		     "  Separation   : (%+7.1f, %+7.1f, %+7.1f)  |%.1f|  weight=%.2f\n"
-		     "  PathFollow   : (Gate 3C wires this row up)\n"
-		     "  Pierce       : (Gate 4 wires this row up)\n"
-		     "  PlayerYield  : (Gate 5 wires this row up)\n"),
-		InSnapshot->SeparationForce.X,
-		InSnapshot->SeparationForce.Y,
-		InSnapshot->SeparationForce.Z,
-		SepMag,
-		InSnapshot->SeparationWeight);
-
-	// Gate 3 — Neighbors. Header reports count + the radius they're being measured against.
-	// Per-row: id (cyan in the mockup, plain text here until the panel gets rich text),
-	// distance in cm, relative offset for sanity-checking direction.
-	Body += FString::Printf(
-		TEXT("\nNeighbors  (count=%d, sep_radius=%.0fcm)\n"),
-		InSnapshot->Neighbors.Num(),
-		InSnapshot->SeparationRadius);
-
-	if (InSnapshot->Neighbors.Num() == 0)
-	{
-		Body += TEXT("  (none in range)\n");
-	}
-	else
-	{
-		for (const auto& Nbr : InSnapshot->Neighbors)
-		{
-			Body += FString::Printf(
-				TEXT("  #%05u  d=%6.1fcm  off=(%+7.1f, %+7.1f, %+7.1f)\n"),
-				GetTypeHash(Nbr.Handle),
-				Nbr.Distance,
-				Nbr.RelativeOffset.X,
-				Nbr.RelativeOffset.Y,
-				Nbr.RelativeOffset.Z);
-		}
-	}
-
-	Body += TEXT("\nOther sections (Position / Velocity / Goal / Path / Sleep & Replan) populate\n"
-	             "as later gates land — see PLAN.md.");
-
-	_CachedBody = MoveTemp(Body);
+	_Snapshot = *InSnapshot;
+	_HasSelection = true;
+	_Tuner_MaxSpeed         = InSnapshot->MaxSpeed;
+	_Tuner_MaxTurnRate      = InSnapshot->MaxTurnRate;
+	_Tuner_MaxAcceleration  = InSnapshot->MaxAcceleration;
+	_Tuner_ArrivalRadius    = InSnapshot->ArrivalRadius;
+	_Tuner_SeparationRadius = InSnapshot->SeparationRadius;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

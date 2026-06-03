@@ -6,6 +6,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentDetailPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_StatsPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
+#include "CkCrowdDebugger/Window/SCkCrowdDebugger_ViewportPanel.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 
@@ -39,6 +40,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_AgentDetailPanel   = SNew(SCkCrowdDebugger_AgentDetailPanel).ViewModel(_ViewModel);
 	_StatsPanel         = SNew(SCkCrowdDebugger_StatsPanel).ViewModel(_ViewModel);
 	_EventLogPanel      = SNew(SCkCrowdDebugger_EventLogPanel).ViewModel(_ViewModel);
+	_ViewportPanel      = SNew(SCkCrowdDebugger_ViewportPanel).ViewModel(_ViewModel);
 
 	ChildSlot
 	[
@@ -47,21 +49,24 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		+ SVerticalBox::Slot().FillHeight(1.0f)
 		[
 			SNew(SSplitter).Orientation(Orient_Horizontal)
-			+ SSplitter::Slot().Value(0.22f)
+			// Left rail: navmesh status + agent list + stats + event log.
+			+ SSplitter::Slot().Value(0.20f)
 			[
 				SNew(SSplitter).Orientation(Orient_Vertical)
-				+ SSplitter::Slot().Value(0.30f) [ _NavmeshStatusPanel.ToSharedRef() ]
-				+ SSplitter::Slot().Value(0.70f) [ _AgentListPanel.ToSharedRef() ]
+				+ SSplitter::Slot().Value(0.22f) [ _NavmeshStatusPanel.ToSharedRef() ]
+				+ SSplitter::Slot().Value(0.46f) [ _AgentListPanel.ToSharedRef() ]
+				+ SSplitter::Slot().Value(0.14f) [ _StatsPanel.ToSharedRef() ]
+				+ SSplitter::Slot().Value(0.18f) [ _EventLogPanel.ToSharedRef() ]
 			]
-			+ SSplitter::Slot().Value(0.53f)
+			// Center: the viewport, full height (the mockup's centerpiece).
+			+ SSplitter::Slot().Value(0.52f)
+			[
+				_ViewportPanel.ToSharedRef()
+			]
+			// Right: agent detail + tuners + diagnostics, full height (no scrolling).
+			+ SSplitter::Slot().Value(0.28f)
 			[
 				_AgentDetailPanel.ToSharedRef()
-			]
-			+ SSplitter::Slot().Value(0.25f)
-			[
-				SNew(SSplitter).Orientation(Orient_Vertical)
-				+ SSplitter::Slot().Value(0.40f) [ _StatsPanel.ToSharedRef() ]
-				+ SSplitter::Slot().Value(0.60f) [ _EventLogPanel.ToSharedRef() ]
 			]
 		]
 	];
@@ -197,6 +202,22 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 				})
 				[
 					SNew(STextBlock).Text(FText::FromString(TEXT("Separation")))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
+			[
+				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw the orbit-diagnosis rings for every crowd agent: arrival ring (green) + predicted-orbit ring (red) at the goal, the turn-radius circle (blue) tangent to the agent, and the velocity vector (yellow). The selected agent is always drawn regardless of this toggle.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.DrawAgentRings")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.DrawAgentRings"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("Rings")))
 				]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)

@@ -14,6 +14,7 @@ class SCkCrowdDebugger_AgentListPanel;
 class SCkCrowdDebugger_AgentDetailPanel;
 class SCkCrowdDebugger_StatsPanel;
 class SCkCrowdDebugger_EventLogPanel;
+class SCkCrowdDebugger_ViewportPanel;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -47,6 +48,7 @@ private:
 	TSharedPtr<SCkCrowdDebugger_AgentDetailPanel>   _AgentDetailPanel;
 	TSharedPtr<SCkCrowdDebugger_StatsPanel>         _StatsPanel;
 	TSharedPtr<SCkCrowdDebugger_EventLogPanel>      _EventLogPanel;
+	TSharedPtr<SCkCrowdDebugger_ViewportPanel>      _ViewportPanel;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

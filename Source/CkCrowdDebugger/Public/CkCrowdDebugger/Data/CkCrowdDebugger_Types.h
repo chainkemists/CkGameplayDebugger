@@ -53,6 +53,19 @@ struct FCkCrowdDebugger_AgentSnapshot
 	FVector                  Position = FVector::ZeroVector;
 	FVector                  Velocity = FVector::ZeroVector;
 
+	// Locomotion params + active-goal state — feeds the "Orbit Diagnosis" section + WILL-ORBIT
+	// verdict in the detail panel (predicted orbit radius = MaxSpeed/MaxTurnRate vs ArrivalRadius).
+	float                    MaxSpeed = 0.0f;
+	float                    MaxTurnRate = 0.0f;
+	float                    MaxAcceleration = 0.0f;
+	float                    ArrivalRadius = 0.0f;        // params default
+	float                    ActiveArrivalRadius = 0.0f;  // per-active-goal override (valid while Walking)
+	FVector                  ActiveGoal = FVector::ZeroVector;
+	bool                     IsWalking = false;
+
+	// Remaining nav waypoints (world space) — drawn as the planned-path polyline in the viewport.
+	TArray<FVector>          PlannedPath;
+
 	// Gate 0 minimum — these are enough for the agent list to render
 	float                    Radius = 0.0f;
 	float                    Height = 0.0f;
@@ -77,6 +90,11 @@ struct FCkCrowdDebugger_NavmeshStatus
 	bool _DefaultFilterValid = false;
 	int32 _SupportedAgents = 0;
 	double _LastRegenTimestamp = -1.0;
+
+	// Navmesh world bounds (ARecastNavMesh::GetBounds) — the viewport's world->screen extent.
+	bool    _NavBoundsValid = false;
+	FVector _NavBoundsMin = FVector::ZeroVector;
+	FVector _NavBoundsMax = FVector::ZeroVector;
 
 	// Synthetic FindPathSync probe ("Run Health Check" button). Stays default-zero
 	// until the user runs a probe; then populated with the latest result so the

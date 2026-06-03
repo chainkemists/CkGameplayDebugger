@@ -54,6 +54,13 @@ public:
 	auto Get_NavmeshStatus() const -> const FCkCrowdDebugger_NavmeshStatus&
 	{ return _DataCollector.Get_NavmeshStatus(); }
 
+	auto Get_NavTriVerts() const -> const TArray<FVector>&
+	{ return _DataCollector.Get_NavTriVerts(); }
+
+	// Viewport camera orientation
+	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }
+	auto Get_ViewYawValid() const -> bool { return _DataCollector.Get_ViewYawValid(); }
+
 	// Pause
 	auto Set_Paused(bool InPaused) -> void;
 	auto Get_Paused() const -> bool { return _IsPaused; }

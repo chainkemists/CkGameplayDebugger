@@ -10,12 +10,22 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Neighbors_Fragment.h"
 
+#include "CkEcsExt/Transform/CkTransform_Utils.h"
+
 #include "CkNavigation/Nav/CkNav_Algorithm.h"
 #include "CkNavigation/Nav/CkNav_Fragment.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
+#include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
+
+#if WITH_EDITOR
+#include "Editor.h"
+#include "LevelEditorViewport.h"
+#endif
 #include "NavigationSystem.h"
 #include "NavMesh/RecastNavMesh.h"
 #include "NavFilters/NavigationQueryFilter.h"
@@ -39,6 +49,8 @@ auto
 	_NavmeshStatus._DefaultFilterValid = false;
 	_NavmeshStatus._SupportedAgents = 0;
 	_NavmeshStatus._LastRegenTimestamp = -1.0;
+	_NavmeshStatus._NavBoundsValid = false;
+	_ViewYawValid = false;
 
 	// Per CkDebuggerCommon convention: guard on world validity AND HasBegunPlay
 	// (worlds appear in GEngine->GetWorldContexts before BeginPlay).
@@ -47,6 +59,56 @@ auto
 
 	if (NOT InWorld->HasBegunPlay())
 	{ return; }
+
+	// Sample the view yaw so the viewport can orient to the camera.
+	auto GotView = false;
+
+#if WITH_EDITOR
+	// When ejected from PIE (F8) the live camera is the editor's perspective viewport, NOT any PIE
+	// player controller (whose view freezes on the abandoned pawn). GEditor->bIsSimulatingInEditor is
+	// true in that ejected/Simulate state, so pull the yaw straight from the level-editor viewport.
+	if (GEditor != nullptr && GEditor->bIsSimulatingInEditor)
+	{
+		auto* ViewportClient = GCurrentLevelEditingViewportClient;
+		if (ViewportClient == nullptr || NOT ViewportClient->IsPerspective())
+		{
+			for (auto* Client : GEditor->GetLevelViewportClients())
+			{
+				if (Client != nullptr && Client->IsPerspective())
+				{ ViewportClient = Client; break; }
+			}
+		}
+		if (ViewportClient != nullptr)
+		{
+			_ViewYawDegrees = ViewportClient->GetViewRotation().Yaw;
+			_ViewYawValid = true;
+			GotView = true;
+		}
+	}
+#endif
+
+	// Possessed-play path: the local player's CURRENT controller (not GetFirstPlayerController, which
+	// can return a stale PC).
+	if (NOT GotView)
+	{
+		auto* ViewPC = static_cast<APlayerController*>(nullptr);
+		if (GEngine != nullptr)
+		{
+			if (auto* LocalPlayer = GEngine->GetFirstGamePlayer(InWorld))
+			{ ViewPC = LocalPlayer->GetPlayerController(InWorld); }
+		}
+		if (ViewPC == nullptr)
+		{ ViewPC = InWorld->GetFirstPlayerController(); }
+
+		if (ViewPC != nullptr)
+		{
+			auto ViewLocation = FVector::ZeroVector;
+			auto ViewRotation = FRotator::ZeroRotator;
+			ViewPC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+			_ViewYawDegrees = ViewRotation.Yaw;
+			_ViewYawValid = true;
+		}
+	}
 
 	// Sample navmesh state once per tick.
 	{
@@ -61,11 +123,45 @@ auto
 				_NavmeshStatus._NavDataClassName = NavData->GetClass()->GetName();
 				_NavmeshStatus._DefaultFilterValid = NavData->GetDefaultQueryFilter().IsValid();
 				_NavmeshStatus._SupportedAgents = 1; // Default-nav-data path = 1 supported agent
+
+				const auto NavBounds = NavData->GetBounds();
+				if (NavBounds.IsValid != 0)
+				{
+					_NavmeshStatus._NavBoundsValid = true;
+					_NavmeshStatus._NavBoundsMin = NavBounds.Min;
+					_NavmeshStatus._NavBoundsMax = NavBounds.Max;
+				}
+
+				// Refresh the walkable-triangle soup on a throttle — the geometry rarely changes and a
+				// full all-tiles pull every frame would be wasteful at scale.
+				const auto Now = FPlatformTime::Seconds();
+				if (_NavGeomLastPullTime < 0.0 || (Now - _NavGeomLastPullTime) > 1.0)
+				{
+					_NavGeomLastPullTime = Now;
+					_NavTriVerts.Reset();
+
+					auto Geom = FRecastDebugGeometry{};
+					constexpr auto AllTiles = INDEX_NONE;
+					NavData->GetDebugGeometryForTile(Geom, AllTiles);
+
+					for (auto Area = 0; Area < RECAST_MAX_AREAS; ++Area)
+					{
+						const auto& Indices = Geom.AreaIndices[Area];
+						_NavTriVerts.Reserve(_NavTriVerts.Num() + Indices.Num());
+						for (const auto Idx : Indices)
+						{
+							if (Geom.MeshVerts.IsValidIndex(Idx))
+							{ _NavTriVerts.Add(Geom.MeshVerts[Idx]); }
+						}
+					}
+				}
 			}
 			else
 			{
 				_NavmeshStatus._NavDataClassName = TEXT("(no NavData)");
 				_NavmeshStatus._DefaultFilterValid = false;
+				_NavTriVerts.Reset();
+				_NavGeomLastPullTime = -1.0;
 			}
 		}
 
@@ -167,6 +263,34 @@ auto
 		Snapshot.Height = Params.Get_Height();
 		Snapshot.SeparationRadius = Params.Get_SeparationRadius();
 		Snapshot.SeparationWeight = Params.Get_SeparationWeight();
+		Snapshot.MaxSpeed = Params.Get_MaxSpeed();
+		Snapshot.MaxTurnRate = Params.Get_MaxTurnRate();
+		Snapshot.MaxAcceleration = Params.Get_MaxAcceleration();
+		Snapshot.ArrivalRadius = Params.Get_ArrivalRadius();
+	}
+
+	// Live position (Transform) + steering output (DesiredVelocity) — feeds speed / dist-to-goal.
+	if (auto TransformHandle = UCk_Utils_Transform_UE::Cast(InHandle); ck::IsValid(TransformHandle))
+	{
+		Snapshot.Position = UCk_Utils_Transform_UE::Get_EntityCurrentLocation(TransformHandle);
+	}
+
+	if (InHandle.Has<ck::FFragment_CrowdAgent_DesiredVelocity>())
+	{
+		Snapshot.Velocity = InHandle.Get<ck::FFragment_CrowdAgent_DesiredVelocity>().Get_Velocity();
+	}
+
+	// Active-goal state — only meaningful while Walking; a stale goal on an idle agent is ignored.
+	Snapshot.IsWalking = InHandle.Has<ck::FTag_CrowdAgent_Walking>();
+	if (InHandle.Has<ck::FFragment_CrowdAgent_PathFollow>())
+	{
+		const auto& PathFollow = InHandle.Get<ck::FFragment_CrowdAgent_PathFollow>();
+		Snapshot.ActiveGoal = PathFollow.Get_ActiveGoal();
+		Snapshot.ActiveArrivalRadius = PathFollow.Get_ActiveArrivalRadius();
+	}
+	if (InHandle.Has<ck::FFragment_Nav_PathResult>())
+	{
+		Snapshot.PlannedPath = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Waypoints();
 	}
 
 	// Gate 3 — neighbor cache + separation force. The fragments may be absent on agents

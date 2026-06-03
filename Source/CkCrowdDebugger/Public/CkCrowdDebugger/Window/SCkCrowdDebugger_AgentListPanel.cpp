@@ -1,14 +1,15 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentListPanel.h"
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
-#include "CkCrowdDebugger/CkCrowdDebuggerStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 
+#include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -29,19 +30,19 @@ namespace
 			*InSnapshot.PrimaryTag);
 	}
 
-	// Status pill colour and label — Failed is red and prominent so a misbehaving agent
-	// is the first thing a dev sees when they open the list. Walking is calm green; Idle and
-	// the rest stay grey so they don't compete visually with anomalies.
+	// Status colour — routed through the shared debugger palette so it matches the viewport dots
+	// and the detail-panel verdict. Failed is red and prominent so a misbehaving agent is the first
+	// thing a dev sees; Idle and the rest stay muted so they don't compete with anomalies.
 	auto StatusColor(ECkCrowdDebugger_AgentStatus InStatus) -> FLinearColor
 	{
 		switch (InStatus)
 		{
-			case ECkCrowdDebugger_AgentStatus::Failed:     return FLinearColor(1.0f, 0.20f, 0.20f, 1.0f);
-			case ECkCrowdDebugger_AgentStatus::Walking:    return FLinearColor(0.40f, 0.85f, 0.40f, 1.0f);
-			case ECkCrowdDebugger_AgentStatus::Replanning: return FLinearColor(1.0f, 0.85f, 0.20f, 1.0f);
-			case ECkCrowdDebugger_AgentStatus::Asleep:     return FLinearColor(0.55f, 0.55f, 0.75f, 1.0f);
-			case ECkCrowdDebugger_AgentStatus::Idle:       return FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
-			default:                                       return FLinearColor(0.55f, 0.55f, 0.55f, 1.0f);
+			case ECkCrowdDebugger_AgentStatus::Failed:     return CkDebugStyle::Err();
+			case ECkCrowdDebugger_AgentStatus::Walking:    return CkDebugStyle::Info();
+			case ECkCrowdDebugger_AgentStatus::Replanning: return CkDebugStyle::Warn();
+			case ECkCrowdDebugger_AgentStatus::Asleep:     return CkDebugStyle::TextMute();
+			case ECkCrowdDebugger_AgentStatus::Idle:       return CkDebugStyle::TextDim();
+			default:                                       return CkDebugStyle::TextDim();
 		}
 	}
 
@@ -78,12 +79,17 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 	ChildSlot
 	[
 		SNew(SBorder)
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
 		.Padding(FMargin(0))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(8, 6)
+			+ SVerticalBox::Slot().AutoHeight().Padding(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS)
 			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("AGENT LIST")))
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("AGENT LIST")))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[

@@ -17,14 +17,14 @@ public:
 
 private:
 	auto Get_NavSystemText() const -> FText;
-	auto Get_NavSystemColor() const -> FSlateColor;
+	auto Get_NavSystemColor() const -> FLinearColor;
 	auto Get_NavDataText() const -> FText;
-	auto Get_NavDataColor() const -> FSlateColor;
+	auto Get_NavDataColor() const -> FLinearColor;
 	auto Get_FilterText() const -> FText;
-	auto Get_FilterColor() const -> FSlateColor;
+	auto Get_FilterColor() const -> FLinearColor;
 	auto Get_SupportedAgentsText() const -> FText;
 	auto Get_HealthCheckText() const -> FText;
-	auto Get_HealthCheckColor() const -> FSlateColor;
+	auto Get_HealthCheckColor() const -> FLinearColor;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;

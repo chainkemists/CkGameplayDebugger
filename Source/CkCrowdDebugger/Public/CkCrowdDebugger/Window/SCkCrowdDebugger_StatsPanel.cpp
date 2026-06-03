@@ -2,6 +2,10 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
+#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
+
+#include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -12,55 +16,71 @@ auto SCkCrowdDebugger_StatsPanel::Construct(const FArguments& InArgs) -> void
 {
 	_ViewModel = InArgs._ViewModel;
 
+	const auto NumColor = CkDebugStyle::Value_Numeric();
+
 	ChildSlot
 	[
-		SNew(SBorder).Padding(FMargin(8, 6))
+		SNew(SBorder)
+		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+		.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 0, 0, 6)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
 			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("STATS")))
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("STATS")))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Text_Lambda([this]() -> FText
+				SNew(SCkDebug_KeyValueRow)
+				.KeyText(FText::FromString(TEXT("Total agents")))
+				.Tone(ECkDebug_KeyValueTone::Custom)
+				.CustomValueColor(NumColor)
+				.ValueText_Lambda([this]
 				{
-					if (NOT _ViewModel.IsValid())
-					{ return FText::FromString(TEXT("Total agents: —")); }
-					return FText::FromString(FString::Printf(TEXT("Total agents: %d"),
-						_ViewModel->Get_AgentCount()));
+					return _ViewModel.IsValid()
+						? FText::AsNumber(_ViewModel->Get_AgentCount())
+						: FText::FromString(TEXT("—"));
 				})
 			]
-			// Gate 3 — Avg neighbors. Sums NeighborCount across all snapshots / agent count.
-			// Cheap to recompute every frame at typical agent counts; if it ever shows on a
-			// profile, push to a cached value updated only when the list changes.
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 4, 0, 0)
+			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Text_Lambda([this]() -> FText
+				SNew(SCkDebug_KeyValueRow)
+				.KeyText(FText::FromString(TEXT("Avg neighbors")))
+				.Tone(ECkDebug_KeyValueTone::Custom)
+				.CustomValueColor(NumColor)
+				.ValueText_Lambda([this]
 				{
-					if (NOT _ViewModel.IsValid())
-					{ return FText::FromString(TEXT("Avg neighbors: —")); }
+					if (NOT _ViewModel.IsValid()) { return FText::FromString(TEXT("—")); }
 					const auto& Agents = _ViewModel->Get_AllAgents();
-					if (Agents.Num() == 0)
-					{ return FText::FromString(TEXT("Avg neighbors: 0.0  (max 0)")); }
-					int32 TotalN = 0;
-					int32 MaxN = 0;
-					for (const auto& A : Agents)
-					{
-						TotalN += A.NeighborCount;
-						MaxN = FMath::Max(MaxN, A.NeighborCount);
-					}
-					const float Avg = static_cast<float>(TotalN) / static_cast<float>(Agents.Num());
-					return FText::FromString(FString::Printf(
-						TEXT("Avg neighbors: %.1f  (max %d)"), Avg, MaxN));
+					if (Agents.Num() == 0) { return FText::FromString(TEXT("0.0")); }
+					auto Total = 0;
+					for (const auto& Agent : Agents) { Total += Agent.NeighborCount; }
+					return FText::FromString(FString::Printf(TEXT("%.1f"), static_cast<float>(Total) / Agents.Num()));
 				})
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0, 6, 0, 0)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SCkDebug_KeyValueRow)
+				.KeyText(FText::FromString(TEXT("Max neighbors")))
+				.Tone(ECkDebug_KeyValueTone::Custom)
+				.CustomValueColor(NumColor)
+				.ValueText_Lambda([this]
+				{
+					if (NOT _ViewModel.IsValid()) { return FText::FromString(TEXT("—")); }
+					auto MaxN = 0;
+					for (const auto& Agent : _ViewModel->Get_AllAgents()) { MaxN = FMath::Max(MaxN, Agent.NeighborCount); }
+					return FText::AsNumber(MaxN);
+				})
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceM, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Awake / Asleep / Replanning / Failed populate in Gate 4+.\n"
-				                             "Neighbor query ms breakdown lands when 3B's perf scope is wired in.")))
-				.ColorAndOpacity(FSlateColor(FLinearColor(0.55f, 0.55f, 0.55f)))
+				.Text(FText::FromString(TEXT("Awake / Asleep / Replanning / Failed populate in Gate 4+. Neighbor query ms breakdown lands when 3B's perf scope is wired in.")))
+				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
 				.AutoWrapText(true)
 			]
 		]

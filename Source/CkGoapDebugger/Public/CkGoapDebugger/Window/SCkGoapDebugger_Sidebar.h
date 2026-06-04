@@ -55,6 +55,10 @@ public:
     // attribute lambdas.
     auto RefreshFromViewModel() -> void;
 
+    // The history block (header + scrub track + list), built in Construct but parented by the
+    // window into a full-width bottom dock. The sidebar's own ChildSlot holds only the planner tree.
+    auto Get_HistoryWidget() -> TSharedRef<SWidget>;
+
     // -----------------------------------------------------------------------------------------------------------------
     // Tree row item — a stable per-Planner record. The fields are updated
     // in place across refreshes so STreeView preserves selection identity.
@@ -147,6 +151,9 @@ private:
     // TSharedPtr identity across RebuildTreeStructure passes so STreeView
     // selection survives every Tick.
     TMap<FCk_Handle_Goap_Planner, FRowItemPtr> _RowItemsByHandle;
+
+    // Built in Construct, parented by the window into the full-width bottom dock.
+    TSharedPtr<SWidget>                      _HistorySection;
 
     TSharedPtr<SListView<FHistoryItemPtr>>   _HistoryListView;
     TArray<FHistoryItemPtr>                  _HistoryItems;

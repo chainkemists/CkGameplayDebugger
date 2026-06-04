@@ -24,4 +24,15 @@ namespace ck_goap_debugger_history_model
         const FString& InHeaderLine,
         const TArray<FCkGoapDebugger_HistoryEvent>& InEvents,
         const TFunctionRef<FString(const FCk_Handle_Goap_Planner&)> InPlannerName) -> FString;
+
+    // Minimum alternating ACT/DEACT events between exactly two actions to collapse into a flap row.
+    inline constexpr int32 k_FlapMinRun = 4;
+
+    // Group events by planner (ActionSetHandle), preserving chronological order within each group, and
+    // run-length-collapse flap storms (a run of ACT/DEACT alternating between exactly two actions).
+    // PlannerName resolved via the supplied functor.
+    CKGOAPDEBUGGER_API auto BuildPlannerGroups(
+        const TArray<FCkGoapDebugger_HistoryEvent>& InEvents,
+        const TFunctionRef<FString(const FCk_Handle_Goap_Planner&)> InPlannerName)
+        -> TArray<FCkGoapDebugger_PlannerGroup>;
 }

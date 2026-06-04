@@ -337,4 +337,32 @@ struct FCkGoapDebugger_HistoryEvent
     TSharedPtr<FCkGoapDebugger_ActionSetInfo> SnapshotAtEvent;
 };
 
+// A display row: either a single event, or a collapsed flap-run alternating between two actions
+// within one planner. RawEvents always holds the underlying per-tick events (copy/expand emit these).
+struct FCkGoapDebugger_HistoryRow
+{
+    bool IsFlap = false;
+    FCk_Handle_Goap_Planner Planner;
+
+    // Single-event row (IsFlap == false):
+    FCkGoapDebugger_HistoryEvent Event;
+
+    // Flap-run row (IsFlap == true):
+    FString FlapActionA;
+    FString FlapActionB;
+    int32   FlapCount  = 0;
+    double  FlapTStart = 0.0;
+    double  FlapTEnd   = 0.0;
+
+    TArray<FCkGoapDebugger_HistoryEvent> RawEvents;
+};
+
+// One collapsible section per planner; rows are in chronological order.
+struct FCkGoapDebugger_PlannerGroup
+{
+    FCk_Handle_Goap_Planner Planner;
+    FString PlannerName;
+    TArray<FCkGoapDebugger_HistoryRow> Rows;
+};
+
 // ====================================================================================================================

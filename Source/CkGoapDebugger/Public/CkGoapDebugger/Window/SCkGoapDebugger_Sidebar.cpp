@@ -122,6 +122,29 @@ namespace
             ];
     }
 
+    auto MakeFlapPill_Sidebar() -> TSharedRef<SWidget>
+    {
+        const auto Tone = FCkGoapDebuggerStyle::Color_Status_Selected;   // amber accent for flap storms
+        auto Bg = Tone;
+        Bg.A = 0.18f;
+        return SNew(SBox)
+            .MinDesiredWidth(46.0f)
+            [
+                SNew(SBorder)
+                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor(FSlateColor(Bg))
+                    .HAlign(HAlign_Center)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin(5.0f, 1.0f))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("FLAP")))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                            .ColorAndOpacity(FSlateColor(Tone))
+                    ]
+            ];
+    }
+
     auto FormatTimestamp_Sidebar(double InWorldTime) -> FString
     {
         const auto Total = FMath::Max(0.0, InWorldTime);
@@ -583,8 +606,14 @@ auto
     GetHistoryHeaderText() const
     -> FText
 {
-    return FText::FromString(FString::Printf(
-        TEXT("HISTORY · %d events"), _HistoryItems.Num()));
+    auto EventCount = 0;
+    if (_ViewModel.IsValid())
+    {
+        const auto Entity = _ViewModel->GetSelectedEntity();
+        if (ck::IsValid(Entity))
+        { EventCount = FCkGoapDebugger_DataCollector::GetHistory(Entity).Num(); }
+    }
+    return FText::FromString(FString::Printf(TEXT("HISTORY · %d events"), EventCount));
 }
 
 // ====================================================================================================================
@@ -1005,54 +1034,80 @@ auto
     _LastHistoryHash = NewHash;
 
     static constexpr auto MaxRowsToShow = 200;
-
-    // Stable-identity rebuild: reuse existing TSharedPtr entries by key so
-    // SListView selection / hover state survives across ticks when the item
-    // set is unchanged (just data updates).
-    // Key = (FrameNumber, EventKind) — unique per recorded event because events
-    // fire at different frames; Kind disambiguates same-frame edge cases.
     const auto Start = FMath::Max(0, Hist.Num() - MaxRowsToShow);
 
-    // Build the next map from the live history window.
-    auto NextByKey = TMap<FHistoryKey, FHistoryItemPtr>{};
-    NextByKey.Reserve(Hist.Num() - Start);
-
-    _HistoryItems.Empty(Hist.Num() - Start);
-    for (auto Idx = Hist.Num() - 1; Idx >= Start; --Idx)
+    // Window the live history (oldest..newest) and remember each event's history index so collapsed /
+    // grouped rows can still map back to a scrub target (last writer of a frame wins — adequate since
+    // a same-frame snapshot is interchangeable for scrub).
+    auto WindowEvents = TArray<FCkGoapDebugger_HistoryEvent>{};
+    auto FrameToIdx   = TMap<int64, int32>{};
+    WindowEvents.Reserve(Hist.Num() - Start);
+    for (auto Idx = Start; Idx < Hist.Num(); ++Idx)
     {
-        const auto& Ev  = Hist[Idx];
-        // Idx is the third tuple element — see FHistoryKey doc-comment in the
-        // header. (FrameNumber, Kind) alone collides when multiple events fire
-        // on the same frame with the same kind.
-        const auto  Key = FHistoryKey{ Ev.FrameNumber, Ev.Kind, Idx };
-
-        FHistoryItemPtr Item;
-        if (auto* Found = _HistoryItemsByKey.Find(Key))
-        {
-            Item = *Found;
-            // Update in-place so any changed metadata (Title, Meta, Snapshot)
-            // is reflected without reallocating the TSharedPtr.
-            *Item = Ev;
-        }
-        else
-        {
-            Item = MakeShared<FCkGoapDebugger_HistoryEvent>(Ev);
-        }
-
-        NextByKey.Add(Key, Item);
-        _HistoryItems.Add(Item);
+        WindowEvents.Add(Hist[Idx]);
+        FrameToIdx.Add(Hist[Idx].FrameNumber, Idx);
     }
 
-    // Detect membership change. SListView's FWidgetGenerator caches widgets
-    // by item pointer; when items are added or evicted (not just mutated in
-    // place), RequestListRefresh isn't enough — Slate's WidgetMapToItem may
-    // still hold widgets for evicted source items, tripping
-    // ValidateWidgetGeneration on the next paint. RebuildList() does a full
-    // widget-map eviction. Use it whenever the key set changes; keep the
-    // stable-identity refresh for pure data updates.
+    const auto Groups = ck_goap_debugger_history_model::BuildPlannerGroups(WindowEvents,
+        [this](const FCk_Handle_Goap_Planner& InPlanner) { return Get_PlannerDisplayName(InPlanner); });
+
     const auto CurrentNameDepth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
     const auto NameDepthChanged = (_LastHistoryNameDepth != CurrentNameDepth);
     _LastHistoryNameDepth = CurrentNameDepth;
+
+    // Stable-identity rebuild: reuse existing entry pointers by key so SListView selection survives
+    // refreshes where the set is unchanged. Header key = planner; single key = (frame, kind, action);
+    // flap key = (planner, FIRST-event frame) so the entry stays stable while a storm extends it.
+    auto NextByKey = TMap<FHistoryKey, FHistoryItemPtr>{};
+    auto NewItems  = TArray<FHistoryItemPtr>{};
+
+    const auto Reuse = [this](const FString& InKey) -> FHistoryItemPtr
+    {
+        if (auto* Found = _HistoryItemsByKey.Find(InKey)) { return *Found; }
+        return MakeShared<FCkGoapDebugger_HistoryListEntry>();
+    };
+
+    for (const auto& Group : Groups)
+    {
+        const auto HeaderKey = FString::Printf(TEXT("H|%u"), ::GetTypeHash(Group.Planner));
+        auto Header = Reuse(HeaderKey);
+        Header->IsGroupHeader = true;
+        Header->PlannerName   = Group.PlannerName;
+        Header->Planner       = Group.Planner;
+        Header->RepHistIdx    = INDEX_NONE;
+        Header->Key           = HeaderKey;
+        NextByKey.Add(HeaderKey, Header);
+        NewItems.Add(Header);
+
+        for (auto r = Group.Rows.Num() - 1; r >= 0; --r)   // newest-first within the group
+        {
+            const auto& Row = Group.Rows[r];
+
+            FString Key;
+            int64   RepFrame = 0;
+            if (Row.IsFlap)
+            {
+                const auto FirstFrame = Row.RawEvents.Num() > 0 ? Row.RawEvents[0].FrameNumber : 0;
+                RepFrame = Row.RawEvents.Num() > 0 ? Row.RawEvents.Last().FrameNumber : 0;
+                Key = FString::Printf(TEXT("F|%u|%lld"), ::GetTypeHash(Group.Planner), static_cast<long long>(FirstFrame));
+            }
+            else
+            {
+                RepFrame = Row.Event.FrameNumber;
+                Key = FString::Printf(TEXT("S|%lld|%d|%s"),
+                    static_cast<long long>(Row.Event.FrameNumber), static_cast<int32>(Row.Event.Kind), *Row.Event.ActionClassName);
+            }
+
+            auto Item = Reuse(Key);
+            Item->IsGroupHeader = false;
+            Item->Planner       = Group.Planner;
+            Item->Row           = Row;
+            Item->Key           = Key;
+            Item->RepHistIdx    = FrameToIdx.Contains(RepFrame) ? FrameToIdx[RepFrame] : INDEX_NONE;
+            NextByKey.Add(Key, Item);
+            NewItems.Add(Item);
+        }
+    }
 
     const auto MembershipChanged =
         NameDepthChanged
@@ -1063,6 +1118,7 @@ auto
             return false;
         }();
 
+    _HistoryItems      = MoveTemp(NewItems);
     _HistoryItemsByKey = MoveTemp(NextByKey);
 
     if (_HistoryListView.IsValid())
@@ -1084,38 +1140,85 @@ auto
     if (NOT InItem.IsValid())
     { return SNew(FRowType, InOwnerTable); }
 
-    // Name follows the live name-depth (e.g. depth 1 of "Bb.NpcAction.PickGenreShelf" -> "PickGenreShelf").
-    // Events without an action name (set enable/disable, chain reset) fall back to their Title.
+    const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
+
+    // ---- Planner-group header --------------------------------------------------------------------
+    if (InItem->IsGroupHeader)
+    {
+        return SNew(FRowType, InOwnerTable)
+            .Padding(FMargin(2.0f, 3.0f, 2.0f, 1.0f))
+            .ShowSelection(false)
+            [
+                SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("▼")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                        ]
+                    + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(FCkGoapDebugger_NameParams::ComputeDisplayName(InItem->PlannerName, Depth)))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                        ]
+            ];
+    }
+
+    const auto& Row = InItem->Row;
+
+    // ---- Collapsed flap-run row ------------------------------------------------------------------
+    if (Row.IsFlap)
+    {
+        const auto A    = FCkGoapDebugger_NameParams::ComputeDisplayName(Row.FlapActionA, Depth);
+        const auto B    = FCkGoapDebugger_NameParams::ComputeDisplayName(Row.FlapActionB, Depth);
+        const auto Body = FString::Printf(TEXT("%s  ⇄  %s   x%d"), *A, *B, Row.FlapCount);
+        const auto Span = FString::Printf(TEXT("%s–%s"),
+            *FormatTimestamp_Sidebar(Row.FlapTStart), *FormatTimestamp_Sidebar(Row.FlapTEnd));
+
+        return SNew(FRowType, InOwnerTable)
+            .Padding(FMargin(2.0f, 1.0f))
+            .ShowSelection(true)
+            [
+                SNew(SHorizontalBox)
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 4.0f, 0.0f)
+                        [ MakeFlapPill_Sidebar() ]
+                    + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(6.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(Body))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                        ]
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(Span))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                        ]
+            ];
+    }
+
+    // ---- Single event row ------------------------------------------------------------------------
+    const auto& Ev = Row.Event;
     auto NameText = FString{};
-    if (NOT InItem->ActionClassName.IsEmpty())
-    {
-        const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
-        NameText = FCkGoapDebugger_NameParams::ComputeDisplayName(InItem->ActionClassName, Depth);
-    }
+    if (NOT Ev.ActionClassName.IsEmpty())
+    { NameText = FCkGoapDebugger_NameParams::ComputeDisplayName(Ev.ActionClassName, Depth); }
     else
-    {
-        NameText = InItem->Title.IsEmpty()
-            ? HistoryKindLabel_Sidebar(InItem->Kind)
-            : InItem->Title;
-    }
+    { NameText = Ev.Title.IsEmpty() ? HistoryKindLabel_Sidebar(Ev.Kind) : Ev.Title; }
 
     return SNew(FRowType, InOwnerTable)
         .Padding(FMargin(2.0f, 1.0f))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(4.0f, 0.0f)
-                    [
-                        MakeKindPill_Sidebar(InItem->Kind)
-                    ]
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 4.0f, 0.0f)
+                    [ MakeKindPill_Sidebar(Ev.Kind) ]
 
-                + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    .Padding(6.0f, 0.0f)
+                + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(6.0f, 0.0f)
                     [
                         SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight()
@@ -1128,20 +1231,17 @@ auto
                             + SVerticalBox::Slot().AutoHeight()
                                 [
                                     SNew(STextBlock)
-                                        .Text(FText::FromString(InItem->Meta))
+                                        .Text(FText::FromString(Ev.Meta))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
                                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                                        .Visibility(InItem->Meta.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
+                                        .Visibility(Ev.Meta.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
                                 ]
                     ]
 
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(4.0f, 0.0f)
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Text(FText::FromString(FormatTimestamp_Sidebar(InItem->WorldTimeSeconds)))
+                            .Text(FText::FromString(FormatTimestamp_Sidebar(Ev.WorldTimeSeconds)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
                     ]
@@ -1170,10 +1270,13 @@ auto
     -> FString
 {
     auto Events = TArray<FCkGoapDebugger_HistoryEvent>{};
-    Events.Reserve(InItems.Num());
     for (const auto& It : InItems)
     {
-        if (It.IsValid()) { Events.Add(*It); }
+        if (NOT It.IsValid() || It->IsGroupHeader) { continue; }
+        if (It->Row.IsFlap)
+        { for (const auto& Ev : It->Row.RawEvents) { Events.Add(Ev); } }   // expand flap to raw ticks
+        else
+        { Events.Add(It->Row.Event); }
     }
     const auto Header = FString::Printf(TEXT("GOAP history - %d events"), Events.Num());
     return ck_goap_debugger_history_model::SerializeHistory(Header, Events,
@@ -1217,20 +1320,11 @@ auto
 {
     if (_SuppressSelectionEcho) { return; }
     if (InSelectInfo == ESelectInfo::Direct) { return; }
-    if (NOT InItem.IsValid())   { return; }
-    if (NOT _ViewModel.IsValid()) { return; }
+    if (NOT InItem.IsValid())     { return; }
+    if (InItem->IsGroupHeader)    { return; }
+    if (InItem->RepHistIdx == INDEX_NONE) { return; }
 
-    const auto RowIdx = _HistoryItems.IndexOfByKey(InItem);
-    if (RowIdx == INDEX_NONE) { return; }
-
-    const auto Entity = _ViewModel->GetSelectedEntity();
-    if (NOT ck::IsValid(Entity)) { return; }
-
-    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
-    const auto HistIdx = Hist.Num() - 1 - RowIdx;
-    if (NOT Hist.IsValidIndex(HistIdx)) { return; }
-
-    SelectHistoryEvent(HistIdx);
+    SelectHistoryEvent(InItem->RepHistIdx);
 }
 
 auto
@@ -1282,12 +1376,17 @@ auto
     if (NOT Hist.IsValidIndex(HistIdx))
     { _HistoryListView->ClearSelection(); return; }
 
-    const auto RowIdx = Hist.Num() - 1 - HistIdx;
-    if (NOT _HistoryItems.IsValidIndex(RowIdx))
+    FHistoryItemPtr Match;
+    for (const auto& It : _HistoryItems)
+    {
+        if (It.IsValid() && NOT It->IsGroupHeader && It->RepHistIdx == HistIdx)
+        { Match = It; break; }
+    }
+    if (NOT Match.IsValid())
     { _HistoryListView->ClearSelection(); return; }
 
-    _HistoryListView->SetSelection(_HistoryItems[RowIdx], ESelectInfo::Direct);
-    _HistoryListView->RequestScrollIntoView(_HistoryItems[RowIdx]);
+    _HistoryListView->SetSelection(Match, ESelectInfo::Direct);
+    _HistoryListView->RequestScrollIntoView(Match);
 }
 
 // ====================================================================================================================

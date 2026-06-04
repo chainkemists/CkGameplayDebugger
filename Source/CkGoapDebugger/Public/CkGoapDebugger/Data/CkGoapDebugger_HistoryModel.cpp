@@ -46,4 +46,95 @@ namespace ck_goap_debugger_history_model
         }
         return Out;
     }
+
+    static auto Is_FlapKind(ECkGoapDebugger_HistoryEventKind InKind) -> bool
+    {
+        return InKind == ECkGoapDebugger_HistoryEventKind::ActionActivated
+            || InKind == ECkGoapDebugger_HistoryEventKind::ActionDeactivated;
+    }
+
+    auto BuildPlannerGroups(
+        const TArray<FCkGoapDebugger_HistoryEvent>& InEvents,
+        const TFunctionRef<FString(const FCk_Handle_Goap_Planner&)> InPlannerName)
+        -> TArray<FCkGoapDebugger_PlannerGroup>
+    {
+        auto Groups = TArray<FCkGoapDebugger_PlannerGroup>{};
+        auto IndexOf = TMap<FCk_Handle_Goap_Planner, int32>{};
+
+        // 1) Partition into per-planner ordered event lists (first-seen order preserved).
+        auto PerPlanner = TArray<TArray<FCkGoapDebugger_HistoryEvent>>{};
+        for (const auto& Ev : InEvents)
+        {
+            auto* Found = IndexOf.Find(Ev.ActionSetHandle);
+            auto Idx = (Found != nullptr) ? *Found : INDEX_NONE;
+            if (Idx == INDEX_NONE)
+            {
+                Idx = Groups.Num();
+                IndexOf.Add(Ev.ActionSetHandle, Idx);
+                auto Group = FCkGoapDebugger_PlannerGroup{};
+                Group.Planner = Ev.ActionSetHandle;
+                Group.PlannerName = InPlannerName(Ev.ActionSetHandle);
+                Groups.Add(MoveTemp(Group));
+                PerPlanner.AddDefaulted();
+            }
+            PerPlanner[Idx].Add(Ev);
+        }
+
+        // 2) Run-length-collapse flap runs inside each planner.
+        for (auto g = 0; g < Groups.Num(); ++g)
+        {
+            const auto& Evs = PerPlanner[g];
+            auto& Rows = Groups[g].Rows;
+
+            auto i = 0;
+            while (i < Evs.Num())
+            {
+                auto j = i;
+                auto Names = TArray<FString>{};
+                while (j < Evs.Num() && Is_FlapKind(Evs[j].Kind))
+                {
+                    const auto& Nm = Evs[j].ActionClassName;
+                    if (NOT Nm.IsEmpty() && NOT Names.Contains(Nm))
+                    {
+                        if (Names.Num() == 2) { break; }   // a 3rd distinct action ends the run
+                        Names.Add(Nm);
+                    }
+                    ++j;
+                }
+
+                const auto RunLen = j - i;
+                if (RunLen >= k_FlapMinRun && Names.Num() == 2)
+                {
+                    auto Row = FCkGoapDebugger_HistoryRow{};
+                    Row.IsFlap = true;
+                    Row.Planner = Groups[g].Planner;
+                    Row.FlapActionA = Names[0];
+                    Row.FlapActionB = Names[1];
+                    Row.FlapCount = RunLen;
+                    Row.FlapTStart = Evs[i].WorldTimeSeconds;
+                    Row.FlapTEnd   = Evs[j - 1].WorldTimeSeconds;
+                    for (auto k = i; k < j; ++k)
+                    {
+                        Row.FlapTStart = FMath::Min(Row.FlapTStart, Evs[k].WorldTimeSeconds);
+                        Row.FlapTEnd   = FMath::Max(Row.FlapTEnd,   Evs[k].WorldTimeSeconds);
+                        Row.RawEvents.Add(Evs[k]);
+                    }
+                    Rows.Add(MoveTemp(Row));
+                    i = j;
+                }
+                else
+                {
+                    auto Row = FCkGoapDebugger_HistoryRow{};
+                    Row.IsFlap = false;
+                    Row.Planner = Groups[g].Planner;
+                    Row.Event = Evs[i];
+                    Row.RawEvents.Add(Evs[i]);
+                    Rows.Add(MoveTemp(Row));
+                    ++i;
+                }
+            }
+        }
+
+        return Groups;
+    }
 }

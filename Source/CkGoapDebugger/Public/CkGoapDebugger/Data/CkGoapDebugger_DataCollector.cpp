@@ -1044,6 +1044,7 @@ namespace ck_goap_debugger_data_collector_internal
                 Event.ActionHandle     = CurAction.Handle;
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
+                Event.ActionClassName = CurAction.ClassName;
                 Event.Title = IsPlanFoundTransition
                     ? FString::Printf(TEXT("Plan found: %s"), *CurAction.ClassName)
                     : FString::Printf(TEXT("Plan failed: %s"), *CurAction.ClassName);

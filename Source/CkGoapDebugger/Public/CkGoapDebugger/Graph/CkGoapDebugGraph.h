@@ -55,7 +55,8 @@ struct FCkGoapDebugger_NameParams
         if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
 
         TArray<FString> Segments;
-        Name.ParseIntoArray(Segments, TEXT("_"), true);
+        static const TCHAR* Delims[] = { TEXT("_"), TEXT(".") };
+        Name.ParseIntoArray(Segments, Delims, 2, true);
 
         if (InDepth <= 0 || InDepth >= Segments.Num())
         { return FString::Join(Segments, TEXT(".")); }

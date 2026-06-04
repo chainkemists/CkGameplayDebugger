@@ -175,31 +175,47 @@ auto
                             BuildLegend()
                         ]
 
-                    // App body: sidebar | center | ws rail
+                    // App body: [sidebar(tree) | center | ws rail] on top, full-width history dock below.
+                    // The history widget is built by the sidebar (Get_HistoryWidget) but parented here so
+                    // it spans the whole window width — refresh/reset still route through _Sidebar.
                     + SVerticalBox::Slot()
                         .FillHeight(1.0f)
                         [
                             SNew(SSplitter)
-                                .Orientation(Orient_Horizontal)
+                                .Orientation(Orient_Vertical)
 
                                 + SSplitter::Slot()
-                                    .Value(0.22f)
-                                    .MinSize(220.0f)
+                                    .Value(0.70f)
                                     [
-                                        SidebarWidget
+                                        SNew(SSplitter)
+                                            .Orientation(Orient_Horizontal)
+
+                                            + SSplitter::Slot()
+                                                .Value(0.22f)
+                                                .MinSize(220.0f)
+                                                [
+                                                    SidebarWidget
+                                                ]
+
+                                            + SSplitter::Slot()
+                                                .Value(0.55f)
+                                                [
+                                                    CenterColumn
+                                                ]
+
+                                            + SSplitter::Slot()
+                                                .Value(0.23f)
+                                                .MinSize(220.0f)
+                                                [
+                                                    WsRailWidget
+                                                ]
                                     ]
 
                                 + SSplitter::Slot()
-                                    .Value(0.55f)
+                                    .Value(0.30f)
+                                    .MinSize(100.0f)
                                     [
-                                        CenterColumn
-                                    ]
-
-                                + SSplitter::Slot()
-                                    .Value(0.23f)
-                                    .MinSize(220.0f)
-                                    [
-                                        WsRailWidget
+                                        _Sidebar->Get_HistoryWidget()
                                     ]
                         ]
             ]

@@ -457,116 +457,107 @@ auto
         .OnEventClicked(SCkGoapDebugger_ScrubTrack::FOnEventClicked::CreateSP(
             this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent));
 
+    // History block is built here but parented by the WINDOW into a full-width bottom dock
+    // (see Get_HistoryWidget). The sidebar's own ChildSlot holds only the planner tree.
+    _HistorySection =
+        SNew(SBorder)
+            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
+            .Padding(FMargin(0.0f))
+            [
+                SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
+                                 FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
+                        [
+                            SNew(SHorizontalBox)
+                                + SHorizontalBox::Slot()
+                                    .FillWidth(1.0f)
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SCkDebug_SelectableLabel)
+                                            .Text_Lambda([this]() { return GetHistoryHeaderText(); })
+                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                    ]
+                                + SHorizontalBox::Slot()
+                                    .AutoWidth()
+                                    .VAlign(VAlign_Center)
+                                    [
+                                        SNew(SButton)
+                                            .ToolTipText(NSLOCTEXT("CkGoapDebugger", "CopyAllTip", "Copy entire history to clipboard"))
+                                            .ContentPadding(FMargin(6.0f, 1.0f))
+                                            .OnClicked_Lambda([this]()
+                                            {
+                                                FPlatformApplicationMisc::ClipboardCopy(*BuildCopyText(_HistoryItems));
+                                                return FReply::Handled();
+                                            })
+                                            [
+                                                SNew(STextBlock)
+                                                    .Text(NSLOCTEXT("CkGoapDebugger", "CopyAllBtn", "Copy"))
+                                                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                            ]
+                                    ]
+                        ]
+
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f,
+                                 FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
+                        [
+                            ScrubTrack
+                        ]
+
+                    + SVerticalBox::Slot()
+                        .FillHeight(1.0f)
+                        [
+                            HistoryList
+                        ]
+            ];
+
     ChildSlot
     [
         SNew(SBorder)
             .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
             .Padding(FMargin(0.0f))
             [
-                // Vertical splitter: tree (top) | history block (bottom).
-                // User can drag the divider to resize either pane.
-                SNew(SSplitter)
-                    .Orientation(Orient_Vertical)
+                SNew(SVerticalBox)
 
-                    // ---- TOP : PLANNER TREE -------------------------------------
-                    + SSplitter::Slot()
-                        .Value(0.62f)
-                        .MinSize(80.0f)
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Medium,
+                                 FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
                         [
-                            SNew(SVerticalBox)
-
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Medium,
-                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                                    [
-                                        SNew(SCkDebug_SelectableLabel)
-                                            .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    [
-                                        SNew(SSeparator)
-                                            .Thickness(1.0f)
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .FillHeight(1.0f)
-                                    [
-                                        TreeView
-                                    ]
+                            SNew(SCkDebug_SelectableLabel)
+                                .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                         ]
 
-                    // ---- BOTTOM : HISTORY (header + scrub + list) ---------------
-                    + SSplitter::Slot()
-                        .Value(0.38f)
-                        .MinSize(80.0f)
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
                         [
-                            SNew(SVerticalBox)
+                            SNew(SSeparator)
+                                .Thickness(1.0f)
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
+                        ]
 
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    [
-                                        SNew(SSeparator)
-                                            .Thickness(1.0f)
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Strong))
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
-                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                                    [
-                                        SNew(SHorizontalBox)
-                                            + SHorizontalBox::Slot()
-                                                .FillWidth(1.0f)
-                                                .VAlign(VAlign_Center)
-                                                [
-                                                    SNew(SCkDebug_SelectableLabel)
-                                                        .Text_Lambda([this]() { return GetHistoryHeaderText(); })
-                                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                                                ]
-                                            + SHorizontalBox::Slot()
-                                                .AutoWidth()
-                                                .VAlign(VAlign_Center)
-                                                [
-                                                    SNew(SButton)
-                                                        .ToolTipText(NSLOCTEXT("CkGoapDebugger", "CopyAllTip", "Copy entire history to clipboard"))
-                                                        .ContentPadding(FMargin(6.0f, 1.0f))
-                                                        .OnClicked_Lambda([this]()
-                                                        {
-                                                            FPlatformApplicationMisc::ClipboardCopy(*BuildCopyText(_HistoryItems));
-                                                            return FReply::Handled();
-                                                        })
-                                                        [
-                                                            SNew(STextBlock)
-                                                                .Text(NSLOCTEXT("CkGoapDebugger", "CopyAllBtn", "Copy"))
-                                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                                                        ]
-                                                ]
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .AutoHeight()
-                                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f,
-                                             FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
-                                    [
-                                        ScrubTrack
-                                    ]
-
-                                + SVerticalBox::Slot()
-                                    .FillHeight(1.0f)
-                                    [
-                                        HistoryList
-                                    ]
+                    + SVerticalBox::Slot()
+                        .FillHeight(1.0f)
+                        [
+                            TreeView
                         ]
             ]
     ];
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    Get_HistoryWidget()
+    -> TSharedRef<SWidget>
+{
+    return _HistorySection.IsValid() ? _HistorySection.ToSharedRef() : SNullWidget::NullWidget;
 }
 
 SCkGoapDebugger_Sidebar::~SCkGoapDebugger_Sidebar() = default;

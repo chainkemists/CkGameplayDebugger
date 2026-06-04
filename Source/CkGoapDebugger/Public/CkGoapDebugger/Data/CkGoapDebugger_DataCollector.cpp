@@ -9,6 +9,8 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
+#include "CkLabel/CkLabel_Utils.h"
+
 #include "CkGoap/CkGoap_Fragment.h"
 #include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 #include "CkGoap/EntityScripts/CkGoapAction_EntityScript.h"
@@ -886,6 +888,40 @@ namespace ck_goap_debugger_data_collector_internal
     // per-entity history ring.
     // ----------------------------------------------------------------------------------------------------------------
 
+    // Resolve a display name for an action handle. First search EVERY ActionSet's catalog (current,
+    // then previous) — an active-chain entry can belong to a nested planner's catalog, so a
+    // single-catalog lookup misses. The active-chain handles also frequently don't match a catalog
+    // entry by handle at all, so fall back to the action entity's gameplay-label tag (e.g.
+    // "Bb.NpcAction.PickGenreShelf"), which is clean and distinct.
+    static auto
+    ResolveActionDisplayName(
+        const FCkGoapDebugger_EntitySnapshot& InCurrent,
+        const FCkGoapDebugger_EntitySnapshot* InPrev,
+        const FCk_Handle_Goap_Action& InAction) -> FString
+    {
+        const auto FromCatalog = [&InAction](const FCkGoapDebugger_EntitySnapshot& InSnapshot) -> FString
+        {
+            for (const auto& As : InSnapshot.ActionSets)
+            {
+                const auto* Info = As.Catalog.FindByPredicate(
+                    [&InAction](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InAction; });
+                if (Info != nullptr && NOT Info->ClassName.IsEmpty())
+                { return Info->ClassName; }
+            }
+            return FString{};
+        };
+
+        auto Name = FromCatalog(InCurrent);
+        if (Name.IsEmpty() && InPrev != nullptr) { Name = FromCatalog(*InPrev); }
+
+        if (Name.IsEmpty() && UCk_Utils_GameplayLabel_UE::Has(InAction))
+        {
+            const auto Label = UCk_Utils_GameplayLabel_UE::Get_Label(InAction);
+            if (Label.IsValid()) { Name = Label.ToString(); }
+        }
+        return Name;
+    }
+
     static auto
     DetectAndPushEvents(
         const FCk_Handle& InEntityHandle,
@@ -934,13 +970,11 @@ namespace ck_goap_debugger_data_collector_internal
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
 
-                // Title = action class name (looked up in the current catalog).
-                const auto* ActionInfo = CurAs.Catalog.FindByPredicate(
-                    [&CurEntry](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == CurEntry; });
-                Event.ActionClassName = (ActionInfo != nullptr) ? ActionInfo->ClassName : FString{};
-                Event.Title = (ActionInfo != nullptr && NOT ActionInfo->ClassName.IsEmpty())
-                    ? FString::Printf(TEXT("Activated: %s"), *ActionInfo->ClassName)
-                    : TEXT("Activated");
+                // Title = action display name (catalog across all ActionSets, then gameplay label).
+                Event.ActionClassName = ResolveActionDisplayName(InCurrent, nullptr, CurEntry);
+                Event.Title = NOT Event.ActionClassName.IsEmpty()
+                    ? FString::Printf(TEXT("Activated: %s"), *Event.ActionClassName)
+                    : FString::Printf(TEXT("Activated: <action %s>"), *CurEntry.ToString());
 
                 Event.SnapshotAtEvent = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
@@ -958,14 +992,10 @@ namespace ck_goap_debugger_data_collector_internal
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
 
-                const auto* ActionInfo = (PrevAs != nullptr)
-                    ? PrevAs->Catalog.FindByPredicate(
-                          [&PrevEntry](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == PrevEntry; })
-                    : nullptr;
-                Event.ActionClassName = (ActionInfo != nullptr) ? ActionInfo->ClassName : FString{};
-                Event.Title = (ActionInfo != nullptr && NOT ActionInfo->ClassName.IsEmpty())
-                    ? FString::Printf(TEXT("Deactivated: %s"), *ActionInfo->ClassName)
-                    : TEXT("Deactivated");
+                Event.ActionClassName = ResolveActionDisplayName(InCurrent, InPrev, PrevEntry);
+                Event.Title = NOT Event.ActionClassName.IsEmpty()
+                    ? FString::Printf(TEXT("Deactivated: %s"), *Event.ActionClassName)
+                    : FString::Printf(TEXT("Deactivated: <action %s>"), *PrevEntry.ToString());
 
                 Event.SnapshotAtEvent = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));

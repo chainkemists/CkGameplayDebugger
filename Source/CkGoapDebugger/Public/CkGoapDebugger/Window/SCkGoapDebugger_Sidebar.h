@@ -105,7 +105,17 @@ private:
     // History list plumbing
     // -----------------------------------------------------------------------------------------------------------------
 
-    using FHistoryItemPtr = TSharedPtr<FCkGoapDebugger_HistoryEvent>;
+    // A flattened list row: a planner-group header, or a content row (single event or collapsed flap).
+    struct FCkGoapDebugger_HistoryListEntry
+    {
+        bool    IsGroupHeader = false;
+        FString PlannerName;                  // header text (when IsGroupHeader)
+        FCk_Handle_Goap_Planner Planner;
+        FCkGoapDebugger_HistoryRow Row;       // content row (when NOT a header)
+        int32   RepHistIdx = INDEX_NONE;      // representative history index for scrub
+        FString Key;                          // stable identity across rebuilds
+    };
+    using FHistoryItemPtr = TSharedPtr<FCkGoapDebugger_HistoryListEntry>;
 
     auto GenerateHistoryRow(FHistoryItemPtr InItem, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
     auto RebuildHistoryItems() -> void;
@@ -157,7 +167,7 @@ private:
     // event; otherwise SListView's WidgetMapToItem desyncs from its
     // ItemsWithGeneratedWidgets set and FWidgetGenerator::ValidateWidgetGeneration
     // fires on the next paint.
-    using FHistoryKey = TTuple<int64, ECkGoapDebugger_HistoryEventKind, int32>;
+    using FHistoryKey = FString;
     TMap<FHistoryKey, FHistoryItemPtr>       _HistoryItemsByKey;
 
     TSharedPtr<SCkGoapDebugger_ScrubTrack>   _ScrubTrack;

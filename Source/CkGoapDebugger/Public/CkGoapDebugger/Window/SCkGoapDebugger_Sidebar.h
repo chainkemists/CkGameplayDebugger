@@ -111,6 +111,11 @@ private:
     auto RebuildHistoryItems() -> void;
     auto OnHistoryRowSelectionChanged(FHistoryItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
 
+    // ---- Copy / export -------------------------------------------------------
+    auto OnHistoryContextMenu() -> TSharedPtr<SWidget>;
+    auto BuildCopyText(const TArray<FHistoryItemPtr>& InItems) const -> FString;
+    auto Get_PlannerDisplayName(const FCk_Handle_Goap_Planner& InPlanner) const -> FString;
+
     // ---- Scrub interaction ---------------------------------------------------
     auto SelectHistoryEvent(int32 InHistIdx) -> void;
     auto SyncHistoryListSelectionFromViewModel() -> void;

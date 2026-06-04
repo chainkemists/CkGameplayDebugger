@@ -2,18 +2,26 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_HistoryModel.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"   // FCkGoapDebugger_NameParams
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEcs/Handle/CkHandle_Utils.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "HAL/PlatformApplicationMisc.h"
 
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
+#include "Widgets/Input/SButton.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SLeafWidget.h"
 #include "Widgets/Layout/SBorder.h"
@@ -379,7 +387,8 @@ auto
         .ListItemsSource(&_HistoryItems)
         .OnGenerateRow(this, &SCkGoapDebugger_Sidebar::GenerateHistoryRow)
         .OnSelectionChanged(this, &SCkGoapDebugger_Sidebar::OnHistoryRowSelectionChanged)
-        .SelectionMode(ESelectionMode::Single);
+        .OnContextMenuOpening(this, &SCkGoapDebugger_Sidebar::OnHistoryContextMenu)
+        .SelectionMode(ESelectionMode::Multi);
 
     auto ScrubTrack = SAssignNew(_ScrubTrack, SCkGoapDebugger_ScrubTrack,
                                  TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel))
@@ -450,10 +459,34 @@ auto
                                     .Padding(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small,
                                              FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small)
                                     [
-                                        SNew(SCkDebug_SelectableLabel)
-                                            .Text_Lambda([this]() { return GetHistoryHeaderText(); })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                        SNew(SHorizontalBox)
+                                            + SHorizontalBox::Slot()
+                                                .FillWidth(1.0f)
+                                                .VAlign(VAlign_Center)
+                                                [
+                                                    SNew(SCkDebug_SelectableLabel)
+                                                        .Text_Lambda([this]() { return GetHistoryHeaderText(); })
+                                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                                ]
+                                            + SHorizontalBox::Slot()
+                                                .AutoWidth()
+                                                .VAlign(VAlign_Center)
+                                                [
+                                                    SNew(SButton)
+                                                        .ToolTipText(NSLOCTEXT("CkGoapDebugger", "CopyAllTip", "Copy entire history to clipboard"))
+                                                        .ContentPadding(FMargin(6.0f, 1.0f))
+                                                        .OnClicked_Lambda([this]()
+                                                        {
+                                                            FPlatformApplicationMisc::ClipboardCopy(*BuildCopyText(_HistoryItems));
+                                                            return FReply::Handled();
+                                                        })
+                                                        [
+                                                            SNew(STextBlock)
+                                                                .Text(NSLOCTEXT("CkGoapDebugger", "CopyAllBtn", "Copy"))
+                                                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                                        ]
+                                                ]
                                     ]
 
                                 + SVerticalBox::Slot()
@@ -1113,6 +1146,62 @@ auto
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
                     ]
         ];
+}
+
+// ====================================================================================================================
+// PRIVATE — copy / export
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_Sidebar::
+    Get_PlannerDisplayName(
+        const FCk_Handle_Goap_Planner& InPlanner) const
+    -> FString
+{
+    if (ck::Is_NOT_Valid(InPlanner))
+    { return TEXT("<no planner>"); }
+    return UCk_Utils_Handle_UE::Get_DebugName(InPlanner).ToString();
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    BuildCopyText(
+        const TArray<FHistoryItemPtr>& InItems) const
+    -> FString
+{
+    auto Events = TArray<FCkGoapDebugger_HistoryEvent>{};
+    Events.Reserve(InItems.Num());
+    for (const auto& It : InItems)
+    {
+        if (It.IsValid()) { Events.Add(*It); }
+    }
+    const auto Header = FString::Printf(TEXT("GOAP history - %d events"), Events.Num());
+    return ck_goap_debugger_history_model::SerializeHistory(Header, Events,
+        [this](const FCk_Handle_Goap_Planner& InPlanner) { return Get_PlannerDisplayName(InPlanner); });
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    OnHistoryContextMenu()
+    -> TSharedPtr<SWidget>
+{
+    if (NOT _HistoryListView.IsValid())
+    { return nullptr; }
+
+    auto Menu = FMenuBuilder{true, nullptr};
+    const auto Selected = _HistoryListView->GetSelectedItems();
+    if (Selected.Num() > 0)
+    {
+        ck::DebugCopyMenu::AddCopyEntry(Menu,
+            NSLOCTEXT("CkGoapDebugger", "CopySel", "Copy selected"),
+            NSLOCTEXT("CkGoapDebugger", "CopySelTip", "Copy the selected history rows as text"),
+            BuildCopyText(Selected));
+    }
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+        NSLOCTEXT("CkGoapDebugger", "CopyAllMenu", "Copy all"),
+        NSLOCTEXT("CkGoapDebugger", "CopyAllMenuTip", "Copy the entire history as text"),
+        BuildCopyText(_HistoryItems));
+    return Menu.MakeWidget();
 }
 
 // ====================================================================================================================

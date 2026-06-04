@@ -263,6 +263,44 @@ public:
 
         const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
 
+        // Flap-run bands: a storm renders as one amber band over its true time window instead of
+        // dozens of crushed dots. Computed from the same grouping the list uses.
+        const auto Groups = ck_goap_debugger_history_model::BuildPlannerGroups(Hist,
+            [](const FCk_Handle_Goap_Planner&) { return FString{}; });
+        auto FlapSpans = TArray<TPair<double, double>>{};
+        for (const auto& Group : Groups)
+        {
+            for (const auto& Row : Group.Rows)
+            { if (Row.IsFlap) { FlapSpans.Emplace(Row.FlapTStart, Row.FlapTEnd); } }
+        }
+
+        const auto T0     = Hist[0].WorldTimeSeconds;
+        const auto T1     = Hist.Last().WorldTimeSeconds;
+        const auto TSpan  = FMath::Max(0.001, T1 - T0);
+        constexpr auto EdgePad = 8.0f;
+        const auto Usable = FMath::Max(1.0f, Local.X - EdgePad * 2.0f);
+        const auto TimeToX = [&](double InT) -> float
+        { return EdgePad + Usable * FMath::Clamp(static_cast<float>((InT - T0) / TSpan), 0.0f, 1.0f); };
+
+        constexpr auto BandHeight = 9.0f;
+        for (const auto& Sp : FlapSpans)
+        {
+            const auto X0 = TimeToX(Sp.Key);
+            const auto W  = FMath::Max(2.0f, TimeToX(Sp.Value) - X0);
+            FSlateDrawElement::MakeBox(
+                OutDrawElements, LayerId + 2,
+                AllottedGeometry.ToPaintGeometry(
+                    FVector2f(W, BandHeight),
+                    FSlateLayoutTransform(FVector2f(X0, TrackY - BandHeight * 0.5f))),
+                WhiteBrush, ESlateDrawEffect::None, FCkGoapDebuggerStyle::Color_Status_Selected);
+        }
+
+        const auto IsInFlap = [&](double InT) -> bool
+        {
+            for (const auto& Sp : FlapSpans) { if (InT >= Sp.Key && InT <= Sp.Value) { return true; } }
+            return false;
+        };
+
         constexpr auto DotRadius = 4.0f;
         constexpr auto SelectedDotRadius = 6.0f;
         constexpr auto OutlineThickness = 1.5f;
@@ -272,6 +310,7 @@ public:
             const auto& Ev = Hist[i];
             const auto CenterX = TrackPx[i];
             const auto IsSelected = (i == SelectedIdx);
+            if (NOT IsSelected && IsInFlap(Ev.WorldTimeSeconds)) { continue; }   // covered by the band
             const auto R = IsSelected ? SelectedDotRadius : DotRadius;
 
             const auto Color = HistoryEventColor_Sidebar(Ev.Kind);

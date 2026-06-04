@@ -68,22 +68,48 @@ namespace
         case ECkGoapDebugger_HistoryEventKind::PlanFound:         return FCkGoapDebuggerStyle::Color_Status_PlanFound;
         case ECkGoapDebugger_HistoryEventKind::ActionSetDisabled: return FCkGoapDebuggerStyle::Color_Text_Faint;
         case ECkGoapDebugger_HistoryEventKind::ActionSetEnabled:  return FCkGoapDebuggerStyle::Color_Status_PlanFound;
+        case ECkGoapDebugger_HistoryEventKind::ActionDeactivated: return FCkGoapDebuggerStyle::Color_Text_Muted;
         default:                                                  return FCkGoapDebuggerStyle::Color_Status_Planning;
         }
     }
 
-    auto MakeStatusDot_Sidebar(const FLinearColor& InColor, float InSize = 8.0f) -> TSharedRef<SWidget>
+    auto HistoryKindShort_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FString
     {
+        switch (InKind)
+        {
+        case ECkGoapDebugger_HistoryEventKind::ActionActivated:   return TEXT("ACT");
+        case ECkGoapDebugger_HistoryEventKind::ActionDeactivated: return TEXT("DEACT");
+        case ECkGoapDebugger_HistoryEventKind::PlanFound:         return TEXT("PLAN");
+        case ECkGoapDebugger_HistoryEventKind::PlanFailed:        return TEXT("FAIL");
+        case ECkGoapDebugger_HistoryEventKind::ChainReset:        return TEXT("RESET");
+        case ECkGoapDebugger_HistoryEventKind::ActionSetEnabled:  return TEXT("ON");
+        case ECkGoapDebugger_HistoryEventKind::ActionSetDisabled: return TEXT("OFF");
+        case ECkGoapDebugger_HistoryEventKind::ChainActivated:    return TEXT("CHAIN");
+        default:                                                  return TEXT("?");
+        }
+    }
+
+    // Compact toned pill for the event kind (ACT / DEACT / PLAN / ...), so the kind is visually
+    // separable from the action name. Plain SBorder + STextBlock — safe inside an STableRow.
+    auto MakeKindPill_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> TSharedRef<SWidget>
+    {
+        const auto Tone = HistoryEventColor_Sidebar(InKind);
+        auto Bg = Tone;
+        Bg.A = 0.18f;
         return SNew(SBox)
-            .WidthOverride(InSize)
-            .HeightOverride(InSize)
+            .MinDesiredWidth(46.0f)
             [
                 SNew(SBorder)
                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                    .BorderBackgroundColor(InColor)
-                    .Padding(FMargin(0.0f))
+                    .BorderBackgroundColor(FSlateColor(Bg))
+                    .HAlign(HAlign_Center)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin(5.0f, 1.0f))
                     [
-                        SNew(SSpacer)
+                        SNew(STextBlock)
+                            .Text(FText::FromString(HistoryKindShort_Sidebar(InKind)))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                            .ColorAndOpacity(FSlateColor(Tone))
                     ]
             ];
     }
@@ -1025,22 +1051,17 @@ auto
     if (NOT InItem.IsValid())
     { return SNew(FRowType, InOwnerTable); }
 
-    const auto DotColor = HistoryEventColor_Sidebar(InItem->Kind);
-
-    // If the event carries an ActionClassName, re-derive the row title from
-    // the live name-depth so toolbar changes flow through history rows.
-    auto TitleText = FString{};
+    // Name follows the live name-depth (e.g. depth 1 of "Bb.NpcAction.PickGenreShelf" -> "PickGenreShelf").
+    // Events without an action name (set enable/disable, chain reset) fall back to their Title.
+    auto NameText = FString{};
     if (NOT InItem->ActionClassName.IsEmpty())
     {
         const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
-        const auto ShortName = FCkGoapDebugger_NameParams::ComputeDisplayName(
-            InItem->ActionClassName, Depth);
-        const auto Prefix = HistoryKindLabel_Sidebar(InItem->Kind);
-        TitleText = FString::Printf(TEXT("%s: %s"), *Prefix, *ShortName);
+        NameText = FCkGoapDebugger_NameParams::ComputeDisplayName(InItem->ActionClassName, Depth);
     }
     else
     {
-        TitleText = InItem->Title.IsEmpty()
+        NameText = InItem->Title.IsEmpty()
             ? HistoryKindLabel_Sidebar(InItem->Kind)
             : InItem->Title;
     }
@@ -1055,19 +1076,19 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(4.0f, 0.0f)
                     [
-                        MakeStatusDot_Sidebar(DotColor, 8.0f)
+                        MakeKindPill_Sidebar(InItem->Kind)
                     ]
 
                 + SHorizontalBox::Slot()
                     .FillWidth(1.0f)
                     .VAlign(VAlign_Center)
-                    .Padding(2.0f, 0.0f)
+                    .Padding(6.0f, 0.0f)
                     [
                         SNew(SVerticalBox)
                             + SVerticalBox::Slot().AutoHeight()
                                 [
                                     SNew(STextBlock)
-                                        .Text(FText::FromString(TitleText))
+                                        .Text(FText::FromString(NameText))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
                                 ]
@@ -1077,6 +1098,7 @@ auto
                                         .Text(FText::FromString(InItem->Meta))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
                                         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                        .Visibility(InItem->Meta.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
                                 ]
                     ]
 

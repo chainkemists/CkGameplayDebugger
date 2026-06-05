@@ -366,15 +366,17 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             const auto& Params       = Entity.Get<ck::FFragment_CameraLayer_Params>();
             const auto  ClassName    = DoFmt_ClassName(Params.Get_LayerClass().Get());
             const auto  PriorityStr  = FString::Printf(TEXT("%d"), Params.Get_Priority());
-            const auto  LookAtTarget = Params.Get_LookAtTarget();
-            const auto  LookAtStr    = ck::IsValid(LookAtTarget) ? ck::Format_UE(TEXT("{}"), LookAtTarget) : FString(TEXT("(none)"));
+            const auto& CameraTarget = Params.Get_CameraTarget();
+            const auto  TargetHandle = CameraTarget.Get_Target();
+            const FString ModeStr    = CameraTarget.Get_Mode() == ECk_Camera_TargetMode::ViewTarget ? TEXT("ViewTarget") : TEXT("LookAt");
+            const auto  TargetStr    = ck::IsValid(TargetHandle) ? ck::Format_UE(TEXT("{} ({})"), TargetHandle, ModeStr) : FString(TEXT("(none)"));
 
             Builder.AddRow(FText::FromString(TEXT("Class:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); }, CkDebugStyle::Value_Object());
             Builder.AddRow(FText::FromString(TEXT("Priority:")),
                 [PriorityStr](const FCk_Handle&) { return FText::FromString(PriorityStr); }, CkDebugStyle::Value_Numeric());
-            Builder.AddRow(FText::FromString(TEXT("Look-At Target:")),
-                [LookAtStr](const FCk_Handle&) { return FText::FromString(LookAtStr); }, CkDebugStyle::Value_Handle());
+            Builder.AddRow(FText::FromString(TEXT("Camera Target:")),
+                [TargetStr](const FCk_Handle&) { return FText::FromString(TargetStr); }, CkDebugStyle::Value_Handle());
         }
 
         if (Entity.Has<ck::FFragment_CameraLayer_Blend>())

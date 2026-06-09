@@ -1,7 +1,6 @@
 #pragma once
 #include "Math/Vector.h"
 #include "Containers/Array.h"
-#include "CkEntityDebugOverlay_Module.h"
 
 namespace ck_debugoverlay
 {

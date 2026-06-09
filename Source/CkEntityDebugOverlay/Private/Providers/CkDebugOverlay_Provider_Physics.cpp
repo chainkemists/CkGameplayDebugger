@@ -30,9 +30,9 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Physics_MovementMode,
 
 namespace
 {
-    const FGameplayTag& ProviderTag()            { return TAG_Ck_OnScreenDebugger_Provider_Physics; }
-    const FGameplayTag& FieldTag_Velocity()      { return TAG_Ck_OnScreenDebugger_Provider_Physics_Velocity; }
-    const FGameplayTag& FieldTag_MovementMode()  { return TAG_Ck_OnScreenDebugger_Provider_Physics_MovementMode; }
+    FGameplayTag ProviderTag()            { return TAG_Ck_OnScreenDebugger_Provider_Physics; }
+    FGameplayTag FieldTag_Velocity()      { return TAG_Ck_OnScreenDebugger_Provider_Physics_Velocity; }
+    FGameplayTag FieldTag_MovementMode()  { return TAG_Ck_OnScreenDebugger_Provider_Physics_MovementMode; }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

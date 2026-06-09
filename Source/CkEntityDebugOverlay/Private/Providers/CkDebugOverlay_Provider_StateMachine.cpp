@@ -48,9 +48,9 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_StateMachine_History,
 
 namespace
 {
-    const FGameplayTag& ProviderTag()        { return TAG_Ck_OnScreenDebugger_Provider_StateMachine; }
-    const FGameplayTag& FieldTag_State()     { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_State; }
-    const FGameplayTag& FieldTag_History()   { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_History; }
+    FGameplayTag ProviderTag()        { return TAG_Ck_OnScreenDebugger_Provider_StateMachine; }
+    FGameplayTag FieldTag_State()     { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_State; }
+    FGameplayTag FieldTag_History()   { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_History; }
 
     // Helper: produce a short class name string from a UClass* (mirrors inspector helper).
     auto Format_Sm_ClassName(const UClass* InClass) -> FString

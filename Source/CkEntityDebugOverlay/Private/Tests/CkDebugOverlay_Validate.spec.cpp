@@ -1,4 +1,5 @@
 #include "Misc/AutomationTest.h"
+#include "NativeGameplayTags.h"
 #include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Resolve.h"
 
 // --------------------------------------------------------------------------------------------------------------------

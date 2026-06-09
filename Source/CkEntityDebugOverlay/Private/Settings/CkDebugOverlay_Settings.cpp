@@ -57,13 +57,15 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
         TAG_Ck_OnScreenDebugger_Layout_AI,
         ECk_DebugOverlay_Density::Ultra,
         {
+            // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
             TEXT("Ck.OnScreenDebugger.Provider.GOAP"),
             TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
             TEXT("Ck.OnScreenDebugger.Provider.AStar"),
             TEXT("Ck.OnScreenDebugger.Provider.Objective"),
             TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
-            TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
+            TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
+            TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
             TEXT("Ck.OnScreenDebugger.Provider.Transform"),
         }));
 
@@ -71,10 +73,10 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
         TAG_Ck_OnScreenDebugger_Layout_Animation,
         ECk_DebugOverlay_Density::Compact,
         {
+            // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.AnimPlans"),
             TEXT("Ck.OnScreenDebugger.Provider.MontagePlayer"),
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
-            TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
             TEXT("Ck.OnScreenDebugger.Provider.Transform"),
         }));
 
@@ -82,31 +84,31 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
         TAG_Ck_OnScreenDebugger_Layout_Movement,
         ECk_DebugOverlay_Density::Ultra,
         {
+            // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.Physics"),
             TEXT("Ck.OnScreenDebugger.Provider.OverlapBody"),
             TEXT("Ck.OnScreenDebugger.Provider.Shapes"),
             TEXT("Ck.OnScreenDebugger.Provider.Transform"),
             TEXT("Ck.OnScreenDebugger.Provider.SceneNode"),
-            TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
         }));
 
     Layouts.Add(MakeLayout(
         TAG_Ck_OnScreenDebugger_Layout_Combat,
         ECk_DebugOverlay_Density::Ultra,
         {
+            // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
             TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
             TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
             TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
-            TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
         }));
 
     Layouts.Add(MakeLayout(
         TAG_Ck_OnScreenDebugger_Layout_Overview,
         ECk_DebugOverlay_Density::Ultra,
         {
-            TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
+            // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
             TEXT("Ck.OnScreenDebugger.Provider.GOAP"),
             TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),

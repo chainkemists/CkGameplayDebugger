@@ -79,12 +79,13 @@ auto
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
-        double                              InNow)
+        double                              InNow,
+        bool                                bIsLocked)
     -> void
 {
     if (_FocusCard.IsValid())
     {
-        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow);
+        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked);
     }
 }
 

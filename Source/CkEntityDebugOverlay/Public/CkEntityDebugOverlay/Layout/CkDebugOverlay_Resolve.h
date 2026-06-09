@@ -28,6 +28,16 @@ namespace ck_debugoverlay
     CKENTITYDEBUGOVERLAY_API auto Resolve_Style(
         const FCk_DebugOverlay_Layout& Layout,
         const FGameplayTag&            ProviderTag) -> FCk_DebugOverlay_RenderStyle;
+
+    /**
+     * Validates that all provider tags referenced by the layout (EnabledProviders tags and
+     * each Entries[].ProviderTag) are present in KnownProviderTags.
+     * Returns one problem string per unknown tag containing the offending tag's string.
+     * Never crashes — safe on a default-constructed Layout or empty KnownProviderTags.
+     */
+    CKENTITYDEBUGOVERLAY_API auto Validate_Layout(
+        const FCk_DebugOverlay_Layout&   Layout,
+        const FGameplayTagContainer&     KnownProviderTags) -> TArray<FString>;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

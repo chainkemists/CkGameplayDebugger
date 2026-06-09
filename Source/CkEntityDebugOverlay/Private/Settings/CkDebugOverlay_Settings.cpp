@@ -1,6 +1,8 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 
+#include <initializer_list>
+
 // --------------------------------------------------------------------------------------------------------------------
 // Provider tags are defined natively by the individual provider source files (Task 11+).  Their
 // UE_DEFINE_GAMEPLAY_TAG static initialisers run at DLL-load time, before any CDO constructor

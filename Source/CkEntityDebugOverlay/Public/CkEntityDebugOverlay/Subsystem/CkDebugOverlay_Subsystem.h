@@ -126,6 +126,12 @@ private:
     // deactivation or when the candidate leaves the set.
     TMap<uint32, FCk_Handle_Pmg_DebugShape> _Markers;
 
+    // Single transient parent that OWNS all diamond markers (kept at origin, no
+    // transform). Markers are positioned in world space + tracked via Request_SetTransform.
+    // Owning them by the parent (not the candidate) avoids double-transforming the shape
+    // by the candidate's own world transform. Cascade-destroyed on deactivate.
+    FCk_Handle _OverlayParent;
+
     // B3 — Double-tap lock detection.
     // Tracks the timestamp of the most recent LockKey press for double-tap detection.
     double _LastLockKeyPressTime = -1.0;

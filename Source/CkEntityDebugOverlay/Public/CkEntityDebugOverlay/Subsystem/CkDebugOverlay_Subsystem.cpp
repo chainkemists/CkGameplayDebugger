@@ -309,15 +309,13 @@ auto
 
     _History.Reset();
 
-    // B2 — destroy all persistent CkPmg diamond markers.
-    for (auto& KV : _Markers)
+    // B2 — destroy all CkPmg diamond markers by destroying their shared parent
+    // (cascade-destroys the child shapes), then drop the lookup map.
+    if (ck::IsValid(_OverlayParent))
     {
-        auto Handle = static_cast<FCk_Handle>(KV.Value);
-        if (ck::IsValid(Handle))
-        {
-            UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(Handle);
-        }
+        UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(_OverlayParent);
     }
+    _OverlayParent = FCk_Handle{};
     _Markers.Empty();
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
@@ -495,7 +493,16 @@ auto
         static constexpr float    MarkerSize_Focused   = 60.0f;
         static constexpr float    MarkerZOffset        = 120.0f;
 
-        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
+        // Ensure the single origin-anchored parent that owns all markers exists.
+        // Shapes are owned by THIS (at origin), positioned via world-space FTransform and
+        // tracked with Request_SetTransform — owning by the candidate would double-apply
+        // the candidate's own world transform and push the diamond off-screen.
+        if (ck::Is_NOT_Valid(_OverlayParent) && ck::IsValid(World))
+        {
+            _OverlayParent = UCk_Utils_EntityLifetime_UE::Request_CreateEntity_TransientOwner(World);
+        }
+
+        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num() && ck::IsValid(_OverlayParent); ++CandIdx)
         {
             auto CandHandle  = CandidateHandles[CandIdx];
             const auto EntityNum =
@@ -512,7 +519,7 @@ auto
                 // The shape is positioned in world space and tracked each tick via
                 // Request_SetTransform (live-tracking overlay pattern).
                 auto ShapeHandle = UCk_Utils_Pmg_FlatShapes::Create_Diamond(
-                    CandHandle,
+                    _OverlayParent,
                     FTransform{ FRotator::ZeroRotator, MarkerWorldPos, FVector::OneVector },
                     bIsFocused ? MarkerSize_Focused : MarkerSize_Default,
                     /*InThickness=*/5.0f,

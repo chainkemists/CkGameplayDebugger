@@ -38,6 +38,50 @@ namespace
 {
     // Overlay widget Z-order — sits above game UI but below modal dialogs.
     constexpr int32 OverlayZOrder = 100;
+
+    // Returns true if InHandle is a "top-level" entity that should appear as an overlay candidate.
+    //
+    // Definition: top-level = directly linked to an AActor (owning actor fragment present)
+    //             OR has no entity lifetime-owner parent of its own (its owner IS the transient entity,
+    //             meaning it sits at the root of the ECS hierarchy).
+    //
+    // Sub-entities (scene-node children, SM states, physics proxies, etc.) are excluded because
+    // they create per-object clutter in the candidate list (gym station example: 31 scene nodes).
+    //
+    // BATCH-VERIFY:
+    //   UCk_Utils_OwningActor_UE::Has(Handle)
+    //       — checks for FFragment_OwningActor presence; returns bool.
+    //         Confirmed in CkOwningActor_Utils.h.
+    //   UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle)
+    //       — returns an FCk_Handle to the owner; returns invalid/default if entity has no
+    //         FFragment_LifetimeOwner (i.e. it is the transient entity itself).
+    //         Confirmed in CkEntityLifetime_Utils.h.
+    //   UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Handle)
+    //       — returns true only for the registry transient entity.
+    //         Confirmed in CkEntityLifetime_Utils.h.
+    //   InTransientEntity: passed in for identity comparison — compare lifetime owner
+    //       against the known transient handle via == operator on FCk_Handle.
+    //       BATCH-VERIFY: confirm FCk_Handle operator== compares entity+version (stable identity).
+    auto Is_TopLevelCandidate(const FCk_Handle& InHandle, const FCk_Handle& InTransientEntity) -> bool
+    {
+        // Strategy 1 (preferred): entity has an owning actor — it's an actor-linked game object.
+        if (UCk_Utils_OwningActor_UE::Has(InHandle))
+        { return true; }
+
+        // Strategy 2: entity has no lifetime-owner, or its lifetime-owner IS the transient entity.
+        // This catches root-level ECS-only entities (no actor link) that live at the top of the
+        // ownership hierarchy — e.g. a standalone ECS entity created directly under the transient.
+        const auto LifetimeOwner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InHandle);
+        if (ck::Is_NOT_Valid(LifetimeOwner))
+        {
+            // No lifetime-owner fragment — this entity IS the transient root or an orphan.
+            // The transient entity itself is never a debug candidate; orphans are treated as top-level.
+            return NOT UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(InHandle);
+        }
+
+        // Owner is the transient entity → top-level.
+        return LifetimeOwner == InTransientEntity;
+    }
 }
 
 // ====================================================================================================================
@@ -432,6 +476,33 @@ auto
             if (ck::Is_NOT_Valid(Handle))
             { return; }
 
+            // ---- Sub-entity gate: only top-level entities become overlay candidates. ----
+            // A "top-level" entity is one directly linked to an AActor (owning actor present)
+            // OR one that has no entity lifetime-owner parent (i.e. its immediate owner is the
+            // transient entity — which is the registry root).
+            //
+            // Rationale: gym stations, scene-node graphs, and other spawned hierarchies produce
+            // 10–30 sub-entities per visible object; showing all of them as separate overlay
+            // candidates creates unusable tag clutter.
+            //
+            // Strategy: UCk_Utils_OwningActor_UE::Has(Handle) returns true only for entities
+            // with a direct actor link (the WithActor / EntityBridge component added an owning
+            // actor fragment). Those are the "game object" roots we want to debug.
+            // Entities that lack an actor link are checked for lifetime-owner: if the lifetime
+            // owner is the transient entity (registry root), the entity is a top-level ECS entity
+            // with no actor link — also a valid candidate. Entities whose lifetime owner is
+            // neither themselves nor the transient entity are sub-entities (scene-node children,
+            // SM states, etc.) and are excluded.
+            //
+            // BATCH-VERIFY: UCk_Utils_OwningActor_UE::Has(Handle) — confirmed in CkOwningActor_Utils.h.
+            // BATCH-VERIFY: UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle) — confirmed in
+            //   CkEntityLifetime_Utils.h. Returns invalid handle if entity has no lifetime-owner
+            //   fragment (i.e. it IS the transient entity).
+            // BATCH-VERIFY: UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Handle) — confirmed.
+            //   Returns true only for the registry transient entity.
+            if (NOT Is_TopLevelCandidate(Handle, TransientEntity))
+            { return; }
+
             // Check if any provider can serve this entity.
             auto bAnyProvider = false;
             for (const auto& Provider : InProviders)
@@ -455,6 +526,25 @@ auto
         });
 }
 
+// ====================================================================================================================
+// Always-on provider tags — force-included regardless of the active layout,
+// as long as CanProvide() returns true for the focused entity.
+// Avoids losing critical behavioral state (e.g. SM) when a layout doesn't list them.
+// ====================================================================================================================
+
+namespace
+{
+    // Returns true if InProviderTag is in the always-on set.
+    // Currently: StateMachine is always shown when present.
+    auto Is_AlwaysOnProvider(const FGameplayTag& InProviderTag) -> bool
+    {
+        // Leaf-name compare avoids a hard dep on the SM provider's tag declaration here.
+        return ck_debugoverlay::Get_LeafName(InProviderTag) == TEXT("StateMachine");
+    }
+}
+
+// ====================================================================================================================
+
 auto
     UCk_DebugOverlay_Subsystem::
     Build_Model(
@@ -468,7 +558,8 @@ auto
     OutModel = FCk_DebugOverlay_EntityModel{};
     OutModel.Entity = InFocusEntity;
 
-    // Header: debug name + entity number (mirrors CkInspector_EntityInfo).
+    // Header is now rendered by SCkDebug_EntityRef in the FocusCard; OutModel.Header kept as
+    // a fallback / for callers that may read it, but the card no longer uses it as primary display.
     {
         const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(InFocusEntity);
         const auto EntityNum   = static_cast<int32>(InFocusEntity.Get_Entity().Get_EntityNumber());
@@ -478,6 +569,10 @@ auto
 
     const auto EntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
 
+    // Track which provider tags we've already emitted so always-on providers don't double-add.
+    auto EmittedProviderTags = FGameplayTagContainer{};
+
+    // ---- Layout-driven providers ----
     for (const auto& Provider : InProviders)
     {
         if (NOT Provider || NOT Provider->CanProvide(InFocusEntity))
@@ -512,6 +607,57 @@ auto
         Provider->Collect(InFocusEntity, Config, Section);
 
         // Record history for each row.
+        for (const auto& Row : Section.Rows)
+        {
+            const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
+            if (_History) { _History->Observe(Key, Row.Value.ToString(), InNow); }
+        }
+
+        EmittedProviderTags.AddTag(ProviderTag);
+        OutModel.Sections.Add(MoveTemp(Section));
+    }
+
+    // ---- Always-on providers (force-include if CanProvide and not already emitted) ----
+    for (const auto& Provider : InProviders)
+    {
+        if (NOT Provider)
+        { continue; }
+
+        const auto& ProviderTag = Provider->Get_ProviderTag();
+
+        if (NOT Is_AlwaysOnProvider(ProviderTag))
+        { continue; }
+
+        // Skip if already emitted via the layout pass above.
+        if (EmittedProviderTags.HasTagExact(ProviderTag))
+        { continue; }
+
+        if (NOT Provider->CanProvide(InFocusEntity))
+        { continue; }
+
+        // Use the provider's own default field set (all DefaultEnabled fields).
+        auto EnabledFields = FGameplayTagContainer{};
+        for (const auto& FieldDesc : Provider->Get_FieldTags())
+        {
+            if (FieldDesc.DefaultEnabled)
+            {
+                EnabledFields.AddTag(FieldDesc.Tag);
+            }
+        }
+
+        if (EnabledFields.IsEmpty())
+        { continue; }
+
+        auto Config          = FCk_DebugOverlay_ProviderConfig{};
+        Config.EnabledFields = EnabledFields;
+        // No entry filter for force-included always-on providers.
+
+        auto Section = FCk_DebugOverlay_Section{};
+        Section.ProviderTag   = ProviderTag;
+        Section.SortPriority  = Provider->Get_SortPriority();
+
+        Provider->Collect(InFocusEntity, Config, Section);
+
         for (const auto& Row : Section.Rows)
         {
             const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
@@ -564,8 +710,16 @@ auto
                 if (NOT Provider || NOT Provider->CanProvide(Handle))
                 { continue; }
 
-                const auto& ProviderTag   = Provider->Get_ProviderTag();
-                const auto  EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
+                const auto& ProviderTag = Provider->Get_ProviderTag();
+
+                // World tags survey *behavioral* state. Skip the core identity
+                // providers (EntityInfo / Transform) so tags aren't just
+                // "Info:<name> | Loc:(x,y,z)" spam on every transform-bearing entity.
+                const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
+                if (ProviderLeaf == TEXT("EntityInfo") || ProviderLeaf == TEXT("Transform"))
+                { continue; }
+
+                const auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
                     InLayout, ProviderTag, Provider->Get_FieldTags());
                 if (EnabledFields.IsEmpty())
                 { continue; }
@@ -598,6 +752,10 @@ auto
 
             const auto LabelText = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
             WorldTags.Emplace(ScreenPos, LabelText);
+
+            // Hard cap to avoid clutter in dense scenes (e.g. crowds).
+            if (WorldTags.Num() >= 16)
+            { break; }
         }
     }
 

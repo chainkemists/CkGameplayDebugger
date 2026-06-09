@@ -39,6 +39,10 @@ private:
     // Returns the flash alpha multiplier for a field (1.0 if not flashing).
     static auto Get_FlashAlpha(double InLastChanged, double InNow) -> float;
 
+    // Stable, visually-distinct color per provider — used for the provider chip
+    // fill and the field-chip tint (matches the mockup's color-grouped strips).
+    static auto Get_ProviderColor(const FGameplayTag& InProviderTag) -> FLinearColor;
+
     // Root container rebuilt on every Set_Model call.
     TSharedPtr<SVerticalBox> _ContentBox;
 };

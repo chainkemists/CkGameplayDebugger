@@ -43,14 +43,22 @@ auto
 
     // Dark, rounded, translucent card panel behind the content — turns the
     // floating chips/text into a readable "card" matching the design mockup.
+    // Wrapped in an outer SBorder (_LockFrame) that renders a 2px amber ring
+    // when the focus is locked (transparent otherwise).
     ChildSlot
     [
-        SNew(SBorder)
+        SAssignNew(_LockFrame, SBorder)
             .BorderImage(CkDebugStyle::GetRoundedBrush())
-            .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.9f))
-            .Padding(FMargin{ CkDebugStyle::SpaceM })
+            .BorderBackgroundColor(FLinearColor::Transparent)   // no ring unless locked
+            .Padding(FMargin{ 2.0f })                            // ring thickness
             [
-                _ContentBox.ToSharedRef()
+                SNew(SBorder)
+                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.9f))
+                    .Padding(FMargin{ CkDebugStyle::SpaceM })
+                    [
+                        _ContentBox.ToSharedRef()
+                    ]
             ]
     ];
 }
@@ -63,12 +71,21 @@ auto
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
-        double                              InNow)
+        double                              InNow,
+        bool                                bIsLocked)
     -> void
 {
     if (NOT _ContentBox.IsValid())
     {
         return;
+    }
+
+    // Update the lock ring color.
+    if (_LockFrame.IsValid())
+    {
+        _LockFrame->SetBorderBackgroundColor(
+            bIsLocked ? FLinearColor{ 1.0f, 0.82f, 0.0f, 1.0f }   // amber/yellow lock ring
+                      : FLinearColor::Transparent);
     }
 
     _ContentBox->ClearChildren();

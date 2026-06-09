@@ -206,6 +206,21 @@ auto
         _Providers = FCk_DebugOverlay_Registry::Get().CreateAll();
     }
 
+    // One-time layout validation: warn about any provider tags in the active layout
+    // that have no matching registered provider.
+    if (const auto* Layout = Resolve_ActiveLayout())
+    {
+        FGameplayTagContainer KnownTags;
+        for (const auto& Provider : _Providers)
+        {
+            if (Provider) { KnownTags.AddTag(Provider->Get_ProviderTag()); }
+        }
+        for (const auto& Problem : ck_debugoverlay::Validate_Layout(*Layout, KnownTags))
+        {
+            ck::debug_overlay::Warning(TEXT("{}"), *Problem);
+        }
+    }
+
     // (Re-)allocate History. Reset on each activation so stale entity records don't persist
     // across PIE stop/start cycles.
     _History = MakeUnique<FCk_DebugOverlay_History>();

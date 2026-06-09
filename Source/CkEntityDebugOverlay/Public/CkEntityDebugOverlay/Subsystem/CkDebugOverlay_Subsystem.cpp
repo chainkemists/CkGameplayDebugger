@@ -28,7 +28,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
-#include "GameFramework/PlayerCameraManager.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -186,7 +186,7 @@ auto
         return;
     }
 
-    auto* ViewportClient = LocalPlayer->ViewportClient;
+    auto* ViewportClient = LocalPlayer->ViewportClient.Get();
     if (ck::Is_NOT_Valid(ViewportClient))
     {
         ck::debug_overlay::Warning(TEXT("DoActivate: no viewport client — overlay not shown"));
@@ -249,7 +249,7 @@ auto
         const auto* LocalPlayer = GetLocalPlayer();
         if (ck::IsValid(LocalPlayer))
         {
-            if (auto* ViewportClient = LocalPlayer->ViewportClient;
+            if (auto* ViewportClient = LocalPlayer->ViewportClient.Get();
                 ck::IsValid(ViewportClient))
             {
                 ViewportClient->RemoveViewportWidgetContent(_RootWidget.ToSharedRef());

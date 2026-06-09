@@ -13,6 +13,9 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Provider.h"
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
 
+// B2 — CkPmg diamond markers: FCk_Handle_Pmg_DebugShape type-safe handle.
+#include "CkPmg/CkPmg_Fragment_Data.h"
+
 #include "CkDebugOverlay_Subsystem.generated.h"
 
 // ====================================================================================================================
@@ -116,6 +119,16 @@ private:
 
     // Active layout index into Settings->Layouts.
     int32 _ActiveLayoutIndex = INDEX_NONE;
+
+    // B2 — CkPmg in-world diamond markers.
+    // Key: entity number (uint32). Value: the marker debug-shape handle.
+    // Marker entities are created once per top-level candidate and destroyed on
+    // deactivation or when the candidate leaves the set.
+    TMap<uint32, FCk_Handle_Pmg_DebugShape> _Markers;
+
+    // B3 — Double-tap lock detection.
+    // Tracks the timestamp of the most recent LockKey press for double-tap detection.
+    double _LastLockKeyPressTime = -1.0;
 
     // PIE world override: INDEX_NONE = use own LP world.
     int32 _WorldOverrideIndex = INDEX_NONE;

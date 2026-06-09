@@ -19,15 +19,15 @@ namespace OverlayRoot_Constants
     // Approximate size given to each world-tag slot so it can lay out.
     // The tag wraps to its natural size but the canvas slot needs a non-zero
     // preferred size for hit-test region (irrelevant here — we're hit-invisible).
-    constexpr float OverlayRoot_Constants::WorldTagSlotWidth  = 300.0f;
-    constexpr float OverlayRoot_Constants::WorldTagSlotHeight = 24.0f;
+    constexpr float WorldTagSlotWidth  = 300.0f;
+    constexpr float WorldTagSlotHeight = 24.0f;
 
     // Pixel offset for the focus card from the top-left of the viewport.
-    constexpr float OverlayRoot_Constants::FocusCardOffsetX = 8.0f;
-    constexpr float OverlayRoot_Constants::FocusCardOffsetY = 8.0f;
+    constexpr float FocusCardOffsetX = 8.0f;
+    constexpr float FocusCardOffsetY = 8.0f;
 
     // Approximate max width for the focus card slot.
-    constexpr float OverlayRoot_Constants::FocusCardWidth = 480.0f;
+    constexpr float FocusCardWidth = 480.0f;
 }
 
 // ====================================================================================================================

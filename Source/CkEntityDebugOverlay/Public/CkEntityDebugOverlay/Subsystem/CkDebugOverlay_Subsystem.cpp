@@ -2,7 +2,7 @@
 
 #if WITH_CK_DEBUG_OVERLAY
 
-#include "CkEntityDebugOverlay_Log.h"
+#include "CkEntityDebugOverlay/CkEntityDebugOverlay_Log.h"
 
 // Already included via the header (History, Layout, Model, Provider, Selection).
 // Only add the extras the header omits:

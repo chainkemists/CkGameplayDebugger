@@ -33,11 +33,13 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
 
     // Forwards to the child focus card.
+    // bIsLocked: when true, renders a yellow ring around the card to indicate focus lock.
     auto Set_FocusCardContent(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
-        double                              InNow) -> void;
+        double                              InNow,
+        bool                                bIsLocked = false) -> void;
 
     // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per entry.
     // Each entry carries a screen position (absolute viewport pixels, top-left origin),

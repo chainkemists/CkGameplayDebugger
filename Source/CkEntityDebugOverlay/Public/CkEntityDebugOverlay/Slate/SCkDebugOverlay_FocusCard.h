@@ -26,11 +26,13 @@ public:
 
     // Rebuilds all child slots from the supplied model snapshot.
     // Must be called from the game thread.
+    // bIsLocked: when true, a yellow ring is rendered around the card to indicate focus lock.
     auto Set_Model(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
-        double                              InNow) -> void;
+        double                              InNow,
+        bool                                bIsLocked = false) -> void;
 
 private:
     // Converts ECk_DebugOverlay_Severity to an ECkDebug_Tone for pills / text.
@@ -42,6 +44,9 @@ private:
     // Stable, visually-distinct color per provider — used for the provider chip
     // fill and the field-chip tint (matches the mockup's color-grouped strips).
     static auto Get_ProviderColor(const FGameplayTag& InProviderTag) -> FLinearColor;
+
+    // Outer lock-ring border — tinted amber/yellow when the focus is locked.
+    TSharedPtr<class SBorder> _LockFrame;
 
     // Root container rebuilt on every Set_Model call.
     TSharedPtr<SVerticalBox> _ContentBox;

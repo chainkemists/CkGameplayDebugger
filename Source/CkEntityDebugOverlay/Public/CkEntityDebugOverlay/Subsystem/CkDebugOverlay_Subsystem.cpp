@@ -493,6 +493,7 @@ auto
         static const FLinearColor MarkerColor_Focused  { 0.0f, 1.0f, 1.0f, 1.0f };
         static constexpr float    MarkerSize_Default   = 40.0f;
         static constexpr float    MarkerSize_Focused   = 60.0f;
+        static constexpr float    MarkerZOffset        = 120.0f;
 
         for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
         {
@@ -502,18 +503,17 @@ auto
 
             const auto bIsFocused = (EntityNum == FocusedEntityNum && ck::IsValid(FocusEntity));
 
+            // Compute the marker world position from the candidate's world location.
+            const auto MarkerWorldPos = Candidates[CandIdx].WorldLocation + FVector{ 0.0f, 0.0f, MarkerZOffset };
+
             if (NOT _Markers.Contains(EntityNum))
             {
                 // Create a new persistent diamond marker owned by the candidate entity.
-                // Placed at a small vertical offset so the diamond sits above the entity pivot.
-                const auto MarkerOffset = FTransform{
-                    FRotator::ZeroRotator,
-                    FVector{ 0.0f, 0.0f, 80.0f },
-                    FVector::OneVector };
-
+                // The shape is positioned in world space and tracked each tick via
+                // Request_SetTransform (live-tracking overlay pattern).
                 auto ShapeHandle = UCk_Utils_Pmg_FlatShapes::Create_Diamond(
                     CandHandle,
-                    MarkerOffset,
+                    FTransform{ FRotator::ZeroRotator, MarkerWorldPos, FVector::OneVector },
                     bIsFocused ? MarkerSize_Focused : MarkerSize_Default,
                     /*InThickness=*/5.0f,
                     bIsFocused ? MarkerColor_Focused : MarkerColor_Default,
@@ -524,14 +524,18 @@ auto
 
                 _Markers.Add(EntityNum, ShapeHandle);
             }
-            else
+
+            // Every tick — follow the entity's world position and recolor.
+            auto MarkerHandle = static_cast<FCk_Handle>(_Markers[EntityNum]);
+            if (ck::IsValid(MarkerHandle))
             {
-                // Marker already exists — update color to reflect current highlight state.
-                auto& ShapeHandle  = _Markers[EntityNum];
-                const auto NewColor = bIsFocused ? MarkerColor_Focused : MarkerColor_Default;
+                auto TransformHandle = UCk_Utils_Transform_UE::Cast(MarkerHandle);
+                UCk_Utils_Transform_UE::Request_SetTransform(
+                    TransformHandle,
+                    FCk_Request_Transform_SetTransform{ FTransform{ MarkerWorldPos } });
                 UCk_Utils_Pmg_DebugShape_UE::Request_SetColor(
-                    ShapeHandle,
-                    FCk_Request_Pmg_DebugShape_SetColor{ NewColor });
+                    _Markers[EntityNum],
+                    FCk_Request_Pmg_DebugShape_SetColor{ bIsFocused ? MarkerColor_Focused : MarkerColor_Default });
             }
         }
     }
@@ -853,7 +857,7 @@ auto
     // but defensive against edge-cases around deactivation ordering).
     if (NOT _History)
     { return; }
-    _RootWidget->Set_FocusCardContent(InModel, InLayout.DefaultStyle, *_History, InNow);
+    _RootWidget->Set_FocusCardContent(InModel, InLayout.DefaultStyle, *_History, InNow, _FocusLocked);
 
     // ---- World tags: one per on-screen candidate (B1 — distance-scaled / faded / culled) ----
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};

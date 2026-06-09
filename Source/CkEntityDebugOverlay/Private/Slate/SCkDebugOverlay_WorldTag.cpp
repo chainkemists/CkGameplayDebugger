@@ -4,6 +4,7 @@
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Styling/CoreStyle.h"
@@ -22,9 +23,16 @@ auto
         .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
         .ColorAndOpacity(CkDebugStyle::TextStrong());
 
+    // Dark rounded pill behind the text so it reads against any world background.
     ChildSlot
     [
-        _TextBlock.ToSharedRef()
+        SNew(SBorder)
+            .BorderImage(CkDebugStyle::GetRoundedBrush())
+            .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.78f))
+            .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+            [
+                _TextBlock.ToSharedRef()
+            ]
     ];
 }
 

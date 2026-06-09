@@ -9,8 +9,10 @@
 
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 #include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/SBoxPanel.h"
 
@@ -39,9 +41,17 @@ auto
 
     SAssignNew(_ContentBox, SVerticalBox);
 
+    // Dark, rounded, translucent card panel behind the content — turns the
+    // floating chips/text into a readable "card" matching the design mockup.
     ChildSlot
     [
-        _ContentBox.ToSharedRef()
+        SNew(SBorder)
+            .BorderImage(CkDebugStyle::GetRoundedBrush())
+            .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.9f))
+            .Padding(FMargin{ CkDebugStyle::SpaceM })
+            [
+                _ContentBox.ToSharedRef()
+            ]
     ];
 }
 
@@ -63,15 +73,17 @@ auto
 
     _ContentBox->ClearChildren();
 
-    // ---- Header row ----
+    // ---- Header row — SCkDebug_EntityRef pill (entity identity, consistent with debugger style) ----
+    // The overlay is HitTestInvisible, so the EntityRef click is a no-op — but we still get
+    // the canonical entity rendering (ID, version, debug name).
     _ContentBox->AddSlot()
         .AutoHeight()
         .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
         [
-            SNew(STextBlock)
-                .Text(InModel.Header)
+            SNew(SCkDebug_EntityRef)
+                .Entity(InModel.Entity)
+                .ShowName(true)
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
-                .ColorAndOpacity(CkDebugStyle::TextStrong())
         ];
 
     // ---- Sections (sorted by SortPriority) ----
@@ -88,34 +100,45 @@ auto
 
     for (const auto& Section : SortedSections)
     {
-        // Provider chip label
-        const auto ProviderName = FText::FromString(
-            ck_debugoverlay::Get_LeafName(Section.ProviderTag));
+        const auto ProviderColor = Get_ProviderColor(Section.ProviderTag);
+        const auto ProviderName  = FText::FromString(
+            ck_debugoverlay::Get_LeafName(Section.ProviderTag).ToUpper());
 
-        // One horizontal line per section: [provider chip] [field chip] [field chip] ...
+        // One color-grouped flow line per section:
+        //   [PROVIDER]  [KEY value]  [KEY trail‹ value] ...
         auto SectionRow = SNew(SWrapBox)
             .UseAllottedSize(true);
 
-        // Provider chip — small pill showing the section/provider name
+        // Provider chip — solid provider-colored pill with dark text.
         SectionRow->AddSlot()
+            .VAlign(VAlign_Center)
             .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, CkDebugStyle::SpaceXS })
             [
-                SNew(SCkDebug_StatusPill)
-                    .Text(ProviderName)
-                    .Tone(ECkDebug_Tone::Accent)
-                    .ShowDot(false)
+                SNew(SBorder)
+                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(ProviderColor)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                    [
+                        SNew(STextBlock)
+                            .Text(ProviderName)
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
+                    ]
             ];
 
-        // Field chips
+        // Field chips share a provider-tinted background + key color.
+        const auto FieldChipTint = CkDebugStyle::OverlayOf(ProviderColor, 0.18f);
+        const auto FieldKeyColor = CkDebugStyle::OverlayOf(ProviderColor, 0.95f);
+
         for (const auto& Row : Section.Rows)
         {
             const FCk_DebugOverlay_HistoryKey HistKey{ EntityId, Row.FieldTag };
 
-            // Build the breadcrumb trail string
+            // Breadcrumb trail (explicit history wins; else diff-tracked ring).
             FString TrailText;
             if (Row.ExplicitHistory.Num() > 0)
             {
-                // Explicit history is authoritative — join in order (oldest first)
                 for (auto Idx = 0; Idx < Row.ExplicitHistory.Num(); ++Idx)
                 {
                     if (Idx > 0) { TrailText += FocusCard_Constants::BreadcrumbSeparator; }
@@ -132,37 +155,66 @@ auto
                 }
             }
 
-            // Choose color from severity
-            const auto Tone = Severity_To_Tone(Row.Severity);
-            auto FieldColor = CkDebugStyle::GetToneColor(Tone);
+            // Value color from severity; Normal uses the strong text color.
+            auto ValueColor = (Row.Severity == ECk_DebugOverlay_Severity::Normal)
+                ? CkDebugStyle::TextStrong()
+                : CkDebugStyle::GetToneColor(Severity_To_Tone(Row.Severity));
 
-            // Apply flash tint if enabled
             if (InStyle.bFlashOnChange)
             {
                 const auto Alpha = Get_FlashAlpha(InHistory.Get_LastChangedTime(HistKey), InNow);
-                FieldColor.A = FMath::Clamp(FieldColor.A * Alpha, 0.0f, 1.0f);
+                ValueColor.A = FMath::Clamp(ValueColor.A * Alpha, 0.3f, 1.0f);
             }
 
             const auto FieldLabel = FText::FromString(
-                ck_debugoverlay::Get_LeafName(Row.FieldTag));
+                ck_debugoverlay::Get_LeafName(Row.FieldTag).ToUpper());
 
-            // Compose the field chip: "[FieldLabel]  trail ‹ value"
-            FString ChipText = FieldLabel.ToString();
-            ChipText += TEXT(": ");
-            if (NOT TrailText.IsEmpty())
-            {
-                ChipText += TrailText;
-                ChipText += FocusCard_Constants::BreadcrumbSeparator;
-            }
-            ChipText += Row.Value.ToString();
+            // Inner chip layout: [KEY] [faint trail ‹] [value]
+            auto ChipInner = SNew(SHorizontalBox);
 
-            SectionRow->AddSlot()
-                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+            ChipInner->AddSlot()
+                .AutoWidth().VAlign(VAlign_Center)
+                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, 0.0f })
                 [
                     SNew(STextBlock)
-                        .Text(FText::FromString(ChipText))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-                        .ColorAndOpacity(FieldColor)
+                        .Text(FieldLabel)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+                        .ColorAndOpacity(FieldKeyColor)
+                ];
+
+            if (NOT TrailText.IsEmpty())
+            {
+                ChipInner->AddSlot()
+                    .AutoWidth().VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TrailText + FocusCard_Constants::BreadcrumbSeparator))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+                            .ColorAndOpacity(CkDebugStyle::TextMute())
+                    ];
+            }
+
+            ChipInner->AddSlot()
+                .AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(Row.Value)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+                        .ColorAndOpacity(ValueColor)
+                ];
+
+            SectionRow->AddSlot()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+                [
+                    SNew(SBorder)
+                        .BorderImage(CkDebugStyle::GetRoundedBrush())
+                        .BorderBackgroundColor(FieldChipTint)
+                        .VAlign(VAlign_Center)
+                        .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                        [
+                            ChipInner
+                        ]
                 ];
         }
 
@@ -218,6 +270,20 @@ auto
     // We keep it above 0.3 so the text is always readable.
     const auto T = static_cast<float>(Elapsed / FocusCard_Constants::FlashDurationSec); // [0,1)
     return FMath::Lerp(1.0f, 0.3f, T);
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_FocusCard::
+    Get_ProviderColor(const FGameplayTag& InProviderTag)
+    -> FLinearColor
+{
+    // Hash the provider leaf to a stable hue so each provider gets a distinct,
+    // consistent color across frames (SM / GOAP / Physics / ... differ).
+    const auto Leaf = ck_debugoverlay::Get_LeafName(InProviderTag);
+    const auto Hue  = static_cast<uint8>(GetTypeHash(Leaf) % 256);
+    return FLinearColor::MakeFromHSV8(Hue, 150, 205);
 }
 
 // ====================================================================================================================

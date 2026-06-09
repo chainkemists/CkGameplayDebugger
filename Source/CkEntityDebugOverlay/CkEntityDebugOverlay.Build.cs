@@ -15,9 +15,11 @@ public class CkEntityDebugOverlay : CkModuleRules
             "Core", "CoreUObject", "Engine", "DeveloperSettings",
             "GameplayTags", "InputCore",
             "Slate", "SlateCore", "UMG", "ApplicationCore",
-            "CkCore", "CkEcs", "CkEcsExt", "CkLog", "CkSettings", "CkDebuggerCommon",
+            "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon",
             // AI vertical-slice feature deps (more added as providers are ported):
-            "CkStateMachine", "CkGoap", "CkPhysics", "CkAnimation",
+            "CkStateMachine", "CkGoap", "CkPhysics", "CkAnimation", "CkRecord",
+            // Attribute providers (FloatAttributes + IntegerAttributes):
+            "CkAttribute", "CkLabel"
         });
 
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)

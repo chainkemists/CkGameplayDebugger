@@ -4,6 +4,12 @@ public class CkEntityDebugOverlay : CkModuleRules
 {
     public CkEntityDebugOverlay(ReadOnlyTargetRules Target) : base(Target)
     {
+        // Dev-only debugger module: each provider .cpp defines identically-named
+        // file-local tag helpers (ProviderTag()/FieldTag_*()) in an anonymous
+        // namespace, which collide when merged into a unity TU. Disable unity for
+        // this small module to sidestep the collision (rather than per-file prefixing).
+        bUseUnity = false;
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core", "CoreUObject", "Engine", "DeveloperSettings",

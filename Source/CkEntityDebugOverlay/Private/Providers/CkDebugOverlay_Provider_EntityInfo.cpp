@@ -23,15 +23,15 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_EntityInfo_Lifetime,
 
 namespace
 {
-    const FGameplayTag& ProviderTag()
+    FGameplayTag ProviderTag()
     {
         return TAG_Ck_OnScreenDebugger_Provider_EntityInfo;
     }
-    const FGameplayTag& FieldTag_Class()
+    FGameplayTag FieldTag_Class()
     {
         return TAG_Ck_OnScreenDebugger_Provider_EntityInfo_Class;
     }
-    const FGameplayTag& FieldTag_Lifetime()
+    FGameplayTag FieldTag_Lifetime()
     {
         return TAG_Ck_OnScreenDebugger_Provider_EntityInfo_Lifetime;
     }

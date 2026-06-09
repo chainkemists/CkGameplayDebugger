@@ -42,11 +42,11 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_Cost,
 
 namespace
 {
-    const FGameplayTag& ProviderTag()      { return TAG_Ck_OnScreenDebugger_Provider_Goap; }
-    const FGameplayTag& FieldTag_Goal()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Goal; }
-    const FGameplayTag& FieldTag_Action()  { return TAG_Ck_OnScreenDebugger_Provider_Goap_Action; }
-    const FGameplayTag& FieldTag_Plan()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Plan; }
-    const FGameplayTag& FieldTag_Cost()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Cost; }
+    FGameplayTag ProviderTag()      { return TAG_Ck_OnScreenDebugger_Provider_Goap; }
+    FGameplayTag FieldTag_Goal()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Goal; }
+    FGameplayTag FieldTag_Action()  { return TAG_Ck_OnScreenDebugger_Provider_Goap_Action; }
+    FGameplayTag FieldTag_Plan()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Plan; }
+    FGameplayTag FieldTag_Cost()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Cost; }
 
     // Convert ECk_GoapPlanStatus to a short label string.
     auto LabelForStatus(ECk_GoapPlanStatus InStatus) -> FString

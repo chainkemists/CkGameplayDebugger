@@ -27,10 +27,10 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Transform_Scale,
 
 namespace
 {
-    const FGameplayTag& ProviderTag()   { return TAG_Ck_OnScreenDebugger_Provider_Transform; }
-    const FGameplayTag& FieldTag_Location() { return TAG_Ck_OnScreenDebugger_Provider_Transform_Location; }
-    const FGameplayTag& FieldTag_Rotation() { return TAG_Ck_OnScreenDebugger_Provider_Transform_Rotation; }
-    const FGameplayTag& FieldTag_Scale()    { return TAG_Ck_OnScreenDebugger_Provider_Transform_Scale; }
+    FGameplayTag ProviderTag()   { return TAG_Ck_OnScreenDebugger_Provider_Transform; }
+    FGameplayTag FieldTag_Location() { return TAG_Ck_OnScreenDebugger_Provider_Transform_Location; }
+    FGameplayTag FieldTag_Rotation() { return TAG_Ck_OnScreenDebugger_Provider_Transform_Rotation; }
+    FGameplayTag FieldTag_Scale()    { return TAG_Ck_OnScreenDebugger_Provider_Transform_Scale; }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -16,12 +16,6 @@
 
 namespace OverlayRoot_Constants
 {
-    // Approximate size given to each world-tag slot so it can lay out.
-    // The tag wraps to its natural size but the canvas slot needs a non-zero
-    // preferred size for hit-test region (irrelevant here — we're hit-invisible).
-    constexpr float WorldTagSlotWidth  = 300.0f;
-    constexpr float WorldTagSlotHeight = 24.0f;
-
     // Pixel offset for the focus card from the top-left of the viewport.
     constexpr float FocusCardOffsetX = 8.0f;
     constexpr float FocusCardOffsetY = 8.0f;
@@ -105,14 +99,13 @@ auto
 
     for (const auto& TagInfo : InTags)
     {
-        // SConstraintCanvas positions children via Offset (left, top, right, bottom)
-        // when anchored at (0,0)-(0,0) (top-left corner, size driven by Offset width/height).
-        // We set left/top to the desired screen position and right/bottom to provide the
-        // preferred slot dimensions (width = WorldTagSlotSize.X, height = WorldTagSlotSize.Y).
-        const auto OffsetLeft   = static_cast<float>(TagInfo.ScreenPos.X);
-        const auto OffsetTop    = static_cast<float>(TagInfo.ScreenPos.Y);
-        const auto OffsetRight  = OffsetLeft  + OverlayRoot_Constants::WorldTagSlotWidth;
-        const auto OffsetBottom = OffsetTop   + OverlayRoot_Constants::WorldTagSlotHeight;
+        // SConstraintCanvas with a POINT anchor (0,0): Offset is (PosX, PosY, W, H) and,
+        // with AutoSize, the child uses its own desired size (the pill hugs its text) —
+        // Offset W/H are ignored. Alignment is the pivot ON the widget that lands at the
+        // anchor+offset position: (0.5, 1.0) = bottom-centre, so the pill sits centred
+        // directly above the entity's projected screen point.
+        const auto PosX = static_cast<float>(TagInfo.ScreenPos.X);
+        const auto PosY = static_cast<float>(TagInfo.ScreenPos.Y);
 
         TSharedPtr<SCkDebugOverlay_WorldTag> WorldTag;
         SAssignNew(WorldTag, SCkDebugOverlay_WorldTag)
@@ -120,9 +113,10 @@ auto
         WorldTag->Set_Style(TagInfo.Scale, TagInfo.Opacity);
 
         _TagCanvas->AddSlot()
-            .Anchors(FAnchors{ 0.0f, 0.0f, 0.0f, 0.0f })
-            .Offset(FMargin{ OffsetLeft, OffsetTop, OffsetRight, OffsetBottom })
-            .Alignment(FVector2D{ 0.0f, 0.0f })
+            .Anchors(FAnchors{ 0.0f, 0.0f })
+            .Offset(FMargin{ PosX, PosY, 0.0f, 0.0f })
+            .Alignment(FVector2D{ 0.5f, 1.0f })
+            .AutoSize(true)
             [
                 WorldTag.ToSharedRef()
             ];

@@ -24,6 +24,10 @@
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
+// B2 — CkPmg diamond markers.
+#include "CkPmg/CkPmg_Utils_FlatShapes.h"
+#include "CkPmg/CkPmg_Utils.h"
+
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
@@ -31,6 +35,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Misc/App.h"
 
 // ====================================================================================================================
 
@@ -304,6 +309,17 @@ auto
 
     _History.Reset();
 
+    // B2 — destroy all persistent CkPmg diamond markers.
+    for (auto& KV : _Markers)
+    {
+        auto Handle = static_cast<FCk_Handle>(KV.Value);
+        if (ck::IsValid(Handle))
+        {
+            UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(Handle);
+        }
+    }
+    _Markers.Empty();
+
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
 
@@ -379,8 +395,148 @@ auto
         }
     }
 
-    // ---- 5–6. Build model ----
+    // ---- 5. Time + B3 double-tap lock detection ----
     const auto Now = FPlatformTime::Seconds();
+
+    if (ck::IsValid(PC))
+    {
+        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+        if (Settings != nullptr)
+        {
+            const auto bJustPressed = PC->WasInputKeyJustPressed(Settings->LockKey);
+            if (bJustPressed)
+            {
+                const auto TimeSinceLast = static_cast<float>(Now - _LastLockKeyPressTime);
+                if (_LastLockKeyPressTime >= 0.0 &&
+                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
+                {
+                    // Double-tap detected: toggle focus lock.
+                    _FocusLocked = NOT _FocusLocked;
+                    if (_FocusLocked)
+                    {
+                        // Pin to the current best-pick index (already updated in step 4).
+                        // _LockedCandidateIndex was kept in sync by the unlocked path above.
+                        ck::debug_overlay::Log(TEXT("Focus lock: ON (double-tap)"));
+                    }
+                    else
+                    {
+                        ck::debug_overlay::Log(TEXT("Focus lock: OFF (double-tap)"));
+                    }
+                    // Reset so a third tap doesn't re-toggle immediately.
+                    _LastLockKeyPressTime = -1.0;
+                }
+                else
+                {
+                    // First tap: record time, wait for possible second tap.
+                    _LastLockKeyPressTime = Now;
+                }
+            }
+        }
+    }
+
+    // ---- 6. B2 — update CkPmg diamond markers ----
+    // Build the current top-level candidate entity-number set for O(1) lookup.
+    if (ck::IsValid(PC))
+    {
+        auto CurrentEntityNums = TSet<uint32>{};
+        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
+        {
+            const auto EntityNum =
+                static_cast<uint32>(CandidateHandles[CandIdx].Get_Entity().Get_EntityNumber());
+            CurrentEntityNums.Add(EntityNum);
+        }
+
+        // Determine which entity is the focused/highlighted one.
+        const auto FocusedEntityNum = ck::IsValid(FocusEntity)
+            ? static_cast<uint32>(FocusEntity.Get_Entity().Get_EntityNumber())
+            : static_cast<uint32>(0);
+
+        // Remove markers whose entity is no longer a candidate.
+        {
+            auto ToRemove = TArray<uint32>{};
+            for (auto& KV : _Markers)
+            {
+                if (NOT CurrentEntityNums.Contains(KV.Key))
+                {
+                    ToRemove.Add(KV.Key);
+                }
+            }
+            for (const auto EntityNum : ToRemove)
+            {
+                auto Handle = static_cast<FCk_Handle>(_Markers[EntityNum]);
+                if (ck::IsValid(Handle))
+                {
+                    UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(Handle);
+                }
+                _Markers.Remove(EntityNum);
+            }
+        }
+
+        // Create markers for new candidates; update highlight color.
+        // Diamond shape: UCk_Utils_Pmg_FlatShapes::Create_Diamond.
+        // We create the shape as a child of the candidate entity (InOwningEntity = candidate handle)
+        // so it shares the entity's world transform via the CkPmg scene-node hierarchy.
+        // Duration = -1.0f → persistent until explicitly destroyed.
+        //
+        // Diamond color convention:
+        //   - Default (non-focused): dim teal  FLinearColor(0.2f, 0.6f, 0.6f, 0.6f)
+        //   - Focused:               bright white-cyan FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)
+        //
+        // Highlight approach: because Request_SetColor issues a deferred request processed next
+        // tick, we send it every frame for the focused marker (cheap: request is small). This
+        // avoids tracking last-highlighted-id and handles the common case (one focused entity per
+        // frame) with minimal overhead. Non-focused markers only get Request_SetColor on the frame
+        // their highlight state CHANGES — but since we can't know if a prior frame highlighted them
+        // without extra state, the simpler path is to set color for all markers each tick. Each
+        // marker sends at most one SetColor request per tick, which is the documented usage pattern.
+        static const FLinearColor MarkerColor_Default  { 0.2f, 0.6f, 0.6f, 0.6f };
+        static const FLinearColor MarkerColor_Focused  { 0.0f, 1.0f, 1.0f, 1.0f };
+        static constexpr float    MarkerSize_Default   = 40.0f;
+        static constexpr float    MarkerSize_Focused   = 60.0f;
+
+        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
+        {
+            auto CandHandle  = CandidateHandles[CandIdx];
+            const auto EntityNum =
+                static_cast<uint32>(CandHandle.Get_Entity().Get_EntityNumber());
+
+            const auto bIsFocused = (EntityNum == FocusedEntityNum && ck::IsValid(FocusEntity));
+
+            if (NOT _Markers.Contains(EntityNum))
+            {
+                // Create a new persistent diamond marker owned by the candidate entity.
+                // Placed at a small vertical offset so the diamond sits above the entity pivot.
+                const auto MarkerOffset = FTransform{
+                    FRotator::ZeroRotator,
+                    FVector{ 0.0f, 0.0f, 80.0f },
+                    FVector::OneVector };
+
+                auto ShapeHandle = UCk_Utils_Pmg_FlatShapes::Create_Diamond(
+                    CandHandle,
+                    MarkerOffset,
+                    bIsFocused ? MarkerSize_Focused : MarkerSize_Default,
+                    /*InThickness=*/5.0f,
+                    bIsFocused ? MarkerColor_Focused : MarkerColor_Default,
+                    /*InDrawLines=*/true,
+                    /*InLineThickness=*/2.0f,
+                    ECk_Plane_Axis::XY,
+                    /*InDuration=*/-1.0f);
+
+                _Markers.Add(EntityNum, ShapeHandle);
+            }
+            else
+            {
+                // Marker already exists — update color to reflect current highlight state.
+                auto& ShapeHandle  = _Markers[EntityNum];
+                const auto NewColor = bIsFocused ? MarkerColor_Focused : MarkerColor_Default;
+                UCk_Utils_Pmg_DebugShape_UE::Request_SetColor(
+                    ShapeHandle,
+                    FCk_Request_Pmg_DebugShape_SetColor{ NewColor });
+            }
+        }
+    }
+
+    // ---- 7. Build model ----
     auto Model = FCk_DebugOverlay_EntityModel{};
 
     if (ck::IsValid(FocusEntity))
@@ -388,7 +544,7 @@ auto
         Build_Model(FocusEntity, _Providers, *Layout, Now, Model);
     }
 
-    // ---- 7. Push to root ----
+    // ---- 8. Push to root ----
     Push_ToRoot(Model, *Layout, CandidateHandles, Candidates, _Providers, PC, Now);
 
     return true; // keep ticking
@@ -666,6 +822,14 @@ auto
 
         OutModel.Sections.Add(MoveTemp(Section));
     }
+
+    // TODO(batch-C): parent-entity-summarizes-sub-entities aggregation.
+    // When a top-level entity owns sub-entities (e.g. scene-node children, SM states),
+    // collect their provider output and fold it into a synthesized summary section here,
+    // so the focus card shows a single rolled-up view instead of showing only the root
+    // entity's own data. This requires walking the lifetime-owner tree from InFocusEntity
+    // and calling Build_Model recursively (or a lightweight variant) for each sub-entity,
+    // then merging the resulting sections under a "Children" header.
 }
 
 auto
@@ -691,17 +855,40 @@ auto
     { return; }
     _RootWidget->Set_FocusCardContent(InModel, InLayout.DefaultStyle, *_History, InNow);
 
-    // ---- World tags: one per on-screen candidate ----
-    auto WorldTags = TArray<TPair<FVector2D, FText>>{};
+    // ---- World tags: one per on-screen candidate (B1 — distance-scaled / faded / culled) ----
+    auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
 
     if (ck::IsValid(InPC))
     {
+        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+
+        // Read distance-scaling params from settings with safe defaults.
+        const auto MaxDist       = Settings ? Settings->MaxDist       : 5000.0f;
+        const auto NearDist      = Settings ? Settings->NearDist      : 600.0f;
+        const auto FarDist       = Settings ? Settings->FarDist       : 4000.0f;
+        const auto MinScale      = Settings ? Settings->MinScale      : 0.5f;
+        const auto FadeStartDist = Settings ? Settings->FadeStartDist : 3000.0f;
+
+        // Retrieve the camera viewpoint (already computed above — re-query here because
+        // Push_ToRoot does not receive the Viewpoint struct directly).
+        auto CamLoc = FVector::ZeroVector;
+        {
+            auto CamRot = FRotator::ZeroRotator;
+            InPC->GetPlayerViewPoint(CamLoc, CamRot);
+        }
+
         for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
         {
             if (NOT InCandidates[CandIdx].bIsOnScreen)
             { continue; }
 
             const auto& Handle = InCandidateHandles[CandIdx];
+
+            // B1 — distance cull.
+            const auto Dist = static_cast<float>(
+                FVector::Dist(CamLoc, InCandidates[CandIdx].WorldLocation));
+            if (Dist > MaxDist)
+            { continue; }
 
             // Build compact token: concatenate top providers' tokens (skip empty).
             auto TokenParts = TArray<FString>{};
@@ -750,8 +937,22 @@ auto
                 /*bPlayerViewportRelative=*/false))
             { continue; }
 
-            const auto LabelText = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
-            WorldTags.Emplace(ScreenPos, LabelText);
+            // B1 — compute scale and opacity from distance.
+            const auto Scale = FMath::GetMappedRangeValueClamped(
+                FVector2D{ NearDist, FarDist },
+                FVector2D{ 1.0f, MinScale },
+                Dist);
+            const auto Opacity = FMath::GetMappedRangeValueClamped(
+                FVector2D{ FadeStartDist, MaxDist },
+                FVector2D{ 1.0f, 0.15f },
+                Dist);
+
+            auto TagInfo      = FCk_DebugOverlay_WorldTagInfo{};
+            TagInfo.ScreenPos = ScreenPos;
+            TagInfo.Text      = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
+            TagInfo.Scale     = Scale;
+            TagInfo.Opacity   = Opacity;
+            WorldTags.Add(MoveTemp(TagInfo));
 
             // Hard cap to avoid clutter in dense scenes (e.g. crowds).
             if (WorldTags.Num() >= 16)

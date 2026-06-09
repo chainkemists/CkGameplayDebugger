@@ -19,7 +19,9 @@ public class CkEntityDebugOverlay : CkModuleRules
             // AI vertical-slice feature deps (more added as providers are ported):
             "CkStateMachine", "CkGoap", "CkPhysics", "CkAnimation", "CkRecord",
             // Attribute providers (FloatAttributes + IntegerAttributes):
-            "CkAttribute", "CkLabel"
+            "CkAttribute", "CkLabel",
+            // B2 — in-world diamond markers:
+            "CkPmg"
         });
 
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)

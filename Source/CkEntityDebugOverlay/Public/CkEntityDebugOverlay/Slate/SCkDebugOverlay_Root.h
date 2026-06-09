@@ -4,6 +4,8 @@
 #include "Containers/Array.h"
 #include "Math/Vector2D.h"
 
+#include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_WorldTag.h"
+
 struct FCk_DebugOverlay_EntityModel;
 struct FCk_DebugOverlay_RenderStyle;
 class  FCk_DebugOverlay_History;
@@ -37,9 +39,10 @@ public:
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow) -> void;
 
-    // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per entry at the
-    // given screen position. Positions are in absolute viewport pixels (top-left origin).
-    auto Update_WorldTags(const TArray<TPair<FVector2D, FText>>& InTags) -> void;
+    // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per entry.
+    // Each entry carries a screen position (absolute viewport pixels, top-left origin),
+    // label text, and distance-driven scale + opacity (B1).
+    auto Update_WorldTags(const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags) -> void;
 
 private:
     TSharedPtr<SCkDebugOverlay_FocusCard> _FocusCard;

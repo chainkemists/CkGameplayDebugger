@@ -55,6 +55,26 @@ auto Resolve_Style(
     return Style;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto Validate_Layout(
+    const FCk_DebugOverlay_Layout& Layout,
+    const FGameplayTagContainer&   KnownProviderTags) -> TArray<FString>
+{
+    TArray<FString> Problems;
+    auto CheckTag = [&](const FGameplayTag& Tag)
+    {
+        if (Tag.IsValid() && !KnownProviderTags.HasTagExact(Tag))
+        {
+            Problems.Add(FString::Printf(
+                TEXT("Layout references unknown provider tag: %s"), *Tag.ToString()));
+        }
+    };
+    for (const auto& Tag : Layout.EnabledProviders) { CheckTag(Tag); }
+    for (const auto& Entry : Layout.Entries)        { CheckTag(Entry.ProviderTag); }
+    return Problems;
+}
+
 } // namespace ck_debugoverlay
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -92,7 +92,7 @@ auto
 
 auto
     SCkDebugOverlay_Root::
-    Update_WorldTags(const TArray<TPair<FVector2D, FText>>& InTags)
+    Update_WorldTags(const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags)
     -> void
 {
     if (NOT _TagCanvas.IsValid())
@@ -102,27 +102,28 @@ auto
 
     _TagCanvas->ClearChildren();
 
-    for (const auto& TagEntry : InTags)
+    for (const auto& TagInfo : InTags)
     {
-        const FVector2D& ScreenPos = TagEntry.Key;
-        const FText&     TagText   = TagEntry.Value;
-
         // SConstraintCanvas positions children via Offset (left, top, right, bottom)
         // when anchored at (0,0)-(0,0) (top-left corner, size driven by Offset width/height).
         // We set left/top to the desired screen position and right/bottom to provide the
         // preferred slot dimensions (width = WorldTagSlotSize.X, height = WorldTagSlotSize.Y).
-        const auto OffsetLeft   = static_cast<float>(ScreenPos.X);
-        const auto OffsetTop    = static_cast<float>(ScreenPos.Y);
+        const auto OffsetLeft   = static_cast<float>(TagInfo.ScreenPos.X);
+        const auto OffsetTop    = static_cast<float>(TagInfo.ScreenPos.Y);
         const auto OffsetRight  = OffsetLeft  + OverlayRoot_Constants::WorldTagSlotWidth;
         const auto OffsetBottom = OffsetTop   + OverlayRoot_Constants::WorldTagSlotHeight;
+
+        TSharedPtr<SCkDebugOverlay_WorldTag> WorldTag;
+        SAssignNew(WorldTag, SCkDebugOverlay_WorldTag)
+            .Text(TagInfo.Text);
+        WorldTag->Set_Style(TagInfo.Scale, TagInfo.Opacity);
 
         _TagCanvas->AddSlot()
             .Anchors(FAnchors{ 0.0f, 0.0f, 0.0f, 0.0f })
             .Offset(FMargin{ OffsetLeft, OffsetTop, OffsetRight, OffsetBottom })
             .Alignment(FVector2D{ 0.0f, 0.0f })
             [
-                SNew(SCkDebugOverlay_WorldTag)
-                    .Text(TagText)
+                WorldTag.ToSharedRef()
             ];
     }
 }

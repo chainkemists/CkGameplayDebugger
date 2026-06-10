@@ -13,10 +13,13 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Provider.h"
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
 
-// B2 — CkPmg diamond markers: FCk_Handle_Pmg_DebugShape type-safe handle.
-#include "CkPmg/CkPmg_Fragment_Data.h"
+#include "UObject/StrongObjectPtr.h"
 
 #include "CkDebugOverlay_Subsystem.generated.h"
+
+class APlayerController;
+class UCanvas;
+class UTexture2D;
 
 // ====================================================================================================================
 // UCk_DebugOverlay_Subsystem
@@ -120,21 +123,44 @@ private:
     // Active layout index into Settings->Layouts.
     int32 _ActiveLayoutIndex = INDEX_NONE;
 
-    // B2 — CkPmg in-world diamond markers.
-    // Key: entity number (uint32). Value: the marker debug-shape handle.
-    // Marker entities are created once per top-level candidate and destroyed on
-    // deactivation or when the candidate leaves the set.
-    TMap<uint32, FCk_Handle_Pmg_DebugShape> _Markers;
+    // B2 — screen-space ECS-diamond marker billboards. Same textures + UDebugDrawService
+    // canvas-tile approach as the ECS Debugger's viewport picker (constant screen size,
+    // no per-entity marker entities). Tinted by hierarchy depth; the focused candidate
+    // uses the hover texture, full opacity, and a slight upscale.
+    struct FMarkerDraw
+    {
+        FVector WorldPos   = FVector::ZeroVector;
+        int32   Depth      = 0;
+        bool    bIsFocused = false;
+    };
 
-    // Single transient parent that OWNS all diamond markers (kept at origin, no
-    // transform). Markers are positioned in world space + tracked via Request_SetTransform.
-    // Owning them by the parent (not the candidate) avoids double-transforming the shape
-    // by the candidate's own world transform. Cascade-destroyed on deactivate.
-    FCk_Handle _OverlayParent;
+    auto DoDrawMarkers(UCanvas* InCanvas, APlayerController* InPC) -> void;
+
+    TStrongObjectPtr<UTexture2D> _MarkerTexture;
+    TStrongObjectPtr<UTexture2D> _MarkerHoverTexture;
+    FDelegateHandle              _DebugDrawHandle_Game;
+    FDelegateHandle              _DebugDrawHandle_Editor;
+
+    // Snapshot built each DoTick, consumed by DoDrawMarkers (which fires per-viewport
+    // from the debug-draw service, outside our tick).
+    TArray<FMarkerDraw> _MarkerDraws;
+
+    // True while the user is ejected from PIE (F8) and the editor camera drives the
+    // view — focus picking follows it; PC-projected world tags are suppressed.
+    bool _ViewpointIsEjected = false;
 
     // B3 — Double-tap lock detection.
     // Tracks the timestamp of the most recent LockKey press for double-tap detection.
     double _LastLockKeyPressTime = -1.0;
+
+    // Double-tap detection for EcsDebuggerFocusKey (focus entity in the ECS Debugger).
+    double _LastEcsFocusKeyPressTime = -1.0;
+
+    // Double-tap detection for CycleCoLocatedKey (cycle through co-located entities).
+    double _LastCycleKeyPressTime = -1.0;
+
+    // Throttle for the ~1/sec marker diagnostics log line in DoTick.
+    double _LastMarkerLogTime = -1.0;
 
     // PIE world override: INDEX_NONE = use own LP world.
     int32 _WorldOverrideIndex = INDEX_NONE;

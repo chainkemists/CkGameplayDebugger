@@ -3,6 +3,8 @@
 #include "NativeGameplayTags.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 
@@ -74,34 +76,45 @@ auto FCk_DebugOverlay_Provider_EntityInfo::Collect(
     Out.ProviderTag  = Get_ProviderTag();
     Out.SortPriority = Get_SortPriority();
 
-    // --- Class (debug name) ---
-    // Inspector reads: UCk_Utils_Handle_UE::Get_DebugName(E).ToString()
-    // "Lifetime" is not directly exposed via the inspector — the inspector
-    // shows Name/ID/Actor, not a numeric lifetime counter. We expose the
-    // debug-name as "Class" (it typically encodes the script class leaf).
-    // BATCH-VERIFY: confirm this is the intended mapping or add a
-    // CkEntityLifetime fragment accessor for a tick/seconds counter.
+    // --- Class (cleaned debug name) ---
+    // Default__/_C/_0 noise and embedded handle echoes are stripped — the raw
+    // form ("SCENE NODE: [37|0(37)(Default__…)]") tripled the card width.
     if (Cfg.EnabledFields.HasTagExact(FieldTag_Class()))
     {
-        const FName DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
         FCk_DebugOverlay_Row Row;
         Row.FieldTag = FieldTag_Class();
-        Row.Value    = FText::FromName(DebugName);
+        Row.Value    = FText::FromString(ck::DebugNameClean::Get_CleanName(DebugName.ToString()));
         Row.Severity = ECk_DebugOverlay_Severity::Normal;
         Out.Rows.Add(MoveTemp(Row));
     }
 
-    // --- Lifetime ---
-    // The ECS inspector shows entity handle ID, not a wall-clock lifetime.
-    // We emit the handle string as the "Lifetime" row since there is no
-    // readily accessible lifetime-seconds accessor visible in CkEcs/CkEcsExt.
-    // BATCH-VERIFY: locate FCk_Fragment_EntityLifetime or equivalent and
-    // replace with Get_LifetimeSeconds() if it exists.
+    // --- Lifetime (owner) ---
+    // The entity's own handle is already in the card header — echoing it here was
+    // pure duplication. Show the lifetime OWNER instead: that's the one piece of
+    // identity the header does NOT carry.
     if (Cfg.EnabledFields.HasTagExact(FieldTag_Lifetime()))
     {
+        auto OwnerStr = FString{};
+
+        const auto LifetimeOwner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Entity);
+        if (ck::Is_NOT_Valid(LifetimeOwner) ||
+            UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(LifetimeOwner))
+        {
+            OwnerStr = TEXT("top-level");
+        }
+        else
+        {
+            const auto OwnerName = UCk_Utils_Handle_UE::Get_DebugName(LifetimeOwner);
+            const auto OwnerNum  = static_cast<uint32>(LifetimeOwner.Get_Entity().Get_EntityNumber());
+            OwnerStr = OwnerName.IsNone()
+                ? FString::Printf(TEXT("→ #%u"), OwnerNum)
+                : FString::Printf(TEXT("→ %s"), *ck::DebugNameClean::Get_CleanName(OwnerName.ToString()));
+        }
+
         FCk_DebugOverlay_Row Row;
         Row.FieldTag = FieldTag_Lifetime();
-        Row.Value    = UCk_Utils_Handle_UE::Conv_HandleToText(Entity);
+        Row.Value    = FText::FromString(OwnerStr);
         Row.Severity = ECk_DebugOverlay_Severity::Normal;
         Out.Rows.Add(MoveTemp(Row));
     }
@@ -117,7 +130,7 @@ auto FCk_DebugOverlay_Provider_EntityInfo::Get_CompactToken(
 {
     if (ck::Is_NOT_Valid(Entity)) { return {}; }
     const FName DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
-    return FString::Printf(TEXT("Info:%s"), *DebugName.ToString());
+    return FString::Printf(TEXT("Info:%s"), *ck::DebugNameClean::Get_CleanName(DebugName.ToString()));
 }
 
 // --------------------------------------------------------------------------------------------------------------------

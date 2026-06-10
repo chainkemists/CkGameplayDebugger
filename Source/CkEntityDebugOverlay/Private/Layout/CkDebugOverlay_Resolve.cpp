@@ -20,8 +20,9 @@ auto Resolve_EnabledFields(
 
     for (const auto& F : AllFields)
     {
-        // Path 1: provider is in EnabledProviders → honour DefaultEnabled.
-        const bool ViaParent = ParentEnabled && F.DefaultEnabled;
+        // Path 1: provider is in EnabledProviders → honour DefaultEnabled
+        // (or take every field when the layout opts into bEnableAllFields).
+        const bool ViaParent = ParentEnabled && (F.DefaultEnabled || Layout.bEnableAllFields);
 
         // Path 2: provider has an Entry but no explicit field list → honour DefaultEnabled.
         const bool ViaEntryAll = Entry && !EntryHasFields && F.DefaultEnabled;

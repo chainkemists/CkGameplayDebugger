@@ -90,6 +90,14 @@ auto
 
     _ContentBox->ClearChildren();
 
+    // Settings-driven font scaling (PlateFontScale × layout FontScale), floored so
+    // text never becomes unreadable.
+    const auto FontScale  = FMath::Clamp(InStyle.FontScale, 0.5f, 3.0f);
+    const auto ScaledFont = [FontScale](int32 InBaseSize) -> int32
+    {
+        return FMath::Max(6, FMath::RoundToInt(InBaseSize * FontScale));
+    };
+
     // ---- Header row — SCkDebug_EntityRef pill (entity identity, consistent with debugger style) ----
     // The overlay is HitTestInvisible, so the EntityRef click is a no-op — but we still get
     // the canonical entity rendering (ID, version, debug name).
@@ -100,7 +108,7 @@ auto
             SNew(SCkDebug_EntityRef)
                 .Entity(InModel.Entity)
                 .ShowName(true)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH3()))
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeH3())))
         ];
 
     // ---- Sections (sorted by SortPriority) ----
@@ -115,16 +123,38 @@ auto
     // FCk_Entity::Get_EntityNumber() returns the entt entity index (uint32-compatible).
     const auto EntityId = static_cast<uint32>(InModel.Entity.Get_Entity().Get_EntityNumber());
 
+    // Legend entries collected for the providers actually rendered:
+    // colored abbrev pill + muted expanded name.
+    struct FLegendEntry
+    {
+        FString      Abbrev;
+        FString      FullName;
+        FLinearColor Color = FLinearColor::White;
+    };
+    auto LegendEntries = TArray<FLegendEntry>{};
+
     for (const auto& Section : SortedSections)
     {
+        // A section whose provider contributed no rows renders as a lone chip /
+        // blank-looking line — skip it entirely.
+        if (Section.Rows.IsEmpty())
+        { continue; }
+
         const auto ProviderColor = Get_ProviderColor(Section.ProviderTag);
-        const auto ProviderName  = FText::FromString(
-            ck_debugoverlay::Get_LeafName(Section.ProviderTag).ToUpper());
+        const auto ProviderLeaf  = ck_debugoverlay::Get_LeafName(Section.ProviderTag);
+        const auto ProviderAbbr  = ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf);
+        const auto ProviderName  = FText::FromString(ProviderAbbr);
+
+        LegendEntries.Add(FLegendEntry{ ProviderAbbr, ProviderLeaf, ProviderColor });
 
         // One color-grouped flow line per section:
         //   [PROVIDER]  [KEY value]  [KEY trail‹ value] ...
+        // Explicit PreferredSize, NOT UseAllottedSize: the wrap boxes are recreated
+        // every Set_Model call, so the allotted-size sync (which happens in Tick)
+        // never runs — desired size would wrap at the 100px default and reserve
+        // phantom empty lines under each section.
         auto SectionRow = SNew(SWrapBox)
-            .UseAllottedSize(true);
+            .PreferredSize(_WrapWidth);
 
         // Provider chip — solid provider-colored pill with dark text.
         SectionRow->AddSlot()
@@ -139,7 +169,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(ProviderName)
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
                             .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                     ]
             ];
@@ -150,6 +180,11 @@ auto
 
         for (const auto& Row : Section.Rows)
         {
+            // Rows with no value and no explicit history render as an empty chip —
+            // skip them (providers sometimes emit placeholders for absent data).
+            if (Row.Value.IsEmpty() && Row.ExplicitHistory.IsEmpty())
+            { continue; }
+
             const FCk_DebugOverlay_HistoryKey HistKey{ EntityId, Row.FieldTag };
 
             // Breadcrumb trail (explicit history wins; else diff-tracked ring).
@@ -195,7 +230,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FieldLabel)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
                         .ColorAndOpacity(FieldKeyColor)
                 ];
 
@@ -206,7 +241,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TrailText + FocusCard_Constants::BreadcrumbSeparator))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkDebugStyle::FontSizeSmall())))
                             .ColorAndOpacity(CkDebugStyle::TextMute())
                     ];
             }
@@ -216,7 +251,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(Row.Value)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeSmall())))
                         .ColorAndOpacity(ValueColor)
                 ];
 
@@ -240,6 +275,58 @@ auto
             .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
             [
                 SectionRow
+            ];
+    }
+
+    // ---- Legend — colored abbrev pill + muted expanded name, one pair per provider ----
+    if (LegendEntries.Num() > 0)
+    {
+        auto LegendRow = SNew(SWrapBox)
+            .PreferredSize(_WrapWidth);
+
+        for (const auto& Entry : LegendEntries)
+        {
+            auto Pair = SNew(SHorizontalBox);
+
+            Pair->AddSlot()
+                .AutoWidth().VAlign(VAlign_Center)
+                .Padding(FMargin{ 0.0f, 0.0f, 2.0f, 0.0f })
+                [
+                    SNew(SBorder)
+                        .BorderImage(CkDebugStyle::GetRoundedBrush())
+                        .BorderBackgroundColor(Entry.Color)
+                        .VAlign(VAlign_Center)
+                        .Padding(FMargin{ 3.0f, 0.0f })
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(Entry.Abbrev))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                                .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
+                        ]
+                ];
+
+            Pair->AddSlot()
+                .AutoWidth().VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(Entry.FullName))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                        .ColorAndOpacity(CkDebugStyle::TextMute())
+                ];
+
+            LegendRow->AddSlot()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f })
+                [
+                    Pair
+                ];
+        }
+
+        _ContentBox->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin{ 0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f })
+            [
+                LegendRow
             ];
     }
 }

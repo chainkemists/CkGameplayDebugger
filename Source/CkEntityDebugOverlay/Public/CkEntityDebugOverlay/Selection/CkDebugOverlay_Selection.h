@@ -14,6 +14,9 @@ namespace ck_debugoverlay
     {
         FVector WorldLocation = FVector::ZeroVector;
         bool    bIsOnScreen   = false;
+
+        // Lifetime-owner hops to the registry transient: 0 = top-level entity.
+        int32   Depth         = 0;
     };
 
     /** Score a single candidate relative to the given viewpoint.

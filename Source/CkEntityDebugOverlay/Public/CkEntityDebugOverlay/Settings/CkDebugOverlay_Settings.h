@@ -32,6 +32,31 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(Categories="Ck.OnScreenDebugger.Layout"))
     FGameplayTag StartingLayout;
 
+    // Viewport corner/edge the focus card (plate) is anchored to. Default is top-right so the
+    // plate doesn't fight with engine on-screen debug text (which uses the top-left).
+    // Applied live — changing it during PIE re-anchors the plate on the next overlay tick.
+    UPROPERTY(Config, EditAnywhere, Category="General")
+    ECk_DebugOverlay_PlateAnchor PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopRight;
+
+    // Width (Slate units) of the main overlay plate. Applied live during PIE.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="240.0", ClampMax="1600.0"))
+    float PlateWidth = 720.0f;
+
+    // Uniform scale applied to the ECS-diamond marker billboards (screen-space icons,
+    // base 28px). Applied live during PIE.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0.2", ClampMax="5.0"))
+    float DiamondScale = 1.0f;
+
+    // Font-size multiplier for the main overlay plate's text. Applied live during PIE.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0.5", ClampMax="2.0"))
+    float PlateFontScale = 1.0f;
+
+    // State-machine state-name depth — same rule as the CkSmDebugger graph: show the
+    // last N underscore-segments of the state class name ("Ck_SmTest_Complex_State_Chase"
+    // → depth 1 → "Chase"). 0 = full (dotted) name.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0", ClampMax="8"))
+    int32 SmStateNameDepth = 1;
+
     // ---- World Tags (B1 — distance-scaled / faded / culled pills) ----
 
     // Distance below which pills appear at full size (unscaled).
@@ -59,6 +84,19 @@ public:
     // Key to tap twice quickly to toggle focus lock.
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey LockKey = EKeys::LeftShift;
+
+    // Key to tap twice quickly to open/select the focused entity in the CK ECS Debugger.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey EcsDebuggerFocusKey = EKeys::LeftControl;
+
+    // Key to tap twice quickly to cycle focus through entities co-located with the
+    // current focus (within CoLocatedRadius). Locks focus onto each in turn.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey CycleCoLocatedKey = EKeys::LeftAlt;
+
+    // World-space radius (cm) within which entities count as co-located for cycling.
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))
+    float CoLocatedRadius = 100.0f;
 
     // Maximum interval (seconds) between two taps to count as a double-tap.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0.05", ClampMax="1.0"))

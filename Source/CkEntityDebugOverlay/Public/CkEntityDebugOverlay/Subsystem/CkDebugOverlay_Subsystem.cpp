@@ -12,6 +12,7 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
+#include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 
@@ -22,11 +23,31 @@
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
+// CkPmg fragment — debug-draw shape entities are excluded from candidacy in Gather.
+#include "CkPmg/CkPmg_Fragment.h"
+
+// Parent→child dotted marker links (one-frame dashed lines, re-drawn per tick).
+#include "CkCore/Debug/CkDebugDraw_Utils.h"
+
+// B2 — marker billboards (UDebugDrawService canvas tiles, ECS-picker textures).
+#include "Debug/DebugDrawService.h"
+#include "Engine/Canvas.h"
+#include "Engine/Texture2D.h"
+#include "CanvasItem.h"
+#include "GameFramework/Pawn.h"
+#if WITH_EDITOR
+#include "TextureCompiler.h"
+#include "Editor.h"
+#include "EditorViewportClient.h"
+#include "LevelEditorViewport.h"
+#endif
+
+// Locally-possessed-pawn marker suppression (owning-actor chain lookup).
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
-// B2 — CkPmg diamond markers.
-#include "CkPmg/CkPmg_Utils_FlatShapes.h"
-#include "CkPmg/CkPmg_Utils.h"
+// Double-tap EcsDebuggerFocusKey → open the focused entity in the CK ECS Debugger.
+#include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -44,48 +65,97 @@ namespace
     // Overlay widget Z-order — sits above game UI but below modal dialogs.
     constexpr int32 OverlayZOrder = 100;
 
-    // Returns true if InHandle is a "top-level" entity that should appear as an overlay candidate.
-    //
-    // Definition: top-level = directly linked to an AActor (owning actor fragment present)
-    //             OR has no entity lifetime-owner parent of its own (its owner IS the transient entity,
-    //             meaning it sits at the root of the ECS hierarchy).
-    //
-    // Sub-entities (scene-node children, SM states, physics proxies, etc.) are excluded because
-    // they create per-object clutter in the candidate list (gym station example: 31 scene nodes).
-    //
-    // BATCH-VERIFY:
-    //   UCk_Utils_OwningActor_UE::Has(Handle)
-    //       — checks for FFragment_OwningActor presence; returns bool.
-    //         Confirmed in CkOwningActor_Utils.h.
-    //   UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle)
-    //       — returns an FCk_Handle to the owner; returns invalid/default if entity has no
-    //         FFragment_LifetimeOwner (i.e. it is the transient entity itself).
-    //         Confirmed in CkEntityLifetime_Utils.h.
-    //   UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Handle)
-    //       — returns true only for the registry transient entity.
-    //         Confirmed in CkEntityLifetime_Utils.h.
-    //   InTransientEntity: passed in for identity comparison — compare lifetime owner
-    //       against the known transient handle via == operator on FCk_Handle.
-    //       BATCH-VERIFY: confirm FCk_Handle operator== compares entity+version (stable identity).
-    auto Is_TopLevelCandidate(const FCk_Handle& InHandle, const FCk_Handle& InTransientEntity) -> bool
-    {
-        // Strategy 1 (preferred): entity has an owning actor — it's an actor-linked game object.
-        if (UCk_Utils_OwningActor_UE::Has(InHandle))
-        { return true; }
+    // Hierarchy-depth gate for overlay candidates. -1 = unlimited; 0 = top-level
+    // entities only; N = include entities up to N lifetime-owner hops below the
+    // registry transient. Tune live: `ck.DebugOverlay.MaxDepth 1`.
+    TAutoConsoleVariable<int32> CVar_DebugOverlay_MaxDepth(
+        TEXT("ck.DebugOverlay.MaxDepth"),
+        -1,
+        TEXT("Max hierarchy depth for overlay candidates. -1 = unlimited, 0 = top-level only, N = up to N levels deep."),
+        ECVF_Cheat);
 
-        // Strategy 2: entity has no lifetime-owner, or its lifetime-owner IS the transient entity.
-        // This catches root-level ECS-only entities (no actor link) that live at the top of the
-        // ownership hierarchy — e.g. a standalone ECS entity created directly under the transient.
-        const auto LifetimeOwner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InHandle);
-        if (ck::Is_NOT_Valid(LifetimeOwner))
+    // Ultra-condensed multi-line plates for candidates within NearDist of the camera.
+    TAutoConsoleVariable<int32> CVar_DebugOverlay_NearPlates(
+        TEXT("ck.DebugOverlay.NearPlates"),
+        1,
+        TEXT("1 = show ultra-condensed multi-line plates for candidates within NearDist; 0 = single-line pills only."),
+        ECVF_Cheat);
+
+#if WITH_EDITOR
+    // Ejected-PIE discriminator — mirrors FCkDebuggerModel_ViewportPicker:
+    // GEditor->GetActiveViewport() is the PIE game viewport while possessed and the
+    // level editor viewport itself while ejected. Other signals don't reliably flip.
+    auto TryGet_LevelEditorViewport() -> FEditorViewportClient*
+    {
+        if (GEditor == nullptr || GEditor->PlayWorld == nullptr)
+        { return nullptr; }
+
+        auto* LEVC = GCurrentLevelEditingViewportClient;
+        if (LEVC == nullptr || LEVC->Viewport == nullptr)
+        { return nullptr; }
+
+        if (GEditor->GetActiveViewport() != LEVC->Viewport)
+        { return nullptr; }
+
+        return LEVC;
+    }
+#endif
+
+    // Locally possessed pawn (+ controller + attached actors) — their entities get no
+    // marker billboard, otherwise a marker sits permanently at screen center. While
+    // ejected the pawn is just another world object, so nothing is ignored (mirrors
+    // the ECS picker's Ignore Self behavior).
+    auto Get_LocalIgnoredActors(UWorld* InWorld, bool InIsEjected) -> TArray<TWeakObjectPtr<const AActor>>
+    {
+        auto IgnoredActors = TArray<TWeakObjectPtr<const AActor>>{};
+
+        if (InIsEjected || ck::Is_NOT_Valid(InWorld))
+        { return IgnoredActors; }
+
+        auto* PC = InWorld->GetFirstPlayerController();
+        if (ck::Is_NOT_Valid(PC))
+        { return IgnoredActors; }
+
+        auto* LocalPawn = PC->GetPawn().Get();
+        if (ck::Is_NOT_Valid(LocalPawn))
+        { return IgnoredActors; }
+
+        IgnoredActors.Add(LocalPawn);
+        IgnoredActors.Add(PC);
+
+        constexpr auto ResetArray      = true;
+        constexpr auto RecurseAttached = true;
+        auto AttachedChildren = TArray<AActor*>{};
+        LocalPawn->GetAttachedActors(AttachedChildren, ResetArray, RecurseAttached);
+        for (auto* AttachedActor : AttachedChildren)
         {
-            // No lifetime-owner fragment — this entity IS the transient root or an orphan.
-            // The transient entity itself is never a debug candidate; orphans are treated as top-level.
-            return NOT UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(InHandle);
+            if (ck::IsValid(AttachedActor))
+            {
+                IgnoredActors.Add(AttachedActor);
+            }
         }
 
-        // Owner is the transient entity → top-level.
-        return LifetimeOwner == InTransientEntity;
+        return IgnoredActors;
+    }
+
+    auto Is_EntityOwnedByIgnoredActor(
+        const FCk_Handle& InEntity,
+        const TArray<TWeakObjectPtr<const AActor>>& InIgnoredActors) -> bool
+    {
+        if (InIgnoredActors.IsEmpty() || ck::Is_NOT_Valid(InEntity))
+        { return false; }
+
+        auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
+        if (ck::Is_NOT_Valid(OwningActor))
+        { return false; }
+
+        for (const auto& IgnoredActorWeak : InIgnoredActors)
+        {
+            if (OwningActor == IgnoredActorWeak.Get())
+            { return true; }
+        }
+
+        return false;
     }
 }
 
@@ -274,6 +344,37 @@ auto
     // across PIE stop/start cycles.
     _History = MakeUnique<FCk_DebugOverlay_History>();
 
+    // B2 — marker billboards: same textures as the ECS Debugger's viewport picker.
+    if (NOT _MarkerTexture.IsValid())
+    {
+        _MarkerTexture.Reset(LoadObject<UTexture2D>(
+            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker.T_ECSPicker_Marker")));
+    }
+    if (NOT _MarkerHoverTexture.IsValid())
+    {
+        _MarkerHoverTexture.Reset(LoadObject<UTexture2D>(
+            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker_Hover.T_ECSPicker_Marker_Hover")));
+    }
+
+#if WITH_EDITOR
+    // Freshly-imported textures compile platform data asynchronously; force completion so
+    // GetResource() never returns a half-initialized placeholder (same guard as the picker).
+    auto TexturesToFinish = TArray<UTexture*>{};
+    if (_MarkerTexture.IsValid())      { TexturesToFinish.Add(_MarkerTexture.Get()); }
+    if (_MarkerHoverTexture.IsValid()) { TexturesToFinish.Add(_MarkerHoverTexture.Get()); }
+    if (TexturesToFinish.Num() > 0)
+    {
+        FTextureCompilingManager::Get().FinishCompilation(TexturesToFinish);
+    }
+#endif
+
+    // Register on BOTH "Game" and "Editor" show flags so markers keep rendering after
+    // the user ejects with F8 (mirrors the picker's registration).
+    const auto DrawDelegate = FDebugDrawDelegate::CreateUObject(
+        this, &UCk_DebugOverlay_Subsystem::DoDrawMarkers);
+    _DebugDrawHandle_Game   = UDebugDrawService::Register(TEXT("Game"),   DrawDelegate);
+    _DebugDrawHandle_Editor = UDebugDrawService::Register(TEXT("Editor"), DrawDelegate);
+
     // Register the per-frame ticker.
     _TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoTick),
@@ -309,14 +410,18 @@ auto
 
     _History.Reset();
 
-    // B2 — destroy all CkPmg diamond markers by destroying their shared parent
-    // (cascade-destroys the child shapes), then drop the lookup map.
-    if (ck::IsValid(_OverlayParent))
+    // B2 — stop drawing marker billboards.
+    if (_DebugDrawHandle_Game.IsValid())
     {
-        UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(_OverlayParent);
+        UDebugDrawService::Unregister(_DebugDrawHandle_Game);
+        _DebugDrawHandle_Game.Reset();
     }
-    _OverlayParent = FCk_Handle{};
-    _Markers.Empty();
+    if (_DebugDrawHandle_Editor.IsValid())
+    {
+        UDebugDrawService::Unregister(_DebugDrawHandle_Editor);
+        _DebugDrawHandle_Editor.Reset();
+    }
+    _MarkerDraws.Empty();
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
@@ -350,9 +455,22 @@ auto
     _LastFrameCandidates = CandidateHandles;
 
     // ---- 2. Compute viewpoint ----
+    // Ejected PIE (F8): the player camera freezes but the user is flying the editor
+    // viewport — hover/focus selection must follow THAT camera.
     auto Viewpoint = ck_debugoverlay::FViewpoint{};
     auto* PC = World->GetFirstPlayerController();
-    if (ck::IsValid(PC))
+
+    _ViewpointIsEjected = false;
+#if WITH_EDITOR
+    if (auto* LEVC = TryGet_LevelEditorViewport())
+    {
+        Viewpoint.Location  = LEVC->GetViewLocation();
+        Viewpoint.Forward   = LEVC->GetViewRotation().Vector();
+        _ViewpointIsEjected = true;
+    }
+#endif
+
+    if (NOT _ViewpointIsEjected && ck::IsValid(PC))
     {
         auto CamLoc = FVector::ZeroVector;
         auto CamRot = FRotator::ZeroRotator;
@@ -362,7 +480,19 @@ auto
     }
 
     // ---- 3. Resolve on-screen flags for all candidates ----
-    if (ck::IsValid(PC))
+    // Ejected: PC-based screen projection reflects the frozen player camera, not the
+    // view being rendered — approximate "on screen" as "in front of the editor camera".
+    if (_ViewpointIsEjected)
+    {
+        for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
+        {
+            const auto ToCandidate =
+                (Candidates[CandIdx].WorldLocation - Viewpoint.Location).GetSafeNormal();
+            Candidates[CandIdx].bIsOnScreen =
+                FVector::DotProduct(ToCandidate, Viewpoint.Forward) > 0.0f;
+        }
+    }
+    else if (ck::IsValid(PC))
     {
         for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
         {
@@ -429,121 +559,163 @@ auto
                     _LastLockKeyPressTime = Now;
                 }
             }
+
+            // Double-tap CycleCoLocatedKey (default Left Alt): cycle focus through
+            // candidates within CoLocatedRadius of the current focus and lock on —
+            // the only way to reach entities stacked at the same world position.
+            if (PC->WasInputKeyJustPressed(Settings->CycleCoLocatedKey))
+            {
+                const auto TimeSinceLast = static_cast<float>(Now - _LastCycleKeyPressTime);
+                if (_LastCycleKeyPressTime >= 0.0 &&
+                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
+                {
+                    if (ck::IsValid(FocusEntity) &&
+                        Candidates.IsValidIndex(_LockedCandidateIndex))
+                    {
+                        const auto  FocusPos  = Candidates[_LockedCandidateIndex].WorldLocation;
+                        const auto  RadiusSq  = FMath::Square(Settings->CoLocatedRadius);
+
+                        auto CoLocated = TArray<int32>{};
+                        for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
+                        {
+                            if (FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
+                            {
+                                CoLocated.Add(CandIdx);
+                            }
+                        }
+
+                        if (CoLocated.Num() > 1)
+                        {
+                            const auto CurPos = CoLocated.IndexOfByKey(_LockedCandidateIndex);
+                            _LockedCandidateIndex = CoLocated[(CurPos + 1) % CoLocated.Num()];
+                            _FocusLocked = true;
+                            ck::debug_overlay::Log(
+                                TEXT("Cycled co-located focus ({} candidates within {}cm)"),
+                                CoLocated.Num(), Settings->CoLocatedRadius);
+                        }
+                    }
+                    _LastCycleKeyPressTime = -1.0;
+                }
+                else
+                {
+                    _LastCycleKeyPressTime = Now;
+                }
+            }
+
+            // Double-tap EcsDebuggerFocusKey (default Left Ctrl): open/select the
+            // focused entity in the CK ECS Debugger via the cross-debugger navigator
+            // (no-op if the CkEcsDebugger module isn't loaded).
+            if (PC->WasInputKeyJustPressed(Settings->EcsDebuggerFocusKey))
+            {
+                const auto TimeSinceLast = static_cast<float>(Now - _LastEcsFocusKeyPressTime);
+                if (_LastEcsFocusKeyPressTime >= 0.0 &&
+                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
+                {
+                    if (ck::IsValid(FocusEntity))
+                    {
+                        ck::DebugNav::Goto_Entity(FocusEntity);
+                        ck::debug_overlay::Log(TEXT("Focused entity sent to ECS Debugger (double-tap)"));
+                    }
+                    _LastEcsFocusKeyPressTime = -1.0;
+                }
+                else
+                {
+                    _LastEcsFocusKeyPressTime = Now;
+                }
+            }
         }
     }
 
-    // ---- 6. B2 — update CkPmg diamond markers ----
-    // Build the current top-level candidate entity-number set for O(1) lookup.
+    // ---- 6. B2 — marker billboards + parent→child links ----
+    // Markers are screen-space ECS-diamond icons drawn by DoDrawMarkers (registered
+    // with UDebugDrawService, same approach + textures as the ECS Debugger's viewport
+    // picker). Here we only snapshot what to draw and emit the dashed hierarchy links.
     if (ck::IsValid(PC))
     {
-        auto CurrentEntityNums = TSet<uint32>{};
-        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
-        {
-            const auto EntityNum =
-                static_cast<uint32>(CandidateHandles[CandIdx].Get_Entity().Get_EntityNumber());
-            CurrentEntityNums.Add(EntityNum);
-        }
-
-        // Determine which entity is the focused/highlighted one.
         const auto FocusedEntityNum = ck::IsValid(FocusEntity)
             ? static_cast<uint32>(FocusEntity.Get_Entity().Get_EntityNumber())
             : static_cast<uint32>(0);
 
-        // Remove markers whose entity is no longer a candidate.
-        {
-            auto ToRemove = TArray<uint32>{};
-            for (auto& KV : _Markers)
-            {
-                if (NOT CurrentEntityNums.Contains(KV.Key))
-                {
-                    ToRemove.Add(KV.Key);
-                }
-            }
-            for (const auto EntityNum : ToRemove)
-            {
-                auto Handle = static_cast<FCk_Handle>(_Markers[EntityNum]);
-                if (ck::IsValid(Handle))
-                {
-                    UCk_Utils_EntityLifetime_UE::Request_DestroyEntity(Handle);
-                }
-                _Markers.Remove(EntityNum);
-            }
-        }
+        // Per-tick scratch for the parent→child dotted links.
+        auto PosByEntity     = TMap<uint32, FVector>{};
+        auto OwnerEntityNums = TArray<uint32>{};
+        OwnerEntityNums.Init(MAX_uint32, CandidateHandles.Num());
 
-        // Create markers for new candidates; update highlight color.
-        // Diamond shape: UCk_Utils_Pmg_FlatShapes::Create_Diamond.
-        // We create the shape as a child of the candidate entity (InOwningEntity = candidate handle)
-        // so it shares the entity's world transform via the CkPmg scene-node hierarchy.
-        // Duration = -1.0f → persistent until explicitly destroyed.
-        //
-        // Diamond color convention:
-        //   - Default (non-focused): dim teal  FLinearColor(0.2f, 0.6f, 0.6f, 0.6f)
-        //   - Focused:               bright white-cyan FLinearColor(0.0f, 1.0f, 1.0f, 1.0f)
-        //
-        // Highlight approach: because Request_SetColor issues a deferred request processed next
-        // tick, we send it every frame for the focused marker (cheap: request is small). This
-        // avoids tracking last-highlighted-id and handles the common case (one focused entity per
-        // frame) with minimal overhead. Non-focused markers only get Request_SetColor on the frame
-        // their highlight state CHANGES — but since we can't know if a prior frame highlighted them
-        // without extra state, the simpler path is to set color for all markers each tick. Each
-        // marker sends at most one SetColor request per tick, which is the documented usage pattern.
-        static const FLinearColor MarkerColor_Default  { 0.2f, 0.6f, 0.6f, 0.6f };
-        static const FLinearColor MarkerColor_Focused  { 0.0f, 1.0f, 1.0f, 1.0f };
-        static constexpr float    MarkerSize_Default   = 40.0f;
-        static constexpr float    MarkerSize_Focused   = 60.0f;
-        static constexpr float    MarkerZOffset        = 120.0f;
+        // The possessed pawn's entities get no marker — it would sit permanently at
+        // screen center. They remain candidates (focusable/cyclable/plated) on purpose.
+        const auto IgnoredActors = Get_LocalIgnoredActors(World, _ViewpointIsEjected);
 
-        // Ensure the single origin-anchored parent that owns all markers exists.
-        // Shapes are owned by THIS (at origin), positioned via world-space FTransform and
-        // tracked with Request_SetTransform — owning by the candidate would double-apply
-        // the candidate's own world transform and push the diamond off-screen.
-        if (ck::Is_NOT_Valid(_OverlayParent) && ck::IsValid(World))
-        {
-            _OverlayParent = UCk_Utils_EntityLifetime_UE::Request_CreateEntity_TransientOwner(World);
-        }
+        _MarkerDraws.Reset(CandidateHandles.Num());
 
-        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num() && ck::IsValid(_OverlayParent); ++CandIdx)
+        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
         {
-            auto CandHandle  = CandidateHandles[CandIdx];
+            auto CandHandle = CandidateHandles[CandIdx];
             const auto EntityNum =
                 static_cast<uint32>(CandHandle.Get_Entity().Get_EntityNumber());
 
             const auto bIsFocused = (EntityNum == FocusedEntityNum && ck::IsValid(FocusEntity));
 
-            // Compute the marker world position from the candidate's world location.
-            const auto MarkerWorldPos = Candidates[CandIdx].WorldLocation + FVector{ 0.0f, 0.0f, MarkerZOffset };
-
-            if (NOT _Markers.Contains(EntityNum))
+            PosByEntity.Add(EntityNum, Candidates[CandIdx].WorldLocation);
             {
-                // Create a new persistent diamond marker owned by the candidate entity.
-                // The shape is positioned in world space and tracked each tick via
-                // Request_SetTransform (live-tracking overlay pattern).
-                auto ShapeHandle = UCk_Utils_Pmg_FlatShapes::Create_Diamond(
-                    _OverlayParent,
-                    FTransform{ FRotator::ZeroRotator, MarkerWorldPos, FVector::OneVector },
-                    bIsFocused ? MarkerSize_Focused : MarkerSize_Default,
-                    /*InThickness=*/5.0f,
-                    bIsFocused ? MarkerColor_Focused : MarkerColor_Default,
-                    /*InDrawLines=*/true,
-                    /*InLineThickness=*/2.0f,
-                    ECk_Plane_Axis::XY,
-                    /*InDuration=*/-1.0f);
-
-                _Markers.Add(EntityNum, ShapeHandle);
+                const auto LifetimeOwner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(CandHandle);
+                if (ck::IsValid(LifetimeOwner))
+                {
+                    OwnerEntityNums[CandIdx] =
+                        static_cast<uint32>(LifetimeOwner.Get_Entity().Get_EntityNumber());
+                }
             }
 
-            // Every tick — follow the entity's world position and recolor.
-            auto MarkerHandle = static_cast<FCk_Handle>(_Markers[EntityNum]);
-            if (ck::IsValid(MarkerHandle))
-            {
-                auto TransformHandle = UCk_Utils_Transform_UE::Cast(MarkerHandle);
-                UCk_Utils_Transform_UE::Request_SetTransform(
-                    TransformHandle,
-                    FCk_Request_Transform_SetTransform{ FTransform{ MarkerWorldPos } });
-                UCk_Utils_Pmg_DebugShape_UE::Request_SetColor(
-                    _Markers[EntityNum],
-                    FCk_Request_Pmg_DebugShape_SetColor{ bIsFocused ? MarkerColor_Focused : MarkerColor_Default });
-            }
+            if (Is_EntityOwnedByIgnoredActor(CandHandle, IgnoredActors))
+            { continue; }
+
+            auto Draw       = FMarkerDraw{};
+            Draw.WorldPos   = Candidates[CandIdx].WorldLocation;
+            Draw.Depth      = Candidates[CandIdx].Depth;
+            Draw.bIsFocused = bIsFocused;
+            _MarkerDraws.Add(Draw);
+        }
+
+        // Dotted parent→child links: for every candidate whose lifetime owner is also a
+        // candidate, draw a one-frame dashed line between the two (re-issued every tick,
+        // so it tracks both endpoints with no cached state). Line color = the CHILD's
+        // depth tint at full alpha.
+        for (auto CandIdx = 0; CandIdx < CandidateHandles.Num(); ++CandIdx)
+        {
+            const auto OwnerNum = OwnerEntityNums[CandIdx];
+            if (OwnerNum == MAX_uint32)
+            { continue; }
+
+            const auto* ParentPos = PosByEntity.Find(OwnerNum);
+            if (ParentPos == nullptr)
+            { continue; }
+
+            auto LinkColor = ck_debugoverlay::Get_MarkerDepthTint(Candidates[CandIdx].Depth);
+            LinkColor.A = 0.9f;
+
+            UCk_Utils_DebugDraw_UE::DrawDebugDashedLine(
+                World,
+                *ParentPos,
+                Candidates[CandIdx].WorldLocation,
+                /*InDashSize=*/14.0f,
+                LinkColor,
+                /*InDuration=*/0.0f,
+                /*InThickness=*/1.5f);
+        }
+
+        // Throttled diagnostics (~1/sec): candidate/marker counts + first candidate location.
+        if (Now - _LastMarkerLogTime >= 1.0)
+        {
+            _LastMarkerLogTime = Now;
+
+            const auto FirstCandidateLoc = Candidates.Num() > 0
+                ? Candidates[0].WorldLocation.ToString()
+                : FString{TEXT("none")};
+
+            ck::debug_overlay::Log(
+                TEXT("Markers: Candidates=[{}] Markers=[{}] FirstCandidateLoc=[{}]"),
+                CandidateHandles.Num(),
+                _MarkerDraws.Num(),
+                FirstCandidateLoc);
         }
     }
 
@@ -636,6 +808,8 @@ auto
     //
     // BATCH-VERIFY: confirm CK_IGNORE_PENDING_KILL is the correct exclude tag here
     // (mirrors exact ViewportPicker pattern).
+    const auto MaxDepth = CVar_DebugOverlay_MaxDepth.GetValueOnGameThread();
+
     TransientEntity.View<ck::FFragment_Transform, CK_IGNORE_PENDING_KILL>().ForEach(
         [&](FCk_Entity InEntity, const ck::FFragment_Transform& InTransform)
         {
@@ -643,31 +817,28 @@ auto
             if (ck::Is_NOT_Valid(Handle))
             { return; }
 
-            // ---- Sub-entity gate: only top-level entities become overlay candidates. ----
-            // A "top-level" entity is one directly linked to an AActor (owning actor present)
-            // OR one that has no entity lifetime-owner parent (i.e. its immediate owner is the
-            // transient entity — which is the registry root).
+            // Every transform-bearing entity is a candidate (the old "top-level only" gate
+            // missed real inspectables, e.g. crowd agents owned by a player-controller entity).
             //
-            // Rationale: gym stations, scene-node graphs, and other spawned hierarchies produce
-            // 10–30 sub-entities per visible object; showing all of them as separate overlay
-            // candidates creates unusable tag clutter.
-            //
-            // Strategy: UCk_Utils_OwningActor_UE::Has(Handle) returns true only for entities
-            // with a direct actor link (the WithActor / EntityBridge component added an owning
-            // actor fragment). Those are the "game object" roots we want to debug.
-            // Entities that lack an actor link are checked for lifetime-owner: if the lifetime
-            // owner is the transient entity (registry root), the entity is a top-level ECS entity
-            // with no actor link — also a valid candidate. Entities whose lifetime owner is
-            // neither themselves nor the transient entity are sub-entities (scene-node children,
-            // SM states, etc.) and are excluded.
-            //
-            // BATCH-VERIFY: UCk_Utils_OwningActor_UE::Has(Handle) — confirmed in CkOwningActor_Utils.h.
-            // BATCH-VERIFY: UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle) — confirmed in
-            //   CkEntityLifetime_Utils.h. Returns invalid handle if entity has no lifetime-owner
-            //   fragment (i.e. it IS the transient entity).
-            // BATCH-VERIFY: UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Handle) — confirmed.
-            //   Returns true only for the registry transient entity.
-            if (NOT Is_TopLevelCandidate(Handle, TransientEntity))
+            // The ONE mandatory exclusion: debug-draw shape entities. Without it, each of our
+            // own diamond markers (which carry FFragment_Transform) would become a candidate
+            // and receive its own marker next tick — unbounded entity growth. This also keeps
+            // EQS/nav debug shapes out of the candidate list, which is never useful.
+            if (Handle.Has<ck::FFragment_Pmg_DebugShape_Common>())
+            { return; }
+
+            // Hierarchy depth = lifetime-owner hops to the transient (0 = top-level).
+            // Gated by ck.DebugOverlay.MaxDepth; hard cap guards against ownership cycles.
+            auto Depth = 0;
+            {
+                auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
+                while (ck::IsValid(Owner) && NOT (Owner == TransientEntity) && Depth < 32)
+                {
+                    ++Depth;
+                    Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Owner);
+                }
+            }
+            if (MaxDepth >= 0 && Depth > MaxDepth)
             { return; }
 
             // Check if any provider can serve this entity.
@@ -687,6 +858,7 @@ auto
             Candidate.WorldLocation = InTransform.Get_Transform().GetLocation();
             // bIsOnScreen filled in DoTick after projection.
             Candidate.bIsOnScreen   = false;
+            Candidate.Depth         = Depth;
 
             OutHandles.Add(Handle);
             OutCandidates.Add(Candidate);
@@ -729,9 +901,10 @@ auto
     // a fallback / for callers that may read it, but the card no longer uses it as primary display.
     {
         const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(InFocusEntity);
+        const auto CleanName   = ck::DebugNameClean::Get_CleanName(DebugName.ToString());
         const auto EntityNum   = static_cast<int32>(InFocusEntity.Get_Entity().Get_EntityNumber());
         OutModel.Header = FText::FromString(
-            FString::Printf(TEXT("%s [%d]"), *DebugName.ToString(), EntityNum));
+            FString::Printf(TEXT("%s [%d]"), *CleanName, EntityNum));
     }
 
     const auto EntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
@@ -858,18 +1031,32 @@ auto
     if (NOT _RootWidget.IsValid())
     { return; }
 
+    const auto* OverlaySettings = GetDefault<UCk_DebugOverlay_Settings>();
+
+    // ---- Plate anchor + width (settings-driven; cheap no-op when unchanged) ----
+    _RootWidget->Set_PlateLayout(
+        OverlaySettings ? OverlaySettings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopRight,
+        OverlaySettings ? OverlaySettings->PlateWidth  : 720.0f);
+
     // ---- Focus card ----
     // Use the layout's DefaultStyle for the card level; per-provider style applied inside.
+    // The settings' PlateFontScale multiplies the layout's own FontScale.
     // Guard against a missing History (shouldn't happen if called only from DoTick while active,
     // but defensive against edge-cases around deactivation ordering).
     if (NOT _History)
     { return; }
-    _RootWidget->Set_FocusCardContent(InModel, InLayout.DefaultStyle, *_History, InNow, _FocusLocked);
+
+    auto CardStyle = InLayout.DefaultStyle;
+    CardStyle.FontScale *= OverlaySettings ? OverlaySettings->PlateFontScale : 1.0f;
+
+    _RootWidget->Set_FocusCardContent(InModel, CardStyle, *_History, InNow, _FocusLocked);
 
     // ---- World tags: one per on-screen candidate (B1 — distance-scaled / faded / culled) ----
+    // Skipped while ejected: tag positions come from PC-based screen projection, which
+    // reflects the frozen player camera, not the editor camera actually rendering.
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
 
-    if (ck::IsValid(InPC))
+    if (ck::IsValid(InPC) && NOT _ViewpointIsEjected)
     {
         const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
 
@@ -902,7 +1089,11 @@ auto
             { continue; }
 
             // Build compact token: concatenate top providers' tokens (skip empty).
+            // Alongside, collect feature badges (abbrev + provider color) for the
+            // near-plate rendering — these reflect what the entity HAS, independent
+            // of the active layout's enabled-field selection.
             auto TokenParts = TArray<FString>{};
+            auto Badges     = TArray<FCk_DebugOverlay_WorldTagBadge>{};
             for (const auto& Provider : InProviders)
             {
                 if (NOT Provider || NOT Provider->CanProvide(Handle))
@@ -916,6 +1107,10 @@ auto
                 const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
                 if (ProviderLeaf == TEXT("EntityInfo") || ProviderLeaf == TEXT("Transform"))
                 { continue; }
+
+                Badges.Add(FCk_DebugOverlay_WorldTagBadge{
+                    ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
+                    SCkDebugOverlay_FocusCard::Get_ProviderColor(ProviderTag) });
 
                 const auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
                     InLayout, ProviderTag, Provider->Get_FieldTags());
@@ -939,7 +1134,26 @@ auto
                 }
             }
 
-            if (TokenParts.IsEmpty())
+            // Ultra-condensed near plate: candidates within NearDist get a compact
+            // plate — cleaned debug-name header with a row of colored feature badges
+            // (SM / GOAP / …) under it. Toggle with `ck.DebugOverlay.NearPlates 0`.
+            const auto NearPlatesEnabled =
+                CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
+            const auto IsNearPlate = NearPlatesEnabled && Dist <= NearDist;
+
+            const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(Handle);
+            const auto HasRealName = DebugName.IsNone() == false;
+
+            // Far pills require behavioral tokens (identity-only pills are spam at range).
+            // Near plates show when the entity has feature badges OR an explicit name —
+            // close-up, identity alone is worth a plate. Unnamed, feature-less entities
+            // (scene-node children etc.) stay hidden.
+            if (IsNearPlate)
+            {
+                if (Badges.IsEmpty() && NOT HasRealName)
+                { continue; }
+            }
+            else if (TokenParts.IsEmpty())
             { continue; }
 
             auto ScreenPos = FVector2D{};
@@ -960,18 +1174,150 @@ auto
 
             auto TagInfo      = FCk_DebugOverlay_WorldTagInfo{};
             TagInfo.ScreenPos = ScreenPos;
-            TagInfo.Text      = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
             TagInfo.Scale     = Scale;
             TagInfo.Opacity   = Opacity;
+
+            if (IsNearPlate)
+            {
+                const auto Header = HasRealName
+                    ? ck::DebugNameClean::Get_CleanName(DebugName.ToString())
+                    : FString::Printf(TEXT("#%u"),
+                        static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber()));
+
+                TagInfo.bIsPlate = true;
+                TagInfo.Header   = FText::FromString(Header);
+                TagInfo.Badges   = MoveTemp(Badges);
+            }
+            else
+            {
+                TagInfo.Text = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
+            }
+
             WorldTags.Add(MoveTemp(TagInfo));
 
             // Hard cap to avoid clutter in dense scenes (e.g. crowds).
             if (WorldTags.Num() >= 16)
             { break; }
         }
+
+        // De-overlap co-located tags: entities at the same world position project to
+        // the same screen point and their plates hide each other. Stack subsequent
+        // plates upward (anchor is bottom-center, so -Y stacks above).
+        {
+            constexpr auto CellW = 48.0f;
+            constexpr auto CellH = 32.0f;
+            constexpr auto StackStep = 34.0f;
+
+            auto CountByCell = TMap<FIntPoint, int32>{};
+            for (auto& Tag : WorldTags)
+            {
+                const auto Cell = FIntPoint{
+                    FMath::RoundToInt32(Tag.ScreenPos.X / CellW),
+                    FMath::RoundToInt32(Tag.ScreenPos.Y / CellH) };
+                auto& CountInCell = CountByCell.FindOrAdd(Cell);
+                Tag.ScreenPos.Y -= CountInCell * StackStep;
+                ++CountInCell;
+            }
+        }
     }
 
     _RootWidget->Update_WorldTags(WorldTags);
+}
+
+// ====================================================================================================================
+// Marker billboards — UDebugDrawService callback (fires per viewport, after the world renders).
+// Mirrors FCkDebuggerModel_ViewportPicker::DoDrawBillboards: constant screen-size canvas
+// tiles using the ECS-picker diamond textures. Tint encodes hierarchy depth; non-focused
+// markers are semi-transparent, the focused one is opaque + hover texture + 1.25×.
+// ====================================================================================================================
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    DoDrawMarkers(
+        UCanvas*           InCanvas,
+        APlayerController* InPC)
+    -> void
+{
+    if (NOT _RootWidget.IsValid())
+    { return; }
+
+    if (InCanvas == nullptr)
+    { return; }
+
+    auto* World = Resolve_ActiveWorld();
+    if (ck::Is_NOT_Valid(World))
+    { return; }
+
+    // The draw service fires for every viewport on screen; only draw into ours.
+    if (ck::IsValid(InPC) && InPC->GetWorld() != World)
+    { return; }
+
+    auto* MarkerTex = _MarkerTexture.Get();
+    auto* HoverTex  = _MarkerHoverTexture.IsValid() ? _MarkerHoverTexture.Get() : MarkerTex;
+    if (MarkerTex == nullptr || HoverTex == nullptr)
+    { return; }
+
+    const auto* MarkerResource = MarkerTex->GetResource();
+    const auto* HoverResource  = HoverTex->GetResource();
+    if (MarkerResource == nullptr || HoverResource == nullptr)
+    { return; }
+
+    const auto* Settings    = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto  TileSizePx  = 28.0f * (Settings ? Settings->DiamondScale : 1.0f);
+    const auto  CanvasSizeX = static_cast<float>(InCanvas->SizeX);
+    const auto  CanvasSizeY = static_cast<float>(InCanvas->SizeY);
+
+    constexpr auto FocusedScale = 1.25f;
+    constexpr auto DefaultAlpha = 0.45f;
+
+    // Defer the focused marker so it renders on top of any cluster.
+    auto Focused = TOptional<FMarkerDraw>{};
+
+    for (const auto& Marker : _MarkerDraws)
+    {
+        if (Marker.bIsFocused)
+        {
+            Focused = Marker;
+            continue;
+        }
+
+        const auto Projected = InCanvas->Project(Marker.WorldPos);
+        if (Projected.Z <= 0.0f)
+        { continue; }
+        if (Projected.X < 0.0f || Projected.Y < 0.0f || Projected.X >= CanvasSizeX || Projected.Y >= CanvasSizeY)
+        { continue; }
+
+        auto Tint = ck_debugoverlay::Get_MarkerDepthTint(Marker.Depth);
+        Tint.A = DefaultAlpha;
+
+        const auto TopLeft = FVector2D(
+            static_cast<float>(Projected.X) - TileSizePx * 0.5f,
+            static_cast<float>(Projected.Y) - TileSizePx * 0.5f);
+
+        auto Tile = FCanvasTileItem(TopLeft, MarkerResource, FVector2D(TileSizePx, TileSizePx), Tint);
+        Tile.BlendMode = SE_BLEND_Translucent;
+        InCanvas->DrawItem(Tile);
+    }
+
+    if (Focused.IsSet())
+    {
+        const auto Projected = InCanvas->Project(Focused->WorldPos);
+        if (Projected.Z > 0.0f)
+        {
+            const auto FocusSize = TileSizePx * FocusedScale;
+
+            auto Tint = ck_debugoverlay::Get_MarkerDepthTint(Focused->Depth);
+            Tint.A = 1.0f;
+
+            const auto TopLeft = FVector2D(
+                static_cast<float>(Projected.X) - FocusSize * 0.5f,
+                static_cast<float>(Projected.Y) - FocusSize * 0.5f);
+
+            auto Tile = FCanvasTileItem(TopLeft, HoverResource, FVector2D(FocusSize, FocusSize), Tint);
+            Tile.BlendMode = SE_BLEND_Translucent;
+            InCanvas->DrawItem(Tile);
+        }
+    }
 }
 
 // ====================================================================================================================

@@ -10,6 +10,7 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
+#include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -52,10 +53,36 @@ namespace
     FGameplayTag FieldTag_State()     { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_State; }
     FGameplayTag FieldTag_History()   { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_History; }
 
-    // Helper: produce a short class name string from a UClass* (mirrors inspector helper).
+    // Mirrors FCkSmLayoutParams::ComputeDisplayName (CkSmDebugger, source of truth for
+    // the SM debugger's name-depth rule): strip "_C", split on "_", show the last
+    // SmStateNameDepth segments joined with "." ("Ck_SmTest_Complex_State_Chase" →
+    // depth 1 → "Chase"). Depth <= 0 → full dotted name.
+    auto Format_Sm_StateName(const FString& InClassName) -> FString
+    {
+        auto Name = InClassName;
+        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
+
+        auto Segments = TArray<FString>{};
+        Name.ParseIntoArray(Segments, TEXT("_"), true);
+
+        const auto Depth = GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth;
+        if (Depth <= 0 || Depth >= Segments.Num())
+        { return FString::Join(Segments, TEXT(".")); }
+
+        auto Result = FString{};
+        for (auto i = Segments.Num() - Depth; i < Segments.Num(); ++i)
+        {
+            if (Result.Len() > 0) { Result += TEXT("."); }
+            Result += Segments[i];
+        }
+        return Result;
+    }
+
     auto Format_Sm_ClassName(const UClass* InClass) -> FString
     {
-        return InClass != nullptr ? InClass->GetName() : FString(TEXT("(None)"));
+        return InClass != nullptr
+            ? Format_Sm_StateName(InClass->GetName())
+            : FString(TEXT("(None)"));
     }
 }
 
@@ -167,8 +194,8 @@ auto FCk_DebugOverlay_Provider_StateMachine::Collect(
         for (auto i = StartIdx; i < HistNum; ++i)
         {
             const auto& Entry = History[i];
-            const auto  From  = Entry.FromStateName.IsEmpty() ? FString(TEXT("(None)")) : Entry.FromStateName;
-            const auto  To    = Entry.ToStateName.IsEmpty()   ? FString(TEXT("(None)")) : Entry.ToStateName;
+            const auto  From  = Entry.FromStateName.IsEmpty() ? FString(TEXT("(None)")) : Format_Sm_StateName(Entry.FromStateName);
+            const auto  To    = Entry.ToStateName.IsEmpty()   ? FString(TEXT("(None)")) : Format_Sm_StateName(Entry.ToStateName);
             Row.ExplicitHistory.Add(FText::FromString(FString::Printf(TEXT("%s → %s"), *From, *To)));
         }
 

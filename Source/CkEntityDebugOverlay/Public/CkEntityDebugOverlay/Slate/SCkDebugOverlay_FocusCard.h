@@ -34,6 +34,16 @@ public:
         double                              InNow,
         bool                                bIsLocked = false) -> void;
 
+    // Stable, visually-distinct color per provider — used for the provider chip
+    // fill, the field-chip tint, and the near-plate feature badges.
+    static auto Get_ProviderColor(const FGameplayTag& InProviderTag) -> FLinearColor;
+
+    // Width the section wrap-boxes wrap at. MUST be the card's inner content width:
+    // the card rebuilds its SWrapBoxes every tick, so UseAllottedSize never gets a
+    // Tick to sync PreferredSize (default 100px) — desired height would reserve
+    // phantom wrapped lines, rendering as big empty gaps between sections.
+    auto Set_WrapWidth(float InWidth) -> void { _WrapWidth = InWidth; }
+
 private:
     // Converts ECk_DebugOverlay_Severity to an ECkDebug_Tone for pills / text.
     static auto Severity_To_Tone(ECk_DebugOverlay_Severity InSeverity) -> ECkDebug_Tone;
@@ -41,15 +51,14 @@ private:
     // Returns the flash alpha multiplier for a field (1.0 if not flashing).
     static auto Get_FlashAlpha(double InLastChanged, double InNow) -> float;
 
-    // Stable, visually-distinct color per provider — used for the provider chip
-    // fill and the field-chip tint (matches the mockup's color-grouped strips).
-    static auto Get_ProviderColor(const FGameplayTag& InProviderTag) -> FLinearColor;
-
     // Outer lock-ring border — tinted amber/yellow when the focus is locked.
     TSharedPtr<class SBorder> _LockFrame;
 
     // Root container rebuilt on every Set_Model call.
     TSharedPtr<SVerticalBox> _ContentBox;
+
+    // Inner content width the section wrap-boxes wrap at (see Set_WrapWidth).
+    float _WrapWidth = 700.0f;
 };
 
 // ====================================================================================================================

@@ -7,7 +7,16 @@
 // ====================================================================================================================
 // Per-candidate world-tag payload: screen position, label text, and distance-driven
 // scale / opacity computed in Push_ToRoot (B1 — distance-scaled world pills).
+//
+// Near candidates may instead carry an ultra-condensed PLATE: a name header plus a
+// row of colored feature-abbreviation badges (SM / GOAP / INV …) rendered under it.
 // ====================================================================================================================
+
+struct FCk_DebugOverlay_WorldTagBadge
+{
+    FString      Text;
+    FLinearColor Color = FLinearColor::White;
+};
 
 struct FCk_DebugOverlay_WorldTagInfo
 {
@@ -15,6 +24,11 @@ struct FCk_DebugOverlay_WorldTagInfo
     FText     Text       = FText{};
     float     Scale      = 1.0f;   // [MinScale, 1] — applied via Slate RenderTransform
     float     Opacity    = 1.0f;   // [0.15, 1] — applied to ColorAndOpacity alpha
+
+    // Near-plate payload (used when bIsPlate is true; Text is ignored then).
+    bool                                  bIsPlate = false;
+    FText                                 Header   = FText{};
+    TArray<FCk_DebugOverlay_WorldTagBadge> Badges;
 };
 
 // ====================================================================================================================

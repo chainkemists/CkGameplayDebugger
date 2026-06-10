@@ -53,13 +53,34 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
     // before provider modules are present; see file-level comment for the full rationale.
     // --------------------------------------------------
 
+    // "All" — every ported provider enabled with EVERY field on (bEnableAllFields
+    // overrides per-field DefaultEnabled). Gyms exercise one feature at a time, so any
+    // narrower layout shows mostly-empty cards there; this is the default starting view.
+    // NOTE: as more inspectors are ported, add their provider tags here.
+    {
+        auto AllLayout = MakeLayout(
+            TAG_Ck_OnScreenDebugger_Layout_All,
+            ECk_DebugOverlay_Density::Ultra,
+            {
+                TEXT("Ck.OnScreenDebugger.Provider.EntityInfo"),
+                TEXT("Ck.OnScreenDebugger.Provider.Transform"),
+                TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
+                TEXT("Ck.OnScreenDebugger.Provider.Goap"),
+                TEXT("Ck.OnScreenDebugger.Provider.Physics"),
+                TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
+            });
+        AllLayout.bEnableAllFields = true;
+        Layouts.Add(MoveTemp(AllLayout));
+    }
+
     Layouts.Add(MakeLayout(
         TAG_Ck_OnScreenDebugger_Layout_AI,
         ECk_DebugOverlay_Density::Ultra,
         {
             // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
-            TEXT("Ck.OnScreenDebugger.Provider.GOAP"),
+            TEXT("Ck.OnScreenDebugger.Provider.Goap"),
             TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
             TEXT("Ck.OnScreenDebugger.Provider.AStar"),
             TEXT("Ck.OnScreenDebugger.Provider.Objective"),
@@ -110,12 +131,12 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
         {
             // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
-            TEXT("Ck.OnScreenDebugger.Provider.GOAP"),
+            TEXT("Ck.OnScreenDebugger.Provider.Goap"),
             TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
         }));
 
-    // AI layout is the default starting view.
-    StartingLayout = TAG_Ck_OnScreenDebugger_Layout_AI;
+    // "All" layout is the default starting view — gyms are too sparse for the narrower ones.
+    StartingLayout = TAG_Ck_OnScreenDebugger_Layout_All;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

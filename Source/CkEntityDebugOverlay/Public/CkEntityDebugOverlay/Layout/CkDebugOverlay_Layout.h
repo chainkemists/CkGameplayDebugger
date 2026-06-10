@@ -46,6 +46,11 @@ struct FCk_DebugOverlay_Layout
 
     UPROPERTY(EditAnywhere)
     TArray<FCk_DebugOverlay_ProviderEntry> Entries;
+
+    // When true, providers listed in EnabledProviders contribute ALL their fields,
+    // ignoring per-field DefaultEnabled. Used by the "All" layout so nothing is hidden.
+    UPROPERTY(EditAnywhere)
+    bool bEnableAllFields = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

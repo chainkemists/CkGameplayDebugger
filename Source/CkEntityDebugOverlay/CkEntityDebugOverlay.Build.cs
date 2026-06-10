@@ -24,6 +24,12 @@ public class CkEntityDebugOverlay : CkModuleRules
             "CkPmg"
         });
 
+        if (Target.bBuildEditor)
+        {
+            // Ejected-PIE camera support (GEditor / GCurrentLevelEditingViewportClient).
+            PublicDependencyModuleNames.Add("UnrealEd");
+        }
+
         if (Target.Configuration != UnrealTargetConfiguration.Shipping)
             PublicDefinitions.Add("WITH_CK_DEBUG_OVERLAY=1");
         else

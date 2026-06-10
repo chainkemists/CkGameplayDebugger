@@ -36,6 +36,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEcs",
             "CkEcsExt",
             "CkEntityCollection",
+            "CkEntityDebugOverlay",
             "CkEntityExtension",
             "CkEntityTag",
             "CkGoap",

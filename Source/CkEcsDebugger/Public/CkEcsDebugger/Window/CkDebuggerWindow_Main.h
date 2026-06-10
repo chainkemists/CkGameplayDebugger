@@ -37,6 +37,7 @@ public:
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_PickerSettingsPopover() -> TSharedRef<SWidget>;
+    auto Build_OverlayPopover() -> TSharedRef<SWidget>;
     auto Build_FilterPopover() -> TSharedRef<SWidget>;
     auto Refresh_FilterBadgeStrip() -> void;
     auto Build_LeftSidebar() -> TSharedRef<SWidget>;
@@ -58,6 +59,7 @@ private:
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
 
     TSharedPtr<SMenuAnchor> PickerSettingsAnchor;
+    TSharedPtr<SMenuAnchor> OverlayAnchor;
     TSharedPtr<SMenuAnchor> FilterAnchor;
     TSharedPtr<SHorizontalBox> FilterBadgeStrip;
     FDelegateHandle FilterChangedHandle;

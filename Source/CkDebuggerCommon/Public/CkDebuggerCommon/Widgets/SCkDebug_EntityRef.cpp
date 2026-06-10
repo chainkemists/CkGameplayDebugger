@@ -8,6 +8,7 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "Styling/CoreStyle.h"
 #include "Widgets/Text/STextBlock.h"
@@ -97,7 +98,10 @@ auto
     {
         const auto Name = UCk_Utils_Handle_UE::Get_DebugName(Entity);
         if (NOT Name.IsNone())
-        { return FText::FromString(ck::Format_UE(TEXT("{} | {}"), Name.ToString(), IdText)); }
+        {
+            const auto CleanName = ck::DebugNameClean::Get_CleanName(Name.ToString());
+            return FText::FromString(ck::Format_UE(TEXT("{} | {}"), CleanName, IdText));
+        }
     }
 
     return FText::FromString(IdText);

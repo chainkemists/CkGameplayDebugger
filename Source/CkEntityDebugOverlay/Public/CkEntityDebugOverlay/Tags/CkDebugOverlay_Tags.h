@@ -27,11 +27,6 @@ namespace ck_debugoverlay
     // "Goap" → "GOAP", "Inventory" → "INV"). Unknown providers fall back to the
     // first 4 characters uppercased.
     CKENTITYDEBUGOVERLAY_API auto Get_ProviderAbbrev(const FString& InProviderLeaf) -> FString;
-
-    // Marker tint per hierarchy depth: 0 = blue (the ECS picker's default marker
-    // color), then green / yellow / orange / magenta (4+). Alpha is always 1 —
-    // callers apply their own alpha (markers are semi-transparent unless focused).
-    CKENTITYDEBUGOVERLAY_API auto Get_MarkerDepthTint(int32 InDepth) -> FLinearColor;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -54,19 +54,6 @@ namespace ck_debugoverlay
 
         return InProviderLeaf.Left(4).ToUpper();
     }
-
-    auto Get_MarkerDepthTint(int32 InDepth) -> FLinearColor
-    {
-        static const FLinearColor Tints[] = {
-            { 0.30f, 0.62f, 1.00f, 1.0f }, // 0 — blue (ECS picker default)
-            { 0.10f, 1.00f, 0.15f, 1.0f }, // 1 — green
-            { 1.00f, 0.90f, 0.00f, 1.0f }, // 2 — yellow
-            { 1.00f, 0.45f, 0.00f, 1.0f }, // 3 — orange
-            { 1.00f, 0.05f, 0.60f, 1.0f }, // 4+ — magenta
-        };
-        constexpr auto TintCount = static_cast<int32>(UE_ARRAY_COUNT(Tints));
-        return Tints[FMath::Clamp(InDepth, 0, TintCount - 1)];
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -22,6 +22,8 @@ public class CkDebuggerCommon : CkModuleRules
             // For UCk_Plugin_UserSettings_UE base class.
             "CkCore",
             "CkEcs",       // FCk_Handle in SCkDebug_EntityRef + the cross-debugger entity navigator
+            "CkEcsExt",    // FFragment_Transform view in the shared entity-marker preview
+            "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview
             "CkSettings",
         });
 

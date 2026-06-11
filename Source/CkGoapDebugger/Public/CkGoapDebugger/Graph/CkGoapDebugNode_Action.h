@@ -49,6 +49,13 @@ public:
     auto Set_IsSelected(bool InValue)       -> void { _IsSelected = InValue; }
     auto Set_IsFailureBlocked(bool InValue) -> void { _IsFailureBlocked = InValue; }
 
+    // Desired card width, measured from this node's content (header / composite
+    // bar / condition rows) during RebuildFromSnapshot so long world-state key
+    // names are never cut off. The Slate widget reads this as its WidthOverride;
+    // the layered layout reads it for per-layer column spacing.
+    auto Get_NodeWidth() const     -> float { return _NodeWidth; }
+    auto Set_NodeWidth(float InW)  -> void { _NodeWidth = InW; }
+
     // Tree-edge pin accessors (U11.7-D). Each Action node has a hidden TreeIn
     // and TreeOut pin in addition to its precondition/effect pins. Parent →
     // child tree edges live on these pins so the connection policy can match
@@ -74,6 +81,9 @@ private:
 
     UPROPERTY()
     bool _IsFailureBlocked = false;
+
+    UPROPERTY()
+    float _NodeWidth = 180.0f;
 };
 
 // ====================================================================================================================

@@ -14,6 +14,13 @@ class STextBlock;
 class SBox;
 class SVerticalBox;
 
+// Sort order for the rail's key rows.
+enum class ECkGoapDebugger_WsSortMode : uint8
+{
+    ByName,        // alphabetical on the full tag string (default)
+    ByTrueFirst    // TRUE values first, then alphabetical
+};
+
 // ====================================================================================================================
 // SCkGoapDebugger_WorldStateRail — fixed-width right rail mirroring the
 // mockup's `.ws-rail` panel. Shows the resolved WorldState for the currently
@@ -22,6 +29,9 @@ class SVerticalBox;
 //
 // Layout (top-to-bottom):
 //   - Header  : "WorldState · {WS_Label}"   { keys count }   (pane-head style)
+//   - Search  : SCkDebug_DualSearchBar (Filter narrows rows, Highlight dims
+//               non-matches) + a sort toggle (Name ⇄ TRUE-first). Lives in
+//               the fixed chrome so rebuilds never steal input focus.
 //   - Body    : scrollable list of key/value rows; each row optionally tinted
 //               with the "recently changed" amber background and prefixed by
 //               a star glyph.
@@ -51,7 +61,8 @@ private:
     // -----------------------------------------------------------------------------------------------------------------
 
     auto BuildEmptyState() -> TSharedRef<SWidget>;
-    auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry) -> TSharedRef<SWidget>;
+    auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry, bool InHighlightDimmed) -> TSharedRef<SWidget>;
+    auto BuildSearchAndSortBar() -> TSharedRef<SWidget>;
 
     // Override-stack inspector — appears above the key rows when one or more
     // override layers are pushed onto the WS. Each layer is a clickable row
@@ -88,6 +99,9 @@ private:
     // Toggles whether the layer drilldown is expanded for that layer.
     auto HandleClick_ToggleLayerExpand(FName InLayerName) -> FReply;
 
+    // Cycles the key-row sort order (Name ⇄ TRUE-first).
+    auto HandleClick_CycleSortMode() -> FReply;
+
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
 
@@ -118,6 +132,13 @@ private:
     // present in this set render their key/value listing inline; rest are
     // collapsed to just the row header.
     TSet<FName> _ExpandedLayers;
+
+    // Search + sort state (per CkDebuggerCommon "Search bars" rebuild-on-change
+    // pattern). All three fold into _LastContentHash so a change rebuilds the
+    // body; the inputs themselves live in the fixed chrome and keep focus.
+    FString _FilterString;
+    FString _HighlightString;
+    ECkGoapDebugger_WsSortMode _SortMode = ECkGoapDebugger_WsSortMode::ByName;
 };
 
 // ====================================================================================================================

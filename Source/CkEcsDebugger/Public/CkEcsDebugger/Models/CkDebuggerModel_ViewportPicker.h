@@ -18,6 +18,11 @@ class UGameViewportClient;
 class APlayerController;
 class UCanvas;
 
+// Overlay focus card + world tags reused from the On-Screen Overlay (CkEntityDebugOverlay).
+class SCkDebugOverlay_Root;
+class ICk_DebugOverlay_Provider;
+class FCk_DebugOverlay_History;
+
 // --------------------------------------------------------------------------------------------------------------------
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCkDebugger_OnPickModeChanged, bool /*IsActive*/);
@@ -194,6 +199,21 @@ private:
         UWorld* InWorld,
         AActor* InHitActor) const -> FCk_Handle;
 
+    // Reuse the On-Screen Overlay's focus card + world tags for the picked/hovered entity.
+    // No-op when the overlay subsystem is already showing them (ck.DebugOverlay on).
+    auto
+    DoActivateOverlayCards(
+        UWorld* InWorld) -> void;
+
+    auto
+    DoDeactivateOverlayCards() -> void;
+
+    auto
+    DoUpdateOverlayCards(
+        UWorld*            InWorld,
+        APlayerController* InPC,
+        bool               InIsEjected) -> void;
+
     // ---- State -----------------------------------------------------------
 
     TWeakPtr<FCkDebuggerModel_EntitySelection>            _SelectionModel;
@@ -205,13 +225,23 @@ private:
     FCkDebug_EntityMarkers                                _Markers;
     bool                                                  _IsActive = false;
 
+    // ---- Overlay cards (focus card + world tags) -------------------------
+    TSharedPtr<SCkDebugOverlay_Root>                      _OverlayRoot;
+    TArray<TSharedPtr<ICk_DebugOverlay_Provider>>         _OverlayProviders;
+    TUniquePtr<FCk_DebugOverlay_History>                  _OverlayHistory;
+    int32                                                 _OverlayLayoutIndex = 0;
+    bool                                                  _OverlayCardsActive = false;
+
     // ---- Options ---------------------------------------------------------
     bool  _IgnoreLocalPawn  = true;
     float _CullRadius       = 5000.0f;
     float _BillboardSizePx  = 32.0f;
 
-    // ---- Cached hover state ---------------------------------------------
-    FCk_Handle _HoveredEntity;
+    // ---- Cached hover / focus state -------------------------------------
+    // _FocusEntity is STICKY: it holds the last validly-hovered entity and is not
+    // cleared between markers, so the focus card + emphasized diamond don't flicker
+    // as the cursor sweeps empty space. Cleared only on deactivation.
+    FCk_Handle _FocusEntity;
     FVector    _LastRayOrigin    = FVector::ZeroVector;
     FVector    _LastRayDirection = FVector::ForwardVector;
     bool       _HasRay           = false;

@@ -7,6 +7,7 @@
 // Already included via the header (History, Layout, Model, Provider, Selection).
 // Only add the extras the header omits:
 #include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Resolve.h"
+#include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_Present.h"
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
@@ -50,12 +51,8 @@ namespace
     // Overlay widget Z-order — sits above game UI but below modal dialogs.
     constexpr int32 OverlayZOrder = 100;
 
-    // Ultra-condensed multi-line plates for candidates within NearDist of the camera.
-    TAutoConsoleVariable<int32> CVar_DebugOverlay_NearPlates(
-        TEXT("ck.DebugOverlay.NearPlates"),
-        1,
-        TEXT("1 = show ultra-condensed multi-line plates for candidates within NearDist; 0 = single-line pills only."),
-        ECVF_Cheat);
+    // NOTE: the `ck.DebugOverlay.NearPlates` cvar now lives in CkDebugOverlay_Present.cpp
+    // (alongside Build_WorldTags, its only reader). The overlay popover reads it by name.
 
 #if WITH_EDITOR
     // Ejected-PIE discriminator — mirrors FCkDebuggerModel_ViewportPicker:
@@ -732,23 +729,6 @@ auto
 }
 
 // ====================================================================================================================
-// Always-on provider tags — force-included regardless of the active layout,
-// as long as CanProvide() returns true for the focused entity.
-// Avoids losing critical behavioral state (e.g. SM) when a layout doesn't list them.
-// ====================================================================================================================
-
-namespace
-{
-    // Returns true if InProviderTag is in the always-on set.
-    // Currently: StateMachine is always shown when present.
-    auto Is_AlwaysOnProvider(const FGameplayTag& InProviderTag) -> bool
-    {
-        // Leaf-name compare avoids a hard dep on the SM provider's tag declaration here.
-        return ck_debugoverlay::Get_LeafName(InProviderTag) == TEXT("StateMachine");
-    }
-}
-
-// ====================================================================================================================
 
 auto
     UCk_DebugOverlay_Subsystem::
@@ -760,126 +740,10 @@ auto
         FCk_DebugOverlay_EntityModel&                        OutModel)
     -> void
 {
-    OutModel = FCk_DebugOverlay_EntityModel{};
-    OutModel.Entity = InFocusEntity;
-
-    // Header is now rendered by SCkDebug_EntityRef in the FocusCard; OutModel.Header kept as
-    // a fallback / for callers that may read it, but the card no longer uses it as primary display.
-    {
-        const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(InFocusEntity);
-        const auto CleanName   = ck::DebugNameClean::Get_CleanName(DebugName.ToString());
-        const auto EntityNum   = static_cast<int32>(InFocusEntity.Get_Entity().Get_EntityNumber());
-        OutModel.Header = FText::FromString(
-            FString::Printf(TEXT("%s [%d]"), *CleanName, EntityNum));
-    }
-
-    const auto EntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
-
-    // Track which provider tags we've already emitted so always-on providers don't double-add.
-    auto EmittedProviderTags = FGameplayTagContainer{};
-
-    // ---- Layout-driven providers ----
-    for (const auto& Provider : InProviders)
-    {
-        if (NOT Provider || NOT Provider->CanProvide(InFocusEntity))
-        { continue; }
-
-        const auto& ProviderTag   = Provider->Get_ProviderTag();
-        const auto  EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
-            InLayout, ProviderTag, Provider->Get_FieldTags());
-
-        if (EnabledFields.IsEmpty())
-        { continue; }
-
-        // Find the per-provider entry filter (if any).
-        auto EntryFilter = FGameplayTagQuery{};
-        for (const auto& Entry : InLayout.Entries)
-        {
-            if (Entry.ProviderTag == ProviderTag)
-            {
-                EntryFilter = Entry.EntryFilter;
-                break;
-            }
-        }
-
-        auto Config          = FCk_DebugOverlay_ProviderConfig{};
-        Config.EnabledFields = EnabledFields;
-        Config.EntryFilter   = EntryFilter;
-
-        auto Section = FCk_DebugOverlay_Section{};
-        Section.ProviderTag   = ProviderTag;
-        Section.SortPriority  = Provider->Get_SortPriority();
-
-        Provider->Collect(InFocusEntity, Config, Section);
-
-        // Record history for each row.
-        for (const auto& Row : Section.Rows)
-        {
-            const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
-            if (_History) { _History->Observe(Key, Row.Value.ToString(), InNow); }
-        }
-
-        EmittedProviderTags.AddTag(ProviderTag);
-        OutModel.Sections.Add(MoveTemp(Section));
-    }
-
-    // ---- Always-on providers (force-include if CanProvide and not already emitted) ----
-    for (const auto& Provider : InProviders)
-    {
-        if (NOT Provider)
-        { continue; }
-
-        const auto& ProviderTag = Provider->Get_ProviderTag();
-
-        if (NOT Is_AlwaysOnProvider(ProviderTag))
-        { continue; }
-
-        // Skip if already emitted via the layout pass above.
-        if (EmittedProviderTags.HasTagExact(ProviderTag))
-        { continue; }
-
-        if (NOT Provider->CanProvide(InFocusEntity))
-        { continue; }
-
-        // Use the provider's own default field set (all DefaultEnabled fields).
-        auto EnabledFields = FGameplayTagContainer{};
-        for (const auto& FieldDesc : Provider->Get_FieldTags())
-        {
-            if (FieldDesc.DefaultEnabled)
-            {
-                EnabledFields.AddTag(FieldDesc.Tag);
-            }
-        }
-
-        if (EnabledFields.IsEmpty())
-        { continue; }
-
-        auto Config          = FCk_DebugOverlay_ProviderConfig{};
-        Config.EnabledFields = EnabledFields;
-        // No entry filter for force-included always-on providers.
-
-        auto Section = FCk_DebugOverlay_Section{};
-        Section.ProviderTag   = ProviderTag;
-        Section.SortPriority  = Provider->Get_SortPriority();
-
-        Provider->Collect(InFocusEntity, Config, Section);
-
-        for (const auto& Row : Section.Rows)
-        {
-            const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
-            if (_History) { _History->Observe(Key, Row.Value.ToString(), InNow); }
-        }
-
-        OutModel.Sections.Add(MoveTemp(Section));
-    }
-
-    // TODO(batch-C): parent-entity-summarizes-sub-entities aggregation.
-    // When a top-level entity owns sub-entities (e.g. scene-node children, SM states),
-    // collect their provider output and fold it into a synthesized summary section here,
-    // so the focus card shows a single rolled-up view instead of showing only the root
-    // entity's own data. This requires walking the lifetime-owner tree from InFocusEntity
-    // and calling Build_Model recursively (or a lightweight variant) for each sub-entity,
-    // then merging the resulting sections under a "Children" header.
+    // Delegates to the shared builder (CkDebugOverlay_Present) so the ECS picker and the
+    // overlay produce identical focus cards. History observation is threaded through.
+    OutModel = ck_debugoverlay::Build_EntityModel(
+        InFocusEntity, InProviders, InLayout, _History.Get(), InNow);
 }
 
 auto
@@ -917,175 +781,10 @@ auto
 
     _RootWidget->Set_FocusCardContent(InModel, CardStyle, *_History, InNow, _FocusLocked);
 
-    // ---- World tags: one per on-screen candidate (B1 — distance-scaled / faded / culled) ----
-    // Skipped while ejected: tag positions come from PC-based screen projection, which
-    // reflects the frozen player camera, not the editor camera actually rendering.
-    auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
-
-    if (ck::IsValid(InPC) && NOT _ViewpointIsEjected)
-    {
-        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-
-        // Read distance-scaling params from settings with safe defaults.
-        const auto MaxDist       = Settings ? Settings->MaxDist       : 5000.0f;
-        const auto NearDist      = Settings ? Settings->NearDist      : 600.0f;
-        const auto FarDist       = Settings ? Settings->FarDist       : 4000.0f;
-        const auto MinScale      = Settings ? Settings->MinScale      : 0.5f;
-        const auto FadeStartDist = Settings ? Settings->FadeStartDist : 3000.0f;
-
-        // Retrieve the camera viewpoint (already computed above — re-query here because
-        // Push_ToRoot does not receive the Viewpoint struct directly).
-        auto CamLoc = FVector::ZeroVector;
-        {
-            auto CamRot = FRotator::ZeroRotator;
-            InPC->GetPlayerViewPoint(CamLoc, CamRot);
-        }
-
-        for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
-        {
-            if (NOT InCandidates[CandIdx].bIsOnScreen)
-            { continue; }
-
-            const auto& Handle = InCandidateHandles[CandIdx];
-
-            // B1 — distance cull.
-            const auto Dist = static_cast<float>(
-                FVector::Dist(CamLoc, InCandidates[CandIdx].WorldLocation));
-            if (Dist > MaxDist)
-            { continue; }
-
-            // Build compact token: concatenate top providers' tokens (skip empty).
-            // Alongside, collect feature badges (abbrev + provider color) for the
-            // near-plate rendering — these reflect what the entity HAS, independent
-            // of the active layout's enabled-field selection.
-            auto TokenParts = TArray<FString>{};
-            auto Badges     = TArray<FCk_DebugOverlay_WorldTagBadge>{};
-            for (const auto& Provider : InProviders)
-            {
-                if (NOT Provider || NOT Provider->CanProvide(Handle))
-                { continue; }
-
-                const auto& ProviderTag = Provider->Get_ProviderTag();
-
-                // World tags survey *behavioral* state. Skip the core identity
-                // providers (EntityInfo / Transform) so tags aren't just
-                // "Info:<name> | Loc:(x,y,z)" spam on every transform-bearing entity.
-                const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
-                if (ProviderLeaf == TEXT("EntityInfo") || ProviderLeaf == TEXT("Transform"))
-                { continue; }
-
-                Badges.Add(FCk_DebugOverlay_WorldTagBadge{
-                    ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
-                    SCkDebugOverlay_FocusCard::Get_ProviderColor(ProviderTag) });
-
-                const auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
-                    InLayout, ProviderTag, Provider->Get_FieldTags());
-                if (EnabledFields.IsEmpty())
-                { continue; }
-
-                auto EntryFilter = FGameplayTagQuery{};
-                for (const auto& Entry : InLayout.Entries)
-                {
-                    if (Entry.ProviderTag == ProviderTag) { EntryFilter = Entry.EntryFilter; break; }
-                }
-
-                auto Config          = FCk_DebugOverlay_ProviderConfig{};
-                Config.EnabledFields = EnabledFields;
-                Config.EntryFilter   = EntryFilter;
-
-                const auto Token = Provider->Get_CompactToken(Handle, Config);
-                if (NOT Token.IsEmpty())
-                {
-                    TokenParts.Add(Token);
-                }
-            }
-
-            // Ultra-condensed near plate: candidates within NearDist get a compact
-            // plate — cleaned debug-name header with a row of colored feature badges
-            // (SM / GOAP / …) under it. Toggle with `ck.DebugOverlay.NearPlates 0`.
-            const auto NearPlatesEnabled =
-                CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
-            const auto IsNearPlate = NearPlatesEnabled && Dist <= NearDist;
-
-            const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(Handle);
-            const auto HasRealName = DebugName.IsNone() == false;
-
-            // Far pills require behavioral tokens (identity-only pills are spam at range).
-            // Near plates show when the entity has feature badges OR an explicit name —
-            // close-up, identity alone is worth a plate. Unnamed, feature-less entities
-            // (scene-node children etc.) stay hidden.
-            if (IsNearPlate)
-            {
-                if (Badges.IsEmpty() && NOT HasRealName)
-                { continue; }
-            }
-            else if (TokenParts.IsEmpty())
-            { continue; }
-
-            auto ScreenPos = FVector2D{};
-            if (NOT UGameplayStatics::ProjectWorldToScreen(
-                InPC, InCandidates[CandIdx].WorldLocation, ScreenPos,
-                /*bPlayerViewportRelative=*/false))
-            { continue; }
-
-            // B1 — compute scale and opacity from distance.
-            const auto Scale = FMath::GetMappedRangeValueClamped(
-                FVector2D{ NearDist, FarDist },
-                FVector2D{ 1.0f, MinScale },
-                Dist);
-            const auto Opacity = FMath::GetMappedRangeValueClamped(
-                FVector2D{ FadeStartDist, MaxDist },
-                FVector2D{ 1.0f, 0.15f },
-                Dist);
-
-            auto TagInfo      = FCk_DebugOverlay_WorldTagInfo{};
-            TagInfo.ScreenPos = ScreenPos;
-            TagInfo.Scale     = Scale;
-            TagInfo.Opacity   = Opacity;
-
-            if (IsNearPlate)
-            {
-                const auto Header = HasRealName
-                    ? ck::DebugNameClean::Get_CleanName(DebugName.ToString())
-                    : FString::Printf(TEXT("#%u"),
-                        static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber()));
-
-                TagInfo.bIsPlate = true;
-                TagInfo.Header   = FText::FromString(Header);
-                TagInfo.Badges   = MoveTemp(Badges);
-            }
-            else
-            {
-                TagInfo.Text = FText::FromString(FString::Join(TokenParts, TEXT(" | ")));
-            }
-
-            WorldTags.Add(MoveTemp(TagInfo));
-
-            // Hard cap to avoid clutter in dense scenes (e.g. crowds).
-            if (WorldTags.Num() >= 16)
-            { break; }
-        }
-
-        // De-overlap co-located tags: entities at the same world position project to
-        // the same screen point and their plates hide each other. Stack subsequent
-        // plates upward (anchor is bottom-center, so -Y stacks above).
-        {
-            constexpr auto CellW = 48.0f;
-            constexpr auto CellH = 32.0f;
-            constexpr auto StackStep = 34.0f;
-
-            auto CountByCell = TMap<FIntPoint, int32>{};
-            for (auto& Tag : WorldTags)
-            {
-                const auto Cell = FIntPoint{
-                    FMath::RoundToInt32(Tag.ScreenPos.X / CellW),
-                    FMath::RoundToInt32(Tag.ScreenPos.Y / CellH) };
-                auto& CountInCell = CountByCell.FindOrAdd(Cell);
-                Tag.ScreenPos.Y -= CountInCell * StackStep;
-                ++CountInCell;
-            }
-        }
-    }
+    // ---- World tags (B1 — distance-scaled / faded / culled / near-plates) ----
+    // Delegates to the shared builder so the ECS picker renders identical world cards.
+    const auto WorldTags = ck_debugoverlay::Build_WorldTags(
+        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected);
 
     _RootWidget->Update_WorldTags(WorldTags);
 }

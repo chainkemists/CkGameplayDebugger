@@ -6,14 +6,19 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Styling/CoreStyle.h"
+
 // ====================================================================================================================
 // Layout constants — chosen to match the mockup F v2 spacing.
 // ====================================================================================================================
 
 namespace ck_goap_graph
 {
-    constexpr float NodeWidth     = 180.0f;
-    constexpr float NodeHeight    = 110.0f;   // visual estimate for layout stacking
+    constexpr float NodeWidth     = 180.0f;   // minimum card width; cards grow to fit content
+    constexpr float NodeMaxWidth  = 420.0f;   // sanity cap — pathological tags fall back to ellipsis
+    constexpr float NodeHeight    = 110.0f;   // layout-stacking fallback when Slate isn't initialized
     constexpr float HorzGap       = 70.0f;
     constexpr float VertGap       = 14.0f;
     constexpr float NodeMinX      = 40.0f;
@@ -98,6 +103,97 @@ namespace
         { StepByName.Add(Name, Step++); }
         return StepByName;
     }
+
+    auto Compute_TagLeaf_GraphLayout(const FGameplayTag& InTag) -> FString
+    {
+        const auto Full = InTag.ToString();
+        int32 Idx = INDEX_NONE;
+        if (Full.FindLastChar(TEXT('.'), Idx) && Idx != INDEX_NONE)
+        { return Full.Mid(Idx + 1); }
+        return Full;
+    }
+
+    // Measures the action card's desired (width, height) so the layered layout
+    // can space columns/rows without overlap and the Slate widget can size the
+    // card to its content (no key-name cutoff). Fonts MUST stay in sync with
+    // SGraphNode_GoapAction's header/composite/body rows.
+    auto Measure_NodeSize_Graph(
+        const FCkGoapDebugger_ActionInfo& InAction,
+        int32 InNameDepth) -> FVector2D
+    {
+        using namespace ck_goap_graph;
+
+        if (NOT FSlateApplication::IsInitialized())
+        { return FVector2D{NodeWidth, NodeHeight}; }
+
+        const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+
+        const auto Font_Header    = FCoreStyle::GetDefaultFontStyle("Bold", 10);
+        const auto Font_Cost      = FCoreStyle::GetDefaultFontStyle("Bold", 9);
+        const auto Font_Composite = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+        const auto Font_Row       = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+        const auto Font_RowSuffix = FCoreStyle::GetDefaultFontStyle("Regular", 7);
+
+        constexpr auto DotWidth      = 7.0f + 4.0f;   // MakeDot + its padding slot
+        constexpr auto ColumnGap     = 12.0f;         // breathing room between pre/eff columns
+        constexpr auto CardChrome    = 2.0f * 2.0f    // outer border thickness
+                                     + 2.0f * 8.0f    // inner Padding_Medium (horizontal)
+                                     + 6.0f;          // slack so ellipsis never triggers at the cap
+        constexpr auto RowVertPad    = 2.0f;          // 1.0f top + bottom per condition row
+
+        const auto MeasureWidth = [&FontMeasure](const FString& InText, const FSlateFontInfo& InFont) -> float
+        { return static_cast<float>(FontMeasure->Measure(InText, InFont).X); };
+        const auto MeasureHeight = [&FontMeasure](const FString& InText, const FSlateFontInfo& InFont) -> float
+        { return static_cast<float>(FontMeasure->Measure(InText, InFont).Y); };
+
+        const auto HeaderName = FCkGoapDebugger_NameParams::ComputeDisplayName(InAction.ClassName, InNameDepth);
+        const auto CostText   = FString::Printf(TEXT("$%.0f"), InAction.Cost);
+        const auto HeaderWidth  = MeasureWidth(HeaderName, Font_Header) + 4.0f + MeasureWidth(CostText, Font_Cost);
+        const auto HeaderHeight = MeasureHeight(HeaderName, Font_Header);
+
+        auto CompositeWidth  = 0.0f;
+        auto CompositeHeight = 0.0f;
+        if (InAction.ChildActionHandles.Num() > 0)
+        {
+            const auto CompositeText = FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf_GraphLayout(InAction.ActionTag));
+            CompositeWidth  = MeasureWidth(CompositeText, Font_Composite) + 2.0f * 4.0f;        // bar's Padding_Small
+            CompositeHeight = MeasureHeight(CompositeText, Font_Composite) + 2.0f * 1.0f + 2.0f; // bar pad + slot Padding_XSmall
+        }
+
+        auto MaxPreWidth = 0.0f;
+        auto RowHeight   = 0.0f;
+        for (const auto& Pre : InAction.Preconditions)
+        {
+            const auto Leaf = Compute_TagLeaf_GraphLayout(Pre.Key);
+            const auto Suffix = FString{Pre.Value ? TEXT(" = true") : TEXT(" = false")};
+            MaxPreWidth = FMath::Max(MaxPreWidth, DotWidth + MeasureWidth(Leaf, Font_Row) + MeasureWidth(Suffix, Font_RowSuffix));
+            RowHeight   = FMath::Max(RowHeight, MeasureHeight(Leaf, Font_Row) + RowVertPad);
+        }
+
+        auto MaxEffWidth = 0.0f;
+        for (const auto& Eff : InAction.Effects)
+        {
+            const auto Leaf = Compute_TagLeaf_GraphLayout(Eff.Key);
+            MaxEffWidth = FMath::Max(MaxEffWidth, MeasureWidth(Leaf, Font_Row) + DotWidth);
+            RowHeight   = FMath::Max(RowHeight, MeasureHeight(Leaf, Font_Row) + RowVertPad);
+        }
+
+        const auto BodyWidth = MaxPreWidth + ((MaxPreWidth > 0.0f && MaxEffWidth > 0.0f) ? ColumnGap : 0.0f) + MaxEffWidth;
+
+        const auto Width = FMath::Clamp(
+            FMath::Max3(HeaderWidth, CompositeWidth, BodyWidth) + CardChrome,
+            NodeWidth, NodeMaxWidth);
+
+        const auto BodyRows = static_cast<float>(FMath::Max(InAction.Preconditions.Num(), InAction.Effects.Num()));
+        const auto Height =
+            4.0f                                            // outer border (top + bottom)
+            + 2.0f * 4.0f                                   // inner Padding_Small (vertical)
+            + HeaderHeight
+            + CompositeHeight
+            + (BodyRows > 0.0f ? 4.0f + BodyRows * RowHeight : 0.0f);
+
+        return FVector2D{Width, FMath::Max(Height, 60.0f)};
+    }
 }
 
 // ====================================================================================================================
@@ -109,6 +205,7 @@ auto
 {
     _GoalNode = nullptr;
     _TreeEdgePins_Graph.Reset();
+    _LiveWorldState.Reset();
     Nodes.Empty();
 }
 
@@ -217,6 +314,21 @@ auto
     const auto PlanStepByClassName = BuildPlanStepMap_Graph(InPlanner, Catalog, InSelectedActionHandle);
 
     auto Changed = false;
+
+    // Refresh the live WS view the action cards' satisfaction dots read from.
+    // A value flip counts as a runtime-state change so the pane knows the next
+    // paint will differ (the TAttribute-bound dots pick it up without any
+    // NotifyGraphChanged).
+    auto NewWorldState = TMap<FGameplayTag, bool>{};
+    NewWorldState.Reserve(InPlanner.WorldState.Num());
+    for (const auto& Entry : InPlanner.WorldState)
+    { NewWorldState.Add(Entry.Key, Entry.Value); }
+
+    if (NOT _LiveWorldState.OrderIndependentCompareEqual(NewWorldState))
+    {
+        _LiveWorldState = MoveTemp(NewWorldState);
+        Changed = true;
+    }
 
     for (UEdGraphNode* Node : Nodes)
     {
@@ -353,6 +465,11 @@ auto
     _TreeEdgePins_Graph.Reset();
     Nodes.Empty();
 
+    _LiveWorldState.Reset();
+    _LiveWorldState.Reserve(InPlanner.WorldState.Num());
+    for (const auto& Entry : InPlanner.WorldState)
+    { _LiveWorldState.Add(Entry.Key, Entry.Value); }
+
     // Flatten the recursive PlannerInfo tree into an ordered catalog of
     // ActionInfo pointers — this replaces the legacy ActionSetInfo::Catalog
     // flat array. Walk order is parent-first so layout reproduces the same
@@ -370,6 +487,11 @@ auto
 
     auto ActionNodes = TArray<UCkGoapDebugNode_Action*>{};
     ActionNodes.Reserve(ActionCount);
+
+    // Per-node measured (width, height) — drives both the card's WidthOverride
+    // and the layered layout's column/row spacing so wide cards never overlap.
+    auto NodeSizes = TArray<FVector2D>{};
+    NodeSizes.Reserve(ActionCount);
 
     // Build effect-key → producing-action-index map for fast wiring later.
     auto EffectKeyToProducer = TMap<FGameplayTag, TArray<int32>>{};
@@ -389,6 +511,10 @@ auto
         Node->PopulateFromActionInfo(Action);
         Node->AllocateDefaultPins();
         Node->SetFlags(RF_Transactional);
+
+        const auto MeasuredSize = Measure_NodeSize_Graph(Action, NameDepth);
+        Node->Set_NodeWidth(static_cast<float>(MeasuredSize.X));
+        NodeSizes.Add(MeasuredSize);
 
         // IsInPlan + PlanStepIndex come from the selected (or root) Action's
         // _Plan, NOT the active chain. See UpdateRuntimeState's matching
@@ -479,26 +605,39 @@ auto
     auto MaxLayer = -1;
     for (auto L : Layers) { MaxLayer = FMath::Max(MaxLayer, L); }
 
-    auto NodesPerLayer = TArray<int32>{};
-    NodesPerLayer.SetNumZeroed(MaxLayer + 1);
-    for (auto L : Layers) { ++NodesPerLayer[L]; }
-
-    auto SlotCounter = TArray<int32>{};
-    SlotCounter.SetNumZeroed(MaxLayer + 1);
+    // Column X offsets accumulate per-layer max width (cards auto-size, so a
+    // layer is as wide as its widest card); rows stack with actual measured
+    // heights so tall cards (many conditions) don't overlap their neighbours.
+    auto LayerWidths = TArray<float>{};
+    LayerWidths.Init(NodeWidth, MaxLayer + 1);
+    auto LayerHeights = TArray<float>{};
+    LayerHeights.Init(0.0f, MaxLayer + 1);
 
     for (auto i = 0; i < ActionCount; ++i)
     {
         const auto L = Layers[i];
-        const auto Slot = SlotCounter[L]++;
-        const auto SlotCount = NodesPerLayer[L];
+        LayerWidths[L]   = FMath::Max(LayerWidths[L], static_cast<float>(NodeSizes[i].X));
+        LayerHeights[L] += static_cast<float>(NodeSizes[i].Y) + VertGap;
+    }
+    for (auto& H : LayerHeights) { H = FMath::Max(H - VertGap, 0.0f); }   // no trailing gap
 
-        const auto X = NodeMinX + L * (NodeWidth + HorzGap);
+    auto LayerX = TArray<float>{};
+    LayerX.Init(NodeMinX, MaxLayer + 2);   // +1 extra entry = goal-anchor column
+    for (auto L = 1; L <= MaxLayer + 1; ++L)
+    { LayerX[L] = LayerX[L - 1] + LayerWidths[FMath::Min(L - 1, MaxLayer)] + HorzGap; }
+
+    auto LayerYCursor = TArray<float>{};
+    LayerYCursor.SetNumZeroed(MaxLayer + 1);
+
+    for (auto i = 0; i < ActionCount; ++i)
+    {
+        const auto L = Layers[i];
 
         // Vertically centre the layer's nodes around 0 so layers visually balance.
-        const auto LayerColumnHeight = (SlotCount - 1) * (NodeHeight + VertGap);
-        const auto Y = NodeMinY + Slot * (NodeHeight + VertGap) - LayerColumnHeight / 2.0f;
+        const auto Y = NodeMinY + LayerYCursor[L] - LayerHeights[L] / 2.0f;
+        LayerYCursor[L] += static_cast<float>(NodeSizes[i].Y) + VertGap;
 
-        ActionNodes[i]->NodePosX = static_cast<int32>(X);
+        ActionNodes[i]->NodePosX = static_cast<int32>(LayerX[L]);
         ActionNodes[i]->NodePosY = static_cast<int32>(Y);
     }
 
@@ -626,7 +765,7 @@ auto
         GoalNode->SetFlags(RF_Transactional);
 
         const auto GoalLayer = (MaxLayer >= 0) ? (MaxLayer + 1) : 0;
-        GoalNode->NodePosX = static_cast<int32>(NodeMinX + GoalLayer * (NodeWidth + HorzGap) + GoalGap);
+        GoalNode->NodePosX = static_cast<int32>(LayerX[GoalLayer] + GoalGap);
         GoalNode->NodePosY = static_cast<int32>(NodeMinY);
 
         AddNode(GoalNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);

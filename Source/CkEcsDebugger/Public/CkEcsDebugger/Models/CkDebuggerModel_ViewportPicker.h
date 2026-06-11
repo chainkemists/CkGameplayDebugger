@@ -2,11 +2,12 @@
 
 #include "CoreMinimal.h"
 
+#include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+
 #include "CkEcs/Handle/CkHandle.h"
 
 #include "GenericPlatform/ICursor.h"
 #include "Engine/EngineBaseTypes.h"
-#include "UObject/StrongObjectPtr.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -16,7 +17,6 @@ class FCkDebuggerViewportPicker_InputProcessor;
 class UGameViewportClient;
 class APlayerController;
 class UCanvas;
-class UTexture2D;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -34,10 +34,14 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCkDebugger_OnPickModeChanged, bool /*IsActi
  *   - Activate/deactivate pick mode, releasing and restoring mouse capture on toggle
  *   - Install a Slate input pre-processor that forwards clicks here
  *   - Deproject cursor positions into the selected world via ULocalPlayer::CalcSceneView
- *   - Hit-test ECS-ready actors (physics trace) and pure ECS entities with FCk_Transform
- *     (inline ray-sphere) and pick the closest candidate
- *   - Draw screen-space billboards (with hover swap) for transform entities while active
- *   - Auto-exit on successful pick; subscribe to world changes to deactivate cleanly
+ *   - Preview entities via the shared FCkDebug_EntityMarkers system (depth-tinted
+ *     diamonds + dashed parent→child links, gated by ck.Debug.EntityMarkers.MaxDepth —
+ *     the same display and depth setting as the On-Screen Overlay)
+ *   - Hit-test ECS-ready actors (physics trace) and the previewed marker entries
+ *     (inline ray-sphere) and pick the closest candidate; only previewed entities
+ *     are pickable — what you see is what you can pick
+ *   - Auto-exit on successful pick (focusing the debugger tab); subscribe to world
+ *     changes to deactivate cleanly
  */
 class FCkDebuggerModel_ViewportPicker
     : public TSharedFromThis<FCkDebuggerModel_ViewportPicker>
@@ -171,6 +175,10 @@ private:
         FVector&         OutDirection) const -> bool;
 
     auto
+    DoRefreshMarkers(
+        UWorld* InWorld) -> void;
+
+    auto
     DoPickAtRay(
         UWorld*        InWorld,
         const FVector& InOrigin,
@@ -194,8 +202,7 @@ private:
     FDelegateHandle                                       _WorldChangedHandle;
     FDelegateHandle                                       _DebugDrawHandle_Game;
     FDelegateHandle                                       _DebugDrawHandle_Editor;
-    TStrongObjectPtr<UTexture2D>                          _MarkerTexture;
-    TStrongObjectPtr<UTexture2D>                          _MarkerHoverTexture;
+    FCkDebug_EntityMarkers                                _Markers;
     bool                                                  _IsActive = false;
 
     // ---- Options ---------------------------------------------------------

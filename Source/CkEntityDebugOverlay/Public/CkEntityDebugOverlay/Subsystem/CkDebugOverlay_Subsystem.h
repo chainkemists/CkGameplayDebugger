@@ -13,13 +13,17 @@
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Provider.h"
 #include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
 
-#include "UObject/StrongObjectPtr.h"
+#if WITH_CK_DEBUG_OVERLAY
+// Shared in-world entity marker preview. Gated with the implementation: the module's
+// CkDebuggerCommon dependency is UncookedOnly and absent in Shipping, where the entire
+// marker-driving code below is compiled out anyway.
+#include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+#endif
 
 #include "CkDebugOverlay_Subsystem.generated.h"
 
 class APlayerController;
 class UCanvas;
-class UTexture2D;
 
 // ====================================================================================================================
 // UCk_DebugOverlay_Subsystem
@@ -65,12 +69,14 @@ private:
     auto Resolve_ActiveWorld()  const -> UWorld*;
     auto Resolve_ActiveLayout() const -> const FCk_DebugOverlay_Layout*;
 
-    /** Enumerate all transform-bearing entities that have at least one capable provider. */
+    /** Enumerate all transform-bearing entities that have at least one capable provider.
+     *  Non-const: rebuilds the shared _Markers snapshot (markers/links/candidates are
+     *  the same set — what you see is what you can focus). */
     auto Gather_Candidates(
         UWorld*                                              InWorld,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         TArray<FCk_Handle>&                                  OutHandles,
-        TArray<ck_debugoverlay::FCandidate>&                 OutCandidates) const -> void;
+        TArray<ck_debugoverlay::FCandidate>&                 OutCandidates) -> void;
 
     /** Populate the focus-entity model from all capable providers. */
     auto Build_Model(
@@ -123,27 +129,23 @@ private:
     // Active layout index into Settings->Layouts.
     int32 _ActiveLayoutIndex = INDEX_NONE;
 
-    // B2 — screen-space ECS-diamond marker billboards. Same textures + UDebugDrawService
-    // canvas-tile approach as the ECS Debugger's viewport picker (constant screen size,
-    // no per-entity marker entities). Tinted by hierarchy depth; the focused candidate
-    // uses the hover texture, full opacity, and a slight upscale.
-    struct FMarkerDraw
-    {
-        FVector WorldPos   = FVector::ZeroVector;
-        int32   Depth      = 0;
-        bool    bIsFocused = false;
-    };
-
+    // B2 — screen-space ECS-diamond marker billboards via the shared entity-marker
+    // preview (FCkDebug_EntityMarkers in CkDebuggerCommon — same implementation as
+    // the ECS Debugger's viewport picker). Snapshot is built each DoTick; consumed
+    // by DoDrawMarkers (which fires per-viewport from the debug-draw service).
     auto DoDrawMarkers(UCanvas* InCanvas, APlayerController* InPC) -> void;
 
-    TStrongObjectPtr<UTexture2D> _MarkerTexture;
-    TStrongObjectPtr<UTexture2D> _MarkerHoverTexture;
-    FDelegateHandle              _DebugDrawHandle_Game;
-    FDelegateHandle              _DebugDrawHandle_Editor;
+    FCkDebug_EntityMarkers _Markers;
 
-    // Snapshot built each DoTick, consumed by DoDrawMarkers (which fires per-viewport
-    // from the debug-draw service, outside our tick).
-    TArray<FMarkerDraw> _MarkerDraws;
+    // Entity numbers whose markers are suppressed this tick (locally possessed
+    // pawn's entities — a marker there would sit permanently at screen center).
+    TSet<uint32> _MarkerSuppressed;
+
+    // Focused candidate's entity number (drawn emphasized). MAX_uint32 = none.
+    uint32 _FocusedEntityNum = MAX_uint32;
+
+    FDelegateHandle _DebugDrawHandle_Game;
+    FDelegateHandle _DebugDrawHandle_Editor;
 
     // True while the user is ejected from PIE (F8) and the editor camera drives the
     // view — focus picking follows it; PC-projected world tags are suppressed.

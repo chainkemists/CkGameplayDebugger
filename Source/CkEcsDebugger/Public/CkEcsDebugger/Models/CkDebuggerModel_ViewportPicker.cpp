@@ -3,36 +3,26 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
-#include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
-
-#include "CkEcsExt/Transform/CkTransform_Fragment.h"
-#include "CkEcsExt/Transform/CkTransform_Utils.h"
 
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Models/CkDebuggerViewportPicker_InputProcessor.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CanvasItem.h"
+// Successful pick re-focuses the debugger tab (the game viewport took focus while picking).
+#include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+
 #include "Debug/DebugDrawService.h"
-#include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
-#include "Engine/Texture2D.h"
 #include "Engine/World.h"
-#if WITH_EDITOR
-#include "TextureCompiler.h"
-#endif
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "SceneView.h"
 #include "Slate/SceneViewport.h"
 #include "Widgets/SViewport.h"
-
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -52,7 +42,7 @@ namespace
     static constexpr auto BillboardSizeMinPx      = 8.0f;
     static constexpr auto BillboardSizeMaxPx      = 128.0f;
     static constexpr auto BillboardHoverScale     = 1.25f;
-    static constexpr auto BillboardLabelGapPx     = 4.0f;
+    static constexpr auto BillboardDefaultAlpha   = 0.45f;
 
 #if WITH_EDITOR
     // When the PIE player is "ejected" (F8), this project's setup does NOT swap the LocalPlayer to
@@ -186,30 +176,12 @@ auto
             });
     }
 
-    if (NOT _MarkerTexture.IsValid())
-    {
-        _MarkerTexture.Reset(LoadObject<UTexture2D>(
-            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker.T_ECSPicker_Marker")));
-    }
-    if (NOT _MarkerHoverTexture.IsValid())
-    {
-        _MarkerHoverTexture.Reset(LoadObject<UTexture2D>(
-            nullptr, TEXT("/CkDebugger/Textures/T_ECSPicker_Marker_Hover.T_ECSPicker_Marker_Hover")));
-    }
-
-#if WITH_EDITOR
-    // Freshly-imported textures compile their platform data asynchronously. LoadObject returns before
-    // that finishes, so GetResource() can point at a placeholder whose FRHITexture is never properly
-    // initialized — which is the intermittent crash we were hitting on cold editor starts. Force the
-    // compiler to finish before anyone calls GetResource().
-    auto TexturesToFinish = TArray<UTexture*>{};
-    if (_MarkerTexture.IsValid())      { TexturesToFinish.Add(_MarkerTexture.Get()); }
-    if (_MarkerHoverTexture.IsValid()) { TexturesToFinish.Add(_MarkerHoverTexture.Get()); }
-    if (TexturesToFinish.Num() > 0)
-    {
-        FTextureCompilingManager::Get().FinishCompilation(TexturesToFinish);
-    }
-#endif
+    // Front-load the shared marker textures (load + async compilation) so the first
+    // DrawMarkers call never sees a placeholder resource — that was the intermittent
+    // crash on cold editor starts. Then build the initial snapshot so markers appear
+    // on this frame's draw rather than after the first Tick.
+    _Markers.EnsureTextures();
+    DoRefreshMarkers(World);
 
     // Register for BOTH "Game" (PIE viewports) and "Editor" (level editor viewport) show flags so
     // billboards keep rendering after the user ejects with F8 and input moves to the editor viewport.
@@ -261,6 +233,7 @@ auto
         _WorldChangedHandle.Reset();
     }
 
+    _Markers.Reset();
     _HoveredEntity = FCk_Handle{};
     _HasRay        = false;
     _IsActive      = false;
@@ -374,8 +347,13 @@ auto
         return;
     }
 
+    // Rebuild the marker snapshot (entities move/spawn/die between frames) and re-issue
+    // the one-frame dashed parent→child links. Billboard rendering is driven by the
+    // UDebugDrawService callback (DoDrawBillboards) off this snapshot.
+    DoRefreshMarkers(World);
+    _Markers.DrawLinks(World);
+
     // Refresh the hover hit under the last known cursor ray, since entities can move between frames.
-    // Billboard rendering is driven by the UDebugDrawService callback (DoDrawBillboards), not here.
     if (_HasRay)
     {
         _HoveredEntity = DoPickAtRay(World, _LastRayOrigin, _LastRayDirection);
@@ -440,6 +418,11 @@ auto
     }
 
     Deactivate();
+
+    // Bring the debugger tab back to front — the game viewport took focus while
+    // picking, so a successful pick would otherwise land in a background tab.
+    ck::DebugNav::Goto_Entity(Hit);
+
     return true;
 }
 
@@ -653,12 +636,14 @@ auto
     { return FCk_Handle{}; }
 
     const auto IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
-    const auto CullRadiusSq  = _CullRadius * _CullRadius;
 
     auto ActorCandidate  = FPickCandidate{};
     auto SphereCandidate = FPickCandidate{};
 
     // ---- 1. Physics line trace for actor-backed entities ----
+    // The resolved entity must be in the marker snapshot — the depth gate, distance
+    // cull, and ignore-self filter apply to actor hits too (what you see is what you
+    // can pick).
     {
         constexpr auto TraceComplex = false;
         auto Params = FCollisionQueryParams{TEXT("CkDebugger_Picker"), TraceComplex};
@@ -673,7 +658,7 @@ auto
         {
             auto* HitActor = Hit.GetActor();
             const auto ResolvedHandle = DoResolveActorEntity(InWorld, HitActor);
-            if (ck::IsValid(ResolvedHandle))
+            if (ck::IsValid(ResolvedHandle) && _Markers.Contains(ResolvedHandle))
             {
                 ActorCandidate.Entity     = ResolvedHandle;
                 ActorCandidate.RayT       = Hit.Distance;
@@ -682,56 +667,42 @@ auto
         }
     }
 
-    // ---- 2. Ray-sphere test against all FFragment_Transform entities ----
+    // ---- 2. Ray-sphere test against the previewed marker entries ----
+    // The snapshot already applies the depth gate, distance cull, and ignore-self
+    // filter, so every entry is fair game.
     {
-        auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
-        if (ck::IsValid(TransientEntity))
+        auto BestSphereT      = TNumericLimits<float>::Max();
+        auto BestSphereHandle = FCk_Handle{};
+
+        for (const auto& Entry : _Markers.Get_Entries())
         {
-            auto BestSphereT      = TNumericLimits<float>::Max();
-            auto BestSphereHandle = FCk_Handle{};
+            const auto& Center = Entry.WorldPos;
 
-            TransientEntity.View<ck::FFragment_Transform, CK_IGNORE_PENDING_KILL>().ForEach(
-            [&](FCk_Entity InEntity, const ck::FFragment_Transform& InTransform)
+            // Inline ray-sphere (quadratic). We need the near-t to compare against the actor hit,
+            // so FMath::LineSphereIntersection (which only returns bool) is insufficient.
+            const auto L    = Center - InOrigin;
+            const auto B    = FVector::DotProduct(L, InDirection);
+            const auto C    = FVector::DotProduct(L, L) - (PickRadius * PickRadius);
+            const auto Disc = (B * B) - C;
+            if (Disc < 0.0f)
+            { continue; }
+
+            const auto NearT = B - FMath::Sqrt(Disc);
+            if (NearT < 0.0f || NearT > _CullRadius)
+            { continue; }
+
+            if (NearT < BestSphereT)
             {
-                const auto Handle = ck::MakeHandle(InEntity, TransientEntity);
-                if (ck::Is_NOT_Valid(Handle))
-                { return; }
-
-                const auto Center = InTransform.Get_Transform().GetLocation();
-
-                const auto DistSq = FVector::DistSquared(Center, InOrigin);
-                if (DistSq > CullRadiusSq)
-                { return; }
-
-                if (_IgnoreLocalPawn && DoIsEntityOwnedByIgnoredActor(Handle, IgnoredActors))
-                { return; }
-
-                // Inline ray-sphere (quadratic). We need the near-t to compare against the actor hit,
-                // so FMath::LineSphereIntersection (which only returns bool) is insufficient.
-                const auto L    = Center - InOrigin;
-                const auto B    = FVector::DotProduct(L, InDirection);
-                const auto C    = FVector::DotProduct(L, L) - (PickRadius * PickRadius);
-                const auto Disc = (B * B) - C;
-                if (Disc < 0.0f)
-                { return; }
-
-                const auto NearT = B - FMath::Sqrt(Disc);
-                if (NearT < 0.0f || NearT > _CullRadius)
-                { return; }
-
-                if (NearT < BestSphereT)
-                {
-                    BestSphereT      = NearT;
-                    BestSphereHandle = Handle;
-                }
-            });
-
-            if (ck::IsValid(BestSphereHandle))
-            {
-                SphereCandidate.Entity     = BestSphereHandle;
-                SphereCandidate.RayT       = BestSphereT;
-                SphereCandidate.IsActorHit = false;
+                BestSphereT      = NearT;
+                BestSphereHandle = Entry.Entity;
             }
+        }
+
+        if (ck::IsValid(BestSphereHandle))
+        {
+            SphereCandidate.Entity     = BestSphereHandle;
+            SphereCandidate.RayT       = BestSphereT;
+            SphereCandidate.IsActorHit = false;
         }
     }
 
@@ -758,6 +729,33 @@ auto
 
 auto
     FCkDebuggerModel_ViewportPicker::
+    DoRefreshMarkers(
+        UWorld* InWorld) -> void
+{
+    auto Params = FCkDebug_EntityMarkers::FGatherParams{};
+    Params.CullOrigin = DoGet_CameraLocation(InWorld);
+    Params.CullRadius = _CullRadius;
+
+    if (_IgnoreLocalPawn)
+    {
+        auto IgnoredActors = DoGet_LocalIgnoredActors(InWorld);
+        if (NOT IgnoredActors.IsEmpty())
+        {
+            // Consumed synchronously inside Gather — `this` capture is safe.
+            Params.Filter = [this, IgnoredActors = MoveTemp(IgnoredActors)](const FCk_Handle& InHandle)
+            {
+                return NOT DoIsEntityOwnedByIgnoredActor(InHandle, IgnoredActors);
+            };
+        }
+    }
+
+    _Markers.Gather(InWorld, Params);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
     DoDrawBillboards(
         UCanvas*           InCanvas,
         APlayerController* InPC) -> void
@@ -776,103 +774,19 @@ auto
     if (ck::IsValid(InPC) && InPC->GetWorld() != World)
     { return; }
 
-    auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(World);
-    if (ck::Is_NOT_Valid(TransientEntity))
-    { return; }
+    auto DrawParams            = FCkDebug_EntityMarkers::FDrawParams{};
+    DrawParams.TileSizePx      = FMath::Clamp(_BillboardSizePx, BillboardSizeMinPx, BillboardSizeMaxPx);
+    DrawParams.DefaultAlpha    = BillboardDefaultAlpha;
+    DrawParams.EmphasizedScale = BillboardHoverScale;
 
-    // Textures are guaranteed compiled before we get here (FTextureCompilingManager::FinishCompilation
-    // in Activate). If they failed to load outright — bad path, missing asset — bail silently; the
-    // picker is still functional via click-to-select, just invisible.
-    auto* MarkerTex = _MarkerTexture.Get();
-    auto* HoverTex  = _MarkerHoverTexture.IsValid() ? _MarkerHoverTexture.Get() : MarkerTex;
-    if (MarkerTex == nullptr || HoverTex == nullptr)
-    { return; }
-
-    const auto* MarkerResource = MarkerTex->GetResource();
-    const auto* HoverResource  = HoverTex->GetResource();
-    if (MarkerResource == nullptr || HoverResource == nullptr)
-    { return; }
-
-    const auto CameraLocation = DoGet_CameraLocation(World);
-    const auto CullRadiusSq   = _CullRadius * _CullRadius;
-    const auto DefaultColor   = CkDebugStyle::PickMarker_Default();
-    const auto HoverColor     = CkDebugStyle::PickMarker_Hover();
-    const auto CanvasSizeX    = static_cast<float>(InCanvas->SizeX);
-    const auto CanvasSizeY    = static_cast<float>(InCanvas->SizeY);
-    const auto TileSizePx     = FMath::Clamp(_BillboardSizePx, BillboardSizeMinPx, BillboardSizeMaxPx);
-
-    const auto IgnoredActors = DoGet_LocalIgnoredActors(World);
-
-    // Defer the hovered entity's draw so it renders on top of the cluster.
-    auto HoveredCenter = TOptional<FVector>{};
-
-    TransientEntity.View<ck::FFragment_Transform, CK_IGNORE_PENDING_KILL>().ForEach(
-    [&](FCk_Entity InEntity, const ck::FFragment_Transform& InTransform)
+    if (ck::IsValid(_HoveredEntity))
     {
-        const auto Handle = ck::MakeHandle(InEntity, TransientEntity);
-        if (ck::Is_NOT_Valid(Handle))
-        { return; }
-
-        const auto Center = InTransform.Get_Transform().GetLocation();
-
-        const auto DistSqToCamera = FVector::DistSquared(Center, CameraLocation);
-        if (DistSqToCamera > CullRadiusSq)
-        { return; }
-
-        if (_IgnoreLocalPawn && DoIsEntityOwnedByIgnoredActor(Handle, IgnoredActors))
-        { return; }
-
-        if (Handle == _HoveredEntity)
-        {
-            HoveredCenter = Center;
-            return;
-        }
-
-        const auto Projected = InCanvas->Project(Center);
-        if (Projected.Z <= 0.0f)
-        { return; }
-        if (Projected.X < 0.0f || Projected.Y < 0.0f || Projected.X >= CanvasSizeX || Projected.Y >= CanvasSizeY)
-        { return; }
-
-        const auto TopLeft = FVector2D(
-            static_cast<float>(Projected.X) - TileSizePx * 0.5f,
-            static_cast<float>(Projected.Y) - TileSizePx * 0.5f);
-
-        auto Tile = FCanvasTileItem(TopLeft, MarkerResource, FVector2D(TileSizePx, TileSizePx), DefaultColor);
-        Tile.BlendMode = SE_BLEND_Translucent;
-        InCanvas->DrawItem(Tile);
-    });
-
-    if (HoveredCenter.IsSet())
-    {
-        const auto Center    = HoveredCenter.GetValue();
-        const auto Projected = InCanvas->Project(Center);
-        if (Projected.Z > 0.0f)
-        {
-            const auto HoverSize = TileSizePx * BillboardHoverScale;
-
-            const auto TopLeft = FVector2D(
-                static_cast<float>(Projected.X) - HoverSize * 0.5f,
-                static_cast<float>(Projected.Y) - HoverSize * 0.5f);
-
-            auto Tile = FCanvasTileItem(TopLeft, HoverResource, FVector2D(HoverSize, HoverSize), HoverColor);
-            Tile.BlendMode = SE_BLEND_Translucent;
-            InCanvas->DrawItem(Tile);
-
-            if (auto* Font = GEngine != nullptr ? GEngine->GetSmallFont() : nullptr)
-            {
-                const auto LabelText = FText::FromString(_HoveredEntity.ToString());
-                auto TextItem = FCanvasTextItem(
-                    FVector2D(
-                        static_cast<float>(Projected.X),
-                        static_cast<float>(Projected.Y) - HoverSize * 0.5f - BillboardLabelGapPx),
-                    LabelText, Font, HoverColor);
-                TextItem.bCentreX = true;
-                TextItem.EnableShadow(FLinearColor::Black);
-                InCanvas->DrawItem(TextItem);
-            }
-        }
+        DrawParams.EmphasizedEntityNum =
+            static_cast<uint32>(_HoveredEntity.Get_Entity().Get_EntityNumber());
+        DrawParams.EmphasizedLabel = _HoveredEntity.ToString();
     }
+
+    _Markers.DrawMarkers(InCanvas, DrawParams);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

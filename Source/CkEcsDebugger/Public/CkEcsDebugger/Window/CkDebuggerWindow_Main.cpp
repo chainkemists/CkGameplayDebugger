@@ -491,6 +491,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
             // ---- Billboard Size spinbox ----
             + SVerticalBox::Slot()
             .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot()
@@ -530,6 +531,54 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                         .ToolTipText(FText::FromString(TEXT(
                             "Size (pixels) of each entity billboard. Billboards keep the same\n"
                             "screen size regardless of distance to the camera.")))
+                    ]
+                ]
+            ]
+
+            // ---- Max Depth spinbox (shared cvar — linked to the On-Screen Overlay) ----
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Max Depth:")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                ]
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(SBox)
+                    .WidthOverride(120.0f)
+                    [
+                        SNew(SSpinBox<int32>)
+                        .MinValue(-1)
+                        .MaxValue(16)
+                        .Delta(1)
+                        .Value_Lambda([]() -> int32
+                        {
+                            const auto* CVar = IConsoleManager::Get().FindConsoleVariable(
+                                ck::DebugMarkers::Get_MaxDepthCVarName());
+                            return CVar != nullptr ? CVar->GetInt() : -1;
+                        })
+                        .OnValueChanged_Lambda([](int32 InValue)
+                        {
+                            if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(
+                                ck::DebugMarkers::Get_MaxDepthCVarName()))
+                            {
+                                CVar->Set(InValue, ECVF_SetByConsole);
+                            }
+                        })
+                        .ToolTipText(FText::FromString(TEXT(
+                            "Max hierarchy depth of previewed/pickable entities\n"
+                            "(ck.Debug.EntityMarkers.MaxDepth — shared with the On-Screen Overlay).\n"
+                            "-1 = unlimited, 0 = top-level entities only, N = up to N levels deep.")))
                     ]
                 ]
             ]
@@ -671,18 +720,19 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                         .Delta(1)
                         .Value_Lambda([]() -> int32
                         {
-                            const auto* CVar = Get_OverlayCVar(TEXT("ck.DebugOverlay.MaxDepth"));
+                            const auto* CVar = Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName());
                             return CVar != nullptr ? CVar->GetInt() : -1;
                         })
                         .OnValueChanged_Lambda([](int32 InValue)
                         {
-                            if (auto* CVar = Get_OverlayCVar(TEXT("ck.DebugOverlay.MaxDepth")))
+                            if (auto* CVar = Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName()))
                             {
                                 CVar->Set(InValue, ECVF_SetByConsole);
                             }
                         })
                         .ToolTipText(FText::FromString(TEXT(
-                            "Max hierarchy depth for overlay candidates (ck.DebugOverlay.MaxDepth).\n"
+                            "Max hierarchy depth for the entity-marker preview — shared by the\n"
+                            "on-screen overlay AND the ECS picker (ck.Debug.EntityMarkers.MaxDepth).\n"
                             "-1 = unlimited, 0 = top-level entities only, N = up to N levels deep.")))
                     ]
                 ]

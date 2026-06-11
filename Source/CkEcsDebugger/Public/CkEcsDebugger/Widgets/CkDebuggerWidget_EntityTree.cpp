@@ -776,6 +776,32 @@ auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_H
 
     IsUpdatingSelection = true;
 
+    // The entity cache refreshes only on world change / manual Refresh, so an externally
+    // selected entity (viewport picker, cross-debugger navigation) may have spawned after
+    // the last rebuild and have no node yet — which silently skipped the highlight/expand/
+    // scroll below. Rebuild once on miss. Re-entrancy from RefreshTree's RestoreSelection
+    // broadcast is blocked by IsUpdatingSelection.
+    {
+        auto AnyMissing = false;
+        for (const auto& Entity : InNewSelection)
+        {
+            if (ck::IsValid(Entity) && NOT NodeMap.Contains(Entity))
+            {
+                AnyMissing = true;
+                break;
+            }
+        }
+
+        if (AnyMissing)
+        {
+            if (WorldModel.IsValid())
+            {
+                WorldModel->MarkCacheDirty();
+            }
+            RefreshTree();
+        }
+    }
+
     TreeView->ClearSelection();
 
     for (const auto& Entity : InNewSelection)

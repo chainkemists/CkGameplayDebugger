@@ -6,10 +6,13 @@ namespace ck_goap_debugger_history_model
 {
     auto Format_Timestamp(double InWorldSeconds) -> FString
     {
-        const auto Total   = FMath::Max(0.0, InWorldSeconds);
-        const auto Minutes = static_cast<int32>(Total) / 60;
-        const auto Seconds = static_cast<int32>(Total) % 60;
-        const auto Ms      = static_cast<int32>((Total - FMath::Floor(Total)) * 1000.0);
+        // Round total milliseconds first — truncating the fractional part
+        // renders 34.538 (stored as 34.53799…) as ".537", and rounding only
+        // the fraction would produce ".1000" at the rollover edge.
+        const auto TotalMs = FMath::RoundToInt64(FMath::Max(0.0, InWorldSeconds) * 1000.0);
+        const auto Minutes = static_cast<int32>(TotalMs / 60000);
+        const auto Seconds = static_cast<int32>((TotalMs / 1000) % 60);
+        const auto Ms      = static_cast<int32>(TotalMs % 1000);
         return FString::Printf(TEXT("%02d:%02d.%03d"), Minutes, Seconds, Ms);
     }
 

@@ -11,7 +11,18 @@
 // Successful pick re-focuses the debugger tab (the game viewport took focus while picking).
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 
+// On-Screen Overlay reuse — same focus card + world tags, built via the shared presenters.
+#include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
+#include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Layout.h"
+#include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_Present.h"
+#include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
+#include "CkEntityDebugOverlay/Selection/CkDebugOverlay_Selection.h"
+#include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
+#include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
+
 #include "Debug/DebugDrawService.h"
+#include "HAL/IConsoleManager.h"
+#include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/GameViewportClient.h"
@@ -190,6 +201,8 @@ auto
     _DebugDrawHandle_Game   = UDebugDrawService::Register(TEXT("Game"),   DrawDelegate);
     _DebugDrawHandle_Editor = UDebugDrawService::Register(TEXT("Editor"), DrawDelegate);
 
+    DoActivateOverlayCards(World);
+
     _IsActive = true;
     OnPickModeChanged.Broadcast(_IsActive);
 
@@ -233,10 +246,12 @@ auto
         _WorldChangedHandle.Reset();
     }
 
+    DoDeactivateOverlayCards();
+
     _Markers.Reset();
-    _HoveredEntity = FCk_Handle{};
-    _HasRay        = false;
-    _IsActive      = false;
+    _FocusEntity = FCk_Handle{};
+    _HasRay      = false;
+    _IsActive    = false;
 
     OnPickModeChanged.Broadcast(_IsActive);
 }
@@ -353,10 +368,31 @@ auto
     DoRefreshMarkers(World);
     _Markers.DrawLinks(World);
 
-    // Refresh the hover hit under the last known cursor ray, since entities can move between frames.
+    // Refresh the focus under the last known cursor ray. STICKY: only update when the ray
+    // actually hits an entity, so _FocusEntity (card + emphasized diamond) holds the last
+    // hover instead of flickering empty as the cursor sweeps between markers.
     if (_HasRay)
     {
-        _HoveredEntity = DoPickAtRay(World, _LastRayOrigin, _LastRayDirection);
+        const auto Hit = DoPickAtRay(World, _LastRayOrigin, _LastRayDirection);
+        if (ck::IsValid(Hit))
+        {
+            _FocusEntity = Hit;
+        }
+    }
+
+    // Push the overlay focus card + world tags for the current focus / candidates.
+    if (_OverlayCardsActive)
+    {
+        auto* PC = World->GetFirstPlayerController();
+
+        // Ejected PIE: world tags use frozen-camera PC projection — DoUpdateOverlayCards
+        // skips them then (the focus card still shows). Mirror the picker's own ejected
+        // detection used elsewhere.
+        auto IsEjected = false;
+#if WITH_EDITOR
+        IsEjected = TryGet_LevelEditorViewport() != nullptr;
+#endif
+        DoUpdateOverlayCards(World, PC, IsEjected);
     }
 }
 
@@ -378,8 +414,9 @@ auto
     auto Direction = FVector::ForwardVector;
     if (NOT DoDeproject(World, InAbsolutePos, Origin, Direction))
     {
-        _HasRay        = false;
-        _HoveredEntity = FCk_Handle{};
+        // Cursor left the viewport: stop ray-testing, but keep _FocusEntity sticky so the
+        // card doesn't vanish while the mouse is briefly off the render surface.
+        _HasRay = false;
         return;
     }
 
@@ -779,11 +816,12 @@ auto
     DrawParams.DefaultAlpha    = BillboardDefaultAlpha;
     DrawParams.EmphasizedScale = BillboardHoverScale;
 
-    if (ck::IsValid(_HoveredEntity))
+    // Emphasize the sticky focus diamond. No text label — entity detail now lives in the
+    // reused overlay focus card (Set_FocusCardContent), not as canvas text.
+    if (ck::IsValid(_FocusEntity))
     {
         DrawParams.EmphasizedEntityNum =
-            static_cast<uint32>(_HoveredEntity.Get_Entity().Get_EntityNumber());
-        DrawParams.EmphasizedLabel = _HoveredEntity.ToString();
+            static_cast<uint32>(_FocusEntity.Get_Entity().Get_EntityNumber());
     }
 
     _Markers.DrawMarkers(InCanvas, DrawParams);
@@ -892,4 +930,135 @@ auto
     PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
 
     return CameraLocation;
+}
+
+// =====================================================================================================================
+// Overlay cards (focus card + world tags) — reused from the On-Screen Overlay so the picker
+// shows the same main card + world cards instead of bespoke canvas text.
+// =====================================================================================================================
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    DoActivateOverlayCards(
+        UWorld* InWorld) -> void
+{
+    if (ck::Is_NOT_Valid(InWorld))
+    { return; }
+
+    // AMENDMENT 1 — coexistence: if the On-Screen Overlay subsystem is already running
+    // (ck.DebugOverlay != 0) it is drawing its own focus card + world tags for this player.
+    // Adding ours would double them up, so skip — the picker's diamonds still draw.
+    if (const auto* MasterCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.DebugOverlay"));
+        MasterCVar != nullptr && MasterCVar->GetInt() != 0)
+    { return; }
+
+    auto* GVC = InWorld->GetGameViewport();
+    if (ck::Is_NOT_Valid(GVC))
+    { return; }
+
+    if (_OverlayProviders.IsEmpty())
+    {
+        _OverlayProviders = FCk_DebugOverlay_Registry::Get().CreateAll();
+    }
+    _OverlayHistory = MakeUnique<FCk_DebugOverlay_History>();
+
+    // v1: use the overlay's StartingLayout (the live cycle index lives in the subsystem
+    // instance and isn't statically reachable). Picker and overlay can diverge if the user
+    // cycles layouts; acceptable for now.
+    _OverlayLayoutIndex = ck_debugoverlay::Get_StartingLayoutIndex(
+        GetDefault<UCk_DebugOverlay_Settings>());
+
+    _OverlayRoot = SNew(SCkDebugOverlay_Root);
+
+    // Same Z-order as the overlay subsystem (above game UI, below modal dialogs).
+    constexpr auto OverlayCardZOrder = 100;
+    GVC->AddViewportWidgetContent(_OverlayRoot.ToSharedRef(), OverlayCardZOrder);
+
+    _OverlayCardsActive = true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    DoDeactivateOverlayCards() -> void
+{
+    if (_OverlayRoot.IsValid())
+    {
+        if (auto* World = DoResolveTargetWorld(); ck::IsValid(World))
+        {
+            if (auto* GVC = World->GetGameViewport(); ck::IsValid(GVC))
+            {
+                GVC->RemoveViewportWidgetContent(_OverlayRoot.ToSharedRef());
+            }
+        }
+        _OverlayRoot.Reset();
+    }
+
+    _OverlayProviders.Reset();
+    _OverlayHistory.Reset();
+    _OverlayCardsActive = false;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    DoUpdateOverlayCards(
+        UWorld*            InWorld,
+        APlayerController* InPC,
+        bool               InIsEjected) -> void
+{
+    if (NOT _OverlayCardsActive || NOT _OverlayRoot.IsValid())
+    { return; }
+
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto* Layout   = ck_debugoverlay::Resolve_Layout(Settings, _OverlayLayoutIndex);
+    if (Layout == nullptr || NOT _OverlayHistory)
+    { return; }
+
+    const auto Now = FPlatformTime::Seconds();
+
+    // ---- Plate anchor + width (settings-driven; cheap no-op when unchanged) ----
+    _OverlayRoot->Set_PlateLayout(
+        Settings ? Settings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopRight,
+        Settings ? Settings->PlateWidth  : 720.0f);
+
+    // ---- Focus card for the sticky focus entity (empty model hides the card content) ----
+    const auto Model = ck_debugoverlay::Build_EntityModel(
+        _FocusEntity, _OverlayProviders, *Layout, _OverlayHistory.Get(), Now);
+
+    auto CardStyle = Layout->DefaultStyle;
+    CardStyle.FontScale *= Settings ? Settings->PlateFontScale : 1.0f;
+
+    _OverlayRoot->Set_FocusCardContent(Model, CardStyle, *_OverlayHistory, Now, /*bIsLocked=*/false);
+
+    // ---- World tags for the previewed candidates (the marker snapshot = the candidate set) ----
+    auto Handles    = TArray<FCk_Handle>{};
+    auto Candidates = TArray<ck_debugoverlay::FCandidate>{};
+    Handles.Reserve(_Markers.Get_Entries().Num());
+    Candidates.Reserve(_Markers.Get_Entries().Num());
+
+    for (const auto& Entry : _Markers.Get_Entries())
+    {
+        auto Cand          = ck_debugoverlay::FCandidate{};
+        Cand.WorldLocation = Entry.WorldPos;
+        Cand.Depth         = Entry.Depth;
+        Cand.bIsOnScreen   = false;
+
+        if (ck::IsValid(InPC) && NOT InIsEjected)
+        {
+            auto ScreenPos = FVector2D{};
+            Cand.bIsOnScreen = UGameplayStatics::ProjectWorldToScreen(
+                InPC, Entry.WorldPos, ScreenPos, /*bPlayerViewportRelative=*/false);
+        }
+
+        Handles.Add(Entry.Entity);
+        Candidates.Add(Cand);
+    }
+
+    const auto WorldTags = ck_debugoverlay::Build_WorldTags(
+        Handles, Candidates, _OverlayProviders, *Layout, InPC, InIsEjected);
+
+    _OverlayRoot->Update_WorldTags(WorldTags);
 }

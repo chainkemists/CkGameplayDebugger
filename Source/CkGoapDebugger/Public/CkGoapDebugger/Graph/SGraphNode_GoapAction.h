@@ -16,8 +16,13 @@
 //   - Header row: action class name (truncated) and "$N" cost in amber.
 //   - Composite badge: small purple "▸ <leaf tag>" strip between header and body
 //     when ChildActionHandles.Num() > 0.
-//   - Body: two columns — precondition labels (left) and effect labels (right),
-//     each with a coloured dot (sat=green / unsat=red preconditions; effects=blue).
+//   - Body: two columns — precondition rows (left) and effect labels (right),
+//     name-sorted. Each precondition shows its authored desired value as a dim
+//     "= true/false" suffix and a LIVE satisfaction dot (green = current WS
+//     matches the desired value, red = mismatch, dim = key not in WS), bound
+//     via TAttribute against the owning graph's world-state view. Effects keep
+//     a static blue dot. The card width is measured per node at rebuild time
+//     so long key names are never cut off.
 //   - Plan-step badge: top-left numbered circle when PlanStepIndex > 0.
 // ====================================================================================================================
 

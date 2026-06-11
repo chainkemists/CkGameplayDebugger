@@ -53,8 +53,9 @@ namespace
         return FCkGoapDebuggerStyle::Color_Status_Planning;
     }
 
-    // Small filled circle for port indicator dots.
-    auto MakeDot(const FLinearColor& InColor) -> TSharedRef<SWidget>
+    // Small filled circle for port indicator dots. Accepts a TAttribute so
+    // satisfaction dots can live-bind to the graph's world-state view.
+    auto MakeDot(const TAttribute<FSlateColor>& InColor) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
             .WidthOverride(7.0f)
@@ -64,6 +65,21 @@ namespace
                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
                     .BorderBackgroundColor(InColor)
             ];
+    }
+
+    // Current value of a WS key as seen by the node's owning graph; unset when
+    // the key isn't in the Planner's resolved WS (or the node/graph is gone).
+    auto Query_LiveWorldState(
+        const TWeakObjectPtr<UCkGoapDebugNode_Action>& InWeakNode,
+        const FGameplayTag& InKey) -> TOptional<bool>
+    {
+        const auto* Node = InWeakNode.Get();
+        if (Node == nullptr) { return {}; }
+
+        const auto* Graph = Cast<UCkGoapDebugGraph>(Node->GetGraph());
+        if (Graph == nullptr) { return {}; }
+
+        return Graph->Get_LiveWorldStateValue(InKey);
     }
 }
 
@@ -255,7 +271,9 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(SBox)
-                .WidthOverride(FCkGoapDebuggerStyle::GraphNode_Width)
+                // Measured at rebuild time from the card's content (see
+                // Measure_NodeSize_Graph) so long WS key names never clip.
+                .WidthOverride(FMath::Max(FCkGoapDebuggerStyle::GraphNode_Width, _ActionNode->Get_NodeWidth()))
                 .MinDesiredHeight(FCkGoapDebuggerStyle::GraphNode_MinHeight)
                 [
                     SNew(SOverlay)
@@ -301,35 +319,72 @@ auto
     -> TSharedRef<SWidget>
 {
     const auto& Snap = _ActionNode->Get_Snapshot();
+    const auto WeakNode = TWeakObjectPtr<UCkGoapDebugNode_Action>(_ActionNode);
 
-    // Build per-key WS lookup so the dot color reflects current satisfaction state.
     auto LeftCol  = SNew(SVerticalBox);
     auto RightCol = SNew(SVerticalBox);
 
-    // Preconditions: green if any condition's authored Value matches an
-    // arbitrary "sat" check is non-trivial; for D5 use red/green based on
-    // whether the condition's Value field is true (treating the snapshot
-    // truthiness as a quick visual signal). A future revision should pull
-    // from the parent Planner's WorldState array.
-    for (const auto& Pre : Snap.Preconditions)
+    // Name-sorted display copies — the snapshot keeps authoring order (it
+    // feeds the topology hash), the card shows a stable alphabetical list.
+    auto SortedPre = Snap.Preconditions;
+    SortedPre.Sort([](const FCkGoapDebugger_Condition& A, const FCkGoapDebugger_Condition& B)
+    { return Compute_TagLeaf(A.Key) < Compute_TagLeaf(B.Key); });
+
+    auto SortedEff = Snap.Effects;
+    SortedEff.Sort([](const FCkGoapDebugger_Condition& A, const FCkGoapDebugger_Condition& B)
+    { return Compute_TagLeaf(A.Key) < Compute_TagLeaf(B.Key); });
+
+    // Preconditions: the dot is the LIVE satisfaction state — green when the
+    // Planner's resolved WS currently matches the authored desired value, red
+    // when it doesn't, dim when the key isn't in the WS snapshot. Bound via
+    // TAttribute (per the SGraphNode live-bind invariant) so per-tick WS flips
+    // repaint without widget recreation. The authored desired value renders as
+    // a dim "= true/false" suffix so both halves of the comparison are visible.
+    for (const auto& Pre : SortedPre)
     {
-        const auto Sat = Pre.Value;
-        const auto DotColor = Sat
-            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-            : FCkGoapDebuggerStyle::Color_Status_Failed;
+        const auto Key          = Pre.Key;
+        const auto DesiredValue = Pre.Value;
+
+        auto DotColorAttr = TAttribute<FSlateColor>::CreateLambda([WeakNode, Key, DesiredValue]()
+        {
+            const auto Current = Query_LiveWorldState(WeakNode, Key);
+            if (NOT Current.IsSet())
+            { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim); }
+            return FSlateColor(*Current == DesiredValue
+                ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+                : FCkGoapDebuggerStyle::Color_Status_Failed);
+        });
+
+        auto TooltipAttr = TAttribute<FText>::CreateLambda([WeakNode, Key, DesiredValue]()
+        {
+            const auto Current = Query_LiveWorldState(WeakNode, Key);
+            const auto CurrentStr = Current.IsSet()
+                ? FString(*Current ? TEXT("TRUE") : TEXT("false"))
+                : FString(TEXT("(not in WorldState)"));
+            const auto SatStr = Current.IsSet()
+                ? FString(*Current == DesiredValue ? TEXT("satisfied") : TEXT("NOT satisfied"))
+                : FString(TEXT("unknown"));
+            return FText::FromString(FString::Printf(
+                TEXT("%s\nWants: %s\nCurrent: %s — %s"),
+                *Key.ToString(),
+                DesiredValue ? TEXT("true") : TEXT("false"),
+                *CurrentStr,
+                *SatStr));
+        });
 
         LeftCol->AddSlot()
             .AutoHeight()
             .Padding(0.0f, 1.0f)
             [
                 SNew(SHorizontalBox)
+                    .ToolTipText(TooltipAttr)
                     + SHorizontalBox::Slot()
                         .AutoWidth()
                         .VAlign(VAlign_Center)
                         .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                        [ MakeDot(DotColor) ]
+                        [ MakeDot(DotColorAttr) ]
                     + SHorizontalBox::Slot()
-                        .FillWidth(1.0f)
+                        .AutoWidth()
                         .VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
@@ -338,16 +393,27 @@ auto
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]
+                    + SHorizontalBox::Slot()
+                        .FillWidth(1.0f)
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(DesiredValue ? TEXT(" = true") : TEXT(" = false")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                        ]
             ];
     }
 
-    for (const auto& Eff : Snap.Effects)
+    for (const auto& Eff : SortedEff)
     {
         RightCol->AddSlot()
             .AutoHeight()
             .Padding(0.0f, 1.0f)
             [
                 SNew(SHorizontalBox)
+                    .ToolTipText(FText::FromString(Eff.Key.ToString()))
                     + SHorizontalBox::Slot()
                         .FillWidth(1.0f)
                         .HAlign(HAlign_Right)
@@ -363,7 +429,7 @@ auto
                         .AutoWidth()
                         .VAlign(VAlign_Center)
                         .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                        [ MakeDot(FCkGoapDebuggerStyle::Color_Status_Planning) ]
+                        [ MakeDot(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning)) ]
             ];
     }
 

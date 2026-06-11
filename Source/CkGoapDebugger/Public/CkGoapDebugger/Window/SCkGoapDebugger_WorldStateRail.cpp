@@ -6,6 +6,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
@@ -96,6 +97,15 @@ auto
                             SNew(SSeparator)
                                 .Thickness(1.0f)
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
+                        ]
+
+                    // ---- Search + sort (fixed chrome — keeps input focus) ----
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small,
+                                         FCkGoapDebuggerStyle::Padding_Small))
+                        [
+                            BuildSearchAndSortBar()
                         ]
 
                     // ---- Body (scrollable key list) --------------------------
@@ -210,6 +220,13 @@ auto
     if (_ViewModel.IsValid())
     { NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth())); }
 
+    // Fold in search + sort state — typing into the dual search bar or cycling
+    // the sort mode rebuilds the body (the inputs themselves live in the fixed
+    // chrome, so focus survives).
+    NewHash = HashCombine(NewHash, GetTypeHash(_FilterString));
+    NewHash = HashCombine(NewHash, GetTypeHash(_HighlightString));
+    NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<uint8>(_SortMode)));
+
     // Fold in the override-stack identity so push/pop/expand triggers a rebuild
     // of the layers section (different stack contents = different rendered rows).
     if (ck::IsValid(_CurrentWorldState))
@@ -267,6 +284,27 @@ auto
         return;
     }
 
+    // ---- Sorted + filtered view over the snapshot entries ---------------------
+    // Filter narrows; sort orders (Name default, or TRUE-first). Highlight is
+    // applied per-row below (dims non-matches without hiding them).
+    auto ViewEntries = TArray<const FCkGoapDebugger_WorldStateEntry*>{};
+    ViewEntries.Reserve(Entries->Num());
+    for (const auto& Entry : *Entries)
+    {
+        if (NOT _FilterString.IsEmpty() &&
+            NOT Entry.Key.ToString().Contains(_FilterString))
+        { continue; }
+        ViewEntries.Add(&Entry);
+    }
+
+    const auto SortMode = _SortMode;
+    ViewEntries.Sort([SortMode](const FCkGoapDebugger_WorldStateEntry& A, const FCkGoapDebugger_WorldStateEntry& B)
+    {
+        if (SortMode == ECkGoapDebugger_WsSortMode::ByTrueFirst && A.Value != B.Value)
+        { return A.Value; }
+        return A.Key.ToString() < B.Key.ToString();
+    });
+
     // ---- Header (label + key count) ------------------------------------------
     const auto KeyCount = Entries->Num();
     auto RecentCount    = 0;
@@ -275,7 +313,9 @@ auto
 
     if (_HeaderHost.IsValid())
     {
-        const auto CountText = FString::Printf(TEXT("%d keys"), KeyCount);
+        const auto CountText = _FilterString.IsEmpty()
+            ? FString::Printf(TEXT("%d keys"), KeyCount)
+            : FString::Printf(TEXT("%d / %d keys"), ViewEntries.Num(), KeyCount);
 
         // The "[+N layer]" suffix is bound via TAttribute so push/pop of the
         // DebugUI layer updates the header text live, without forcing the
@@ -417,12 +457,29 @@ auto
                 ];
         }
 
-        for (const auto& Entry : *Entries)
+        for (const auto* Entry : ViewEntries)
         {
+            const auto HighlightDimmed =
+                NOT _HighlightString.IsEmpty() &&
+                NOT Entry->Key.ToString().Contains(_HighlightString);
+
             _Body->AddSlot()
                 .AutoHeight()
                 [
-                    BuildKeyRow(Entry)
+                    BuildKeyRow(*Entry, HighlightDimmed)
+                ];
+        }
+
+        if (ViewEntries.Num() == 0)
+        {
+            _Body->AddSlot()
+                .AutoHeight()
+                .Padding(FMargin(0.0f, FCkGoapDebuggerStyle::Padding_Medium))
+                [
+                    SNew(SCkDebug_SelectableLabel)
+                        .Text(FText::FromString(TEXT("(no keys match filter)")))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
                 ];
         }
     }
@@ -486,13 +543,82 @@ auto
 }
 
 // ====================================================================================================================
+// BUILD — SEARCH + SORT BAR (fixed chrome)
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    BuildSearchAndSortBar()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_DualSearchBar)
+                    .FilterHintText(FText::FromString(TEXT("Filter keys…")))
+                    .HighlightHintText(FText::FromString(TEXT("Highlight…")))
+                    .OnFilterTextChanged_Lambda([this](const FString& InText)
+                    {
+                        if (_FilterString == InText) { return; }
+                        _FilterString = InText;
+                        RefreshFromViewModel();   // hash folds _FilterString → body rebuild
+                    })
+                    .OnHighlightTextChanged_Lambda([this](const FString& InText)
+                    {
+                        if (_HighlightString == InText) { return; }
+                        _HighlightString = InText;
+                        RefreshFromViewModel();   // hash folds _HighlightString → body rebuild
+                    })
+            ]
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+            [
+                SNew(SButton)
+                    .ToolTipText(FText::FromString(TEXT("Toggle key-row sort order:\nName — alphabetical (default)\nTRUE — true values first, then alphabetical")))
+                    .OnClicked(this, &SCkGoapDebugger_WorldStateRail::HandleClick_CycleSortMode)
+                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    [
+                        SNew(STextBlock)
+                            .Text_Lambda([this]() -> FText
+                            {
+                                return FText::FromString(_SortMode == ECkGoapDebugger_WsSortMode::ByName
+                                    ? TEXT("\x2195 Name")
+                                    : TEXT("\x2195 TRUE"));
+                            })
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
+                    ]
+            ];
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_CycleSortMode()
+    -> FReply
+{
+    _SortMode = _SortMode == ECkGoapDebugger_WsSortMode::ByName
+        ? ECkGoapDebugger_WsSortMode::ByTrueFirst
+        : ECkGoapDebugger_WsSortMode::ByName;
+
+    RefreshFromViewModel();   // hash folds _SortMode → body rebuild
+    return FReply::Handled();
+}
+
+// ====================================================================================================================
 // BUILD — KEY ROW
 // ====================================================================================================================
 
 auto
     SCkGoapDebugger_WorldStateRail::
     BuildKeyRow(
-        const FCkGoapDebugger_WorldStateEntry& InEntry)
+        const FCkGoapDebugger_WorldStateEntry& InEntry,
+        bool InHighlightDimmed)
     -> TSharedRef<SWidget>
 {
     using namespace ck_goap_debugger_wsrail_internal;
@@ -503,7 +629,9 @@ auto
     const auto FullKey = InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString(TEXT("(invalid)"));
     const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 0;
     const auto KeyText = TruncateKey(TruncateTagByDepth(FullKey, Depth));
-    const auto KeyCol   = FCkGoapDebuggerStyle::Color_Text_Secondary;
+    const auto KeyCol   = InHighlightDimmed
+        ? FCkGoapDebuggerStyle::Color_Text_Ghost
+        : FCkGoapDebuggerStyle::Color_Text_Secondary;
     const auto EntryKey = InEntry.Key;
     const bool EffectiveValue = InEntry.Value;
 
@@ -511,9 +639,11 @@ auto
     // the data collector already flattened into _Entries.Value. It stays in
     // sync with the snapshot, so on click we flip from THAT value.
     const auto ValueStr = EffectiveValue ? FString(TEXT("TRUE")) : FString(TEXT("false"));
-    const auto ValueCol = EffectiveValue
-        ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-        : FCkGoapDebuggerStyle::Color_Text_Dim;
+    const auto ValueCol = InHighlightDimmed
+        ? FCkGoapDebuggerStyle::Color_Text_Ghost
+        : (EffectiveValue
+            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+            : FCkGoapDebuggerStyle::Color_Text_Dim);
 
     // ---- TAttribute lambdas — live updates without rail rebuild -------------
     // OVERRIDE pill visibility: appears when Has_KeyOverride is true for this

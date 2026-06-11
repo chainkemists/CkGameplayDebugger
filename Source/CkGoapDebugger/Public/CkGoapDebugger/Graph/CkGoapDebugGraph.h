@@ -119,6 +119,18 @@ public:
     // Finds the Action node whose handle matches; nullptr otherwise.
     auto FindActionNode(const FCk_Handle_Goap_Action& InHandle) const -> UCkGoapDebugNode_Action*;
 
+    // Live resolved world-state view for the displayed Planner (key → value),
+    // refreshed by BOTH RebuildFromSnapshot and UpdateRuntimeState so the
+    // per-precondition satisfaction dots on the action cards track the world
+    // every tick without a topology rebuild. Unset when the key isn't part of
+    // the Planner's resolved WS snapshot (rendered as "unknown" by the cards).
+    auto Get_LiveWorldStateValue(const FGameplayTag& InKey) const -> TOptional<bool>
+    {
+        if (const auto* Found = _LiveWorldState.Find(InKey))
+        { return *Found; }
+        return {};
+    }
+
     auto Get_GoalNode()   const -> UCkGoapDebugNode_Goal* { return _GoalNode; }
     auto Get_ActionCount() const -> int32;
     auto Get_EdgeCount()   const -> int32;
@@ -159,6 +171,10 @@ private:
     // EdGraphNodes, which are themselves rooted via the UEdGraph::Nodes array.
     // ForceClear / RebuildFromSnapshot reset this in lockstep with Nodes.
     TSet<TPair<UEdGraphPin*, UEdGraphPin*>> _TreeEdgePins_Graph;
+
+    // Flattened resolved WS snapshot for the displayed Planner. Plain types —
+    // no UPROPERTY needed; cleared in lockstep with Nodes via ForceClear.
+    TMap<FGameplayTag, bool> _LiveWorldState;
 };
 
 // ====================================================================================================================

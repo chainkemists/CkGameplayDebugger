@@ -2,12 +2,18 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
@@ -24,8 +30,8 @@ namespace
 	{
 		// Gate 3 — `Nbrs` column. Right-padded so columns line up at small list widths;
 		// formatted as "n=NN" rather than a bare number to keep tag strings unambiguous.
-		return FString::Printf(TEXT("#%05u  n=%-2d  %s"),
-			GetTypeHash(InSnapshot.Handle),
+		// Identity is carried by the SCkDebug_EntityRef pill in the row, not here.
+		return FString::Printf(TEXT("n=%-2d  %s"),
 			InSnapshot.NeighborCount,
 			*InSnapshot.PrimaryTag);
 	}
@@ -76,6 +82,9 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 			SharedThis(this), &SCkCrowdDebugger_AgentListPanel::OnAgentListChanged);
 	}
 
+	_OnSelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddSP(
+		SharedThis(this), &SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync);
+
 	ChildSlot
 	[
 		SNew(SBorder)
@@ -97,6 +106,7 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 				.ListItemsSource(&_ItemSource)
 				.OnGenerateRow(this, &SCkCrowdDebugger_AgentListPanel::OnGenerateRow)
 				.OnSelectionChanged(this, &SCkCrowdDebugger_AgentListPanel::OnSelectionChanged)
+				.OnContextMenuOpening(this, &SCkCrowdDebugger_AgentListPanel::OnContextMenuOpening)
 				.SelectionMode(ESelectionMode::Single)
 			]
 		]
@@ -110,6 +120,11 @@ SCkCrowdDebugger_AgentListPanel::~SCkCrowdDebugger_AgentListPanel()
 	if (_ViewModel.IsValid() && _OnListChangedHandle.IsValid())
 	{
 		_ViewModel->OnAgentListChanged.Remove(_OnListChangedHandle);
+	}
+
+	if (_OnSelectionSyncHandle.IsValid())
+	{
+		ck::DebugSelectionSync::Get_OnSelection().Remove(_OnSelectionSyncHandle);
 	}
 }
 
@@ -219,6 +234,18 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 					.Color(AgentColor)
 					.Diameter(10.0f)
 			]
+			// Canonical entity identity (replaces the old #%05u type-hash, which
+			// was meaningless to users). Click navigates to the ECS debugger;
+			// clicks elsewhere in the row still select normally.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 6, 0)
+			[
+				SNew(SCkDebug_EntityRef)
+					.Entity_Lambda([WeakItem]() -> FCk_Handle
+					{
+						const auto Pinned = WeakItem.Pin();
+						return Pinned.IsValid() ? Pinned->Handle : FCk_Handle{};
+					})
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
@@ -270,6 +297,67 @@ auto SCkCrowdDebugger_AgentListPanel::OnSelectionChanged(
 	}
 
 	_ViewModel->Set_SelectedHandle(InItem->Handle);
+
+	// User-driven selection → sync the other debuggers. Direct selections are
+	// programmatic (selection restore / sync apply) and must not re-broadcast.
+	if (InSelectInfo != ESelectInfo::Direct)
+	{
+		ck::DebugSelectionSync::Broadcast(InItem->Handle, TEXT("CrowdDebugger"));
+	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentListPanel::OnContextMenuOpening() -> TSharedPtr<SWidget>
+{
+	if (NOT _ListView.IsValid())
+	{ return nullptr; }
+
+	const auto Selected = _ListView->GetSelectedItems();
+	if (Selected.Num() == 0 || NOT Selected[0].IsValid())
+	{ return nullptr; }
+
+	const auto& Item = *Selected[0];
+
+	constexpr auto CloseAfterSelection = true;
+	auto MenuBuilder = FMenuBuilder{CloseAfterSelection, nullptr};
+
+	ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+		NSLOCTEXT("CkCrowdAgentList", "CopyRow", "Copy Row"),
+		NSLOCTEXT("CkCrowdAgentList", "CopyRowTip", "Copy the row text (neighbor count + tag + status) to the clipboard."),
+		FString::Printf(TEXT("%s  %s"), *AgentRowText(Item), *StatusLabel(Item)));
+
+	ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
+		NSLOCTEXT("CkCrowdAgentList", "CopyEntity", "Copy Entity"),
+		NSLOCTEXT("CkCrowdAgentList", "CopyEntityTip", "Copy the full entity handle (ID|Version + debug name) to the clipboard."),
+		ck::Format_UE(TEXT("{}"), Item.Handle));
+
+	return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync(
+	const FCk_Handle& InSelected,
+	FName InSource)
+	-> void
+{
+	if (InSource == TEXT("CrowdDebugger")) { return; }
+	if (NOT _ViewModel.IsValid())          { return; }
+
+	for (const auto& Item : _ItemSource)
+	{
+		if (NOT Item.IsValid()) { continue; }
+		if (NOT ck::DebugSelectionSync::Is_SameLineage(Item->Handle, InSelected)) { continue; }
+
+		const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+		_ViewModel->Set_SelectedHandle(Item->Handle);
+		if (_ListView.IsValid())
+		{ _ListView->SetSelection(Item, ESelectInfo::Direct); }
+		return;
+	}
+	// No lineage match — leave the current selection alone (the broadcast
+	// entity simply isn't a crowd agent).
 }
 
 // --------------------------------------------------------------------------------------------------------------------

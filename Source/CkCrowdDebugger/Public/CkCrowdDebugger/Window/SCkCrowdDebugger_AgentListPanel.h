@@ -25,12 +25,18 @@ private:
 	auto OnAgentListChanged(const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents) -> void;
 	auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase>& InTable) -> TSharedRef<ITableRow>;
 	auto OnSelectionChanged(ItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
+	auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
+
+	// Cross-debugger selection sync (CkDebug_SelectionSync) — selects the
+	// agent whose lineage contains/is-contained-by the broadcast entity.
+	auto OnGlobalSelectionSync(const FCk_Handle& InSelected, FName InSource) -> void;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
 	TArray<ItemPtr> _ItemSource;
 	TSharedPtr<SListView<ItemPtr>> _ListView;
 	FDelegateHandle _OnListChangedHandle;
+	FDelegateHandle _OnSelectionSyncHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

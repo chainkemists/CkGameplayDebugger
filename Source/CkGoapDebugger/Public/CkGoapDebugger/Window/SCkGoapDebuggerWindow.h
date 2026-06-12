@@ -14,9 +14,9 @@ class SCkGoapDebugger_Breadcrumb;
 class SCkGoapDebugger_PrimaryPane;
 class SCkGoapDebugger_WorldStateRail;
 class SCkGoapDebugger_GraphPane;
+class SCkGoapDebugger_AgentListPanel;
 class STextBlock;
 class SBox;
-template <typename> class SComboBox;
 
 // ====================================================================================================================
 // SCkGoapDebuggerWindow — top-level Slate widget hosted by the GoapDebugger
@@ -74,10 +74,9 @@ private:
     auto BuildLegend()   -> TSharedRef<SWidget>;
     auto BuildCenterColumn()  -> TSharedRef<SWidget>;
 
-    // Refresh the entity picker's items array off the current snapshot batch.
-    // Cheap; called every Tick. Set rebuilds use stable string identity by
-    // matching against existing entries.
-    auto RefreshEntityPickerItems() -> void;
+    // Refresh the agent-list panel off the current snapshot batch. Cheap;
+    // called every gated Tick — the panel reuses row pointers by handle.
+    auto RefreshAgentList() -> void;
 
     // PIE lifecycle — drop handle-bearing state.
     auto HandleWorldTornDown() -> void;
@@ -93,11 +92,8 @@ private:
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
 
-    // Entity picker state
-    TArray<TSharedPtr<FString>> _EntityPickerItems;
-    TArray<FCk_Handle>          _EntityPickerHandles;
-    TSharedPtr<SComboBox<TSharedPtr<FString>>> _EntityPicker;
-    TSharedPtr<STextBlock>      _EntityPickerLabel;
+    // Agent list (replaces the old combo-box entity picker)
+    TSharedPtr<SCkGoapDebugger_AgentListPanel> _AgentList;
 
     // Editor delegate handles
     FDelegateHandle _OnBeginPieHandle;

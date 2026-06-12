@@ -1,7 +1,14 @@
 #pragma once
 
-#include "ConnectionDrawingPolicy.h"
 #include "CoreMinimal.h"
+
+// Editor-only: FConnectionDrawingPolicy + GraphEditor types. GraphEditor is
+// gated to bBuildEditor in CkDebuggerCommon.Build.cs, so this type is neither
+// available nor needed in non-editor DeveloperTool/cooked targets. Its only
+// consumers are the editor-only graph debuggers (Goap / Scheduler / Sm).
+#if WITH_EDITOR
+
+#include "ConnectionDrawingPolicy.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Base connection drawing policy for debug graph visualizations.
@@ -70,3 +77,5 @@ protected:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

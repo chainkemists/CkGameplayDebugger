@@ -4,6 +4,7 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
+#include "CkGoapDebugger/Window/SCkGoapDebugger_AgentListPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Breadcrumb.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_GraphPane.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_PrimaryPane.h"
@@ -28,7 +29,6 @@
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 #include "Editor.h"
@@ -41,14 +41,6 @@ const FName SCkGoapDebuggerWindow::WindowId = FName(TEXT("GoapDebugger"));
 
 namespace
 {
-    // Stable display string for an entity in the picker.
-    auto MakePickerLabel(const FCkGoapDebugger_EntitySnapshot& InSnap) -> FString
-    {
-        if (InSnap.DebugName.IsEmpty())
-        { return FString::Printf(TEXT("(entity %u)"), ::GetTypeHash(InSnap.EntityHandle)); }
-        return InSnap.DebugName;
-    }
-
     // Build a small color-swatch + label for the legend row.
     auto MakeLegendItem(const FLinearColor& InColor, const FString& InText) -> TSharedRef<SWidget>
     {
@@ -101,8 +93,9 @@ auto
 {
     _CachedWorld.Reset();
 
-    _EntityPickerItems.Empty();
-    _EntityPickerHandles.Empty();
+    // Agent rows hold FCk_Handle copies — drop them while the registry lives.
+    if (_AgentList.IsValid())
+    { _AgentList->Reset_ForWorldChange(); }
 
     if (_Sidebar.IsValid())
     { _Sidebar->Reset_ForWorldChange(); }
@@ -115,9 +108,6 @@ auto
 
     if (_ViewModel.IsValid())
     { _ViewModel->Reset_ForWorldChange(); }
-
-    if (_EntityPicker.IsValid())
-    { _EntityPicker->RefreshOptions(); }
 }
 
 // ====================================================================================================================
@@ -142,6 +132,8 @@ auto
     { HandleWorldTornDown(); });
 
     auto SidebarWidget   = SAssignNew(_Sidebar, SCkGoapDebugger_Sidebar, _ViewModel);
+    auto AgentListWidget = SAssignNew(_AgentList, SCkGoapDebugger_AgentListPanel)
+                                .ViewModel(_ViewModel);
     auto CenterColumn    = BuildCenterColumn();
     auto WsRailWidget    = SAssignNew(_WorldStateRail, SCkGoapDebugger_WorldStateRail)
                                 .ViewModel(_ViewModel);
@@ -194,7 +186,23 @@ auto
                                                 .Value(0.22f)
                                                 .MinSize(220.0f)
                                                 [
-                                                    SidebarWidget
+                                                    // Agents list (replaces the toolbar combo) stacked
+                                                    // over the planner tree, both user-resizable.
+                                                    SNew(SSplitter)
+                                                        .Orientation(Orient_Vertical)
+
+                                                        + SSplitter::Slot()
+                                                            .Value(0.35f)
+                                                            .MinSize(110.0f)
+                                                            [
+                                                                AgentListWidget
+                                                            ]
+
+                                                        + SSplitter::Slot()
+                                                            .Value(0.65f)
+                                                            [
+                                                                SidebarWidget
+                                                            ]
                                                 ]
 
                                             + SSplitter::Slot()
@@ -265,7 +273,7 @@ auto
 
     _ViewModel->Tick(World);
 
-    RefreshEntityPickerItems();
+    RefreshAgentList();
 }
 
 // ====================================================================================================================
@@ -339,27 +347,6 @@ auto
     BuildToolbar()
     -> TSharedRef<SWidget>
 {
-    auto Picker = SAssignNew(_EntityPicker, SComboBox<TSharedPtr<FString>>)
-        .OptionsSource(&_EntityPickerItems)
-        .OnGenerateWidget_Lambda([](TSharedPtr<FString> InItem) -> TSharedRef<SWidget>
-        {
-            return SNew(STextBlock)
-                .Text(FText::FromString(InItem.IsValid() ? *InItem : FString{}))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9));
-        })
-        .OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type)
-        {
-            if (NOT InItem.IsValid() || NOT _ViewModel.IsValid()) { return; }
-            const auto Idx = _EntityPickerItems.IndexOfByKey(InItem);
-            if (Idx != INDEX_NONE && _EntityPickerHandles.IsValidIndex(Idx))
-            { _ViewModel->SetSelectedEntity(_EntityPickerHandles[Idx]); }
-        })
-        [
-            SAssignNew(_EntityPickerLabel, STextBlock)
-                .Text(FText::FromString(TEXT("(no entities)")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-        ];
-
     return SNew(SBorder)
         .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
@@ -376,7 +363,8 @@ auto
                             .ShowHeaderLabel(false)
                     ]
 
-                // "Entity:" label
+                // "Entity:" label — selection now lives in the Agents list panel
+                // (left column); the pill next door shows the current selection.
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
@@ -386,15 +374,6 @@ auto
                             .Text(FText::FromString(TEXT("Entity:")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
-                    ]
-
-                // Entity picker
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
-                    [
-                        Picker
                     ]
 
                 // EntityRef pill (ID|Version) — click navigates to ECS debugger
@@ -728,72 +707,24 @@ auto
     // the documented behaviour.
     _ViewModel->SetSelectedEntity(InEntity);
 
-    // Refresh the picker label so it reflects the new selection immediately
-    // (Tick will also do this on the next frame, but doing it now avoids a
-    // visible delay).
-    RefreshEntityPickerItems();
+    // Discrete external selection (inspector gateway) — refresh the rows and
+    // stamp the highlight now so it lands without a one-frame delay.
+    RefreshAgentList();
+    if (_AgentList.IsValid())
+    { _AgentList->RestoreSelectionFromViewModel(); }
 }
 
 // ====================================================================================================================
-// ENTITY PICKER
+// AGENT LIST
 // ====================================================================================================================
 
 auto
     SCkGoapDebuggerWindow::
-    RefreshEntityPickerItems()
+    RefreshAgentList()
     -> void
 {
-    if (NOT _ViewModel.IsValid()) { return; }
-
-    const auto& Snapshots = _ViewModel->GetAllEntitySnapshots();
-
-    // Detect set changes by (count, joined hash of handles).
-    auto IdentityChanged = Snapshots.Num() != _EntityPickerHandles.Num();
-    if (NOT IdentityChanged)
-    {
-        for (auto i = 0; i < Snapshots.Num(); ++i)
-        {
-            if (NOT (Snapshots[i].EntityHandle == _EntityPickerHandles[i]))
-            { IdentityChanged = true; break; }
-        }
-    }
-
-    if (IdentityChanged)
-    {
-        _EntityPickerItems.Empty(Snapshots.Num());
-        _EntityPickerHandles.Empty(Snapshots.Num());
-
-        for (const auto& Snap : Snapshots)
-        {
-            _EntityPickerItems.Add(MakeShared<FString>(MakePickerLabel(Snap)));
-            _EntityPickerHandles.Add(Snap.EntityHandle);
-        }
-
-        if (_EntityPicker.IsValid())
-        { _EntityPicker->RefreshOptions(); }
-    }
-
-    // Update the picker label to match the current selected entity.
-    if (_EntityPickerLabel.IsValid())
-    {
-        if (Snapshots.Num() == 0)
-        {
-            _EntityPickerLabel->SetText(FText::FromString(TEXT("(no entities)")));
-        }
-        else
-        {
-            const auto Selected = _ViewModel->GetSelectedEntity();
-            const auto SelIdx = _EntityPickerHandles.IndexOfByKey(Selected);
-            if (SelIdx != INDEX_NONE && _EntityPickerItems.IsValidIndex(SelIdx))
-            {
-                _EntityPickerLabel->SetText(FText::FromString(*_EntityPickerItems[SelIdx]));
-            }
-            else
-            {
-                _EntityPickerLabel->SetText(FText::FromString(TEXT("(select entity)")));
-            }
-        }
-    }
+    if (_AgentList.IsValid())
+    { _AgentList->RefreshFromViewModel(); }
 }
 
 // ====================================================================================================================

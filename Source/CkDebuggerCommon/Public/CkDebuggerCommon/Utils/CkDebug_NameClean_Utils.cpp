@@ -1,5 +1,7 @@
 #include "CkDebug_NameClean_Utils.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+
 // ====================================================================================================================
 
 namespace ck::DebugNameClean
@@ -11,6 +13,18 @@ auto
     -> FString
 {
     auto Clean = InRaw;
+
+    // User-configured strip patterns FIRST (Project Settings → Ck → Debugger),
+    // before the built-in strips below — so a full-prefix pattern like
+    // "Default__Ck_EntityScript_GoapGym_" still finds its text intact.
+    if (const auto* Settings = UCkDebuggerSettings::Get())
+    {
+        for (const auto& Pattern : Settings->EntityNameStripPatterns)
+        {
+            if (Pattern.IsEmpty()) { continue; }
+            Clean.ReplaceInline(*Pattern, TEXT(""), ESearchCase::CaseSensitive);
+        }
+    }
 
     // Strip ANYWHERE in the string — debug names frequently embed other names
     // (e.g. "SceneNode(Default__Ck_EntityScript_GymStation)").

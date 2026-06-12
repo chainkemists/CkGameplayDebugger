@@ -1,5 +1,10 @@
 #include "CkDebuggerCommon/Graph/CkDebugConnectionPolicyBase.h"
 
+// Graph connection-drawing policy is editor-only (FConnectionDrawingPolicy /
+// GraphEditor). GraphEditor is gated to bBuildEditor in the Build.cs, so this
+// must not compile in non-editor (DeveloperTool cooked) targets.
+#if WITH_EDITOR
+
 #include "SGraphNode.h"
 #include "Styling/AppStyle.h"
 #include "Rendering/DrawElements.h"
@@ -200,3 +205,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

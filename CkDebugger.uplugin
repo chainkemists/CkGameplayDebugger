@@ -28,7 +28,7 @@
 		},
 		{
 			"Name": "CkDebuggerCommon",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -118,7 +118,7 @@
 		},
 		{
 			"Name": "CkEntityDebugOverlay",
-			"Type": "Runtime",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",

@@ -7,6 +7,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
@@ -85,6 +86,24 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
 
         Selection->Set_SelectedEntities({ InEntity });
     });
+
+    // Cross-debugger selection sync (receive side). Unlike the navigator,
+    // this NEVER opens the tab or steals focus — it only mirrors selection
+    // into an already-open window. The ECS debugger lists every entity, so
+    // the broadcast handle is selected verbatim (no lineage resolution).
+    _SelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddLambda(
+        [this](const FCk_Handle& InEntity, FName InSource)
+        {
+            if (InSource == TEXT("EcsDebugger")) { return; }
+            if (ck::Is_NOT_Valid(InEntity))      { return; }
+            if (NOT DebuggerWindow.IsValid())    { return; }
+
+            const auto Selection = DebuggerWindow->Get_SelectionModel();
+            if (NOT Selection.IsValid())         { return; }
+
+            const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+            Selection->Set_SelectedEntities({ InEntity });
+        });
 }
 
 auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
@@ -106,6 +125,12 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
     // Drop the navigator first — any subsequent click on a stale SCkDebug_EntityRef
     // becomes a no-op instead of dereferencing a half-torn-down module.
     ck::DebugNav::Register_EntityNavigator(ck::DebugNav::FGotoEntityFn{});
+
+    if (_SelectionSyncHandle.IsValid())
+    {
+        ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
+        _SelectionSyncHandle.Reset();
+    }
 
     if (_EnginePreExitHandle.IsValid())
     {

@@ -30,6 +30,7 @@ private:
 	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
 	FDelegateHandle _EnginePreExitHandle;
+	FDelegateHandle _SelectionSyncHandle;
 
 	static const FName DebuggerTabName;
 };

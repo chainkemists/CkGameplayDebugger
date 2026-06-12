@@ -15,8 +15,6 @@ public class CkDebuggerCommon : CkModuleRules
             "InputCore",     // EKeys symbols referenced by templated SListView/SComboBox instantiations
             "Slate",
             "SlateCore",
-            "GraphEditor",
-            "EditorStyle",
             "AppFramework",
 
             // For UCk_Plugin_UserSettings_UE base class.
@@ -34,6 +32,15 @@ public class CkDebuggerCommon : CkModuleRules
                 "UnrealEd",
                 "WorkspaceMenuStructure",
                 "ToolMenus",
+                // Editor-only graph plumbing. GraphEditor transitively pulls
+                // EditorWidgets -> UnrealEd, so it must NOT be unconditional:
+                // a Runtime/DeveloperTool consumer (CkEntityDebugOverlay) would
+                // otherwise drag UnrealEd into a non-editor client target and
+                // fail with "Unable to instantiate UnrealEd for non-editor".
+                // Only the graph debuggers (editor-only) use these; the lone
+                // consumer file CkDebugConnectionPolicyBase is WITH_EDITOR-gated.
+                "GraphEditor",
+                "EditorStyle",
             });
         }
     }

@@ -168,8 +168,17 @@ auto
 		Info.IsGroupEnd = Node._IsGroupEnd;
 		Info.PairedGroupNodeIndex = Node._PairedGroupNodeIndex;
 		Info.HasDirtyMarker = Node._HasDirtyMarker;
-		Info.DirtyMarkerHash = Node._DirtyMarkerHash;
-		Info.DirtyMarkerName = Node._DirtyMarkerName;
+		// The graph node now carries one-or-more markers (MarkedDirtyByAnyOf composites). The
+		// debugger surfaces a single primary marker: first entry for hash/grouping, with a
+		// "(+N more)" suffix on the display name when a composite consumes several markers.
+		if (Node._DirtyMarkerHashes.Num() > 0)
+		{
+			Info.DirtyMarkerHash = Node._DirtyMarkerHashes[0];
+			Info.DirtyMarkerName = Node._DirtyMarkerNames.Num() == 1
+				? Node._DirtyMarkerNames[0]
+				: FName{FString::Printf(TEXT("%s (+%d more)"),
+					*Node._DirtyMarkerNames[0].ToString(), Node._DirtyMarkerNames.Num() - 1)};
+		}
 		Info.GroupName = NAME_None;
 
 		const auto* FoundOrder = ExecutionOrderLookup.Find(NodeIdx);

@@ -138,6 +138,18 @@ public:
     auto
     Clear_Exclusions() -> void;
 
+    /**
+     * Reload the persistent exclusion list from project settings. Lets edits made directly in
+     * Project Settings (Ck ECS Debugger → Excluded Inspector IDs) take effect at runtime without
+     * reopening the debugger — the constructor's one-shot load can't see post-open edits, and
+     * name-pattern tokens (e.g. "CueRelay") can ONLY be added via Project Settings (the popover
+     * toggles registered inspector IDs only). Cheap; safe to call each refresh. No broadcast —
+     * the caller re-applies the filter immediately after. Returns true when the set actually
+     * changed, so a periodic caller can re-filter only when needed.
+     */
+    auto
+    Sync_ExclusionsFromSettings() -> bool;
+
     // ---- Predicate -------------------------------------------------------
 
     /**

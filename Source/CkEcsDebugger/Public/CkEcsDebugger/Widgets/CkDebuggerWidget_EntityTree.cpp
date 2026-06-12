@@ -8,7 +8,10 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
@@ -70,15 +73,22 @@ public:
                         .HighlightText(this, &SCkDebuggerEntityTreeRow::Get_HighlightText)
                     ]
 
+                    // Canonical entity identity — the common pill instead of a
+                    // raw [ID] STextBlock, so the tree matches every other
+                    // debugger surface (right-click → Copy included). The pill
+                    // only traps clicks within its own bounds; the rest of the
+                    // row still selects normally.
                     + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
                     .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
                     [
-                        SNew(STextBlock)
-                        .Text(this, &SCkDebuggerEntityTreeRow::Get_EntityIDText)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Monospace"))
-                        .ColorAndOpacity(CkDebugStyle::EntityId())
+                        SNew(SCkDebug_EntityRef)
+                        .Entity_Lambda([WeakNode = TWeakPtr<FCkEntityTreeNode>(InArgs._Node)]() -> FCk_Handle
+                        {
+                            const auto Pinned = WeakNode.Pin();
+                            return Pinned.IsValid() ? Pinned->Entity : FCk_Handle{};
+                        })
                     ]
                 ]
             ],
@@ -92,16 +102,10 @@ private:
         if (NOT Node.IsValid())
         { return FText::GetEmpty(); }
 
-        return FText::FromName(UCk_Utils_Handle_UE::Get_DebugName(Node->Entity));
-    }
-
-    auto Get_EntityIDText() const -> FText
-    {
-        if (NOT Node.IsValid())
-        { return FText::GetEmpty(); }
-
-        const auto EntityId = Node->Entity.Get_Entity().Get_ID();
-        return FText::FromString(ck::Format_UE(TEXT("[{}]"), EntityId));
+        // Routed through the shared name-clean so the settings-driven strip
+        // patterns (Project Settings → Ck → Debugger) apply here too.
+        return FText::FromString(ck::DebugNameClean::Get_CleanName(
+            UCk_Utils_Handle_UE::Get_DebugName(Node->Entity).ToString()));
     }
 
     auto Get_NodeTextColor() const -> FSlateColor
@@ -231,8 +235,20 @@ auto SCkDebuggerWidget_EntityTree::Tick(
 
         if (NeedsRefresh || (WorldModel.IsValid() && WorldModel->IsCacheDirty()))
         {
-            RefreshTree();
+            RefreshTree();   // syncs the exclusion list as part of its body
             NeedsRefresh = false;
+        }
+        else if (FilterModel.IsValid() && FilterModel->Sync_ExclusionsFromSettings())
+        {
+            // Steady world (no entity churn), but the exclusion list changed in
+            // Project Settings — re-apply the filter without a full rebuild so
+            // edits land within one interval instead of waiting for a manual
+            // refresh or entity change.
+            ApplyFilterToNodes();
+            ApplyInspectorFilter();
+            UpdateFilteredRootNodes();
+            if (TreeView.IsValid())
+            { TreeView->RequestTreeRefresh(); }
         }
     }
 }
@@ -253,6 +269,12 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
     {
         WorldModel->Refresh_EntityCache();
     }
+
+    // Pick up Project-Settings edits to the exclusion list live (the model only
+    // loads them once at construction, and name-pattern tokens can only be added
+    // there — not via the popover). Cheap; the filter is re-applied right below.
+    if (FilterModel.IsValid())
+    { FilterModel->Sync_ExclusionsFromSettings(); }
 
     BuildEntityTree();
     ApplyFilterToNodes();
@@ -685,6 +707,14 @@ auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(
     SelectionModel->Set_SelectedEntities(SelectedEntities);
 
     IsUpdatingSelection = false;
+
+    // User-driven selection → sync the other debuggers (Crowd / GOAP resolve
+    // their own entity by lifetime-owner lineage). Direct = programmatic
+    // (navigator jump, selection restore, sync apply) — never re-broadcast.
+    if (InSelectInfo != ESelectInfo::Direct && SelectedEntities.Num() > 0)
+    {
+        ck::DebugSelectionSync::Broadcast(SelectedEntities[0], TEXT("EcsDebugger"));
+    }
 }
 
 auto SCkDebuggerWidget_EntityTree::OnExpansionChanged(

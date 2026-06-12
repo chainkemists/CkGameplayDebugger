@@ -310,7 +310,10 @@ auto
                     .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
                     [
                         SNew(SButton)
-                            .Text(FText::FromString(TEXT("\x2295 Fit")))
+                            // Plain text — every decorative glyph tried here (⊕, ▣)
+                            // renders poorly in Slate's default font. Matches the
+                            // text-only style of the 1:1 / Live / Scrub buttons.
+                            .Text(FText::FromString(TEXT("Fit")))
                             .ToolTipText(FText::FromString(TEXT("Fit graph to view (D5 stub)")))
                             .OnClicked_Lambda([this]() -> FReply
                             {
@@ -340,7 +343,7 @@ auto
                     .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
                     [
                         SNew(SButton)
-                            .Text(FText::FromString(TEXT("\x229F Hide dimmed")))
+                            .Text(FText::FromString(TEXT("Hide dimmed")))
                             .ToolTipText(FText::FromString(TEXT("Hide off-plan nodes (D5 stub)")))
                             .OnClicked_Lambda([]() -> FReply
                             {

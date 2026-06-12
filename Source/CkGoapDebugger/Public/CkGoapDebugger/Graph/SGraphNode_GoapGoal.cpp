@@ -112,7 +112,9 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(SBox)
-                .WidthOverride(FCkGoapDebuggerStyle::GraphNode_Width)
+                // Self-size like the action cards — goal-condition names can be long too.
+                .MinDesiredWidth(FCkGoapDebuggerStyle::GraphNode_Width)
+                .MaxDesiredWidth(FCkGoapDebuggerStyle::GraphNode_MaxWidth)
                 [
                     SNew(SOverlay)
 

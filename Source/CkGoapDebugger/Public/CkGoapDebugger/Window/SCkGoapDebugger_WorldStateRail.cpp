@@ -585,11 +585,12 @@ auto
                     .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
                     [
                         SNew(STextBlock)
+                            // Plain text — the ↕ glyph renders poorly in Slate's default font.
                             .Text_Lambda([this]() -> FText
                             {
                                 return FText::FromString(_SortMode == ECkGoapDebugger_WsSortMode::ByName
-                                    ? TEXT("\x2195 Name")
-                                    : TEXT("\x2195 TRUE"));
+                                    ? TEXT("Sort: Name")
+                                    : TEXT("Sort: TRUE"));
                             })
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))

@@ -132,9 +132,11 @@ namespace
         const auto Font_Cost      = FCoreStyle::GetDefaultFontStyle("Bold", 9);
         const auto Font_Composite = FCoreStyle::GetDefaultFontStyle("Regular", 8);
         const auto Font_Row       = FCoreStyle::GetDefaultFontStyle("Regular", 8);
-        const auto Font_RowSuffix = FCoreStyle::GetDefaultFontStyle("Regular", 7);
 
         constexpr auto DotWidth      = 7.0f + 4.0f;   // MakeDot + its padding slot
+        // Precondition rows lead with "[exp square] -> [cur square]":
+        // 7 + 2 + ~10 (arrow at font 7) + 2 + 7 + 4 trailing padding.
+        constexpr auto PreRowPrefix  = 32.0f;
         constexpr auto ColumnGap     = 12.0f;         // breathing room between pre/eff columns
         constexpr auto CardChrome    = 2.0f * 2.0f    // outer border thickness
                                      + 2.0f * 8.0f    // inner Padding_Medium (horizontal)
@@ -165,8 +167,7 @@ namespace
         for (const auto& Pre : InAction.Preconditions)
         {
             const auto Leaf = Compute_TagLeaf_GraphLayout(Pre.Key);
-            const auto Suffix = FString{Pre.Value ? TEXT(" = true") : TEXT(" = false")};
-            MaxPreWidth = FMath::Max(MaxPreWidth, DotWidth + MeasureWidth(Leaf, Font_Row) + MeasureWidth(Suffix, Font_RowSuffix));
+            MaxPreWidth = FMath::Max(MaxPreWidth, PreRowPrefix + MeasureWidth(Leaf, Font_Row));
             RowHeight   = FMath::Max(RowHeight, MeasureHeight(Leaf, Font_Row) + RowVertPad);
         }
 

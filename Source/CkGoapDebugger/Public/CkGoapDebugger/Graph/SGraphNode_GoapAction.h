@@ -17,12 +17,12 @@
 //   - Composite badge: small purple "▸ <leaf tag>" strip between header and body
 //     when ChildActionHandles.Num() > 0.
 //   - Body: two columns — precondition rows (left) and effect labels (right),
-//     name-sorted. Each precondition shows its authored desired value as a dim
-//     "= true/false" suffix and a LIVE satisfaction dot (green = current WS
-//     matches the desired value, red = mismatch, dim = key not in WS), bound
-//     via TAttribute against the owning graph's world-state view. Effects keep
-//     a static blue dot. The card width is measured per node at rebuild time
-//     so long key names are never cut off.
+//     name-sorted. Each precondition reads "[exp] -> [cur] KeyName" where the
+//     squares encode VALUES (green = true, red = false): exp is the authored
+//     desired value (static), cur is the LIVE value from the Planner's
+//     resolved WS (TAttribute-bound; dim when the key isn't in the WS).
+//     Satisfied = both squares match. Effects keep a static blue dot. Card
+//     width self-sizes (Min 180 / Max 420) so long key names never clip.
 //   - Plan-step badge: top-left numbered circle when PlanStepIndex > 0.
 // ====================================================================================================================
 

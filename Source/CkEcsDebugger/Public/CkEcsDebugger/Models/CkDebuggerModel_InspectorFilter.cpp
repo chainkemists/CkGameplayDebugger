@@ -1,6 +1,7 @@
 #include "CkDebuggerModel_InspectorFilter.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
@@ -294,10 +295,28 @@ auto
     if (ck::Is_NOT_Valid(InEntity))
     { return false; }
 
+    // Each excluded entry is a SUBSTRING token, matched two ways:
+    //   1. Against inspector IDs ("Transform" matches "FCkInspector_Transform")
+    //      — entities that inspector can inspect are hidden.
+    //   2. Against the entity's debug name ("Ck_CueRelay" matches
+    //      "Ck_CueRelay_UE_3") — name-pattern exclusion, which is what users
+    //      reach for first. Exact inspector-ID entries keep working via (1).
     auto& Registry = FCkDebuggerInspectorRegistry::Get();
+    const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity).ToString();
+
     for (const auto& ID : _ExcludedIDs)
     {
-        if (Registry.Test(ID, InEntity))
+        const auto Token = ID.ToString();
+        if (Token.IsEmpty())
+        { continue; }
+
+        for (const auto& Entry : _AllEntries)
+        {
+            if (Entry.ID.ToString().Contains(Token) && Registry.Test(Entry.ID, InEntity))
+            { return true; }
+        }
+
+        if (DebugName.Contains(Token))
         { return true; }
     }
     return false;
@@ -391,6 +410,32 @@ auto
     { return; }
 
     _ExcludedIDs = Settings->DefaultExcludedInspectorIDs;
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    Sync_ExclusionsFromSettings() -> bool
+{
+    const auto* Settings = UCkEcsDebuggerSettings::Get();
+    if (Settings == nullptr)
+    { return false; }
+
+    const auto& New = Settings->DefaultExcludedInspectorIDs;
+
+    auto Changed = New.Num() != _ExcludedIDs.Num();
+    if (NOT Changed)
+    {
+        for (const auto& ID : New)
+        {
+            if (NOT _ExcludedIDs.Contains(ID))
+            { Changed = true; break; }
+        }
+    }
+
+    if (Changed)
+    { _ExcludedIDs = New; }
+
+    return Changed;
 }
 
 auto

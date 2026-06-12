@@ -18,12 +18,14 @@ class CKECSDEBUGGER_API UCkEcsDebuggerSettings : public UDeveloperSettings
 public:
     virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
-    // Inspector IDs whose entities should be hidden from the ECS entity tree.
-    // An entity is hidden if ANY inspector in this set can inspect it.
-    // IDs match FCkDebuggerInspectorRegistry entry IDs (e.g. "FCkInspector_SceneNode").
+    // Substring tokens whose entities should be hidden from the ECS entity tree.
+    // Each token matches PARTIALLY against (a) inspector IDs — "Transform"
+    // matches "FCkInspector_Transform", hiding entities that inspector can
+    // inspect — and (b) entity debug names — "Ck_CueRelay" hides
+    // "Ck_CueRelay_UE_3".
     UPROPERTY(Config, EditAnywhere, Category = "Entity Tree Filtering",
         meta = (DisplayName = "Excluded Inspector IDs",
-            ToolTip = "Entities matched by any inspector in this set are hidden from the entity tree. Toggle per-session via the filter popover's Hide checkboxes; this list is the persistent default."))
+            ToolTip = "Entities matching any token in this set are hidden from the entity tree. Tokens are substrings, matched against inspector IDs (entities that inspector can inspect) AND entity debug names. Toggle per-session via the filter popover's Hide checkboxes; this list is the persistent default."))
     TSet<FName> DefaultExcludedInspectorIDs;
 
     static auto Get() -> const UCkEcsDebuggerSettings*

@@ -10,6 +10,7 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
@@ -271,9 +272,13 @@ auto
         .VAlign(VAlign_Center)
         [
             SNew(SBox)
-                // Measured at rebuild time from the card's content (see
-                // Measure_NodeSize_Graph) so long WS key names never clip.
-                .WidthOverride(FMath::Max(FCkGoapDebuggerStyle::GraphNode_Width, _ActionNode->Get_NodeWidth()))
+                // Self-sizing: Slate's own desired-size drives the card width
+                // between Min and Max, so long WS key names never clip even if
+                // the layout-side font measurement drifts from the real fonts.
+                // Measure_NodeSize_Graph still feeds the layered layout so
+                // column spacing reserves at least this card's footprint.
+                .MinDesiredWidth(FMath::Max(FCkGoapDebuggerStyle::GraphNode_Width, _ActionNode->Get_NodeWidth()))
+                .MaxDesiredWidth(FCkGoapDebuggerStyle::GraphNode_MaxWidth)
                 .MinDesiredHeight(FCkGoapDebuggerStyle::GraphNode_MinHeight)
                 [
                     SNew(SOverlay)
@@ -345,12 +350,20 @@ auto
         const auto Key          = Pre.Key;
         const auto DesiredValue = Pre.Value;
 
-        auto DotColorAttr = TAttribute<FSlateColor>::CreateLambda([WeakNode, Key, DesiredValue]()
+        // "Exp -> Cur" squares: the left square is the authored desired VALUE
+        // (green = true, red = false; static), the right square is the live
+        // current VALUE from the Planner's resolved WS (green/red, dim when
+        // the key isn't in the WS). Satisfied reads as "both squares match".
+        const auto ExpColor = DesiredValue
+            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
+            : FCkGoapDebuggerStyle::Color_Status_Failed;
+
+        auto CurColorAttr = TAttribute<FSlateColor>::CreateLambda([WeakNode, Key]()
         {
             const auto Current = Query_LiveWorldState(WeakNode, Key);
             if (NOT Current.IsSet())
             { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim); }
-            return FSlateColor(*Current == DesiredValue
+            return FSlateColor(*Current
                 ? FCkGoapDebuggerStyle::Color_Status_PlanFound
                 : FCkGoapDebuggerStyle::Color_Status_Failed);
         });
@@ -378,29 +391,39 @@ auto
             [
                 SNew(SHorizontalBox)
                     .ToolTipText(TooltipAttr)
+                    // Expected-value square (authored)
+                    + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        [ MakeDot(FSlateColor(ExpColor)) ]
+
+                    // "->"
+                    + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(2.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("\x2192")))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
+                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                        ]
+
+                    // Current-value square (live WS)
                     + SHorizontalBox::Slot()
                         .AutoWidth()
                         .VAlign(VAlign_Center)
                         .Padding(0.0f, 0.0f, 4.0f, 0.0f)
-                        [ MakeDot(DotColorAttr) ]
+                        [ MakeDot(CurColorAttr) ]
+
                     + SHorizontalBox::Slot()
-                        .AutoWidth()
+                        .FillWidth(1.0f)
                         .VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Compute_TagLeaf(Pre.Key)))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
-                                .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                        ]
-                    + SHorizontalBox::Slot()
-                        .FillWidth(1.0f)
-                        .VAlign(VAlign_Center)
-                        [
-                            SNew(STextBlock)
-                                .Text(FText::FromString(DesiredValue ? TEXT(" = true") : TEXT(" = false")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]
             ];
@@ -433,14 +456,25 @@ auto
             ];
     }
 
+    // Columns take their NATURAL width with a stretchy gap between — a 50/50
+    // Fill split clips the wider column at half the card even when the card
+    // is wide enough for both (the cause of mid-chain cards ellipsizing
+    // their precondition names).
     return SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
+            .AutoWidth()
             [ LeftCol ]
 
         + SHorizontalBox::Slot()
             .FillWidth(1.0f)
+            [
+                SNew(SSpacer)
+                    .Size(FVector2D(12.0f, 1.0f))
+            ]
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
             [ RightCol ];
 }
 

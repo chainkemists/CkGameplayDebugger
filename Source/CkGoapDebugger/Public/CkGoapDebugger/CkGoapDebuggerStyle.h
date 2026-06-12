@@ -67,7 +67,8 @@ public:
     static constexpr float Border_Standard       = 1.5f;
     static constexpr float Border_Strong         = 2.0f;
 
-    static constexpr float GraphNode_Width       = 180.0f;
+    static constexpr float GraphNode_Width       = 180.0f;   // minimum card width — cards self-size to content
+    static constexpr float GraphNode_MaxWidth    = 420.0f;   // cap; beyond this ellipsis + tooltip take over
     static constexpr float GraphNode_MinHeight   = 60.0f;
 
 private:

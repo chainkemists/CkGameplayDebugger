@@ -141,8 +141,7 @@ auto
 					_NavTriVerts.Reset();
 
 					auto Geom = FRecastDebugGeometry{};
-					constexpr auto AllTiles = INDEX_NONE;
-					NavData->GetDebugGeometryForTile(Geom, AllTiles);
+					NavData->GetDebugGeometryForTile(Geom, FNavTileRef{}); // invalid TileRef = gather all tiles
 
 					for (auto Area = 0; Area < RECAST_MAX_AREAS; ++Area)
 					{

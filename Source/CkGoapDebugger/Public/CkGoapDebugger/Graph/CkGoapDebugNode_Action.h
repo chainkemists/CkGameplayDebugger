@@ -49,6 +49,11 @@ public:
     auto Set_IsSelected(bool InValue)       -> void { _IsSelected = InValue; }
     auto Set_IsFailureBlocked(bool InValue) -> void { _IsFailureBlocked = InValue; }
 
+    // Cost can change at runtime (Request_SetChildActionCost) WITHOUT a topology
+    // change, so UpdateRuntimeState refreshes it in place — the Slate widget reads
+    // it live via TAttribute rather than baking it at construction.
+    auto Set_Cost(float InCost)             -> void { _Snapshot.Cost = InCost; }
+
     // Desired card width, measured from this node's content (header / composite
     // bar / condition rows) during RebuildFromSnapshot so long world-state key
     // names are never cut off. The Slate widget reads this as its WidthOverride;

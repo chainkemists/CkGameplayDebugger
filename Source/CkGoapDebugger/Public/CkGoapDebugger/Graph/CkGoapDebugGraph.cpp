@@ -353,15 +353,21 @@ auto
             && (CatalogEntry->Role == ECkGoapDebugger_ActionRole::Leaf
                 || CatalogEntry->Role == ECkGoapDebugger_ActionRole::Mid);
 
+        // Cost can change at runtime via Request_SetChildActionCost without a
+        // topology rebuild — refresh it here so the live-bound card text updates.
+        const auto NewCost = CatalogEntry->Cost;
+
         if (ActionNode->Get_IsInPlan()         != NewInPlan
          || ActionNode->Get_PlanStepIndex()    != NewStep
          || ActionNode->Get_IsSelected()       != NewSelected
-         || ActionNode->Get_IsFailureBlocked() != NewFailureBlocked)
+         || ActionNode->Get_IsFailureBlocked() != NewFailureBlocked
+         || NOT FMath::IsNearlyEqual(ActionNode->Get_Snapshot().Cost, NewCost))
         {
             ActionNode->Set_IsInPlan(NewInPlan);
             ActionNode->Set_PlanStepIndex(NewStep);
             ActionNode->Set_IsSelected(NewSelected);
             ActionNode->Set_IsFailureBlocked(NewFailureBlocked);
+            ActionNode->Set_Cost(NewCost);
             Changed = true;
         }
     }

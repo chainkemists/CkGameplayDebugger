@@ -132,12 +132,14 @@ auto
     // below null-check via .Get() before deref.
     const auto WeakNode = TWeakObjectPtr<UCkGoapDebugNode_Action>(_ActionNode);
 
-    // Header row: name + cost. ClassName and Cost are snapshot fields that
-    // only change on topology rebuild (which spawns a new widget), so they
-    // are safe to capture at construction time. The display-depth is read
-    // off the owning graph so toggling the toolbar's name-depth control
-    // re-renders every action card (the topology hash includes NameDepth, so
-    // a depth change forces a rebuild via the graph pane's gate).
+    // Header row: name + cost. ClassName is a topology-stable snapshot field
+    // (only changes on rebuild → new widget), safe to capture at construction.
+    // Cost, however, changes at runtime via Request_SetChildActionCost WITHOUT
+    // a topology change, so it MUST be live-bound via TAttribute (like the step
+    // badge below) — UpdateRuntimeState refreshes the node snapshot's cost each
+    // tick. The display-depth is read off the owning graph so toggling the
+    // toolbar's name-depth control re-renders every action card (the topology
+    // hash includes NameDepth, so a depth change forces a rebuild).
     const auto OwningDepth = [this]() -> int32
     {
         if (auto* G = Cast<UCkGoapDebugGraph>(GraphNode != nullptr ? GraphNode->GetGraph() : nullptr))
@@ -164,7 +166,12 @@ auto
             .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(FString::Printf(TEXT("$%.0f"), Snap.Cost)))
+                    .Text(TAttribute<FText>::CreateLambda([WeakNode]()
+                    {
+                        const auto* Node = WeakNode.Get();
+                        if (Node == nullptr) { return FText::GetEmpty(); }
+                        return FText::FromString(FString::Printf(TEXT("$%.0f"), Node->Get_Snapshot().Cost));
+                    }))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
             ];

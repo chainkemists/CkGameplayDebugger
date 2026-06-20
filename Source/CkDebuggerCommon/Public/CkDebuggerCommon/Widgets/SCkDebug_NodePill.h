@@ -58,13 +58,17 @@ public:
 		SLATE_ARGUMENT(FText, Title)
 		SLATE_ARGUMENT(float, CostValue)
 		SLATE_ARGUMENT(bool, ShowCost)
-		// < 0 means "use variant default" (inactive dims, others are opaque)
-		SLATE_ARGUMENT(float, OpacityOverride)
+		// < 0 means "use variant default" (inactive dims, others are opaque).
+		// An attribute so flag-driven nodes can fade opacity live without a
+		// widget rebuild (e.g. the SM debugger's current-state glow).
+		SLATE_ATTRIBUTE(float, OpacityOverride)
 		SLATE_ARGUMENT(float, MinDesiredWidth)
 		// Alpha==0 → no strip drawn. Non-transparent → left-edge colored strip.
 		SLATE_ARGUMENT(FLinearColor, AccentColor)
 		// Alpha==0 → use variant border color. Non-transparent → override.
-		SLATE_ARGUMENT(FLinearColor, BorderColorOverride)
+		// An attribute so flag-driven nodes can recolor the border live without
+		// a widget rebuild (e.g. the SM debugger's current-state outline).
+		SLATE_ATTRIBUTE(FLinearColor, BorderColorOverride)
 		// Draws an extra selection-highlight ring around the pill when true.
 		SLATE_ARGUMENT(bool, Selected)
 		// When non-empty, right-click on the pill shows a "Copy Text" menu that

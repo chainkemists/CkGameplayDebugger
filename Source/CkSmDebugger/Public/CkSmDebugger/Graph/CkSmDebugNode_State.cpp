@@ -90,6 +90,10 @@ auto
 {
     _StateName = InName;
     _IsCurrentState = InIsActive;
+    // Mockup runs in test mode where TickLiveFlash never ticks, so seed both
+    // glow alphas directly to show the current-state highlight (border + cell).
+    _BorderGlowAlpha = InIsActive ? 1.0f : 0.0f;
+    _CellGlowAlpha = InIsActive ? 1.0f : 0.0f;
     _StateColor = InColor;
     _StateIndex = InIndex;
     _DwellTimeSeconds = InDwellTime;

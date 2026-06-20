@@ -95,6 +95,15 @@ namespace FCkSmDebuggerStyle
     inline constexpr float Sm_StateIconGap            = 6.0f;
     inline constexpr float Sm_TransitionBadgeRadius   = 10.0f;
     inline constexpr float Sm_TransitionBadgeFontSize = 10.0f;
+
+    // Seconds for live highlights to fade between states (current-state border,
+    // previous-state glow, sub-SM bubble). Single source so they stay in sync.
+    inline constexpr float Sm_HighlightFadeDuration   = 0.6f;
+
+    // Seconds for the one-shot "just became current" entry overshoot (a brief
+    // brightening of the border colour) to play out. Shorter than the fade —
+    // it's a transient attention grab, not a steady-state.
+    inline constexpr float Sm_EntryPulseDuration      = 0.5f;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

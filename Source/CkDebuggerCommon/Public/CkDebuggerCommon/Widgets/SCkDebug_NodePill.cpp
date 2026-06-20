@@ -89,8 +89,13 @@ auto
 	_Selected  = InArgs._Selected;
 
 	const auto VariantStyle = DoStyleFor(InArgs._Variant);
-	const auto BorderColor  = HasColor(InArgs._BorderColorOverride) ? InArgs._BorderColorOverride : VariantStyle.Border;
-	const auto Alpha        = InArgs._OpacityOverride >= 0.0f ? InArgs._OpacityOverride : VariantStyle.DefaultOpacity;
+	// Border color + opacity are evaluated live (per-frame) so flag-driven nodes
+	// can recolor / fade without a widget rebuild. Callers passing a static value
+	// get a constant attribute — identical behavior to the old SLATE_ARGUMENTs.
+	const auto BorderAttr     = InArgs._BorderColorOverride;
+	const auto OpacityAttr    = InArgs._OpacityOverride;
+	const auto VariantBorder  = VariantStyle.Border;
+	const auto VariantOpacity = VariantStyle.DefaultOpacity;
 	const auto ShowBadge    = InArgs._StepIndex >= 0;
 	const auto ShowAccent   = HasColor(InArgs._AccentColor);
 	const auto AccentColor  = InArgs._AccentColor;
@@ -208,9 +213,18 @@ auto
 	// ---- Border + fill frame, dimmed via ColorAndOpacity when opacity < 1 ---
 	auto Frame = SNew(SBorder)
 		.BorderImage(RoundedBrush)
-		.BorderBackgroundColor(FSlateColor(BorderColor))
+		.BorderBackgroundColor_Lambda([BorderAttr, VariantBorder]() -> FSlateColor
+		{
+			const auto Override = BorderAttr.Get();
+			return FSlateColor(HasColor(Override) ? Override : VariantBorder);
+		})
 		.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
-		.ColorAndOpacity(FLinearColor(1.0f, 1.0f, 1.0f, Alpha))
+		.ColorAndOpacity_Lambda([OpacityAttr, VariantOpacity]() -> FLinearColor
+		{
+			const auto Override = OpacityAttr.Get();
+			const auto Alpha = Override >= 0.0f ? Override : VariantOpacity;
+			return FLinearColor(1.0f, 1.0f, 1.0f, Alpha);
+		})
 		[
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)

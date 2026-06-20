@@ -39,9 +39,6 @@ public:
         const FWidgetStyle& InWidgetStyle,
         bool bParentEnabled) const -> int32 override;
 
-protected:
-    auto GetBorderBackgroundColor() const -> FSlateColor;
-
 private:
     auto CreateTaskRows() -> TSharedRef<SWidget>;
     auto GetTaskResultBrushColor(ECk_SmTaskResult InResult) const -> FLinearColor;

@@ -194,6 +194,19 @@ auto
 {
     SGraphNode::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
+    // Fade the bubble border between grey (inactive) and blue (holds the active
+    // sub-state), mirroring the state-node border fade. Driven here (widget Tick,
+    // mode-independent) rather than the graph so it stays smooth in any mode.
+    {
+        const auto Target = (ck::IsValid(_CompoundNode) && _CompoundNode->Get_HasActiveSubState()) ? 1.0f : 0.0f;
+        const auto Step = FCkSmDebuggerStyle::Sm_HighlightFadeDuration > 0.0f
+            ? InDeltaTime / FCkSmDebuggerStyle::Sm_HighlightFadeDuration : 1.0f;
+        if (_BubbleGlowAlpha < Target)
+        { _BubbleGlowAlpha = FMath::Min(Target, _BubbleGlowAlpha + Step); }
+        else if (_BubbleGlowAlpha > Target)
+        { _BubbleGlowAlpha = FMath::Max(Target, _BubbleGlowAlpha - Step); }
+    }
+
     if (RecomputeBoundsFromChildren())
     { UpdateGraphNode(); }
 }
@@ -334,18 +347,23 @@ auto
     constexpr auto CornerRadius = 8.0f;
     constexpr auto BorderThickness = 1.0f;
 
-    auto IsParentActive = _CompoundNode && _CompoundNode->Get_IsParentStateActive();
+    // The whole bubble fades by _BubbleGlowAlpha (see Tick): grey → blue border
+    // AND dim → brighter intensity, both directions. Driving the intensity off
+    // the same fade alpha — rather than snapping it on parent-active — keeps the
+    // fade-OUT smooth; otherwise the bubble snapped straight back to faint on
+    // exit even while the colour was still mid-fade.
     constexpr auto ActiveBorderAlpha = 0.4f;
     constexpr auto InactiveBorderAlpha = 0.15f;
     constexpr auto ActiveFillAlpha = 0.02f;
     constexpr auto InactiveFillAlpha = 0.01f;
 
-    auto BorderAlpha = IsParentActive ? ActiveBorderAlpha : InactiveBorderAlpha;
-    auto FillAlpha = IsParentActive ? ActiveFillAlpha : InactiveFillAlpha;
+    auto BorderAlpha = FMath::Lerp(InactiveBorderAlpha, ActiveBorderAlpha, _BubbleGlowAlpha);
+    auto FillAlpha = FMath::Lerp(InactiveFillAlpha, ActiveFillAlpha, _BubbleGlowAlpha);
 
-    auto BorderColor = (_CompoundNode && _CompoundNode->Get_HasActiveSubState())
-        ? FCkSmDebuggerStyle::Color_Sm_SubSmCurrentBorder
-        : FCkSmDebuggerStyle::Color_Sm_SubSmInactiveBorder;
+    auto BorderColor = FMath::Lerp(
+        FCkSmDebuggerStyle::Color_Sm_SubSmInactiveBorder,
+        FCkSmDebuggerStyle::Color_Sm_SubSmCurrentBorder,
+        _BubbleGlowAlpha);
     BorderColor.A = BorderAlpha;
 
     // --- Border ---

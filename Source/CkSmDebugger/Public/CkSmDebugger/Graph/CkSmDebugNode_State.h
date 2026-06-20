@@ -72,6 +72,36 @@ public:
     auto Get_IsPreviousState() const -> bool { return _IsPreviousState; }
     auto Set_IsPreviousState(bool InValue) -> void { _IsPreviousState = InValue; }
 
+    // Live "current state" highlight, driven by TickLiveFlash and read every
+    // frame by the pill (no widget rebuild). Split into two channels so entry
+    // and exit animate differently:
+    //   - Border alpha fades BOTH ways: grey -> blue on becoming current,
+    //     blue -> grey once left (the outline fade that marks the state we just
+    //     jumped from).
+    //   - Cell alpha fades IN on becoming current (whole node brightens) and
+    //     then HOLDS — leaving a state animates only the border, not the cell,
+    //     so the node doesn't dim as a whole on exit.
+    auto Get_BorderGlowAlpha() const -> float { return _BorderGlowAlpha; }
+    auto Set_BorderGlowAlpha(float InValue) -> void { _BorderGlowAlpha = InValue; }
+    auto Get_CellGlowAlpha() const -> float { return _CellGlowAlpha; }
+    auto Set_CellGlowAlpha(float InValue) -> void { _CellGlowAlpha = InValue; }
+
+    // Grey "previous state" glow intensity, fading in/out (both ways) as this
+    // node enters/leaves the previous-state set — mirrors the blue border fade
+    // instead of snapping on/off.
+    auto Get_PreviousGlowAlpha() const -> float { return _PreviousGlowAlpha; }
+    auto Set_PreviousGlowAlpha(float InValue) -> void { _PreviousGlowAlpha = InValue; }
+
+    // One-shot "just became current" entry pulse: set to 1.0 on the false->true
+    // IsCurrentState edge, decays to 0 over Sm_EntryPulseDuration. Drives the
+    // entry overshoot — a brief brightening of the border colour (in the border
+    // lambda, not a drawn box). _WasCurrentState is the edge-detect latch the
+    // driver updates each tick.
+    auto Get_EntryPulseAlpha() const -> float { return _EntryPulseAlpha; }
+    auto Set_EntryPulseAlpha(float InValue) -> void { _EntryPulseAlpha = InValue; }
+    auto Get_WasCurrentState() const -> bool { return _WasCurrentState; }
+    auto Set_WasCurrentState(bool InValue) -> void { _WasCurrentState = InValue; }
+
 
     // Breakpoint visual style variant (0 = default, used for A/B testing in mockup)
     auto Get_BreakpointStyle() const -> int32 { return _BreakpointStyle; }
@@ -129,6 +159,11 @@ private:
     bool _IsScrubExitedState = false;
     bool _IsPreviousState = false;
     bool _IsParentStateActive = false;
+    float _BorderGlowAlpha = 0.0f;
+    float _CellGlowAlpha = 0.0f;
+    float _PreviousGlowAlpha = 0.0f;
+    float _EntryPulseAlpha = 0.0f;
+    bool _WasCurrentState = false;
 
     int32 _BreakpointStyle = 23;
 };

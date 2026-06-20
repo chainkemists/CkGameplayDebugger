@@ -54,6 +54,10 @@ private:
     // Last anchored position — used by MoveTo to compute translation delta for children
     FVector2D _LastKnownPosition = FVector2D::ZeroVector;
     bool _HasLastKnownPosition = false;
+
+    // Bubble border color fade: 0 = grey (inactive), 1 = blue (holds the active
+    // sub-state). Driven toward HasActiveSubState in Tick; read in OnPaint.
+    float _BubbleGlowAlpha = 0.0f;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

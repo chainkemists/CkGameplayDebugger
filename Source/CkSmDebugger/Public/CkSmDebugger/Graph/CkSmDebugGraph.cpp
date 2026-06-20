@@ -5,6 +5,7 @@
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugNode_Transition.h"
 #include "CkSmDebugGraphSchema.h"
+#include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 
@@ -888,6 +889,17 @@ auto
             auto Idx = StateNode->Get_StateIndex();
             StateNode->Set_IsScrubActiveState(Idx == InActiveStateIdx);
             StateNode->Set_IsScrubExitedState(Idx == InExitedStateIdx);
+            // Scrub mode shows the scrubbed-active state via its own (green)
+            // OnPaint glow — clear the live current-state glow so a stale live
+            // highlight doesn't bleed blue onto a node while scrubbing.
+            StateNode->Set_BorderGlowAlpha(0.0f);
+            StateNode->Set_CellGlowAlpha(0.0f);
+            StateNode->Set_PreviousGlowAlpha(0.0f);
+            // Keep the entry latch synced to live current-state during scrub so
+            // returning to live mode doesn't fire a spurious pulse, and clear any
+            // in-flight pulse.
+            StateNode->Set_EntryPulseAlpha(0.0f);
+            StateNode->Set_WasCurrentState(StateNode->Get_IsCurrentState());
         }
         else if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
         {
@@ -964,13 +976,61 @@ auto
     // level (outer SM + each sub-SM) — the most recent FromStateName at that
     // level. Exclude nodes that are themselves currently active so a recent
     // self-loop doesn't light up the current state.
+    //
+    // Drive the live highlight glows in the same pass (read every frame by the
+    // pill + OnPaint, no widget rebuild). Channels animate asymmetrically:
+    //   - Becoming current: fade the whole cell IN — border grey -> blue AND
+    //     cell dim -> full.
+    //   - Once left: fade ONLY the border back out (blue -> grey); the cell
+    //     HOLDS its brightness, so leaving a state animates the outline, not the
+    //     whole node. (Unvisited nodes stay dim until first reached.)
+    //   - Grey previous-state glow fades in/out BOTH ways as the node enters /
+    //     leaves the previous-state set (instead of snapping).
+    const auto FadeStep = FCkSmDebuggerStyle::Sm_HighlightFadeDuration > 0.0f
+        ? InDeltaTime / FCkSmDebuggerStyle::Sm_HighlightFadeDuration : 1.0f;
     for (auto Node : Nodes)
     {
         if (auto* StateNode = Cast<UCkSmDebugNode_State>(Node))
         {
-            StateNode->Set_IsPreviousState(
+            const auto bIsPrevious =
                 InPreviousStateNames.Contains(StateNode->Get_StateName())
-                && NOT StateNode->Get_IsCurrentState());
+                && NOT StateNode->Get_IsCurrentState();
+            StateNode->Set_IsPreviousState(bIsPrevious);
+
+            if (StateNode->Get_IsCurrentState())
+            {
+                StateNode->Set_BorderGlowAlpha(FMath::Min(1.0f, StateNode->Get_BorderGlowAlpha() + FadeStep));
+                StateNode->Set_CellGlowAlpha(FMath::Min(1.0f, StateNode->Get_CellGlowAlpha() + FadeStep));
+            }
+            else
+            {
+                const auto Border = StateNode->Get_BorderGlowAlpha();
+                if (Border > 0.0f)
+                { StateNode->Set_BorderGlowAlpha(FMath::Max(0.0f, Border - FadeStep)); }
+            }
+
+            const auto PrevTarget = bIsPrevious ? 1.0f : 0.0f;
+            const auto Prev = StateNode->Get_PreviousGlowAlpha();
+            if (Prev < PrevTarget)
+            { StateNode->Set_PreviousGlowAlpha(FMath::Min(PrevTarget, Prev + FadeStep)); }
+            else if (Prev > PrevTarget)
+            { StateNode->Set_PreviousGlowAlpha(FMath::Max(PrevTarget, Prev - FadeStep)); }
+
+            // One-shot entry pulse: fire on the false -> true current edge (covers
+            // sub-SM states too, since they are state nodes), then decay. Drives
+            // the entry overshoot — a brief brightening of the border colour.
+            const auto bCurrentNow = StateNode->Get_IsCurrentState();
+            if (bCurrentNow && NOT StateNode->Get_WasCurrentState())
+            { StateNode->Set_EntryPulseAlpha(1.0f); }
+            StateNode->Set_WasCurrentState(bCurrentNow);
+
+            const auto Pulse = StateNode->Get_EntryPulseAlpha();
+            if (Pulse > 0.0f)
+            {
+                const auto PulseStep = FCkSmDebuggerStyle::Sm_EntryPulseDuration > 0.0f
+                    ? InDeltaTime / FCkSmDebuggerStyle::Sm_EntryPulseDuration : 1.0f;
+                StateNode->Set_EntryPulseAlpha(FMath::Max(0.0f, Pulse - PulseStep));
+            }
         }
     }
 

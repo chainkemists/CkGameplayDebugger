@@ -200,12 +200,13 @@ auto
             .Padding(0.0f, 2.0f, 0.0f, 0.0f)
             [ CreateTaskRows() ];
 
-    // ---- Variant: InPlan when current state, Inactive otherwise — drives the
-    //      pill's border + fill colors uniformly with GOAP/ECS nodes. ----
-    const auto IsCenter = _StateNode && _StateNode->Get_IsCurrentState();
-    const auto Variant = IsCenter
-        ? ECkDebug_NodePillVariant::InPlan
-        : ECkDebug_NodePillVariant::Inactive;
+    // ---- Current-state highlight: the pill border + opacity are driven live
+    //      (per-frame lambdas below) from the node's active-glow alpha, instead
+    //      of baking an InPlan/Inactive variant at construction. The live update
+    //      path only flips _IsCurrentState; it does NOT recreate this widget, so
+    //      a construction-time variant read went stale until the next topology
+    //      rebuild (see CkDebuggerCommon/CLAUDE.md "SGraphNode live-bind
+    //      invariant"). Variant stays Inactive; the overrides carry the signal. ----
 
     // ---- Accent strip: per-state color (the original ColorSpill signal,
     //      relocated to the pill's left-edge accent). Faded for inactive
@@ -236,11 +237,43 @@ auto
                 .VAlign(VAlign_Fill)
                 [
                     SNew(SCkDebug_NodePill)
-                        .Variant(Variant)
+                        .Variant(ECkDebug_NodePillVariant::Inactive)
                         .StepIndex(-1)
                         .ShowCost(false)
                         .Title(FText::GetEmpty())   // we render the title inside BodyContent
                         .AccentColor(AccentColor)
+                        // Live border: grey when inactive → blue when current,
+                        // lerped by the border-glow alpha. Fades both ways, so the
+                        // outline fades out (blue → grey) once the state is left.
+                        .BorderColorOverride_Lambda([WeakNode = TWeakObjectPtr<UCkSmDebugNode_State>(_StateNode)]() -> FLinearColor
+                        {
+                            const auto* Node = WeakNode.Get();
+                            if (Node == nullptr) { return CkDebugStyle::NodeBorder_Inactive(); }
+                            auto Border = FMath::Lerp(
+                                CkDebugStyle::NodeBorder_Inactive(),
+                                CkDebugStyle::NodeBorder_InPlan(),
+                                Node->Get_BorderGlowAlpha());
+                            // Entry overshoot: briefly brighten the border toward white
+                            // on becoming current, fading with the one-shot pulse. Lives
+                            // in the border color (not a drawn box) so it never touches
+                            // the cell face.
+                            const auto Pulse = Node->Get_EntryPulseAlpha();
+                            if (Pulse > 0.0f)
+                            { Border = FMath::Lerp(Border, FLinearColor(0.80f, 0.93f, 1.0f), Pulse * 0.75f); }
+                            return Border;
+                        })
+                        // Live opacity: dimmed → full, lerped by the cell-glow
+                        // alpha. Fades IN on becoming current and HOLDS — leaving
+                        // a state fades only the border, not the whole cell.
+                        .OpacityOverride_Lambda([WeakNode = TWeakObjectPtr<UCkSmDebugNode_State>(_StateNode)]() -> float
+                        {
+                            const auto* Node = WeakNode.Get();
+                            if (Node == nullptr) { return CkDebugStyle::NodeInactiveOpacity(); }
+                            return FMath::Lerp(
+                                CkDebugStyle::NodeInactiveOpacity(),
+                                1.0f,
+                                Node->Get_CellGlowAlpha());
+                        })
                         .BodyContent() [ PillBody ]
                 ]
         ];
@@ -297,30 +330,6 @@ auto
         ];
 
     OutputPins.Add(PinToAdd);
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SGraphNode_SmState::
-    GetBorderBackgroundColor() const
-    -> FSlateColor
-{
-    if (NOT _StateNode)
-    { return FLinearColor::Transparent; }
-
-    auto Color = _StateNode->Get_IsCurrentState()
-        ? FCkSmDebuggerStyle::Color_Sm_ActiveStateBody
-        : FCkSmDebuggerStyle::Color_Sm_InactiveStateBody;
-
-    // Fade sub-SM states when their parent state is not active
-    if (_StateNode->Get_IsSubSmNode() && NOT _StateNode->Get_IsParentStateActive())
-    {
-        constexpr auto InactiveFade = 0.35f;
-        Color.A *= InactiveFade;
-    }
-
-    return Color;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -435,19 +444,23 @@ auto
     { return Result; }
 
     // --- Highlight glow: colored rect drawn behind the node ---
+    // Scrub-mode glows snap (green active / grey exited); the live previous-state
+    // grey glow fades in/out via _PreviousGlowAlpha so it animates like the border.
     {
-        auto bHighlighted = _StateNode->Get_IsScrubActiveState()
-            || _StateNode->Get_IsScrubExitedState()
-            || _StateNode->Get_IsPreviousState();
+        auto GlowRgb = FCkSmDebuggerStyle::Color_Sm_PreviousStateOutline;
+        auto GlowAlpha = 0.0f;
 
-        if (bHighlighted)
+        if (_StateNode->Get_IsScrubActiveState())
+        { GlowRgb = FCkSmDebuggerStyle::Color_Sm_ScrubActiveOutline; GlowAlpha = 0.25f; }
+        else if (_StateNode->Get_IsScrubExitedState())
+        { GlowAlpha = 0.25f; }
+        else
+        { GlowAlpha = 0.25f * _StateNode->Get_PreviousGlowAlpha(); }
+
+        if (GlowAlpha > 0.001f)
         {
-            auto HColor = _StateNode->Get_IsScrubActiveState()
-                ? FCkSmDebuggerStyle::Color_Sm_ScrubActiveOutline
-                : FCkSmDebuggerStyle::Color_Sm_PreviousStateOutline;
-
             constexpr auto Pad = 4.0f;
-            auto GlowColor = FLinearColor(HColor.R, HColor.G, HColor.B, 0.25f);
+            auto GlowColor = FLinearColor(GlowRgb.R, GlowRgb.G, GlowRgb.B, GlowAlpha);
             static auto GlowBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
 
             auto Size = AllottedGeometry.GetLocalSize();

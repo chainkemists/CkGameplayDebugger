@@ -94,11 +94,15 @@ auto
 	// get a constant attribute — identical behavior to the old SLATE_ARGUMENTs.
 	const auto BorderAttr     = InArgs._BorderColorOverride;
 	const auto OpacityAttr    = InArgs._OpacityOverride;
+	const auto ThicknessAttr  = InArgs._BorderThickness;
+	const auto FillAttr       = InArgs._FillColorOverride;
 	const auto VariantBorder  = VariantStyle.Border;
 	const auto VariantOpacity = VariantStyle.DefaultOpacity;
+	const auto VariantFill    = VariantStyle.Fill;
 	const auto ShowBadge    = InArgs._StepIndex >= 0;
-	const auto ShowAccent   = HasColor(InArgs._AccentColor);
-	const auto AccentColor  = InArgs._AccentColor;
+	const auto ShowAccent      = HasColor(InArgs._AccentColor.Get());
+	const auto AccentColorAttr = InArgs._AccentColor;
+	const auto AccentWidthAttr = InArgs._AccentWidth;
 	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
 
 	// ---- Header presence: if none of badge / title / cost are populated, the
@@ -195,11 +199,11 @@ auto
 			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
 			[
 				SNew(SBox)
-				.WidthOverride(4.0f)
+				.WidthOverride_Lambda([AccentWidthAttr]() { return FOptionalSize(AccentWidthAttr.Get()); })
 				[
 					SNew(SImage)
 					.Image(CkDebugStyle::GetFilledBrush())
-					.ColorAndOpacity(FSlateColor(AccentColor))
+					.ColorAndOpacity_Lambda([AccentColorAttr]() { return FSlateColor(AccentColorAttr.Get()); })
 				]
 			]
 
@@ -218,7 +222,11 @@ auto
 			const auto Override = BorderAttr.Get();
 			return FSlateColor(HasColor(Override) ? Override : VariantBorder);
 		})
-		.Padding(FMargin(CkDebugStyle::NodeBorderThickness()))
+		.Padding_Lambda([ThicknessAttr]() -> FMargin
+		{
+			const auto T = ThicknessAttr.Get();
+			return FMargin(T >= 0.0f ? T : CkDebugStyle::NodeBorderThickness());
+		})
 		.ColorAndOpacity_Lambda([OpacityAttr, VariantOpacity]() -> FLinearColor
 		{
 			const auto Override = OpacityAttr.Get();
@@ -228,7 +236,11 @@ auto
 		[
 			SNew(SBorder)
 			.BorderImage(RoundedBrush)
-			.BorderBackgroundColor(FSlateColor(VariantStyle.Fill))
+			.BorderBackgroundColor_Lambda([FillAttr, VariantFill]() -> FSlateColor
+			{
+				const auto Override = FillAttr.Get();
+				return FSlateColor(HasColor(Override) ? Override : VariantFill);
+			})
 			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
 			[
 				ContentRow

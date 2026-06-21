@@ -35,7 +35,6 @@ namespace FCkSmDebuggerStyle
     inline const FLinearColor Color_Sm_TransitionBadgeBg      = FLinearColor(0.102f, 0.102f, 0.165f, 0.878f);
     inline const FLinearColor Color_Sm_SubSmNodeBackground    = FLinearColor(0.102f, 0.118f, 0.180f);
     inline const FLinearColor Color_Sm_SubSmNodeHeader        = FLinearColor(0.165f, 0.176f, 0.267f);
-    inline const FLinearColor Color_Sm_SubSmCurrentBorder     = FLinearColor(0.259f, 0.647f, 0.961f);
     inline const FLinearColor Color_Sm_SubSmInactiveBorder    = FLinearColor(0.361f, 0.420f, 0.753f);
     inline const FLinearColor Color_Sm_SubSmBadge             = FLinearColor(0.259f, 0.647f, 0.961f);
     inline const FLinearColor Color_Sm_SubSmConnector         = FLinearColor(0.259f, 0.647f, 0.961f, 0.502f);
@@ -43,7 +42,6 @@ namespace FCkSmDebuggerStyle
 
     // Active state — orange/amber matching LogicDriverPro active highlight
     inline const FLinearColor Color_Sm_ActiveStateBorder      = FLinearColor(0.85f, 0.55f, 0.25f);
-    inline const FLinearColor Color_Sm_ActiveStateBody        = FLinearColor(0.85f, 0.55f, 0.25f, 0.45f);
     inline const FLinearColor Color_Sm_InactiveStateBody      = FLinearColor(0.125f, 0.125f, 0.188f);
 
     // Title shadow (LogicDriverPro uses 0.6 gray)
@@ -58,6 +56,11 @@ namespace FCkSmDebuggerStyle
     inline const FLinearColor Color_Sm_PreviousStateOutline   = FLinearColor(0.55f, 0.55f, 0.6f, 0.40f);
     inline const FLinearColor Color_Sm_ScrubTransitionWire    = FLinearColor(0.259f, 0.647f, 0.961f, 1.0f);
     inline const FLinearColor Color_Sm_LiveFlashWire          = FLinearColor(0.85f, 0.55f, 0.25f, 1.0f);
+
+    // Active-state highlight: the current state's node border + halo are bright
+    // green (the only green in the graph). Swap this if green clashes with the
+    // satisfied-transition green elsewhere.
+    inline const FLinearColor Color_Sm_ActiveOutline          = FLinearColor(0.353f, 0.820f, 0.498f);
 
     // Entry node
     inline const FLinearColor Color_Sm_EntryText              = FLinearColor(0.7f, 0.7f, 0.7f);
@@ -96,14 +99,17 @@ namespace FCkSmDebuggerStyle
     inline constexpr float Sm_TransitionBadgeRadius   = 10.0f;
     inline constexpr float Sm_TransitionBadgeFontSize = 10.0f;
 
-    // Seconds for live highlights to fade between states (current-state border,
-    // previous-state glow, sub-SM bubble). Single source so they stay in sync.
+    // Seconds for live highlights to fade. Fast = becoming current / becoming
+    // previous (snappy); the slow duration is the final fade of the grey
+    // previous-halo out to nothing (lingers so you can track where it came from).
+    inline constexpr float Sm_HighlightFadeFast       = 0.18f;
     inline constexpr float Sm_HighlightFadeDuration   = 0.6f;
 
     // Seconds for the one-shot "just became current" entry overshoot (a brief
     // brightening of the border colour) to play out. Shorter than the fade —
     // it's a transient attention grab, not a steady-state.
     inline constexpr float Sm_EntryPulseDuration      = 0.5f;
+
 }
 
 // --------------------------------------------------------------------------------------------------------------------

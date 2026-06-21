@@ -208,9 +208,9 @@ auto
     //      rebuild (see CkDebuggerCommon/CLAUDE.md "SGraphNode live-bind
     //      invariant"). Variant stays Inactive; the overrides carry the signal. ----
 
-    // ---- Accent strip: per-state color (the original ColorSpill signal,
-    //      relocated to the pill's left-edge accent). Faded for inactive
-    //      sub-SM nodes. ----
+    // ---- Accent strip: per-state color (state identity), faded for inactive
+    //      sub-SM nodes. The active signal is the green border + halo, not the
+    //      bar, so the bar keeps its identity colour. ----
     auto AccentColor = _StateNode ? _StateNode->Get_StateColor() : FLinearColor::White;
     if (_StateNode && _StateNode->Get_IsSubSmNode() && NOT _StateNode->Get_IsParentStateActive())
     { AccentColor.A *= 0.35f; }
@@ -242,24 +242,27 @@ auto
                         .ShowCost(false)
                         .Title(FText::GetEmpty())   // we render the title inside BodyContent
                         .AccentColor(AccentColor)
-                        // Live border: grey when inactive → blue when current,
+                        // Live border: grey when inactive → green when current,
                         // lerped by the border-glow alpha. Fades both ways, so the
-                        // outline fades out (blue → grey) once the state is left.
+                        // outline fades out (green → grey) once the state is left.
                         .BorderColorOverride_Lambda([WeakNode = TWeakObjectPtr<UCkSmDebugNode_State>(_StateNode)]() -> FLinearColor
                         {
                             const auto* Node = WeakNode.Get();
-                            if (Node == nullptr) { return CkDebugStyle::NodeBorder_Inactive(); }
-                            auto Border = FMath::Lerp(
-                                CkDebugStyle::NodeBorder_Inactive(),
-                                CkDebugStyle::NodeBorder_InPlan(),
-                                Node->Get_BorderGlowAlpha());
-                            // Entry overshoot: briefly brighten the border toward white
-                            // on becoming current, fading with the one-shot pulse. Lives
-                            // in the border color (not a drawn box) so it never touches
-                            // the cell face.
-                            const auto Pulse = Node->Get_EntryPulseAlpha();
-                            if (Pulse > 0.0f)
-                            { Border = FMath::Lerp(Border, FLinearColor(0.80f, 0.93f, 1.0f), Pulse * 0.75f); }
+                            // "No border" except on the current state: the border matches the
+                            // cell fill (so it's invisible) for previous + inactive, and only
+                            // the current state shows a green outline (fading in via the glow
+                            // alpha). Green is strictly current-only — on any other state it
+                            // read as a competing active highlight.
+                            if (Node == nullptr) { return CkDebugStyle::NodeFill_Inactive(); }
+                            auto Border = CkDebugStyle::NodeFill_Inactive();
+                            if (Node->Get_IsCurrentState())
+                            {
+                                Border = FMath::Lerp(Border, FCkSmDebuggerStyle::Color_Sm_ActiveOutline, Node->Get_BorderGlowAlpha());
+                                // Entry overshoot: brighten toward (green-)white on becoming current.
+                                const auto Pulse = Node->Get_EntryPulseAlpha();
+                                if (Pulse > 0.0f)
+                                { Border = FMath::Lerp(Border, FLinearColor(0.85f, 1.0f, 0.92f), Pulse * 0.7f); }
+                            }
                             return Border;
                         })
                         // Live opacity: dimmed → full, lerped by the cell-glow
@@ -443,9 +446,9 @@ auto
     if (NOT _StateNode)
     { return Result; }
 
-    // --- Highlight glow: colored rect drawn behind the node ---
-    // Scrub-mode glows snap (green active / grey exited); the live previous-state
-    // grey glow fades in/out via _PreviousGlowAlpha so it animates like the border.
+    // --- Highlight glow: the active state's green halo (live) — the primary "this
+    //     is current" signal, a green aura a little larger than the node, fading
+    //     with the current-state alpha — plus the scrub-mode glows. ---
     {
         auto GlowRgb = FCkSmDebuggerStyle::Color_Sm_PreviousStateOutline;
         auto GlowAlpha = 0.0f;
@@ -454,12 +457,30 @@ auto
         { GlowRgb = FCkSmDebuggerStyle::Color_Sm_ScrubActiveOutline; GlowAlpha = 0.25f; }
         else if (_StateNode->Get_IsScrubExitedState())
         { GlowAlpha = 0.25f; }
+        else if (_StateNode->Get_IsCurrentState())
+        {
+            // Live active halo — green, fading IN as this becomes current. Gated on
+            // IsCurrentState (the actual current node), NOT just the glow alpha:
+            // _BorderGlowAlpha is a fade value that lingers on a just-left state as
+            // it decays, so a previous state would otherwise wear the "active" halo
+            // (notably right after switching to a different SM). The border colour
+            // still uses the alpha, so the just-left state's outline fades green ->
+            // grey; only the halo is current-only.
+            const auto ActiveGlow = _StateNode->Get_BorderGlowAlpha();
+            if (ActiveGlow > 0.001f)
+            { GlowRgb = FCkSmDebuggerStyle::Color_Sm_ActiveOutline; GlowAlpha = 0.34f * ActiveGlow; }
+        }
         else
-        { GlowAlpha = 0.25f * _StateNode->Get_PreviousGlowAlpha(); }
+        {
+            // Grey "previous" halo on a just-left state — GlowRgb stays the grey
+            // default; intensity fades in fast / out slow via _PreviousGlowAlpha.
+            // Goes to nothing once fully inactive.
+            GlowAlpha = 0.34f * _StateNode->Get_PreviousGlowAlpha();
+        }
 
         if (GlowAlpha > 0.001f)
         {
-            constexpr auto Pad = 4.0f;
+            constexpr auto Pad = 6.0f;
             auto GlowColor = FLinearColor(GlowRgb.R, GlowRgb.G, GlowRgb.B, GlowAlpha);
             static auto GlowBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
 

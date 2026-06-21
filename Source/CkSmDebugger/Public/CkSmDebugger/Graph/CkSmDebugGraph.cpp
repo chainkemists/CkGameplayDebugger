@@ -658,6 +658,17 @@ auto
         const FCkSmDebugger_SmInfo& InSmInfo)
     -> void
 {
+    // If the inspected SM changed (e.g. selecting a different SM that happens to
+    // share this one's topology), the existing nodes are reused without a rebuild
+    // — but their live glow alphas belong to the OLD SM and linger on the wrong
+    // states (a stale "active" halo on the just-switched-to graph). Force a
+    // rebuild so the new SM starts from a clean, zeroed highlight state.
+    if (InSmInfo.Handle != _CachedSubSmOwner)
+    {
+        RebuildFromSmInfo(InSmInfo);
+        return;
+    }
+
     // Build augmented SmInfo with cached sub-SM data (same as RebuildFromSmInfo)
     auto SmInfo = InSmInfo;
 
@@ -986,7 +997,9 @@ auto
     //     whole node. (Unvisited nodes stay dim until first reached.)
     //   - Grey previous-state glow fades in/out BOTH ways as the node enters /
     //     leaves the previous-state set (instead of snapping).
-    const auto FadeStep = FCkSmDebuggerStyle::Sm_HighlightFadeDuration > 0.0f
+    const auto FastStep = FCkSmDebuggerStyle::Sm_HighlightFadeFast > 0.0f
+        ? InDeltaTime / FCkSmDebuggerStyle::Sm_HighlightFadeFast : 1.0f;
+    const auto SlowStep = FCkSmDebuggerStyle::Sm_HighlightFadeDuration > 0.0f
         ? InDeltaTime / FCkSmDebuggerStyle::Sm_HighlightFadeDuration : 1.0f;
     for (auto Node : Nodes)
     {
@@ -997,24 +1010,32 @@ auto
                 && NOT StateNode->Get_IsCurrentState();
             StateNode->Set_IsPreviousState(bIsPrevious);
 
+            // Current green border + halo + cell brightness fade in FAST. (They are
+            // gated out of rendering when not current, so the decay rate is cosmetic.)
             if (StateNode->Get_IsCurrentState())
             {
-                StateNode->Set_BorderGlowAlpha(FMath::Min(1.0f, StateNode->Get_BorderGlowAlpha() + FadeStep));
-                StateNode->Set_CellGlowAlpha(FMath::Min(1.0f, StateNode->Get_CellGlowAlpha() + FadeStep));
+                StateNode->Set_BorderGlowAlpha(FMath::Min(1.0f, StateNode->Get_BorderGlowAlpha() + FastStep));
+                StateNode->Set_CellGlowAlpha(FMath::Min(1.0f, StateNode->Get_CellGlowAlpha() + FastStep));
             }
             else
             {
                 const auto Border = StateNode->Get_BorderGlowAlpha();
                 if (Border > 0.0f)
-                { StateNode->Set_BorderGlowAlpha(FMath::Max(0.0f, Border - FadeStep)); }
+                { StateNode->Set_BorderGlowAlpha(FMath::Max(0.0f, Border - FastStep)); }
             }
 
-            const auto PrevTarget = bIsPrevious ? 1.0f : 0.0f;
-            const auto Prev = StateNode->Get_PreviousGlowAlpha();
-            if (Prev < PrevTarget)
-            { StateNode->Set_PreviousGlowAlpha(FMath::Min(PrevTarget, Prev + FadeStep)); }
-            else if (Prev > PrevTarget)
-            { StateNode->Set_PreviousGlowAlpha(FMath::Max(PrevTarget, Prev - FadeStep)); }
+            // Grey "previous" halo fades IN fast on becoming previous, fades OUT slow
+            // to nothing — so you can still track where the SM just came from.
+            if (bIsPrevious)
+            {
+                StateNode->Set_PreviousGlowAlpha(FMath::Min(1.0f, StateNode->Get_PreviousGlowAlpha() + FastStep));
+            }
+            else
+            {
+                const auto Prev = StateNode->Get_PreviousGlowAlpha();
+                if (Prev > 0.0f)
+                { StateNode->Set_PreviousGlowAlpha(FMath::Max(0.0f, Prev - SlowStep)); }
+            }
 
             // One-shot entry pulse: fire on the false -> true current edge (covers
             // sub-SM states too, since they are state nodes), then decay. Drives

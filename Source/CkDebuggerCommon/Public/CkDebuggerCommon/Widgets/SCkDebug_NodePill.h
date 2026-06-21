@@ -50,7 +50,10 @@ public:
 		, _OpacityOverride(-1.0f)
 		, _MinDesiredWidth(0.0f)
 		, _AccentColor(FLinearColor::Transparent)
+		, _AccentWidth(4.0f)
 		, _BorderColorOverride(FLinearColor::Transparent)
+		, _FillColorOverride(FLinearColor::Transparent)
+		, _BorderThickness(-1.0f)
 		, _Selected(false)
 	{}
 		SLATE_ARGUMENT(ECkDebug_NodePillVariant, Variant)
@@ -64,11 +67,21 @@ public:
 		SLATE_ATTRIBUTE(float, OpacityOverride)
 		SLATE_ARGUMENT(float, MinDesiredWidth)
 		// Alpha==0 → no strip drawn. Non-transparent → left-edge colored strip.
-		SLATE_ARGUMENT(FLinearColor, AccentColor)
+		SLATE_ATTRIBUTE(FLinearColor, AccentColor)
+		// Width (px) of the accent strip — an attribute so the active state can
+		// thicken its left "edge bar" live.
+		SLATE_ATTRIBUTE(float, AccentWidth)
 		// Alpha==0 → use variant border color. Non-transparent → override.
 		// An attribute so flag-driven nodes can recolor the border live without
 		// a widget rebuild (e.g. the SM debugger's current-state outline).
 		SLATE_ATTRIBUTE(FLinearColor, BorderColorOverride)
+		// Alpha==0 → use variant fill. Non-transparent → override the inner cell
+		// fill live (e.g. the SM debugger tints the current state's cell green).
+		SLATE_ATTRIBUTE(FLinearColor, FillColorOverride)
+		// Border thickness (the rounded frame's padding). < 0 → style default
+		// (NodeBorderThickness). An attribute so flag-driven nodes can thicken
+		// the current-state border live.
+		SLATE_ATTRIBUTE(float, BorderThickness)
 		// Draws an extra selection-highlight ring around the pill when true.
 		SLATE_ARGUMENT(bool, Selected)
 		// When non-empty, right-click on the pill shows a "Copy Text" menu that

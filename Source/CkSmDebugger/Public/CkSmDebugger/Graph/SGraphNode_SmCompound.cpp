@@ -347,23 +347,23 @@ auto
     constexpr auto CornerRadius = 8.0f;
     constexpr auto BorderThickness = 1.0f;
 
-    // The whole bubble fades by _BubbleGlowAlpha (see Tick): grey → blue border
-    // AND dim → brighter intensity, both directions. Driving the intensity off
-    // the same fade alpha — rather than snapping it on parent-active — keeps the
-    // fade-OUT smooth; otherwise the bubble snapped straight back to faint on
-    // exit even while the colour was still mid-fade.
-    constexpr auto ActiveBorderAlpha = 0.4f;
-    constexpr auto InactiveBorderAlpha = 0.15f;
+    // The bubble's intensity fades by _BubbleGlowAlpha (see Tick): it brightens a
+    // little (via alpha) when it holds the active sub-state and dims back when it
+    // doesn't, both directions smoothly. Colour stays a constant neutral grey-blue
+    // — only the active STATE inside carries the green.
+    constexpr auto ActiveBorderAlpha = 0.22f;
+    constexpr auto InactiveBorderAlpha = 0.1f;
     constexpr auto ActiveFillAlpha = 0.02f;
     constexpr auto InactiveFillAlpha = 0.01f;
 
     auto BorderAlpha = FMath::Lerp(InactiveBorderAlpha, ActiveBorderAlpha, _BubbleGlowAlpha);
     auto FillAlpha = FMath::Lerp(InactiveFillAlpha, ActiveFillAlpha, _BubbleGlowAlpha);
 
-    auto BorderColor = FMath::Lerp(
-        FCkSmDebuggerStyle::Color_Sm_SubSmInactiveBorder,
-        FCkSmDebuggerStyle::Color_Sm_SubSmCurrentBorder,
-        _BubbleGlowAlpha);
+    // Faint neutral container: the active STATE inside (its green edge bar) is the
+    // eye-catcher, so the bubble stays a subtle grey-blue box that only brightens
+    // a little (via alpha) when it holds the active sub-state. No green fill — it
+    // never competes with the active state.
+    auto BorderColor = FCkSmDebuggerStyle::Color_Sm_InactiveStateBorder;
     BorderColor.A = BorderAlpha;
 
     // --- Border ---

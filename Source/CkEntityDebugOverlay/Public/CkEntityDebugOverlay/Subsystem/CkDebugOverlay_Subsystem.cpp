@@ -970,4 +970,22 @@ auto
     ck::debug_overlay::Log(TEXT("World override set to index {}"), _WorldOverrideIndex);
 }
 
+#else // WITH_CK_DEBUG_OVERLAY
+
+// The debug overlay is compiled out (e.g. Test/Shipping, or wherever the UncookedOnly
+// CkDebuggerCommon dependency is absent), but the UCLASS still declares Initialize/
+// Deinitialize unconditionally so UHT always sees the subsystem. Provide trivial bodies
+// that just forward to the base subsystem so the linker is satisfied — the subsystem
+// does nothing in this configuration.
+
+void UCk_DebugOverlay_Subsystem::Initialize(FSubsystemCollectionBase& InCollection)
+{
+    Super::Initialize(InCollection);
+}
+
+void UCk_DebugOverlay_Subsystem::Deinitialize()
+{
+    Super::Deinitialize();
+}
+
 #endif // WITH_CK_DEBUG_OVERLAY

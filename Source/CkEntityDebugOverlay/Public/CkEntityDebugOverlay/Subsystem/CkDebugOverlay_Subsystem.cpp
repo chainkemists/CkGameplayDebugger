@@ -881,9 +881,9 @@ auto
     }
     _RootWidget->Set_PinnedCards(PinnedModels, CardStyle, *_History, InNow);
 
-    // ---- World tags (distance-scaled / faded / culled / near-plates + focus-cluster fan-out) ----
+    // ---- World tags (distance-scaled / faded / culled / near-plates + co-located fan-out) ----
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
-        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected, InModel.Entity);
+        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected);
 
     _RootWidget->Update_WorldTags(WorldTags);
 

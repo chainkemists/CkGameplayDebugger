@@ -175,7 +175,8 @@ auto
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         APlayerController*                                   InPC,
-        bool                                                 InIsEjected)
+        bool                                                 InIsEjected,
+        const FCk_Handle&                                    InFocusEntity)
     -> TArray<FCk_DebugOverlay_WorldTagInfo>
 {
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
@@ -192,6 +193,8 @@ auto
     const auto FarDist       = Settings ? Settings->FarDist       : 4000.0f;
     const auto MinScale      = Settings ? Settings->MinScale      : 0.5f;
     const auto FadeStartDist = Settings ? Settings->FadeStartDist : 3000.0f;
+    const auto MaxNameChars  = Settings ? Settings->MaxWorldTagNameChars : 24;
+    const auto ClusterRadius = Settings ? Settings->CoLocatedScreenRadius : 36.0f;
 
     auto CamLoc = FVector::ZeroVector;
     {
@@ -200,6 +203,9 @@ auto
     }
 
     const auto NearPlatesEnabled = CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
+
+    // Index (into WorldTags) of the tag belonging to the focus entity, for the fan-out below.
+    auto FocusTagIdx = int32{ INDEX_NONE };
 
     for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
     {
@@ -223,10 +229,11 @@ auto
 
             const auto& ProviderTag = Provider->Get_ProviderTag();
 
-            // World tags survey *behavioral* state; skip the core identity providers so
-            // tags aren't "Info:<name> | Loc:(x,y,z)" spam on every entity.
+            // World tags survey feature presence; skip only EntityInfo (it IS the name/
+            // header — a pill would be redundant). Transform now emits a "T" pill so every
+            // feature an entity carries is visible.
             const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
-            if (ProviderLeaf == TEXT("EntityInfo") || ProviderLeaf == TEXT("Transform"))
+            if (ProviderLeaf == TEXT("EntityInfo"))
             { continue; }
 
             Badges.Add(FCk_DebugOverlay_WorldTagBadge{
@@ -292,10 +299,24 @@ auto
 
         if (IsNearPlate)
         {
-            const auto Header = HasRealName
-                ? ck::DebugNameClean::Get_CleanName(DebugName.ToString())
-                : FString::Printf(TEXT("#%u"),
-                    static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber()));
+            // Always show the entity number (very important for identification), matching
+            // the focus-card "Name [id]" format. The name is truncated to MaxNameChars
+            // (with an ellipsis) so long names don't balloon the plate; the [id] is never
+            // truncated.
+            const auto EntityNum = static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber());
+
+            auto Header = FString{};
+            if (HasRealName)
+            {
+                auto Name = ck::DebugNameClean::Get_CleanName(DebugName.ToString());
+                if (MaxNameChars > 0 && Name.Len() > MaxNameChars)
+                { Name = Name.Left(MaxNameChars) + TEXT("…"); }
+                Header = FString::Printf(TEXT("%s [%u]"), *Name, EntityNum);
+            }
+            else
+            {
+                Header = FString::Printf(TEXT("[%u]"), EntityNum);
+            }
 
             TagInfo.bIsPlate = true;
             TagInfo.Header   = FText::FromString(Header);
@@ -308,20 +329,82 @@ auto
 
         WorldTags.Add(MoveTemp(TagInfo));
 
+        if (ck::IsValid(InFocusEntity) && Handle == InFocusEntity)
+        { FocusTagIdx = WorldTags.Num() - 1; }
+
         // Hard cap to avoid clutter in dense scenes (e.g. crowds).
         if (WorldTags.Num() >= 16)
         { break; }
     }
 
-    // De-overlap co-located tags: stack subsequent plates upward (anchor is bottom-center).
+    // Focus-cluster fan-out (item 8): when the focused entity overlaps others on screen,
+    // splay that cluster's plates apart horizontally and badge each "i/N" so the stacked
+    // entities can be told apart. Non-interactive — the cycle key remains the selector.
+    auto FannedTags = TSet<int32>{};
+    if (FocusTagIdx != INDEX_NONE && WorldTags.IsValidIndex(FocusTagIdx))
+    {
+        const auto RadiusSq = FMath::Square(ClusterRadius);
+        const auto FocusPos = WorldTags[FocusTagIdx].ScreenPos;
+
+        auto ClusterTagIdx = TArray<int32>{};
+        for (auto T = 0; T < WorldTags.Num(); ++T)
+        {
+            if (FVector2D::DistSquared(WorldTags[T].ScreenPos, FocusPos) <= RadiusSq)
+            { ClusterTagIdx.Add(T); }
+        }
+
+        if (ClusterTagIdx.Num() > 1)
+        {
+            // Stable left -> right ordering for the i/N indices.
+            ClusterTagIdx.Sort([&WorldTags](int32 InA, int32 InB)
+            { return WorldTags[InA].ScreenPos.X < WorldTags[InB].ScreenPos.X; });
+
+            const auto Count = ClusterTagIdx.Num();
+            constexpr auto FanSpacingX = 104.0f; // px between fanned plates
+            constexpr auto FanRiseY    = 16.0f;  // px lift per column so it reads as a fan
+
+            auto CentroidX = 0.0f;
+            for (const auto T : ClusterTagIdx) { CentroidX += WorldTags[T].ScreenPos.X; }
+            CentroidX /= static_cast<float>(Count);
+
+            for (auto i = 0; i < Count; ++i)
+            {
+                const auto TagIdx = ClusterTagIdx[i];
+                const auto Slot   = static_cast<float>(i) - (Count - 1) * 0.5f;
+
+                WorldTags[TagIdx].ScreenPos.X  = CentroidX + Slot * FanSpacingX;
+                WorldTags[TagIdx].ScreenPos.Y -= FMath::Abs(Slot) * FanRiseY;
+
+                const auto Badge = FString::Printf(TEXT("  %d/%d"), i + 1, Count);
+                if (WorldTags[TagIdx].bIsPlate)
+                {
+                    WorldTags[TagIdx].Header =
+                        FText::FromString(WorldTags[TagIdx].Header.ToString() + Badge);
+                }
+                else
+                {
+                    WorldTags[TagIdx].Text =
+                        FText::FromString(WorldTags[TagIdx].Text.ToString() + Badge);
+                }
+
+                FannedTags.Add(TagIdx);
+            }
+        }
+    }
+
+    // De-overlap the remaining (non-fanned) co-located tags: stack upward (anchor bottom-center).
     {
         constexpr auto CellW = 48.0f;
         constexpr auto CellH = 32.0f;
         constexpr auto StackStep = 34.0f;
 
         auto CountByCell = TMap<FIntPoint, int32>{};
-        for (auto& Tag : WorldTags)
+        for (auto T = 0; T < WorldTags.Num(); ++T)
         {
+            if (FannedTags.Contains(T))
+            { continue; }
+
+            auto& Tag = WorldTags[T];
             const auto Cell = FIntPoint{
                 FMath::RoundToInt32(Tag.ScreenPos.X / CellW),
                 FMath::RoundToInt32(Tag.ScreenPos.Y / CellH) };

@@ -69,6 +69,18 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
                 TEXT("Ck.OnScreenDebugger.Provider.Physics"),
                 TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.ByteAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.Inventory"),
+                TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
+                TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
+                TEXT("Ck.OnScreenDebugger.Provider.Team"),
+                TEXT("Ck.OnScreenDebugger.Provider.Objective"),
+                TEXT("Ck.OnScreenDebugger.Provider.TagSet"),
+                TEXT("Ck.OnScreenDebugger.Provider.EntityCollection"),
+                TEXT("Ck.OnScreenDebugger.Provider.AnimPlans"),
+                TEXT("Ck.OnScreenDebugger.Provider.Timer"),
+                TEXT("Ck.OnScreenDebugger.Provider.Label"),
+                TEXT("Ck.OnScreenDebugger.Provider.Variables"),
             });
         AllLayout.bEnableAllFields = true;
         Layouts.Add(MoveTemp(AllLayout));

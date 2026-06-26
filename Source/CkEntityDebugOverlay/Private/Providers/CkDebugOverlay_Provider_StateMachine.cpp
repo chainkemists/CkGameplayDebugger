@@ -84,6 +84,71 @@ namespace
             ? Format_Sm_StateName(InClass->GetName())
             : FString(TEXT("(None)"));
     }
+
+    // One node of the (possibly nested) state-machine chain: its nesting depth, the
+    // current state name at that level, and the run status (severity) of that level.
+    struct FSmChainNode
+    {
+        int32           Depth = 0;
+        FString         StateName;
+        ECk_SmRunStatus RunStatus = ECk_SmRunStatus::Stopped;
+    };
+
+    // Full-recursive descent into active sub-state-machines. From an SM entity, read its
+    // current state, then find that state's cached tasks (FFragment_Sm_Debug) and recurse
+    // into every task that hosts a live sub-SM (HasSubStateMachine → SubSmHandle).
+    // Clamped by InMaxDepth; guarded by a visited-set so a malformed cycle can't recurse
+    // forever.
+    auto Collect_SmChain(
+        const FCk_Handle&     InSm,
+        int32                 InDepth,
+        int32                 InMaxDepth,
+        TSet<uint32>&         InOutVisited,
+        TArray<FSmChainNode>& OutChain) -> void
+    {
+        if (ck::Is_NOT_Valid(InSm) || NOT InSm.Has<ck::FFragment_Sm_Current>())
+        { return; }
+
+        const auto EntityNum = static_cast<uint32>(InSm.Get_Entity().Get_EntityNumber());
+        if (InOutVisited.Contains(EntityNum))
+        { return; }
+        InOutVisited.Add(EntityNum);
+
+        const auto& Current    = InSm.Get<ck::FFragment_Sm_Current>();
+        // Get_CurrentStateClass() returns a TSubclassOf<UCk_SmState_EntityScript> — also the
+        // key type of the cached-states map, so it is used directly as the lookup key below.
+        const auto  StateClass = Current.Get_CurrentStateClass();
+
+        auto Node = FSmChainNode{};
+        Node.Depth     = InDepth;
+        Node.StateName = Format_Sm_ClassName(StateClass.Get());
+        Node.RunStatus = Current.Get_RunStatus();
+        OutChain.Add(MoveTemp(Node));
+
+        if (InDepth >= InMaxDepth || StateClass.Get() == nullptr)
+        { return; }
+
+        if (NOT InSm.Has<ck::FFragment_Sm_Debug>())
+        { return; }
+
+        const auto& Debug       = InSm.Get<ck::FFragment_Sm_Debug>();
+        const auto& Cached      = Debug.Get_CachedStates();
+        const auto* CachedState = Cached.Find(StateClass);
+        if (CachedState == nullptr)
+        { return; }
+
+        for (const auto& Task : CachedState->Tasks)
+        {
+            if (NOT Task.HasSubStateMachine)
+            { continue; }
+
+            const auto SubSm = FCk_Handle{ Task.SubSmHandle };
+            if (ck::IsValid(SubSm))
+            {
+                Collect_SmChain(SubSm, InDepth + 1, InMaxDepth, InOutVisited, OutChain);
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -144,28 +209,36 @@ auto FCk_DebugOverlay_Provider_StateMachine::Collect(
 
     if (NOT Entity.Has<ck::FFragment_Sm_Current>()) { return; }
 
-    const auto& SmCurrent = Entity.Get<ck::FFragment_Sm_Current>();
-    const UClass* StateClass = SmCurrent.Get_CurrentStateClass();
-
-    // --- State ---
+    // --- State (recursive: top-level + every active sub-state-machine) ---
     if (Cfg.EnabledFields.HasTagExact(FieldTag_State()))
     {
-        const FString StateName = Format_Sm_ClassName(StateClass);
+        const auto MaxDepth = GetDefault<UCk_DebugOverlay_Settings>()->SmMaxRecursionDepth;
 
-        ECk_DebugOverlay_Severity Sev = ECk_DebugOverlay_Severity::Normal;
-        switch (SmCurrent.Get_RunStatus())
+        auto Visited = TSet<uint32>{};
+        auto Chain   = TArray<FSmChainNode>{};
+        Collect_SmChain(Entity, 0, MaxDepth, Visited, Chain);
+
+        for (const auto& ChainNode : Chain)
         {
-            case ECk_SmRunStatus::Running: Sev = ECk_DebugOverlay_Severity::Good;   break;
-            case ECk_SmRunStatus::Paused:  Sev = ECk_DebugOverlay_Severity::Warn;   break;
-            case ECk_SmRunStatus::Stopped:
-            default:                       Sev = ECk_DebugOverlay_Severity::Normal; break;
-        }
+            auto Sev = ECk_DebugOverlay_Severity::Normal;
+            switch (ChainNode.RunStatus)
+            {
+                case ECk_SmRunStatus::Running: Sev = ECk_DebugOverlay_Severity::Good; break;
+                case ECk_SmRunStatus::Paused:  Sev = ECk_DebugOverlay_Severity::Warn; break;
+                case ECk_SmRunStatus::Stopped:
+                default:                       Sev = ECk_DebugOverlay_Severity::Normal; break;
+            }
 
-        FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_State();
-        Row.Value    = FText::FromString(StateName);
-        Row.Severity = Sev;
-        Out.Rows.Add(MoveTemp(Row));
+            // Indent nested levels so the hierarchy reads as a chain of state chips.
+            auto Prefix = FString{};
+            for (auto Lvl = 0; Lvl < ChainNode.Depth; ++Lvl) { Prefix += TEXT("> "); }
+
+            FCk_DebugOverlay_Row Row;
+            Row.FieldTag = FieldTag_State();
+            Row.Value    = FText::FromString(Prefix + ChainNode.StateName);
+            Row.Severity = Sev;
+            Out.Rows.Add(MoveTemp(Row));
+        }
     }
 
     // --- History ---

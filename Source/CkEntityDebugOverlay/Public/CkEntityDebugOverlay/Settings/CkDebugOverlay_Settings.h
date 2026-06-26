@@ -125,14 +125,30 @@ public:
     float CoLocatedRadius = 100.0f;
 
     // Screen-space radius (pixels) within which on-screen candidates are treated as one
-    // co-located cluster — used to drive the hover fan-out (i/N badges) and the cycle key.
+    // co-located cluster — used to drive the fan-out (i/N badges) and the focus-card i/N.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="4.0", ClampMax="256.0"))
     float CoLocatedScreenRadius = 36.0f;
 
-    // Optional key: tap twice quickly to release ALL pinned cards at once
-    // (also available as `ck.DebugOverlay.UnpinAll`). Default unbound.
+    // ---- Co-located fan-out (gradual, distance-driven) ----
+
+    // Camera distance (cm) at/below which a co-located cluster is fanned out to MAXIMUM.
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
+    float FanFullDist = 500.0f;
+
+    // Camera distance (cm) at/above which a co-located cluster is fully collapsed (no fan —
+    // the plates sit on top of each other, "looking like one entity"). Between FanFullDist
+    // and FanFadeDist the fan spread is lerped, so it opens up as you approach.
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
+    float FanFadeDist = 2000.0f;
+
+    // Maximum horizontal spacing (px) between fanned plates at full fan.
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="16.0", ClampMax="400.0"))
+    float FanMaxSpacing = 110.0f;
+
+    // Key: tap twice quickly to release ALL pinned cards at once (also available as
+    // `ck.DebugOverlay.UnpinAll`, or double-tap the pin key on an entity to unpin just it).
     UPROPERTY(Config, EditAnywhere, Category="Input")
-    FKey UnpinAllKey;
+    FKey UnpinAllKey = EKeys::BackSpace;
 
     // Optional key: tap twice quickly to toggle the full keyboard-hints legend
     // (also available as `ck.DebugOverlay.Help`). Default unbound.

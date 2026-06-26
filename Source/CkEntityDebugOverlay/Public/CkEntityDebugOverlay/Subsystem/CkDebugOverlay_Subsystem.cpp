@@ -21,11 +21,8 @@
 
 // B2 — marker billboards (shared FCkDebug_EntityMarkers preview, UDebugDrawService callback).
 #include "Debug/DebugDrawService.h"
-// Canvas plates (worldspace world tags drawn alongside the markers).
-#include "Engine/Canvas.h"
-#include "CanvasItem.h"
-#include "CanvasTypes.h"
-#include "Engine/Font.h"
+// Viewport DPI scale — world plates are positioned in DPI-scaled Slate units.
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "GameFramework/Pawn.h"
 #if WITH_EDITOR
 #include "Editor.h"
@@ -379,6 +376,7 @@ auto
         _InputProcessor.Reset();
     }
     _PinnedEntities.Reset();
+    _PreferredCoLocated = FCk_Handle{};
 
     if (_RootWidget.IsValid())
     {
@@ -410,7 +408,6 @@ auto
     _Markers.Reset();
     _MarkerSuppressed.Empty();
     _FocusedEntityNum = MAX_uint32;
-    _CanvasPlates.Reset();
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
@@ -518,6 +515,29 @@ auto
             // Keep the lock index in sync with best pick when not locked, so
             // Next/Prev starts from the last auto-picked position.
             _LockedCandidateIndex = BestIdx;
+
+            // Soft co-located preference (cycle key): if the user cycled to a specific
+            // co-located entity and it's still on-screen and near the auto-pick, prefer it —
+            // WITHOUT locking (no ring). Clears itself once it leaves the cluster.
+            if (ck::IsValid(_PreferredCoLocated))
+            {
+                const auto PrefIdx = CandidateHandles.IndexOfByPredicate(
+                    [this](const FCk_Handle& InHandle){ return InHandle == _PreferredCoLocated; });
+
+                const auto* PrefSettings = GetDefault<UCk_DebugOverlay_Settings>();
+                const auto  PrefRadiusSq = FMath::Square(PrefSettings ? PrefSettings->CoLocatedRadius : 100.0f);
+
+                if (Candidates.IsValidIndex(PrefIdx) && Candidates[PrefIdx].bIsOnScreen &&
+                    FVector::DistSquared(Candidates[PrefIdx].WorldLocation, Candidates[BestIdx].WorldLocation) <= PrefRadiusSq)
+                {
+                    FocusEntity = _PreferredCoLocated;
+                    _LockedCandidateIndex = PrefIdx;
+                }
+                else
+                {
+                    _PreferredCoLocated = FCk_Handle{};
+                }
+            }
         }
     }
 
@@ -601,29 +621,29 @@ auto
                 auto CoLocated = TArray<int32>{};
                 for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
                 {
-                    if (FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
+                    if (Candidates[CandIdx].bIsOnScreen &&
+                        FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
                     { CoLocated.Add(CandIdx); }
                 }
 
                 if (CoLocated.Num() > 1)
                 {
-                    // Cycle forward through the stack, then WRAP TO UNLOCKED (auto-follow).
-                    // This makes the cycle releasable with the same key: tap through each
-                    // co-located entity and one more tap past the last returns to auto-pick.
-                    const auto CurPos  = _FocusLocked ? CoLocated.IndexOfByKey(_LockedCandidateIndex) : INDEX_NONE;
-                    const auto NextPos = CurPos + 1; // INDEX_NONE(-1)+1 = 0 → first
+                    // Advance the SOFT preference from the CURRENT focus to the next co-located
+                    // entity — no hard lock, no ring. One tap past the last clears it (back to
+                    // pure auto-follow). The preference also auto-clears when you look away.
+                    const auto CurPos  = CoLocated.IndexOfByKey(_LockedCandidateIndex);
+                    const auto NextPos = CurPos + 1;
 
                     if (NextPos >= CoLocated.Num())
                     {
-                        _FocusLocked = false;
-                        ck::debug_overlay::Log(TEXT("Co-located cycle wrapped -> focus UNLOCKED (auto-follow)"));
+                        _PreferredCoLocated = FCk_Handle{};
+                        ck::debug_overlay::Log(TEXT("Co-located cycle wrapped -> auto-follow"));
                     }
                     else
                     {
-                        _LockedCandidateIndex = CoLocated[NextPos];
-                        _FocusLocked = true;
+                        _PreferredCoLocated = CandidateHandles[CoLocated[NextPos]];
                         ck::debug_overlay::Log(
-                            TEXT("Cycled co-located focus ({}/{} within {}cm)"),
+                            TEXT("Cycled co-located preference ({}/{} within {}cm)"),
                             NextPos + 1, CoLocated.Num(), Settings->CoLocatedRadius);
                     }
                 }
@@ -696,13 +716,7 @@ auto
         Build_Model(FocusEntity, _Providers, *Layout, Now, Model);
     }
 
-    // ---- 7b. Build world-anchored canvas plates (drawn in DoDrawPlates, worldspace) ----
-    // These replace the Slate world tags so they project with the same view as the diamonds
-    // (UCanvas::Project) and stay aligned in every camera state (possessed / ejected / sim).
-    _CanvasPlates = ck_debugoverlay::Build_CanvasPlates(
-        CandidateHandles, Candidates, _Providers, *Layout, Viewpoint.Location, FocusEntity);
-
-    // ---- 8. Push to root (focus card + pinned cards + key hints; world tags are on canvas) ----
+    // ---- 8. Push to root (focus card + pinned cards + world tags + key hints) ----
     Push_ToRoot(Model, *Layout, CandidateHandles, Candidates, _Providers, PC, Now);
 
     return true; // keep ticking
@@ -906,9 +920,24 @@ auto
     }
     _RootWidget->Set_PinnedCards(PinnedModels, CardStyle, *_History, InNow);
 
-    // ---- World tags now render on the canvas (DoDrawPlates), worldspace. Clear the Slate
-    //      tag canvas so no stale Slate plates linger from earlier builds. ----
-    _RootWidget->Update_WorldTags({});
+    // ---- World tags (Slate plates anchored at the entity's screen position) ----
+    // ScreenPos comes from ProjectWorldToScreen (raw pixels) divided by the viewport DPI scale
+    // (Slate viewport overlays position children in DPI-scaled units) so each plate lands on
+    // its diamond marker. The focus entity's plate is highlighted; co-located clusters fan out
+    // gradually with camera proximity.
+    auto DpiScale = 1.0f;
+    if (ck::IsValid(InPC))
+    {
+        if (auto* PCWorld = InPC->GetWorld())
+        { DpiScale = UWidgetLayoutLibrary::GetViewportScale(PCWorld); }
+    }
+    DpiScale = FMath::Max(0.01f, DpiScale);
+
+    const auto WorldTags = ck_debugoverlay::Build_WorldTags(
+        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected,
+        DpiScale, InModel.Entity);
+
+    _RootWidget->Update_WorldTags(WorldTags);
 
     // ---- Keyboard-hints strip (item 9): built from the live key bindings ----
     if (OverlaySettings != nullptr)
@@ -981,9 +1010,6 @@ auto
     DrawParams.SuppressedEntityNums = &_MarkerSuppressed;
 
     _Markers.DrawMarkers(InCanvas, DrawParams);
-
-    // World plates, projected on the same canvas → aligned with the diamonds.
-    DoDrawPlates(InCanvas, InPC);
 }
 
 // ====================================================================================================================
@@ -993,6 +1019,7 @@ auto
 // the focus plate is drawn highlighted to match the emphasized diamond.
 // ====================================================================================================================
 
+#if 0 // Retired: world plates are now rich Slate cards (see Build_WorldTags / Update_WorldTags).
 auto
     UCk_DebugOverlay_Subsystem::
     DoDrawPlates(
@@ -1151,6 +1178,7 @@ auto
         }
     }
 }
+#endif // Retired DoDrawPlates
 
 // ====================================================================================================================
 // CVar / command callbacks

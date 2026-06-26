@@ -20,8 +20,6 @@
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 // Global Slate input pre-processor — keeps double-tap gestures alive while ejected.
 #include "CkEntityDebugOverlay/Input/CkDebugOverlay_InputProcessor.h"
-// FCk_DebugOverlay_CanvasPlate — world plates drawn on the canvas (worldspace).
-#include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_Present.h"
 #endif
 
 #include "CkDebugOverlay_Subsystem.generated.h"
@@ -132,6 +130,11 @@ private:
     int32 _LockedCandidateIndex = INDEX_NONE;
     bool  _FocusLocked          = false;
 
+    // Soft co-located preference set by the cycle key (NOT a hard lock — no ring). When valid
+    // and still on-screen + co-located with the auto-pick, the focus prefers this entity;
+    // auto-clears when it leaves the cluster. FCk_Handle so it survives candidate-index churn.
+    FCk_Handle _PreferredCoLocated;
+
     // Candidate handle list from the last frame (for Next/Prev cycling).
     TArray<FCk_Handle> _LastFrameCandidates;
 
@@ -144,15 +147,7 @@ private:
     // by DoDrawMarkers (which fires per-viewport from the debug-draw service).
     auto DoDrawMarkers(UCanvas* InCanvas, APlayerController* InPC) -> void;
 
-    // World-anchored plates drawn on the same canvas as the markers (UCanvas::Project),
-    // so they align with the diamonds in every camera state; co-located clusters fan out
-    // gradually with camera proximity, the focus plate is highlighted.
-    auto DoDrawPlates(UCanvas* InCanvas, APlayerController* InPC) -> void;
-
     FCkDebug_EntityMarkers _Markers;
-
-    // Plate data built each DoTick (worldspace; projected + fanned in DoDrawPlates).
-    TArray<FCk_DebugOverlay_CanvasPlate> _CanvasPlates;
 
     // Entity numbers whose markers are suppressed this tick (locally possessed
     // pawn's entities — a marker there would sit permanently at screen center).

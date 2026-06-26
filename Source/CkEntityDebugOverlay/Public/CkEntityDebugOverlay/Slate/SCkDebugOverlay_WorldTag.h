@@ -25,6 +25,11 @@ struct FCk_DebugOverlay_WorldTagInfo
     float     Scale      = 1.0f;   // [MinScale, 1] — applied via Slate RenderTransform
     float     Opacity    = 1.0f;   // [0.15, 1] — applied to ColorAndOpacity alpha
 
+    // Camera→entity distance (cm) — drives the gradual co-located fan.
+    float     Distance   = 0.0f;
+    // True for the focus entity's plate — rendered highlighted to match the emphasized diamond.
+    bool      bIsFocus   = false;
+
     // Near-plate payload (used when bIsPlate is true; Text is ignored then).
     bool                                  bIsPlate = false;
     FText                                 Header   = FText{};

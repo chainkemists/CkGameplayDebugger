@@ -14,21 +14,6 @@ class  FCk_DebugOverlay_History;
 class  UCk_DebugOverlay_Settings;
 class  APlayerController;
 
-// One world-anchored plate, drawn on the canvas (worldspace — projected per-viewport via
-// UCanvas::Project so it aligns exactly with the diamond markers in every camera state).
-// Built distance-aware; projected + fanned at draw time by the subsystem.
-struct FCk_DebugOverlay_CanvasPlate
-{
-    FVector WorldLocation = FVector::ZeroVector;
-    uint32  EntityNum     = 0;
-    float   Distance      = 0.0f;   // camera→entity (cm), drives the gradual fan
-    bool    bIsNearPlate  = false;  // near: Header + Badges; far: FarText only
-    bool    bIsFocus      = false;  // highlighted to match the emphasized diamond
-    FString Header;                 // "Name [id]" / "[id]"
-    FString FarText;                // behavioral tokens joined " | "
-    TArray<FCk_DebugOverlay_WorldTagBadge> Badges;
-};
-
 // ====================================================================================================================
 // Shared presentation builders for the on-screen entity debug overlay.
 //
@@ -54,27 +39,19 @@ namespace ck_debugoverlay
     // (B1 — scale/fade/cull + near-plate badges + co-located de-overlap). Returns
     // empty when InPC is null or InIsEjected (PC projection reflects a frozen camera).
     // Callers must have set FCandidate::bIsOnScreen on each candidate.
-    // Every on-screen co-located cluster (>1 plate sharing a screen cell) is fanned apart and
-    // each member badged "[i/N]" so overlapping entities can be told apart (non-interactive).
+    // Build Slate world-tag plates for the on-screen candidates. ScreenPos is in DPI-scaled
+    // Slate units (ProjectWorldToScreen pixels / InDpiScale) so each plate lands on its
+    // diamond marker. InFocusEntity's plate is flagged bIsFocus (highlighted). Every on-screen
+    // co-located cluster fans apart gradually with camera proximity, each badged "[i/N]".
     CKENTITYDEBUGOVERLAY_API auto Build_WorldTags(
         const TArray<FCk_Handle>&                            InHandles,
         const TArray<FCandidate>&                            InCandidates,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         APlayerController*                                   InPC,
-        bool                                                 InIsEjected) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
-
-    // Build world-anchored canvas plates for the on-screen candidates. No projection here —
-    // the subsystem projects each per-viewport via UCanvas::Project (same as the diamonds) so
-    // they align in every camera state. Distance (from InViewLocation) drives the gradual fan
-    // and the near/far split; InFocusEntity is flagged for highlight.
-    CKENTITYDEBUGOVERLAY_API auto Build_CanvasPlates(
-        const TArray<FCk_Handle>&                            InHandles,
-        const TArray<FCandidate>&                            InCandidates,
-        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
-        const FCk_DebugOverlay_Layout&                       InLayout,
-        const FVector&                                       InViewLocation,
-        const FCk_Handle&                                    InFocusEntity) -> TArray<FCk_DebugOverlay_CanvasPlate>;
+        bool                                                 InIsEjected,
+        float                                                InDpiScale    = 1.0f,
+        const FCk_Handle&                                    InFocusEntity = FCk_Handle{}) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
 
     // Resolve a layout by index from settings (index clamped to range). Null when no
     // layouts are configured.

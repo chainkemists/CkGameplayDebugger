@@ -114,12 +114,13 @@ auto FCk_DebugOverlay_Provider_Transform::Collect(
 // --------------------------------------------------------------------------------------------------------------------
 
 auto FCk_DebugOverlay_Provider_Transform::Get_CompactToken(
-    const FCk_Handle&                      Entity,
+    const FCk_Handle&                      /*Entity*/,
     const FCk_DebugOverlay_ProviderConfig& /*Cfg*/) const -> FString
 {
-    if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity)) { return {}; }
-    const FVector Loc = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity).GetLocation();
-    return FString::Printf(TEXT("Loc:(%.0f,%.0f,%.0f)"), Loc.X, Loc.Y, Loc.Z);
+    // Transform is shown as the "T" badge on near plates and as the "[id]" header — it must
+    // NOT emit a far-pill token, or every entity in the world spams "Loc:(x,y,z)" pills that
+    // flood the view and drift away from their markers via the de-overlap stacking.
+    return {};
 }
 
 // --------------------------------------------------------------------------------------------------------------------

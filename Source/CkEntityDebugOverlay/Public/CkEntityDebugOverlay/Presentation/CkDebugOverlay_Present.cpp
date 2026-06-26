@@ -175,8 +175,7 @@ auto
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         APlayerController*                                   InPC,
-        bool                                                 InIsEjected,
-        const FCk_Handle&                                    InFocusEntity)
+        bool                                                 InIsEjected)
     -> TArray<FCk_DebugOverlay_WorldTagInfo>
 {
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
@@ -194,7 +193,6 @@ auto
     const auto MinScale      = Settings ? Settings->MinScale      : 0.5f;
     const auto FadeStartDist = Settings ? Settings->FadeStartDist : 3000.0f;
     const auto MaxNameChars  = Settings ? Settings->MaxWorldTagNameChars : 24;
-    const auto ClusterRadius = Settings ? Settings->CoLocatedScreenRadius : 36.0f;
 
     auto CamLoc = FVector::ZeroVector;
     {
@@ -203,9 +201,6 @@ auto
     }
 
     const auto NearPlatesEnabled = CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
-
-    // Index (into WorldTags) of the tag belonging to the focus entity, for the fan-out below.
-    auto FocusTagIdx = int32{ INDEX_NONE };
 
     for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
     {
@@ -329,88 +324,67 @@ auto
 
         WorldTags.Add(MoveTemp(TagInfo));
 
-        if (ck::IsValid(InFocusEntity) && Handle == InFocusEntity)
-        { FocusTagIdx = WorldTags.Num() - 1; }
-
         // Hard cap to avoid clutter in dense scenes (e.g. crowds).
         if (WorldTags.Num() >= 16)
         { break; }
     }
 
-    // Focus-cluster fan-out (item 8): when the focused entity overlaps others on screen,
-    // splay that cluster's plates apart horizontally and badge each "i/N" so the stacked
-    // entities can be told apart. Non-interactive — the cycle key remains the selector.
-    auto FannedTags = TSet<int32>{};
-    if (FocusTagIdx != INDEX_NONE && WorldTags.IsValidIndex(FocusTagIdx))
+    // Fan out every co-located cluster (item 8): plates sharing a screen cell are splayed
+    // horizontally around their shared point and each badged "[i/N]" so overlapping entities
+    // can be told apart at a glance. Singletons stay anchored directly above their marker.
+    // This replaces the old "stack upward" de-overlap, which drifted dense clusters far from
+    // their markers (the misaligned column of pills). Non-interactive — the co-located cycle
+    // key (double-Alt) remains the selector.
     {
-        const auto RadiusSq = FMath::Square(ClusterRadius);
-        const auto FocusPos = WorldTags[FocusTagIdx].ScreenPos;
+        constexpr auto CellW       = 64.0f;
+        constexpr auto CellH       = 48.0f;
+        constexpr auto FanSpacingX = 92.0f; // px between fanned plates
+        constexpr auto FanRiseY    = 14.0f; // px lift per column so it reads as a shallow fan
 
-        auto ClusterTagIdx = TArray<int32>{};
+        auto CellMembers = TMap<FIntPoint, TArray<int32>>{};
         for (auto T = 0; T < WorldTags.Num(); ++T)
         {
-            if (FVector2D::DistSquared(WorldTags[T].ScreenPos, FocusPos) <= RadiusSq)
-            { ClusterTagIdx.Add(T); }
+            const auto Cell = FIntPoint{
+                FMath::RoundToInt32(WorldTags[T].ScreenPos.X / CellW),
+                FMath::RoundToInt32(WorldTags[T].ScreenPos.Y / CellH) };
+            CellMembers.FindOrAdd(Cell).Add(T);
         }
 
-        if (ClusterTagIdx.Num() > 1)
+        for (auto& Pair : CellMembers)
         {
-            // Stable left -> right ordering for the i/N indices.
-            ClusterTagIdx.Sort([&WorldTags](int32 InA, int32 InB)
+            auto& Members = Pair.Value;
+            if (Members.Num() <= 1)
+            { continue; }
+
+            // Stable left -> right order for the [i/N] indices.
+            Members.Sort([&WorldTags](int32 InA, int32 InB)
             { return WorldTags[InA].ScreenPos.X < WorldTags[InB].ScreenPos.X; });
 
-            const auto Count = ClusterTagIdx.Num();
-            constexpr auto FanSpacingX = 104.0f; // px between fanned plates
-            constexpr auto FanRiseY    = 16.0f;  // px lift per column so it reads as a fan
+            const auto Count = Members.Num();
 
             auto CentroidX = 0.0f;
-            for (const auto T : ClusterTagIdx) { CentroidX += WorldTags[T].ScreenPos.X; }
+            auto TopY      = WorldTags[Members[0]].ScreenPos.Y;
+            for (const auto T : Members)
+            {
+                CentroidX += WorldTags[T].ScreenPos.X;
+                TopY = FMath::Min(TopY, WorldTags[T].ScreenPos.Y);
+            }
             CentroidX /= static_cast<float>(Count);
 
             for (auto i = 0; i < Count; ++i)
             {
-                const auto TagIdx = ClusterTagIdx[i];
-                const auto Slot   = static_cast<float>(i) - (Count - 1) * 0.5f;
+                const auto T    = Members[i];
+                const auto Slot = static_cast<float>(i) - (Count - 1) * 0.5f;
 
-                WorldTags[TagIdx].ScreenPos.X  = CentroidX + Slot * FanSpacingX;
-                WorldTags[TagIdx].ScreenPos.Y -= FMath::Abs(Slot) * FanRiseY;
+                WorldTags[T].ScreenPos.X = CentroidX + Slot * FanSpacingX;
+                WorldTags[T].ScreenPos.Y = TopY - FMath::Abs(Slot) * FanRiseY;
 
-                const auto Badge = FString::Printf(TEXT("  %d/%d"), i + 1, Count);
-                if (WorldTags[TagIdx].bIsPlate)
-                {
-                    WorldTags[TagIdx].Header =
-                        FText::FromString(WorldTags[TagIdx].Header.ToString() + Badge);
-                }
+                const auto Badge = FString::Printf(TEXT("[%d/%d] "), i + 1, Count);
+                if (WorldTags[T].bIsPlate)
+                { WorldTags[T].Header = FText::FromString(Badge + WorldTags[T].Header.ToString()); }
                 else
-                {
-                    WorldTags[TagIdx].Text =
-                        FText::FromString(WorldTags[TagIdx].Text.ToString() + Badge);
-                }
-
-                FannedTags.Add(TagIdx);
+                { WorldTags[T].Text = FText::FromString(Badge + WorldTags[T].Text.ToString()); }
             }
-        }
-    }
-
-    // De-overlap the remaining (non-fanned) co-located tags: stack upward (anchor bottom-center).
-    {
-        constexpr auto CellW = 48.0f;
-        constexpr auto CellH = 32.0f;
-        constexpr auto StackStep = 34.0f;
-
-        auto CountByCell = TMap<FIntPoint, int32>{};
-        for (auto T = 0; T < WorldTags.Num(); ++T)
-        {
-            if (FannedTags.Contains(T))
-            { continue; }
-
-            auto& Tag = WorldTags[T];
-            const auto Cell = FIntPoint{
-                FMath::RoundToInt32(Tag.ScreenPos.X / CellW),
-                FMath::RoundToInt32(Tag.ScreenPos.Y / CellH) };
-            auto& CountInCell = CountByCell.FindOrAdd(Cell);
-            Tag.ScreenPos.Y -= CountInCell * StackStep;
-            ++CountInCell;
         }
     }
 

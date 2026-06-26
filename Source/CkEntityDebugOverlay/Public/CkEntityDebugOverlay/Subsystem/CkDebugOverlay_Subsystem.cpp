@@ -516,19 +516,16 @@ auto
             // Next/Prev starts from the last auto-picked position.
             _LockedCandidateIndex = BestIdx;
 
-            // Soft co-located preference (cycle key): if the user cycled to a specific
-            // co-located entity and it's still on-screen and near the auto-pick, prefer it —
-            // WITHOUT locking (no ring). Clears itself once it leaves the cluster.
+            // Soft co-located preference (cycle key): while the cycled-to entity is still
+            // on-screen, prefer it — WITHOUT locking (no ring). Holding on "still on-screen"
+            // (rather than "near the auto-pick") keeps the cycle progressing reliably through a
+            // chain; it auto-clears once the entity leaves view (look away → resume auto-pick).
             if (ck::IsValid(_PreferredCoLocated))
             {
                 const auto PrefIdx = CandidateHandles.IndexOfByPredicate(
                     [this](const FCk_Handle& InHandle){ return InHandle == _PreferredCoLocated; });
 
-                const auto* PrefSettings = GetDefault<UCk_DebugOverlay_Settings>();
-                const auto  PrefRadiusSq = FMath::Square(PrefSettings ? PrefSettings->CoLocatedRadius : 100.0f);
-
-                if (Candidates.IsValidIndex(PrefIdx) && Candidates[PrefIdx].bIsOnScreen &&
-                    FVector::DistSquared(Candidates[PrefIdx].WorldLocation, Candidates[BestIdx].WorldLocation) <= PrefRadiusSq)
+                if (Candidates.IsValidIndex(PrefIdx) && Candidates[PrefIdx].bIsOnScreen)
                 {
                     FocusEntity = _PreferredCoLocated;
                     _LockedCandidateIndex = PrefIdx;
@@ -550,6 +547,11 @@ auto
         Settings != nullptr && _InputProcessor.IsValid())
     {
         const auto Window = Settings->LockDoubleTapWindowSeconds;
+
+        // The overlay fully owns the cycle key so its lone press/release doesn't trigger the
+        // Windows menu chrome (cursor appears + game viewport defocuses). Only the cycle key is
+        // swallowed — Shift/Ctrl pass through so they remain available to gameplay.
+        _InputProcessor->Set_ConsumeKeys(TSet<FKey>{ Settings->CycleCoLocatedKey });
 
         // Edge-detect a double-tap of InKey: true on the second tap within Window. Consumes
         // the key from the pre-processor each call (one physical press = one detection).
@@ -608,43 +610,60 @@ auto
             _ShowFullLegend = NOT _ShowFullLegend;
         }
 
-        // Double-tap CycleCoLocatedKey (default Left Alt): cycle focus through candidates
-        // within CoLocatedRadius of the current focus and lock on — the selector for
-        // entities stacked at the same world position.
+        // Double-tap CycleCoLocatedKey (default Left Alt): cycle the focus through the
+        // co-located cluster. The cluster is the CONNECTED COMPONENT (flood-fill) of entities
+        // linked by world-OR-screen proximity, so a chain A-B-C is ONE stable set regardless of
+        // which member is focused (fixes "only 2 of 3 cycle"). Sets a soft preference (no lock).
         if (WasDoubleTapped(Settings->CycleCoLocatedKey, _LastCycleKeyPressTime))
         {
             if (ck::IsValid(FocusEntity) && Candidates.IsValidIndex(_LockedCandidateIndex))
             {
-                const auto FocusPos = Candidates[_LockedCandidateIndex].WorldLocation;
-                const auto RadiusSq = FMath::Square(Settings->CoLocatedRadius);
+                const auto WorldRadiusSq  = FMath::Square(Settings->CoLocatedRadius);
+                const auto ScreenRadiusSq = FMath::Square(Settings->CoLocatedScreenRadius * 1.5f);
 
-                auto CoLocated = TArray<int32>{};
-                for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
+                auto Cluster = TArray<int32>{ _LockedCandidateIndex };
+                for (auto Front = 0; Front < Cluster.Num(); ++Front)
                 {
-                    if (Candidates[CandIdx].bIsOnScreen &&
-                        FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
-                    { CoLocated.Add(CandIdx); }
+                    const auto Cur = Cluster[Front];
+                    for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
+                    {
+                        if (Cluster.Contains(CandIdx))
+                        { continue; }
+
+                        const auto WorldClose = FVector::DistSquared(
+                            Candidates[CandIdx].WorldLocation, Candidates[Cur].WorldLocation) <= WorldRadiusSq;
+                        const auto ScreenClose = Candidates[CandIdx].bIsOnScreen && Candidates[Cur].bIsOnScreen &&
+                            FVector2D::DistSquared(Candidates[CandIdx].ScreenPos, Candidates[Cur].ScreenPos) <= ScreenRadiusSq;
+
+                        if (WorldClose || ScreenClose)
+                        { Cluster.Add(CandIdx); }
+                    }
                 }
 
-                if (CoLocated.Num() > 1)
+                if (Cluster.Num() > 1)
                 {
-                    // Advance the SOFT preference from the CURRENT focus to the next co-located
-                    // entity — no hard lock, no ring. One tap past the last clears it (back to
-                    // pure auto-follow). The preference also auto-clears when you look away.
-                    const auto CurPos  = CoLocated.IndexOfByKey(_LockedCandidateIndex);
+                    // Stable order (by entity number) so the cycle sequence is consistent.
+                    Cluster.Sort([&CandidateHandles](int32 InA, int32 InB)
+                    {
+                        return CandidateHandles[InA].Get_Entity().Get_EntityNumber()
+                             < CandidateHandles[InB].Get_Entity().Get_EntityNumber();
+                    });
+
+                    // Advance the SOFT preference from the CURRENT focus to the next entity —
+                    // no hard lock, no ring. One tap past the last clears it (auto-follow).
+                    const auto CurPos  = Cluster.IndexOfByKey(_LockedCandidateIndex);
                     const auto NextPos = CurPos + 1;
 
-                    if (NextPos >= CoLocated.Num())
+                    if (NextPos >= Cluster.Num())
                     {
                         _PreferredCoLocated = FCk_Handle{};
                         ck::debug_overlay::Log(TEXT("Co-located cycle wrapped -> auto-follow"));
                     }
                     else
                     {
-                        _PreferredCoLocated = CandidateHandles[CoLocated[NextPos]];
+                        _PreferredCoLocated = CandidateHandles[Cluster[NextPos]];
                         ck::debug_overlay::Log(
-                            TEXT("Cycled co-located preference ({}/{} within {}cm)"),
-                            NextPos + 1, CoLocated.Num(), Settings->CoLocatedRadius);
+                            TEXT("Cycled co-located preference ({}/{})"), NextPos + 1, Cluster.Num());
                     }
                 }
             }

@@ -26,13 +26,18 @@ public:
 
     // Rebuilds all child slots from the supplied model snapshot.
     // Must be called from the game thread.
-    // bIsLocked: when true, a yellow ring is rendered around the card to indicate focus lock.
+    // bIsLocked: amber ring (focus lock). bIsPinned: cyan ring (a pinned card). Pinned wins.
+    // InCoLocatedIndex/Count: when Count > 1, a small "i/N" badge is shown in the header so
+    // you know which of several co-located entities this card is (1-based index).
     auto Set_Model(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
-        bool                                bIsLocked = false) -> void;
+        bool                                bIsLocked        = false,
+        bool                                bIsPinned        = false,
+        int32                               InCoLocatedIndex = INDEX_NONE,
+        int32                               InCoLocatedCount = 0) -> void;
 
     // Stable, visually-distinct color per provider — used for the provider chip
     // fill, the field-chip tint, and the near-plate feature badges.

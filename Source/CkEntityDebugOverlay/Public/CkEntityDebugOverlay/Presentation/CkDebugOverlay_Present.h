@@ -39,13 +39,16 @@ namespace ck_debugoverlay
     // (B1 — scale/fade/cull + near-plate badges + co-located de-overlap). Returns
     // empty when InPC is null or InIsEjected (PC projection reflects a frozen camera).
     // Callers must have set FCandidate::bIsOnScreen on each candidate.
+    // InFocusEntity (optional): when valid and part of an on-screen co-located cluster, that
+    // cluster's plates are fanned apart and each badged "i/N" (non-interactive disambiguation).
     CKENTITYDEBUGOVERLAY_API auto Build_WorldTags(
         const TArray<FCk_Handle>&                            InHandles,
         const TArray<FCandidate>&                            InCandidates,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         APlayerController*                                   InPC,
-        bool                                                 InIsEjected) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
+        bool                                                 InIsEjected,
+        const FCk_Handle&                                    InFocusEntity = FCk_Handle{}) -> TArray<FCk_DebugOverlay_WorldTagInfo>;
 
     // Resolve a layout by index from settings (index clamped to range). Null when no
     // layouts are configured.

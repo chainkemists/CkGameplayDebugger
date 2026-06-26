@@ -1,5 +1,6 @@
 #pragma once
 #include "Math/Vector.h"
+#include "Math/Vector2D.h"
 #include "Containers/Array.h"
 
 namespace ck_debugoverlay
@@ -17,6 +18,10 @@ namespace ck_debugoverlay
 
         // Lifetime-owner hops to the registry transient: 0 = top-level entity.
         int32   Depth         = 0;
+
+        // Viewport screen position (px), filled during the on-screen projection pass.
+        // Valid only when bIsOnScreen and not ejected; used for co-located clustering.
+        FVector2D ScreenPos   = FVector2D::ZeroVector;
     };
 
     /** Score a single candidate relative to the given viewpoint.

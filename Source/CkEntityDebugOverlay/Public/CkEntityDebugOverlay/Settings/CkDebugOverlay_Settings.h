@@ -57,6 +57,18 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0", ClampMax="8"))
     int32 SmStateNameDepth = 1;
 
+    // How many levels of nested sub-state-machines the StateMachine provider descends
+    // into when rendering the focus card / compact token. A visited-set guard protects
+    // against malformed cycles regardless of this value. 0 = top-level only.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0", ClampMax="8"))
+    int32 SmMaxRecursionDepth = 3;
+
+    // Show the always-on keyboard-hints strip (built from the live key bindings below)
+    // in the corner opposite the focus card. Toggle the full legend with HelpKey /
+    // `ck.DebugOverlay.Help`.
+    UPROPERTY(Config, EditAnywhere, Category="General")
+    bool ShowKeyHints = true;
+
     // ---- World Tags (B1 — distance-scaled / faded / culled pills) ----
 
     // Distance below which pills appear at full size (unscaled).
@@ -79,6 +91,18 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="World Tags")
     float MaxDist = 5000.0f;
 
+    // Hard cull distance for the in-world ECS diamond markers AND the candidate set they
+    // share (markers == links == plates == focusable candidates). Entities beyond this
+    // range of the camera are not gathered at all — the primary declutter knob.
+    // 0 = unlimited (no marker distance cull).
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
+    float MarkerMaxDist = 3000.0f;
+
+    // Maximum characters of the entity NAME shown on a world-tag near-plate before it is
+    // truncated with an ellipsis (the trailing "[id]" is never truncated). 0 = unlimited.
+    UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0", ClampMax="128"))
+    int32 MaxWorldTagNameChars = 24;
+
     // ---- Input (B3 — double-tap lock) ----
 
     // Key to tap twice quickly to toggle focus lock.
@@ -95,8 +119,25 @@ public:
     FKey CycleCoLocatedKey = EKeys::LeftAlt;
 
     // World-space radius (cm) within which entities count as co-located for cycling.
+    // Fallback only — the on-screen fan-out and cycle now group by screen-space overlap
+    // (CoLocatedScreenRadius) so "what you see fanned == what you cycle".
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))
     float CoLocatedRadius = 100.0f;
+
+    // Screen-space radius (pixels) within which on-screen candidates are treated as one
+    // co-located cluster — used to drive the hover fan-out (i/N badges) and the cycle key.
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="4.0", ClampMax="256.0"))
+    float CoLocatedScreenRadius = 36.0f;
+
+    // Optional key: tap twice quickly to release ALL pinned cards at once
+    // (also available as `ck.DebugOverlay.UnpinAll`). Default unbound.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey UnpinAllKey;
+
+    // Optional key: tap twice quickly to toggle the full keyboard-hints legend
+    // (also available as `ck.DebugOverlay.Help`). Default unbound.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey HelpKey;
 
     // Maximum interval (seconds) between two taps to count as a double-tap.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0.05", ClampMax="1.0"))

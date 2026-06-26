@@ -18,6 +18,8 @@
 // CkDebuggerCommon dependency is UncookedOnly and absent in Shipping, where the entire
 // marker-driving code below is compiled out anyway.
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+// Global Slate input pre-processor — keeps double-tap gestures alive while ejected.
+#include "CkEntityDebugOverlay/Input/CkDebugOverlay_InputProcessor.h"
 #endif
 
 #include "CkDebugOverlay_Subsystem.generated.h"
@@ -71,10 +73,13 @@ private:
 
     /** Enumerate all transform-bearing entities that have at least one capable provider.
      *  Non-const: rebuilds the shared _Markers snapshot (markers/links/candidates are
-     *  the same set — what you see is what you can focus). */
+     *  the same set — what you see is what you can focus).
+     *  InCullOrigin: when set (a real viewpoint exists), entities farther than
+     *  Settings->MarkerMaxDist from it are dropped from the whole set (diamond declutter). */
     auto Gather_Candidates(
         UWorld*                                              InWorld,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
+        const TOptional<FVector>&                            InCullOrigin,
         TArray<FCk_Handle>&                                  OutHandles,
         TArray<ck_debugoverlay::FCandidate>&                 OutCandidates) -> void;
 
@@ -103,6 +108,8 @@ private:
     auto DoCmd_Lock()        -> void;
     auto DoCmd_Layout_Next() -> void;
     auto DoCmd_Layout_Prev() -> void;
+    auto DoCmd_UnpinAll()    -> void;
+    auto DoCmd_Help()        -> void;
     auto DoCmd_World(const TArray<FString>& InArgs, UWorld* InWorld) -> void;
 
 private:
@@ -161,6 +168,23 @@ private:
     // Double-tap detection for CycleCoLocatedKey (cycle through co-located entities).
     double _LastCycleKeyPressTime = -1.0;
 
+    // Double-tap detection for UnpinAllKey / HelpKey.
+    double _LastUnpinAllKeyPressTime = -1.0;
+    double _LastHelpKeyPressTime     = -1.0;
+
+    // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
+    // viewport focus so the double-tap gestures keep working while ejected (F8).
+    TSharedPtr<FCkDebugOverlay_InputProcessor> _InputProcessor;
+
+    // Pinned entities — each gets its own persistent live-updating card alongside the
+    // primary (auto-following) focus card. Double-tap LockKey toggles a pin; the whole
+    // set is cleared by UnpinAllKey / `ck.DebugOverlay.UnpinAll`. Stored as handles
+    // (stable across frames; invalid ones are pruned each tick).
+    TArray<FCk_Handle> _PinnedEntities;
+
+    // Whether the full keyboard-hints legend is shown (toggled by HelpKey / Help command).
+    bool _ShowFullLegend = false;
+
     // Throttle for the ~1/sec marker diagnostics log line in DoTick.
     double _LastMarkerLogTime = -1.0;
 
@@ -177,6 +201,8 @@ private:
     TUniquePtr<FAutoConsoleCommand>                _Cmd_Lock;
     TUniquePtr<FAutoConsoleCommand>                _Cmd_Layout_Next;
     TUniquePtr<FAutoConsoleCommand>                _Cmd_Layout_Prev;
+    TUniquePtr<FAutoConsoleCommand>                _Cmd_UnpinAll;
+    TUniquePtr<FAutoConsoleCommand>                _Cmd_Help;
     TUniquePtr<FAutoConsoleCommandWithWorldAndArgs> _Cmd_World;
 
 #endif // WITH_CK_DEBUG_OVERLAY

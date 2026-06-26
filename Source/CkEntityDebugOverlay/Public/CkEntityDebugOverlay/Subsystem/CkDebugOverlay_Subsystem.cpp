@@ -197,6 +197,16 @@ auto
             TEXT("Cycle to the previous debug overlay layout."),
             FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Layout_Prev));
 
+        _Cmd_UnpinAll = MakeUnique<FAutoConsoleCommand>(
+            TEXT("ck.DebugOverlay.UnpinAll"),
+            TEXT("Release all pinned overlay cards."),
+            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_UnpinAll));
+
+        _Cmd_Help = MakeUnique<FAutoConsoleCommand>(
+            TEXT("ck.DebugOverlay.Help"),
+            TEXT("Toggle the full keyboard-hints legend."),
+            FConsoleCommandDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoCmd_Help));
+
         _Cmd_World = MakeUnique<FAutoConsoleCommandWithWorldAndArgs>(
             TEXT("ck.DebugOverlay.World"),
             TEXT("Override which PIE world the overlay targets. Args: 'next' or <integer index>."),
@@ -240,6 +250,8 @@ auto
     // Release console objects owned by this instance (only the primary instance owns them).
     // FAutoConsoleCommand destructor unregisters the command; reset in reverse-init order.
     _Cmd_World.Reset();
+    _Cmd_Help.Reset();
+    _Cmd_UnpinAll.Reset();
     _Cmd_Layout_Prev.Reset();
     _Cmd_Layout_Next.Reset();
     _Cmd_Lock.Reset();
@@ -328,6 +340,14 @@ auto
     _DebugDrawHandle_Game   = UDebugDrawService::Register(TEXT("Game"),   DrawDelegate);
     _DebugDrawHandle_Editor = UDebugDrawService::Register(TEXT("Editor"), DrawDelegate);
 
+    // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
+    // viewport focus, so the double-tap gestures keep working after the user ejects (F8).
+    if (FSlateApplication::IsInitialized())
+    {
+        _InputProcessor = MakeShared<FCkDebugOverlay_InputProcessor>();
+        FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
+    }
+
     // Register the per-frame ticker.
     _TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoTick),
@@ -346,6 +366,14 @@ auto
         FTSTicker::GetCoreTicker().RemoveTicker(_TickerHandle);
         _TickerHandle.Reset();
     }
+
+    if (_InputProcessor.IsValid())
+    {
+        if (FSlateApplication::IsInitialized())
+        { FSlateApplication::Get().UnregisterInputPreProcessor(_InputProcessor); }
+        _InputProcessor.Reset();
+    }
+    _PinnedEntities.Reset();
 
     if (_RootWidget.IsValid())
     {
@@ -402,14 +430,8 @@ auto
     if (Layout == nullptr)
     { return true; }
 
-    // ---- 1. Gather candidates ----
-    auto CandidateHandles = TArray<FCk_Handle>{};
-    auto Candidates       = TArray<ck_debugoverlay::FCandidate>{};
-
-    Gather_Candidates(World, _Providers, CandidateHandles, Candidates);
-    _LastFrameCandidates = CandidateHandles;
-
-    // ---- 2. Compute viewpoint ----
+    // ---- 1. Compute viewpoint ----
+    // Computed BEFORE gather so its location drives the marker distance cull.
     // Ejected PIE (F8): the player camera freezes but the user is flying the editor
     // viewport — hover/focus selection must follow THAT camera.
     auto Viewpoint = ck_debugoverlay::FViewpoint{};
@@ -434,6 +456,20 @@ auto
         Viewpoint.Forward  = CamRot.Vector();
     }
 
+    // Cull origin for the marker/candidate distance gate — only meaningful when a real
+    // viewpoint exists (ejected editor camera or a valid PC). Otherwise leave unset so
+    // the gather doesn't cull around the world origin.
+    auto CullOrigin = TOptional<FVector>{};
+    if (_ViewpointIsEjected || ck::IsValid(PC))
+    { CullOrigin = Viewpoint.Location; }
+
+    // ---- 2. Gather candidates (distance-culled around the viewpoint) ----
+    auto CandidateHandles = TArray<FCk_Handle>{};
+    auto Candidates       = TArray<ck_debugoverlay::FCandidate>{};
+
+    Gather_Candidates(World, _Providers, CullOrigin, CandidateHandles, Candidates);
+    _LastFrameCandidates = CandidateHandles;
+
     // ---- 3. Resolve on-screen flags for all candidates ----
     // Ejected: PC-based screen projection reflects the frozen player camera, not the
     // view being rendered — approximate "on screen" as "in front of the editor camera".
@@ -456,6 +492,7 @@ auto
                 PC, Candidates[CandIdx].WorldLocation, ScreenPos,
                 /*bPlayerViewportRelative=*/false);
             Candidates[CandIdx].bIsOnScreen = bOnScreen;
+            Candidates[CandIdx].ScreenPos   = ScreenPos;
         }
     }
 
@@ -478,107 +515,115 @@ auto
         }
     }
 
-    // ---- 5. Time + B3 double-tap lock detection ----
+    // ---- 5. Time + double-tap gesture detection ----
+    // Input is sampled from the global Slate pre-processor (not PC->WasInputKeyJustPressed)
+    // so the gestures keep working while the user is ejected from PIE (F8).
     const auto Now = FPlatformTime::Seconds();
 
-    if (ck::IsValid(PC))
+    if (const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+        Settings != nullptr && _InputProcessor.IsValid())
     {
-        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-        if (Settings != nullptr)
+        const auto Window = Settings->LockDoubleTapWindowSeconds;
+
+        // Edge-detect a double-tap of InKey: true on the second tap within Window. Consumes
+        // the key from the pre-processor each call (one physical press = one detection).
+        const auto WasDoubleTapped = [&](const FKey& InKey, double& InOutLastPress) -> bool
         {
-            const auto bJustPressed = PC->WasInputKeyJustPressed(Settings->LockKey);
-            if (bJustPressed)
+            if (NOT _InputProcessor->Consume_WasJustPressed(InKey))
+            { return false; }
+
+            const auto TimeSinceLast = static_cast<float>(Now - InOutLastPress);
+            if (InOutLastPress >= 0.0 && TimeSinceLast <= Window)
             {
-                const auto TimeSinceLast = static_cast<float>(Now - _LastLockKeyPressTime);
-                if (_LastLockKeyPressTime >= 0.0 &&
-                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
-                {
-                    // Double-tap detected: toggle focus lock.
-                    _FocusLocked = NOT _FocusLocked;
-                    if (_FocusLocked)
-                    {
-                        // Pin to the current best-pick index (already updated in step 4).
-                        // _LockedCandidateIndex was kept in sync by the unlocked path above.
-                        ck::debug_overlay::Log(TEXT("Focus lock: ON (double-tap)"));
-                    }
-                    else
-                    {
-                        ck::debug_overlay::Log(TEXT("Focus lock: OFF (double-tap)"));
-                    }
-                    // Reset so a third tap doesn't re-toggle immediately.
-                    _LastLockKeyPressTime = -1.0;
-                }
-                else
-                {
-                    // First tap: record time, wait for possible second tap.
-                    _LastLockKeyPressTime = Now;
-                }
+                InOutLastPress = -1.0; // reset so a third tap doesn't immediately re-fire
+                return true;
             }
+            InOutLastPress = Now;
+            return false;
+        };
 
-            // Double-tap CycleCoLocatedKey (default Left Alt): cycle focus through
-            // candidates within CoLocatedRadius of the current focus and lock on —
-            // the only way to reach entities stacked at the same world position.
-            if (PC->WasInputKeyJustPressed(Settings->CycleCoLocatedKey))
+        // Double-tap LockKey (default Left Shift): PIN / UNPIN the focused entity. The
+        // primary card keeps auto-following; each pin gets its own persistent side-by-side
+        // card. (This replaces the old focus-lock toggle — lock is now driven by Next/Prev,
+        // the co-located cycle, and `ck.DebugOverlay.Lock`.)
+        if (WasDoubleTapped(Settings->LockKey, _LastLockKeyPressTime))
+        {
+            if (ck::IsValid(FocusEntity))
             {
-                const auto TimeSinceLast = static_cast<float>(Now - _LastCycleKeyPressTime);
-                if (_LastCycleKeyPressTime >= 0.0 &&
-                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
+                const auto ExistingIdx = _PinnedEntities.IndexOfByPredicate(
+                    [&FocusEntity](const FCk_Handle& InPinned){ return InPinned == FocusEntity; });
+
+                if (ExistingIdx != INDEX_NONE)
                 {
-                    if (ck::IsValid(FocusEntity) &&
-                        Candidates.IsValidIndex(_LockedCandidateIndex))
-                    {
-                        const auto  FocusPos  = Candidates[_LockedCandidateIndex].WorldLocation;
-                        const auto  RadiusSq  = FMath::Square(Settings->CoLocatedRadius);
-
-                        auto CoLocated = TArray<int32>{};
-                        for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
-                        {
-                            if (FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
-                            {
-                                CoLocated.Add(CandIdx);
-                            }
-                        }
-
-                        if (CoLocated.Num() > 1)
-                        {
-                            const auto CurPos = CoLocated.IndexOfByKey(_LockedCandidateIndex);
-                            _LockedCandidateIndex = CoLocated[(CurPos + 1) % CoLocated.Num()];
-                            _FocusLocked = true;
-                            ck::debug_overlay::Log(
-                                TEXT("Cycled co-located focus ({} candidates within {}cm)"),
-                                CoLocated.Num(), Settings->CoLocatedRadius);
-                        }
-                    }
-                    _LastCycleKeyPressTime = -1.0;
+                    _PinnedEntities.RemoveAt(ExistingIdx);
+                    ck::debug_overlay::Log(TEXT("Unpinned entity (double-tap) — {} pinned"), _PinnedEntities.Num());
                 }
                 else
                 {
-                    _LastCycleKeyPressTime = Now;
-                }
-            }
-
-            // Double-tap EcsDebuggerFocusKey (default Left Ctrl): open/select the
-            // focused entity in the CK ECS Debugger via the cross-debugger navigator
-            // (no-op if the CkEcsDebugger module isn't loaded).
-            if (PC->WasInputKeyJustPressed(Settings->EcsDebuggerFocusKey))
-            {
-                const auto TimeSinceLast = static_cast<float>(Now - _LastEcsFocusKeyPressTime);
-                if (_LastEcsFocusKeyPressTime >= 0.0 &&
-                    TimeSinceLast <= Settings->LockDoubleTapWindowSeconds)
-                {
-                    if (ck::IsValid(FocusEntity))
-                    {
-                        ck::DebugNav::Goto_Entity(FocusEntity);
-                        ck::debug_overlay::Log(TEXT("Focused entity sent to ECS Debugger (double-tap)"));
-                    }
-                    _LastEcsFocusKeyPressTime = -1.0;
-                }
-                else
-                {
-                    _LastEcsFocusKeyPressTime = Now;
+                    _PinnedEntities.Add(FocusEntity);
+                    ck::debug_overlay::Log(TEXT("Pinned entity (double-tap) — {} pinned"), _PinnedEntities.Num());
                 }
             }
         }
+
+        // Double-tap UnpinAllKey (default unbound): release every pinned card at once.
+        if (WasDoubleTapped(Settings->UnpinAllKey, _LastUnpinAllKeyPressTime))
+        {
+            if (_PinnedEntities.Num() > 0)
+            {
+                _PinnedEntities.Reset();
+                ck::debug_overlay::Log(TEXT("Released all pins (double-tap)"));
+            }
+        }
+
+        // Double-tap HelpKey (default unbound): toggle the full keyboard-hints legend.
+        if (WasDoubleTapped(Settings->HelpKey, _LastHelpKeyPressTime))
+        {
+            _ShowFullLegend = NOT _ShowFullLegend;
+        }
+
+        // Double-tap CycleCoLocatedKey (default Left Alt): cycle focus through candidates
+        // within CoLocatedRadius of the current focus and lock on — the selector for
+        // entities stacked at the same world position.
+        if (WasDoubleTapped(Settings->CycleCoLocatedKey, _LastCycleKeyPressTime))
+        {
+            if (ck::IsValid(FocusEntity) && Candidates.IsValidIndex(_LockedCandidateIndex))
+            {
+                const auto FocusPos = Candidates[_LockedCandidateIndex].WorldLocation;
+                const auto RadiusSq = FMath::Square(Settings->CoLocatedRadius);
+
+                auto CoLocated = TArray<int32>{};
+                for (auto CandIdx = 0; CandIdx < Candidates.Num(); ++CandIdx)
+                {
+                    if (FVector::DistSquared(Candidates[CandIdx].WorldLocation, FocusPos) <= RadiusSq)
+                    { CoLocated.Add(CandIdx); }
+                }
+
+                if (CoLocated.Num() > 1)
+                {
+                    const auto CurPos = CoLocated.IndexOfByKey(_LockedCandidateIndex);
+                    _LockedCandidateIndex = CoLocated[(CurPos + 1) % CoLocated.Num()];
+                    _FocusLocked = true;
+                    ck::debug_overlay::Log(
+                        TEXT("Cycled co-located focus ({} candidates within {}cm)"),
+                        CoLocated.Num(), Settings->CoLocatedRadius);
+                }
+            }
+        }
+
+        // Double-tap EcsDebuggerFocusKey (default Left Ctrl): open the focused entity in the
+        // CK ECS Debugger (no-op if the CkEcsDebugger module isn't loaded).
+        if (WasDoubleTapped(Settings->EcsDebuggerFocusKey, _LastEcsFocusKeyPressTime))
+        {
+            if (ck::IsValid(FocusEntity))
+            {
+                ck::DebugNav::Goto_Entity(FocusEntity);
+                ck::debug_overlay::Log(TEXT("Focused entity sent to ECS Debugger (double-tap)"));
+            }
+        }
+
+        // Drop any presses we didn't consume so they don't leak into the next tick.
+        _InputProcessor->Clear();
     }
 
     // ---- 6. B2 — marker billboards + parent→child links ----
@@ -690,6 +735,7 @@ auto
     Gather_Candidates(
         UWorld*                                              InWorld,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
+        const TOptional<FVector>&                            InCullOrigin,
         TArray<FCk_Handle>&                                  OutHandles,
         TArray<ck_debugoverlay::FCandidate>&                 OutCandidates)
     -> void
@@ -712,6 +758,15 @@ auto
         }
         return false;
     };
+
+    // Diamond/candidate distance cull (declutter). Only applied when a real viewpoint
+    // origin exists and MarkerMaxDist > 0; otherwise the whole transform set is gathered.
+    if (const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+        Settings != nullptr && InCullOrigin.IsSet() && Settings->MarkerMaxDist > 0.0f)
+    {
+        GatherParams.CullOrigin = InCullOrigin;
+        GatherParams.CullRadius = Settings->MarkerMaxDist;
+    }
 
     _Markers.Gather(InWorld, GatherParams);
 
@@ -779,14 +834,90 @@ auto
     auto CardStyle = InLayout.DefaultStyle;
     CardStyle.FontScale *= OverlaySettings ? OverlaySettings->PlateFontScale : 1.0f;
 
-    _RootWidget->Set_FocusCardContent(InModel, CardStyle, *_History, InNow, _FocusLocked);
+    // ---- Co-located i/N for the primary focus (screen-space cluster; non-ejected only) ----
+    auto FocusCoLocIndex = int32{ INDEX_NONE };
+    auto FocusCoLocCount = int32{ 0 };
+    if (NOT _ViewpointIsEjected && ck::IsValid(InModel.Entity))
+    {
+        const auto FocusIdx = InCandidateHandles.IndexOfByPredicate(
+            [&InModel](const FCk_Handle& InHandle){ return InHandle == InModel.Entity; });
 
-    // ---- World tags (B1 — distance-scaled / faded / culled / near-plates) ----
-    // Delegates to the shared builder so the ECS picker renders identical world cards.
+        if (InCandidates.IsValidIndex(FocusIdx) && InCandidates[FocusIdx].bIsOnScreen)
+        {
+            const auto ScreenRadius = OverlaySettings ? OverlaySettings->CoLocatedScreenRadius : 36.0f;
+            const auto RadiusSq     = FMath::Square(ScreenRadius);
+            const auto FocusScreen  = InCandidates[FocusIdx].ScreenPos;
+
+            auto Cluster = TArray<int32>{};
+            for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
+            {
+                if (InCandidates[CandIdx].bIsOnScreen &&
+                    FVector2D::DistSquared(InCandidates[CandIdx].ScreenPos, FocusScreen) <= RadiusSq)
+                { Cluster.Add(CandIdx); }
+            }
+
+            if (Cluster.Num() > 1)
+            {
+                FocusCoLocCount = Cluster.Num();
+                FocusCoLocIndex = Cluster.IndexOfByKey(FocusIdx);
+            }
+        }
+    }
+
+    _RootWidget->Set_FocusCardContent(
+        InModel, CardStyle, *_History, InNow, _FocusLocked, FocusCoLocIndex, FocusCoLocCount);
+
+    // ---- Pinned cards (item 6): prune destroyed pins, dedupe vs the live focus, build models ----
+    _PinnedEntities.RemoveAll([](const FCk_Handle& InPinned){ return ck::Is_NOT_Valid(InPinned); });
+
+    auto PinnedModels = TArray<FCk_DebugOverlay_EntityModel>{};
+    PinnedModels.Reserve(_PinnedEntities.Num());
+    for (const auto& Pinned : _PinnedEntities)
+    {
+        if (ck::IsValid(InModel.Entity) && Pinned == InModel.Entity)
+        { continue; }
+        PinnedModels.Add(ck_debugoverlay::Build_EntityModel(
+            Pinned, InProviders, InLayout, _History.Get(), InNow));
+    }
+    _RootWidget->Set_PinnedCards(PinnedModels, CardStyle, *_History, InNow);
+
+    // ---- World tags (distance-scaled / faded / culled / near-plates + focus-cluster fan-out) ----
     const auto WorldTags = ck_debugoverlay::Build_WorldTags(
-        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected);
+        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected, InModel.Entity);
 
     _RootWidget->Update_WorldTags(WorldTags);
+
+    // ---- Keyboard-hints strip (item 9): built from the live key bindings ----
+    if (OverlaySettings != nullptr)
+    {
+        const auto KeyName = [](const FKey& InKey) -> FString
+        {
+            return InKey.IsValid() ? InKey.GetDisplayName().ToString() : FString(TEXT("(unbound)"));
+        };
+
+        const auto Compact = FString::Printf(
+            TEXT("%s x2 pin    %s x2 ECS-dbg    %s x2 cycle    %s x2 help"),
+            *KeyName(OverlaySettings->LockKey),
+            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
+            *KeyName(OverlaySettings->CycleCoLocatedKey),
+            *KeyName(OverlaySettings->HelpKey));
+
+        const auto Full = FString::Printf(
+            TEXT("CK ON-SCREEN DEBUGGER\n")
+            TEXT("%s x2   pin / unpin focused entity (side-by-side card)\n")
+            TEXT("%s x2   release all pins\n")
+            TEXT("%s x2   open focused entity in ECS Debugger\n")
+            TEXT("%s x2   cycle co-located entities\n")
+            TEXT("%s x2   toggle this help\n")
+            TEXT("console: ck.DebugOverlay .Next .Prev .Lock .Layout.Next/.Prev .UnpinAll .Help"),
+            *KeyName(OverlaySettings->LockKey),
+            *KeyName(OverlaySettings->UnpinAllKey),
+            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
+            *KeyName(OverlaySettings->CycleCoLocatedKey),
+            *KeyName(OverlaySettings->HelpKey));
+
+        _RootWidget->Update_KeyHints(Compact, Full, _ShowFullLegend, OverlaySettings->ShowKeyHints);
+    }
 }
 
 // ====================================================================================================================
@@ -899,6 +1030,27 @@ auto
 {
     _FocusLocked = !_FocusLocked;
     ck::debug_overlay::Log(TEXT("Focus lock: {}"), _FocusLocked ? TEXT("ON") : TEXT("OFF"));
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    DoCmd_UnpinAll()
+    -> void
+{
+    if (_PinnedEntities.Num() > 0)
+    {
+        _PinnedEntities.Reset();
+        ck::debug_overlay::Log(TEXT("Released all pins (console)"));
+    }
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    DoCmd_Help()
+    -> void
+{
+    _ShowFullLegend = NOT _ShowFullLegend;
+    ck::debug_overlay::Log(TEXT("Key-hints legend: {}"), _ShowFullLegend ? TEXT("FULL") : TEXT("compact"));
 }
 
 auto

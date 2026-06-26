@@ -12,6 +12,9 @@ class  FCk_DebugOverlay_History;
 class  SCkDebugOverlay_FocusCard;
 class  SCkDebugOverlay_WorldTag;
 class  SConstraintCanvas;
+class  SVerticalBox;
+class  SBorder;
+class  STextBlock;
 
 // ====================================================================================================================
 // Viewport root for the on-screen entity debug overlay.
@@ -33,14 +36,34 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
 
-    // Forwards to the child focus card.
-    // bIsLocked: when true, renders a yellow ring around the card to indicate focus lock.
+    // Forwards to the primary (auto-following) focus card.
+    // bIsLocked: amber ring (focus lock). InCoLocatedIndex/Count: "i/N" header badge when
+    // the focus entity is one of several co-located entities.
     auto Set_FocusCardContent(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
-        bool                                bIsLocked = false) -> void;
+        bool                                bIsLocked        = false,
+        int32                               InCoLocatedIndex = INDEX_NONE,
+        int32                               InCoLocatedCount = 0) -> void;
+
+    // Rebuilds the pinned-card strip (one persistent live card per pinned entity), stacked
+    // under the primary card at the same anchor. Each pinned card gets a cyan ring.
+    auto Set_PinnedCards(
+        const TArray<FCk_DebugOverlay_EntityModel>& InModels,
+        const FCk_DebugOverlay_RenderStyle&         InStyle,
+        const FCk_DebugOverlay_History&             InHistory,
+        double                                      InNow) -> void;
+
+    // Updates the keyboard-hints strip (corner opposite the focus card). InCompact is the
+    // always-on one-liner; InFull is the expanded legend shown when bShowFull is true.
+    // bVisible hides the strip entirely (ShowKeyHints setting off).
+    auto Update_KeyHints(
+        const FString& InCompact,
+        const FString& InFull,
+        bool           bShowFull,
+        bool           bVisible) -> void;
 
     // Rebuilds the canvas: one SCkDebugOverlay_WorldTag per entry.
     // Each entry carries a screen position (absolute viewport pixels, top-left origin),
@@ -54,12 +77,27 @@ public:
 private:
     auto DoRebuildLayout() -> void;
 
+    // (Re)populates the vertical card strip: primary focus card first, then one card per
+    // pinned model. Called from DoRebuildLayout and Set_PinnedCards.
+    auto DoRebuild_CardStrip() -> void;
+
     // Builds the ultra-condensed near plate (name header + colored feature badges).
     auto DoBuild_NearPlate(const FCk_DebugOverlay_WorldTagInfo& InInfo) -> TSharedRef<SWidget>;
+
+    // Resolve the hints-strip anchor as the opposite corner of the focus-card anchor.
+    auto Resolve_HintsAnchor(EHorizontalAlignment& OutH, EVerticalAlignment& OutV) const -> void;
 
 private:
     TSharedPtr<SCkDebugOverlay_FocusCard> _FocusCard;
     TSharedPtr<SConstraintCanvas>         _TagCanvas;
+
+    // Vertical strip holding the primary card + one card per pinned entity.
+    TSharedPtr<SVerticalBox>                            _CardStrip;
+    TArray<TSharedPtr<SCkDebugOverlay_FocusCard>>       _PinnedCards;
+
+    // Keyboard-hints strip (opposite corner from the focus card).
+    TSharedPtr<SBorder>    _HintsBox;
+    TSharedPtr<STextBlock> _HintsText;
 
     ECk_DebugOverlay_PlateAnchor _PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopRight;
     float                        _PlateWidth  = 720.0f;

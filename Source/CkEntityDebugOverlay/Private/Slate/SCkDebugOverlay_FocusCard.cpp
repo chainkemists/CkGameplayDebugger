@@ -72,7 +72,10 @@ auto
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
-        bool                                bIsLocked)
+        bool                                bIsLocked,
+        bool                                bIsPinned,
+        int32                               InCoLocatedIndex,
+        int32                               InCoLocatedCount)
     -> void
 {
     if (NOT _ContentBox.IsValid())
@@ -80,12 +83,14 @@ auto
         return;
     }
 
-    // Update the lock ring color.
+    // Ring color: pinned (cyan) takes precedence over focus-lock (amber); else none.
     if (_LockFrame.IsValid())
     {
-        _LockFrame->SetBorderBackgroundColor(
-            bIsLocked ? FLinearColor{ 1.0f, 0.82f, 0.0f, 1.0f }   // amber/yellow lock ring
-                      : FLinearColor::Transparent);
+        const auto RingColor =
+            bIsPinned ? FLinearColor{ 0.0f, 0.80f, 0.95f, 1.0f }
+          : bIsLocked ? FLinearColor{ 1.0f, 0.82f, 0.0f, 1.0f }
+          :             FLinearColor::Transparent;
+        _LockFrame->SetBorderBackgroundColor(RingColor);
     }
 
     _ContentBox->ClearChildren();
@@ -98,17 +103,48 @@ auto
         return FMath::Max(6, FMath::RoundToInt(InBaseSize * FontScale));
     };
 
-    // ---- Header row — SCkDebug_EntityRef pill (entity identity, consistent with debugger style) ----
+    // ---- Header row — optional "i/N" co-located badge + SCkDebug_EntityRef pill ----
     // The overlay is HitTestInvisible, so the EntityRef click is a no-op — but we still get
     // the canonical entity rendering (ID, version, debug name).
-    _ContentBox->AddSlot()
-        .AutoHeight()
-        .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
+    auto HeaderRow = SNew(SHorizontalBox);
+
+    if (InCoLocatedCount > 1)
+    {
+        const auto IndexDisplay = InCoLocatedIndex >= 0 ? InCoLocatedIndex + 1 : 0;
+        const auto IndexText    = FString::Printf(TEXT("%d/%d"), IndexDisplay, InCoLocatedCount);
+
+        HeaderRow->AddSlot()
+            .AutoWidth().VAlign(VAlign_Center)
+            .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, 0.0f })
+            [
+                SNew(SBorder)
+                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(FLinearColor{ 0.0f, 0.80f, 0.95f, 1.0f })
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(IndexText))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                            .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
+                    ]
+            ];
+    }
+
+    HeaderRow->AddSlot()
+        .AutoWidth().VAlign(VAlign_Center)
         [
             SNew(SCkDebug_EntityRef)
                 .Entity(InModel.Entity)
                 .ShowName(true)
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeH3())))
+        ];
+
+    _ContentBox->AddSlot()
+        .AutoHeight()
+        .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
+        [
+            HeaderRow
         ];
 
     // ---- Sections (sorted by SortPriority) ----

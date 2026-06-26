@@ -38,6 +38,18 @@ auto
 
     SAssignNew(_FocusCard, SCkDebugOverlay_FocusCard);
     SAssignNew(_TagCanvas, SConstraintCanvas);
+    SAssignNew(_CardStrip, SVerticalBox);
+
+    SAssignNew(_HintsBox, SBorder)
+        .Visibility(EVisibility::Collapsed)
+        .BorderImage(CkDebugStyle::GetRoundedBrush())
+        .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.82f))
+        .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+        [
+            SAssignNew(_HintsText, STextBlock)
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
+                .ColorAndOpacity(CkDebugStyle::TextMute())
+        ];
 
     DoRebuildLayout();
 }
@@ -88,12 +100,16 @@ auto
         case ECk_DebugOverlay_PlateAnchor::BottomRight:  HAlign = HAlign_Right;  VAlign = VAlign_Bottom; break;
     }
 
+    auto HintsH = HAlign_Left;
+    auto HintsV = VAlign_Bottom;
+    Resolve_HintsAnchor(HintsH, HintsV);
+
     ChildSlot
     [
-        // Overlay: tag canvas fills the viewport, focus card sits on top anchored
-        // to the settings-driven corner/edge. Child widgets (_TagCanvas, _FocusCard)
-        // are created once in Construct and re-slotted here, so re-anchoring at
-        // runtime keeps all card/canvas state.
+        // Overlay: tag canvas fills the viewport; the card strip (primary + pinned cards)
+        // sits on top anchored to the settings-driven corner/edge; the key-hints strip sits
+        // in the opposite corner. Child widgets are created once in Construct and re-slotted
+        // here, so re-anchoring at runtime keeps all card/canvas/strip state.
         SNew(SOverlay)
 
         // Layer 0: world-anchored tags fill the full viewport area.
@@ -104,19 +120,82 @@ auto
             _TagCanvas.ToSharedRef()
         ]
 
-        // Layer 1: focus card at the configured anchor and width.
+        // Layer 1: card strip (primary + pinned) at the configured anchor.
         + SOverlay::Slot()
         .HAlign(HAlign)
         .VAlign(VAlign)
         .Padding(FMargin{ OverlayRoot_Constants::FocusCardMargin })
         [
-            SNew(SBox)
-                .WidthOverride(_PlateWidth)
-                [
-                    _FocusCard.ToSharedRef()
-                ]
+            _CardStrip.ToSharedRef()
+        ]
+
+        // Layer 2: key-hints strip in the opposite corner.
+        + SOverlay::Slot()
+        .HAlign(HintsH)
+        .VAlign(HintsV)
+        .Padding(FMargin{ OverlayRoot_Constants::FocusCardMargin })
+        [
+            _HintsBox.ToSharedRef()
         ]
     ];
+
+    DoRebuild_CardStrip();
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_Root::
+    DoRebuild_CardStrip()
+    -> void
+{
+    if (NOT _CardStrip.IsValid())
+    { return; }
+
+    _CardStrip->ClearChildren();
+
+    const auto AddCard = [this](const TSharedPtr<SCkDebugOverlay_FocusCard>& InCard)
+    {
+        if (NOT InCard.IsValid())
+        { return; }
+
+        _CardStrip->AddSlot()
+            .AutoHeight()
+            .Padding(FMargin{ 0.0f, 0.0f, 0.0f, OverlayRoot_Constants::FocusCardMargin })
+            [
+                SNew(SBox)
+                    .WidthOverride(_PlateWidth)
+                    [
+                        InCard.ToSharedRef()
+                    ]
+            ];
+    };
+
+    AddCard(_FocusCard);
+    for (const auto& Pinned : _PinnedCards)
+    { AddCard(Pinned); }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_Root::
+    Resolve_HintsAnchor(EHorizontalAlignment& OutH, EVerticalAlignment& OutV) const
+    -> void
+{
+    // Opposite corner of the focus-card anchor (flip both axes; center stays centered).
+    switch (_PlateAnchor)
+    {
+        case ECk_DebugOverlay_PlateAnchor::TopLeft:      OutH = HAlign_Right;  OutV = VAlign_Bottom; break;
+        case ECk_DebugOverlay_PlateAnchor::TopCenter:    OutH = HAlign_Center; OutV = VAlign_Bottom; break;
+        case ECk_DebugOverlay_PlateAnchor::TopRight:     OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
+        case ECk_DebugOverlay_PlateAnchor::Left:         OutH = HAlign_Right;  OutV = VAlign_Bottom; break;
+        case ECk_DebugOverlay_PlateAnchor::Right:        OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
+        case ECk_DebugOverlay_PlateAnchor::BottomLeft:   OutH = HAlign_Right;  OutV = VAlign_Top;    break;
+        case ECk_DebugOverlay_PlateAnchor::BottomCenter: OutH = HAlign_Center; OutV = VAlign_Top;    break;
+        case ECk_DebugOverlay_PlateAnchor::BottomRight:  OutH = HAlign_Left;   OutV = VAlign_Top;    break;
+        default:                                         OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
+    }
 }
 
 // ====================================================================================================================
@@ -128,13 +207,84 @@ auto
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
-        bool                                bIsLocked)
+        bool                                bIsLocked,
+        int32                               InCoLocatedIndex,
+        int32                               InCoLocatedCount)
     -> void
 {
     if (_FocusCard.IsValid())
     {
-        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked);
+        constexpr auto NotPinned = false;
+        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, NotPinned,
+            InCoLocatedIndex, InCoLocatedCount);
     }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_Root::
+    Set_PinnedCards(
+        const TArray<FCk_DebugOverlay_EntityModel>& InModels,
+        const FCk_DebugOverlay_RenderStyle&         InStyle,
+        const FCk_DebugOverlay_History&             InHistory,
+        double                                      InNow)
+    -> void
+{
+    const auto DesiredNum  = InModels.Num();
+    const auto CountChanged = _PinnedCards.Num() != DesiredNum;
+
+    // Grow / shrink the pinned-card pool (reuse existing widgets across frames).
+    while (_PinnedCards.Num() < DesiredNum)
+    {
+        TSharedPtr<SCkDebugOverlay_FocusCard> NewCard;
+        SAssignNew(NewCard, SCkDebugOverlay_FocusCard);
+        NewCard->Set_WrapWidth(_PlateWidth - 4.0f - 2.0f * CkDebugStyle::SpaceM);
+        _PinnedCards.Add(NewCard);
+    }
+    while (_PinnedCards.Num() > DesiredNum)
+    {
+        _PinnedCards.Pop();
+    }
+
+    if (CountChanged)
+    {
+        DoRebuild_CardStrip();
+    }
+
+    constexpr auto NotLocked = false;
+    constexpr auto IsPinned  = true;
+    for (auto Idx = 0; Idx < DesiredNum; ++Idx)
+    {
+        if (_PinnedCards[Idx].IsValid())
+        {
+            _PinnedCards[Idx]->Set_Model(InModels[Idx], InStyle, InHistory, InNow, NotLocked, IsPinned);
+        }
+    }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_Root::
+    Update_KeyHints(
+        const FString& InCompact,
+        const FString& InFull,
+        bool           bShowFull,
+        bool           bVisible)
+    -> void
+{
+    if (NOT _HintsBox.IsValid() || NOT _HintsText.IsValid())
+    { return; }
+
+    if (NOT bVisible)
+    {
+        _HintsBox->SetVisibility(EVisibility::Collapsed);
+        return;
+    }
+
+    _HintsBox->SetVisibility(EVisibility::HitTestInvisible);
+    _HintsText->SetText(FText::FromString(bShowFull ? InFull : InCompact));
 }
 
 // ====================================================================================================================

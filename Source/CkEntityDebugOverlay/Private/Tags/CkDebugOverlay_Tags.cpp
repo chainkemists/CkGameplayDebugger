@@ -34,7 +34,8 @@ namespace ck_debugoverlay
             { TEXT("Physics"),           TEXT("PHY")  },
             { TEXT("FloatAttributes"),   TEXT("fATT") },
             { TEXT("IntegerAttributes"), TEXT("iATT") },
-            { TEXT("Transform"),         TEXT("XFM")  },
+            { TEXT("ByteAttributes"),    TEXT("bATT") },
+            { TEXT("Transform"),         TEXT("T")    },
             { TEXT("EntityInfo"),        TEXT("INFO") },
             // Pre-mapped for providers still to be ported:
             { TEXT("Inventory"),         TEXT("INV")  },
@@ -47,6 +48,12 @@ namespace ck_debugoverlay
             { TEXT("OverlapBody"),       TEXT("OVLP") },
             { TEXT("Shapes"),            TEXT("SHP")  },
             { TEXT("SceneNode"),         TEXT("NODE") },
+            { TEXT("Team"),              TEXT("TEAM") },
+            { TEXT("TagSet"),            TEXT("TAGS") },
+            { TEXT("EntityCollection"),  TEXT("COL")  },
+            { TEXT("Timer"),             TEXT("TIMR") },
+            { TEXT("Label"),             TEXT("LABL") },
+            { TEXT("Variables"),         TEXT("VAR")  },
         };
 
         if (const auto* Found = Abbrevs.Find(InProviderLeaf))

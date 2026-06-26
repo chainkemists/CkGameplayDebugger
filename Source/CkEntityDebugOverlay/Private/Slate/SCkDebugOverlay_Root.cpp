@@ -391,13 +391,25 @@ auto
             ];
     }
 
+    // The focus entity's plate gets a bright outer ring so it visibly matches the emphasized
+    // (1.25x) diamond marker — you can always tell which plate belongs to the focused entity.
+    const auto RingColor = InInfo.bIsFocus
+        ? FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f }
+        : FLinearColor::Transparent;
+
     return SNew(SBorder)
         .Visibility(EVisibility::HitTestInvisible)
         .BorderImage(CkDebugStyle::GetRoundedBrush())
-        .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.82f))
-        .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+        .BorderBackgroundColor(RingColor)
+        .Padding(FMargin{ InInfo.bIsFocus ? 2.0f : 0.0f })
         [
-            Body
+            SNew(SBorder)
+                .BorderImage(CkDebugStyle::GetRoundedBrush())
+                .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.82f))
+                .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+                [
+                    Body
+                ]
         ];
 }
 

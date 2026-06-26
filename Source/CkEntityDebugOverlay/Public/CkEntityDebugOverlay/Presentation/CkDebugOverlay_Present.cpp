@@ -175,7 +175,9 @@ auto
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const FCk_DebugOverlay_Layout&                       InLayout,
         APlayerController*                                   InPC,
-        bool                                                 InIsEjected)
+        bool                                                 InIsEjected,
+        float                                                InDpiScale,
+        const FCk_Handle&                                    InFocusEntity)
     -> TArray<FCk_DebugOverlay_WorldTagInfo>
 {
     auto WorldTags = TArray<FCk_DebugOverlay_WorldTagInfo>{};
@@ -288,9 +290,13 @@ auto
             Dist);
 
         auto TagInfo      = FCk_DebugOverlay_WorldTagInfo{};
-        TagInfo.ScreenPos = ScreenPos;
+        // ProjectWorldToScreen returns raw viewport pixels; a viewport Slate overlay positions
+        // children in DPI-scaled units, so divide by the DPI scale to land on the marker.
+        TagInfo.ScreenPos = ScreenPos / InDpiScale;
         TagInfo.Scale     = Scale;
         TagInfo.Opacity   = Opacity;
+        TagInfo.Distance  = Dist;
+        TagInfo.bIsFocus  = ck::IsValid(InFocusEntity) && Handle == InFocusEntity;
 
         if (IsNearPlate)
         {
@@ -330,16 +336,18 @@ auto
     }
 
     // Fan out every co-located cluster (item 8): plates sharing a screen cell are splayed
-    // horizontally around their shared point and each badged "[i/N]" so overlapping entities
-    // can be told apart at a glance. Singletons stay anchored directly above their marker.
-    // This replaces the old "stack upward" de-overlap, which drifted dense clusters far from
-    // their markers (the misaligned column of pills). Non-interactive — the co-located cycle
-    // key (double-Alt) remains the selector.
+    // horizontally and each badged "[i/N]". The spread is GRADUAL by camera distance — at range
+    // the cluster COLLAPSES to a single representative plate ("looks like one entity"), and as
+    // you approach it opens to the full fan, re-merging when you back away. Singletons stay
+    // anchored above their marker. Non-interactive — double-Alt cycles the focus through them.
     {
-        constexpr auto CellW       = 64.0f;
-        constexpr auto CellH       = 48.0f;
-        constexpr auto FanSpacingX = 92.0f; // px between fanned plates
-        constexpr auto FanRiseY    = 14.0f; // px lift per column so it reads as a shallow fan
+        const auto FanFull     = Settings ? Settings->FanFullDist   : 500.0f;
+        const auto FanFade     = Settings ? Settings->FanFadeDist   : 2000.0f;
+        const auto FanMaxSpace = Settings ? Settings->FanMaxSpacing : 110.0f;
+
+        constexpr auto CellW    = 64.0f;
+        constexpr auto CellH    = 48.0f;
+        constexpr auto FanRiseY = 14.0f;
 
         auto CellMembers = TMap<FIntPoint, TArray<int32>>{};
         for (auto T = 0; T < WorldTags.Num(); ++T)
@@ -350,11 +358,39 @@ auto
             CellMembers.FindOrAdd(Cell).Add(T);
         }
 
+        // Cluster members hidden because the cluster is collapsed (far) — removed after the pass.
+        auto ToHide = TArray<int32>{};
+
         for (auto& Pair : CellMembers)
         {
             auto& Members = Pair.Value;
             if (Members.Num() <= 1)
             { continue; }
+
+            // Fan factor from the CLOSEST member: 1 (full fan) near, 0 (collapsed) far.
+            auto MinDist = TNumericLimits<float>::Max();
+            for (const auto T : Members)
+            { MinDist = FMath::Min(MinDist, WorldTags[T].Distance); }
+
+            const auto FanFactor = (FanFade > FanFull)
+                ? 1.0f - FMath::Clamp((MinDist - FanFull) / (FanFade - FanFull), 0.0f, 1.0f)
+                : (MinDist <= FanFull ? 1.0f : 0.0f);
+
+            // Collapsed (far): keep ONE representative (the focus if present, else the first),
+            // hide the rest so the cluster reads as a single entity. No [i/N] badge.
+            if (FanFactor <= 0.1f)
+            {
+                auto KeepIdx = Members[0];
+                for (const auto T : Members)
+                {
+                    if (WorldTags[T].bIsFocus) { KeepIdx = T; break; }
+                }
+                for (const auto T : Members)
+                {
+                    if (T != KeepIdx) { ToHide.Add(T); }
+                }
+                continue;
+            }
 
             // Stable left -> right order for the [i/N] indices.
             Members.Sort([&WorldTags](int32 InA, int32 InB)
@@ -376,8 +412,12 @@ auto
                 const auto T    = Members[i];
                 const auto Slot = static_cast<float>(i) - (Count - 1) * 0.5f;
 
-                WorldTags[T].ScreenPos.X = CentroidX + Slot * FanSpacingX;
-                WorldTags[T].ScreenPos.Y = TopY - FMath::Abs(Slot) * FanRiseY;
+                const auto FannedX = CentroidX + Slot * FanMaxSpace;
+                const auto FannedY = TopY - FMath::Abs(Slot) * FanRiseY;
+
+                // Lerp from collapsed (on the marker) to fully fanned as the camera nears.
+                WorldTags[T].ScreenPos.X = FMath::Lerp(WorldTags[T].ScreenPos.X, FannedX, FanFactor);
+                WorldTags[T].ScreenPos.Y = FMath::Lerp(WorldTags[T].ScreenPos.Y, FannedY, FanFactor);
 
                 const auto Badge = FString::Printf(TEXT("[%d/%d] "), i + 1, Count);
                 if (WorldTags[T].bIsPlate)
@@ -386,6 +426,11 @@ auto
                 { WorldTags[T].Text = FText::FromString(Badge + WorldTags[T].Text.ToString()); }
             }
         }
+
+        // Remove hidden members (descending index so removal stays valid).
+        ToHide.Sort([](int32 InA, int32 InB){ return InA > InB; });
+        for (const auto T : ToHide)
+        { WorldTags.RemoveAt(T); }
     }
 
     return WorldTags;
@@ -393,6 +438,7 @@ auto
 
 // ====================================================================================================================
 
+#if 0 // Retired: world plates are rich Slate cards (Build_WorldTags), not canvas plates.
 auto
     ck_debugoverlay::
     Build_CanvasPlates(
@@ -519,6 +565,7 @@ auto
 
     return Plates;
 }
+#endif // Retired Build_CanvasPlates
 
 // ====================================================================================================================
 

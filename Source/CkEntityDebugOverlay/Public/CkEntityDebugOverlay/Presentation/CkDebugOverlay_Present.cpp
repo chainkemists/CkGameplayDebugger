@@ -395,6 +395,135 @@ auto
 
 auto
     ck_debugoverlay::
+    Build_CanvasPlates(
+        const TArray<FCk_Handle>&                            InHandles,
+        const TArray<FCandidate>&                            InCandidates,
+        const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
+        const FCk_DebugOverlay_Layout&                       InLayout,
+        const FVector&                                       InViewLocation,
+        const FCk_Handle&                                    InFocusEntity)
+    -> TArray<FCk_DebugOverlay_CanvasPlate>
+{
+    auto Plates = TArray<FCk_DebugOverlay_CanvasPlate>{};
+
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto MaxDist      = Settings ? Settings->MaxDist            : 5000.0f;
+    const auto NearDist     = Settings ? Settings->NearDist           : 600.0f;
+    const auto MaxNameChars = Settings ? Settings->MaxWorldTagNameChars : 24;
+
+    const auto NearPlatesEnabled = CVar_DebugOverlay_NearPlates.GetValueOnGameThread() != 0;
+    const auto FocusValid        = ck::IsValid(InFocusEntity);
+
+    for (auto CandIdx = 0; CandIdx < InCandidates.Num(); ++CandIdx)
+    {
+        const auto& Handle = InHandles[CandIdx];
+        if (ck::Is_NOT_Valid(Handle))
+        { continue; }
+
+        const auto Dist = static_cast<float>(
+            FVector::Dist(InViewLocation, InCandidates[CandIdx].WorldLocation));
+        if (Dist > MaxDist)
+        { continue; }
+
+        // Feature badges + behavioral tokens (layout-independent — what the entity HAS).
+        auto TokenParts = TArray<FString>{};
+        auto Badges     = TArray<FCk_DebugOverlay_WorldTagBadge>{};
+        for (const auto& Provider : InProviders)
+        {
+            if (NOT Provider || NOT Provider->CanProvide(Handle))
+            { continue; }
+
+            const auto& ProviderTag  = Provider->Get_ProviderTag();
+            const auto  ProviderLeaf = ck_debugoverlay::Get_LeafName(ProviderTag);
+            if (ProviderLeaf == TEXT("EntityInfo"))
+            { continue; }
+
+            Badges.Add(FCk_DebugOverlay_WorldTagBadge{
+                ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
+                SCkDebugOverlay_FocusCard::Get_ProviderColor(ProviderTag) });
+
+            const auto EnabledFields = ck_debugoverlay::Resolve_EnabledFields(
+                InLayout, ProviderTag, Provider->Get_FieldTags());
+            if (EnabledFields.IsEmpty())
+            { continue; }
+
+            auto EntryFilter = FGameplayTagQuery{};
+            for (const auto& Entry : InLayout.Entries)
+            {
+                if (Entry.ProviderTag == ProviderTag) { EntryFilter = Entry.EntryFilter; break; }
+            }
+
+            auto Config          = FCk_DebugOverlay_ProviderConfig{};
+            Config.EnabledFields = EnabledFields;
+            Config.EntryFilter   = EntryFilter;
+
+            const auto Token = Provider->Get_CompactToken(Handle, Config);
+            if (NOT Token.IsEmpty())
+            { TokenParts.Add(Token); }
+        }
+
+        const auto IsNearPlate = NearPlatesEnabled && Dist <= NearDist;
+
+        const auto DebugName   = UCk_Utils_Handle_UE::Get_DebugName(Handle);
+        const auto HasRealName = DebugName.IsNone() == false;
+
+        // Far plates need behavioral tokens (identity-only spam at range); near plates show
+        // when the entity has feature badges OR an explicit name.
+        if (IsNearPlate)
+        {
+            if (Badges.IsEmpty() && NOT HasRealName)
+            { continue; }
+        }
+        else if (TokenParts.IsEmpty())
+        { continue; }
+
+        const auto EntityNum = static_cast<uint32>(Handle.Get_Entity().Get_EntityNumber());
+
+        auto Plate = FCk_DebugOverlay_CanvasPlate{};
+        Plate.WorldLocation = InCandidates[CandIdx].WorldLocation;
+        Plate.EntityNum     = EntityNum;
+        Plate.Distance      = Dist;
+        Plate.bIsFocus      = FocusValid && Handle == InFocusEntity;
+
+        if (IsNearPlate)
+        {
+            auto Header = FString{};
+            if (HasRealName)
+            {
+                auto Name = ck::DebugNameClean::Get_CleanName(DebugName.ToString());
+                if (MaxNameChars > 0 && Name.Len() > MaxNameChars)
+                { Name = Name.Left(MaxNameChars) + TEXT("..."); }
+                Header = FString::Printf(TEXT("%s [%u]"), *Name, EntityNum);
+            }
+            else
+            {
+                Header = FString::Printf(TEXT("[%u]"), EntityNum);
+            }
+
+            Plate.bIsNearPlate = true;
+            Plate.Header       = MoveTemp(Header);
+            Plate.Badges       = MoveTemp(Badges);
+        }
+        else
+        {
+            Plate.bIsNearPlate = false;
+            Plate.FarText      = FString::Join(TokenParts, TEXT(" | "));
+        }
+
+        Plates.Add(MoveTemp(Plate));
+
+        // Cap to avoid clutter in dense scenes (canvas text is cheap, but readability isn't).
+        if (Plates.Num() >= 24)
+        { break; }
+    }
+
+    return Plates;
+}
+
+// ====================================================================================================================
+
+auto
+    ck_debugoverlay::
     Resolve_Layout(
         const UCk_DebugOverlay_Settings* InSettings,
         int32                            InIndex)

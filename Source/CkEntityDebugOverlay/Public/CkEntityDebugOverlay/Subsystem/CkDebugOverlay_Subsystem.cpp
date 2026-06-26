@@ -21,6 +21,11 @@
 
 // B2 — marker billboards (shared FCkDebug_EntityMarkers preview, UDebugDrawService callback).
 #include "Debug/DebugDrawService.h"
+// Canvas plates (worldspace world tags drawn alongside the markers).
+#include "Engine/Canvas.h"
+#include "CanvasItem.h"
+#include "CanvasTypes.h"
+#include "Engine/Font.h"
 #include "GameFramework/Pawn.h"
 #if WITH_EDITOR
 #include "Editor.h"
@@ -405,6 +410,7 @@ auto
     _Markers.Reset();
     _MarkerSuppressed.Empty();
     _FocusedEntityNum = MAX_uint32;
+    _CanvasPlates.Reset();
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
@@ -601,12 +607,25 @@ auto
 
                 if (CoLocated.Num() > 1)
                 {
-                    const auto CurPos = CoLocated.IndexOfByKey(_LockedCandidateIndex);
-                    _LockedCandidateIndex = CoLocated[(CurPos + 1) % CoLocated.Num()];
-                    _FocusLocked = true;
-                    ck::debug_overlay::Log(
-                        TEXT("Cycled co-located focus ({} candidates within {}cm)"),
-                        CoLocated.Num(), Settings->CoLocatedRadius);
+                    // Cycle forward through the stack, then WRAP TO UNLOCKED (auto-follow).
+                    // This makes the cycle releasable with the same key: tap through each
+                    // co-located entity and one more tap past the last returns to auto-pick.
+                    const auto CurPos  = _FocusLocked ? CoLocated.IndexOfByKey(_LockedCandidateIndex) : INDEX_NONE;
+                    const auto NextPos = CurPos + 1; // INDEX_NONE(-1)+1 = 0 → first
+
+                    if (NextPos >= CoLocated.Num())
+                    {
+                        _FocusLocked = false;
+                        ck::debug_overlay::Log(TEXT("Co-located cycle wrapped -> focus UNLOCKED (auto-follow)"));
+                    }
+                    else
+                    {
+                        _LockedCandidateIndex = CoLocated[NextPos];
+                        _FocusLocked = true;
+                        ck::debug_overlay::Log(
+                            TEXT("Cycled co-located focus ({}/{} within {}cm)"),
+                            NextPos + 1, CoLocated.Num(), Settings->CoLocatedRadius);
+                    }
                 }
             }
         }
@@ -677,7 +696,13 @@ auto
         Build_Model(FocusEntity, _Providers, *Layout, Now, Model);
     }
 
-    // ---- 8. Push to root ----
+    // ---- 7b. Build world-anchored canvas plates (drawn in DoDrawPlates, worldspace) ----
+    // These replace the Slate world tags so they project with the same view as the diamonds
+    // (UCanvas::Project) and stay aligned in every camera state (possessed / ejected / sim).
+    _CanvasPlates = ck_debugoverlay::Build_CanvasPlates(
+        CandidateHandles, Candidates, _Providers, *Layout, Viewpoint.Location, FocusEntity);
+
+    // ---- 8. Push to root (focus card + pinned cards + key hints; world tags are on canvas) ----
     Push_ToRoot(Model, *Layout, CandidateHandles, Candidates, _Providers, PC, Now);
 
     return true; // keep ticking
@@ -881,11 +906,9 @@ auto
     }
     _RootWidget->Set_PinnedCards(PinnedModels, CardStyle, *_History, InNow);
 
-    // ---- World tags (distance-scaled / faded / culled / near-plates + co-located fan-out) ----
-    const auto WorldTags = ck_debugoverlay::Build_WorldTags(
-        InCandidateHandles, InCandidates, InProviders, InLayout, InPC, _ViewpointIsEjected);
-
-    _RootWidget->Update_WorldTags(WorldTags);
+    // ---- World tags now render on the canvas (DoDrawPlates), worldspace. Clear the Slate
+    //      tag canvas so no stale Slate plates linger from earlier builds. ----
+    _RootWidget->Update_WorldTags({});
 
     // ---- Keyboard-hints strip (item 9): built from the live key bindings ----
     if (OverlaySettings != nullptr)
@@ -896,24 +919,25 @@ auto
         };
 
         const auto Compact = FString::Printf(
-            TEXT("%s x2 pin    %s x2 ECS-dbg    %s x2 cycle    %s x2 help"),
+            TEXT("%s x2 pin   %s x2 cycle/unlock   %s x2 unpin-all   %s x2 ECS   %s x2 help"),
             *KeyName(OverlaySettings->LockKey),
-            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
             *KeyName(OverlaySettings->CycleCoLocatedKey),
+            *KeyName(OverlaySettings->UnpinAllKey),
+            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
             *KeyName(OverlaySettings->HelpKey));
 
         const auto Full = FString::Printf(
             TEXT("CK ON-SCREEN DEBUGGER\n")
             TEXT("%s x2   pin / unpin focused entity (side-by-side card)\n")
-            TEXT("%s x2   release all pins\n")
+            TEXT("%s x2   cycle co-located entities (one tap past the last UNLOCKS / auto-follows)\n")
+            TEXT("%s x2   release ALL pins\n")
             TEXT("%s x2   open focused entity in ECS Debugger\n")
-            TEXT("%s x2   cycle co-located entities\n")
             TEXT("%s x2   toggle this help\n")
             TEXT("console: ck.DebugOverlay .Next .Prev .Lock .Layout.Next/.Prev .UnpinAll .Help"),
             *KeyName(OverlaySettings->LockKey),
+            *KeyName(OverlaySettings->CycleCoLocatedKey),
             *KeyName(OverlaySettings->UnpinAllKey),
             *KeyName(OverlaySettings->EcsDebuggerFocusKey),
-            *KeyName(OverlaySettings->CycleCoLocatedKey),
             *KeyName(OverlaySettings->HelpKey));
 
         _RootWidget->Update_KeyHints(Compact, Full, _ShowFullLegend, OverlaySettings->ShowKeyHints);
@@ -957,6 +981,175 @@ auto
     DrawParams.SuppressedEntityNums = &_MarkerSuppressed;
 
     _Markers.DrawMarkers(InCanvas, DrawParams);
+
+    // World plates, projected on the same canvas → aligned with the diamonds.
+    DoDrawPlates(InCanvas, InPC);
+}
+
+// ====================================================================================================================
+// World plates — drawn on the marker canvas (UCanvas::Project), so they project with the exact
+// rendered view and stay aligned with the diamonds in possessed / ejected / simulate. Co-located
+// clusters fan out gradually as the camera nears them (collapsed at range → look like one entity);
+// the focus plate is drawn highlighted to match the emphasized diamond.
+// ====================================================================================================================
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    DoDrawPlates(
+        UCanvas*           InCanvas,
+        APlayerController* /*InPC*/)
+    -> void
+{
+    if (InCanvas == nullptr || _CanvasPlates.IsEmpty())
+    { return; }
+
+    auto* Font = GEngine != nullptr ? GEngine->GetSmallFont() : nullptr;
+    if (Font == nullptr)
+    { return; }
+
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto FanFull     = Settings ? Settings->FanFullDist          : 500.0f;
+    const auto FanFade     = Settings ? Settings->FanFadeDist          : 2000.0f;
+    const auto FanMaxSpace = Settings ? Settings->FanMaxSpacing        : 110.0f;
+    const auto CellPx      = Settings ? Settings->CoLocatedScreenRadius : 36.0f;
+
+    const auto CanvasW = static_cast<float>(InCanvas->SizeX);
+    const auto CanvasH = static_cast<float>(InCanvas->SizeY);
+
+    // --- Project every plate onto this viewport (same projection as the diamonds) ---
+    struct FProj { int32 PlateIdx = 0; FVector2D Pos = FVector2D::ZeroVector; int32 FanIdx = INDEX_NONE; int32 FanCount = 0; };
+    auto Projected = TArray<FProj>{};
+    Projected.Reserve(_CanvasPlates.Num());
+    for (auto Idx = 0; Idx < _CanvasPlates.Num(); ++Idx)
+    {
+        const auto P = InCanvas->Project(_CanvasPlates[Idx].WorldLocation);
+        if (P.Z <= 0.0f)
+        { continue; }
+        if (P.X < 0.0f || P.Y < 0.0f || P.X >= CanvasW || P.Y >= CanvasH)
+        { continue; }
+        Projected.Add(FProj{ Idx, FVector2D{ static_cast<float>(P.X), static_cast<float>(P.Y) }, INDEX_NONE, 0 });
+    }
+
+    // --- Group co-located projected plates; fan each cluster gradually by camera distance ---
+    const auto CellW = FMath::Max(8.0f, CellPx * 1.5f);
+    const auto CellH = FMath::Max(8.0f, CellPx);
+
+    auto CellMembers = TMap<FIntPoint, TArray<int32>>{}; // values = indices into Projected
+    for (auto P = 0; P < Projected.Num(); ++P)
+    {
+        const auto Cell = FIntPoint{
+            FMath::RoundToInt32(Projected[P].Pos.X / CellW),
+            FMath::RoundToInt32(Projected[P].Pos.Y / CellH) };
+        CellMembers.FindOrAdd(Cell).Add(P);
+    }
+
+    for (auto& Pair : CellMembers)
+    {
+        auto& Members = Pair.Value;
+        if (Members.Num() <= 1)
+        { continue; }
+
+        // Fan factor from the CLOSEST member: 1 (full fan) near, 0 (collapsed) far.
+        auto MinDist = TNumericLimits<float>::Max();
+        for (const auto P : Members)
+        { MinDist = FMath::Min(MinDist, _CanvasPlates[Projected[P].PlateIdx].Distance); }
+
+        const auto FanFactor = (FanFade > FanFull)
+            ? 1.0f - FMath::Clamp((MinDist - FanFull) / (FanFade - FanFull), 0.0f, 1.0f)
+            : (MinDist <= FanFull ? 1.0f : 0.0f);
+
+        Members.Sort([&Projected](int32 InA, int32 InB)
+        { return Projected[InA].Pos.X < Projected[InB].Pos.X; });
+
+        const auto Count = Members.Num();
+        auto CentroidX = 0.0f;
+        auto TopY      = TNumericLimits<float>::Max();
+        for (const auto P : Members)
+        {
+            CentroidX += Projected[P].Pos.X;
+            TopY = FMath::Min(TopY, Projected[P].Pos.Y);
+        }
+        CentroidX /= static_cast<float>(Count);
+
+        for (auto i = 0; i < Count; ++i)
+        {
+            const auto P    = Members[i];
+            const auto Slot = static_cast<float>(i) - (Count - 1) * 0.5f;
+
+            const auto FannedX = CentroidX + Slot * FanMaxSpace;
+            const auto FannedY = TopY - FMath::Abs(Slot) * 14.0f;
+
+            // Lerp from collapsed (right on the marker) to fully fanned as the camera nears.
+            Projected[P].Pos.X   = FMath::Lerp(Projected[P].Pos.X, FannedX, FanFactor);
+            Projected[P].Pos.Y   = FMath::Lerp(Projected[P].Pos.Y, FannedY, FanFactor);
+            Projected[P].FanIdx  = i;
+            Projected[P].FanCount = Count;
+        }
+    }
+
+    // --- Draw far→near so near/focus plates land on top ---
+    Projected.Sort([this](const FProj& InA, const FProj& InB)
+    { return _CanvasPlates[InA.PlateIdx].Distance > _CanvasPlates[InB.PlateIdx].Distance; });
+
+    const auto LineH = static_cast<float>(Font->GetMaxCharHeight());
+
+    for (const auto& Pr : Projected)
+    {
+        const auto& Plate = _CanvasPlates[Pr.PlateIdx];
+
+        // Header / token line — focus is bright white, others a softer grey.
+        auto HeaderStr = Plate.bIsNearPlate ? Plate.Header : Plate.FarText;
+        if (Pr.FanCount > 1)
+        { HeaderStr = FString::Printf(TEXT("[%d/%d] "), Pr.FanIdx + 1, Pr.FanCount) + HeaderStr; }
+
+        const auto HeaderColor = Plate.bIsFocus
+            ? FLinearColor{ 1.0f, 1.0f, 1.0f, 1.0f }
+            : FLinearColor{ 0.78f, 0.85f, 0.95f, 0.9f };
+
+        // The marker sits at Pos; stack the plate text just above it.
+        const auto HeaderY = Plate.bIsNearPlate
+            ? Pr.Pos.Y - 18.0f - LineH * 1.0f   // leave room for the badge row under the header
+            : Pr.Pos.Y - 18.0f;
+
+        {
+            auto Item = FCanvasTextItem(
+                FVector2D{ Pr.Pos.X, HeaderY }, FText::FromString(HeaderStr), Font, HeaderColor);
+            Item.bCentreX = true;
+            Item.EnableShadow(FLinearColor::Black);
+            InCanvas->DrawItem(Item);
+        }
+
+        // Badge row (near plates only): colored abbrev chips centered under the header.
+        if (Plate.bIsNearPlate && Plate.Badges.Num() > 0)
+        {
+            constexpr auto BadgeGap = 5.0f;
+
+            auto TotalW = 0.0f;
+            for (const auto& Badge : Plate.Badges)
+            {
+                TotalW += static_cast<float>(Font->GetStringSize(*Badge.Text)) + BadgeGap;
+            }
+            TotalW = FMath::Max(0.0f, TotalW - BadgeGap);
+
+            auto PenX = Pr.Pos.X - TotalW * 0.5f;
+            const auto BadgeY = Pr.Pos.Y - 18.0f;
+
+            for (const auto& Badge : Plate.Badges)
+            {
+                const auto W = static_cast<float>(Font->GetStringSize(*Badge.Text));
+
+                auto Color = Badge.Color;
+                Color.A = Plate.bIsFocus ? 1.0f : 0.85f;
+
+                auto Item = FCanvasTextItem(
+                    FVector2D{ PenX, BadgeY }, FText::FromString(Badge.Text), Font, Color);
+                Item.EnableShadow(FLinearColor::Black);
+                InCanvas->DrawItem(Item);
+
+                PenX += W + BadgeGap;
+            }
+        }
+    }
 }
 
 // ====================================================================================================================

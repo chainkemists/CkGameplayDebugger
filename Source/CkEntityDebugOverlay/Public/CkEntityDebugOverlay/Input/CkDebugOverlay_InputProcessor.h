@@ -32,7 +32,16 @@ public:
     {
         if (InKeyEvent.IsRepeat() == false)
         { _PressedThisPoll.Add(InKeyEvent.GetKey()); }
-        return false;
+        // Consume (swallow) keys the overlay fully owns so Slate/OS defaults don't fire — e.g.
+        // a lone Alt press otherwise activates the Windows menu chrome, which shows the cursor
+        // and defocuses the game viewport. The press is still recorded above for our detection.
+        return _ConsumeKeys.Contains(InKeyEvent.GetKey());
+    }
+
+    virtual bool HandleKeyUpEvent(FSlateApplication& /*InSlateApp*/, const FKeyEvent& InKeyEvent) override
+    {
+        // Swallow the matching key-up too (the Alt menu activates on release).
+        return _ConsumeKeys.Contains(InKeyEvent.GetKey());
     }
 
     virtual const TCHAR* GetDebugName() const override { return TEXT("CkDebugOverlay"); }
@@ -48,6 +57,11 @@ public:
     // Drop any presses not consumed this tick so they don't leak into the next tick.
     auto Clear() -> void { _PressedThisPoll.Reset(); }
 
+    // Keys the overlay fully owns (swallowed from the game/Slate). Set by the subsystem to the
+    // gesture keys that would otherwise trigger Slate/OS side-effects (the cycle key — Alt).
+    auto Set_ConsumeKeys(const TSet<FKey>& InKeys) -> void { _ConsumeKeys = InKeys; }
+
 private:
     TSet<FKey> _PressedThisPoll;
+    TSet<FKey> _ConsumeKeys;
 };

@@ -133,13 +133,15 @@ public:
 
     // Camera distance (cm) at/below which a co-located cluster is fanned out to MAXIMUM.
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
-    float FanFullDist = 500.0f;
+    float FanFullDist = 1000.0f;
 
     // Camera distance (cm) at/above which a co-located cluster is fully collapsed (no fan —
     // the plates sit on top of each other, "looking like one entity"). Between FanFullDist
-    // and FanFadeDist the fan spread is lerped, so it opens up as you approach.
+    // and FanFadeDist the fan spread is lerped, so it opens up as you approach. Default spans
+    // most of the marker range so the fan is visible at typical debug distances; raise the
+    // marker cull range (MarkerMaxDist) and lower this if you want far clusters to collapse.
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0.0"))
-    float FanFadeDist = 2000.0f;
+    float FanFadeDist = 6000.0f;
 
     // Maximum horizontal spacing (px) between fanned plates at full fan.
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="16.0", ClampMax="400.0"))

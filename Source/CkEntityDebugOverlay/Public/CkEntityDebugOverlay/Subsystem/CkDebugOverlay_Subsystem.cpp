@@ -548,11 +548,6 @@ auto
     {
         const auto Window = Settings->LockDoubleTapWindowSeconds;
 
-        // The overlay fully owns the cycle key so its lone press/release doesn't trigger the
-        // Windows menu chrome (cursor appears + game viewport defocuses). Only the cycle key is
-        // swallowed — Shift/Ctrl pass through so they remain available to gameplay.
-        _InputProcessor->Set_ConsumeKeys(TSet<FKey>{ Settings->CycleCoLocatedKey });
-
         // Edge-detect a double-tap of InKey: true on the second tap within Window. Consumes
         // the key from the pre-processor each call (one physical press = one detection).
         const auto WasDoubleTapped = [&](const FKey& InKey, double& InOutLastPress) -> bool

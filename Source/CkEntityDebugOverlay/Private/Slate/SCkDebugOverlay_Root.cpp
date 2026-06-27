@@ -108,7 +108,7 @@ auto
     [
         // Overlay: tag canvas fills the viewport; the card strip (primary + pinned cards)
         // sits on top anchored to the settings-driven corner/edge; the key-hints strip sits
-        // in the opposite corner. Child widgets are created once in Construct and re-slotted
+        // top-left (top-right if the card is top-left). Child widgets are created once in Construct and re-slotted
         // here, so re-anchoring at runtime keeps all card/canvas/strip state.
         SNew(SOverlay)
 
@@ -129,7 +129,7 @@ auto
             _CardStrip.ToSharedRef()
         ]
 
-        // Layer 2: key-hints strip in the opposite corner.
+        // Layer 2: key-hints strip top-left (top-right when the card is top-left).
         + SOverlay::Slot()
         .HAlign(HintsH)
         .VAlign(HintsV)
@@ -183,19 +183,10 @@ auto
     Resolve_HintsAnchor(EHorizontalAlignment& OutH, EVerticalAlignment& OutV) const
     -> void
 {
-    // Opposite corner of the focus-card anchor (flip both axes; center stays centered).
-    switch (_PlateAnchor)
-    {
-        case ECk_DebugOverlay_PlateAnchor::TopLeft:      OutH = HAlign_Right;  OutV = VAlign_Bottom; break;
-        case ECk_DebugOverlay_PlateAnchor::TopCenter:    OutH = HAlign_Center; OutV = VAlign_Bottom; break;
-        case ECk_DebugOverlay_PlateAnchor::TopRight:     OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
-        case ECk_DebugOverlay_PlateAnchor::Left:         OutH = HAlign_Right;  OutV = VAlign_Bottom; break;
-        case ECk_DebugOverlay_PlateAnchor::Right:        OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
-        case ECk_DebugOverlay_PlateAnchor::BottomLeft:   OutH = HAlign_Right;  OutV = VAlign_Top;    break;
-        case ECk_DebugOverlay_PlateAnchor::BottomCenter: OutH = HAlign_Center; OutV = VAlign_Top;    break;
-        case ECk_DebugOverlay_PlateAnchor::BottomRight:  OutH = HAlign_Left;   OutV = VAlign_Top;    break;
-        default:                                         OutH = HAlign_Left;   OutV = VAlign_Bottom; break;
-    }
+    // Hints live in the TOP-LEFT by default, flipping to the TOP-RIGHT only when the focus
+    // card itself is anchored top-left (so the two never share that corner).
+    OutV = VAlign_Top;
+    OutH = (_PlateAnchor == ECk_DebugOverlay_PlateAnchor::TopLeft) ? HAlign_Right : HAlign_Left;
 }
 
 // ====================================================================================================================

@@ -644,22 +644,20 @@ auto
                              < CandidateHandles[InB].Get_Entity().Get_EntityNumber();
                     });
 
-                    // Advance the SOFT preference from the CURRENT focus to the next entity —
-                    // no hard lock, no ring. One tap past the last clears it (auto-follow).
+                    // Advance the SOFT preference CYCLICALLY through the cluster (stable
+                    // entity-number order). Pure modular wrap so EVERY tap moves to a different
+                    // member — a 2-cluster toggles, a 3-cluster goes 1->2->3->1. (The old
+                    // "step past the last -> auto-follow" created a DEAD FIXED POINT whenever the
+                    // auto-pick was the LAST sorted member: tap -> wrap -> re-pick the same best
+                    // -> nothing visibly changes. That's the "cycle does not happen" symptom.)
+                    // Auto-follow still resumes on its own: the soft preference auto-clears once
+                    // the preferred entity leaves the screen (look away → the cluster merges).
                     const auto CurPos  = Cluster.IndexOfByKey(_LockedCandidateIndex);
-                    const auto NextPos = CurPos + 1;
+                    const auto NextPos = (CurPos + 1) % Cluster.Num();
 
-                    if (NextPos >= Cluster.Num())
-                    {
-                        _PreferredCoLocated = FCk_Handle{};
-                        ck::debug_overlay::Log(TEXT("Co-located cycle wrapped -> auto-follow"));
-                    }
-                    else
-                    {
-                        _PreferredCoLocated = CandidateHandles[Cluster[NextPos]];
-                        ck::debug_overlay::Log(
-                            TEXT("Cycled co-located preference ({}/{})"), NextPos + 1, Cluster.Num());
-                    }
+                    _PreferredCoLocated = CandidateHandles[Cluster[NextPos]];
+                    ck::debug_overlay::Log(
+                        TEXT("Cycled co-located preference ({}/{})"), NextPos + 1, Cluster.Num());
                 }
             }
         }

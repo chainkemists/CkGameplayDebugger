@@ -103,31 +103,9 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="0", ClampMax="128"))
     int32 MaxWorldTagNameChars = 24;
 
-    // ---- Input (B3 — double-tap lock) ----
-
-    // Key to tap twice quickly to toggle focus lock.
-    UPROPERTY(Config, EditAnywhere, Category="Input")
-    FKey LockKey = EKeys::LeftShift;
-
-    // Key to tap twice quickly to open/select the focused entity in the CK ECS Debugger.
-    UPROPERTY(Config, EditAnywhere, Category="Input")
-    FKey EcsDebuggerFocusKey = EKeys::LeftControl;
-
-    // Key to tap twice quickly to cycle focus through entities co-located with the
-    // current focus (within CoLocatedRadius). Locks focus onto each in turn.
-    UPROPERTY(Config, EditAnywhere, Category="Input")
-    FKey CycleCoLocatedKey = EKeys::LeftAlt;
-
-    // World-space radius (cm) within which entities count as co-located for cycling.
-    // Fallback only — the on-screen fan-out and cycle now group by screen-space overlap
-    // (CoLocatedScreenRadius) so "what you see fanned == what you cycle".
-    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))
-    float CoLocatedRadius = 100.0f;
-
-    // Screen-space radius (pixels) within which on-screen candidates are treated as one
-    // co-located cluster — used to drive the fan-out (i/N badges) and the focus-card i/N.
-    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="4.0", ClampMax="256.0"))
-    float CoLocatedScreenRadius = 36.0f;
+    // NOTE: input keybinds + co-located radii + the double-tap window now live in the per-USER
+    // editor settings class UCk_DebugOverlay_InputSettings (below) so each developer can rebind
+    // without touching shared project config.
 
     // ---- Co-located fan-out (gradual, distance-driven) ----
 
@@ -146,16 +124,56 @@ public:
     // Maximum horizontal spacing (px) between fanned plates at full fan.
     UPROPERTY(Config, EditAnywhere, Category="World Tags", meta=(ClampMin="16.0", ClampMax="400.0"))
     float FanMaxSpacing = 110.0f;
+};
 
-    // Key: tap twice quickly to release ALL pinned cards at once (also available as
-    // `ck.DebugOverlay.UnpinAll`, or double-tap the pin key on an entity to unpin just it).
+// --------------------------------------------------------------------------------------------------------------------
+// Per-USER editor settings for the on-screen debugger's input gestures. Stored in
+// EditorPerProjectUserSettings (per-user, NOT committed) and shown under
+// Editor → Editor Preferences (GetContainerName == "Editor"), so each developer can rebind the
+// gestures independently of the shared project config.
+// --------------------------------------------------------------------------------------------------------------------
+
+UCLASS(Config=EditorPerProjectUserSettings, meta=(DisplayName="Ck On-Screen Debugger (Input)"))
+class CKENTITYDEBUGOVERLAY_API UCk_DebugOverlay_InputSettings : public UDeveloperSettings
+{
+    GENERATED_BODY()
+
+public:
+    virtual FName GetCategoryName()  const override { return TEXT("Ck"); }
+    virtual FName GetContainerName() const override { return TEXT("Editor"); }
+
+    // Tap twice quickly to PIN / unpin the focused entity (side-by-side card).
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey LockKey = EKeys::LeftShift;
+
+    // Tap twice quickly to open / select the focused entity in the CK ECS Debugger.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey EcsDebuggerFocusKey = EKeys::LeftControl;
+
+    // Tap twice quickly to cycle the focus through co-located entities (soft preference, not a
+    // hard lock; wraps to auto-follow past the last). A NON-modifier key by default — a lone
+    // modifier like Alt triggers the OS/Slate menu chrome (cursor appears, viewport defocuses).
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey CycleCoLocatedKey = EKeys::V;
+
+    // Tap twice quickly to release ALL pinned cards at once (also `ck.DebugOverlay.UnpinAll`, or
+    // double-tap the pin key on an entity to unpin just it).
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey UnpinAllKey = EKeys::BackSpace;
 
-    // Optional key: tap twice quickly to toggle the full keyboard-hints legend
-    // (also available as `ck.DebugOverlay.Help`). Default unbound.
+    // Optional: tap twice quickly to toggle the full keyboard-hints legend (also
+    // `ck.DebugOverlay.Help`). Default unbound.
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey HelpKey;
+
+    // World-space radius (cm) for the co-located cycle's connected-component flood.
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))
+    float CoLocatedRadius = 100.0f;
+
+    // Screen-space radius (px) for treating on-screen candidates as one co-located cluster
+    // (drives the fan-out i/N and the focus-card i/N).
+    UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="4.0", ClampMax="256.0"))
+    float CoLocatedScreenRadius = 36.0f;
 
     // Maximum interval (seconds) between two taps to count as a double-tap.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="0.05", ClampMax="1.0"))

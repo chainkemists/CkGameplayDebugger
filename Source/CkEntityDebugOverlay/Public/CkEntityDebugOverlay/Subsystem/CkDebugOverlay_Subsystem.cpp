@@ -543,7 +543,7 @@ auto
     // so the gestures keep working while the user is ejected from PIE (F8).
     const auto Now = FPlatformTime::Seconds();
 
-    if (const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    if (const auto* Settings = GetDefault<UCk_DebugOverlay_InputSettings>();
         Settings != nullptr && _InputProcessor.IsValid())
     {
         const auto Window = Settings->LockDoubleTapWindowSeconds;
@@ -870,6 +870,7 @@ auto
     { return; }
 
     const auto* OverlaySettings = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto* InputSettings   = GetDefault<UCk_DebugOverlay_InputSettings>();
 
     // ---- Plate anchor + width (settings-driven; cheap no-op when unchanged) ----
     _RootWidget->Set_PlateLayout(
@@ -897,7 +898,7 @@ auto
 
         if (InCandidates.IsValidIndex(FocusIdx) && InCandidates[FocusIdx].bIsOnScreen)
         {
-            const auto ScreenRadius = OverlaySettings ? OverlaySettings->CoLocatedScreenRadius : 36.0f;
+            const auto ScreenRadius = InputSettings ? InputSettings->CoLocatedScreenRadius : 36.0f;
             const auto RadiusSq     = FMath::Square(ScreenRadius);
             const auto FocusScreen  = InCandidates[FocusIdx].ScreenPos;
 
@@ -953,8 +954,8 @@ auto
 
     _RootWidget->Update_WorldTags(WorldTags);
 
-    // ---- Keyboard-hints strip (item 9): built from the live key bindings ----
-    if (OverlaySettings != nullptr)
+    // ---- Keyboard-hints strip (item 9): built from the live (per-user) key bindings ----
+    if (OverlaySettings != nullptr && InputSettings != nullptr)
     {
         const auto KeyName = [](const FKey& InKey) -> FString
         {
@@ -963,11 +964,11 @@ auto
 
         const auto Compact = FString::Printf(
             TEXT("%s x2 pin   %s x2 cycle/unlock   %s x2 unpin-all   %s x2 ECS   %s x2 help"),
-            *KeyName(OverlaySettings->LockKey),
-            *KeyName(OverlaySettings->CycleCoLocatedKey),
-            *KeyName(OverlaySettings->UnpinAllKey),
-            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
-            *KeyName(OverlaySettings->HelpKey));
+            *KeyName(InputSettings->LockKey),
+            *KeyName(InputSettings->CycleCoLocatedKey),
+            *KeyName(InputSettings->UnpinAllKey),
+            *KeyName(InputSettings->EcsDebuggerFocusKey),
+            *KeyName(InputSettings->HelpKey));
 
         const auto Full = FString::Printf(
             TEXT("CK ON-SCREEN DEBUGGER\n")
@@ -977,11 +978,11 @@ auto
             TEXT("%s x2   open focused entity in ECS Debugger\n")
             TEXT("%s x2   toggle this help\n")
             TEXT("console: ck.DebugOverlay .Next .Prev .Lock .Layout.Next/.Prev .UnpinAll .Help"),
-            *KeyName(OverlaySettings->LockKey),
-            *KeyName(OverlaySettings->CycleCoLocatedKey),
-            *KeyName(OverlaySettings->UnpinAllKey),
-            *KeyName(OverlaySettings->EcsDebuggerFocusKey),
-            *KeyName(OverlaySettings->HelpKey));
+            *KeyName(InputSettings->LockKey),
+            *KeyName(InputSettings->CycleCoLocatedKey),
+            *KeyName(InputSettings->UnpinAllKey),
+            *KeyName(InputSettings->EcsDebuggerFocusKey),
+            *KeyName(InputSettings->HelpKey));
 
         _RootWidget->Update_KeyHints(Compact, Full, _ShowFullLegend, OverlaySettings->ShowKeyHints);
     }

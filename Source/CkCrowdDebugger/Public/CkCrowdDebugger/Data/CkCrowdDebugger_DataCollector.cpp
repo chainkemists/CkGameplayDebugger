@@ -221,6 +221,7 @@ auto
 		*NavSys, *NavData, Start, End,
 		/*allowPartial*/ true,
 		/*projectionHalfExtent*/ 500.0f,
+		/*projectionVerticalHalfExtent*/ -1.0f,
 		/*agentRadiusForFirstSkip*/ 0.0f,
 		Result);
 

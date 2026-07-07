@@ -12,6 +12,7 @@
 #include "CkStateMachine/Condition/CkSmCondition_Fragment.h"
 #include "CkStateMachine/Condition/EntityScripts/CkSmCondition_EntityScript.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -103,6 +104,10 @@ auto FCkInspector_StateMachine::CanInspect(const FCk_Handle& Entity) const -> bo
 
 auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
+    // Keep the Sm_Debug poll processor running while this inspector is showing SM data —
+    // it gates itself off when no debugger has consumed its data recently.
+    UCk_Utils_StateMachineDebug_UE::NotifyDebugDataConsumed();
+
     auto Builder = FCkInspectorWidgetBuilder();
 
     // ---- State Machine root entity ----
@@ -402,6 +407,9 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
 
 auto FCkInspector_StateMachine::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
+    // The row lambdas re-read FFragment_Sm_Debug every frame while this section is
+    // visible — keep signalling demand so the poll processor stays on.
+    UCk_Utils_StateMachineDebug_UE::NotifyDebugDataConsumed();
 }
 
 // =====================================================================================================================

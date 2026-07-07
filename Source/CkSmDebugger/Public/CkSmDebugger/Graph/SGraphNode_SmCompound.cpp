@@ -7,6 +7,7 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "SGraphPanel.h"
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -24,9 +25,44 @@ namespace
     constexpr auto Compound_MinWidth      = 160.0f;
     constexpr auto Compound_MinHeight     = 120.0f;
 
-    // Default state node footprint used when the UEdGraphNode doesn't provide one.
+    // Default state node footprint used when the live Slate widget isn't available
+    // to provide a real desired size.
     constexpr auto State_AssumedWidth  = 180.0f;
     constexpr auto State_AssumedHeight = 80.0f;
+
+    // Translate the compound's grouped children by a delta, recursing into nested
+    // compounds (a child state that owns its own sub-SM block) so the whole
+    // subtree moves as one. Visited-set guards against malformed parent cycles.
+    auto TranslateCompoundChildren(
+        UCkSmDebugGraph& InGraph,
+        const UCkSmDebugNode_Compound& InCompound,
+        const FVector2D& InDelta,
+        TSet<const UCkSmDebugNode_Compound*>& InOutVisited)
+        -> void
+    {
+        if (InOutVisited.Contains(&InCompound))
+        { return; }
+        InOutVisited.Add(&InCompound);
+
+        for (const auto ChildStateIdx : InCompound.Get_SubSmStateIndices())
+        {
+            auto* ChildNode = InGraph.FindStateNode(ChildStateIdx);
+            if (ck::IsValid(ChildNode))
+            {
+                ChildNode->Modify();
+                ChildNode->NodePosX = static_cast<int32>(ChildNode->NodePosX + InDelta.X);
+                ChildNode->NodePosY = static_cast<int32>(ChildNode->NodePosY + InDelta.Y);
+            }
+
+            if (auto* NestedCompound = InGraph.FindCompoundNode(ChildStateIdx); ck::IsValid(NestedCompound))
+            {
+                NestedCompound->Modify();
+                NestedCompound->NodePosX = static_cast<int32>(NestedCompound->NodePosX + InDelta.X);
+                NestedCompound->NodePosY = static_cast<int32>(NestedCompound->NodePosY + InDelta.Y);
+                TranslateCompoundChildren(InGraph, *NestedCompound, InDelta, InOutVisited);
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -40,12 +76,6 @@ auto
 {
     _CompoundNode = InNode;
     GraphNode = InNode;
-
-    if (ck::IsValid(InNode))
-    {
-        _LastKnownPosition = FVector2D(InNode->NodePosX, InNode->NodePosY);
-        _HasLastKnownPosition = true;
-    }
 
     SetCursor(EMouseCursor::CardinalCross);
     UpdateGraphNode();
@@ -61,42 +91,31 @@ auto
         bool bMarkDirty)
     -> void
 {
-    const auto NewPos2D = FVector2D(InNewPosition);
+    if (ck::Is_NOT_Valid(_CompoundNode))
+    {
+        SGraphNode::MoveTo(InNewPosition, InNodeFilter, bMarkDirty);
+        return;
+    }
 
-    // Translate every grouped child node by the same delta so the "box" grabs its contents.
-    auto Delta = FVector2D::ZeroVector;
-    if (_HasLastKnownPosition)
-    { Delta = NewPos2D - _LastKnownPosition; }
-    else if (ck::IsValid(_CompoundNode))
-    { Delta = NewPos2D - FVector2D(_CompoundNode->NodePosX, _CompoundNode->NodePosY); }
+    // Translate every grouped child node by the same delta so the "box" grabs its
+    // contents. Delta is measured across the base call from the node's authoritative
+    // position — the base early-outs when we're already in the node filter, and a
+    // cached last-known position goes stale when an ENCLOSING compound translates
+    // this node directly (nested sub-SMs); both would teleport the children.
+    const auto PreMovePos = FVector2D(_CompoundNode->NodePosX, _CompoundNode->NodePosY);
 
     SGraphNode::MoveTo(InNewPosition, InNodeFilter, bMarkDirty);
-    _LastKnownPosition = NewPos2D;
-    _HasLastKnownPosition = true;
 
+    const auto Delta = FVector2D(_CompoundNode->NodePosX, _CompoundNode->NodePosY) - PreMovePos;
     if (Delta.IsNearlyZero())
-    { return; }
-
-    if (ck::Is_NOT_Valid(_CompoundNode))
     { return; }
 
     auto* Graph = Cast<UCkSmDebugGraph>(_CompoundNode->GetGraph());
     if (ck::Is_NOT_Valid(Graph))
     { return; }
 
-    // Mark ourselves in the filter so nested MoveTo calls from child nodes don't re-move us.
-    InNodeFilter.Add(SharedThis(this));
-
-    for (const auto ChildStateIdx : _CompoundNode->Get_SubSmStateIndices())
-    {
-        auto* ChildNode = Graph->FindStateNode(ChildStateIdx);
-        if (ck::Is_NOT_Valid(ChildNode))
-        { continue; }
-
-        ChildNode->Modify();
-        ChildNode->NodePosX = static_cast<int32>(ChildNode->NodePosX + Delta.X);
-        ChildNode->NodePosY = static_cast<int32>(ChildNode->NodePosY + Delta.Y);
-    }
+    auto Visited = TSet<const UCkSmDebugNode_Compound*>{};
+    TranslateCompoundChildren(*Graph, *_CompoundNode, Delta, Visited);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -123,6 +142,8 @@ auto
     auto MaxX = TNumericLimits<float>::Lowest();
     auto MaxY = TNumericLimits<float>::Lowest();
 
+    const auto OwnerPanel = GetOwnerPanel();
+
     for (const auto ChildStateIdx : ChildIndices)
     {
         const auto* ChildNode = Graph->FindStateNode(ChildStateIdx);
@@ -132,10 +153,28 @@ auto
         const auto ChildX = static_cast<float>(ChildNode->NodePosX);
         const auto ChildY = static_cast<float>(ChildNode->NodePosY);
 
+        // Prefer the live widget's real footprint — the fixed assumption under-
+        // sizes states carrying task rows, leaving them spilling past the border.
+        auto ChildW = State_AssumedWidth;
+        auto ChildH = State_AssumedHeight;
+        if (OwnerPanel.IsValid())
+        {
+            if (const auto ChildWidget = OwnerPanel->GetNodeWidgetFromGuid(ChildNode->NodeGuid);
+                ChildWidget.IsValid())
+            {
+                const auto Desired = ChildWidget->GetDesiredSize();
+                if (Desired.X > 1.0f && Desired.Y > 1.0f)
+                {
+                    ChildW = static_cast<float>(Desired.X);
+                    ChildH = static_cast<float>(Desired.Y);
+                }
+            }
+        }
+
         MinX = FMath::Min(MinX, ChildX);
         MinY = FMath::Min(MinY, ChildY);
-        MaxX = FMath::Max(MaxX, ChildX + State_AssumedWidth);
-        MaxY = FMath::Max(MaxY, ChildY + State_AssumedHeight);
+        MaxX = FMath::Max(MaxX, ChildX + ChildW);
+        MaxY = FMath::Max(MaxY, ChildY + ChildH);
         HasAnyChild = true;
     }
 
@@ -175,9 +214,6 @@ auto
 
     _CompoundNode->NodePosX = static_cast<int32>(NewX);
     _CompoundNode->NodePosY = static_cast<int32>(NewY);
-
-    _LastKnownPosition = FVector2D(NewX, NewY);
-    _HasLastKnownPosition = true;
 
     return true;
 }

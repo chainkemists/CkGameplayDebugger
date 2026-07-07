@@ -10,6 +10,46 @@
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 
 // --------------------------------------------------------------------------------------------------------------------
+// Node footprint estimation — mirrors the Slate construction in SGraphNode_SmState
+// (title row + optional task rows). Layout reserves room from these instead of
+// assuming a fixed 140x50 footprint, so states with many task rows or long names
+// don't overlap their neighbors.
+
+static auto
+    EstimateStateNodeWidth(
+        const FCkSmDebugger_StateInfo& InState,
+        const FCkSmLayoutParams& InParams)
+    -> float
+{
+    const auto Title = FCkSmLayoutParams::ComputeDisplayName(InState.StateName, InParams.NameDepth);
+    auto Width = FMath::Max(140.0f, Title.Len() * 7.5f + 40.0f);
+
+    if (InParams.ExpandTasks)
+    {
+        for (const auto& Task : InState.Tasks)
+        {
+            const auto TaskName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, InParams.NameDepth);
+            // status dot + name + optional TICK tag
+            Width = FMath::Max(Width, TaskName.Len() * 6.5f + 64.0f);
+        }
+    }
+
+    return Width;
+}
+
+static auto
+    EstimateStateNodeHeight(
+        const FCkSmDebugger_StateInfo& InState,
+        const FCkSmLayoutParams& InParams)
+    -> float
+{
+    auto Height = 44.0f;    // pill padding + title row
+    if (InParams.ExpandTasks && InState.Tasks.Num() > 0)
+    { Height += 3.0f + InState.Tasks.Num() * 18.0f; }    // separator + per-task rows
+    return Height;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
     UCkSmDebugGraph::
@@ -197,13 +237,34 @@ auto
         TMap<int32, FVector2D> InternalOffsets;
         int32 LayoutPosX = 0;
         int32 LayoutPosY = 0;
+
+        // Nesting depth of the OWNING parent state: 0 = top-level state, 1 = the
+        // parent is itself a sub-SM state (sub-SM inside a sub-SM), etc. Blocks
+        // place shallowest-first so a nested block's anchor state has a final
+        // position by the time the nested block reads it.
+        int32 Depth = 0;
     };
     auto CompoundBlocks = TArray<FCompoundBlock>{};
 
+    // Depth = number of IsSubSmNode hops walking the parent chain upward
+    auto ComputeParentDepth = [&SmInfo](int32 InStateIdx) -> int32
+    {
+        auto Depth = 0;
+        auto Cur = InStateIdx;
+        while (Cur >= 0 && Cur < SmInfo.States.Num()
+            && SmInfo.States[Cur].IsSubSmNode
+            && Depth <= 8)
+        {
+            ++Depth;
+            Cur = SmInfo.States[Cur].SubSmParentStateIndex;
+        }
+        return Depth;
+    };
+
     constexpr auto CompoundPadding = 20.0f;
     constexpr auto CompoundHeaderHeight = 28.0f;
-    constexpr auto InternalSpacingX = 250;
-    constexpr auto InternalSpacingY = 80;
+    constexpr auto InternalGapX = 60.0f;    // gap between internal columns (edge to edge)
+    constexpr auto InternalGapY = 28.0f;    // gap between stacked nodes in a column
 
     for (auto& Pair : SubSmGroups)
     {
@@ -261,34 +322,66 @@ auto
         auto LocalMaxRank = 0;
         for (auto R : LocalRanks) { LocalMaxRank = FMath::Max(LocalMaxRank, R); }
 
-        // Mini Sugiyama: coordinate assignment (skip full dummy/crossing for internal layouts)
-        auto NodesPerRank = TArray<int32>{};
-        NodesPerRank.SetNumZeroed(LocalMaxRank + 1);
-        for (auto R : LocalRanks) { ++NodesPerRank[R]; }
+        // Mini Sugiyama: coordinate assignment (skip full dummy/crossing for internal
+        // layouts). Columns are sized from the widest node in each rank and rows stack
+        // with per-node heights — fixed spacing overlapped as soon as a sub-state
+        // carried more than a couple of task rows.
+        auto RankMembers = TArray<TArray<int32>>{};
+        RankMembers.SetNum(LocalMaxRank + 1);
+        for (auto LocalIdx = 0; LocalIdx < LocalCount; ++LocalIdx)
+        { RankMembers[LocalRanks[LocalIdx]].Add(LocalIdx); }
 
-        auto SlotCounter = TArray<int32>{};
-        SlotCounter.SetNumZeroed(LocalMaxRank + 1);
+        // Column X origins from per-rank max estimated width
+        auto ColumnX = TArray<float>{};
+        ColumnX.SetNum(LocalMaxRank + 1);
+        auto CursorX = CompoundPadding;
+        for (auto R = 0; R <= LocalMaxRank; ++R)
+        {
+            ColumnX[R] = CursorX;
+            auto ColWidth = 140.0f;
+            for (auto LocalIdx : RankMembers[R])
+            { ColWidth = FMath::Max(ColWidth, EstimateStateNodeWidth(SmInfo.States[SubIndices[LocalIdx]], LayoutParams)); }
+            CursorX += ColWidth + InternalGapX;
+        }
+
+        // Column stack heights, so shorter columns can centre against the tallest
+        auto ColumnStackHeight = TArray<float>{};
+        ColumnStackHeight.SetNumZeroed(LocalMaxRank + 1);
+        auto MaxStackHeight = 0.0f;
+        for (auto R = 0; R <= LocalMaxRank; ++R)
+        {
+            auto Stack = 0.0f;
+            for (auto LocalIdx : RankMembers[R])
+            {
+                if (Stack > 0.0f) { Stack += InternalGapY; }
+                Stack += EstimateStateNodeHeight(SmInfo.States[SubIndices[LocalIdx]], LayoutParams);
+            }
+            ColumnStackHeight[R] = Stack;
+            MaxStackHeight = FMath::Max(MaxStackHeight, Stack);
+        }
 
         auto InternalOffsets = TMap<int32, FVector2D>{};
         auto MaxX = 0.0f;
         auto MaxY = 0.0f;
 
-        for (auto LocalIdx = 0; LocalIdx < LocalCount; ++LocalIdx)
+        for (auto R = 0; R <= LocalMaxRank; ++R)
         {
-            auto R = LocalRanks[LocalIdx];
-            auto Slot = SlotCounter[R]++;
-            auto Count = NodesPerRank[R];
+            auto CursorY = CompoundHeaderHeight + CompoundPadding
+                + (MaxStackHeight - ColumnStackHeight[R]) / 2.0f;
 
-            auto X = static_cast<float>(R * InternalSpacingX) + CompoundPadding;
-            auto TotalSlotHeight = (Count - 1) * InternalSpacingY;
-            auto Y = static_cast<float>(Slot * InternalSpacingY) - TotalSlotHeight / 2.0f
-                + CompoundHeaderHeight + CompoundPadding;
+            for (auto LocalIdx : RankMembers[R])
+            {
+                const auto GlobalIdx = SubIndices[LocalIdx];
+                const auto NodeWidth = EstimateStateNodeWidth(SmInfo.States[GlobalIdx], LayoutParams);
+                const auto NodeHeight = EstimateStateNodeHeight(SmInfo.States[GlobalIdx], LayoutParams);
 
-            auto GlobalIdx = SubIndices[LocalIdx];
-            InternalOffsets.Add(GlobalIdx, FVector2D(X, Y));
+                InternalOffsets.Add(GlobalIdx, FVector2D(ColumnX[R], CursorY));
 
-            MaxX = FMath::Max(MaxX, X + 140.0f);  // approximate node width
-            MaxY = FMath::Max(MaxY, Y + 40.0f);   // approximate node height
+                MaxX = FMath::Max(MaxX, ColumnX[R] + NodeWidth);
+                MaxY = FMath::Max(MaxY, CursorY + NodeHeight);
+
+                CursorY += NodeHeight + InternalGapY;
+            }
         }
 
         // Compute compound block dimensions
@@ -311,21 +404,27 @@ auto
             { Label = SmInfo.States[ParentIdx].StateName; }
         }
 
-        CompoundBlocks.Add({
-            ParentIdx,
-            Label,
-            SubIndices,
-            BlockWidth,
-            BlockHeight,
-            MoveTemp(InternalOffsets)
-        });
+        auto Block = FCompoundBlock{};
+        Block.ParentStateIndex = ParentIdx;
+        Block.Label = Label;
+        Block.SubSmStateIndices = SubIndices;
+        Block.Width = BlockWidth;
+        Block.Height = BlockHeight;
+        Block.InternalOffsets = MoveTemp(InternalOffsets);
+        Block.Depth = ComputeParentDepth(ParentIdx);
+        CompoundBlocks.Add(MoveTemp(Block));
     }
 
-    // Sort compound blocks by parent state index for deterministic placement order.
-    // Without this, TMap iteration order changes when sub-SMs activate/deactivate,
-    // causing compound blocks to jump positions.
+    // Sort compound blocks by (depth, parent state index) for deterministic
+    // placement order. Without this, TMap iteration order changes when sub-SMs
+    // activate/deactivate, causing compound blocks to jump positions. Depth-first
+    // ordering also guarantees a nested block's anchor state is positioned before
+    // the nested block is placed.
     CompoundBlocks.Sort([](const FCompoundBlock& A, const FCompoundBlock& B)
-    { return A.ParentStateIndex < B.ParentStateIndex; });
+    {
+        if (A.Depth != B.Depth) { return A.Depth < B.Depth; }
+        return A.ParentStateIndex < B.ParentStateIndex;
+    });
 
     // ================================================================================================================
     // Phases 1-4: Sugiyama layout via shared utility (parent-level states only)
@@ -339,22 +438,20 @@ auto
     { ParentGlobalToLayout.Add(ParentStateIndices[i], i); }
 
     // Build layout nodes (using layout indices 0..N-1). Feed each node's
-    // estimated width to the shared layout so compound blocks (sub-SMs) and
-    // wide state names don't overlap into the next column.
+    // estimated footprint to the shared layout so compound blocks (sub-SMs),
+    // wide state names, and tall task-row stacks don't overlap their neighbors.
     auto LayoutNodesInput = TArray<FCkDebugGraphLayoutNode>{};
     for (auto i = 0; i < ParentCount; ++i)
     {
         auto Layout = FCkDebugGraphLayoutNode{};
         Layout.Index = i;
 
-        // Default width: max(140, stateName.Len() * 7.5 + 40) — matches the
-        // approximate node-width constant used elsewhere in this file.
         auto Width = 140;
         const auto ParentIdx = ParentStateIndices[i];
         if (ParentIdx >= 0 && ParentIdx < StateCount)
         {
-            const auto NameLen = SmInfo.States[ParentIdx].StateName.Len();
-            Width = FMath::Max(Width, static_cast<int32>(NameLen * 7.5f) + 40);
+            Width = FMath::Max(Width, static_cast<int32>(EstimateStateNodeWidth(SmInfo.States[ParentIdx], LayoutParams)));
+            Layout.EstimatedHeight = static_cast<int32>(EstimateStateNodeHeight(SmInfo.States[ParentIdx], LayoutParams));
         }
 
         // If this parent state owns a compound block (sub-SM), use the pre-
@@ -442,14 +539,28 @@ auto
     // Place compound blocks below the entire parent graph, X-aligned with their
     // parent state. Each block starts at the same Y row. If two blocks overlap
     // horizontally, the later one is pushed down to a new row.
+    //
+    // Nested blocks (a sub-SM state that owns its own sub-SM) anchor to their
+    // parent state's FINAL position — available because blocks place in depth
+    // order, so the enclosing block (which assigns that state's PosX/PosY) has
+    // already been placed. Previously these were skipped entirely, leaving the
+    // block and every state inside it stacked at the graph origin.
     if (CompoundCount > 0)
     {
-        auto ParentMaxY = INT_MIN;
+        auto ParentMaxBottom = 0;
         for (auto i = 0; i < ParentCount; ++i)
-        { ParentMaxY = FMath::Max(ParentMaxY, ParentPosY[i]); }
+        {
+            const auto GlobalIdx = ParentStateIndices[i];
+            const auto NodeHeight = static_cast<int32>(EstimateStateNodeHeight(SmInfo.States[GlobalIdx], LayoutParams));
+            ParentMaxBottom = FMath::Max(ParentMaxBottom, ParentPosY[i] + NodeHeight);
+        }
 
-        constexpr auto EstimatedNodeHeight = 50;
-        auto BaseCompoundY = ParentMaxY + EstimatedNodeHeight + LayoutParams.SpacingY;
+        auto BaseCompoundY = ParentMaxBottom + LayoutParams.SpacingY;
+
+        // Horizontal gutter between blocks sharing a row. Deliberately smaller
+        // than SpacingX — the old SpacingX margin classified nearly every block
+        // pair as overlapping, forcing one tall column of blocks.
+        constexpr auto BlockGutterX = 60;
 
         // Each placed block occupies an X range. Track them to detect horizontal overlap.
         struct FPlacedBlock { int32 X; int32 Width; int32 Y; int32 Height; };
@@ -458,10 +569,14 @@ auto
         for (auto CompIdx = 0; CompIdx < CompoundCount; ++CompIdx)
         {
             auto& Block = CompoundBlocks[CompIdx];
-            auto* ParentLayoutIdx = ParentGlobalToLayout.Find(Block.ParentStateIndex);
-            if (NOT ParentLayoutIdx) { continue; }
 
-            auto BlockX = ParentPosX[*ParentLayoutIdx];
+            // Anchor X: the owning parent state's final position. Valid for both
+            // top-level parents (Sugiyama) and nested parents (assigned when the
+            // enclosing block placed, guaranteed by the depth sort).
+            auto BlockX = 0;
+            if (Block.ParentStateIndex >= 0 && Block.ParentStateIndex < StateCount)
+            { BlockX = PosX[Block.ParentStateIndex]; }
+
             auto BlockW = static_cast<int32>(Block.Width);
             auto BlockH = static_cast<int32>(Block.Height);
 
@@ -469,8 +584,8 @@ auto
             auto BlockY = BaseCompoundY;
             for (auto& Placed : PlacedBlocks)
             {
-                auto HorizontalOverlap = BlockX < (Placed.X + Placed.Width + LayoutParams.SpacingX)
-                    && (BlockX + BlockW) > (Placed.X - LayoutParams.SpacingX);
+                auto HorizontalOverlap = BlockX < (Placed.X + Placed.Width + BlockGutterX)
+                    && (BlockX + BlockW) > (Placed.X - BlockGutterX);
 
                 if (HorizontalOverlap)
                 { BlockY = FMath::Max(BlockY, Placed.Y + Placed.Height + LayoutParams.SpacingY); }
@@ -491,6 +606,52 @@ auto
                 }
             }
         }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Create compound block nodes FIRST. SNodePanel hit-tests topmost-last in
+    // graph-node order, so compounds must sit earliest for the state/transition
+    // nodes inside them to stay individually clickable and draggable — clicking
+    // a sub-SM state grabs that state, clicking empty box area grabs the group.
+    // (Pin wiring to the parent state happens after state nodes exist below.)
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto CompoundNodes = TArray<UCkSmDebugNode_Compound*>{};
+    CompoundNodes.SetNum(CompoundCount);
+
+    for (auto CompIdx = 0; CompIdx < CompoundCount; ++CompIdx)
+    {
+        auto& Block = CompoundBlocks[CompIdx];
+
+        auto CompoundNode = NewObject<UCkSmDebugNode_Compound>(this);
+        CompoundNode->Populate(
+            Block.ParentStateIndex,
+            Block.Label,
+            Block.Width,
+            Block.Height,
+            Block.SubSmStateIndices);
+
+        CompoundNode->NodePosX = Block.LayoutPosX;
+        CompoundNode->NodePosY = Block.LayoutPosY;
+        CompoundNode->AllocateDefaultPins();
+
+        // Check if any sub-SM state is the current state
+        auto HasActive = false;
+        for (auto GlobalIdx : Block.SubSmStateIndices)
+        {
+            if (GlobalIdx >= 0 && GlobalIdx < StateCount && SmInfo.States[GlobalIdx].IsCurrentState)
+            { HasActive = true; break; }
+        }
+        CompoundNode->Set_HasActiveSubState(HasActive);
+
+        auto ParentIsActive = Block.ParentStateIndex >= 0
+            && Block.ParentStateIndex < StateCount
+            && SmInfo.States[Block.ParentStateIndex].IsCurrentState;
+        CompoundNode->Set_IsParentStateActive(ParentIsActive);
+
+        CompoundNode->SetFlags(RF_Transactional);
+        AddNode(CompoundNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
+        CompoundNodes[CompIdx] = CompoundNode;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -529,44 +690,13 @@ auto
         }
     }
 
-    // ----------------------------------------------------------------------------------------------------------------
-    // Create compound block nodes
-    // ----------------------------------------------------------------------------------------------------------------
-
+    // Wire: ParentState.Out → CompoundBlock.In (draws an arrow like any other transition)
     for (auto CompIdx = 0; CompIdx < CompoundCount; ++CompIdx)
     {
         auto& Block = CompoundBlocks[CompIdx];
+        auto* CompoundNode = CompoundNodes[CompIdx];
+        if (ck::Is_NOT_Valid(CompoundNode)) { continue; }
 
-        auto CompoundNode = NewObject<UCkSmDebugNode_Compound>(this);
-        CompoundNode->Populate(
-            Block.ParentStateIndex,
-            Block.Label,
-            Block.Width,
-            Block.Height,
-            Block.SubSmStateIndices);
-
-        CompoundNode->NodePosX = Block.LayoutPosX;
-        CompoundNode->NodePosY = Block.LayoutPosY;
-        CompoundNode->AllocateDefaultPins();
-
-        // Check if any sub-SM state is the current state
-        auto HasActive = false;
-        for (auto GlobalIdx : Block.SubSmStateIndices)
-        {
-            if (GlobalIdx >= 0 && GlobalIdx < StateCount && SmInfo.States[GlobalIdx].IsCurrentState)
-            { HasActive = true; break; }
-        }
-        CompoundNode->Set_HasActiveSubState(HasActive);
-
-        auto ParentIsActive = Block.ParentStateIndex >= 0
-            && Block.ParentStateIndex < StateCount
-            && SmInfo.States[Block.ParentStateIndex].IsCurrentState;
-        CompoundNode->Set_IsParentStateActive(ParentIsActive);
-
-        CompoundNode->SetFlags(RF_Transactional);
-        AddNode(CompoundNode, /*bFromUI=*/ false, /*bSelectNewNode=*/ false);
-
-        // Wire: ParentState.Out → CompoundBlock.In (draws an arrow like any other transition)
         if (Block.ParentStateIndex >= 0 && Block.ParentStateIndex < StateNodes.Num())
         {
             auto* ParentState = StateNodes[Block.ParentStateIndex];

@@ -246,11 +246,41 @@ auto
 		}
 	}
 
+	// Per-row vertical extent: a node with a height hint occupies
+	// max(SpacingY, Height + MinVerticalGap) so tall nodes push subsequent
+	// rows down instead of overlapping them. Dummies and hint-less nodes keep
+	// the legacy SpacingY, which makes this reduce exactly to the legacy
+	// uniform-row layout when no caller provides heights.
+	constexpr auto MinVerticalGap = 40;
+
 	for (auto R = 0; R <= MaxRank; ++R)
 	{
 		auto& Layer = RankLayers[R];
 		auto Count = Layer.Num();
-		auto TotalHeight = (Count - 1) * InParams.SpacingY;
+		if (Count == 0) { continue; }
+
+		auto RowOrigins = TArray<int32>{};
+		RowOrigins.SetNum(Count);
+
+		auto Cumulative = 0;
+		for (auto S = 0; S < Count; ++S)
+		{
+			RowOrigins[S] = Cumulative;
+
+			auto Extent = InParams.SpacingY;
+			auto Idx = Layer[S];
+			if (LayoutNodes[Idx].OriginalIndex >= 0)
+			{
+				const auto H = InNodes[LayoutNodes[Idx].OriginalIndex].EstimatedHeight;
+				if (H > 0)
+				{ Extent = FMath::Max(Extent, H + MinVerticalGap); }
+			}
+			Cumulative += Extent;
+		}
+
+		// Centre the column on the span of row origins — identical to the
+		// legacy (Count - 1) * SpacingY / 2 offset when all extents match.
+		const auto Span = RowOrigins[Count - 1];
 
 		for (auto S = 0; S < Count; ++S)
 		{
@@ -262,7 +292,7 @@ auto
 
 				Result.Positions.Add(ExternalIdx, FIntPoint(
 					ColumnX[R],
-					S * InParams.SpacingY - TotalHeight / 2));
+					RowOrigins[S] - Span / 2));
 			}
 		}
 	}

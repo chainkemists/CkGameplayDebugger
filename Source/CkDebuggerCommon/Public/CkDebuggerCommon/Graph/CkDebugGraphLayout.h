@@ -24,6 +24,13 @@ struct FCkDebugGraphLayoutNode
 	// least as wide as its widest node and columns are separated by
 	// SpacingX. Leaving all widths at 0 preserves the legacy behavior.
 	int32 EstimatedWidth = 0;
+
+	// Optional — height hint in layout units for this node. A node with a
+	// positive height occupies max(SpacingY, Height + gap) of vertical space
+	// in its column, pushing subsequent rows down instead of overlapping
+	// them. Leaving all heights at 0 preserves the legacy uniform-row
+	// behavior (origin-to-origin SpacingY).
+	int32 EstimatedHeight = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

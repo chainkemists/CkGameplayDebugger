@@ -34,7 +34,9 @@ public:
         const FWidgetStyle& InWidgetStyle,
         bool bParentEnabled) const -> int32 override;
 
-    // Dragging the compound translates every grouped child by the same delta
+    // Dragging the compound translates every grouped child by the same delta,
+    // recursing into nested compounds (a child state that owns its own sub-SM
+    // block) so the whole subtree moves as one.
     virtual auto MoveTo(
         const FVector2f& InNewPosition,
         FNodeSet& InNodeFilter,
@@ -50,10 +52,6 @@ private:
     auto RecomputeBoundsFromChildren() -> bool;
 
     UCkSmDebugNode_Compound* _CompoundNode = nullptr;
-
-    // Last anchored position — used by MoveTo to compute translation delta for children
-    FVector2D _LastKnownPosition = FVector2D::ZeroVector;
-    bool _HasLastKnownPosition = false;
 
     // Bubble border color fade: 0 = grey (inactive), 1 = blue (holds the active
     // sub-state). Driven toward HasActiveSubState in Tick; read in OnPaint.

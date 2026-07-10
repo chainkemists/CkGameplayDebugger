@@ -1,0 +1,1493 @@
+<title>CK ECS Debugger — Redesign Concept</title>
+<style>
+/* ============================================================
+   CK ECS Debugger — Redesign Concept
+   Deliberately single-theme: this page recreates the UE editor's
+   dark Slate environment (the subject's own world). All colors
+   are explicit tokens, so the host light/dark theme cannot
+   break it.
+   ============================================================ */
+:root{
+  --bg-page:#0e1013;
+  --bg-panel:#191c21;
+  --bg-panel2:#1e2229;
+  --bg-inset:#121418;
+  --bg-raise:#252a33;
+  --bg-raise2:#2d3440;
+  --line:#282d36;
+  --line-soft:#20242c;
+  --ink:#d8dce3;
+  --ink-2:#98a1b0;
+  --ink-3:#5f6879;
+  --accent:#3987e5;
+  --accent-soft:rgba(57,135,229,.16);
+  --ok:#0ca30c;
+  --warn:#fab219;
+  --crit:#d03b3b;
+  --flash-in:rgba(12,163,12,.22);
+  --flash-out:rgba(208,59,59,.22);
+  --mono:ui-monospace,'Cascadia Mono',Consolas,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg-page);color:var(--ink);
+  font:13px/1.45 var(--sans);
+  overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:1px;border-radius:4px}
+input{font:inherit;color:var(--ink)}
+svg{display:block}
+.ic{flex:none}
+
+/* ---------- app frame ---------- */
+#app{display:flex;flex-direction:column;height:100vh;min-width:1180px}
+@media (max-width:1180px){ body{overflow-x:auto} }
+
+/* ---------- concept bar (page chrome, not part of the debugger) ---------- */
+#conceptbar{
+  display:flex;align-items:center;gap:14px;
+  padding:8px 14px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#14171c,#101216);
+}
+#conceptbar .brand{display:flex;align-items:baseline;gap:10px}
+#conceptbar h1{font-size:14px;font-weight:600;letter-spacing:.2px}
+#conceptbar .sub{color:var(--ink-3);font-size:11.5px}
+#conceptbar .spacer{flex:1}
+.cbtn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 12px;border-radius:6px;border:1px solid var(--line);
+  background:var(--bg-panel2);color:var(--ink-2);font-size:12px;
+  transition:background .12s,color .12s,border-color .12s;
+}
+.cbtn:hover{background:var(--bg-raise);color:var(--ink)}
+.cbtn.active{background:var(--accent-soft);border-color:rgba(57,135,229,.55);color:#bcd7f7}
+.cbtn .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+.cbtn.active .dot{background:var(--accent)}
+.cbtn.rec .dot{background:var(--crit);animation:blink 1.2s infinite}
+@media (prefers-reduced-motion:no-preference){ @keyframes blink{50%{opacity:.25}} }
+
+/* view-mode segmented switch */
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px}
+.seg button{padding:5px 14px;font-size:12px;color:var(--ink-2);background:var(--bg-panel2)}
+.seg button:first-child{border-radius:6px 0 0 6px}
+.seg button:last-child{border-radius:0 6px 6px 0}
+.seg button.on{background:var(--accent-soft);color:#bcd7f7;box-shadow:inset 0 0 0 1px rgba(57,135,229,.5)}
+.seg button:not(:last-child){border-right:1px solid var(--line)}
+
+/* ---------- debugger window ---------- */
+#win{flex:1;display:grid;grid-template-columns:352px minmax(420px,1fr) 372px;min-height:0}
+.pane{min-height:0;display:flex;flex-direction:column;background:var(--bg-panel)}
+.pane+.pane{border-left:1px solid var(--line)}
+
+.panehdr{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-bottom:1px solid var(--line);background:var(--bg-panel2);
+  font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-2);
+}
+.panehdr .grow{flex:1}
+
+/* ---------- left: entity browser ---------- */
+#left .toolrow{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+.tbtn{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:5px;
+  border:1px solid var(--line);background:var(--bg-panel2);color:var(--ink-2);font-size:12px;
+}
+.tbtn:hover{background:var(--bg-raise);color:var(--ink)}
+.tbtn.on{background:var(--accent-soft);border-color:rgba(57,135,229,.5);color:#bcd7f7}
+.worldsel{
+  display:flex;align-items:center;gap:8px;flex:1;
+  padding:5px 10px;border-radius:5px;border:1px solid var(--line);
+  background:var(--bg-inset);color:var(--ink);font-size:12.5px;
+}
+.worldsel .net{font-size:10.5px;color:var(--ink-3);margin-left:auto;letter-spacing:.4px}
+.worldsel .caret{color:var(--ink-3)}
+
+/* query bar */
+#querywrap{padding:8px 10px 4px;border-bottom:1px solid var(--line-soft);position:relative}
+.qrow{display:flex;gap:6px;align-items:center}
+.qbox{
+  flex:1;display:flex;align-items:center;gap:7px;padding:5px 9px;
+  border:1px solid var(--line);border-radius:6px;background:var(--bg-inset);
+}
+.qbox:focus-within{border-color:rgba(57,135,229,.6)}
+.qbox input{flex:1;background:none;border:none;outline:none;font-size:12.5px;min-width:0}
+.qbox input::placeholder{color:var(--ink-3)}
+.qbox .qic{color:var(--ink-3)}
+.qhelp{color:var(--ink-3);border:1px solid var(--line);border-radius:5px;width:22px;height:22px;flex:none;font-size:11px}
+.qhelp:hover{color:var(--ink);background:var(--bg-raise)}
+#qhelp-pop{
+  position:absolute;z-index:40;top:calc(100% - 2px);left:10px;right:10px;
+  background:var(--bg-raise);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);padding:10px 12px;display:none;
+}
+#qhelp-pop.open{display:block}
+#qhelp-pop h4{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-2);margin-bottom:6px}
+#qhelp-pop .tok{display:flex;gap:8px;padding:3px 0;font-size:12px;align-items:baseline}
+#qhelp-pop .tok code{font-family:var(--mono);color:#bcd7f7;background:var(--accent-soft);padding:1px 6px;border-radius:4px;font-size:11.5px;cursor:pointer}
+#qhelp-pop .tok span{color:var(--ink-2)}
+.hl-row{display:flex;gap:6px;align-items:center;margin-top:6px;padding-bottom:4px}
+.hl-row .qbox{background:transparent;border-style:dashed}
+
+/* feature rail */
+#featrail{display:flex;flex-wrap:wrap;gap:4px;padding:8px 10px;border-bottom:1px solid var(--line-soft)}
+.fchip{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:2.5px 8px 2.5px 6px;border-radius:20px;font-size:11px;
+  border:1px solid var(--line);background:var(--bg-panel2);color:var(--ink-2);
+  transition:background .1s,border-color .1s;
+}
+.fchip:hover{background:var(--bg-raise)}
+.fchip .cnt{color:var(--ink-3);font-family:var(--mono);font-size:10px}
+.fchip.inc{border-color:rgba(57,135,229,.65);background:var(--accent-soft);color:#cfe2f8}
+.fchip.inc .cnt{color:#8fb8e8}
+.fchip.exc{border-color:rgba(208,59,59,.55);background:rgba(208,59,59,.12);color:#e8b0ac;text-decoration:line-through}
+.railhdr{display:flex;align-items:center;width:100%;gap:6px;margin-bottom:2px}
+.railhdr span{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:var(--ink-3)}
+.railhdr .clear{margin-left:auto;font-size:10.5px;color:var(--accent);display:none}
+.railhdr .clear.vis{display:block}
+
+/* lens tabs */
+#lenses{display:flex;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--line);background:var(--bg-panel)}
+.lens{
+  padding:5px 13px;font-size:12px;color:var(--ink-2);
+  border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;
+}
+.lens.on{background:var(--bg-inset);border-color:var(--line);color:var(--ink);position:relative;top:1px}
+
+/* tree */
+#treewrap{flex:1;overflow:auto;background:var(--bg-inset);padding:4px 0 30px}
+.secthdr{
+  display:flex;align-items:center;gap:6px;padding:7px 10px 3px;
+  font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--ink-3);
+  user-select:none;cursor:pointer;
+}
+.secthdr:hover{color:var(--ink-2)}
+.secthdr .n{font-family:var(--mono);font-weight:400}
+.row{
+  display:flex;align-items:center;gap:6px;
+  padding:2.5px 8px 2.5px calc(10px + var(--d,0)*16px);
+  cursor:pointer;user-select:none;border-left:2px solid transparent;
+  min-height:24px;
+}
+.row:hover{background:var(--bg-panel2)}
+.row.sel{background:var(--accent-soft);border-left-color:var(--accent)}
+.row.dim{opacity:.38}
+.row .tw{width:14px;height:14px;flex:none;color:var(--ink-3);display:flex;align-items:center;justify-content:center;font-size:9px}
+.row .tw.leaf{visibility:hidden}
+.row .kicon{flex:none;display:flex}
+.row .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.row .nm b{font-weight:600}
+.row .nm .un{color:var(--ink-3);font-style:italic}
+.row.aux .nm{color:var(--ink-2)}
+.row .xn{
+  font-family:var(--mono);font-size:10.5px;color:#bcd7f7;
+  background:var(--accent-soft);padding:0 6px;border-radius:9px;flex:none;
+}
+.row .xn.bump{animation:bump .45s}
+@media (prefers-reduced-motion:no-preference){ @keyframes bump{30%{transform:scale(1.22)}} }
+.row .matchn{font-size:10.5px;color:var(--warn);flex:none;font-family:var(--mono)}
+.badges{display:flex;gap:3px;align-items:center;flex:none;margin-left:2px}
+.bdg{
+  width:16px;height:16px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+  background:color-mix(in srgb,currentColor 14%,transparent);
+}
+.bdg-more{font-size:9.5px;color:var(--ink-3);font-family:var(--mono);padding:0 2px}
+.bdg.hollow{width:auto;padding:0 4px;gap:2px;background:transparent;border:1px solid color-mix(in srgb,currentColor 50%,transparent)}
+.bdg.hollow .bn{font-size:8.5px;font-family:var(--mono)}
+.gametag{font-size:9px;letter-spacing:.5px;border:1px solid rgba(217,166,72,.55);color:#d9a648;border-radius:4px;padding:0 4px;font-weight:600}
+.intchip{
+  display:inline-flex;align-items:center;gap:4px;flex:none;
+  font-size:10px;font-family:var(--mono);color:var(--ink-3);
+  border:1px solid var(--line);border-radius:9px;padding:0 7px;height:16px;
+}
+.intchip:hover{color:var(--ink);background:var(--bg-raise);border-color:var(--ink-3)}
+.intchip.open{color:#bcd7f7;border-color:rgba(57,135,229,.5);background:var(--accent-soft)}
+.row .grow{flex:1;min-width:0}
+.idpill{
+  font-family:var(--mono);font-size:10px;color:var(--ink-3);flex:none;
+  border:1px solid var(--line-soft);padding:0 5px;border-radius:4px;height:16px;line-height:15px;
+}
+.row:hover .idpill{color:var(--ink-2);border-color:var(--line)}
+.pinbtn{flex:none;color:var(--ink-3);width:18px;height:18px;display:none;align-items:center;justify-content:center;border-radius:4px}
+.row:hover .pinbtn{display:flex}
+.pinbtn:hover{color:var(--warn);background:var(--bg-raise)}
+.pinbtn.pinned{display:flex;color:var(--warn)}
+.row.flash-in{animation:fin 1.1s}
+.row.flash-out{animation:fout .7s forwards}
+@media (prefers-reduced-motion:no-preference){
+  @keyframes fin{0%{background:var(--flash-in)}100%{background:transparent}}
+  @keyframes fout{0%{background:var(--flash-out);opacity:1}100%{background:var(--flash-out);opacity:0}}
+}
+@media (prefers-reduced-motion:reduce){ .row.flash-out{opacity:.3} }
+.auxgroup .nm{font-size:12px}
+mark{background:none;color:var(--warn);font-weight:600}
+
+/* status bar */
+#statusbar{
+  display:flex;gap:14px;align-items:center;padding:5px 12px;
+  border-top:1px solid var(--line);background:var(--bg-panel2);
+  font-size:11px;color:var(--ink-2);font-variant-numeric:tabular-nums;
+}
+#statusbar b{color:var(--ink);font-weight:600}
+#statusbar .churn{margin-left:auto;font-family:var(--mono);font-size:10.5px}
+#statusbar .churn .up{color:#3fbf3f}
+#statusbar .churn .dn{color:#e06a6a}
+
+/* ---------- center ---------- */
+#ctabs{display:flex;gap:2px;padding:6px 12px 0;border-bottom:1px solid var(--line);background:var(--bg-panel2)}
+.ctab{padding:6px 16px;font-size:12.5px;color:var(--ink-2);border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;position:relative}
+.ctab.on{background:var(--bg-panel);border-color:var(--line);color:var(--ink);top:1px}
+.ctab .nbadge{
+  position:absolute;top:1px;right:3px;min-width:14px;height:14px;border-radius:7px;
+  background:var(--crit);color:#fff;font-size:9px;line-height:14px;text-align:center;padding:0 3px;
+  font-family:var(--mono);
+}
+#cbody{flex:1;overflow:auto;padding:16px}
+
+/* overview */
+.ovgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:1100px}
+.card{background:var(--bg-panel2);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.card.wide{grid-column:1/-1}
+.card h3{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-2);font-weight:600;margin-bottom:8px}
+.hero{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
+.hero .big{font-size:34px;font-weight:650;line-height:1;letter-spacing:-.5px}
+.hero .cap{font-size:11px;color:var(--ink-3);margin-top:4px}
+.hero .spark{margin-left:auto}
+.fam{display:flex;align-items:center;gap:10px;padding:3.5px 0;font-variant-numeric:tabular-nums}
+.fam .fn{width:110px;font-size:12px;color:var(--ink-2);flex:none}
+.fam .bar{height:8px;border-radius:4px 4px 4px 4px;background:var(--accent);min-width:2px}
+.fam .bwrap{flex:1;display:flex;align-items:center;gap:8px}
+.fam .fv{font-family:var(--mono);font-size:11px;color:var(--ink)}
+.archgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;grid-column:1/-1}
+.arch{
+  background:var(--bg-panel2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;
+  cursor:pointer;transition:border-color .12s,transform .12s;text-align:left;width:100%;
+}
+.arch:hover{border-color:rgba(57,135,229,.55)}
+.arch .top{display:flex;align-items:center;gap:8px}
+.arch .anm{font-size:12.5px;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arch .acnt{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink)}
+.arch .sig{display:flex;gap:3px;margin-top:8px}
+.arch .foot{display:flex;align-items:center;gap:8px;margin-top:8px}
+.arch .foot .lbl{font-size:10.5px;color:var(--ink-3)}
+.arch .spark{margin-left:auto}
+.arch.churny .acnt{color:#bcd7f7}
+.spark{position:relative}
+.spark svg{overflow:visible}
+.singl{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;color:var(--ink-2);cursor:pointer;background:none;width:100%;text-align:left;border-radius:4px}
+.singl:hover{color:var(--ink);background:var(--bg-raise)}
+.singl .idpill{margin-left:auto}
+
+/* graph tab */
+#graphbody{position:relative;height:100%;min-height:420px}
+.gnode{
+  position:absolute;display:flex;align-items:center;gap:7px;
+  background:var(--bg-panel2);border:1.5px solid var(--line);border-radius:7px;
+  padding:7px 12px;font-size:12.5px;transform:translate(-50%,-50%);white-space:nowrap;cursor:pointer;
+}
+.gnode:hover{border-color:var(--accent)}
+.gnode .idpill{border:none;padding:0;color:var(--ink-3)}
+.glegend{display:flex;gap:14px;margin-bottom:14px;font-size:11px;color:var(--ink-2)}
+.glegend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+.gempty{color:var(--ink-3);padding:40px;text-align:center}
+
+/* activity tab */
+.actrow{display:flex;align-items:center;gap:9px;padding:4px 8px;border-radius:5px;font-size:12px;cursor:pointer}
+.actrow:hover{background:var(--bg-panel2)}
+.actrow .t{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);width:52px;flex:none}
+.actrow .k{width:14px;flex:none;text-align:center;font-weight:700}
+.actrow .k.sp{color:#3fbf3f}.actrow .k.de{color:#e06a6a}.actrow .k.ch{color:var(--warn)}
+.actrow .txt{color:var(--ink-2)}
+.actrow .txt b{color:var(--ink);font-weight:600}
+.actempty{color:var(--ink-3);padding:40px;text-align:center;line-height:1.8}
+
+/* ---------- right: inspector ---------- */
+#insp{flex:1;overflow:auto;padding:0 0 40px}
+.ihdr{display:flex;align-items:center;gap:9px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ihdr .inm{font-size:14px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.isec{border-bottom:1px solid var(--line-soft)}
+.isec>header{
+  display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:pointer;
+  font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--ink-2);
+}
+.isec>header:hover{background:var(--bg-panel2)}
+.isec>header .tw{margin-left:auto;color:var(--ink-3);font-size:9px}
+.isec .rows{padding:2px 14px 10px}
+.kv{display:flex;gap:10px;padding:2.5px 0;font-size:12.5px;align-items:center}
+.kv .k{width:118px;flex:none;color:var(--ink-3)}
+.kv .v{color:var(--ink);font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.kv .v.mono{font-family:var(--mono);font-size:11.5px}
+.kv .v .st-auth{color:var(--warn)}
+.kv .v .st-ok{color:#3fbf3f}
+.entpill{
+  display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px;
+  border:1px solid var(--line);border-radius:4px;padding:1px 7px;color:#bcd7f7;cursor:pointer;background:var(--bg-inset)
+}
+.entpill:hover{border-color:var(--accent)}
+.attrbar{display:flex;align-items:center;gap:8px;flex:1}
+.attrbar .tr{flex:1;height:6px;background:var(--bg-inset);border-radius:3px;overflow:hidden}
+.attrbar .fl{height:100%;background:var(--accent);border-radius:3px}
+.attrbar .num{font-family:var(--mono);font-size:11px;color:var(--ink-2);flex:none}
+.iempty{color:var(--ink-3);text-align:center;padding:60px 30px;line-height:1.9}
+
+/* ---------- notes ---------- */
+#notesdrawer{
+  position:fixed;top:0;right:-420px;width:400px;height:100vh;z-index:60;
+  background:#15181d;border-left:1px solid var(--line);box-shadow:-14px 0 40px rgba(0,0,0,.45);
+  transition:right .22s ease;display:flex;flex-direction:column;
+}
+@media (prefers-reduced-motion:reduce){#notesdrawer{transition:none}}
+#notesdrawer.open{right:0}
+#notesdrawer header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+#notesdrawer header h2{font-size:13.5px;font-weight:600}
+#notesdrawer header button{margin-left:auto;color:var(--ink-3);font-size:16px;width:26px;height:26px;border-radius:5px}
+#notesdrawer header button:hover{background:var(--bg-raise);color:var(--ink)}
+#noteslist{flex:1;overflow:auto;padding:10px 12px 30px}
+.note{border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:9px;cursor:pointer;background:var(--bg-panel)}
+.note:hover,.note.hot{border-color:rgba(57,135,229,.6)}
+.note .nh{display:flex;gap:9px;align-items:baseline}
+.note .nn{
+  flex:none;width:19px;height:19px;border-radius:50%;background:var(--accent);color:#fff;
+  font-size:11px;font-weight:700;text-align:center;line-height:19px;position:relative;top:2px;
+}
+.note h4{font-size:12.5px;font-weight:600}
+.note p{font-size:12px;color:var(--ink-2);margin-top:6px;line-height:1.55}
+.note .hook{margin-top:7px;font-size:11px;color:var(--ink-3);border-top:1px dashed var(--line);padding-top:6px}
+.note .hook code{font-family:var(--mono);font-size:10.5px;color:#9dbfe8}
+.notepin{
+  position:absolute;z-index:55;width:20px;height:20px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:11px;font-weight:700;line-height:20px;text-align:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:pointer;
+}
+.note-target{position:relative}
+.note-glow{box-shadow:inset 0 0 0 2px var(--accent), 0 0 0 2px var(--accent-soft) !important;border-radius:6px}
+.intro{font-size:12px;color:var(--ink-2);padding:4px 4px 12px;line-height:1.6}
+.intro b{color:var(--ink)}
+
+/* tooltips (custom, since native title is slow) */
+#tip{
+  position:fixed;z-index:80;max-width:380px;background:#22262e;border:1px solid var(--line);
+  border-radius:7px;padding:8px 11px;font-size:11.5px;color:var(--ink-2);pointer-events:none;
+  box-shadow:0 8px 26px rgba(0,0,0,.55);display:none;line-height:1.55;
+}
+#tip b{color:var(--ink)}
+#tip code{font-family:var(--mono);font-size:10.5px;color:#9dbfe8;word-break:break-all}
+#tip .tfeat{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+#tip .tfeat span{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;border:1px solid var(--line);padding:1px 6px;border-radius:9px}
+</style>
+
+<div id="app">
+  <div id="conceptbar">
+    <div class="brand">
+      <h1>CK ECS Debugger — Redesign Concept</h1>
+      <span class="sub" id="gencount"></span>
+    </div>
+    <div class="seg" role="group" aria-label="View mode" data-note-t="compare">
+      <button id="vm-today">Today</button>
+      <button id="vm-concept" class="on">Concept</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="cbtn" id="btn-sim"><span class="dot"></span>Simulate PIE</button>
+    <button class="cbtn" id="btn-notes"><span class="dot"></span>Design notes</button>
+  </div>
+
+  <div id="win">
+    <!-- ================= LEFT ================= -->
+    <div class="pane" id="left">
+      <div class="toolrow">
+        <div class="worldsel" data-tip="World selection — unchanged from today. One button per PIE world.">
+          <span id="ws-ic"></span> ListenServer <span class="net">NM_ListenServer</span><span class="caret">▾</span>
+        </div>
+        <button class="tbtn" id="btn-pick" data-tip="Viewport picker — unchanged from today.">⌖</button>
+      </div>
+      <div id="querywrap" data-note-t="query">
+        <div class="qrow">
+          <div class="qbox"><span class="qic" id="q-ic"></span><input id="q-filter" type="text" placeholder="Filter…  (try  has:timer  or  is:aux)" spellcheck="false"></div>
+          <button class="qhelp" id="q-help" aria-label="Query syntax help">?</button>
+        </div>
+        <div class="hl-row">
+          <div class="qbox"><span class="qic" id="h-ic"></span><input id="q-highlight" type="text" placeholder="Highlight…" spellcheck="false"></div>
+        </div>
+        <div id="qhelp-pop">
+          <h4>Query tokens — combine freely with fuzzy text</h4>
+          <div class="tok"><code>has:attr</code><span>feature on the entity <b>or anywhere in its internals</b></span></div>
+          <div class="tok"><code>is:timer</code><span>the entity itself carries the feature (IS, not HAS)</span></div>
+          <div class="tok"><code>is:primary</code><span>gameplay entities only (<b>is:aux</b> for internals)</span></div>
+          <div class="tok"><code>net:auth</code><span>by net role (<b>net:proxy</b>, <b>net:none</b>)</span></div>
+          <div class="tok"><code>id:235</code><span>exact entity ID</span></div>
+          <div class="tok"><code>arch:cube</code><span>by archetype name</span></div>
+        </div>
+      </div>
+      <div id="featrail" data-note-t="rail"></div>
+      <div id="lenses">
+        <button class="lens on" data-lens="hier">Hierarchy</button>
+        <button class="lens" data-lens="arch">Archetypes</button>
+        <div style="flex:1"></div>
+        <button class="tbtn" id="btn-group" data-tip="Coalesce identical siblings into one ×N row." style="margin-bottom:5px">×N</button>
+        <button class="tbtn" id="btn-internals" data-tip="Fold feature-plumbing entities (timers, scene nodes, probes) into their owner." style="margin-bottom:5px">⊞</button>
+      </div>
+      <div id="treewrap"></div>
+      <div id="statusbar"></div>
+    </div>
+
+    <!-- ================= CENTER ================= -->
+    <div class="pane" id="center">
+      <div id="ctabs">
+        <button class="ctab on" data-ctab="overview">Overview</button>
+        <button class="ctab" data-ctab="graph">Graph</button>
+        <button class="ctab" data-ctab="activity">Activity<span class="nbadge" id="actbadge" style="display:none">0</span></button>
+      </div>
+      <div id="cbody"></div>
+    </div>
+
+    <!-- ================= RIGHT ================= -->
+    <div class="pane" id="right">
+      <div class="panehdr">Inspector<span class="grow"></span><span id="insp-count" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+      <div id="insp"></div>
+    </div>
+  </div>
+</div>
+
+<div id="notesdrawer" aria-label="Design notes">
+  <header><h2>Design notes — 12 ideas</h2><button id="notes-close" aria-label="Close">✕</button></header>
+  <div id="noteslist"></div>
+</div>
+<div id="tip"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   ICONS — tiny stroke-based glyphs, 16×16 viewBox
+   ===================================================================== */
+const IC = {
+  clock:'<circle cx="8" cy="8" r="5.6"/><path d="M8 4.8V8l2.2 1.6"/>',
+  node:'<circle cx="8" cy="4" r="2"/><circle cx="4" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><path d="M7 5.7 4.9 10.2M9 5.7l2.1 4.5"/>',
+  axes:'<path d="M3.5 2.5v10h10"/><path d="M3.5 2.5 2 4.5M3.5 2.5 5 4.5M13.5 12.5l-2-1.5M13.5 12.5l-2 1.5"/>',
+  branch:'<circle cx="4" cy="8" r="2.1"/><circle cx="12" cy="4" r="2.1"/><circle cx="12" cy="12" r="2.1"/><path d="M6 7.1 9.9 4.9M6 8.9l3.9 2.2"/>',
+  gauge:'<path d="M4 13V9.5M8 13V4.5M12 13V7.5"/>',
+  net:'<circle cx="8" cy="8" r="5.6"/><ellipse cx="8" cy="8" rx="2.5" ry="5.6"/><path d="M2.6 6.2h10.8M2.6 9.8h10.8"/>',
+  person:'<circle cx="8" cy="5.2" r="2.6"/><path d="M3.4 13.6c.6-3 2.4-4.1 4.6-4.1s4 1.1 4.6 4.1"/>',
+  radar:'<circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/><path d="M13.6 8A5.6 5.6 0 0 0 8 2.4M10.8 8A2.8 2.8 0 0 0 8 5.2" /><path d="M8 8l4.2-4.2"/>',
+  interact:'<path d="M8 2.2 13.8 8 8 13.8 2.2 8z"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>',
+  bag:'<path d="M5.4 6V5a2.6 2.6 0 0 1 5.2 0v1"/><rect x="3.4" y="6" width="9.2" height="7" rx="1.4"/>',
+  flag:'<path d="M4 14.2V2.6"/><path d="M4 3h8L9.6 5.5 12 8H4"/>',
+  target:'<circle cx="8" cy="8" r="4.6"/><path d="M8 1.4v2.4M8 12.2v2.4M1.4 8h2.4M12.2 8h2.4"/>',
+  eye:'<path d="M1.6 8S4.2 3.6 8 3.6 14.4 8 14.4 8 11.8 12.4 8 12.4 1.6 8 1.6 8z"/><circle cx="8" cy="8" r="1.9"/>',
+  spark:'<path d="M8 1.6 9.6 6.4 14.4 8 9.6 9.6 8 14.4 6.4 9.6 1.6 8l4.8-1.6z" fill="currentColor" stroke="none"/>',
+  wave:'<path d="M3 6.2v3.6M6 4v8M9 5.4v5.2M12 2.8v10.4"/>',
+  tag:'<path d="M2.4 2.4h5.2L14 8.8 8.8 14 2.4 7.6z"/><circle cx="5.3" cy="5.3" r="1.1"/>',
+  pad:'<rect x="1.8" y="5" width="12.4" height="6.4" rx="3.1"/><path d="M5 7v2.4M3.8 8.2h2.4"/><circle cx="11" cy="7.6" r=".9" fill="currentColor" stroke="none"/><circle cx="12.6" cy="9.2" r=".9" fill="currentColor" stroke="none"/>',
+  cam:'<rect x="2" y="4.8" width="12" height="8.4" rx="1.5"/><circle cx="8" cy="9" r="2.4"/><path d="M5.6 4.8 6.7 3h2.6l1.1 1.8"/>',
+  grid:'<rect x="2.4" y="2.4" width="4.6" height="4.6"/><rect x="9" y="2.4" width="4.6" height="4.6"/><rect x="2.4" y="9" width="4.6" height="4.6"/><rect x="9" y="9" width="4.6" height="4.6"/>',
+  cube:'<path d="M8 1.8 14 5.2v5.6L8 14.2 2 10.8V5.2z"/><path d="M2 5.2l6 3.4 6-3.4M8 8.6v5.6"/>',
+  shelf:'<rect x="2.4" y="2" width="11.2" height="12" rx="1"/><path d="M2.4 6.4h11.2M2.4 10.4h11.2"/><path d="M5 6.4V4.2M7.6 6.4V3.6M10.4 10.4V8.4M6.2 10.4V8.8"/>',
+  pin:'<path d="M8 14.2S12.4 9.6 12.4 6.2a4.4 4.4 0 1 0-8.8 0C3.6 9.6 8 14.2 8 14.2z"/><circle cx="8" cy="6.2" r="1.6"/>',
+  braces:'<path d="M5.5 2.2C3.8 2.2 4.6 5 3.6 6.2c-.5.6-1.2.7-1.2 1.8s.7 1.2 1.2 1.8c1 1.2.2 4 1.9 4M10.5 2.2c1.7 0 .9 2.8 1.9 4 .5.6 1.2.7 1.2 1.8s-.7 1.2-1.2 1.8c-1 1.2-.2 4-1.9 4"/>',
+  search:'<circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14"/>',
+  hl:'<path d="M2 14h12"/><path d="M5 11 10.8 5.2a1.8 1.8 0 0 1 2.5 2.5L7.5 13.5 4 14z"/>',
+  world:'<circle cx="8" cy="8" r="5.6"/><path d="M2.4 8h11.2M8 2.4c-3 3.4-3 7.8 0 11.2M8 2.4c3 3.4 3 7.8 0 11.2"/>',
+  dot:'<circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/>',
+};
+const icon = (n, sz=13, col=null) =>
+  `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"${col?` style="color:${col}"`:''}>${IC[n]||IC.dot}</svg>`;
+
+/* =====================================================================
+   FEATURES — one entry per debugger inspector family.
+   Colors/icons are the visual vocabulary reused in rows, rail,
+   archetype cards, and inspector section headers.
+   ===================================================================== */
+const FEAT = {
+  transform:   {l:'Transform',     c:'#8b93a1', i:'axes'},
+  net:         {l:'Network',       c:'#3987e5', i:'net'},
+  actor:       {l:'Actor Bridge',  c:'#7fb2e5', i:'person'},
+  statemachine:{l:'State Machine', c:'#9085e9', i:'branch'},
+  attr:        {l:'Attributes',    c:'#e66767', i:'gauge'},
+  timer:       {l:'Timer',         c:'#c98500', i:'clock'},
+  scenenode:   {l:'Scene Node',    c:'#199e70', i:'node'},
+  probe:       {l:'Probe',         c:'#d55181', i:'radar'},
+  interaction: {l:'Interaction',   c:'#d95926', i:'interact'},
+  inventory:   {l:'Inventory',     c:'#a9803c', i:'bag'},
+  objective:   {l:'Objective',     c:'#5fb0a5', i:'flag'},
+  aggro:       {l:'Aggro',         c:'#e08a3c', i:'target'},
+  perception:  {l:'Perception',    c:'#6fa8dc', i:'eye'},
+  vfx:         {l:'VFX',           c:'#c77dd9', i:'spark'},
+  audio:       {l:'Audio',         c:'#4fb3bf', i:'wave'},
+  label:       {l:'Label',         c:'#8fa0b8', i:'tag'},
+  input:       {l:'Input',         c:'#88b04b', i:'pad'},
+  camera:      {l:'Camera',        c:'#b8a1e3', i:'cam'},
+  renderer:    {l:'ISM Renderer',  c:'#d9a648', i:'grid'},
+  variables:   {l:'Variables',     c:'#7d8fa8', i:'braces'},
+};
+const AUX_FEATS = ['timer','scenenode','probe','attr'];   // features whose sub-entities fold as internals
+
+/* =====================================================================
+   WORLD GENERATION
+   ===================================================================== */
+let NEXTID = 12;
+const newId = () => NEXTID++;
+const E = new Map();          // id -> entity
+const fmtId = e => `${e.id}|0(${e.id})`;
+
+function mkEnt(o){
+  const e = Object.assign({
+    id:newId(), name:'', raw:'', arch:null, kind:'cube', feats:[], aux:false,
+    parent:null, children:[], internals:[], unnamed:false, netRole:'auth',
+  }, o);
+  E.set(e.id, e);
+  return e;
+}
+function addInternals(owner, spec, rawBase){
+  let sceneChainDepth = 0;
+  for (const [ft, n] of Object.entries(spec)){
+    for (let k=0; k<n; k++){
+      let name, raw, unnamed = false;
+      if (ft==='timer'){
+        const named = Math.random()<0.35 ? pickTimerName() : null;
+        name = named ? `Timer — ${named}` : 'Timer';
+        raw = `Timer: ${named ?? 'No Name Specified'}`;
+        unnamed = !named;
+      } else if (ft==='scenenode'){
+        name = FEAT[ft].l;
+        raw = 'SceneNode(' + (sceneChainDepth>0 ? `SceneNode(${rawBase})` : rawBase) + ')';
+        sceneChainDepth++;
+      } else if (ft==='attr'){
+        name = ATTRNAMES[k % ATTRNAMES.length];
+        raw = `FloatAttribute: ${name}(${rawBase})`;
+      } else {
+        name = FEAT[ft].l;
+        raw = `${FEAT[ft].l}(${rawBase})`;
+      }
+      const a = mkEnt({
+        name, raw, arch:'__aux_'+ft, kind:FEAT[ft].i, feats:[ft,'transform'],
+        aux:true, auxType:ft, parent:owner, unnamed,
+        netRole:'none',
+      });
+      owner.internals.push(a);
+    }
+  }
+}
+const TIMERNAMES = ['Attack Cooldown','Respawn','Browse Duration','Queue Patience','Blink'];
+const pickTimerName = () => TIMERNAMES[Math.floor(Math.random()*TIMERNAMES.length)];
+const ATTRNAMES = ['Health','Patience','WalkSpeed','Stamina'];
+
+const ARCH = {};  // archetype registry
+function defArch(id, o){ ARCH[id] = Object.assign({id, insts:[], churn:false, hist:[]}, o); return ARCH[id]; }
+
+defArch('pawn',   {name:'Ck_Gym_Base_Pawn', kind:'person', family:'Players',
+  feats:['transform','net','actor','input','camera','interaction','statemachine'],
+  internals:{timer:1, scenenode:3, probe:2, attr:3}});
+defArch('npc',    {name:'NPC_Shopper_Behavior', kind:'person', family:'NPCs',
+  feats:['transform','net','statemachine','aggro','perception','interaction'],
+  internals:{timer:2, scenenode:2, probe:1, attr:2}});
+defArch('cubegym',{name:'Cube_ECk_SceneNodeGym_Behavior', kind:'cube', family:'Gym content',
+  feats:['transform','scenenode','timer'], internals:{timer:1, scenenode:3}});
+defArch('station',{name:'GymStation', kind:'flag', family:'Gym content',
+  feats:['transform','label','interaction'], internals:{}});
+defArch('display',{name:'SceneNodeGym_Display', kind:'grid', family:'Gym content',
+  feats:['transform','scenenode','renderer'], internals:{timer:2, scenenode:1}});
+defArch('pricetag',{name:'UI_PriceTag_Widget', kind:'tag', family:'UI',
+  feats:['transform','label','renderer'], internals:{scenenode:1}});
+defArch('shelf',  {name:'R99_Shelf', kind:'shelf', family:'Game · Rewind99', custom:true,
+  feats:['transform','interaction','inventory','label'], internals:{scenenode:2, attr:1}});
+defArch('grid',   {name:'WorldGrid', kind:'grid', family:'World',
+  feats:['transform','label'], internals:{}});
+defArch('gridcell',{name:'GridCell', kind:'grid', family:'World',
+  feats:['transform','label'], internals:{}});
+defArch('projectile',{name:'Projectile_Bottle', kind:'dot', family:'Transient FX', churn:true,
+  feats:['transform','probe','vfx','timer'], internals:{timer:1}});
+defArch('poof',   {name:'Vfx_Poof', kind:'spark', family:'Transient FX', churn:true,
+  feats:['transform','vfx','timer'], internals:{timer:1}});
+defArch('session',{name:'Ck_GameSession', kind:'world', family:'World', singleton:true,
+  feats:['transform','net','label','variables'], internals:{}});
+defArch('resolver',{name:'InteractionResolver', kind:'interact', family:'World', singleton:true,
+  feats:['transform','interaction','label'], internals:{}});
+defArch('director',{name:'Director_Ai', kind:'branch', family:'World', singleton:true,
+  feats:['transform','statemachine','objective','variables'], internals:{timer:1}});
+
+function spawn(archId, opts={}){
+  const a = ARCH[archId];
+  const e = mkEnt({
+    name:a.name, raw:a.name, arch:archId, kind:a.kind, feats:[...a.feats],
+    netRole: a.family==='Transient FX' ? 'auth' : (archId==='npc' && Math.random()<0.5 ? 'proxy' : 'auth'),
+    ...opts,
+  });
+  addInternals(e, a.internals, a.name);
+  a.insts.push(e);
+  return e;
+}
+
+const ROOTS = [];
+// players
+const p1 = spawn('pawn', {name:'Ck_Gym_Base_Pawn_0'}); p1.raw='Ck_Gym_Base_Pawn_0';
+const p2 = spawn('pawn', {name:'Ck_Gym_Base_Pawn_1'}); p2.raw='Ck_Gym_Base_Pawn_1'; p2.netRole='proxy';
+ROOTS.push(p1,p2);
+// singletons
+for (const s of ['session','resolver','director']) ROOTS.push(spawn(s));
+// world grid + cells
+const grid = spawn('grid'); ROOTS.push(grid);
+for (let i=0;i<64;i++){ const c = spawn('gridcell'); c.parent = grid; grid.children.push(c); }
+// NPCs
+for (let i=0;i<118;i++){ const n = spawn('npc'); ROOTS.push(n); }
+// cube gyms (the screenshot's noise)
+for (let i=0;i<8;i++){ const c = spawn('cubegym'); ROOTS.push(c); }
+// stations with display children
+for (let i=0;i<12;i++){
+  const st = spawn('station'); ROOTS.push(st);
+  const d = spawn('display'); d.parent = st; st.children.push(d);
+}
+// price tags
+for (let i=0;i<24;i++) ROOTS.push(spawn('pricetag'));
+// game-defined archetype demo: Rewind99 shelves
+for (let i=0;i<10;i++) ROOTS.push(spawn('shelf'));
+// initial transient FX
+for (let i=0;i<6;i++) ROOTS.push(spawn('projectile'));
+for (let i=0;i<4;i++) ROOTS.push(spawn('poof'));
+
+const totalEntities = () => E.size;
+
+/* per-NPC live state for the simulation */
+const NPC_STATES = ['Browse','Queue','Pay','Wander','Chat'];
+for (const n of ARCH.npc.insts){ n.smState = NPC_STATES[Math.floor(Math.random()*NPC_STATES.length)]; n.smSince = Date.now()-Math.random()*60000; }
+
+/* seed count history (60 samples) */
+function seedHist(){
+  for (const a of Object.values(ARCH)){
+    const base = a.insts.length;
+    a.hist = Array.from({length:60},(_,i)=> a.churn
+      ? Math.max(0, Math.round(base + Math.sin(i/6)*3 + (Math.random()*4-2)))
+      : base);
+  }
+  TOTAL_HIST.length = 0;
+  for (let i=0;i<60;i++) TOTAL_HIST.push(Object.values(ARCH).reduce((s,a)=>s+a.hist[i],0)
+      + [...E.values()].filter(e=>e.aux).length);
+}
+const TOTAL_HIST = [];
+seedHist();
+
+/* =====================================================================
+   STATE
+   ===================================================================== */
+const S = {
+  viewMode:'concept',            // 'concept' | 'today'
+  lens:'hier',                   // 'hier' | 'arch'
+  group:true, foldInternals:true,
+  filter:'', highlight:'',
+  railInc:new Set(), railExc:new Set(),
+  selected:null,                 // entity id
+  pinned:new Set(),
+  recent:[],
+  expanded:new Set(),            // 'g:<arch>' group rows, 'e:<id>' entity rows, 'i:<id>' internals, 'ia:<id>:<ft>' aux groups, 's:<name>' sections
+  ctab:'overview',
+  sim:false, simTimer:null, uiTimer:null,
+  churn:{sp:0,de:0},
+  flashIn:new Set(), dying:new Map(),
+  actFeed:[], actUnseen:0,
+  notes:false,
+};
+S.expanded.add('s:pinned').add('s:recent').add('s:world');
+
+/* =====================================================================
+   QUERY ENGINE
+   ===================================================================== */
+function parseQuery(q){
+  const toks = {has:[], is:[], net:[], id:[], arch:[], text:[]};
+  for (const w of q.trim().split(/\s+/).filter(Boolean)){
+    const m = w.match(/^(has|is|net|id|arch):(.*)$/i);
+    if (m && m[2]) toks[m[1].toLowerCase()].push(m[2].toLowerCase());
+    else toks.text.push(w.toLowerCase());
+  }
+  return toks;
+}
+function fuzzy(needle, hay){
+  hay = hay.toLowerCase(); let i = 0;
+  for (const ch of needle) { i = hay.indexOf(ch, i); if (i<0) return false; i++; }
+  return true;
+}
+const featTokMatch = (f, tok) => f.startsWith(tok) || FEAT[f].l.toLowerCase().startsWith(tok);
+function entMatches(e, toks){
+  // has: = the entity carries the feature OR it lives in its internals (rollup)
+  for (const h of toks.has){
+    const own = e.feats.some(f=>featTokMatch(f,h));
+    const roll = Object.keys(rollupOf(e)).some(f=>featTokMatch(f,h));
+    if (!own && !roll) return false;
+  }
+  // is: = the entity ITSELF carries it (plus is:primary / is:aux classes)
+  for (const t of toks.is){
+    if (t==='primary'){ if (e.aux) return false; }
+    else if (t==='aux'||t==='internal'){ if (!e.aux) return false; }
+    else if (!e.feats.some(f=>featTokMatch(f,t))) return false;
+  }
+  for (const n of toks.net){
+    if (n.startsWith('auth') && e.netRole!=='auth') return false;
+    if (n.startsWith('prox') && e.netRole!=='proxy') return false;
+    if (n==='none' && e.netRole!=='none') return false;
+  }
+  for (const idq of toks.id) if (String(e.id)!==idq) return false;
+  for (const aq of toks.arch){
+    const a = e.arch && ARCH[e.arch];
+    if (!a || !(a.name.toLowerCase().includes(aq) || e.arch.includes(aq))) return false;
+  }
+  for (const t of toks.text) if (!fuzzy(t, e.name) && !fuzzy(t, e.raw)) return false;
+  return true;
+}
+function railMatches(e){
+  for (const f of S.railExc) if (e.feats.includes(f)) return false;
+  for (const f of S.railInc) if (!e.feats.includes(f)) return false;
+  return true;
+}
+const hasQuery = () => S.filter.trim().length>0 || S.railInc.size>0 || S.railExc.size>0;
+function passes(e){
+  return railMatches(e) && (S.filter.trim() ? entMatches(e, parseQuery(S.filter)) : true);
+}
+/* does e or any descendant (children + internals) pass? */
+function subtreePass(e){
+  if (passes(e)) return true;
+  for (const c of e.children) if (subtreePass(c)) return true;
+  for (const a of e.internals) if (passes(a)) return true;
+  return false;
+}
+function hlMatch(e){
+  if (!S.highlight.trim()) return true;
+  return entMatches(e, parseQuery(S.highlight));
+}
+
+/* =====================================================================
+   TREE RENDERING
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const treewrap = $('#treewrap');
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+function hlName(name){
+  const q = S.highlight.trim() || S.filter.trim().split(/\s+/).filter(w=>!w.includes(':'))[0];
+  if (!q) return esc(name);
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if (i<0) return esc(name);
+  return esc(name.slice(0,i)) + '<mark>' + esc(name.slice(i,i+q.length)) + '</mark>' + esc(name.slice(i+q.length));
+}
+/* IS vs HAS: solid badge = fragment on the entity itself; hollow badge with
+   count = the feature lives on internal sub-entities (rollup). */
+function rollupOf(e){
+  const m = {};
+  for (const a of e.internals) m[a.auxType] = (m[a.auxType]||0)+1;
+  return m;
+}
+function badgeStripFor(ownFeats, rollup, max=4){
+  const solid = ownFeats.filter(f=>f!=='transform');
+  const hollow = Object.entries(rollup||{}).filter(([f])=>!solid.includes(f));
+  const shown = solid.slice(0,max);
+  const extra = solid.length - shown.length;
+  let h = '<span class="badges">';
+  for (const f of shown) h += `<span class="bdg" style="color:${FEAT[f].c}" data-tip="<b>${FEAT[f].l}</b> — on this entity (IS)">${icon(FEAT[f].i,10)}</span>`;
+  if (extra>0) h += `<span class="bdg-more">+${extra}</span>`;
+  for (const [f,n] of hollow.slice(0,3))
+    h += `<span class="bdg hollow" style="color:${FEAT[f].c}" data-tip="<b>${FEAT[f].l} ×${n}</b> — on internal sub-entities (HAS, not IS)">${icon(FEAT[f].i,9)}<span class="bn">${n}</span></span>`;
+  if (hollow.length>3) h += `<span class="bdg-more">+${hollow.length-3}</span>`;
+  return h + '</span>';
+}
+function internSummary(e){
+  const by = {};
+  for (const a of e.internals) by[a.auxType] = (by[a.auxType]||0)+1;
+  return Object.entries(by);
+}
+
+function rowHTML(e, depth, opts={}){
+  const isConcept = S.viewMode==='concept';
+  const sel = S.selected===e.id ? ' sel' : '';
+  const dim = !hlMatch(e) ? ' dim' : '';
+  const aux = e.aux ? ' aux' : '';
+  const fin = S.flashIn.has(e.id) ? ' flash-in' : '';
+  const fout = S.dying.has(e.id) ? ' flash-out' : '';
+  const kids = childCount(e);
+  const expanded = S.expanded.has('e:'+e.id);
+  const tw = kids>0
+    ? `<span class="tw">${expanded?'▾':'▸'}</span>`
+    : '<span class="tw leaf">▸</span>';
+  const kcolor = e.aux ? FEAT[e.auxType]?.c : archColor(e);
+  const name = isConcept
+    ? `<span class="nm">${e.unnamed ? `${hlName('Timer')} <span class="un">(unnamed)</span>` : hlName(e.name)}</span>`
+    : `<span class="nm">${hlName(e.raw)}</span>`;
+  const iconHtml = isConcept
+    ? `<span class="kicon">${icon(e.aux ? FEAT[e.auxType].i : (ARCH[e.arch]?.kind||'cube'),13,kcolor)}</span>`
+    : `<span class="kicon">${icon('dot',10,'#3fbf3f')}</span>`;
+  let mid = '';
+  if (isConcept && !e.aux) mid += badgeStripFor(e.feats, rollupOf(e));
+  if (isConcept && S.foldInternals && e.internals.length){
+    const open = S.expanded.has('i:'+e.id);
+    const parts = internSummary(e).map(([ft,n])=>`${n}`);
+    const tipParts = internSummary(e).map(([ft,n])=>`${n}× ${FEAT[ft].l}`).join(', ');
+    mid += `<button class="intchip${open?' open':''}" data-int="${e.id}" data-tip="Internals: ${tipParts} — click to peek">⊞ ${e.internals.length}</button>`;
+  }
+  const pinCls = S.pinned.has(e.id) ? ' pinned' : '';
+  return `<div class="row${sel}${dim}${aux}${fin}${fout}" data-eid="${e.id}" style="--d:${depth}" data-enttip="${e.id}">
+    ${tw}${iconHtml}${name}${mid}<span class="grow"></span>
+    ${opts.match ? `<span class="matchn">${opts.match}</span>` : ''}
+    <span class="idpill">${fmtId(e)}</span>
+    <button class="pinbtn${pinCls}" data-pin="${e.id}" data-tip="${S.pinned.has(e.id)?'Unpin':'Pin to top'}">${icon('pin',11)}</button>
+  </div>`;
+}
+function childCount(e){
+  let n = e.children.length;
+  if (!S.foldInternals || S.viewMode==='today') n += e.internals.length;
+  return n;
+}
+function archColor(e){
+  const a = ARCH[e.arch]; if (!a) return '#8b93a1';
+  if (a.custom) return '#d9a648';
+  const main = a.feats.find(f=>f!=='transform' && f!=='net');
+  return FEAT[main]?.c || '#8b93a1';
+}
+function groupRowHTML(a, ids, depth, matchInfo){
+  const expanded = S.expanded.has('g:'+a.id);
+  const sig = badgeStripFor(a.feats, a.internals, 5);
+  return `<div class="row group" data-gid="${a.id}" style="--d:${depth}" data-tip="${esc(a.name)} — ${ids.length} identical instances. Click to expand.">
+    <span class="tw">${expanded?'▾':'▸'}</span>
+    <span class="kicon">${icon(a.kind,13,a.custom?'#d9a648':FEAT[a.feats.find(f=>f!=='transform')]?.c)}</span>
+    <span class="nm"><b>${hlName(a.name)}</b></span>
+    <span class="xn" data-xn="${a.id}">×${ids.length}</span>${sig}
+    ${matchInfo ? `<span class="matchn">${matchInfo}</span>` : ''}
+    <span class="grow"></span>
+  </div>`;
+}
+function auxGroupHTML(owner, ft, items, depth){
+  const key = `ia:${owner.id}:${ft}`;
+  const expanded = S.expanded.has(key);
+  return `<div class="row aux auxgroup" data-iag="${key}" style="--d:${depth}">
+    <span class="tw">${expanded?'▾':'▸'}</span>
+    <span class="kicon">${icon(FEAT[ft].i,12,FEAT[ft].c)}</span>
+    <span class="nm">${FEAT[ft].l} <span class="un">×${items.length}</span></span>
+    <span class="grow"></span>
+  </div>`;
+}
+
+function renderTree(){
+  const out = [];
+  const isConcept = S.viewMode==='concept';
+  let visRows = 0, foldedCount = 0, hiddenCount = 0;
+
+  const emitEntity = (e, depth) => {
+    if (S.dying.has(e.id)) { out.push(rowHTML(e, depth)); return; }
+    if (hasQuery() && !subtreePass(e)) { hiddenCount++; return; }
+    out.push(rowHTML(e, depth)); visRows++;
+    const expandForFilter = hasQuery() && !passes(e);
+    const expanded = S.expanded.has('e:'+e.id) || expandForFilter;
+    if (isConcept && S.foldInternals){
+      foldedCount += e.internals.length;
+      if (S.expanded.has('i:'+e.id)){
+        const by = {};
+        for (const a of e.internals) (by[a.auxType] ??= []).push(a);
+        for (const [ft, items] of Object.entries(by)){
+          out.push(auxGroupHTML(e, ft, items, depth+1)); visRows++;
+          if (S.expanded.has(`ia:${e.id}:${ft}`))
+            for (const a of items){ out.push(rowHTML(a, depth+2)); visRows++; }
+        }
+      }
+    } else {
+      if (expanded) for (const a of e.internals){
+        if (hasQuery() && !passes(a)) { hiddenCount++; continue; }
+        out.push(rowHTML(a, depth+1)); visRows++;
+      }
+    }
+    if (expanded) for (const c of e.children) emitEntity(c, depth+1);
+  };
+
+  const emitCoalesced = (list, depth) => {
+    // group identical-archetype siblings when >2 of them
+    const byArch = new Map();
+    for (const e of list){ if(!byArch.has(e.arch)) byArch.set(e.arch, []); byArch.get(e.arch).push(e); }
+    for (const [archId, ents] of byArch){
+      const a = ARCH[archId];
+      const groupable = isConcept && S.group && ents.length>2 && !a?.singleton;
+      if (!groupable){ for (const e of ents) emitEntity(e, depth); continue; }
+      const alive = ents.filter(e=>!S.dying.has(e.id));
+      const matching = hasQuery() ? alive.filter(subtreePass) : alive;
+      if (hasQuery() && matching.length===0){ hiddenCount += alive.length; continue; }
+      const matchInfo = hasQuery() && matching.length<alive.length ? `${matching.length} match` : null;
+      out.push(groupRowHTML(a, alive.map(e=>e.id), depth, matchInfo)); visRows++;
+      const autoExpand = hasQuery() && matching.length<=20 && matching.length<alive.length;
+      if (S.expanded.has('g:'+archId) || autoExpand){
+        const shown = (hasQuery()?matching:alive);
+        const cap = S.expanded.has('gall:'+archId) ? shown.length : 30;
+        shown.slice(0,cap).forEach(e=>emitEntity(e, depth+1));
+        for (const e of [...S.dying.keys()].map(id=>E.get(id)).filter(x=>x&&x.arch===archId))
+          out.push(rowHTML(e, depth+1));
+        if (shown.length>cap)
+          out.push(`<div class="row" data-showall="${archId}" style="--d:${depth+1};color:var(--accent);font-size:12px">Show all ${shown.length}…</div>`);
+      } else {
+        foldedCount += alive.length;
+      }
+    }
+  };
+
+  // ----- sections -----
+  const section = (key, label, count, bodyFn) => {
+    const open = S.expanded.has('s:'+key);
+    out.push(`<div class="secthdr" data-sect="${key}"><span>${open?'▾':'▸'}</span>${label}<span class="n">${count}</span></div>`);
+    if (open) bodyFn();
+  };
+
+  if (isConcept && S.pinned.size){
+    section('pinned','Pinned', S.pinned.size, ()=>{
+      for (const id of S.pinned){ const e = E.get(id); if (e) { out.push(rowHTML(e,0)); visRows++; } }
+    });
+  }
+  if (isConcept && S.recent.length){
+    section('recent','Recent', S.recent.length, ()=>{
+      for (const id of S.recent.slice(0,5)){ const e = E.get(id); if (e && !S.pinned.has(id)) { out.push(rowHTML(e,0)); visRows++; } }
+    });
+  }
+
+  if (S.lens==='hier' || !isConcept){
+    section('world','World', ROOTS.filter(e=>!S.dying.has(e.id)).length, ()=>{
+      emitCoalesced(ROOTS, 0);
+    });
+  } else {
+    // archetype lens: flat, grouped by archetype incl. aux archetypes
+    section('world','By archetype', Object.values(ARCH).filter(a=>a.insts.length).length, ()=>{
+      const sorted = Object.values(ARCH).filter(a=>a.insts.length>0)
+        .sort((x,y)=>y.insts.length-x.insts.length);
+      for (const a of sorted){
+        const alive = a.insts.filter(e=>!S.dying.has(e.id));
+        const matching = hasQuery()? alive.filter(subtreePass) : alive;
+        if (hasQuery() && matching.length===0) { hiddenCount+=alive.length; continue; }
+        out.push(groupRowHTML(a, alive.map(e=>e.id), 0,
+          hasQuery()&&matching.length<alive.length?`${matching.length} match`:null)); visRows++;
+        if (S.expanded.has('g:'+a.id)){
+          const cap = S.expanded.has('gall:'+a.id) ? matching.length : 30;
+          matching.slice(0,cap).forEach(e=>{ out.push(rowHTML(e,1)); visRows++; });
+          if (matching.length>cap) out.push(`<div class="row" data-showall="${a.id}" style="--d:1;color:var(--accent);font-size:12px">Show all ${matching.length}…</div>`);
+        }
+      }
+    });
+  }
+
+  treewrap.innerHTML = out.join('');
+  renderStatus(visRows, foldedCount, hiddenCount);
+  S.flashIn.clear();
+}
+
+function renderStatus(visRows, folded, hidden){
+  const total = totalEntities();
+  const churn = S.sim ? `<span class="churn"><span class="up">+${S.churn.sp}</span> <span class="dn">−${S.churn.de}</span> /5s</span>` : '<span class="churn"></span>';
+  $('#statusbar').innerHTML =
+    `<span>Entities <b>${total.toLocaleString()}</b></span>`+
+    `<span>Rows <b>${visRows}</b></span>`+
+    (S.viewMode==='concept' ? `<span>Folded <b>${folded.toLocaleString()}</b></span>` : '')+
+    (hidden ? `<span>Filtered out <b>${hidden.toLocaleString()}</b></span>` : '')+
+    churn;
+  $('#gencount').textContent = `${total.toLocaleString()} simulated entities`;
+}
+
+/* =====================================================================
+   FEATURE RAIL
+   ===================================================================== */
+function featCounts(){
+  const c = {};
+  for (const e of E.values()){ if (S.dying.has(e.id)) continue; for (const f of e.feats) c[f]=(c[f]||0)+1; }
+  return c;
+}
+function renderRail(){
+  const rail = $('#featrail');
+  if (S.viewMode==='today'){ rail.style.display='none'; return; }
+  rail.style.display='flex';
+  const counts = featCounts();
+  const active = S.railInc.size||S.railExc.size;
+  let h = `<div class="railhdr"><span>Features</span><button class="clear${active?' vis':''}" id="rail-clear">clear</button></div>`;
+  for (const [f,d] of Object.entries(FEAT)){
+    if (!counts[f]) continue;
+    const cls = S.railInc.has(f)?' inc':S.railExc.has(f)?' exc':'';
+    h += `<button class="fchip${cls}" data-rail="${f}" data-tip="<b>${d.l}</b> — ${counts[f]} entities.<br>Click: require · again: exclude · again: off">`+
+      `<span style="color:${d.c};display:flex">${icon(d.i,11)}</span>${d.l}<span class="cnt">${counts[f]}</span></button>`;
+  }
+  rail.innerHTML = h;
+}
+
+/* =====================================================================
+   CENTER: OVERVIEW / GRAPH / ACTIVITY
+   ===================================================================== */
+function sparkSVG(data, w=110, h=26, color='#3987e5'){
+  if (!data.length) return '';
+  const min = Math.min(...data), max = Math.max(...data);
+  const rng = (max-min)||1;
+  const pts = data.map((v,i)=>[i/(data.length-1)*w, h-2-((v-min)/rng)*(h-6)]);
+  const line = pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
+  const area = `0,${h} ${line} ${w},${h}`;
+  const [ex,ey] = pts[pts.length-1];
+  return `<svg width="${w}" height="${h}" class="ic">
+    <polyline points="${area}" fill="${color}1f" stroke="none"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="${ex}" cy="${ey}" r="2.4" fill="${color}"/></svg>`;
+}
+function renderCenter(){
+  const b = $('#cbody');
+  // Today = the debugger as it exists: one Overview page containing the
+  // relationship graph. Archetype map + Activity are concept-only.
+  const isToday = S.viewMode==='today';
+  const mode = isToday ? 'graph' : S.ctab;
+  document.querySelectorAll('.ctab').forEach(t=>{
+    t.style.display = (isToday && t.dataset.ctab!=='overview') ? 'none' : '';
+    t.classList.toggle('on', isToday ? t.dataset.ctab==='overview' : t.dataset.ctab===S.ctab);
+  });
+  if (!isToday && S.ctab==='activity'){ S.actUnseen=0; $('#actbadge').style.display='none'; }
+
+  if (mode==='overview'){
+    const famCounts = {};
+    let auxTotal = 0;
+    for (const e of E.values()){
+      if (S.dying.has(e.id)) continue;
+      if (e.aux){ auxTotal++; continue; }
+      const fam = ARCH[e.arch]?.family || 'World';
+      famCounts[fam] = (famCounts[fam]||0)+1;
+    }
+    famCounts['· internals'] = auxTotal;
+    const maxFam = Math.max(...Object.values(famCounts));
+    const famRows = Object.entries(famCounts).sort((a,z)=>z[1]-a[1]).map(([f,n])=>
+      `<div class="fam"><span class="fn">${f}</span><div class="bwrap"><div class="bar" style="width:${(n/maxFam*100).toFixed(1)}%"></div><span class="fv">${n.toLocaleString()}</span></div></div>`).join('');
+
+    const archCards = Object.values(ARCH)
+      .filter(a=>!a.singleton && !a.id.startsWith('__') && a.insts.length>0)
+      .sort((x,y)=>y.insts.length-x.insts.length)
+      .map(a=>{
+        const alive = a.insts.filter(e=>!S.dying.has(e.id)).length;
+        return `<button class="arch${a.churn?' churny':''}" data-arch="${a.id}" data-tip="${a.custom?'Game-registered archetype (bespoke icon) — click to filter the tree':'Click → filter the tree to this archetype'}">
+          <div class="top">${icon(a.kind,15,a.custom?'#d9a648':FEAT[a.feats.find(f=>f!=='transform')]?.c)}<span class="anm">${a.name}</span><span class="acnt" data-acnt="${a.id}">${alive}</span></div>
+          <div class="sig">${badgeStripFor(a.feats, a.internals, 6)}</div>
+          <div class="foot">${a.custom?'<span class="gametag">GAME</span>':''}<span class="lbl">${a.family}${a.churn?' · transient':''}</span><span class="spark">${sparkSVG(a.hist)}</span></div>
+        </button>`;}).join('');
+
+    const singles = Object.values(ARCH).filter(a=>a.singleton).map(a=>{
+      const e = a.insts[0];
+      return `<button class="singl" data-eid="${e.id}">${icon(a.kind,13,FEAT[a.feats.find(f=>f!=='transform')]?.c)} ${a.name}<span class="idpill">${fmtId(e)}</span></button>`;
+    }).join('');
+
+    b.innerHTML = `<div class="ovgrid" data-note-t="overview">
+      <div class="card wide"><div class="hero">
+        <div><div class="big">${totalEntities().toLocaleString()}</div><div class="cap">entities in ListenServer${S.sim?' · live':''}</div></div>
+        <div class="spark">${sparkSVG(TOTAL_HIST, 240, 44)}</div>
+      </div></div>
+      <div class="card wide"><h3>Population by family</h3>${famRows}</div>
+      <div class="archgrid">${archCards}</div>
+      <div class="card wide"><h3>Singletons</h3>${singles}</div>
+    </div>`;
+  }
+  else if (mode==='graph'){
+    const e = E.get(S.selected);
+    if (!e){ b.innerHTML = '<div class="gempty">Select an entity to see its relationship graph.</div>'; return; }
+    const owner = e.parent || (e.aux ? e.parent : null);
+    const ctxOwner = e.aux ? e.parent : (ARCH[e.arch]?.singleton ? null : e);
+    const deps = e.internals.slice(0,4);
+    const more = e.internals.length - deps.length;
+    const C = {sel:'#3fbf3f', life:'#e58bb6', ctx:'#4fa3e3', dep:'#b5cc5a'};
+    let nodes = `<div class="gnode" style="left:50%;top:46%;border-color:${C.sel}" data-eid="${e.id}">${icon(e.aux?FEAT[e.auxType].i:(ARCH[e.arch]?.kind||'cube'),13,archColor(e))}<b>${esc(e.name)}</b><span class="idpill">${fmtId(e)}</span></div>`;
+    let edges = '';
+    const line=(x1,y1,x2,y2,c)=>`<line x1="${x1}%" y1="${y1}%" x2="${x2}%" y2="${y2}%" stroke="${c}" stroke-width="1.5" marker-end="url(#arr)"/>`;
+    nodes += `<div class="gnode" style="left:26%;top:16%;border-color:${C.life}" data-tip="Lifetime owner">${icon('world',12)} ${owner?esc(owner.name):'Transient Entity'}<span class="idpill">${owner?fmtId(owner):'0|0(0)'}</span></div>`;
+    edges += line(46,40,29,21,C.life);
+    if (ctxOwner && ctxOwner!==e){
+      nodes += `<div class="gnode" style="left:74%;top:16%;border-color:${C.ctx}" data-eid="${ctxOwner.id}" data-tip="Context owner">${icon(ARCH[ctxOwner.arch]?.kind||'cube',12)} ${esc(ctxOwner.name)}<span class="idpill">${fmtId(ctxOwner)}</span></div>`;
+      edges += line(54,40,71,21,C.ctx);
+    }
+    deps.forEach((d,i)=>{
+      const x = 20+i*20;
+      nodes += `<div class="gnode" style="left:${x}%;top:78%;border-color:${C.dep}" data-eid="${d.id}">${icon(FEAT[d.auxType].i,12,FEAT[d.auxType].c)} ${esc(d.name)}<span class="idpill">${fmtId(d)}</span></div>`;
+      edges += line(x+3,72,48,53,C.dep);
+    });
+    if (more>0) nodes += `<div class="gnode" style="left:88%;top:78%;color:var(--ink-3)">+${more} more</div>`;
+    b.innerHTML = `<div class="glegend">
+        <span><i style="background:${C.sel}"></i>Selected</span><span><i style="background:${C.life}"></i>Lifetime Owner</span>
+        <span><i style="background:${C.ctx}"></i>Context Owner</span><span><i style="background:${C.dep}"></i>Dependent</span></div>
+      <div id="graphbody"><svg width="100%" height="100%" style="position:absolute;inset:0">
+        <defs><marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4 0 8z" fill="#5f6879"/></marker></defs>${edges}</svg>${nodes}</div>`;
+  }
+  else { // activity
+    if (!S.actFeed.length){
+      b.innerHTML = `<div class="actempty">No activity yet.<br>Turn on <b>Simulate PIE</b> (top right) to watch spawns, destroys and state changes stream in.<br>Click any row to jump to that entity.</div>`;
+      return;
+    }
+    b.innerHTML = `<div data-note-t="activity">` + S.actFeed.slice(0,200).map(a=>
+      `<div class="actrow" data-eid="${a.eid}"><span class="t">${a.t}</span><span class="k ${a.k}">${a.k==='sp'?'+':a.k==='de'?'−':'Δ'}</span><span class="txt">${a.txt}</span></div>`).join('')+`</div>`;
+  }
+}
+
+/* =====================================================================
+   INSPECTOR
+   ===================================================================== */
+function inspRow(k,v,cls=''){ return `<div class="kv"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`; }
+function inspSection(featId, title, rowsHtml, open=true){
+  const f = FEAT[featId];
+  return `<div class="isec"><header data-isec>
+      ${f?`<span class="bdg" style="color:${f.c}">${icon(f.i,10)}</span>`:''}${title}<span class="tw">▾</span></header>
+    <div class="rows">${rowsHtml}</div></div>`;
+}
+function entPill(e){ return e?`<button class="entpill" data-eid="${e.id}">${esc(e.name)} · ${fmtId(e)}</button>`:'—'; }
+
+function renderInspector(){
+  const wrap = $('#insp');
+  const e = E.get(S.selected);
+  $('#insp-count').textContent = e ? '1 selected' : '';
+  if (!e){ wrap.innerHTML = `<div class="iempty">${icon('search',26,'#5f6879')}<br>Select an entity in the tree,<br>or click an archetype card in Overview.</div>`; return; }
+  const a = ARCH[e.arch];
+  let h = `<div class="ihdr">${icon(e.aux?FEAT[e.auxType].i:(a?.kind||'cube'),17,e.aux?FEAT[e.auxType].c:archColor(e))}
+    <span class="inm" data-tip="<code>${esc(e.raw)}</code>">${esc(e.name)}</span>
+    <button class="pinbtn${S.pinned.has(e.id)?' pinned':''}" data-pin="${e.id}" style="display:flex">${icon('pin',12)}</button></div>`;
+
+  h += inspSection(null,'Entity Info',
+    inspRow('Name', esc(e.name)) +
+    inspRow('Raw Name', `<span class="mono" style="font-family:var(--mono);font-size:11px;color:var(--ink-2)">${esc(e.raw)}</span>`) +
+    inspRow('ID', `<span class="mono">${fmtId(e)}</span>`) +
+    inspRow('Class', e.aux?'internal · '+FEAT[e.auxType].l : (a?.family||'—')));
+  h += inspSection('transform','Transform',
+    inspRow('Location','X:0.00  Y:0.00  Z:92.00') + inspRow('Rotation','P:0.00  Y:0.00  R:-0.00') + inspRow('Scale','X:1.00  Y:1.00  Z:1.00'));
+  if (e.feats.includes('net'))
+    h += inspSection('net','Network',
+      inspRow('NetMode','Client and Host') +
+      inspRow('NetRole', e.netRole==='auth'?'<span class="st-auth">Authority</span>':'SimulatedProxy'));
+  h += inspSection(null,'Relationships',
+    inspRow('Lifetime Owner', entPill(e.parent) ) +
+    inspRow('Context Owner', e.aux ? entPill(e.parent) : entPill(e)) +
+    (e.internals.length ? inspRow('Dependents', `${e.internals.length} internal entities`) : ''));
+
+  if (e.feats.includes('statemachine')){
+    const since = e.smSince ? Math.max(0,(Date.now()-e.smSince)/1000) : 12.4;
+    h += inspSection('statemachine','State Machine',
+      inspRow('Current State', `<b>${e.smState||'Idle'}</b>`) +
+      inspRow('Time in State', `<span class="mono" data-live="smtime">${since.toFixed(1)}s</span>`) +
+      inspRow('Transitions', `<span class="mono">${e.smCount??17}</span>`));
+  }
+  const ATTRVALS = {Health:[100,100], Patience:[62,100], WalkSpeed:[420,600], Stamina:[80,100]};
+  const attrEnts = e.internals.filter(a=>a.auxType==='attr');
+  if (attrEnts.length){
+    const bar=(n,v,m,id)=>inspRow(`<button class="entpill" data-eid="${id}" style="border:none;padding:0;background:none">${n}</button>`,
+      `<span class="attrbar"><span class="tr"><span class="fl" style="width:${v/m*100}%"></span></span><span class="num">${v} / ${m}</span></span>`);
+    h += inspSection('attr','Float Attributes',
+      attrEnts.map(a=>{ const [v,m]=ATTRVALS[a.name]||[50,100]; return bar(a.name,v,m,a.id); }).join(''));
+  }
+  if (e.auxType==='attr'){
+    const [v,m]=ATTRVALS[e.name]||[50,100];
+    h += inspSection('attr','Float Attribute',
+      inspRow('Base',`<span class="mono">${v}.00</span>`)+
+      inspRow('Final',`<span class="mono">${v}.00</span>`)+
+      inspRow('Modifiers','0 revocable · 0 not-revocable'));
+  }
+  if (e.feats.includes('aggro'))
+    h += inspSection('aggro','Aggro', inspRow('Best Target','—')+inspRow('Aggro Score','<span class="mono">0.00</span>'));
+  if (e.feats.includes('perception'))
+    h += inspSection('perception','Perception', inspRow('Sight Stimuli','<span class="mono">3 in range</span>')+inspRow('Last Seen', entPill(p1)));
+  if (e.auxType==='timer' || e.feats.includes('timer') && e.aux)
+    h += inspSection('timer','Timer',
+      inspRow('State', S.sim?'<span class="st-ok">Counting Down</span>':'Paused') +
+      inspRow('Remaining', `<span class="mono" data-live="timer">3.42s</span>`) +
+      inspRow('Behavior','StopOnDone'));
+  if (e.auxType==='scenenode')
+    h += inspSection('scenenode','Scene Node',
+      inspRow('Attached To', entPill(e.parent)) + inspRow('Socket','None') + inspRow('Relative', 'X:0 Y:0 Z:40'));
+  if (e.internals.length && S.viewMode==='concept'){
+    const rows = internSummary(e).map(([ft,n])=>
+      inspRow(FEAT[ft].l, `<span class="mono">${n}×</span>`)).join('');
+    h += inspSection(null,'Internals', rows);
+  }
+  wrap.innerHTML = h;
+}
+
+/* =====================================================================
+   SIMULATION
+   ===================================================================== */
+const nowT = () => { const d=new Date(); return d.toTimeString().slice(0,8); };
+function pushAct(k, eid, txt){
+  S.actFeed.unshift({t:nowT(), k, eid, txt});
+  if (S.actFeed.length>300) S.actFeed.length = 300;
+  if (S.ctab!=='activity'){ S.actUnseen++; const b=$('#actbadge'); b.style.display='block'; b.textContent = S.actUnseen>99?'99+':S.actUnseen; }
+}
+function simTick(){
+  let sp=0, de=0;
+  for (const archId of ['projectile','poof']){
+    const a = ARCH[archId];
+    const nSpawn = Math.random()<0.75 ? Math.floor(Math.random()*3) : 0;
+    for (let i=0;i<nSpawn;i++){
+      if (a.insts.filter(x=>!S.dying.has(x.id)).length>18) break;
+      const e = spawn(archId); ROOTS.push(e);
+      S.flashIn.add(e.id); sp++; sp += e.internals.length;
+      pushAct('sp', e.id, `<b>${e.name}</b> ${fmtId(e)} spawned`);
+    }
+    const alive = a.insts.filter(x=>!S.dying.has(x.id));
+    const nKill = alive.length>4 && Math.random()<0.7 ? Math.floor(Math.random()*3) : 0;
+    for (let i=0;i<nKill;i++){
+      const v = alive[Math.floor(Math.random()*alive.length)];
+      if (!v || S.dying.has(v.id)) continue;
+      S.dying.set(v.id, Date.now()); de++; de += v.internals.length;
+      pushAct('de', v.id, `<b>${v.name}</b> ${fmtId(v)} destroyed`);
+      setTimeout(()=>{
+        a.insts = a.insts.filter(x=>x!==v);
+        const ri = ROOTS.indexOf(v); if (ri>=0) ROOTS.splice(ri,1);
+        E.delete(v.id); v.internals.forEach(x=>E.delete(x.id));
+        S.dying.delete(v.id);
+        scheduleRender();
+      }, 700);
+    }
+  }
+  // NPC state churn
+  const npcs = ARCH.npc.insts;
+  for (let i=0;i<3+Math.floor(Math.random()*5);i++){
+    const n = npcs[Math.floor(Math.random()*npcs.length)];
+    const to = NPC_STATES[Math.floor(Math.random()*NPC_STATES.length)];
+    if (to===n.smState) continue;
+    pushAct('ch', n.id, `<b>${n.name}</b> ${fmtId(n)} state <b>${n.smState} → ${to}</b>`);
+    n.smState = to; n.smSince = Date.now(); n.smCount = (n.smCount??17)+1;
+  }
+  S.churn = {sp, de};
+  // history buffers
+  for (const a of Object.values(ARCH)){ a.hist.push(a.insts.filter(x=>!S.dying.has(x.id)).length); if (a.hist.length>60) a.hist.shift(); }
+  TOTAL_HIST.push(totalEntities()); if (TOTAL_HIST.length>60) TOTAL_HIST.shift();
+  scheduleRender();
+}
+let renderQueued = false;
+function scheduleRender(){
+  if (renderQueued) return; renderQueued = true;
+  requestAnimationFrame(()=>{ renderQueued=false; renderAll(); });
+}
+function uiTick(){
+  // cheap live values without full re-render
+  document.querySelectorAll('[data-live="timer"]').forEach(el=>{
+    el.textContent = (Math.max(0.01,(3.42 - (Date.now()%3420)/1000))).toFixed(2)+'s';
+  });
+  const e = E.get(S.selected);
+  if (e?.smSince) document.querySelectorAll('[data-live="smtime"]').forEach(el=>{
+    el.textContent = ((Date.now()-e.smSince)/1000).toFixed(1)+'s';
+  });
+}
+
+/* =====================================================================
+   DESIGN NOTES
+   ===================================================================== */
+const NOTES = [
+  {n:1, t:'compare', h:'Today ⇄ Concept, one switch',
+   p:'Flip to <b>Today</b> to see the current debugger faithfully: raw constructor-nested names, every plumbing entity as a real row, no grouping. Flip back to see the same 1,000+ entities become ~15 calm rows. Every idea below composes toward that delta.',
+   k:'Pure presentation — zero changes to the ECS or fragments.'},
+  {n:2, t:'fold', h:'Internals fold into their owner',
+   p:'Timers, scene nodes and probes are <i>implementation plumbing</i> of a feature, not things you scan for. They collapse into a <b>⊞ N</b> chip on their owner\'s row — click to peek, with plumbing grouped by type ("Timer ×2"). A toolbar toggle reveals everything when you really are debugging a timer.',
+   k:'Classify at tree-build: an entity whose LifetimeOwner relationship came from a feature\'s sub-entity spawn is "internal". Cheap heuristic to start: name-pattern + single-feature signature via <code>FCkDebuggerInspectorRegistry::Test()</code>.'},
+  {n:3, t:'group', h:'Identical siblings coalesce into ×N',
+   p:'118 NPC_Shopper entities are one row: <b>NPC_Shopper_Behavior ×118</b>. Expand on demand; a live count badge pulses on spawn/destroy. Filtering looks <i>inside</i> groups and reports "3 match". This is the only thing that keeps 5,000 entities scannable.',
+   k:'Group key = archetype (cleaned base name + feature signature). Same-key siblings >2 collapse.'},
+  {n:4, t:'badges', h:'One icon language for features',
+   p:'Every inspector gets a glyph + color. Rows show the entity\'s feature badges; the rail, archetype cards and inspector section headers reuse the exact same chips — learn once, read everywhere.',
+   k:'<code>FCkDebuggerModel_InspectorFilter</code> already assigns per-inspector badge colors; extend the metadata with an icon brush and reuse the existing registry.'},
+  {n:5, t:'identity', h:'Entities render as what they are',
+   p:'An entity that is <i>only</i> a scene node is drawn as a scene node — its feature icon replaces the generic dot, and its name simplifies to the role. The pawn renders as a pawn, a cube prop as a cube. Scanning becomes shape-recognition instead of reading.',
+   k:'Dominant feature = highest-priority matching inspector (sort priority already exists).'},
+  {n:6, t:'names', h:'Computed names, not raw dumps',
+   p:'"SceneNode(Cube_ECk_SceneNode(Cube_EC…" tells you nothing at 40 characters. The concept derives <b>role + context</b>: "Scene Node" under its owner, "Timer — Attack Cooldown" when named, dimmed <i>"(unnamed)"</i> when not — a gentle nudge to name the important ones. Raw name stays in tooltip + Copy + inspector.',
+   k:'Extends the existing <code>ck::DebugNameClean</code> strip-pattern pipeline.'},
+  {n:7, t:'query', h:'A query bar, not just a string match',
+   p:'<code>has:timer</code>, <code>is:aux</code>, <code>net:proxy</code>, <code>id:235</code>, <code>arch:cube</code> compose with fuzzy text. Filter narrows, Highlight (kept from today) dims non-matches. Groups auto-expand to show the survivors.',
+   k:'Tokens map onto machinery that already exists: registry Test(), net utils, entity IDs.'},
+  {n:8, t:'rail', h:'Feature rail = population at a glance + one-click filter',
+   p:'Chips show every feature present in the world with live counts — an instant census. Click to require, click again to exclude (line-through), again to clear. It\'s the existing inspector-filter popover, promoted to a first-class visible surface.',
+   k:'Same <code>InspectorFilter</code> model — include/exclude sets already exist there.'},
+  {n:9, t:'pins', h:'Pinned & Recent sections',
+   p:'Pin the 3 entities you\'re actually debugging; they stay at the top across refreshes (and could persist across PIE runs by re-resolving name+archetype). Recent tracks your selection history automatically.',
+   k:'Selection history already lives in <code>FCkDebuggerModel_EntitySelection</code>.'},
+  {n:10, t:'overview', h:'Overview = archetype map; Activity = churn as signal',
+   p:'The center pane earns its keep: population by family, one card per archetype with count + sparkline — click to drill into the tree. With <b>Simulate PIE</b> on, spawns flash green, destroys fade red, and the <b>Activity</b> tab streams spawn/destroy/state events with click-to-jump. "What just happened?" gets an answer.',
+   k:'Counts come from the existing entity cache; events need a small spawn/destroy hook in the world model.'},
+  {n:11, t:'hasbadges', h:'IS a feature vs HAS a feature',
+   p:'Solid badge = the fragment is <i>on this entity</i>. Hollow badge with a count = the feature lives on the entity\'s <i>internal sub-entities</i> — the Player shows a hollow <b>Attributes ×3</b> even though Health/Patience/WalkSpeed are separate entities underneath. The hierarchy\'s capabilities read on the owner row without expanding anything. Queries follow the same split: <code>is:attr</code> (carries it) vs <code>has:attr</code> (anywhere in its internals).',
+   k:'Rollup computed once per tree rebuild, bottom-up over internals; stops at gameplay-entity boundaries so a Station doesn\'t claim its Display\'s timers.'},
+  {n:12, t:'customarch', h:'Game-defined archetypes (Rewind99 Shelf)',
+   p:'The <b>R99_Shelf</b> rows and Overview card carry a bespoke shelf icon and a GAME tag: games register their own archetypes — a named amalgamation of features + icon + color. From C++ as a typed struct of typesafe handles with a generated TryCast (<code>CK_DEFINE_ARCHETYPE</code>), or from AngelScript as an asset definition. Registered archetypes beat name-inference for grouping, icons, cards and <code>arch:</code> queries.',
+   k:'Descriptor + registry as a framework primitive (CkEcs home proposed), consumed by this debugger and later the overlay; matcher = feature set + optional gameplay label.'},
+];
+function renderNotes(){
+  $('#noteslist').innerHTML =
+    `<div class="intro">Twelve composable ideas for taming ${totalEntities().toLocaleString()}+ entities. <b>Hover a card</b> to spotlight where it lives in the mockup; everything here is interactive — try the toggles, the query bar, the simulation.</div>` +
+    NOTES.map(n=>`<div class="note" data-note="${n.n}"><div class="nh"><span class="nn">${n.n}</span><h4>${n.h}</h4></div><p>${n.p}</p><div class="hook">Builds on: <span>${n.k}</span></div></div>`).join('');
+}
+function notePins(on){
+  document.querySelectorAll('.notepin').forEach(p=>p.remove());
+  document.querySelectorAll('.note-target').forEach(t=>t.classList.remove('note-target'));
+  if (!on) return;
+  const anchors = {
+    compare:$('#conceptbar .seg'), fold:$('#lenses'), group:$('#lenses'),
+    badges:$('#featrail'), identity:$('#treewrap'), names:$('#treewrap'),
+    query:$('#querywrap'), rail:$('#featrail'), pins:$('#treewrap'), overview:$('#center'), activity:$('#center'),
+    hasbadges:$('#treewrap'), customarch:$('#center'),
+  };
+  const seen = new Set();
+  for (const n of NOTES){
+    const el = anchors[n.t]; if (!el || seen.has(el)) continue; seen.add(el);
+    el.classList.add('note-target');
+    const pin = document.createElement('span');
+    pin.className='notepin'; pin.textContent=n.n; pin.style.top='-7px'; pin.style.right='-4px';
+    pin.dataset.gotonote = n.n; pin.setAttribute('role','button'); pin.tabIndex = 0;
+    el.appendChild(pin);
+  }
+}
+function spotlight(t, on){
+  const anchors = {
+    compare:'#conceptbar .seg', fold:'#btn-internals', group:'#btn-group',
+    badges:'#featrail', identity:'#treewrap', names:'#treewrap',
+    query:'#querywrap', rail:'#featrail', pins:'#treewrap', overview:'#center', activity:'#center',
+    hasbadges:'#treewrap', customarch:'#center',
+  };
+  const el = document.querySelector(anchors[t]); if (!el) return;
+  el.classList.toggle('note-glow', on);
+}
+
+/* =====================================================================
+   TOP-LEVEL RENDER + EVENTS
+   ===================================================================== */
+function renderAll(){
+  renderRail();
+  renderTree();
+  renderCenter();
+  renderInspector();
+  syncChrome();
+  if (S.notes) notePins(true);
+}
+function syncChrome(){
+  $('#vm-today').classList.toggle('on', S.viewMode==='today');
+  $('#vm-concept').classList.toggle('on', S.viewMode==='concept');
+  $('#btn-group').classList.toggle('on', S.group);
+  $('#btn-internals').classList.toggle('on', S.foldInternals);
+  $('#btn-group').style.display = S.viewMode==='concept'?'':'none';
+  $('#btn-internals').style.display = S.viewMode==='concept'?'':'none';
+  document.querySelectorAll('.lens').forEach(l=>{
+    l.classList.toggle('on', l.dataset.lens===S.lens);
+    if (l.dataset.lens==='arch') l.style.display = S.viewMode==='concept'?'':'none';
+  });
+  $('#btn-sim').classList.toggle('active', S.sim);
+  $('#btn-sim').classList.toggle('rec', S.sim);
+  $('#btn-notes').classList.toggle('active', S.notes);
+}
+function select(id, pushRecent=true){
+  S.selected = id;
+  if (pushRecent && id!=null){
+    S.recent = [id, ...S.recent.filter(x=>x!==id)].slice(0,8);
+  }
+  renderAll();
+}
+
+document.addEventListener('click', ev=>{
+  const t = ev.target.closest('[data-eid],[data-gid],[data-sect],[data-int],[data-iag],[data-rail],[data-pin],[data-arch],[data-showall],[data-gotonote],[data-isec],.note');
+  if (!t) return;
+  if (t.dataset.pin){ ev.stopPropagation(); const id=+t.dataset.pin; S.pinned.has(id)?S.pinned.delete(id):S.pinned.add(id); renderAll(); return; }
+  if (t.dataset.int){ ev.stopPropagation(); const k='i:'+t.dataset.int; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll(); return; }
+  if (t.dataset.iag){ const k=t.dataset.iag; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll(); return; }
+  if (t.dataset.sect){ const k='s:'+t.dataset.sect; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll(); return; }
+  if (t.dataset.gid){ const k='g:'+t.dataset.gid; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll(); return; }
+  if (t.dataset.showall){ S.expanded.add('gall:'+t.dataset.showall); renderAll(); return; }
+  if (t.dataset.rail){
+    const f = t.dataset.rail;
+    if (S.railInc.has(f)){ S.railInc.delete(f); S.railExc.add(f); }
+    else if (S.railExc.has(f)){ S.railExc.delete(f); }
+    else S.railInc.add(f);
+    renderAll(); return;
+  }
+  if (t.dataset.arch){
+    const a = ARCH[t.dataset.arch];
+    S.filter = 'arch:'+a.name.split('_')[0].toLowerCase();
+    $('#q-filter').value = S.filter;
+    S.lens='hier'; S.expanded.add('g:'+a.id);
+    renderAll(); return;
+  }
+  if (t.dataset.gotonote){
+    S.notes = true; $('#notesdrawer').classList.add('open'); renderNotes(); syncChrome();
+    const card = document.querySelector(`.note[data-note="${t.dataset.gotonote}"]`);
+    card?.scrollIntoView({block:'center'}); card?.classList.add('hot');
+    setTimeout(()=>card?.classList.remove('hot'), 1600);
+    return;
+  }
+  if (t.classList.contains('note')) return;
+  if (t.dataset.isec!==undefined){ const rows=t.parentElement.querySelector('.rows'); if(rows) rows.style.display=rows.style.display==='none'?'':'none'; return; }
+  if (t.dataset.eid){
+    const id = +t.dataset.eid;
+    const row = ev.target.closest('.row');
+    if (row && childCount(E.get(id)||{children:[],internals:[]})>0 && ev.target.closest('.tw')){
+      const k='e:'+id; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll(); return;
+    }
+    select(id); return;
+  }
+});
+treewrap.addEventListener('dblclick', ev=>{
+  const row = ev.target.closest('.row[data-eid]'); if (!row) return;
+  const k='e:'+row.dataset.eid; S.expanded.has(k)?S.expanded.delete(k):S.expanded.add(k); renderAll();
+});
+
+$('#q-filter').addEventListener('input', e=>{ S.filter = e.target.value; renderTree(); });
+$('#q-highlight').addEventListener('input', e=>{ S.highlight = e.target.value; renderTree(); });
+$('#q-help').addEventListener('click', ()=> $('#qhelp-pop').classList.toggle('open'));
+$('#qhelp-pop').addEventListener('click', ev=>{
+  const c = ev.target.closest('code'); if (!c) return;
+  $('#q-filter').value = S.filter = c.textContent + ' ';
+  $('#qhelp-pop').classList.remove('open'); $('#q-filter').focus(); renderTree();
+});
+document.addEventListener('click', ev=>{
+  if (!ev.target.closest('#querywrap')) $('#qhelp-pop').classList.remove('open');
+}, true);
+document.addEventListener('click', ev=>{
+  const rc = ev.target.closest('#rail-clear'); if (!rc) return;
+  S.railInc.clear(); S.railExc.clear(); renderAll();
+});
+
+document.querySelectorAll('.lens').forEach(l=>l.addEventListener('click', ()=>{ S.lens=l.dataset.lens; renderAll(); }));
+document.querySelectorAll('.ctab').forEach(t=>t.addEventListener('click', ()=>{ S.ctab=t.dataset.ctab; renderCenter(); }));
+$('#btn-group').addEventListener('click', ()=>{ S.group=!S.group; renderAll(); });
+$('#btn-internals').addEventListener('click', ()=>{ S.foldInternals=!S.foldInternals; renderAll(); });
+$('#vm-today').addEventListener('click', ()=>{ S.viewMode='today'; renderAll(); });
+$('#vm-concept').addEventListener('click', ()=>{ S.viewMode='concept'; renderAll(); });
+$('#btn-sim').addEventListener('click', ()=>{
+  S.sim = !S.sim;
+  if (S.sim){ S.simTimer=setInterval(simTick,1100); S.uiTimer=setInterval(uiTick,250); }
+  else { clearInterval(S.simTimer); clearInterval(S.uiTimer); S.churn={sp:0,de:0}; }
+  renderAll();
+});
+$('#btn-notes').addEventListener('click', ()=>{
+  S.notes = !S.notes;
+  $('#notesdrawer').classList.toggle('open', S.notes);
+  if (S.notes) renderNotes();
+  notePins(S.notes); syncChrome();
+});
+$('#notes-close').addEventListener('click', ()=>{ S.notes=false; $('#notesdrawer').classList.remove('open'); notePins(false); syncChrome(); });
+$('#noteslist')?.addEventListener('mouseover', ev=>{});
+document.addEventListener('mouseover', ev=>{
+  const card = ev.target.closest('.note');
+  if (card){ const n = NOTES.find(x=>x.n==card.dataset.note); if (n) spotlight(n.t, true); }
+});
+document.addEventListener('mouseout', ev=>{
+  const card = ev.target.closest('.note');
+  if (card){ const n = NOTES.find(x=>x.n==card.dataset.note); if (n) spotlight(n.t, false); }
+});
+
+/* tooltips */
+const tip = $('#tip');
+document.addEventListener('mouseover', ev=>{
+  const t = ev.target.closest('[data-tip],[data-enttip]');
+  if (!t){ tip.style.display='none'; return; }
+  let html = t.dataset.tip || '';
+  if (t.dataset.enttip){
+    const e = E.get(+t.dataset.enttip); if (!e) return;
+    const roll = Object.entries(rollupOf(e));
+    html = `<b>${esc(e.name)}</b> · <code>${fmtId(e)}</code><br><code>${esc(e.raw)}</code>`+
+      `<div class="tfeat">${e.feats.map(f=>`<span><span style="color:${FEAT[f].c};display:flex">${icon(FEAT[f].i,9)}</span>${FEAT[f].l}</span>`).join('')}</div>`+
+      (roll.length ? `<div class="tfeat">${roll.map(([f,n])=>`<span style="border-style:dashed"><span style="color:${FEAT[f].c};display:flex">${icon(FEAT[f].i,9)}</span>has ${FEAT[f].l} ×${n}</span>`).join('')}</div>` : '');
+  }
+  if (!html) return;
+  tip.innerHTML = html; tip.style.display='block';
+  const r = t.getBoundingClientRect();
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let x = Math.min(r.left, innerWidth-tw-12), y = r.bottom+8;
+  if (y+th > innerHeight-8) y = r.top-th-8;
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+});
+
+/* boot */
+$('#ws-ic').innerHTML = icon('world',13,'#8fa0b8');
+$('#q-ic').innerHTML = icon('search',12);
+$('#h-ic').innerHTML = icon('hl',12);
+select(p1.id, false);
+S.recent = [];
+renderAll();
+</script>

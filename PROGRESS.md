@@ -91,13 +91,59 @@ Remaining without glyphs (need new SVGs or a mapping decision, Phase 2): EntityI
 Relationships, DynamicFragments, EntityCollections, Tween, Physics, Shapes, OverlapBody,
 Resolver, AStar, UI, MontagePlayer, AnimPlans.
 
-## Next up — Phase A (CkFoundation/CkEcs; fresh session recommended)
+## Phase A — IN PROGRESS (CkFoundation/CkEcs), design locked 2026-07-10
 
-1. Read CkEcs module Claude.md + `ck-methodology` skill (doc-set naming for CkFoundation work).
-2. Verify EnTT 3.16 storage signals under global `in_place_delete=true` (vendored entt-3.16.0).
-3. Feature-flag bit cache (registry-ctx table, signal-maintained, cvar-gated) + seed scan.
-4. Archetype descriptor + registry + `UCk_ArchetypeDefinition` + AS test asset.
-5. Automation specs for both. Commits stay in CkFoundation's dev.
+**Recon resolved (all cited first-hand):**
+- ✅ EnTT sinks: `registry.hpp:1022/:1070` (`on_construct/on_destroy<T>()`);
+  `mixin.hpp:79-99` publishes destruction on the in-place branches → tombstone trait does
+  NOT disable signals. Unknown #1 CLOSED.
+- `FCk_Registry` = non-owning view; raw entt registry via
+  `ck::registry_table::Resolve(FCk_RegistryHandle)` (public, `CkRegistry_SlotTable.h:61`);
+  `EnttRegistryType = entt::basic_registry<FCk_Entity::IdType,...>` (`:17`).
+  Ctx pattern: `namespace ck { struct FCtx_X {...}; }` + `SetContext/GetContext/TryGetContext`.
+- Handle→registry: `Get_Registry` was RENAMED (view semantics, `CkHandle.h:273`) — resolve
+  registry via the handle's registry view or `UCk_EcsWorld_Subsystem_UE::Get_Registry()`.
+- Specs home: `CkTests/Source/CkTests/Private/UnitTests/*.spec.cpp` (in-module `.spec.cpp`
+  are EMPTY placeholders — do not copy them). New spec needs touch+rebuild relink.
+- entt include style: `#include "entt/entity/registry.hpp"`.
+
+**Design (locked):**
+- `CkEcs/Public/CkEcs/DebugFeatureFlags/` — `ck::FCtx_DebugFeatureFlags` (uint64 row per
+  entity index, grows on demand; rows self-clear because each feature's `on_destroy` fires
+  on fragment remove AND entity destroy). Global connector registry:
+  `ck::debug_feature_flags::RegisterFlag<TFragment>(FeatureId)` (≤64 flags, ensure on
+  overflow); per-bit `FBitListener` instances stored in ctx and connected as entt sink
+  payloads (sinks don't take capturing lambdas). Enable(reg) = connect + O(n) seed via
+  `view<T>()`; Disable = disconnect + drop ctx. BP/AS surface:
+  `UCk_Utils_DebugFeatureFlags_UE` (Request_Enable/Disable, Get_IsEnabled, Get_Flags→int64,
+  Get_HasFeature, Get_BitIndex).
+- **Feature→fragment registration lives DEBUGGER-side** (CkEcsDebugger startup registers
+  ~20 marker fragments; CkEcs stays feature-agnostic — tier rule: CkEcs (T2) cannot see
+  T4 feature modules). Phase A ships mechanism + specs with test-local fragment types.
+- `CkEcs/Public/CkEcs/Archetype/` — `FCk_ArchetypeDescriptor` (Name, DisplayName,
+  FeatureIds:FName[], RequiredLabel:FName — label MATCHING is consumer-side, CkEcs can't
+  dep CkLabel (T2→T2 sibling, inverted dep), NamePattern, IconSvgPath, Color, Priority,
+  optional native matcher fn), `FCk_ArchetypeRegistry` (static; Register/Unregister/Find/
+  Get_All/TryGet_BestMatch using flag-cache bits for FeatureIds), `UCk_ArchetypeDefinition`
+  UDataAsset (BPNE `Get_FeatureIds`), `UCk_Utils_Archetype_UE` (BP/AS surface).
+- AS test asset (authoring validation): CkTests `Script/` — with the archetype phase gate.
+- `CK_DEFINE_ARCHETYPE` typed struct = Phase B, untouched.
+
+**RESULT — Phase A gate GREEN (2026-07-10):**
+- `CkEcs/DebugFeatureFlags/` (4 files) + `CkEcs/Archetype/` (6 files) build green.
+  One compile iteration: entt::any (ctx backing) requires copy-constructible payloads →
+  move-only sink listeners/connections live behind `TSharedPtr<FImpl>` in the ctx struct.
+- Specs 4/4: `Ck.DebugFeatureFlags.{RegisterEnableSeedAndLiveBits,
+  IdempotentRegisterAndUnknownQueries}` + `Ck.Archetype.{RegisterFindReplaceUnregister,
+  MatchingViaFlagCacheAndNativeMatcher}` (CkTests/Private/UnitTests). Behaviorally proves
+  sinks fire under in_place_delete: seed scan, live bits, erase/destroy clearing.
+- AS authoring VALIDATED: `CkTests/Script/CkEcs/CkArchetype_AuthoringValidation.as`
+  (`asset X of UCk_ArchetypeDefinition` + `FeatureIds.Add(n"...")`) compiles clean at
+  editor boot. **Spec §3.3 amended**: plain TArray UPROPERTY + imperative `.Add()`
+  (the UCkDynamic_HandleDefinition pattern) — the BPNE accessor was unnecessary.
+- Feature→fragment flag registration (the ~20 markers) is Phase 1, debugger-side.
+- Phase B note: native matcher param on `ck::archetype_registry::Register` is the
+  `CK_DEFINE_ARCHETYPE` TryCast hook.
 
 ## Session log
 

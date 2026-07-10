@@ -96,33 +96,24 @@ Query: `has:x` matches own ∪ rollup; `is:x` matches own only.
   `UCkAssetRegistryConfig` pattern) — no manual registration call.
 
   **AngelScript authoring is the primary path for game archetypes** (a game's archetypes
-  are expected to live entirely in its `Script/` folder). `Get_FeatureIds` is deliberately
-  a `BlueprintNativeEvent` accessor rather than a plain `TArray` UPROPERTY because AS
-  cannot brace-initialize TArray defaults — overriding imperatively is the codebase's
-  established workaround:
+  are expected to live entirely in its `Script/` folder). `FeatureIds` is a plain
+  `TArray<FName>` UPROPERTY populated imperatively in the asset block — the exact shape
+  `UCkDynamic_HandleDefinition` already documents and ships (its `RequiredFragments.Add(...)`
+  usage), so no BPNE accessor is needed:
 
   ```angelscript
   // Rewind99/Script/Archetypes/R99_Archetypes.as
-  class UR99_Archetype_Shelf : UCk_ArchetypeDefinition
+  asset R99_Archetype_Shelf of UCk_ArchetypeDefinition
   {
-      default Name        = n"Rewind99.Shelf";
-      default DisplayName = "Shelf";
-      default IconSvgPath = "Icons/Shelf.svg";   // resolved against the game plugin's Resources/
-      default Color       = FLinearColor(0.85f, 0.65f, 0.28f);
-      default Priority    = 10;
-
-      UFUNCTION(BlueprintOverride)
-      TArray<FName> Get_FeatureIds() const
-      {
-          TArray<FName> Features;
-          Features.Add(n"Transform");
-          Features.Add(n"Inventory");
-          Features.Add(n"GameplayLabel");
-          return Features;
-      }
+      Name        = n"Rewind99.Shelf";
+      DisplayName = FText::FromString("Shelf");
+      FeatureIds.Add(n"Transform");
+      FeatureIds.Add(n"Inventory");
+      FeatureIds.Add(n"Label");
+      IconSvgPath = "Icons/Shelf.svg";   // resolved against the game plugin's Resources/
+      Color       = FLinearColor(0.85f, 0.65f, 0.28f);
+      Priority    = 10;
   }
-
-  asset R99_Archetype_Shelf_DA of UR99_Archetype_Shelf {}
   ```
 
   AS code can also query at runtime (`utils_archetype::Get_Matches(Entity,

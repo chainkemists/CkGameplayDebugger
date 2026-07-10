@@ -22,12 +22,20 @@ public:
 		, _StatusPillText(FText::GetEmpty())
 		, _StatusPillTone(ECk_Tone::Neutral)
 		, _StartExpanded(true)
+		, _IconBrush(nullptr)
+		, _IconColor(FLinearColor::White)
 	{}
 		SLATE_ARGUMENT(FText, Title)
 		SLATE_ARGUMENT(FText, CountText)
 		SLATE_ARGUMENT(FText, StatusPillText)
 		SLATE_ARGUMENT(ECk_Tone, StatusPillTone)
 		SLATE_ARGUMENT(bool, StartExpanded)
+
+		// Optional feature glyph rendered before the title, tinted with IconColor
+		// (the debugger-wide icon language; nullptr = no glyph, header unchanged).
+		SLATE_ARGUMENT(const FSlateBrush*, IconBrush)
+		SLATE_ARGUMENT(FLinearColor, IconColor)
+
 		SLATE_EVENT(FOnCkDebugInspectorToggled, OnToggled)
 
 		SLATE_NAMED_SLOT(FArguments, Body)
@@ -61,6 +69,9 @@ private:
 	FText _CountText;
 	FText _StatusPillText;
 	ECk_Tone _StatusPillTone = ECk_Tone::Neutral;
+
+	const FSlateBrush* _IconBrush = nullptr;
+	FLinearColor _IconColor = FLinearColor::White;
 };
 
 // ====================================================================================================================

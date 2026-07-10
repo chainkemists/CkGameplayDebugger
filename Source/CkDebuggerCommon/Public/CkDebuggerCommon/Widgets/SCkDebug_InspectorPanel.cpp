@@ -2,6 +2,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -21,6 +22,8 @@ auto
 	_CountText = InArgs._CountText;
 	_StatusPillText = InArgs._StatusPillText;
 	_StatusPillTone = InArgs._StatusPillTone;
+	_IconBrush = InArgs._IconBrush;
+	_IconColor = InArgs._IconColor;
 
 	SAssignNew(_HeaderRow, SHorizontalBox);
 
@@ -76,6 +79,20 @@ auto
 {
 	if (!_HeaderRow.IsValid()) { return; }
 	_HeaderRow->ClearChildren();
+
+	if (_IconBrush != nullptr)
+	{
+		_HeaderRow->AddSlot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+			[
+				SNew(SImage)
+				.Image(_IconBrush)
+				.ColorAndOpacity(FSlateColor(_IconColor))
+				.DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+			];
+	}
 
 	_HeaderRow->AddSlot()
 		.AutoWidth()

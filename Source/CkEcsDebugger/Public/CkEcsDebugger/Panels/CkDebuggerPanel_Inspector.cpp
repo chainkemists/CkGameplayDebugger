@@ -21,6 +21,22 @@
 #include "Widgets/SNullWidget.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+
+namespace ck_debugger_panel_inspector
+{
+    // Feature glyph + accent for an inspector's section header (the debugger-wide
+    // icon language). Nullptr brush = inspector declared no glyph; header unchanged.
+    static auto Get_InspectorIconBrush(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> const FSlateBrush*
+    {
+        return FCkDebuggerStyle::Get_IconBrush(InInspector->Get_IconName());
+    }
+
+    static auto Get_InspectorIconColor(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> FLinearColor
+    {
+        return InInspector->Get_FeatureColor().Get(CkStyle::TextDim());
+    }
+}
+
 SCkDebuggerPanel_Inspector::~SCkDebuggerPanel_Inspector()
 {
     DeactivateAllInspectors();
@@ -403,7 +419,8 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
         FirstSection = false;
     };
 
-    auto AddSection = [&](const FText& InName, const TSharedRef<SWidget>& InContent)
+    auto AddSection = [&](const FText& InName, const TSharedRef<SWidget>& InContent,
+        const FSlateBrush* InIconBrush, const FLinearColor& InIconColor)
     {
         VerticalBox->AddSlot()
             .AutoHeight()
@@ -411,6 +428,8 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
             [
                 SNew(SCkDebug_InspectorPanel)
                 .Title(InName)
+                .IconBrush(InIconBrush)
+                .IconColor(InIconColor)
                 .Body()
                 [
                     SNew(SBox)
@@ -437,7 +456,9 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
             for (const auto& Section : Inspector->Get_InspectorSections(Entity))
             {
                 AddSeparator();
-                AddSection(Section.Name, Section.Widget);
+                AddSection(Section.Name, Section.Widget,
+                    ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector),
+                    ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector));
             }
         }
         else
@@ -500,6 +521,8 @@ auto SCkDebuggerPanel_Inspector::Build_InspectorSection(
 
     return SNew(SCkDebug_InspectorPanel)
         .Title(Inspector->Get_ComponentName())
+        .IconBrush(ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector))
+        .IconColor(ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector))
         .Body()
         [
             BodyContent
@@ -584,6 +607,8 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByInspector(
             [
                 SNew(SCkDebug_InspectorPanel)
                 .Title(Inspector->Get_ComponentName())
+                .IconBrush(ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector))
+                .IconColor(ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector))
                 .CountText(FText::FromString(ck::Format_UE(TEXT("{}"), ApplicableEntities.Num())))
                 .Body()
                 [
@@ -746,8 +771,15 @@ auto SCkDebuggerPanel_Inspector::Build_EntitySubSection(
         _InspectorContentContainers.Add(TPair<int32, int32>(OuterIndex, InnerIndex), ContentContainer);
     }
 
+    // Icon only when the header names the inspector (GroupByEntity mode) — in
+    // GroupByInspector mode the sub-section header is the ENTITY's name, and the
+    // outer panel already carries the inspector's glyph.
+    const auto ShowInspectorIcon = _DisplayMode == ECkInspectorDisplayMode::GroupByEntity;
+
     return SNew(SCkDebug_InspectorPanel)
         .Title(HeaderText)
+        .IconBrush(ShowInspectorIcon ? ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector) : nullptr)
+        .IconColor(ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector))
         .Body()
         [
             BodyContent

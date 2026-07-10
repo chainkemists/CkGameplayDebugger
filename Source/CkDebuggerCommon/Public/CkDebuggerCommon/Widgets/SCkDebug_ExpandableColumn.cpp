@@ -2,6 +2,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -41,10 +42,12 @@ auto
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		[
-			SAssignNew(_ChevronText, STextBlock)
-			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody()))
+			// Engine SVG chevrons \u2014 the old text glyphs (\u25BE/\u25B8) render as boxes in
+			// the editor font on some systems.
+			SAssignNew(_ChevronIcon, SImage)
+			.Image(FAppStyle::GetBrush(_IsExpanded ? TEXT("Icons.ChevronDown") : TEXT("Icons.ChevronRight")))
 			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+			.DesiredSizeOverride(FVector2D(12.0f, 12.0f))
 		];
 
 	// Pill (gate tag, etc.) drops to its own row below the title so long
@@ -140,7 +143,7 @@ auto
 	if (_IsExpanded == InExpanded) { return; }
 	_IsExpanded = InExpanded;
 	if (_BodySwitcher.IsValid()) { _BodySwitcher->SetActiveWidgetIndex(_IsExpanded ? 0 : 1); }
-	if (_ChevronText.IsValid())  { _ChevronText->SetText(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8"))); }
+	if (_ChevronIcon.IsValid())  { _ChevronIcon->SetImage(FAppStyle::GetBrush(_IsExpanded ? TEXT("Icons.ChevronDown") : TEXT("Icons.ChevronRight"))); }
 	_OnExpansionChanged.ExecuteIfBound(_IsExpanded);
 }
 

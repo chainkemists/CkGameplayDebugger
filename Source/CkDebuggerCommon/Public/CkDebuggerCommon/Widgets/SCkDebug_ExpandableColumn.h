@@ -52,7 +52,7 @@ private:
 private:
 	bool _IsExpanded = true;
 	TSharedPtr<SWidgetSwitcher> _BodySwitcher;
-	TSharedPtr<class STextBlock> _ChevronText;
+	TSharedPtr<class SImage> _ChevronIcon;
 	FOnCkDebugColumnExpansionChanged _OnExpansionChanged;
 };
 

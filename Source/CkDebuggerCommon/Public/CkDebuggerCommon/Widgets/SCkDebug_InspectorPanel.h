@@ -60,7 +60,7 @@ private:
 
 	TSharedPtr<class SBorder> _BodyBorder;
 	TSharedPtr<class STextBlock> _CountBadge;
-	TSharedPtr<class STextBlock> _ChevronText;
+	TSharedPtr<class SImage> _ChevronIcon;
 
 	TSharedPtr<class SHorizontalBox> _HeaderRow;
 	TSharedPtr<SCkDebug_StatusPill> _StatusPill;

@@ -12,7 +12,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_FloatAttributes)
 
 auto FCkInspector_FloatAttributes::Get_ComponentName() const -> FText
@@ -93,7 +93,7 @@ auto FCkInspector_FloatAttributes::BuildAttributeGrid(const FCk_Handle& Entity, 
 
                 return FText::FromString(Result);
             },
-            CkDebugStyle::Attribute(),
+            CkStyle::Attribute(),
             [WeakSelectionModel, AttributeHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(AttributeHandle))

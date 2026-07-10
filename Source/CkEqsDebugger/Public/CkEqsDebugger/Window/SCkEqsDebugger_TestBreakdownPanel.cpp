@@ -3,10 +3,10 @@
 #include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"   // ECkDebug_Tone full definition (Err / Accent / Ok)
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"   // ECk_Tone full definition (Err / Accent / Ok)
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -27,11 +27,11 @@
 
 namespace
 {
-    auto Tone_FromTest(const FCkEqsDebugger_PerTestInfo& InTest) -> ECkDebug_Tone
+    auto Tone_FromTest(const FCkEqsDebugger_PerTestInfo& InTest) -> ECk_Tone
     {
-        if (NOT InTest.PassedThisTest) { return ECkDebug_Tone::Err; }
-        if (InTest.TestPurpose == ECk_Eqs_TestPurpose::Score) { return ECkDebug_Tone::Accent; }
-        return ECkDebug_Tone::Ok;
+        if (NOT InTest.PassedThisTest) { return ECk_Tone::Err; }
+        if (InTest.TestPurpose == ECk_Eqs_TestPurpose::Score) { return ECk_Tone::Accent; }
+        return ECk_Tone::Ok;
     }
 }
 
@@ -172,7 +172,7 @@ auto
 {
     const auto& T        = *InItem;
     const auto Tone      = Tone_FromTest(T);
-    const auto ToneColor = CkDebugStyle::GetToneColor(Tone);
+    const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto TitleText = ck::Format_UE(TEXT("[{}] {}    ({}, w={:.2f})"),
         T.TestIndex,
@@ -200,7 +200,7 @@ auto
                 .WidthOverride(8.0f).HeightOverride(8.0f)
                 [
                     SNew(SImage)
-                    .Image(CkDebugStyle::GetFilledBrush())
+                    .Image(CkStyle::GetFilledBrush())
                     .ColorAndOpacity(FSlateColor{ToneColor})
                 ]
             ]

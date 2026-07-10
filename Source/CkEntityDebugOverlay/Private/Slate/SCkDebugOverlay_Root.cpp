@@ -8,7 +8,7 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/Layout/SBox.h"
@@ -42,13 +42,13 @@ auto
 
     SAssignNew(_HintsBox, SBorder)
         .Visibility(EVisibility::Collapsed)
-        .BorderImage(CkDebugStyle::GetRoundedBrush())
-        .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.82f))
-        .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+        .BorderImage(CkStyle::GetRoundedBrush())
+        .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f))
+        .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
         [
             SAssignNew(_HintsText, STextBlock)
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
-                .ColorAndOpacity(CkDebugStyle::TextMute())
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(CkStyle::TextMute())
         ];
 
     DoRebuildLayout();
@@ -82,7 +82,7 @@ auto
     // real width (lock ring = 2px each side, card padding = SpaceM each side).
     if (_FocusCard.IsValid())
     {
-        _FocusCard->Set_WrapWidth(_PlateWidth - 4.0f - 2.0f * CkDebugStyle::SpaceM);
+        _FocusCard->Set_WrapWidth(_PlateWidth - 4.0f - 2.0f * CkStyle::SpaceM);
     }
 
     auto HAlign = HAlign_Right;
@@ -230,7 +230,7 @@ auto
     {
         TSharedPtr<SCkDebugOverlay_FocusCard> NewCard;
         SAssignNew(NewCard, SCkDebugOverlay_FocusCard);
-        NewCard->Set_WrapWidth(_PlateWidth - 4.0f - 2.0f * CkDebugStyle::SpaceM);
+        NewCard->Set_WrapWidth(_PlateWidth - 4.0f - 2.0f * CkStyle::SpaceM);
         _PinnedCards.Add(NewCard);
     }
     while (_PinnedCards.Num() > DesiredNum)
@@ -346,14 +346,14 @@ auto
             .Padding(FMargin{ 0.0f, 0.0f, 2.0f, 0.0f })
             [
                 SNew(SBorder)
-                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderImage(CkStyle::GetRoundedBrush())
                     .BorderBackgroundColor(Badge.Color)
                     .VAlign(VAlign_Center)
                     .Padding(FMargin{ 3.0f, 0.0f })
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(Badge.Text))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeMicro()))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
                             .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                     ]
             ];
@@ -367,8 +367,8 @@ auto
         [
             SNew(STextBlock)
                 .Text(InInfo.Header)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
-                .ColorAndOpacity(CkDebugStyle::TextStrong())
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(CkStyle::TextStrong())
         ];
 
     if (InInfo.Badges.Num() > 0)
@@ -390,14 +390,14 @@ auto
 
     return SNew(SBorder)
         .Visibility(EVisibility::HitTestInvisible)
-        .BorderImage(CkDebugStyle::GetRoundedBrush())
+        .BorderImage(CkStyle::GetRoundedBrush())
         .BorderBackgroundColor(RingColor)
         .Padding(FMargin{ InInfo.bIsFocus ? 2.0f : 0.0f })
         [
             SNew(SBorder)
-                .BorderImage(CkDebugStyle::GetRoundedBrush())
-                .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.82f))
-                .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f))
+                .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
                 [
                     Body
                 ]

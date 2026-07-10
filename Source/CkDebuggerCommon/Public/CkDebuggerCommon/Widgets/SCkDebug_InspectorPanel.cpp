@@ -1,6 +1,6 @@
 #include "SCkDebug_InspectorPanel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -30,9 +30,9 @@ auto
 		.OnClicked(this, &SCkDebug_InspectorPanel::OnHeaderClicked)
 		[
 			SNew(SBorder)
-			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			.BorderImage(CkStyle::GetFilledBrush())
+			.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+			.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 			[
 				_HeaderRow.ToSharedRef()
 			]
@@ -83,8 +83,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(_Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -93,12 +93,12 @@ auto
 		_HeaderRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SAssignNew(_CountBadge, STextBlock)
 				.Text(_CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}
 
@@ -107,7 +107,7 @@ auto
 		_HeaderRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SAssignNew(_StatusPill, SCkDebug_StatusPill)
 				.Text(_StatusPillText)
@@ -123,8 +123,8 @@ auto
 		[
 			SAssignNew(_ChevronText, STextBlock)
 			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeH4()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 		];
 }
 
@@ -160,7 +160,7 @@ auto
 
 auto
 	SCkDebug_InspectorPanel::
-	Set_StatusPill(const FText& InText, ECkDebug_Tone InTone)
+	Set_StatusPill(const FText& InText, ECk_Tone InTone)
 	-> void
 {
 	_StatusPillText = InText;

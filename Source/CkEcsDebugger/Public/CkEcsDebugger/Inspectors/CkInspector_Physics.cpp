@@ -12,7 +12,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Physics)
 
@@ -52,7 +52,7 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
             FText::FromString(TEXT("Current:")),
             [Velocity](const FCk_Handle&)
             { return FText::FromString(Velocity.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
     }
 
     // ---- Acceleration ----
@@ -66,7 +66,7 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
             FText::FromString(TEXT("Current:")),
             [Accel](const FCk_Handle&)
             { return FText::FromString(Accel.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
     }
 
     // ---- Predicted Velocity ----
@@ -83,19 +83,19 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
             FText::FromString(TEXT("Velocity:")),
             [CurVel](const FCk_Handle&)
             { return FText::FromString(CurVel.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         Builder.AddRow(
             FText::FromString(TEXT("Prev Location:")),
             [PrevLoc](const FCk_Handle&)
             { return FText::FromString(PrevLoc.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         Builder.AddRow(
             FText::FromString(TEXT("Prev DeltaTime:")),
             [DeltaTime](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.3f s"), DeltaTime.Get_Seconds())); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Euler Integrator ----
@@ -109,7 +109,7 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
             FText::FromString(TEXT("Distance Offset:")),
             [Offset](const FCk_Handle&)
             { return FText::FromString(Offset.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
     }
 
     return Builder.Build(Entity);

@@ -15,7 +15,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_InteractionResolver)
 
 // =====================================================================================================================
@@ -79,7 +79,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         Builder.AddRow(
             FText::FromString(TEXT("Channels:")),
             [ChannelsStr](const FCk_Handle& E) { return FText::FromString(ChannelsStr); },
-            CkDebugStyle::Value_Tag());
+            CkStyle::Value_Tag());
 
         // Distance Sorting
         const auto DistanceSorting = Mapping.Get_DistanceSorting();
@@ -89,7 +89,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
             {
                 return FText::FromString(ck::Format_UE(TEXT("{}"), DistanceSorting));
             },
-            CkDebugStyle::Value_Enum());
+            CkStyle::Value_Enum());
 
         // Max Concurrent
         const auto MaxConcurrent = Mapping.Get_MaxConcurrentInteractions();
@@ -99,7 +99,7 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
             {
                 return FText::FromString(ck::Format_UE(TEXT("{}"), MaxConcurrent));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         // Best Targets — live badge box stored for in-place updates
         {
@@ -139,11 +139,11 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         },
         [CapturedResolver](const FCk_Handle& E) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedResolver)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedResolver)) { return CkStyle::None(); }
             const auto& Current = CapturedResolver.Get<ck::FFragment_InteractionResolver_Current>();
             return Current.Get_ActiveIntents().IsEmpty()
-                ? CkDebugStyle::TextDim()
-                : CkDebugStyle::Status_Active();
+                ? CkStyle::TextDim()
+                : CkStyle::Status_Active();
         });
 
     // Available Targets — live badge box stored for in-place updates

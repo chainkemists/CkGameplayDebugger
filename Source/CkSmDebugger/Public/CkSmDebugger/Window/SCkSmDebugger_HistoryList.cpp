@@ -10,7 +10,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
@@ -189,42 +189,42 @@ auto
 
     const auto TitleStr = FString::Printf(TEXT("%s  \u25C0\u2500  %s"), *ToName, *FromName);
 
-    const auto MonoSmall = FCoreStyle::GetDefaultFontStyle("Mono", CkDebugStyle::FontSizeSmall());
-    const auto BoldBody  = FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody());
-    const auto RegSmall  = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
+    const auto MonoSmall = FCoreStyle::GetDefaultFontStyle("Mono", CkStyle::FontSizeSmall());
+    const auto BoldBody  = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody());
+    const auto RegSmall  = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall());
 
     auto Line = SNew(SHorizontalBox)
 
         // Frame number — mono, dim.
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(STextBlock)
             .Text(FText::FromString(FrameStr))
             .Font(MonoSmall)
-            .ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ]
 
         // Delta from previous transition — mono, accent colour (the important
         // signal when scanning the list for spikes / long gaps).
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
         [
             SNew(STextBlock)
             .Text(FText::FromString(DeltaStr))
             .Font(MonoSmall)
-            .ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
+            .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
             .Visibility(DeltaStr.IsEmpty() ? EVisibility::Collapsed : EVisibility::SelfHitTestInvisible)
         ]
 
         // Transition title — bold.
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
         [
             SNew(STextBlock)
             .Text(FText::FromString(TitleStr))
             .Font(BoldBody)
-            .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
         ]
 
         // Conditions — dim, regular.
@@ -233,7 +233,7 @@ auto
             SNew(STextBlock)
             .Text(FText::FromString(CondStr))
             .Font(RegSmall)
-            .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
         ]
 
         // Spacer so chips go to the right edge.
@@ -242,7 +242,7 @@ auto
 
         // Task chips — on the same line, right-aligned.
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-            .Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
         [ BuildTaskChips(InItem->TaskSnapshots, true) ];
 
     // Compact one-line clipboard payload mirroring the visible row.
@@ -312,7 +312,7 @@ auto
                 .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(TintAttr)
                 .ColorAndOpacity(ContentTintAttr)
-                .Padding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+                .Padding(FMargin(CkStyle::SpaceS, 2.0f))
                 [ Line ]
             ]
         ];

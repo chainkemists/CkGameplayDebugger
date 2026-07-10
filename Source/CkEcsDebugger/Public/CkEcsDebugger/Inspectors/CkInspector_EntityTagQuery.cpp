@@ -9,7 +9,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -68,7 +68,7 @@ auto FCkInspector_EntityTagQuery::BuildGrid(const FCk_Handle& Entity) -> TShared
         {
             auto Me = E;
             auto Q  = UCk_Utils_EntityTagQuery_UE::Cast(Me);
-            return UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? Color_OK : CkDebugStyle::Err();
+            return UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? Color_OK : CkStyle::Err();
         });
 
     const auto Reqs    = UCk_Utils_EntityTagQuery_UE::Get_AllRequirements(Query);

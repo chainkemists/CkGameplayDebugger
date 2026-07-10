@@ -3,7 +3,7 @@
 #include "CkEcsDebugNode_Entity.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -56,9 +56,9 @@ auto
     {
         switch (_EntityNode->Get_EdgeType())
         {
-        case ECkEcsDebugEdgeType::LifetimeOwner:     BorderOverride = CkDebugStyle::Relationship(); break;
-        case ECkEcsDebugEdgeType::ContextOwner:      BorderOverride = CkDebugStyle::Reference();    break;
-        case ECkEcsDebugEdgeType::LifetimeDependent: BorderOverride = CkDebugStyle::Transform();    break;
+        case ECkEcsDebugEdgeType::LifetimeOwner:     BorderOverride = CkStyle::Relationship(); break;
+        case ECkEcsDebugEdgeType::ContextOwner:      BorderOverride = CkStyle::Reference();    break;
+        case ECkEcsDebugEdgeType::LifetimeDependent: BorderOverride = CkStyle::Transform();    break;
         default: break;
         }
     }

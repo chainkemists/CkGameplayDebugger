@@ -1,6 +1,6 @@
 #include "SCkDebug_NodePill.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 
 #include "Styling/AppStyle.h"
@@ -31,43 +31,43 @@ namespace
 		{
 			case ECkDebug_NodePillVariant::InPlan:
 				return {
-					CkDebugStyle::NodeFill_InPlan(),
-					CkDebugStyle::NodeBorder_InPlan(),
-					CkDebugStyle::NodeBorder_InPlan(),  // badge matches border
-					CkDebugStyle::BgRoot(),
+					CkStyle::NodeFill_InPlan(),
+					CkStyle::NodeBorder_InPlan(),
+					CkStyle::NodeBorder_InPlan(),  // badge matches border
+					CkStyle::BgRoot(),
 					1.0f
 				};
 			case ECkDebug_NodePillVariant::Pending:
 				return {
-					CkDebugStyle::PlanStep_Fill_Pending(),
-					CkDebugStyle::PlanStep_Border_Pending(),
-					CkDebugStyle::PlanStep_Badge_Pending(),
-					CkDebugStyle::TextDim(),
+					CkStyle::PlanStep_Fill_Pending(),
+					CkStyle::PlanStep_Border_Pending(),
+					CkStyle::PlanStep_Badge_Pending(),
+					CkStyle::TextDim(),
 					1.0f
 				};
 			case ECkDebug_NodePillVariant::Active:
 				return {
-					CkDebugStyle::PlanStep_Fill_Active(),
-					CkDebugStyle::PlanStep_Border_Active(),
-					CkDebugStyle::PlanStep_Badge_Active(),
-					CkDebugStyle::BgRoot(),
+					CkStyle::PlanStep_Fill_Active(),
+					CkStyle::PlanStep_Border_Active(),
+					CkStyle::PlanStep_Badge_Active(),
+					CkStyle::BgRoot(),
 					1.0f
 				};
 			case ECkDebug_NodePillVariant::Done:
 				return {
-					CkDebugStyle::PlanStep_Fill_Done(),
-					CkDebugStyle::PlanStep_Border_Done(),
-					CkDebugStyle::PlanStep_Badge_Done(),
-					CkDebugStyle::BgRoot(),
+					CkStyle::PlanStep_Fill_Done(),
+					CkStyle::PlanStep_Border_Done(),
+					CkStyle::PlanStep_Badge_Done(),
+					CkStyle::BgRoot(),
 					1.0f
 				};
 			default: // Inactive
 				return {
-					CkDebugStyle::NodeFill_Inactive(),
-					CkDebugStyle::NodeBorder_Inactive(),
-					CkDebugStyle::Bg3(),
-					CkDebugStyle::TextDim(),
-					CkDebugStyle::NodeInactiveOpacity()
+					CkStyle::NodeFill_Inactive(),
+					CkStyle::NodeBorder_Inactive(),
+					CkStyle::Bg3(),
+					CkStyle::TextDim(),
+					CkStyle::NodeInactiveOpacity()
 				};
 		}
 	}
@@ -103,7 +103,7 @@ auto
 	const auto ShowAccent      = HasColor(InArgs._AccentColor.Get());
 	const auto AccentColorAttr = InArgs._AccentColor;
 	const auto AccentWidthAttr = InArgs._AccentWidth;
-	const auto RoundedBrush = CkDebugStyle::GetRoundedBrush();
+	const auto RoundedBrush = CkStyle::GetRoundedBrush();
 
 	// ---- Header presence: if none of badge / title / cost are populated, the
 	//      whole header row is skipped. Callers that render their own title
@@ -119,7 +119,7 @@ auto
 		HeaderRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 			[
 				SNew(SBox)
 				.WidthOverride(18.0f)
@@ -134,7 +134,7 @@ auto
 					[
 						SNew(STextBlock)
 						.Text(FText::AsNumber(InArgs._StepIndex + 1))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
 						.ColorAndOpacity(FSlateColor(VariantStyle.BadgeText))
 					]
 				]
@@ -147,8 +147,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::NodeTitleFontSize()))
+			.ColorAndOpacity(FSlateColor(CkStyle::Text()))
 		];
 
 	if (InArgs._ShowCost)
@@ -156,12 +156,12 @@ auto
 		HeaderRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString::Printf(TEXT("$%.0f"), InArgs._CostValue)))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeCostFontSize()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Accent()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::NodeCostFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Accent()))
 			];
 	}
 
@@ -181,7 +181,7 @@ auto
 	{
 		PillBody->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, ShowHeader ? CkDebugStyle::SpaceS : 0.0f, 0.0f, 0.0f)
+			.Padding(0.0f, ShowHeader ? CkStyle::SpaceS : 0.0f, 0.0f, 0.0f)
 			[
 				InArgs._BodyContent.Widget
 			];
@@ -196,13 +196,13 @@ auto
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Fill)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 			[
 				SNew(SBox)
 				.WidthOverride_Lambda([AccentWidthAttr]() { return FOptionalSize(AccentWidthAttr.Get()); })
 				[
 					SNew(SImage)
-					.Image(CkDebugStyle::GetFilledBrush())
+					.Image(CkStyle::GetFilledBrush())
 					.ColorAndOpacity_Lambda([AccentColorAttr]() { return FSlateColor(AccentColorAttr.Get()); })
 				]
 			]
@@ -225,7 +225,7 @@ auto
 		.Padding_Lambda([ThicknessAttr]() -> FMargin
 		{
 			const auto T = ThicknessAttr.Get();
-			return FMargin(T >= 0.0f ? T : CkDebugStyle::NodeBorderThickness());
+			return FMargin(T >= 0.0f ? T : CkStyle::NodeBorderThickness());
 		})
 		.ColorAndOpacity_Lambda([OpacityAttr, VariantOpacity]() -> FLinearColor
 		{
@@ -241,7 +241,7 @@ auto
 				const auto Override = FillAttr.Get();
 				return FSlateColor(HasColor(Override) ? Override : VariantFill);
 			})
-			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 			[
 				ContentRow
 			]
@@ -254,7 +254,7 @@ auto
 	// ---- Selection ring — a thicker border wrapping the pill ----------------
 	auto Ringed = SAssignNew(_SelectionRing, SBorder)
 		.BorderImage(RoundedBrush)
-		.BorderBackgroundColor(FSlateColor(_Selected ? CkDebugStyle::Selection() : FLinearColor::Transparent))
+		.BorderBackgroundColor(FSlateColor(_Selected ? CkStyle::Selection() : FLinearColor::Transparent))
 		.Padding(FMargin(2.0f))
 		[
 			Sized
@@ -311,7 +311,7 @@ auto
 	if (_SelectionRing.IsValid())
 	{
 		_SelectionRing->SetBorderBackgroundColor(
-			FSlateColor(_Selected ? CkDebugStyle::Selection() : FLinearColor::Transparent));
+			FSlateColor(_Selected ? CkStyle::Selection() : FLinearColor::Transparent));
 	}
 }
 

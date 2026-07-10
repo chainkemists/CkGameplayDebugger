@@ -25,6 +25,7 @@ public class CkSchedulerDebugger : CkModuleRules
             "CkEcs",
 
             "CkDebuggerCommon",
+            "CkEditorTools",
         });
 
         if (Target.bBuildEditor)

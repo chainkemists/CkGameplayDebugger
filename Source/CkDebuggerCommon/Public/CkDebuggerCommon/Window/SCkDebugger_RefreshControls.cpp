@@ -3,7 +3,7 @@
 #include "CkDebuggerRefreshGate.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
@@ -117,18 +117,18 @@ auto
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+		.Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("Refresh:")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 		]
 
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+		.Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
 		[
 			Build_ModeDropdown()
 		]
@@ -201,14 +201,14 @@ auto
 
 	return SNew(SComboButton)
 		.ButtonStyle(FAppStyle::Get(), "SimpleButton")
-		.ContentPadding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+		.ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
 		.OnGetMenuContent(MenuContentBuilder)
 		.ButtonContent()
 		[
 			SNew(STextBlock)
 			.Text_Lambda([WindowId]() { return ModeLabel(Get_CurrentMode(WindowId)); })
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+			.ColorAndOpacity(FSlateColor(CkStyle::Text()))
 		];
 }
 
@@ -273,14 +273,14 @@ auto
 
 	return SNew(SComboButton)
 		.ButtonStyle(FAppStyle::Get(), "SimpleButton")
-		.ContentPadding(FMargin(CkDebugStyle::SpaceS, 2.0f))
+		.ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
 		.OnGetMenuContent(MenuContentBuilder)
 		.ButtonContent()
 		[
 			SNew(STextBlock)
 			.Text_Lambda([WindowId]() { return RateLabel(Get_CurrentRate(WindowId)); })
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+			.ColorAndOpacity(FSlateColor(CkStyle::Text()))
 		];
 }
 

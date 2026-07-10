@@ -11,8 +11,11 @@
 `CkDebuggerCommon` is a shared library every debugger module depends on. It
 provides:
 
-- **Style tokens** (`CkDebugStyle::`) — colours, spacing, font sizes. Tunable
-  under Project Settings → CkGameplayDebugger.
+- **Style tokens** (`CkStyle::`) — colours, spacing, font sizes. These live in
+  CkFoundation's `CkEditorTools` module (`CkEditorTools/Style/CkStyle.h`, tunable
+  under Editor Preferences → Ck → Style) so debuggers and CkFoundation editor
+  tools share one look; CkDebuggerCommon re-exports them via its public
+  dependency on `CkEditorTools`.
 - **Shared Slate widgets** (`Widgets/`) — composable building blocks for rows,
   pills, headers, status indicators, copy / selectable text.
 - **Dual search bar** (`Search/SCkDebug_DualSearchBar`) — side-by-side Filter
@@ -497,8 +500,16 @@ CkDebuggerCommon/
 │   ├── SCkDebug_NodePill.h           (graph / plan-step pill + opt-in CopyText)
 │   ├── SCkDebug_InspectorPanel.h     (collapsible section)
 │   └── SCkDebug_CountBadge.h
-├── Style/
-│   └── CkDebugStyle.h                (colour + spacing tokens)
 └── Window/
     └── CkDebuggerRefreshGate.h       (per-window refresh-rate gate)
+```
+
+Style tokens moved to CkFoundation:
+
+```
+CkFoundation/Source/CkEditorTools/Public/CkEditorTools/
+├── Style/
+│   └── CkStyle.h                     (CkStyle:: colour + spacing tokens, ECk_Tone)
+└── Settings/
+    └── CkStyleSettings.h             (UCk_Style_UserSettings_UE — Editor Preferences → Ck → Style)
 ```

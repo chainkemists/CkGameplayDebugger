@@ -9,7 +9,7 @@
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -41,10 +41,10 @@ public:
 	auto Construct(const FArguments& InArgs) -> void
 	{
 		_Items = {
-			{ ECkDebug_Tone::Ok,   TEXT("MoveTo"),     TEXT("$3"),  TEXT("#101"), TEXT("ok") },
-			{ ECkDebug_Tone::Info, TEXT("Interact"),   TEXT("$2"),  TEXT("#102"), TEXT("") },
-			{ ECkDebug_Tone::Warn, TEXT("Retry"),      TEXT("$7"),  TEXT("#103"), TEXT("precondition miss") },
-			{ ECkDebug_Tone::Err,  TEXT("Abort"),      TEXT("$0"),  TEXT("#104"), TEXT("out of resources") },
+			{ ECk_Tone::Ok,   TEXT("MoveTo"),     TEXT("$3"),  TEXT("#101"), TEXT("ok") },
+			{ ECk_Tone::Info, TEXT("Interact"),   TEXT("$2"),  TEXT("#102"), TEXT("") },
+			{ ECk_Tone::Warn, TEXT("Retry"),      TEXT("$7"),  TEXT("#103"), TEXT("precondition miss") },
+			{ ECk_Tone::Err,  TEXT("Abort"),      TEXT("$0"),  TEXT("#104"), TEXT("out of resources") },
 		};
 
 		ChildSlot
@@ -58,7 +58,7 @@ public:
 private:
 	struct FItem
 	{
-		ECkDebug_Tone Tone;
+		ECk_Tone Tone;
 		FString Title;
 		FString Meta;
 		FString Right;
@@ -115,13 +115,13 @@ public:
 		auto Col = SNew(SVerticalBox);
 
 		// One row per tone, static.
-		auto Tones = TArray<TPair<FString, ECkDebug_Tone>>{
-			{ TEXT("Neutral"), ECkDebug_Tone::Neutral },
-			{ TEXT("Info"),    ECkDebug_Tone::Info    },
-			{ TEXT("Ok"),      ECkDebug_Tone::Ok      },
-			{ TEXT("Warn"),    ECkDebug_Tone::Warn    },
-			{ TEXT("Err"),     ECkDebug_Tone::Err     },
-			{ TEXT("Accent"),  ECkDebug_Tone::Accent  },
+		auto Tones = TArray<TPair<FString, ECk_Tone>>{
+			{ TEXT("Neutral"), ECk_Tone::Neutral },
+			{ TEXT("Info"),    ECk_Tone::Info    },
+			{ TEXT("Ok"),      ECk_Tone::Ok      },
+			{ TEXT("Warn"),    ECk_Tone::Warn    },
+			{ TEXT("Err"),     ECk_Tone::Err     },
+			{ TEXT("Accent"),  ECk_Tone::Accent  },
 		};
 
 		auto Static = SNew(SVerticalBox);
@@ -143,7 +143,7 @@ public:
 			.AutoHeight()
 			[
 				SNew(SCkDebug_HistoryRow)
-				.Tone(ECkDebug_Tone::Info)
+				.Tone(ECk_Tone::Info)
 				.TitleText(FText::FromString(TEXT("NoSubtitle")))
 				.RightText(FText::FromString(TEXT("#999")))
 			];
@@ -153,21 +153,21 @@ public:
 			.AutoHeight()
 			[
 				SNew(SCkDebug_HistoryRow)
-				.Tone(ECkDebug_Tone::Ok)
+				.Tone(ECk_Tone::Ok)
 				.TitleText(FText::FromString(TEXT("Selected (forced)")))
 				.RightText(FText::FromString(TEXT("#143")))
 				.IsSelected(true)
 			];
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("One row per tone, plus a no-subtitle row and a forced-selected row.")) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ Static ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("One row per tone, plus a no-subtitle row and a forced-selected row.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ Static ];
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
 			[
 				SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Interactive")))
 			];
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Click any row to toggle selection. Re-clicking the selected row clears it.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Click any row to toggle selection. Re-clicking the selected row clears it.")) ];
 		Col->AddSlot().AutoHeight()[ SNew(SCkGallery_HistoryRowInteractive) ];
 
 		return Col;
@@ -195,12 +195,12 @@ public:
 		auto Col = SNew(SVerticalBox);
 
 		// ---- Bool tone: true vs false ------------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Bool tone — value text auto-colors green for \"true\", red otherwise.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Bool tone — value text auto-colors green for \"true\", red otherwise.")) ];
 		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f)[ SNew(SCkDebug_KeyValueRow).KeyText(FText::FromString(TEXT("alive"))).ValueText(FText::FromString(TEXT("true"))).Tone(ECkDebug_KeyValueTone::Bool) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, CkDebugStyle::SpaceL)[ SNew(SCkDebug_KeyValueRow).KeyText(FText::FromString(TEXT("dead"))).ValueText(FText::FromString(TEXT("false"))).Tone(ECkDebug_KeyValueTone::Bool) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, CkStyle::SpaceL)[ SNew(SCkDebug_KeyValueRow).KeyText(FText::FromString(TEXT("dead"))).ValueText(FText::FromString(TEXT("false"))).Tone(ECkDebug_KeyValueTone::Bool) ];
 
 		// ---- Custom tone, every value-type color --------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Custom tone — one row per Value_* color token in CkDebugStyle.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Custom tone — one row per Value_* color token in CkStyle.")) ];
 
 		auto AddCustomRow = [&](const FString& K, const FString& V, FLinearColor InColor)
 		{
@@ -214,16 +214,16 @@ public:
 				];
 		};
 
-		AddCustomRow(TEXT("numeric"), TEXT("42"),                CkDebugStyle::Value_Numeric());
-		AddCustomRow(TEXT("string"),  TEXT("\"hello\""),         CkDebugStyle::Value_String());
-		AddCustomRow(TEXT("math"),    TEXT("(3.14, 0.0, 1.0)"),  CkDebugStyle::Value_Math());
-		AddCustomRow(TEXT("tag"),     TEXT("Ck.Goap.Plan"),      CkDebugStyle::Value_Tag());
-		AddCustomRow(TEXT("enum"),    TEXT("Active"),            CkDebugStyle::Value_Enum());
-		AddCustomRow(TEXT("object"),  TEXT("BP_NPC_Villager"),   CkDebugStyle::Value_Object());
-		AddCustomRow(TEXT("handle"),  TEXT("FCk_Handle[e:142]"), CkDebugStyle::Value_Handle());
+		AddCustomRow(TEXT("numeric"), TEXT("42"),                CkStyle::Value_Numeric());
+		AddCustomRow(TEXT("string"),  TEXT("\"hello\""),         CkStyle::Value_String());
+		AddCustomRow(TEXT("math"),    TEXT("(3.14, 0.0, 1.0)"),  CkStyle::Value_Math());
+		AddCustomRow(TEXT("tag"),     TEXT("Ck.Goap.Plan"),      CkStyle::Value_Tag());
+		AddCustomRow(TEXT("enum"),    TEXT("Active"),            CkStyle::Value_Enum());
+		AddCustomRow(TEXT("object"),  TEXT("BP_NPC_Villager"),   CkStyle::Value_Object());
+		AddCustomRow(TEXT("handle"),  TEXT("FCk_Handle[e:142]"), CkStyle::Value_Handle());
 
 		// ---- With marker -------------------------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceL, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("ShowMarker — small colored dot before the key.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceL, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("ShowMarker — small colored dot before the key.")) ];
 		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 			[
 				SNew(SCkDebug_KeyValueRow)
@@ -231,7 +231,7 @@ public:
 				.ValueText(FText::FromString(TEXT("true")))
 				.Tone(ECkDebug_KeyValueTone::Bool)
 				.ShowMarker(true)
-				.MarkerColor(CkDebugStyle::Ok())
+				.MarkerColor(CkStyle::Ok())
 			];
 		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 			[
@@ -240,18 +240,18 @@ public:
 				.ValueText(FText::FromString(TEXT("false")))
 				.Tone(ECkDebug_KeyValueTone::Bool)
 				.ShowMarker(true)
-				.MarkerColor(CkDebugStyle::Err())
+				.MarkerColor(CkStyle::Err())
 			];
 
 		// ---- Clickable key -----------------------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceL, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("OnKeyClicked — key renders as a selection-colored button. Click logs to output.")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceL, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("OnKeyClicked — key renders as a selection-colored button. Click logs to output.")) ];
 		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 			[
 				SNew(SCkDebug_KeyValueRow)
 				.KeyText(FText::FromString(TEXT("navigateToEntity")))
 				.ValueText(FText::FromString(TEXT("Villager_03")))
 				.Tone(ECkDebug_KeyValueTone::Custom)
-				.CustomValueColor(CkDebugStyle::Value_Handle())
+				.CustomValueColor(CkStyle::Value_Handle())
 				.OnKeyClicked(FOnCkDebugKeyValueRow_KeyClicked::CreateLambda([]()
 				{
 					UE_LOG(LogTemp, Display, TEXT("Gallery: navigateToEntity clicked"));
@@ -259,7 +259,7 @@ public:
 			];
 
 		// ---- Custom value widget -----------------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceL, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("ValueWidget slot — hosts any widget in place of the text value (here: a button).")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceL, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("ValueWidget slot — hosts any widget in place of the text value (here: a button).")) ];
 		Col->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
 			[
 				SNew(SCkDebug_KeyValueRow)

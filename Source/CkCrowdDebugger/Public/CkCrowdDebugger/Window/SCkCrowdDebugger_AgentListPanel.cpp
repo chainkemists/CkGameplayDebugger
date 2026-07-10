@@ -8,7 +8,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
@@ -43,12 +43,12 @@ namespace
 	{
 		switch (InStatus)
 		{
-			case ECkCrowdDebugger_AgentStatus::Failed:     return CkDebugStyle::Err();
-			case ECkCrowdDebugger_AgentStatus::Walking:    return CkDebugStyle::Info();
-			case ECkCrowdDebugger_AgentStatus::Replanning: return CkDebugStyle::Warn();
-			case ECkCrowdDebugger_AgentStatus::Asleep:     return CkDebugStyle::TextMute();
-			case ECkCrowdDebugger_AgentStatus::Idle:       return CkDebugStyle::TextDim();
-			default:                                       return CkDebugStyle::TextDim();
+			case ECkCrowdDebugger_AgentStatus::Failed:     return CkStyle::Err();
+			case ECkCrowdDebugger_AgentStatus::Walking:    return CkStyle::Info();
+			case ECkCrowdDebugger_AgentStatus::Replanning: return CkStyle::Warn();
+			case ECkCrowdDebugger_AgentStatus::Asleep:     return CkStyle::TextMute();
+			case ECkCrowdDebugger_AgentStatus::Idle:       return CkStyle::TextDim();
+			default:                                       return CkStyle::TextDim();
 		}
 	}
 
@@ -88,17 +88,17 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
 		.Padding(FMargin(0))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS)
+			+ SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("AGENT LIST")))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[

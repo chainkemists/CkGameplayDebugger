@@ -8,7 +8,7 @@ enum class ECk_ObjectiveStatus : uint8;
 
 // ====================================================================================================================
 // Brush/text-style set + spacing constants specific to the ECS debugger.
-// All colors live in CkDebugStyle (Project Settings → CkGameplayDebugger → GOAP).
+// All colors live in CkStyle (Project Settings → CkGameplayDebugger → GOAP).
 // ====================================================================================================================
 
 class FCkDebuggerStyle

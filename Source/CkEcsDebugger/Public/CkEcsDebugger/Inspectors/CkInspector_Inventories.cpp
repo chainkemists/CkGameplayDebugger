@@ -23,7 +23,7 @@
 #include "Widgets/SWindow.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Inventories)
 
 FCkInspector_Inventories::~FCkInspector_Inventories()
@@ -176,7 +176,7 @@ auto FCkInspector_Inventories::BuildInventoryGrid(const FCk_Handle& Entity, cons
                     [
                         SNew(STextBlock)
                         .Text(ButtonLabel)
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 ];
 

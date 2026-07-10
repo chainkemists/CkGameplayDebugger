@@ -2,7 +2,7 @@
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "SGraphPin.h"
@@ -43,7 +43,7 @@ auto
 	// Pumped-this-frame highlight rides on the pill's border-color override so
 	// the rest of the variant palette (fill / badge) keeps flowing from tokens.
 	const auto BorderOverride = _ProcessorNode->WasDirtyThisFrame
-		? CkDebugStyle::Warn()
+		? CkStyle::Warn()
 		: FLinearColor::Transparent;
 
 	const auto AccentColor = FCkSchedulerDebuggerStyle::Get_GroupColor(_ProcessorNode->GroupName);
@@ -89,14 +89,14 @@ auto
 	CreateMetaRow()
 	-> TSharedRef<SWidget>
 {
-	const auto MetaFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize());
+	const auto MetaFont = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::NodeMetaFontSize());
 
 	auto Row = SNew(SHorizontalBox);
 
 	Row->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 		[
 			SNew(STextBlock)
 			.Text_Raw(this, &SGraphNode_SchedulerProcessor::Get_TimingText)
@@ -107,12 +107,12 @@ auto
 	Row->AddSlot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(FString::Printf(TEXT("#%d"), _ProcessorNode->ExecutionOrder)))
 			.Font(MetaFont)
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 		];
 
 	if (_ProcessorNode->HasDirtyMarker)
@@ -120,12 +120,12 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString(UTF8TEXT("\u25CF"))))
 				.Font(MetaFont)
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Warn()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Warn()))
 			];
 	}
 
@@ -138,7 +138,7 @@ auto
 				SNew(STextBlock)
 				.Text(FText::FromString(FString(UTF8TEXT("\u25C6"))))
 				.Font(MetaFont)
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Info()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Info()))
 			];
 	}
 

@@ -32,6 +32,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkCamera",
             "CkCore",
             "CkDebuggerCommon",
+            "CkEditorTools",
             "CkDynamic",
             "CkEcs",
             "CkEcsExt",

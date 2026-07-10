@@ -78,8 +78,15 @@ Inspector section headers now render each inspector's feature glyph + color:
 `SCkDebug_InspectorPanel` gained optional `IconBrush`/`IconColor` (nullptr = unchanged),
 the ECS inspector panel passes them on inspector-titled headers, and **27 inspectors
 declare `Get_IconName`/`Get_FeatureColor`** (colors = mockup FEAT table). Commit `1a5aa3e`,
-gate: build green + Timer 36/36. **This IS the `[EDITOR-VERIFY]` for the SVG pipeline** —
-user checks headers for crisp glyphs; blank/mangled → stroke→outline fallback per icon.
+gate: build green + Timer 36/36. **`[EDITOR-VERIFY]` PASSED 2026-07-10** — user screenshot
+confirms crisp glyphs (Timer amber clock, Network blue globe): stroke-based SVGs rasterize
+fine; no outline-conversion fallback needed. Phase 2 may lean on the pipeline freely.
+
+**Bonus fix (`b46fd5e`):** the long-standing garbled collapse indicator — text chevrons
+(▾/▸) in the shared `SCkDebug_InspectorPanel` + `SCkDebug_ExpandableColumn` render as
+unknown-glyph boxes — replaced with engine `Icons.ChevronDown/Right` SVG brushes; every
+debugger composing these widgets is fixed. Follow-up (user-visible text glyphs elsewhere,
+NOT yet fixed): SM debugger ▶ play/resume buttons, EQS "View ▾" label, GOAP graph ▸ strips.
 Remaining without glyphs (need new SVGs or a mapping decision, Phase 2): EntityInfo,
 Relationships, DynamicFragments, EntityCollections, Tween, Physics, Shapes, OverlapBody,
 Resolver, AStar, UI, MontagePlayer, AnimPlans.

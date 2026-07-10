@@ -13,7 +13,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ActorRelay)
 
@@ -63,7 +63,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             auto* A = CapturedActor.Get();
             return FText::FromString(A != nullptr ? A->GetClass()->GetName() : TEXT("--"));
         },
-        CkDebugStyle::Value_Object());
+        CkStyle::Value_Object());
 
     Builder.AddRow(
         FText::FromString(TEXT("Actor:")),
@@ -72,7 +72,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             auto* A = CapturedActor.Get();
             return FText::FromString(A != nullptr ? A->GetName() : TEXT("--"));
         },
-        CkDebugStyle::Value_String());
+        CkStyle::Value_String());
 
     // ---- Group subsystem details ----
 
@@ -87,7 +87,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             const auto Tag = Subsystem->Get_GroupTag();
             return FText::FromString(Tag.IsValid() ? Tag.ToString() : TEXT("None"));
         },
-        CkDebugStyle::Value_Tag());
+        CkStyle::Value_Tag());
 
     Builder.AddRow(
         FText::FromString(TEXT("Ownership:")),
@@ -99,7 +99,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             if (NOT Subsystem.IsValid()) { return FText::FromString(TEXT("--")); }
             return FText::FromString(ck::Format_UE(TEXT("{}"), Subsystem->Get_OwnershipPolicy()));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     Builder.AddRow(
         FText::FromString(TEXT("Selection:")),
@@ -111,7 +111,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             if (NOT Subsystem.IsValid()) { return FText::FromString(TEXT("--")); }
             return FText::FromString(ck::Format_UE(TEXT("{}"), Subsystem->Get_SelectionAlgorithm()));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     Builder.AddRow(
         FText::FromString(TEXT("Disconnect:")),
@@ -123,7 +123,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             if (NOT Subsystem.IsValid()) { return FText::FromString(TEXT("--")); }
             return FText::FromString(ck::Format_UE(TEXT("{}"), Subsystem->Get_DisconnectPolicy()));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     // ---- Capacity ----
 
@@ -139,7 +139,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
                 Subsystem->Get_ChannelCount_Active(),
                 Subsystem->Get_ChannelCount()));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Max Entities/Ch:")),
@@ -154,7 +154,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
                 ? ck::Format_UE(TEXT("{}"), Max)
                 : FString(TEXT("unlimited")));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     // ---- Live channel occupancy ----
 
@@ -166,7 +166,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             const auto Dependents = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(CapturedEntity);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Dependents.Num()));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     return Builder.Build(Entity, FString());
 }

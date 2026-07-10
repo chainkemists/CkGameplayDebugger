@@ -28,6 +28,7 @@ public class CkEqsDebugger : CkModuleRules
             "CkPmg",          // in-world sphere markers + debug lines for the overlay
 
             "CkDebuggerCommon",
+            "CkEditorTools",
         });
 
         if (Target.bBuildEditor)

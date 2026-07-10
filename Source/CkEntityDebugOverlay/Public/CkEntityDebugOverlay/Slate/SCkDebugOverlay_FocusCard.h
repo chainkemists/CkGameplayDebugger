@@ -3,7 +3,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 #include "CkEntityDebugOverlay/Model/CkDebugOverlay_Model.h"  // ECk_DebugOverlay_Severity
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"      // ECkDebug_Tone
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"      // ECk_Tone
 
 struct FCk_DebugOverlay_RenderStyle;
 class  FCk_DebugOverlay_History;
@@ -50,8 +50,8 @@ public:
     auto Set_WrapWidth(float InWidth) -> void { _WrapWidth = InWidth; }
 
 private:
-    // Converts ECk_DebugOverlay_Severity to an ECkDebug_Tone for pills / text.
-    static auto Severity_To_Tone(ECk_DebugOverlay_Severity InSeverity) -> ECkDebug_Tone;
+    // Converts ECk_DebugOverlay_Severity to an ECk_Tone for pills / text.
+    static auto Severity_To_Tone(ECk_DebugOverlay_Severity InSeverity) -> ECk_Tone;
 
     // Returns the flash alpha multiplier for a field (1.0 if not flashing).
     static auto Get_FlashAlpha(double InLastChanged, double InNow) -> float;

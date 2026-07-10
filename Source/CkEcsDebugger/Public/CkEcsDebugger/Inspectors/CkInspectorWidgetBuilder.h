@@ -8,7 +8,7 @@
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 class FCkDebuggerModel_EntitySelection;
 
 class FCkInspectorWidgetBuilder
@@ -23,7 +23,7 @@ public:
     auto AddRow(
         const FText& InLabel,
         FValueGetter InValueGetter,
-        const FLinearColor& InValueColor = CkDebugStyle::Text()) -> FCkInspectorWidgetBuilder&;
+        const FLinearColor& InValueColor = CkStyle::Text()) -> FCkInspectorWidgetBuilder&;
 
     auto AddConditionalRow(
         const FText& InLabel,

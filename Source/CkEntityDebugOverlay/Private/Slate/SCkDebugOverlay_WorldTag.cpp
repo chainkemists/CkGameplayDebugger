@@ -2,7 +2,7 @@
 
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_WorldTag.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
@@ -22,14 +22,14 @@ auto
 
     SAssignNew(_TextBlock, STextBlock)
         .Text(InArgs._Text)
-        .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-        .ColorAndOpacity(CkDebugStyle::TextStrong());
+        .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+        .ColorAndOpacity(CkStyle::TextStrong());
 
     // Dark rounded pill behind the text so it reads against any world background.
     SAssignNew(_Border, SBorder)
-        .BorderImage(CkDebugStyle::GetRoundedBrush())
-        .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.78f))
-        .Padding(FMargin{ CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+        .BorderImage(CkStyle::GetRoundedBrush())
+        .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.78f))
+        .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
         [
             _TextBlock.ToSharedRef()
         ];
@@ -74,7 +74,7 @@ auto
     if (_Border.IsValid())
     {
         // Modulate the background alpha by InOpacity so the pill fades with the label.
-        auto BgColor = CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.78f);
+        auto BgColor = CkStyle::OverlayOf(CkStyle::BgRoot(), 0.78f);
         BgColor.A    = FMath::Clamp(BgColor.A * InOpacity, 0.0f, 1.0f);
         _Border->SetBorderBackgroundColor(FSlateColor{ BgColor });
     }

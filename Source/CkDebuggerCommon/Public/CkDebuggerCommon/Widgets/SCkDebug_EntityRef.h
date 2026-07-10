@@ -11,7 +11,7 @@ class STextBlock;
 // Single-line clickable entity reference widget.
 //
 // Renders an FCk_Handle as the canonical "{ID}|{Version}({Raw})" string in
-// CkDebugStyle::EntityId() color. Left-click opens the CK ECS Debugger and
+// CkStyle::EntityId() color. Left-click opens the CK ECS Debugger and
 // selects this entity (via ck::DebugNav::Goto_Entity — see CkDebug_Navigator.h).
 // Right-click opens a "Copy Text" menu with the formatted string.
 //
@@ -19,7 +19,7 @@ class STextBlock;
 // STextBlock + Format_UE call sites.
 //
 // Behaviour:
-// - Empty / invalid / tombstone handles render with CkDebugStyle::None() color
+// - Empty / invalid / tombstone handles render with CkStyle::None() color
 //   and the click is disabled.
 // - When no entity navigator is registered (e.g. in a build that has no
 //   CkEcsDebugger module), the click is a no-op but the widget still renders

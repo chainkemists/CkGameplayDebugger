@@ -15,7 +15,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Probes)
 
 static const FLinearColor Color_Probe = FLinearColor(0.0f, 0.8f, 1.0f);
@@ -74,9 +74,9 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
         {
             auto MutableE = E;
             const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
-            if (ck::Is_NOT_Valid(P)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(P)) { return CkStyle::None(); }
             return UCk_Utils_Probe_UE::Get_IsEnabledDisabled(P) == ECk_EnableDisable::Enable
-                ? CkDebugStyle::State_Enabled() : CkDebugStyle::State_Disabled();
+                ? CkStyle::State_Enabled() : CkStyle::State_Disabled();
         });
 
     // Overlaps — live badge box stored for in-place updates
@@ -108,7 +108,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto Policy = UCk_Utils_Probe_UE::Get_ResponsePolicy(P);
             return FText::FromString(Policy == ECk_ProbeResponse_Policy::Notify ? TEXT("Notify") : TEXT("Silent"));
         },
-        CkDebugStyle::State_Config());
+        CkStyle::State_Config());
 
     // Motion type
     Builder.AddRow(
@@ -127,7 +127,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             default:                        return FText::FromString(TEXT("Unknown"));
             }
         },
-        CkDebugStyle::State_Config());
+        CkStyle::State_Config());
 
     // Motion quality
     Builder.AddRow(
@@ -140,7 +140,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             const auto Quality = UCk_Utils_Probe_UE::Get_MotionQuality(P);
             return FText::FromString(Quality == ECk_MotionQuality::Discrete ? TEXT("Discrete") : TEXT("LinearCast (CCD)"));
         },
-        CkDebugStyle::State_Config());
+        CkStyle::State_Config());
 
     // Filter
     Builder.AddRow(
@@ -154,7 +154,7 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             if (Filter.IsEmpty()) { return FText::FromString(TEXT("(Empty)")); }
             return FText::FromString(Filter.ToString());
         },
-        CkDebugStyle::TextDim());
+        CkStyle::TextDim());
 
     return Builder.Build(Entity);
 }

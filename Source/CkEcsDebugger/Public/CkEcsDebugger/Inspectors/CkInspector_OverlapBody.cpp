@@ -10,7 +10,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_OverlapBody)
 
@@ -21,8 +21,8 @@ namespace
     auto Format_EnableDisable_Color(ECk_EnableDisable InState) -> FLinearColor
     {
         return InState == ECk_EnableDisable::Enable
-            ? CkDebugStyle::Value_Bool_True()
-            : CkDebugStyle::TextMute();
+            ? CkStyle::Value_Bool_True()
+            : CkStyle::TextMute();
     }
 }
 
@@ -68,7 +68,7 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return Format_EnableDisable_Color(CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable());
             });
 
@@ -84,9 +84,9 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 const auto& Marker = CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker();
-                return Marker.IsValid() ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False();
+                return Marker.IsValid() ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
             });
     }
 
@@ -109,7 +109,7 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return Format_EnableDisable_Color(CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable());
             });
 
@@ -125,9 +125,9 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 const auto& Sensor = CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor();
-                return Sensor.IsValid() ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False();
+                return Sensor.IsValid() ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
             });
 
         Builder.AddRow(
@@ -140,7 +140,7 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
                     .Get_CurrentMarkerOverlaps().Get_Overlaps().Num();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Non-Marker Overlaps:")),
@@ -152,7 +152,7 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
                     .Get_CurrentNonMarkerOverlaps().Get_Overlaps().Num();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     return Builder.Build(Entity);

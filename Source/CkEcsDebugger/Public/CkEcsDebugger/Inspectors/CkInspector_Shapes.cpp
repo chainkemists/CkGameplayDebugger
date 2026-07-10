@@ -12,7 +12,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Shapes)
 
@@ -53,7 +53,7 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Radius:")),
             [Radius](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), Radius)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Box ----
@@ -69,13 +69,13 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Half Extents:")),
             [HalfExtent](const FCk_Handle&)
             { return FText::FromString(HalfExtent.ToString()); },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         Builder.AddRow(
             FText::FromString(TEXT("Convex Radius:")),
             [ConvexR](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), ConvexR)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Capsule ----
@@ -91,13 +91,13 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Half Height:")),
             [HalfHeight](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), HalfHeight)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Radius:")),
             [Radius](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), Radius)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Cylinder ----
@@ -114,19 +114,19 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Half Height:")),
             [HalfHeight](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), HalfHeight)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Radius:")),
             [Radius](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), Radius)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Convex Radius:")),
             [ConvexR](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f"), ConvexR)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     return Builder.Build(Entity);

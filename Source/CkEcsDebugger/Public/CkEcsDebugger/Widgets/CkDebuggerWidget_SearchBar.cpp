@@ -8,7 +8,7 @@
 #include "Styling/AppStyle.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
 {
@@ -34,7 +34,7 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
                 [
                     SNew(SImage)
                     .Image(FAppStyle::GetBrush("Icons.Search"))
-                    .ColorAndOpacity(CkDebugStyle::TextMute())
+                    .ColorAndOpacity(CkStyle::TextMute())
                     .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
                 ]
 
@@ -66,7 +66,7 @@ auto SCkDebuggerWidget_SearchBar::Construct(const FArguments& InArgs) -> void
                         [
                             SNew(SImage)
                             .Image(FAppStyle::GetBrush("Icons.X"))
-                            .ColorAndOpacity(CkDebugStyle::TextDim())
+                            .ColorAndOpacity(CkStyle::TextDim())
                             .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
                         ]
                     ]

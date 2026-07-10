@@ -7,7 +7,7 @@
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
@@ -48,14 +48,14 @@ auto
     ChildSlot
     [
         SAssignNew(_LockFrame, SBorder)
-            .BorderImage(CkDebugStyle::GetRoundedBrush())
+            .BorderImage(CkStyle::GetRoundedBrush())
             .BorderBackgroundColor(FLinearColor::Transparent)   // no ring unless locked
             .Padding(FMargin{ 2.0f })                            // ring thickness
             [
                 SNew(SBorder)
-                    .BorderImage(CkDebugStyle::GetRoundedBrush())
-                    .BorderBackgroundColor(CkDebugStyle::OverlayOf(CkDebugStyle::BgRoot(), 0.9f))
-                    .Padding(FMargin{ CkDebugStyle::SpaceM })
+                    .BorderImage(CkStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.9f))
+                    .Padding(FMargin{ CkStyle::SpaceM })
                     [
                         _ContentBox.ToSharedRef()
                     ]
@@ -115,17 +115,17 @@ auto
 
         HeaderRow->AddSlot()
             .AutoWidth().VAlign(VAlign_Center)
-            .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, 0.0f })
+            .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, 0.0f })
             [
                 SNew(SBorder)
-                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderImage(CkStyle::GetRoundedBrush())
                     .BorderBackgroundColor(FLinearColor{ 0.0f, 0.80f, 0.95f, 1.0f })
                     .VAlign(VAlign_Center)
-                    .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                    .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(IndexText))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
                             .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                     ]
             ];
@@ -137,12 +137,12 @@ auto
             SNew(SCkDebug_EntityRef)
                 .Entity(InModel.Entity)
                 .ShowName(true)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeH3())))
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeH3())))
         ];
 
     _ContentBox->AddSlot()
         .AutoHeight()
-        .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
+        .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
         [
             HeaderRow
         ];
@@ -195,24 +195,24 @@ auto
         // Provider chip — solid provider-colored pill with dark text.
         SectionRow->AddSlot()
             .VAlign(VAlign_Center)
-            .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, CkDebugStyle::SpaceXS })
+            .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, CkStyle::SpaceXS })
             [
                 SNew(SBorder)
-                    .BorderImage(CkDebugStyle::GetRoundedBrush())
+                    .BorderImage(CkStyle::GetRoundedBrush())
                     .BorderBackgroundColor(ProviderColor)
                     .VAlign(VAlign_Center)
-                    .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                    .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
                     [
                         SNew(STextBlock)
                             .Text(ProviderName)
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
                             .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                     ]
             ];
 
         // Field chips share a provider-tinted background + key color.
-        const auto FieldChipTint = CkDebugStyle::OverlayOf(ProviderColor, 0.18f);
-        const auto FieldKeyColor = CkDebugStyle::OverlayOf(ProviderColor, 0.95f);
+        const auto FieldChipTint = CkStyle::OverlayOf(ProviderColor, 0.18f);
+        const auto FieldKeyColor = CkStyle::OverlayOf(ProviderColor, 0.95f);
 
         for (const auto& Row : Section.Rows)
         {
@@ -245,8 +245,8 @@ auto
 
             // Value color from severity; Normal uses the strong text color.
             auto ValueColor = (Row.Severity == ECk_DebugOverlay_Severity::Normal)
-                ? CkDebugStyle::TextStrong()
-                : CkDebugStyle::GetToneColor(Severity_To_Tone(Row.Severity));
+                ? CkStyle::TextStrong()
+                : CkStyle::GetToneColor(Severity_To_Tone(Row.Severity));
 
             if (InStyle.bFlashOnChange)
             {
@@ -262,11 +262,11 @@ auto
 
             ChipInner->AddSlot()
                 .AutoWidth().VAlign(VAlign_Center)
-                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceXS, 0.0f })
+                .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, 0.0f })
                 [
                     SNew(STextBlock)
                         .Text(FieldLabel)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
                         .ColorAndOpacity(FieldKeyColor)
                 ];
 
@@ -277,8 +277,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TrailText + FocusCard_Constants::BreadcrumbSeparator))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkDebugStyle::FontSizeSmall())))
-                            .ColorAndOpacity(CkDebugStyle::TextMute())
+                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkStyle::FontSizeSmall())))
+                            .ColorAndOpacity(CkStyle::TextMute())
                     ];
             }
 
@@ -287,19 +287,19 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(Row.Value)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeSmall())))
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeSmall())))
                         .ColorAndOpacity(ValueColor)
                 ];
 
             SectionRow->AddSlot()
                 .VAlign(VAlign_Center)
-                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceS, CkDebugStyle::SpaceXS })
+                .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS })
                 [
                     SNew(SBorder)
-                        .BorderImage(CkDebugStyle::GetRoundedBrush())
+                        .BorderImage(CkStyle::GetRoundedBrush())
                         .BorderBackgroundColor(FieldChipTint)
                         .VAlign(VAlign_Center)
-                        .Padding(FMargin{ CkDebugStyle::SpaceS, 1.0f })
+                        .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
                         [
                             ChipInner
                         ]
@@ -308,7 +308,7 @@ auto
 
         _ContentBox->AddSlot()
             .AutoHeight()
-            .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceXS })
+            .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
             [
                 SectionRow
             ];
@@ -329,14 +329,14 @@ auto
                 .Padding(FMargin{ 0.0f, 0.0f, 2.0f, 0.0f })
                 [
                     SNew(SBorder)
-                        .BorderImage(CkDebugStyle::GetRoundedBrush())
+                        .BorderImage(CkStyle::GetRoundedBrush())
                         .BorderBackgroundColor(Entry.Color)
                         .VAlign(VAlign_Center)
                         .Padding(FMargin{ 3.0f, 0.0f })
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Entry.Abbrev))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkDebugStyle::FontSizeMicro())))
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
                                 .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                         ]
                 ];
@@ -346,13 +346,13 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(Entry.FullName))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkDebugStyle::FontSizeMicro())))
-                        .ColorAndOpacity(CkDebugStyle::TextMute())
+                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkStyle::FontSizeMicro())))
+                        .ColorAndOpacity(CkStyle::TextMute())
                 ];
 
             LegendRow->AddSlot()
                 .VAlign(VAlign_Center)
-                .Padding(FMargin{ 0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f })
+                .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceM, 0.0f })
                 [
                     Pair
                 ];
@@ -360,7 +360,7 @@ auto
 
         _ContentBox->AddSlot()
             .AutoHeight()
-            .Padding(FMargin{ 0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f })
+            .Padding(FMargin{ 0.0f, CkStyle::SpaceXS, 0.0f, 0.0f })
             [
                 LegendRow
             ];
@@ -372,15 +372,15 @@ auto
 auto
     SCkDebugOverlay_FocusCard::
     Severity_To_Tone(ECk_DebugOverlay_Severity InSeverity)
-    -> ECkDebug_Tone
+    -> ECk_Tone
 {
     switch (InSeverity)
     {
-        case ECk_DebugOverlay_Severity::Good:   return ECkDebug_Tone::Ok;
-        case ECk_DebugOverlay_Severity::Warn:   return ECkDebug_Tone::Warn;
-        case ECk_DebugOverlay_Severity::Bad:    return ECkDebug_Tone::Err;
+        case ECk_DebugOverlay_Severity::Good:   return ECk_Tone::Ok;
+        case ECk_DebugOverlay_Severity::Warn:   return ECk_Tone::Warn;
+        case ECk_DebugOverlay_Severity::Bad:    return ECk_Tone::Err;
         case ECk_DebugOverlay_Severity::Normal:
-        default:                                return ECkDebug_Tone::Neutral;
+        default:                                return ECk_Tone::Neutral;
     }
 }
 

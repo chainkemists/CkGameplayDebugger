@@ -1,6 +1,6 @@
 #include "SCkDebug_HistoryRow.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 
 #include "Widgets/Images/SImage.h"
@@ -20,25 +20,25 @@ auto
 {
 	_OnClicked = InArgs._OnClicked;
 
-	const auto ToneColor = CkDebugStyle::GetToneColor(InArgs._Tone);
+	const auto ToneColor = CkStyle::GetToneColor(InArgs._Tone);
 	const auto BgColor = InArgs._IsSelected
-		? CkDebugStyle::OverlayOf(CkDebugStyle::Info(), 0.10f)
+		? CkStyle::OverlayOf(CkStyle::Info(), 0.10f)
 		: FLinearColor::Transparent;
-	const auto LeftBorderColor = InArgs._IsSelected ? CkDebugStyle::Info() : FLinearColor::Transparent;
+	const auto LeftBorderColor = InArgs._IsSelected ? CkStyle::Info() : FLinearColor::Transparent;
 
 	auto TopRow = SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
-		.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+		.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 		[
 			SNew(SBox)
 			.WidthOverride(8.0f)
 			.HeightOverride(8.0f)
 			[
 				SNew(SImage)
-				.Image(CkDebugStyle::GetFilledBrush())
+				.Image(CkStyle::GetFilledBrush())
 				.ColorAndOpacity(FSlateColor(ToneColor))
 			]
 		]
@@ -49,8 +49,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._TitleText)
-			.Font(FCoreStyle::GetDefaultFontStyle(InArgs._IsSelected ? "Bold" : "Regular", CkDebugStyle::FontSizeBody()))
-			.ColorAndOpacity(FSlateColor(InArgs._IsSelected ? CkDebugStyle::Text() : CkDebugStyle::TextDim()))
+			.Font(FCoreStyle::GetDefaultFontStyle(InArgs._IsSelected ? "Bold" : "Regular", CkStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(InArgs._IsSelected ? CkStyle::Text() : CkStyle::TextDim()))
 		];
 
 	if (!InArgs._RightText.IsEmpty())
@@ -58,12 +58,12 @@ auto
 		TopRow->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(InArgs._RightText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}
 
@@ -83,8 +83,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._SubtitleText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 				.AutoWrapText(true)
 			];
 	}
@@ -104,7 +104,7 @@ auto
 				.WidthOverride(3.0f)
 				[
 					SNew(SBorder)
-					.BorderImage(CkDebugStyle::GetFilledBrush())
+					.BorderImage(CkStyle::GetFilledBrush())
 					.BorderBackgroundColor(FSlateColor(LeftBorderColor))
 					.Padding(FMargin(0.0f))
 				]
@@ -114,9 +114,9 @@ auto
 			.FillWidth(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkDebugStyle::GetFilledBrush())
+				.BorderImage(CkStyle::GetFilledBrush())
 				.BorderBackgroundColor(FSlateColor(BgColor))
-				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+				.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					Body
 				]

@@ -32,16 +32,16 @@
 
 namespace
 {
-    auto ToneForPlanStatus_PrimaryPane(ECk_GoapPlanStatus InStatus) -> ECkDebug_Tone
+    auto ToneForPlanStatus_PrimaryPane(ECk_GoapPlanStatus InStatus) -> ECk_Tone
     {
         switch (InStatus)
         {
-        case ECk_GoapPlanStatus::PlanFound:            return ECkDebug_Tone::Ok;
-        case ECk_GoapPlanStatus::Planning:             return ECkDebug_Tone::Info;
-        case ECk_GoapPlanStatus::PlanFailed:           return ECkDebug_Tone::Err;
-        case ECk_GoapPlanStatus::CostThresholdReached: return ECkDebug_Tone::Warn;
+        case ECk_GoapPlanStatus::PlanFound:            return ECk_Tone::Ok;
+        case ECk_GoapPlanStatus::Planning:             return ECk_Tone::Info;
+        case ECk_GoapPlanStatus::PlanFailed:           return ECk_Tone::Err;
+        case ECk_GoapPlanStatus::CostThresholdReached: return ECk_Tone::Warn;
         case ECk_GoapPlanStatus::Idle:
-        default:                                       return ECkDebug_Tone::Neutral;
+        default:                                       return ECk_Tone::Neutral;
         }
     }
 
@@ -50,10 +50,10 @@ namespace
     // a Warn (amber) tone so PlanFailed reads as policy, not bug.
     auto ToneForPlanStatusWithOptOut_PrimaryPane(
         ECk_GoapPlanStatus InStatus,
-        bool InAllowPlanFailed) -> ECkDebug_Tone
+        bool InAllowPlanFailed) -> ECk_Tone
     {
         if (InStatus == ECk_GoapPlanStatus::PlanFailed && InAllowPlanFailed)
-        { return ECkDebug_Tone::Warn; }
+        { return ECk_Tone::Warn; }
         return ToneForPlanStatus_PrimaryPane(InStatus);
     }
 
@@ -344,7 +344,7 @@ auto
                 .Text(FText::FromString(IsTopLevel
                     ? FString(TEXT("PLANNER · TOP-LEVEL"))
                     : FString(TEXT("PLANNER · SUB"))))
-                .Tone(ECkDebug_Tone::Accent)
+                .Tone(ECk_Tone::Accent)
                 .ShowDot(false)
         ];
 
@@ -357,7 +357,7 @@ auto
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("ACTION")))
-                    .Tone(ECkDebug_Tone::Info)
+                    .Tone(ECk_Tone::Info)
                     .ShowDot(false)
             ];
     }
@@ -370,7 +370,7 @@ auto
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("OPT-OUT · PlanFailed allowed")))
-                    .Tone(ECkDebug_Tone::Warn)
+                    .Tone(ECk_Tone::Warn)
                     .ShowDot(false)
             ];
     }

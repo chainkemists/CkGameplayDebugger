@@ -18,7 +18,7 @@
 
 #include "StructUtils/InstancedStruct.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_DynamicFragments)
 
@@ -74,7 +74,7 @@ namespace
     struct FPropertyDisplay
     {
         FString Value;
-        FLinearColor Color = CkDebugStyle::Text();
+        FLinearColor Color = CkStyle::Text();
     };
 
     auto FormatProperty(
@@ -88,7 +88,7 @@ namespace
         if (const auto* BoolProp = CastField<FBoolProperty>(InProperty))
         {
             const auto BoolValue = BoolProp->GetPropertyValue(ValuePtr);
-            return { BoolValue ? TEXT("true") : TEXT("false"), BoolValue ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False() };
+            return { BoolValue ? TEXT("true") : TEXT("false"), BoolValue ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False() };
         }
 
         // ---- Enum (FEnumProperty or FByteProperty with enum)
@@ -99,7 +99,7 @@ namespace
             auto NumericValue = int64{};
             EnumProp->GetUnderlyingProperty()->GetValue_InContainer(InContainer, &NumericValue);
             const auto DisplayName = Enum->GetDisplayNameTextByValue(NumericValue).ToString();
-            return { DisplayName, CkDebugStyle::Value_Enum() };
+            return { DisplayName, CkStyle::Value_Enum() };
         }
 
         if (const auto* ByteProp = CastField<FByteProperty>(InProperty);
@@ -107,7 +107,7 @@ namespace
         {
             const auto ByteValue = *static_cast<const uint8*>(ValuePtr);
             const auto DisplayName = ByteProp->Enum->GetDisplayNameTextByValue(ByteValue).ToString();
-            return { DisplayName, CkDebugStyle::Value_Enum() };
+            return { DisplayName, CkStyle::Value_Enum() };
         }
 
         // ---- Numeric (int, float, double)
@@ -116,7 +116,7 @@ namespace
         {
             auto ValueStr = FString{};
             InProperty->ExportTextItem_Direct(ValueStr, ValuePtr, nullptr, nullptr, PPF_None);
-            return { ValueStr, CkDebugStyle::Value_Numeric() };
+            return { ValueStr, CkStyle::Value_Numeric() };
         }
 
         // ---- String types
@@ -124,19 +124,19 @@ namespace
         if (CastField<FNameProperty>(InProperty))
         {
             const auto NameValue = *static_cast<const FName*>(ValuePtr);
-            return { NameValue.IsNone() ? TEXT("(None)") : NameValue.ToString(), CkDebugStyle::Value_String() };
+            return { NameValue.IsNone() ? TEXT("(None)") : NameValue.ToString(), CkStyle::Value_String() };
         }
 
         if (CastField<FStrProperty>(InProperty))
         {
             const auto& StrValue = *static_cast<const FString*>(ValuePtr);
-            return { StrValue.IsEmpty() ? TEXT("(Empty)") : StrValue, CkDebugStyle::Value_String() };
+            return { StrValue.IsEmpty() ? TEXT("(Empty)") : StrValue, CkStyle::Value_String() };
         }
 
         if (CastField<FTextProperty>(InProperty))
         {
             const auto& TextValue = *static_cast<const FText*>(ValuePtr);
-            return { TextValue.IsEmpty() ? TEXT("(Empty)") : TextValue.ToString(), CkDebugStyle::Value_String() };
+            return { TextValue.IsEmpty() ? TEXT("(Empty)") : TextValue.ToString(), CkStyle::Value_String() };
         }
 
         // ---- UObject pointer
@@ -150,9 +150,9 @@ namespace
             // non-null but pending-kill / unreachable, and GetName() on those will crash.
             // ::IsValid checks GUObjectArray + object flags safely.
             if (Obj == nullptr || NOT ::IsValid(Obj))
-            { return { TEXT("(None)"), CkDebugStyle::Value_Object() }; }
+            { return { TEXT("(None)"), CkStyle::Value_Object() }; }
 
-            return { Obj->GetName(), CkDebugStyle::Value_Object() };
+            return { Obj->GetName(), CkStyle::Value_Object() };
         }
 
         // ---- Struct types (order matters — check specific before generic fallback)
@@ -163,38 +163,38 @@ namespace
             if (IsStructType(StructProp, FGameplayTag::StaticStruct()))
             {
                 const auto& Tag = *static_cast<const FGameplayTag*>(ValuePtr);
-                return { Tag.IsValid() ? Tag.GetTagName().ToString() : TEXT("(None)"), CkDebugStyle::Value_Tag() };
+                return { Tag.IsValid() ? Tag.GetTagName().ToString() : TEXT("(None)"), CkStyle::Value_Tag() };
             }
 
             // FGameplayTagContainer
             if (IsStructType(StructProp, FGameplayTagContainer::StaticStruct()))
             {
                 const auto& Container = *static_cast<const FGameplayTagContainer*>(ValuePtr);
-                return { Container.IsEmpty() ? TEXT("(Empty)") : Container.ToString(), CkDebugStyle::Value_Tag() };
+                return { Container.IsEmpty() ? TEXT("(Empty)") : Container.ToString(), CkStyle::Value_Tag() };
             }
 
             // FVector
             if (IsStructType(StructProp, TBaseStructure<FVector>::Get()))
             {
-                return { static_cast<const FVector*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
+                return { static_cast<const FVector*>(ValuePtr)->ToString(), CkStyle::Value_Math() };
             }
 
             // FVector2D
             if (IsStructType(StructProp, TBaseStructure<FVector2D>::Get()))
             {
-                return { static_cast<const FVector2D*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
+                return { static_cast<const FVector2D*>(ValuePtr)->ToString(), CkStyle::Value_Math() };
             }
 
             // FRotator
             if (IsStructType(StructProp, TBaseStructure<FRotator>::Get()))
             {
-                return { static_cast<const FRotator*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
+                return { static_cast<const FRotator*>(ValuePtr)->ToString(), CkStyle::Value_Math() };
             }
 
             // FTransform
             if (IsStructType(StructProp, TBaseStructure<FTransform>::Get()))
             {
-                return { static_cast<const FTransform*>(ValuePtr)->ToString(), CkDebugStyle::Value_Math() };
+                return { static_cast<const FTransform*>(ValuePtr)->ToString(), CkStyle::Value_Math() };
             }
 
             // FLinearColor
@@ -216,7 +216,7 @@ namespace
 
         auto ValueStr = FString{};
         InProperty->ExportTextItem_Direct(ValueStr, ValuePtr, nullptr, nullptr, PPF_None);
-        return { ValueStr, CkDebugStyle::Text() };
+        return { ValueStr, CkStyle::Text() };
     }
 }
 
@@ -266,7 +266,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(PropertyName))
-                    .ColorAndOpacity(CkDebugStyle::TextDim())
+                    .ColorAndOpacity(CkStyle::TextDim())
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                     .ToolTipText(FText::FromString(PropertyName))
                 ];

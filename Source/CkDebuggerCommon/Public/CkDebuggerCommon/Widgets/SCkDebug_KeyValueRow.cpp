@@ -1,6 +1,6 @@
 #include "SCkDebug_KeyValueRow.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
@@ -24,7 +24,7 @@ auto
 	if (InArgs._Tone == ECkDebug_KeyValueTone::Bool)
 	{
 		const auto ValStr = InArgs._ValueText.Get().ToString();
-		const auto BoolColor = ValStr == TEXT("true") ? CkDebugStyle::Ok() : CkDebugStyle::Err();
+		const auto BoolColor = ValStr == TEXT("true") ? CkStyle::Ok() : CkStyle::Err();
 		ValueColorAttr = FSlateColor(BoolColor);
 	}
 	else
@@ -37,8 +37,8 @@ auto
 			}));
 	}
 
-	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall());
-	const auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall());
+	const auto MonoFont = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall());
+	const auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall());
 
 	auto Row = SNew(SHorizontalBox);
 
@@ -47,14 +47,14 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 			[
 				SNew(SBox)
 				.WidthOverride(7.0f)
 				.HeightOverride(7.0f)
 				[
 					SNew(SImage)
-					.Image(CkDebugStyle::GetFilledBrush())
+					.Image(CkStyle::GetFilledBrush())
 					.ColorAndOpacity(FSlateColor(InArgs._MarkerColor))
 				]
 			];
@@ -78,7 +78,7 @@ auto
 				SNew(STextBlock)
 				.Text(InArgs._KeyText)
 				.Font(MonoFont)
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Selection()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Selection()))
 			];
 	}
 	else
@@ -88,7 +88,7 @@ auto
 		KeyWidget = SNew(SEditableText)
 			.Text(InArgs._KeyText)
 			.Font(MonoFont)
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 			.IsReadOnly(true);
 	}
 
@@ -106,7 +106,7 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				InArgs._ValueWidget.Widget
 			];
@@ -117,7 +117,7 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(SEditableText)
 				.Text(ValueAttr)
@@ -132,9 +132,9 @@ auto
 	}
 
 	auto Body = SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
+		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
-		.Padding(FMargin(CkDebugStyle::SpaceM, 3.0f))
+		.Padding(FMargin(CkStyle::SpaceM, 3.0f))
 		[
 			Row
 		];

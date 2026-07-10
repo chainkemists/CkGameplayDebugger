@@ -10,7 +10,7 @@
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -34,18 +34,18 @@ namespace
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(InPre))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Err()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::NodeMetaFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Err()))
 			];
 
 		Row->AddSlot()
 			.AutoWidth()
-			.Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(InEff))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::NodeMetaFontSize()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::Ok()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::NodeMetaFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::Ok()))
 			];
 
 		return Row;
@@ -79,13 +79,13 @@ public:
 		};
 
 		// ---- Row 1: bare pills, one per variant ---------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("All five variants — bare (no badge, no cost, no body).")) ];
 
 		auto BareRow = SNew(SWrapBox).UseAllottedSize(true);
 		for (const auto& V : Variants)
 		{
-			BareRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			BareRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					SNew(SBox).MinDesiredWidth(180.0f)
 					[
@@ -96,17 +96,17 @@ public:
 					]
 				];
 		}
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ BareRow ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ BareRow ];
 
 		// ---- Row 2: with step badge + cost --------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("Step badge (StepIndex >= 0) + cost. Badge palette matches variant.")) ];
 
 		auto BadgedRow = SNew(SWrapBox).UseAllottedSize(true);
 		auto StepIdx = 0;
 		for (const auto& V : Variants)
 		{
-			BadgedRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			BadgedRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					SNew(SBox).MinDesiredWidth(180.0f)
 					[
@@ -118,16 +118,16 @@ public:
 					]
 				];
 		}
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ BadgedRow ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ BadgedRow ];
 
 		// ---- Row 3: with body content -------------------------------------
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("With BodyContent — here a pre/eff summary like the real GOAP graph node.")) ];
 
 		auto BodyRow = SNew(SWrapBox).UseAllottedSize(true);
 		for (const auto& V : Variants)
 		{
-			BodyRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			BodyRow->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					SNew(SBox).MinDesiredWidth(220.0f)
 					[
@@ -171,7 +171,7 @@ public:
 			+ SVerticalBox::Slot()
 			.AutoHeight()
 			.HAlign(HAlign_Left)
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SAssignNew(_EchoContainer, SBox)
 			]
@@ -179,14 +179,14 @@ public:
 			// ---- GOAP-style row ----
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[
 				SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("GOAP Variants")))
 			]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SAssignNew(_GoapRow, SWrapBox).UseAllottedSize(true)
 			]
@@ -194,7 +194,7 @@ public:
 			// ---- ECS-style row ----
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[
 				SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("ECS Variants — accent strip + edge-type border override")))
 			]
@@ -251,28 +251,28 @@ private:
 
 		MakeEcs(TEXT("ECS · Center (no border override)"),
 		        ECkDebug_NodePillVariant::InPlan,
-		        CkDebugStyle::Value_Handle(),
+		        CkStyle::Value_Handle(),
 		        FLinearColor::Transparent);
 
 		MakeEcs(TEXT("ECS · LifetimeOwner"),
 		        ECkDebug_NodePillVariant::Inactive,
-		        CkDebugStyle::Value_Numeric(),
-		        CkDebugStyle::Relationship());
+		        CkStyle::Value_Numeric(),
+		        CkStyle::Relationship());
 
 		MakeEcs(TEXT("ECS · ContextOwner"),
 		        ECkDebug_NodePillVariant::Inactive,
-		        CkDebugStyle::Value_String(),
-		        CkDebugStyle::Reference());
+		        CkStyle::Value_String(),
+		        CkStyle::Reference());
 
 		MakeEcs(TEXT("ECS · LifetimeDependent"),
 		        ECkDebug_NodePillVariant::Inactive,
-		        CkDebugStyle::Value_Tag(),
-		        CkDebugStyle::Transform());
+		        CkStyle::Value_Tag(),
+		        CkStyle::Transform());
 
 		MakeEcs(TEXT("ECS · Default edge"),
 		        ECkDebug_NodePillVariant::Inactive,
-		        CkDebugStyle::Value_Object(),
-		        CkDebugStyle::Graph_Node_Border_Default());
+		        CkStyle::Value_Object(),
+		        CkStyle::Graph_Node_Border_Default());
 	}
 
 	auto Rebuild() -> void
@@ -305,7 +305,7 @@ private:
 
 			auto Sized = SNew(SBox)
 				.MinDesiredWidth(240.0f)
-				.Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+				.Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					Pill
 				];
@@ -322,8 +322,8 @@ private:
 				: FString(TEXT("no selection"));
 
 			const auto Tone = _Samples.IsValidIndex(_SelectedIdx)
-				? ECkDebug_Tone::Info
-				: ECkDebug_Tone::Neutral;
+				? ECk_Tone::Info
+				: ECk_Tone::Neutral;
 
 			_EchoContainer->SetContent(
 				SNew(SCkDebug_StatusPill)

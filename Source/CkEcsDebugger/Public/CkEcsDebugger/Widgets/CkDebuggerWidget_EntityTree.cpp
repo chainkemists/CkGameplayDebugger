@@ -24,7 +24,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
 {
 public:
@@ -111,32 +111,32 @@ private:
     auto Get_NodeTextColor() const -> FSlateColor
     {
         if (NOT Node.IsValid())
-        { return CkDebugStyle::Text(); }
+        { return CkStyle::Text(); }
 
         // Inspector-filter dim takes precedence over selection — dimmed entities still
         // read as dimmed even when clicked, so the user knows the row didn't pass the filter.
         // The same dim applies to non-matches in Highlight search mode.
         if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
-        { return CkDebugStyle::TextMute(); }
+        { return CkStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
-        { return CkDebugStyle::TextStrong(); }
+        { return CkStyle::TextStrong(); }
 
-        return CkDebugStyle::Text();
+        return CkStyle::Text();
     }
 
     auto Get_EntityStatusColor() const -> FSlateColor
     {
         if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
-        { return CkDebugStyle::Err(); }
+        { return CkStyle::Err(); }
 
         if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
-        { return CkDebugStyle::TextMute(); }
+        { return CkStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
-        { return CkDebugStyle::Selection(); }
+        { return CkStyle::Selection(); }
 
-        return CkDebugStyle::Ok();
+        return CkStyle::Ok();
     }
 
     auto Get_HighlightText() const -> FText

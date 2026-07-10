@@ -19,7 +19,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 auto SCkDebuggerPanel_EntityList::Construct(
     const FArguments& InArgs,
@@ -125,7 +125,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.Refresh"))
-                        .ColorAndOpacity(CkDebugStyle::TextDim())
+                        .ColorAndOpacity(CkStyle::TextDim())
                         .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
                     ]
                 ]
@@ -142,7 +142,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.ChevronDown"))
-                        .ColorAndOpacity(CkDebugStyle::TextDim())
+                        .ColorAndOpacity(CkStyle::TextDim())
                         .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
                     ]
                 ]
@@ -158,7 +158,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.ChevronUp"))
-                        .ColorAndOpacity(CkDebugStyle::TextDim())
+                        .ColorAndOpacity(CkStyle::TextDim())
                         .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
                     ]
                 ]
@@ -189,7 +189,7 @@ auto SCkDebuggerPanel_EntityList::Build_StatusBar() -> TSharedRef<SWidget>
                     SNew(STextBlock)
                     .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                     .Text(this, &SCkDebuggerPanel_EntityList::Get_EntityCountText)
-                    .ColorAndOpacity(CkDebugStyle::TextDim())
+                    .ColorAndOpacity(CkStyle::TextDim())
                 ]
 
                 + SHorizontalBox::Slot()
@@ -199,7 +199,7 @@ auto SCkDebuggerPanel_EntityList::Build_StatusBar() -> TSharedRef<SWidget>
                     SNew(STextBlock)
                     .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                     .Text(this, &SCkDebuggerPanel_EntityList::Get_SelectionCountText)
-                    .ColorAndOpacity(CkDebugStyle::Selection())
+                    .ColorAndOpacity(CkStyle::Selection())
                 ]
             ]
         ];

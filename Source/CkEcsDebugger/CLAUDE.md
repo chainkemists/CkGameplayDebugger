@@ -63,7 +63,7 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
 
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
-- `FCkDebuggerStyle` owns ECS-specific Slate brushes, text styles, padding + graph-node size constants. Cross-debugger style tokens live in `CkDebugStyle::` (CkDebuggerCommon).
+- `FCkDebuggerStyle` owns ECS-specific Slate brushes, text styles, padding + graph-node size constants. Cross-debugger style tokens live in `CkStyle::` (CkDebuggerCommon).
 - `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
 - Graph model is pure data with no rendering. Layout strategy is swappable.
 

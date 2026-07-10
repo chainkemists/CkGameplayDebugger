@@ -1,6 +1,6 @@
 #include "SCkDebug_StatusPill.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
@@ -15,7 +15,7 @@ auto
 	Construct(const FArguments& InArgs)
 	-> void
 {
-	const auto ToneColor = CkDebugStyle::GetToneColor(InArgs._Tone);
+	const auto ToneColor = CkStyle::GetToneColor(InArgs._Tone);
 	auto BgColor = ToneColor; BgColor.A = 0.16f;
 	auto BorderColor = ToneColor; BorderColor.A = 0.38f;
 
@@ -33,7 +33,7 @@ auto
 				.HeightOverride(7.0f)
 				[
 					SNew(SImage)
-					.Image(CkDebugStyle::GetFilledBrush())
+					.Image(CkStyle::GetFilledBrush())
 					.ColorAndOpacity(FSlateColor(ToneColor))
 				]
 			];
@@ -45,21 +45,21 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Text)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
 			.ColorAndOpacity(FSlateColor(ToneColor))
 		];
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetRoundedBrush())
+		.BorderImage(CkStyle::GetRoundedBrush())
 		.BorderBackgroundColor(FSlateColor(BorderColor))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SBorder)
-			.BorderImage(CkDebugStyle::GetRoundedBrush())
+			.BorderImage(CkStyle::GetRoundedBrush())
 			.BorderBackgroundColor(FSlateColor(BgColor))
-			.Padding(FMargin(CkDebugStyle::SpaceM, 2.0f))
+			.Padding(FMargin(CkStyle::SpaceM, 2.0f))
 			[
 				Row
 			]

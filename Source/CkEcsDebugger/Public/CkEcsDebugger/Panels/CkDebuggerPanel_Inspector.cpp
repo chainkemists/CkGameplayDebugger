@@ -20,7 +20,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/SNullWidget.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 SCkDebuggerPanel_Inspector::~SCkDebuggerPanel_Inspector()
 {
     DeactivateAllInspectors();
@@ -219,7 +219,7 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
             [
                 SNew(SCkDebug_StatusPill)
                 .Text(FText::FromString(TEXT("Invalid Entity")))
-                .Tone(ECkDebug_Tone::Err)
+                .Tone(ECk_Tone::Err)
             ];
         return;
     }
@@ -251,7 +251,7 @@ auto SCkDebuggerPanel_Inspector::Build_NoSelectionWidget() -> TSharedRef<SWidget
                 SNew(STextBlock)
                 .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.LargeHeader"))
                 .Text(FText::FromString(TEXT("No Entity Selected")))
-                .ColorAndOpacity(CkDebugStyle::TextMute())
+                .ColorAndOpacity(CkStyle::TextMute())
             ]
 
             + SVerticalBox::Slot()
@@ -262,7 +262,7 @@ auto SCkDebuggerPanel_Inspector::Build_NoSelectionWidget() -> TSharedRef<SWidget
                 SNew(STextBlock)
                 .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                 .Text(FText::FromString(TEXT("Select an entity from the list to inspect")))
-                .ColorAndOpacity(CkDebugStyle::TextDim())
+                .ColorAndOpacity(CkStyle::TextDim())
             ]
         ];
 }
@@ -305,8 +305,8 @@ auto SCkDebuggerPanel_Inspector::Build_ModeToggle() -> TSharedRef<SWidget>
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                         .Text(FText::FromString(TEXT("By Inspector")))
                         .ColorAndOpacity(bInspectorActive
-                            ? CkDebugStyle::Selection()
-                            : CkDebugStyle::Text())
+                            ? CkStyle::Selection()
+                            : CkStyle::Text())
                         .Justification(ETextJustify::Center)
                     ]
                 ]
@@ -342,8 +342,8 @@ auto SCkDebuggerPanel_Inspector::Build_ModeToggle() -> TSharedRef<SWidget>
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
                         .Text(FText::FromString(TEXT("By Entity")))
                         .ColorAndOpacity(bEntityActive
-                            ? CkDebugStyle::Selection()
-                            : CkDebugStyle::Text())
+                            ? CkStyle::Selection()
+                            : CkStyle::Text())
                         .Justification(ETextJustify::Center)
                     ]
                 ]

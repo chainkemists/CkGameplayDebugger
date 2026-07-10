@@ -13,7 +13,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
@@ -110,7 +110,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
         },
         [](const FCk_Handle& E)
         {
-            return Get_LayerIndex(E) == INDEX_NONE ? CkDebugStyle::None() : CkDebugStyle::Text();
+            return Get_LayerIndex(E) == INDEX_NONE ? CkStyle::None() : CkStyle::Text();
         });
 
     // ----- Dirty this frame -----
@@ -124,7 +124,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
         [](const FCk_Handle& E)
         {
             return E.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
-                ? CkDebugStyle::State_Enabled() : CkDebugStyle::None();
+                ? CkStyle::State_Enabled() : CkStyle::None();
         });
 
     // ----- Relative transform -----
@@ -141,7 +141,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_SceneNode_UE::Get_Offset(Node).GetLocation()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     Builder.AddRow(
         FText::FromString(TEXT("Rotation:")),
@@ -154,7 +154,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_SceneNode_UE::Get_Offset(Node).GetRotation().Rotator()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     Builder.AddRow(
         FText::FromString(TEXT("Scale:")),
@@ -167,7 +167,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_SceneNode_UE::Get_Offset(Node).GetScale3D()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     // ----- Resolved world transform -----
     Builder.AddHeader(FText::FromString(TEXT("Resolved World Transform")));
@@ -180,7 +180,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     Builder.AddRow(
         FText::FromString(TEXT("Rotation:")),
@@ -190,7 +190,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     Builder.AddRow(
         FText::FromString(TEXT("Scale:")),
@@ -200,7 +200,7 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             return FText::FromString(ck::Format_UE(TEXT("{}"),
                 UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
         },
-        CkDebugStyle::Transform());
+        CkStyle::Transform());
 
     // ----- Siblings -----
     Builder.AddHeader(FText::FromString(TEXT("Siblings (under Parent)")));

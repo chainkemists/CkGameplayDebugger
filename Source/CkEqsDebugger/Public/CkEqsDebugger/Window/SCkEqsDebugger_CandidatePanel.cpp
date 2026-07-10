@@ -3,7 +3,7 @@
 #include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -27,11 +27,11 @@
 
 namespace
 {
-    auto Tone_FromCandidate(const FCkEqsDebugger_CandidateInfo& InItem) -> ECkDebug_Tone
+    auto Tone_FromCandidate(const FCkEqsDebugger_CandidateInfo& InItem) -> ECk_Tone
     {
-        if (InItem.IsBestPick) { return ECkDebug_Tone::Accent; }
-        if (NOT InItem.Passed) { return ECkDebug_Tone::Err; }
-        return ECkDebug_Tone::Ok;
+        if (InItem.IsBestPick) { return ECk_Tone::Accent; }
+        if (NOT InItem.Passed) { return ECk_Tone::Err; }
+        return ECk_Tone::Ok;
     }
 }
 
@@ -190,7 +190,7 @@ auto
 {
     const auto& C = *InItem;
     const auto Tone      = Tone_FromCandidate(C);
-    const auto ToneColor = CkDebugStyle::GetToneColor(Tone);
+    const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto TitleText = C.IsBestPick
         ? ck::Format_UE(TEXT("[BEST] #{}    score {:.4f}"), C.ResultIndex, C.FinalScore)
@@ -246,7 +246,7 @@ auto
                 .WidthOverride(8.0f).HeightOverride(8.0f)
                 [
                     SNew(SImage)
-                    .Image(CkDebugStyle::GetFilledBrush())
+                    .Image(CkStyle::GetFilledBrush())
                     .ColorAndOpacity(FSlateColor{ToneColor})
                 ]
             ]

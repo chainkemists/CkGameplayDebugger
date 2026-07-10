@@ -6,7 +6,7 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "SGraphPin.h"
@@ -112,7 +112,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(StateName))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::NodeTitleFontSize()))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::NodeTitleFontSize()))
                     .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                     {
                         auto Color = FCkSmDebuggerStyle::Color_Sm_TextPrimary;
@@ -253,8 +253,8 @@ auto
                             // the current state shows a green outline (fading in via the glow
                             // alpha). Green is strictly current-only — on any other state it
                             // read as a competing active highlight.
-                            if (Node == nullptr) { return CkDebugStyle::NodeFill_Inactive(); }
-                            auto Border = CkDebugStyle::NodeFill_Inactive();
+                            if (Node == nullptr) { return CkStyle::NodeFill_Inactive(); }
+                            auto Border = CkStyle::NodeFill_Inactive();
                             if (Node->Get_IsCurrentState())
                             {
                                 Border = FMath::Lerp(Border, FCkSmDebuggerStyle::Color_Sm_ActiveOutline, Node->Get_BorderGlowAlpha());
@@ -271,9 +271,9 @@ auto
                         .OpacityOverride_Lambda([WeakNode = TWeakObjectPtr<UCkSmDebugNode_State>(_StateNode)]() -> float
                         {
                             const auto* Node = WeakNode.Get();
-                            if (Node == nullptr) { return CkDebugStyle::NodeInactiveOpacity(); }
+                            if (Node == nullptr) { return CkStyle::NodeInactiveOpacity(); }
                             return FMath::Lerp(
-                                CkDebugStyle::NodeInactiveOpacity(),
+                                CkStyle::NodeInactiveOpacity(),
                                 1.0f,
                                 Node->Get_CellGlowAlpha());
                         })

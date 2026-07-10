@@ -13,7 +13,7 @@
 
 #include "EdGraph/EdGraphPin.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 // =====================================================================================================================
 
 auto
@@ -121,7 +121,7 @@ auto
         const auto& Owner = InEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
         if (ck::IsValid(Owner))
         {
-            Owners.Add({ Owner, ECkEcsDebugEdgeType::LifetimeOwner, CkDebugStyle::Relationship() });
+            Owners.Add({ Owner, ECkEcsDebugEdgeType::LifetimeOwner, CkStyle::Relationship() });
         }
     }
 
@@ -139,7 +139,7 @@ auto
             }
             if (NOT bAlreadyAdded)
             {
-                Owners.Add({ ContextOwner, ECkEcsDebugEdgeType::ContextOwner, CkDebugStyle::Reference() });
+                Owners.Add({ ContextOwner, ECkEcsDebugEdgeType::ContextOwner, CkStyle::Reference() });
             }
         }
     }
@@ -150,7 +150,7 @@ auto
     {
         if (ck::IsValid(Dependent))
         {
-            Dependents.Add({ Dependent, ECkEcsDebugEdgeType::LifetimeDependent, CkDebugStyle::Transform() });
+            Dependents.Add({ Dependent, ECkEcsDebugEdgeType::LifetimeDependent, CkStyle::Transform() });
         }
     }
 
@@ -232,7 +232,7 @@ auto
     auto* CenterNode = CreateEntityNode(
         InEntity,
         CenterLabel,
-        CkDebugStyle::TextStrong(),
+        CkStyle::TextStrong(),
         true,
         ECkEcsDebugEdgeType::None,
         CenterX,

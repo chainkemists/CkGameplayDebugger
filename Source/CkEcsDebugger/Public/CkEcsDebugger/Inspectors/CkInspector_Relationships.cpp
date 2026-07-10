@@ -13,7 +13,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Relationships)
 
@@ -49,8 +49,8 @@ auto FCkInspector_Relationships::Build_Inspector(const FCk_Handle& Entity) -> TS
             [](const FCk_Handle& E)
             {
                 if (const auto TeamEntity = UCk_Utils_Team_UE::Cast(E); ck::IsValid(TeamEntity))
-                { return CkDebugStyle::Relationship(); }
-                return CkDebugStyle::Err();
+                { return CkStyle::Relationship(); }
+                return CkStyle::Err();
             })
         .AddWidgetRow(
             FText::FromString(TEXT("Context Owner:")),

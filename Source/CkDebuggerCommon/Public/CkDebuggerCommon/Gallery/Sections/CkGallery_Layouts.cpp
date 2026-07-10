@@ -6,7 +6,7 @@
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ExpandableColumn.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
@@ -53,20 +53,20 @@ public:
 
 		// Plain labelled group.
 		auto Plain = SNew(SCkDebug_LabeledGroup).Label(FText::FromString(TEXT("Plain")));
-		Plain->AddChild(MakeSampleKV(TEXT("health"), TEXT("100"), ECkDebug_KeyValueTone::Custom, CkDebugStyle::Value_Numeric()));
+		Plain->AddChild(MakeSampleKV(TEXT("health"), TEXT("100"), ECkDebug_KeyValueTone::Custom, CkStyle::Value_Numeric()));
 		Plain->AddChild(MakeSampleKV(TEXT("alive"),  TEXT("true"), ECkDebug_KeyValueTone::Bool, FLinearColor::White));
 
 		// Dotted + count.
 		auto Dotted = SNew(SCkDebug_LabeledGroup)
 			.Label(FText::FromString(TEXT("With Dot + Count")))
-			.DotColor(CkDebugStyle::CategoryBuild())
+			.DotColor(CkStyle::CategoryBuild())
 			.CountText(FText::FromString(TEXT("2")));
-		Dotted->AddChild(MakeSampleKV(TEXT("progress"), TEXT("0.65"), ECkDebug_KeyValueTone::Custom, CkDebugStyle::Value_Numeric()));
-		Dotted->AddChild(MakeSampleKV(TEXT("stage"),    TEXT("foundation"), ECkDebug_KeyValueTone::Custom, CkDebugStyle::Value_String()));
+		Dotted->AddChild(MakeSampleKV(TEXT("progress"), TEXT("0.65"), ECkDebug_KeyValueTone::Custom, CkStyle::Value_Numeric()));
+		Dotted->AddChild(MakeSampleKV(TEXT("stage"),    TEXT("foundation"), ECkDebug_KeyValueTone::Custom, CkStyle::Value_String()));
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Plain — no dot, no count")) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ Plain ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("With dot + count")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Plain — no dot, no count")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ Plain ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("With dot + count")) ];
 		Col->AddSlot().AutoHeight()[ Dotted ];
 		return Col;
 	}
@@ -95,26 +95,26 @@ public:
 			.CountText(FText::FromString(TEXT("4")));
 
 		Rail->AddChild(SNew(SCkDebug_HistoryRow)
-			.Tone(ECkDebug_Tone::Ok)
+			.Tone(ECk_Tone::Ok)
 			.TitleText(FText::FromString(TEXT("MoveToKitchen")))
 			.MetaText(FText::FromString(TEXT("$4")))
 			.RightText(FText::FromString(TEXT("#142")))
 			.SubtitleText(FText::FromString(TEXT("took 0.42s"))));
 
 		Rail->AddChild(SNew(SCkDebug_HistoryRow)
-			.Tone(ECkDebug_Tone::Info)
+			.Tone(ECk_Tone::Info)
 			.TitleText(FText::FromString(TEXT("PrepareMeal")))
 			.MetaText(FText::FromString(TEXT("$7")))
 			.RightText(FText::FromString(TEXT("#143"))));
 
 		Rail->AddChild(SNew(SCkDebug_HistoryRow)
-			.Tone(ECkDebug_Tone::Warn)
+			.Tone(ECk_Tone::Warn)
 			.TitleText(FText::FromString(TEXT("ServeMeal")))
 			.RightText(FText::FromString(TEXT("#144")))
 			.SubtitleText(FText::FromString(TEXT("precondition failed"))));
 
 		Rail->AddChild(SNew(SCkDebug_HistoryRow)
-			.Tone(ECkDebug_Tone::Err)
+			.Tone(ECk_Tone::Err)
 			.TitleText(FText::FromString(TEXT("RetrySequence")))
 			.RightText(FText::FromString(TEXT("#145")))
 			.SubtitleText(FText::FromString(TEXT("aborted"))));
@@ -150,8 +150,8 @@ public:
 		{
 			return SNew(STextBlock)
 				.Text(FText::FromString(InText))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 				.AutoWrapText(true);
 		};
 
@@ -159,13 +159,13 @@ public:
 		{
 			return SNew(STextBlock)
 				.Text(FText::FromString(InText))
-				.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
+				.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()));
 		};
 
 		auto Row = SNew(SHorizontalBox);
 
-		Row->AddSlot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+		Row->AddSlot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 			[
 				SNew(SCkDebug_ExpandableColumn)
 				.Title(FText::FromString(TEXT("Expanded")))
@@ -174,7 +174,7 @@ public:
 				.CollapsedSummary()[ MakeSummary(TEXT("(hidden)")) ]
 			];
 
-		Row->AddSlot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+		Row->AddSlot().FillWidth(1.0f).Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 			[
 				SNew(SCkDebug_ExpandableColumn)
 				.Title(FText::FromString(TEXT("Collapsed")))
@@ -219,24 +219,24 @@ public:
 
 		auto MakeBody = [](const FString& InText)
 		{
-			return SNew(SBox).Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			return SNew(SBox).Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(InText))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 					.AutoWrapText(true)
 				];
 		};
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SNew(SCkDebug_InspectorPanel)
 				.Title(FText::FromString(TEXT("Plain")))
 				.Body()[ MakeBody(TEXT("Just a title and body. Click the header to toggle.")) ]
 			];
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SNew(SCkDebug_InspectorPanel)
 				.Title(FText::FromString(TEXT("With Count")))
@@ -244,12 +244,12 @@ public:
 				.Body()[ MakeBody(TEXT("Count badge renders beside the title.")) ]
 			];
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SNew(SCkDebug_InspectorPanel)
 				.Title(FText::FromString(TEXT("With Status Pill")))
 				.StatusPillText(FText::FromString(TEXT("simulating")))
-				.StatusPillTone(ECkDebug_Tone::Info)
+				.StatusPillTone(ECk_Tone::Info)
 				.Body()[ MakeBody(TEXT("Status pill renders in the header next to the count.")) ]
 			];
 
@@ -259,7 +259,7 @@ public:
 				.Title(FText::FromString(TEXT("Starts Collapsed")))
 				.StartExpanded(false)
 				.StatusPillText(FText::FromString(TEXT("failed")))
-				.StatusPillTone(ECkDebug_Tone::Err)
+				.StatusPillTone(ECk_Tone::Err)
 				.Body()[ MakeBody(TEXT("You only see this after clicking the header to expand.")) ]
 			];
 

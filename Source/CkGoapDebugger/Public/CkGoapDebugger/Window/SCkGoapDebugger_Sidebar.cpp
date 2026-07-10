@@ -812,7 +812,7 @@ auto
         [
             SNew(SCkDebug_StatusPill)
                 .Text(FText::FromString(TEXT("PLANNER")))
-                .Tone(ECkDebug_Tone::Accent)
+                .Tone(ECk_Tone::Accent)
                 .ShowDot(false)
         ];
 
@@ -825,7 +825,7 @@ auto
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("ACTION")))
-                    .Tone(ECkDebug_Tone::Info)
+                    .Tone(ECk_Tone::Info)
                     .ShowDot(false)
             ];
     }
@@ -841,7 +841,7 @@ auto
             [
                 SNew(SCkDebug_StatusPill)
                     .Text(FText::FromString(TEXT("OPT-OUT")))
-                    .Tone(ECkDebug_Tone::Warn)
+                    .Tone(ECk_Tone::Warn)
                     .ShowDot(false)
             ];
     }

@@ -9,7 +9,7 @@
 #include "Styling/AppStyle.h"
 #include "Rendering/DrawElements.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 // --------------------------------------------------------------------------------------------------------------------
 
 FCkEcsDebugConnectionPolicy::FCkEcsDebugConnectionPolicy(
@@ -39,7 +39,7 @@ auto
     OutParams.AssociatedPin1 = InOutputPin;
     OutParams.AssociatedPin2 = InInputPin;
     OutParams.WireThickness = 1.5f;
-    OutParams.WireColor = CkDebugStyle::Graph_Edge();
+    OutParams.WireColor = CkStyle::Graph_Edge();
     OutParams.bDrawBubbles = false;
 
     if (NOT InInputPin || NOT InOutputPin)
@@ -51,13 +51,13 @@ auto
         switch (TargetNode->Get_EdgeType())
         {
         case ECkEcsDebugEdgeType::LifetimeOwner:
-            OutParams.WireColor = CkDebugStyle::Relationship();
+            OutParams.WireColor = CkStyle::Relationship();
             break;
         case ECkEcsDebugEdgeType::ContextOwner:
-            OutParams.WireColor = CkDebugStyle::Reference();
+            OutParams.WireColor = CkStyle::Reference();
             break;
         case ECkEcsDebugEdgeType::LifetimeDependent:
-            OutParams.WireColor = CkDebugStyle::Transform();
+            OutParams.WireColor = CkStyle::Transform();
             break;
         default:
             break;
@@ -76,13 +76,13 @@ auto
                 switch (SourceNode->Get_EdgeType())
                 {
                 case ECkEcsDebugEdgeType::LifetimeOwner:
-                    OutParams.WireColor = CkDebugStyle::Relationship();
+                    OutParams.WireColor = CkStyle::Relationship();
                     break;
                 case ECkEcsDebugEdgeType::ContextOwner:
-                    OutParams.WireColor = CkDebugStyle::Reference();
+                    OutParams.WireColor = CkStyle::Reference();
                     break;
                 case ECkEcsDebugEdgeType::LifetimeDependent:
-                    OutParams.WireColor = CkDebugStyle::Transform();
+                    OutParams.WireColor = CkStyle::Transform();
                     break;
                 default:
                     break;

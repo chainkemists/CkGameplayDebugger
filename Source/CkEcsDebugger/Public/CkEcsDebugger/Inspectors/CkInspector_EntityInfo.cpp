@@ -11,7 +11,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityInfo)
 
@@ -45,7 +45,7 @@ auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TShar
             },
             [](const FCk_Handle& E)
             {
-                return UCk_Utils_OwningActor_UE::Has(E) ? CkDebugStyle::Text() : CkDebugStyle::None();
+                return UCk_Utils_OwningActor_UE::Has(E) ? CkStyle::Text() : CkStyle::None();
             })
         .Build(Entity);
 }

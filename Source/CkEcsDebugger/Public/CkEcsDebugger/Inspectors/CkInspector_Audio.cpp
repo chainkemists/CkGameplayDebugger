@@ -10,7 +10,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Audio)
 
@@ -53,7 +53,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto State = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_State();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
             },
-            CkDebugStyle::Value_Enum());
+            CkStyle::Value_Enum());
 
         Builder.AddRow(
             FText::FromString(TEXT("Volume (cur):")),
@@ -64,7 +64,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Vol = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_CurrentVolume();
                 return FText::FromString(FString::Printf(TEXT("%.3f"), Vol));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Volume (target):")),
@@ -75,7 +75,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Vol = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_TargetVolume();
                 return FText::FromString(FString::Printf(TEXT("%.3f"), Vol));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Fade Speed:")),
@@ -86,7 +86,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Speed = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_FadeSpeed();
                 return FText::FromString(FString::Printf(TEXT("%.3f"), Speed));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Playback:")),
@@ -97,7 +97,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Pct = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent();
                 return FText::FromString(FString::Printf(TEXT("%.1f%%"), Pct));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Virtualized:")),
@@ -111,9 +111,9 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 const auto IsVirt = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_IsVirtualized();
-                return IsVirt ? CkDebugStyle::Warn() : CkDebugStyle::Value_Bool_False();
+                return IsVirt ? CkStyle::Warn() : CkStyle::Value_Bool_False();
             });
     }
 
@@ -133,7 +133,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Count = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_ActiveTracks().Num();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Highest Priority:")),
@@ -144,7 +144,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Priority = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_CurrentHighestPriority();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Priority));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("All Tracks Finished:")),
@@ -158,9 +158,9 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 const auto Fired = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_HasFiredAllTracksFinished();
-                return Fired ? CkDebugStyle::Value_Bool_True() : CkDebugStyle::Value_Bool_False();
+                return Fired ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
             });
 
         // Track name list
@@ -180,7 +180,7 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                             ? ck::Format_UE(TEXT("[{}]"), Handle)
                             : FString(TEXT("(Invalid)")));
                     },
-                    CkDebugStyle::Value_Handle());
+                    CkStyle::Value_Handle());
             }
         }
     }

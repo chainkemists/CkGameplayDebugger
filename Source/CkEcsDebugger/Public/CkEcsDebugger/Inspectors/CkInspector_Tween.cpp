@@ -9,7 +9,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Tween)
 
@@ -47,7 +47,7 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto State = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_State();
             return FText::FromString(ck::Format_UE(TEXT("{}"), State));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     Builder.AddRow(
         FText::FromString(TEXT("Time:")),
@@ -58,7 +58,7 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto T = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_CurrentTime();
             return FText::FromString(FString::Printf(TEXT("%.4f"), T));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Loop:")),
@@ -69,7 +69,7 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Loop = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_CurrentLoop();
             return FText::FromString(ck::Format_UE(TEXT("{}"), Loop));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddConditionalRow(
         FText::FromString(TEXT("Reversed:")),
@@ -83,9 +83,9 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
         [CapturedEntity](const FCk_Handle&) -> FLinearColor
         {
             if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
-            { return CkDebugStyle::None(); }
+            { return CkStyle::None(); }
             const auto IsReversed = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_IsReversed();
-            return IsReversed ? CkDebugStyle::Status_Active() : CkDebugStyle::Value_Bool_False();
+            return IsReversed ? CkStyle::Status_Active() : CkStyle::Value_Bool_False();
         });
 
     Builder.AddRow(
@@ -97,7 +97,7 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Multiplier = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_TimeMultiplier();
             return FText::FromString(FString::Printf(TEXT("%.3f"), Multiplier));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     // ---- Chain ----
     if (Entity.Has<ck::FFragment_Tween_Chain>())
@@ -117,7 +117,7 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                     ? ck::Format_UE(TEXT("[{}]"), NextTween.GetValue())
                     : FString(TEXT("(Invalid)")));
             },
-            CkDebugStyle::Value_Handle());
+            CkStyle::Value_Handle());
     }
 
     return Builder.Build(Entity);

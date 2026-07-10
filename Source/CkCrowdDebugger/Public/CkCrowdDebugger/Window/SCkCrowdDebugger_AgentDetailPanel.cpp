@@ -2,7 +2,7 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -36,19 +36,19 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 			SharedThis(this), &SCkCrowdDebugger_AgentDetailPanel::OnAgentDataRefreshed);
 	}
 
-	const auto NumColor    = CkDebugStyle::Value_Numeric();
-	const auto MathColor   = CkDebugStyle::Value_Math();
-	const auto TagColor    = CkDebugStyle::Value_Tag();
-	const auto HandleColor = CkDebugStyle::Value_Handle();
+	const auto NumColor    = CkStyle::Value_Numeric();
+	const auto MathColor   = CkStyle::Value_Math();
+	const auto TagColor    = CkStyle::Value_Tag();
+	const auto HandleColor = CkStyle::Value_Handle();
 
-	const auto SectionPad = FMargin(0.0f, CkDebugStyle::SpaceM, 0.0f, CkDebugStyle::SpaceXS);
+	const auto SectionPad = FMargin(0.0f, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS);
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-		.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 		[
 			SNew(SScrollBox)
 			+ SScrollBox::Slot()
@@ -56,15 +56,15 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 				SNew(SVerticalBox)
 
 				// ---- Header: pane title + entity pill --------------------------------------------
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 				[
 					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(TEXT("AGENT DETAIL")))
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+						.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
@@ -78,29 +78,29 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 				]
 
 				// ---- Stat strip: status pill + key live metrics ---------------------------------
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, CkDebugStyle::SpaceXS)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS, 0.0f, CkStyle::SpaceXS)
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[ StatusBadge() ]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SCkDebug_StatPair)
-						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.ValueColor(FSlateColor(CkStyle::Value_Numeric()))
 						.Label(FText::FromString(TEXT("cm/s")))
 						.Value_Lambda([this]{ return _HasSelection ? FText::AsNumber(FMath::RoundToInt(Diag_Speed())) : FText::FromString(TEXT("—")); })
 					]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SCkDebug_StatPair)
-						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.ValueColor(FSlateColor(CkStyle::Value_Numeric()))
 						.Label(FText::FromString(TEXT("nbrs")))
 						.Value_Lambda([this]{ return _HasSelection ? FText::AsNumber(_Snapshot.NeighborCount) : FText::FromString(TEXT("—")); })
 					]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceL, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceL, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(SCkDebug_StatPair)
-						.ValueColor(FSlateColor(CkDebugStyle::Value_Numeric()))
+						.ValueColor(FSlateColor(CkStyle::Value_Numeric()))
 						.Label(FText::FromString(TEXT("turn r")))
 						.Value_Lambda([this]{ return _HasSelection ? FText::FromString(FString::Printf(TEXT("%.0f"), Diag_TurnRadius())) : FText::FromString(TEXT("—")); })
 					]
@@ -136,24 +136,24 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Turn radius"),    [this]{ return FString::Printf(TEXT("%.0f cm"), Diag_TurnRadius()); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Orbit r (pred)"), [this]{ return FString::Printf(TEXT("%.0f cm"), Diag_PredictedOrbit()); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Dist to goal"),   [this]{ return _Snapshot.IsWalking ? FString::Printf(TEXT("%.0f cm"), FVector::Dist(_Snapshot.ActiveGoal, _Snapshot.Position)) : FString(TEXT("—")); }, NumColor) ]
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
 				[
 					SNew(SBorder)
-					.BorderImage(CkDebugStyle::GetRoundedBrush())
+					.BorderImage(CkStyle::GetRoundedBrush())
 					.BorderBackgroundColor_Lambda([this]
 					{
-						const auto Tone = (_HasSelection && Diag_WillOrbit()) ? CkDebugStyle::Err() : CkDebugStyle::Ok();
-						return FSlateColor(CkDebugStyle::OverlayOf(Tone, 0.20f));
+						const auto Tone = (_HasSelection && Diag_WillOrbit()) ? CkStyle::Err() : CkStyle::Ok();
+						return FSlateColor(CkStyle::OverlayOf(Tone, 0.20f));
 					})
-					.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+					.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 					[
 						SNew(STextBlock)
 						.Justification(ETextJustify::Center)
 						.AutoWrapText(true)
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody()))
 						.ColorAndOpacity_Lambda([this]
 						{
-							return FSlateColor((_HasSelection && Diag_WillOrbit()) ? CkDebugStyle::Err() : CkDebugStyle::Ok());
+							return FSlateColor((_HasSelection && Diag_WillOrbit()) ? CkStyle::Err() : CkStyle::Ok());
 						})
 						.Text_Lambda([this]
 						{
@@ -181,11 +181,11 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 							SNew(STextBlock).Text_Lambda([this]{ return Get_OverrideButtonText(); })
 						]
 					]
-					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
 						.AutoWrapText(true)
-						.ColorAndOpacity(FSlateColor(CkDebugStyle::Err()))
+						.ColorAndOpacity(FSlateColor(CkStyle::Err()))
 						.Text_Lambda([this]
 						{
 							return Get_HasDebugOverride()
@@ -262,40 +262,40 @@ auto SCkCrowdDebugger_AgentDetailPanel::Status_Text() const -> FText
 
 auto SCkCrowdDebugger_AgentDetailPanel::Status_Color() const -> FLinearColor
 {
-	if (NOT _HasSelection) { return CkDebugStyle::TextMute(); }
+	if (NOT _HasSelection) { return CkStyle::TextMute(); }
 	switch (_Snapshot.Status)
 	{
-		case ECkCrowdDebugger_AgentStatus::Walking:     return CkDebugStyle::Info();
-		case ECkCrowdDebugger_AgentStatus::Replanning:  return CkDebugStyle::Warn();
-		case ECkCrowdDebugger_AgentStatus::Failed:      return CkDebugStyle::Err();
-		case ECkCrowdDebugger_AgentStatus::Asleep:      return CkDebugStyle::TextMute();
-		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkDebugStyle::Accent();
-		default:                                        return CkDebugStyle::TextDim();
+		case ECkCrowdDebugger_AgentStatus::Walking:     return CkStyle::Info();
+		case ECkCrowdDebugger_AgentStatus::Replanning:  return CkStyle::Warn();
+		case ECkCrowdDebugger_AgentStatus::Failed:      return CkStyle::Err();
+		case ECkCrowdDebugger_AgentStatus::Asleep:      return CkStyle::TextMute();
+		case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkStyle::Accent();
+		default:                                        return CkStyle::TextDim();
 	}
 }
 
 auto SCkCrowdDebugger_AgentDetailPanel::StatusBadge() -> TSharedRef<SWidget>
 {
 	return SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetRoundedBrush())
-		.BorderBackgroundColor_Lambda([this]{ return FSlateColor(CkDebugStyle::OverlayOf(Status_Color(), 0.22f)); })
-		.Padding(FMargin(CkDebugStyle::SpaceM, 2.0f))
+		.BorderImage(CkStyle::GetRoundedBrush())
+		.BorderBackgroundColor_Lambda([this]{ return FSlateColor(CkStyle::OverlayOf(Status_Color(), 0.22f)); })
+		.Padding(FMargin(CkStyle::SpaceM, 2.0f))
 		.VAlign(VAlign_Center)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceS, 0.0f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
 			[
 				SNew(SBox).WidthOverride(8.0f).HeightOverride(8.0f)
 				[
 					SNew(SImage)
-					.Image(CkDebugStyle::GetRoundedBrush())
+					.Image(CkStyle::GetRoundedBrush())
 					.ColorAndOpacity_Lambda([this]{ return FSlateColor(Status_Color()); })
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
 				.ColorAndOpacity_Lambda([this]{ return FSlateColor(Status_Color()); })
 				.Text_Lambda([this]{ return Status_Text(); })
 			]
@@ -331,11 +331,11 @@ auto SCkCrowdDebugger_AgentDetailPanel::MakeTunerRow(
 	-> TSharedRef<SWidget>
 {
 	return SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().FillWidth(0.45f).VAlign(VAlign_Center).Padding(0.0f, 1.0f, CkDebugStyle::SpaceM, 1.0f)
+		+ SHorizontalBox::Slot().FillWidth(0.45f).VAlign(VAlign_Center).Padding(0.0f, 1.0f, CkStyle::SpaceM, 1.0f)
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(InLabel))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 		]
 		+ SHorizontalBox::Slot().FillWidth(0.55f).VAlign(VAlign_Center).Padding(0.0f, 1.0f)
 		[

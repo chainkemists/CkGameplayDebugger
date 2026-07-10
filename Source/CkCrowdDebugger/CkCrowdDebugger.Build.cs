@@ -31,6 +31,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"CkEcsExt",
 			"CkLabel",
 			"CkDebuggerCommon",
+            "CkEditorTools",
 
 			"CkNavigation",
 			"CkCrowd",

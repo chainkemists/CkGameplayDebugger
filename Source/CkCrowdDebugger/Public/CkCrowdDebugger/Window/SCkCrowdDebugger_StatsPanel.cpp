@@ -2,7 +2,7 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 
 #include "Styling/CoreStyle.h"
@@ -16,22 +16,22 @@ auto SCkCrowdDebugger_StatsPanel::Construct(const FArguments& InArgs) -> void
 {
 	_ViewModel = InArgs._ViewModel;
 
-	const auto NumColor = CkDebugStyle::Value_Numeric();
+	const auto NumColor = CkStyle::Value_Numeric();
 
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-		.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("STATS")))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -76,11 +76,11 @@ auto SCkCrowdDebugger_StatsPanel::Construct(const FArguments& InArgs) -> void
 					return FText::AsNumber(MaxN);
 				})
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceM, 0.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Awake / Asleep / Replanning / Failed populate in Gate 4+. Neighbor query ms breakdown lands when 3B's perf scope is wired in.")))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 				.AutoWrapText(true)
 			]
 		]

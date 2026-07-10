@@ -20,7 +20,7 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 // =====================================================================================================================
 
 FCkDebuggerPage_Overview::FCkDebuggerPage_Overview() = default;
@@ -113,13 +113,13 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
 
     auto LegendBar = SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
-            [ MakeLegendEntry(CkDebugStyle::Graph_Node_Border_Center(), TEXT("Selected Entity")) ]
+            [ MakeLegendEntry(CkStyle::Graph_Node_Border_Center(), TEXT("Selected Entity")) ]
         + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
-            [ MakeLegendEntry(CkDebugStyle::Relationship(), TEXT("Lifetime Owner")) ]
+            [ MakeLegendEntry(CkStyle::Relationship(), TEXT("Lifetime Owner")) ]
         + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
-            [ MakeLegendEntry(CkDebugStyle::Reference(), TEXT("Context Owner")) ]
+            [ MakeLegendEntry(CkStyle::Reference(), TEXT("Context Owner")) ]
         + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
-            [ MakeLegendEntry(CkDebugStyle::Transform(), TEXT("Dependent")) ];
+            [ MakeLegendEntry(CkStyle::Transform(), TEXT("Dependent")) ];
 
     auto Result = SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Graph.Background"))

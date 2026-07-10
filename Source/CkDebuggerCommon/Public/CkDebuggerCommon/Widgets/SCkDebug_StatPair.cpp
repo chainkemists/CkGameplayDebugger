@@ -2,7 +2,7 @@
 
 #include "SCkDebug_SelectableLabel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Styling/CoreStyle.h"
@@ -57,14 +57,14 @@ auto
     auto ValueColor = InArgs._ValueColor;
     if (NOT ValueColor.IsSet() && NOT ValueColor.IsBound())
     {
-        ValueColor = FSlateColor(CkDebugStyle::Text());
+        ValueColor = FSlateColor(CkStyle::Text());
     }
 
     // Label tone differs by layout: Inline_LabelFirst uses the muted-secondary
     // tone (table label feel); the other two use TextMute (uppercase chip).
     const auto LabelColor = Layout == ECkDebug_StatPairLayout::Inline_LabelFirst
-        ? FSlateColor(CkDebugStyle::TextDim())
-        : FSlateColor(CkDebugStyle::TextMute());
+        ? FSlateColor(CkStyle::TextDim())
+        : FSlateColor(CkStyle::TextMute());
 
     const auto ValueFont = FCoreStyle::GetDefaultFontStyle("Bold", ValueSize);
     const auto LabelFont = FCoreStyle::GetDefaultFontStyle(Defaults.LabelStyle, LabelSize);

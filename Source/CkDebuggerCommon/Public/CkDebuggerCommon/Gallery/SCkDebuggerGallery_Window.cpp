@@ -2,7 +2,7 @@
 
 #include "CkDebuggerGallery_Registry.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
@@ -31,8 +31,8 @@ auto
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::BgRoot()))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::BgRoot()))
 		.Padding(0.0f)
 		[
 			SNew(SVerticalBox)
@@ -73,9 +73,9 @@ auto
 	-> TSharedRef<SWidget>
 {
 	return SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-		.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceS))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceS))
 		[
 			SNew(SHorizontalBox)
 
@@ -85,8 +85,8 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("CK Debugger \u2014 Widget Gallery")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeBody()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 			]
 
 			+ SHorizontalBox::Slot()
@@ -110,12 +110,12 @@ auto
 
 	List->AddSlot()
 		.AutoHeight()
-		.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+		.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("WIDGETS")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -129,21 +129,21 @@ auto
 			[
 				SNew(SButton)
 				.ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
-				.ContentPadding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceS))
+				.ContentPadding(FMargin(CkStyle::SpaceL, CkStyle::SpaceS))
 				.OnClicked_Lambda([this, CapturedIndex]() { return OnRailItemClicked(CapturedIndex); })
 				.HAlign(HAlign_Left)
 				[
 					SNew(STextBlock)
 					.Text(Section->Get_Name())
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody()))
+					.ColorAndOpacity(FSlateColor(CkStyle::Text()))
 				]
 			];
 	}
 
 	return SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
 		.Padding(0.0f)
 		[
 			SNew(SScrollBox)
@@ -187,12 +187,12 @@ auto
 
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM)
+				.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
 				[
 					SNew(STextBlock)
 					.Text(Description)
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 					.AutoWrapText(true)
 				]
 
@@ -208,7 +208,7 @@ auto
 			.Body()
 			[
 				SNew(SBox)
-				.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+				.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 				[
 					Wrapped.ToSharedRef()
 				]
@@ -217,7 +217,7 @@ auto
 		_SectionPanels.Add(Panel);
 
 		_ScrollBox->AddSlot()
-			.Padding(FMargin(CkDebugStyle::SpaceM))
+			.Padding(FMargin(CkStyle::SpaceM))
 			[
 				Panel
 			];

@@ -20,7 +20,7 @@
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
@@ -136,25 +136,25 @@ public:
 			// ---- Controls row ------------------------------------------------
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SNew(SHorizontalBox)
 
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Rebuild rate:")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 				]
 
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 				[
 					SAssignNew(_RateCombo, SComboBox<TSharedPtr<ECkGallery_StormRate>>)
 					.OptionsSource(&_RateOptions)
@@ -181,18 +181,18 @@ public:
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Strategy:")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 				]
 
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 				[
 					SAssignNew(_FixCombo, SComboBox<TSharedPtr<ECkGallery_StormFix>>)
 					.OptionsSource(&_FixOptions)
@@ -223,17 +223,17 @@ public:
 			// ---- Scope 1: Vertical list ------------------------------------
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Scope 1 — Vertical list of KeyValueRows"))) ]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("Mirrors the ECS inspector body and GOAP stats panel.")) ]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SAssignNew(_VListHost, SBox)
 			]
@@ -241,17 +241,17 @@ public:
 			// ---- Scope 2: Wrap box -----------------------------------------
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Scope 2 — Wrap box of NodePills"))) ]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("Mirrors the GOAP plan-strip and the gallery's own node grid.")) ]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)
 			[
 				SAssignNew(_WrapHost, SBox)
 			]
@@ -259,12 +259,12 @@ public:
 			// ---- Scope 3: Scroll of panels ---------------------------------
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Scope 3 — Scroll box of nested InspectorPanels"))) ]
 
 			+ SVerticalBox::Slot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[ Caption(TEXT("Mirrors the gallery body itself and the ECS multi-entity inspector.")) ]
 
 			+ SVerticalBox::Slot()
@@ -401,7 +401,7 @@ private:
 					.KeyText(FText::FromString(FString::Printf(TEXT("metric_%d"), Idx)))
 					.ValueText(FText::FromString(FString::Printf(TEXT("%d"), Value)))
 					.Tone(ECkDebug_KeyValueTone::Custom)
-					.CustomValueColor(CkDebugStyle::Value_Numeric())
+					.CustomValueColor(CkStyle::Value_Numeric())
 				];
 		}
 		return Col;
@@ -417,7 +417,7 @@ private:
 		};
 		for (auto Idx = 0; Idx < Variants.Num(); ++Idx)
 		{
-			Wrap->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+			Wrap->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					SNew(SBox).MinDesiredWidth(160.0f)
 					[
@@ -446,17 +446,17 @@ private:
 						.KeyText(FText::FromString(FString::Printf(TEXT("panel_%d.field_%d"), Idx, Inner)))
 						.ValueText(FText::FromString(FString::Printf(TEXT("%d"), (Inner * 3 + InGen) % 100)))
 						.Tone(ECkDebug_KeyValueTone::Custom)
-						.CustomValueColor(CkDebugStyle::Value_Numeric())
+						.CustomValueColor(CkStyle::Value_Numeric())
 					];
 			}
-			Scroll->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM))
+			Scroll->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceM))
 				[
 					SNew(SCkDebug_InspectorPanel)
 					.Title(FText::FromString(FString::Printf(TEXT("Panel %d"), Idx)))
 					.CountText(FText::FromString(TEXT("4")))
 					.Body()
 					[
-						SNew(SBox).Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+						SNew(SBox).Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 						[ Body ]
 					]
 				];
@@ -480,7 +480,7 @@ private:
 					.KeyText(FText::FromString(FString::Printf(TEXT("metric_%d"), Idx)))
 					.ValueText(FText::FromString(FString::Printf(TEXT("%d"), Value)))
 					.Tone(ECkDebug_KeyValueTone::Custom)
-					.CustomValueColor(CkDebugStyle::Value_Numeric())
+					.CustomValueColor(CkStyle::Value_Numeric())
 				];
 		}
 	}
@@ -496,7 +496,7 @@ private:
 		};
 		for (auto Idx = 0; Idx < Variants.Num(); ++Idx)
 		{
-			_WrapPersistent->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+			_WrapPersistent->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					SNew(SBox).MinDesiredWidth(160.0f)
 					[
@@ -525,17 +525,17 @@ private:
 						.KeyText(FText::FromString(FString::Printf(TEXT("panel_%d.field_%d"), Idx, Inner)))
 						.ValueText(FText::FromString(FString::Printf(TEXT("%d"), (Inner * 3 + _Generation) % 100)))
 						.Tone(ECkDebug_KeyValueTone::Custom)
-						.CustomValueColor(CkDebugStyle::Value_Numeric())
+						.CustomValueColor(CkStyle::Value_Numeric())
 					];
 			}
-			_ScrollPersistent->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM))
+			_ScrollPersistent->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceM))
 				[
 					SNew(SCkDebug_InspectorPanel)
 					.Title(FText::FromString(FString::Printf(TEXT("Panel %d"), Idx)))
 					.CountText(FText::FromString(TEXT("4")))
 					.Body()
 					[
-						SNew(SBox).Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+						SNew(SBox).Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 						[ Body ]
 					]
 				];
@@ -564,7 +564,7 @@ private:
 					.KeyText(FText::FromString(FString::Printf(TEXT("metric_%d"), Idx)))
 					.ValueText(ValueAttr)
 					.Tone(ECkDebug_KeyValueTone::Custom)
-					.CustomValueColor(CkDebugStyle::Value_Numeric())
+					.CustomValueColor(CkStyle::Value_Numeric())
 				];
 		}
 		return Col;
@@ -585,7 +585,7 @@ private:
 		};
 		for (auto Idx = 0; Idx < Variants.Num(); ++Idx)
 		{
-			Wrap->AddSlot().Padding(FMargin(0.0f, 0.0f, CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+			Wrap->AddSlot().Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					SNew(SBox).MinDesiredWidth(160.0f)
 					[
@@ -622,17 +622,17 @@ private:
 						.KeyText(FText::FromString(FString::Printf(TEXT("panel_%d.field_%d"), CapturedIdx, CapturedInner)))
 						.ValueText(ValueAttr)
 						.Tone(ECkDebug_KeyValueTone::Custom)
-						.CustomValueColor(CkDebugStyle::Value_Numeric())
+						.CustomValueColor(CkStyle::Value_Numeric())
 					];
 			}
-			Scroll->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM))
+			Scroll->AddSlot().Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceM))
 				[
 					SNew(SCkDebug_InspectorPanel)
 					.Title(FText::FromString(FString::Printf(TEXT("Panel %d"), Idx)))
 					.CountText(FText::FromString(TEXT("4")))
 					.Body()
 					[
-						SNew(SBox).Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+						SNew(SBox).Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 						[ Body ]
 					]
 				];
@@ -650,7 +650,7 @@ private:
 		_StatusContainer->SetContent(
 			SNew(SCkDebug_StatusPill)
 			.Text(FText::FromString(PillText))
-			.Tone(_Rate == ECkGallery_StormRate::Paused ? ECkDebug_Tone::Neutral : ECkDebug_Tone::Info)
+			.Tone(_Rate == ECkGallery_StormRate::Paused ? ECk_Tone::Neutral : ECk_Tone::Info)
 		);
 	}
 

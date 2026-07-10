@@ -16,7 +16,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Notifications/SProgressBar.h"
@@ -42,7 +42,7 @@ static auto DoFmt_Bool(bool InValue) -> FText
 
 static auto DoColor_Flag(bool InValue) -> FLinearColor
 {
-    return InValue ? CkDebugStyle::Ok() : CkDebugStyle::TextMute();
+    return InValue ? CkStyle::Ok() : CkStyle::TextMute();
 }
 
 // =====================================================================================================================
@@ -86,7 +86,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
                     Cam.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention()));
             },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         Builder.AddRow(
             FText::FromString(TEXT("Dominant Modifier:")),
@@ -97,7 +97,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return FText::FromString(DoFmt_ClassName(
                     Cam.Get<ck::FFragment_Camera_Current>().Get_DominantLayerClass().Get()));
             },
-            CkDebugStyle::Value_Object());
+            CkStyle::Value_Object());
 
         Builder.AddRow(
             FText::FromString(TEXT("Dominant Look-At:")),
@@ -110,7 +110,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     ? ck::Format_UE(TEXT("{}"), LookAt.GetValue())
                     : FString(TEXT("(none)")));
             },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         // ---- Composed profile summary ----
         Builder.AddHeader(FText::FromString(TEXT("Composed Profile")));
@@ -124,7 +124,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>()
                     .Get_ComposedProfile().Get_Sensor().Get_FOV(), TEXT("{:.1f}"));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Boom Length:")),
@@ -135,7 +135,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>()
                     .Get_ComposedProfile().Get_Rig().Get_BoomArmLength(), TEXT("{:.0f}"));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Framing Offset:")),
@@ -146,7 +146,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Cam.Get<ck::FFragment_Camera_Current>()
                     .Get_ComposedProfile().Get_Rig().Get_FramingOffset()));
             },
-            CkDebugStyle::Value_Math());
+            CkStyle::Value_Math());
 
         Builder.AddRow(
             FText::FromString(TEXT("Framing Pitch/Yaw:")),
@@ -157,7 +157,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 const auto& Rig = Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_Rig();
                 return FText::FromString(FString::Printf(TEXT("%.1f / %.1f"), Rig.Get_FramingPitch(), Rig.Get_FramingYaw()));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Orientation Control:")),
@@ -170,7 +170,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             [Cam](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasOrientationControl());
             });
 
@@ -185,7 +185,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             [Cam](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasAutoReorient());
             });
 
@@ -200,7 +200,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             [Cam](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasCollision());
             });
 
@@ -216,7 +216,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
                     Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Location));
             },
-            CkDebugStyle::Transform());
+            CkStyle::Transform());
 
         Builder.AddRow(
             FText::FromString(TEXT("Rotation:")),
@@ -227,7 +227,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
                     Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Rotation));
             },
-            CkDebugStyle::Transform());
+            CkStyle::Transform());
 
         Builder.AddRow(
             FText::FromString(TEXT("FOV:")),
@@ -237,7 +237,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 { return FText::FromString(TEXT("--")); }
                 return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().FOV, TEXT("{:.1f}"));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Layer stack (one live row per record entry, with a blend-weight bar; the persistent base layer is marked) ----
@@ -258,7 +258,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             Builder.AddRow(
                 FText::FromString(TEXT("(empty)")),
                 [](const FCk_Handle&) { return FText::FromString(TEXT("--")); },
-                CkDebugStyle::TextMute());
+                CkStyle::TextMute());
         }
         else
         {
@@ -281,14 +281,14 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 const auto ColorOf = [Lyr, IsDefault]() -> FLinearColor
                 {
                     if (ck::Is_NOT_Valid(Lyr))
-                    { return CkDebugStyle::None(); }
+                    { return CkStyle::None(); }
                     if (IsDefault)
-                    { return CkDebugStyle::Info(); }
+                    { return CkStyle::Info(); }
                     if (Lyr.Has<ck::FFragment_CameraLayer_Blend>() && Lyr.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f)
-                    { return CkDebugStyle::Warn(); }
+                    { return CkStyle::Warn(); }
                     if (Lyr.Has<ck::FTag_CameraLayer_Active>())
-                    { return CkDebugStyle::Status_Active(); }
-                    return CkDebugStyle::TextMute();
+                    { return CkStyle::Status_Active(); }
+                    return CkStyle::TextMute();
                 };
 
                 auto Row = SNew(SHorizontalBox)
@@ -341,7 +341,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     { return FText::FromString(TEXT("--")); }
                     return InGet(Cam.Get<ck::FFragment_Camera_Current>().Get_PovState());
                 },
-                CkDebugStyle::Transform());
+                CkStyle::Transform());
         };
 
         AddPovRow(TEXT("Boom Rotation:"),  [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._BoomArmRotation)); });
@@ -372,11 +372,11 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             const auto  TargetStr    = ck::IsValid(TargetHandle) ? ck::Format_UE(TEXT("{} ({})"), TargetHandle, ModeStr) : FString(TEXT("(none)"));
 
             Builder.AddRow(FText::FromString(TEXT("Class:")),
-                [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); }, CkDebugStyle::Value_Object());
+                [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); }, CkStyle::Value_Object());
             Builder.AddRow(FText::FromString(TEXT("Priority:")),
-                [PriorityStr](const FCk_Handle&) { return FText::FromString(PriorityStr); }, CkDebugStyle::Value_Numeric());
+                [PriorityStr](const FCk_Handle&) { return FText::FromString(PriorityStr); }, CkStyle::Value_Numeric());
             Builder.AddRow(FText::FromString(TEXT("Camera Target:")),
-                [TargetStr](const FCk_Handle&) { return FText::FromString(TargetStr); }, CkDebugStyle::Value_Handle());
+                [TargetStr](const FCk_Handle&) { return FText::FromString(TargetStr); }, CkStyle::Value_Handle());
         }
 
         if (Entity.Has<ck::FFragment_CameraLayer_Blend>())
@@ -387,7 +387,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
                     { return FText::FromString(TEXT("--")); }
                     return DoFmt_Float(Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_Alpha(), TEXT("{:.2f}"));
-                }, CkDebugStyle::Value_Numeric());
+                }, CkStyle::Value_Numeric());
 
             Builder.AddRow(FText::FromString(TEXT("Target Alpha:")),
                 [Cam](const FCk_Handle&)
@@ -395,7 +395,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
                     { return FText::FromString(TEXT("--")); }
                     return DoFmt_Float(Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha(), TEXT("{:.2f}"));
-                }, CkDebugStyle::Value_Numeric());
+                }, CkStyle::Value_Numeric());
 
             Builder.AddRow(FText::FromString(TEXT("Blend Rate:")),
                 [Cam](const FCk_Handle&)
@@ -403,7 +403,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
                     { return FText::FromString(TEXT("--")); }
                     return DoFmt_Float(Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_BlendRate(), TEXT("{:.1f}"));
-                }, CkDebugStyle::Value_Numeric());
+                }, CkStyle::Value_Numeric());
         }
 
         Builder.AddConditionalRow(
@@ -419,11 +419,11 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             },
             [Cam](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(Cam))                  { return CkDebugStyle::None(); }
+                if (ck::Is_NOT_Valid(Cam))                  { return CkStyle::None(); }
                 const auto bExiting = Cam.Has<ck::FFragment_CameraLayer_Blend>() && Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f;
-                if (bExiting)                               { return CkDebugStyle::Warn(); }
-                if (Cam.Has<ck::FTag_CameraLayer_Active>()) { return CkDebugStyle::Status_Active(); }
-                return CkDebugStyle::TextMute();
+                if (bExiting)                               { return CkStyle::Warn(); }
+                if (Cam.Has<ck::FTag_CameraLayer_Active>()) { return CkStyle::Status_Active(); }
+                return CkStyle::TextMute();
             });
     }
 
@@ -469,24 +469,24 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     constexpr auto NoDuration = 0.0f;
 
     // Boom arm — red while collision is actively pushing the camera in, info-blue otherwise.
-    const auto BoomColor = Pov._CollisionDistance.IsSet() ? CkDebugStyle::Err() : CkDebugStyle::Info();
+    const auto BoomColor = Pov._CollisionDistance.IsSet() ? CkStyle::Err() : CkStyle::Info();
     UCk_Utils_DebugDraw_UE::DrawDebugLine(EntityWorld, AnchorLocation, CameraLocation, BoomColor, NoDuration, 1.5f);
 
     // Camera pose: axes + a forward arrow showing view direction.
     UCk_Utils_DebugDraw_UE::DrawDebugCoordinateSystem(EntityWorld, CameraLocation, CameraRotation, 0.5f, NoDuration, 1.5f);
     UCk_Utils_DebugDraw_UE::DrawDebugArrow(
-        EntityWorld, CameraLocation, CameraLocation + (CameraRotation.Vector() * 150.0f), 25.0f, CkDebugStyle::Accent(), NoDuration, 1.5f);
+        EntityWorld, CameraLocation, CameraLocation + (CameraRotation.Vector() * 150.0f), 25.0f, CkStyle::Accent(), NoDuration, 1.5f);
 
     // Look-at target (auto-reorient / lock-on).
     if (Current.Get_DominantLookAt().IsSet())
     {
         const auto Target = Current.Get_DominantLookAt().GetValue();
-        UCk_Utils_DebugDraw_UE::DrawDebugLine(EntityWorld, CameraLocation, Target, CkDebugStyle::Warn(), NoDuration, 1.0f);
-        UCk_Utils_DebugDraw_UE::DrawDebugSphere(EntityWorld, Target, 24.0f, 12, CkDebugStyle::Warn(), NoDuration, 1.0f);
+        UCk_Utils_DebugDraw_UE::DrawDebugLine(EntityWorld, CameraLocation, Target, CkStyle::Warn(), NoDuration, 1.0f);
+        UCk_Utils_DebugDraw_UE::DrawDebugSphere(EntityWorld, Target, 24.0f, 12, CkStyle::Warn(), NoDuration, 1.0f);
     }
 
     UCk_Utils_DebugDraw_UE::DrawDebugString(
-        EntityWorld, CameraLocation + FVector(0.0f, 0.0f, 20.0f), Entity.ToString(), CkDebugStyle::Text(), NoDuration);
+        EntityWorld, CameraLocation + FVector(0.0f, 0.0f, 20.0f), Entity.ToString(), CkStyle::Text(), NoDuration);
 }
 
 // =====================================================================================================================

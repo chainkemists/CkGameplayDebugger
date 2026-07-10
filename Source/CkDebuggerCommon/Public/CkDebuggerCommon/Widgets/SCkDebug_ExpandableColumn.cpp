@@ -1,6 +1,6 @@
 #include "SCkDebug_ExpandableColumn.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -19,7 +19,7 @@ auto
 	_IsExpanded = InArgs._StartExpanded;
 	_OnExpansionChanged = InArgs._OnExpansionChanged;
 
-	// Backgrounds / colors / fonts pull from CkDebugStyle — FLinearColor
+	// Backgrounds / colors / fonts pull from CkStyle — FLinearColor
 	// args on this widget are ignored so the macro tab stays in sync with
 	// the shared palette.
 
@@ -32,8 +32,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		]
 
@@ -43,8 +43,8 @@ auto
 		[
 			SAssignNew(_ChevronText, STextBlock)
 			.Text(FText::FromString(_IsExpanded ? TEXT("\u25BE") : TEXT("\u25B8")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeBody()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 		];
 
 	// Pill (gate tag, etc.) drops to its own row below the title so long
@@ -62,17 +62,17 @@ auto
 		HeaderStack->AddSlot()
 			.AutoHeight()
 			.HAlign(HAlign_Left)
-			.Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+			.Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkDebugStyle::GetRoundedBrush())
-				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg3()))
-				.Padding(FMargin(CkDebugStyle::SpaceM, 1.0f))
+				.BorderImage(CkStyle::GetRoundedBrush())
+				.BorderBackgroundColor(FSlateColor(CkStyle::Bg3()))
+				.Padding(FMargin(CkStyle::SpaceM, 1.0f))
 				[
 					SNew(STextBlock)
 					.Text(InArgs._PillText)
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 				]
 			];
 	}
@@ -80,8 +80,8 @@ auto
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Border()))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Border()))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SVerticalBox)
@@ -96,9 +96,9 @@ auto
 				.OnClicked(this, &SCkDebug_ExpandableColumn::OnHeaderClicked)
 				[
 					SNew(SBorder)
-					.BorderImage(CkDebugStyle::GetFilledBrush())
-					.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-					.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+					.BorderImage(CkStyle::GetFilledBrush())
+					.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+					.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 					[
 						HeaderStack
 					]
@@ -110,9 +110,9 @@ auto
 			.FillHeight(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkDebugStyle::GetFilledBrush())
-				.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg2()))
-				.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+				.BorderImage(CkStyle::GetFilledBrush())
+				.BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+				.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					SAssignNew(_BodySwitcher, SWidgetSwitcher)
 					.WidgetIndex(_IsExpanded ? 0 : 1)

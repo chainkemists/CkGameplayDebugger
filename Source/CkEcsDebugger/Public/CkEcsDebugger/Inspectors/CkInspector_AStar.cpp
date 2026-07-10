@@ -9,7 +9,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_AStar)
 
@@ -53,8 +53,8 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
-                { return CkDebugStyle::None(); }
-                return CkDebugStyle::Value_Enum();
+                { return CkStyle::None(); }
+                return CkStyle::Value_Enum();
             });
 
         Builder.AddRow(
@@ -66,7 +66,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Size = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_OpenSetSize();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Size));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Closed Set:")),
@@ -77,7 +77,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Size = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_ClosedSetSize();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Size));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Iterations (frame):")),
@@ -88,7 +88,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Iters = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_IterationsThisFrame();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Iters));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Time (frame, us):")),
@@ -99,7 +99,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto TimeUs = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_TimeThisFrameMicroseconds();
                 return FText::FromString(FString::Printf(TEXT("%lld"), TimeUs));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Budget Used:")),
@@ -110,7 +110,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Pct = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_BudgetUsagePercent();
                 return FText::FromString(FString::Printf(TEXT("%.1f%%"), Pct));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Configuration ----
@@ -131,7 +131,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                     ? FString(TEXT("0 (unbounded)"))
                     : FString::Printf(TEXT("%lld"), BudgetUs));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Max Iterations:")),
@@ -141,7 +141,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                     ? FString(TEXT("0 (unbounded)"))
                     : ck::Format_UE(TEXT("{}"), MaxIterations));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Cost Threshold:")),
@@ -151,7 +151,7 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                     ? FString::Printf(TEXT("%.3f"), CostThreshold)
                     : FString(TEXT("0 (disabled)")));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     return Builder.Build(Entity);

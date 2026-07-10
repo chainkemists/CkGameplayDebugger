@@ -4,7 +4,7 @@
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
@@ -29,18 +29,18 @@ namespace
 {
     // Map our query status enum onto the common widget's tone palette so SCkDebug_HistoryRow / StatusPill render
     // a recognisable color per status.
-    auto Tone_FromStatus(ECkEqsDebugger_QueryStatus InStatus) -> ECkDebug_Tone
+    auto Tone_FromStatus(ECkEqsDebugger_QueryStatus InStatus) -> ECk_Tone
     {
         switch (InStatus)
         {
-        case ECkEqsDebugger_QueryStatus::Pending:    return ECkDebug_Tone::Neutral;
-        case ECkEqsDebugger_QueryStatus::InProgress: return ECkDebug_Tone::Info;
-        case ECkEqsDebugger_QueryStatus::Complete:   return ECkDebug_Tone::Ok;
-        case ECkEqsDebugger_QueryStatus::Failed:     return ECkDebug_Tone::Err;
-        case ECkEqsDebugger_QueryStatus::Cancelled:  return ECkDebug_Tone::Warn;
-        case ECkEqsDebugger_QueryStatus::Unknown:    return ECkDebug_Tone::Neutral;
+        case ECkEqsDebugger_QueryStatus::Pending:    return ECk_Tone::Neutral;
+        case ECkEqsDebugger_QueryStatus::InProgress: return ECk_Tone::Info;
+        case ECkEqsDebugger_QueryStatus::Complete:   return ECk_Tone::Ok;
+        case ECkEqsDebugger_QueryStatus::Failed:     return ECk_Tone::Err;
+        case ECkEqsDebugger_QueryStatus::Cancelled:  return ECk_Tone::Warn;
+        case ECkEqsDebugger_QueryStatus::Unknown:    return ECk_Tone::Neutral;
         }
-        return ECkDebug_Tone::Neutral;
+        return ECk_Tone::Neutral;
     }
 
     auto BuildTestSummary(const TArray<ECk_Eqs_TestType>& InTestTypes) -> FString
@@ -244,8 +244,8 @@ auto
     const auto& Info = InItem->Info;
     const auto Tone  = InItem->IsHighlightMatch
         ? Tone_FromStatus(Info.Status)
-        : ECkDebug_Tone::Neutral;
-    const auto ToneColor = CkDebugStyle::GetToneColor(Tone);
+        : ECk_Tone::Neutral;
+    const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto NameText = NOT Info.DebugName.IsEmpty() ? Info.DebugName : FString{TEXT("(unnamed)")};
     const auto MetaText = ck::Format_UE(TEXT("{}  -  {}"),
@@ -284,7 +284,7 @@ auto
                 .HeightOverride(8.0f)
                 [
                     SNew(SImage)
-                    .Image(CkDebugStyle::GetFilledBrush())
+                    .Image(CkStyle::GetFilledBrush())
                     .ColorAndOpacity(FSlateColor{ToneColor})
                 ]
             ]

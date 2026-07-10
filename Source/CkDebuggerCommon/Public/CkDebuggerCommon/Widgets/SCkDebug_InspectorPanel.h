@@ -20,13 +20,13 @@ public:
 		: _Title(FText::GetEmpty())
 		, _CountText(FText::GetEmpty())
 		, _StatusPillText(FText::GetEmpty())
-		, _StatusPillTone(ECkDebug_Tone::Neutral)
+		, _StatusPillTone(ECk_Tone::Neutral)
 		, _StartExpanded(true)
 	{}
 		SLATE_ARGUMENT(FText, Title)
 		SLATE_ARGUMENT(FText, CountText)
 		SLATE_ARGUMENT(FText, StatusPillText)
-		SLATE_ARGUMENT(ECkDebug_Tone, StatusPillTone)
+		SLATE_ARGUMENT(ECk_Tone, StatusPillTone)
 		SLATE_ARGUMENT(bool, StartExpanded)
 		SLATE_EVENT(FOnCkDebugInspectorToggled, OnToggled)
 
@@ -40,7 +40,7 @@ public:
 
 	// Update the header pill / count dynamically (data binding).
 	auto Set_CountText(const FText& InText) -> void;
-	auto Set_StatusPill(const FText& InText, ECkDebug_Tone InTone) -> void;
+	auto Set_StatusPill(const FText& InText, ECk_Tone InTone) -> void;
 
 private:
 	auto OnHeaderClicked() -> FReply;
@@ -60,7 +60,7 @@ private:
 	FText _Title;
 	FText _CountText;
 	FText _StatusPillText;
-	ECkDebug_Tone _StatusPillTone = ECkDebug_Tone::Neutral;
+	ECk_Tone _StatusPillTone = ECk_Tone::Neutral;
 };
 
 // ====================================================================================================================

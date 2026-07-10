@@ -7,7 +7,7 @@
 // helpers with the same name then collide as duplicate symbols.
 // --------------------------------------------------------------------------------------------------------------------
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -19,8 +19,8 @@ namespace ck::gallery
 	{
 		return SNew(STextBlock)
 			.Text(FText::FromString(InText))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkDebugStyle::FontSizeSmall()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()));
+			.Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeSmall()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()));
 	}
 }
 

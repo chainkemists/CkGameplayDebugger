@@ -72,6 +72,26 @@ Editor must be closed for builds (PreToolUse hook enforces).
 3. If glyphs render blank/garbled → stroke-support gap in the SVG rasterizer → run the
    stroke→outline conversion fallback (unknowns above).
 
+## Visible slice (pulled forward from Phase 2) — 2026-07-10
+
+Inspector section headers now render each inspector's feature glyph + color:
+`SCkDebug_InspectorPanel` gained optional `IconBrush`/`IconColor` (nullptr = unchanged),
+the ECS inspector panel passes them on inspector-titled headers, and **27 inspectors
+declare `Get_IconName`/`Get_FeatureColor`** (colors = mockup FEAT table). Commit `1a5aa3e`,
+gate: build green + Timer 36/36. **This IS the `[EDITOR-VERIFY]` for the SVG pipeline** —
+user checks headers for crisp glyphs; blank/mangled → stroke→outline fallback per icon.
+Remaining without glyphs (need new SVGs or a mapping decision, Phase 2): EntityInfo,
+Relationships, DynamicFragments, EntityCollections, Tween, Physics, Shapes, OverlapBody,
+Resolver, AStar, UI, MontagePlayer, AnimPlans.
+
+## Next up — Phase A (CkFoundation/CkEcs; fresh session recommended)
+
+1. Read CkEcs module Claude.md + `ck-methodology` skill (doc-set naming for CkFoundation work).
+2. Verify EnTT 3.16 storage signals under global `in_place_delete=true` (vendored entt-3.16.0).
+3. Feature-flag bit cache (registry-ctx table, signal-maintained, cvar-gated) + seed scan.
+4. Archetype descriptor + registry + `UCk_ArchetypeDefinition` + AS test asset.
+5. Automation specs for both. Commits stay in CkFoundation's dev.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

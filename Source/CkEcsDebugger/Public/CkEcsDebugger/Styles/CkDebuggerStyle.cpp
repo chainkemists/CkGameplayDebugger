@@ -1,5 +1,6 @@
 #include "CkDebuggerStyle.h"
 
+#include "CkCore/IO/CkIO_Utils.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkObjective/Objective/CkObjective_Fragment_Data.h"
 
@@ -57,7 +58,13 @@ auto FCkDebuggerStyle::Create() -> TSharedRef<FSlateStyleSet>
 {
     auto Style = MakeShared<FSlateStyleSet>(GetStyleSetName());
 
+    // Content root points at the plugin's Resources/ so icon brushes can resolve
+    // Icons/*.svg. Get_PluginsDir joins the plugin FOLDER name (CkGameplayDebugger),
+    // not the plugin name (CkDebugger) — and avoids a direct Projects-module dep.
+    Style->SetContentRoot(UCk_Utils_IO_UE::Get_PluginsDir(TEXT("CkGameplayDebugger")) / TEXT("Resources"));
+
     CreateBrushes(Style);
+    CreateIconBrushes(Style);
     CreateColors(Style);
     CreateTextStyles(Style);
 
@@ -96,6 +103,38 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
 
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
         FLinearColor::White, 3.0f));
+}
+
+auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
+{
+    // Feature glyphs (Resources/Icons/*.svg) — monochrome white, tinted per-feature at
+    // draw time via SImage.ColorAndOpacity. Resolve through Get_IconBrush.
+    static const auto IconIds = TArray<FName>{
+        TEXT("Transform"), TEXT("Network"), TEXT("ActorBridge"), TEXT("StateMachine"),
+        TEXT("Attribute"), TEXT("Timer"), TEXT("SceneNode"), TEXT("Probe"),
+        TEXT("Interaction"), TEXT("Inventory"), TEXT("Objective"), TEXT("Aggro"),
+        TEXT("Perception"), TEXT("Vfx"), TEXT("Audio"), TEXT("Label"),
+        TEXT("Input"), TEXT("Camera"), TEXT("IsmRenderer"), TEXT("Variables"),
+        TEXT("Cube"), TEXT("World"), TEXT("Pin")
+    };
+
+    for (const auto& IconId : IconIds)
+    {
+        InStyle->Set(
+            FName{FString{TEXT("CkDebugger.Icon.")} + IconId.ToString()},
+            new FSlateVectorImageBrush{
+                InStyle->RootToContentDir(FString{TEXT("Icons/")} + IconId.ToString(), TEXT(".svg")),
+                FVector2D{16.0f, 16.0f}});
+    }
+}
+
+auto FCkDebuggerStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*
+{
+    if (NOT StyleInstance.IsValid())
+    { return nullptr; }
+
+    return StyleInstance->GetOptionalBrush(
+        FName{FString{TEXT("CkDebugger.Icon.")} + InIconId.ToString()});
 }
 
 auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void

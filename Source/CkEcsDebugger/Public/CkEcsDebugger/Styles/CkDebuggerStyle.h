@@ -21,6 +21,14 @@ public:
 
     static auto Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor;
 
+    /**
+     * Resolves "CkDebugger.Icon.<InIconId>" — the monochrome feature glyphs registered
+     * from Resources/Icons/*.svg. They are white by design: tint per-feature at draw
+     * time via SImage.ColorAndOpacity so one asset serves every color/state.
+     * Unknown ids yield Slate's no-brush (renders nothing) — pass registered ids only.
+     */
+    static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
+
     static constexpr float Padding_Small = 4.0f;
     static constexpr float Padding_Medium = 8.0f;
     static constexpr float Padding_Large = 16.0f;
@@ -37,6 +45,7 @@ private:
 
     static auto Create() -> TSharedRef<FSlateStyleSet>;
     static auto CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
+    static auto CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void;
 };

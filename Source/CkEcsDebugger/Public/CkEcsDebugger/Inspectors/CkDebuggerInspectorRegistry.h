@@ -7,6 +7,10 @@ struct FCkDebuggerInspectorMetadata
 {
     FName ID;
     FText DisplayName;
+
+    /** See ICkDebuggerComponentInspector_Base::Get_IconName / Get_FeatureColor. */
+    FName IconName;
+    TOptional<FLinearColor> Color;
 };
 
 class CKECSDEBUGGER_API FCkDebuggerInspectorRegistry

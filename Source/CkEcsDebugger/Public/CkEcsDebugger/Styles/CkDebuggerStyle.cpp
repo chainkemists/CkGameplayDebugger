@@ -130,7 +130,7 @@ auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> 
 
 auto FCkDebuggerStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*
 {
-    if (NOT StyleInstance.IsValid())
+    if (InIconId.IsNone() || NOT StyleInstance.IsValid())
     { return nullptr; }
 
     return StyleInstance->GetOptionalBrush(

@@ -314,7 +314,7 @@ auto
                                     [
                                         SNew(SCkDebug_StatusPill)
                                             .Text(FText::FromString(TierLabel_Breadcrumb(Crumb.Tier)))
-                                            .Tone(ECkDebug_Tone::Info)
+                                            .Tone(ECk_Tone::Info)
                                             .ShowDot(false)
                                     ]
 

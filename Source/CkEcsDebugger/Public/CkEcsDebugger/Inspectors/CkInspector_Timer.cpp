@@ -10,7 +10,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Timer)
 
@@ -48,7 +48,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto& Name = UCk_Utils_Timer_UE::Get_Name(CapturedTimer);
             return FText::FromString(Name.IsValid() ? Name.ToString() : TEXT("None"));
         },
-        CkDebugStyle::Value_Tag());
+        CkStyle::Value_Tag());
 
     // ---- Configuration ----
 
@@ -60,7 +60,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Direction = UCk_Utils_Timer_UE::Get_CountDirection(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Direction));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     Builder.AddRow(
         FText::FromString(TEXT("Behavior:")),
@@ -70,7 +70,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Behavior = UCk_Utils_Timer_UE::Get_Behavior(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Behavior));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     // ---- Live state ----
 
@@ -84,10 +84,10 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
         },
         [CapturedTimer](const FCk_Handle&) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkStyle::None(); }
             return UCk_Utils_Timer_UE::Get_CurrentState(CapturedTimer) == ECk_Timer_State::Running
-                ? CkDebugStyle::Status_Active()
-                : CkDebugStyle::Value_Enum();
+                ? CkStyle::Status_Active()
+                : CkStyle::Value_Enum();
         });
 
     Builder.AddRow(
@@ -98,7 +98,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Chrono.Get_GoalValue()));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Elapsed:")),
@@ -108,7 +108,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Chrono.Get_TimeElapsed()));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Remaining:")),
@@ -118,7 +118,7 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Chrono.Get_TimeRemaining()));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddConditionalRow(
         FText::FromString(TEXT("Progress:")),
@@ -133,11 +133,11 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
         },
         [CapturedTimer](const FCk_Handle&) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkStyle::None(); }
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
             return Chrono.Get_IsDone()
-                ? CkDebugStyle::Status_Active()
-                : CkDebugStyle::Value_Numeric();
+                ? CkStyle::Status_Active()
+                : CkStyle::Value_Numeric();
         });
 
     Builder.AddConditionalRow(
@@ -150,11 +150,11 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
         },
         [CapturedTimer](const FCk_Handle&) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkStyle::None(); }
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
             return Chrono.Get_IsDone()
-                ? CkDebugStyle::Value_Bool_True()
-                : CkDebugStyle::Value_Bool_False();
+                ? CkStyle::Value_Bool_True()
+                : CkStyle::Value_Bool_False();
         });
 
     return Builder.Build(Entity, FString());

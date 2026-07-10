@@ -8,7 +8,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_UI)
 
@@ -44,13 +44,13 @@ auto FCkInspector_UI::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SW
         FText::FromString(TEXT("Wrapper Widget:")),
         [bWrapperValid](const FCk_Handle&)
         { return FText::FromString(bWrapperValid ? TEXT("Valid") : TEXT("Invalid")); },
-        bWrapperValid ? CkDebugStyle::Ok() : CkDebugStyle::Err());
+        bWrapperValid ? CkStyle::Ok() : CkStyle::Err());
 
     Builder.AddRow(
         FText::FromString(TEXT("Owning Player:")),
         [bPlayerValid](const FCk_Handle&)
         { return FText::FromString(bPlayerValid ? TEXT("Valid") : TEXT("Invalid")); },
-        bPlayerValid ? CkDebugStyle::Ok() : CkDebugStyle::TextMute());
+        bPlayerValid ? CkStyle::Ok() : CkStyle::TextMute());
 
     return Builder.Build(Entity);
 }

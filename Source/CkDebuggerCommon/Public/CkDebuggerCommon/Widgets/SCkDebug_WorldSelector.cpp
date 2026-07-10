@@ -13,7 +13,7 @@
 #include "CkCore/Format/CkFormat.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 
 // ====================================================================================================================
@@ -41,20 +41,20 @@ auto SCkDebug_WorldSelector::Construct(
         ChildSlot
         [
             SNew(SBorder)
-            .BorderImage(CkDebugStyle::GetRoundedBrush())
-            .BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg2()))
-            .Padding(FMargin(CkDebugStyle::SpaceS))
+            .BorderImage(CkStyle::GetRoundedBrush())
+            .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+            .Padding(FMargin(CkStyle::SpaceS))
             [
                 SNew(SVerticalBox)
 
                 + SVerticalBox::Slot()
                 .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+                .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("World Selection")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ]
 
@@ -97,15 +97,15 @@ auto SCkDebug_WorldSelector::Build_ButtonStrip() -> TSharedRef<SWidget>
         // each button more padding so it reads as a real button next to the other
         // controls (and the AutoWidth slot below sizes it to its full label).
         const auto ContentPadding = _ShowHeaderLabel
-            ? FMargin(CkDebugStyle::SpaceS, 2.0f)
-            : FMargin(CkDebugStyle::SpaceM, 3.0f);
+            ? FMargin(CkStyle::SpaceS, 2.0f)
+            : FMargin(CkStyle::SpaceM, 3.0f);
 
         auto ButtonWidget = SNew(SBorder)
-            .BorderImage(CkDebugStyle::GetRoundedBrush())
+            .BorderImage(CkStyle::GetRoundedBrush())
             .BorderBackgroundColor_Lambda([this, WorldWeak]()
             {
                 const auto bIsSelected = _Model.IsValid() && _Model->Get_SelectedWorld() == WorldWeak.Get();
-                auto C = bIsSelected ? CkDebugStyle::Selection() : CkDebugStyle::Border();
+                auto C = bIsSelected ? CkStyle::Selection() : CkStyle::Border();
                 C.A = bIsSelected ? 0.50f : 0.25f;
                 return FSlateColor(C);
             })
@@ -125,14 +125,14 @@ auto SCkDebug_WorldSelector::Build_ButtonStrip() -> TSharedRef<SWidget>
                     .ColorAndOpacity_Lambda([this, WorldWeak]()
                     {
                         const auto bIsSelected = _Model.IsValid() && _Model->Get_SelectedWorld() == WorldWeak.Get();
-                        return FSlateColor(bIsSelected ? CkDebugStyle::Selection() : CkDebugStyle::Text());
+                        return FSlateColor(bIsSelected ? CkStyle::Selection() : CkStyle::Text());
                     })
                     .Justification(ETextJustify::Center)
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ]
             ];
 
-        const auto SlotPadding = FMargin(Index > 0 ? CkDebugStyle::SpaceXS : 0.0f, 0.0f, 0.0f, 0.0f);
+        const auto SlotPadding = FMargin(Index > 0 ? CkStyle::SpaceXS : 0.0f, 0.0f, 0.0f, 0.0f);
 
         if (_ShowHeaderLabel)
         {

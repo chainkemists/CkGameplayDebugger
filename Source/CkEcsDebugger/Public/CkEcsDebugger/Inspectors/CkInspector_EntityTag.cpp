@@ -8,7 +8,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Text/STextBlock.h"
 
@@ -76,7 +76,7 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
             [CapturedTag](const FCk_Handle& E)
             {
                 return UCk_Utils_EntityTag_UE::Has(E, CapturedTag)
-                    ? EntityTag_Color_Tag : CkDebugStyle::Err();
+                    ? EntityTag_Color_Tag : CkStyle::Err();
             });
     }
 

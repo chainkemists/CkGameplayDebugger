@@ -8,7 +8,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_InteractTarget)
 
 // =====================================================================================================================
@@ -77,7 +77,7 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
             const auto& Channel = UCk_Utils_InteractTarget_UE::Get_InteractionChannel(CapturedTarget);
             return FText::FromString(Channel.IsValid() ? Channel.GetTagName().ToString() : TEXT("None"));
         },
-        CkDebugStyle::Value_Tag());
+        CkStyle::Value_Tag());
 
     // Enabled
     Builder.AddConditionalRow(
@@ -90,11 +90,11 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
         },
         [CapturedTarget](const FCk_Handle& E) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedTarget)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedTarget)) { return CkStyle::None(); }
             const auto Enabled = UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget);
             return Enabled == ECk_EnableDisable::Enable
-                ? CkDebugStyle::Status_Active()
-                : CkDebugStyle::Status_Failed();
+                ? CkStyle::Status_Active()
+                : CkStyle::Status_Failed();
         });
 
     // Completion Policy
@@ -106,7 +106,7 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
             const auto Policy = UCk_Utils_InteractTarget_UE::Get_InteractionCompletionPolicy(CapturedTarget);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Policy));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     // Duration (only meaningful when Timed)
     Builder.AddConditionalRow(
@@ -122,11 +122,11 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
         },
         [CapturedTarget](const FCk_Handle& E) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedTarget)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedTarget)) { return CkStyle::None(); }
             const auto Policy = UCk_Utils_InteractTarget_UE::Get_InteractionCompletionPolicy(CapturedTarget);
             return Policy == ECk_Interaction_CompletionPolicy::Timed
-                ? CkDebugStyle::Value_Numeric()
-                : CkDebugStyle::None();
+                ? CkStyle::Value_Numeric()
+                : CkStyle::None();
         });
 
     // Concurrent Policy
@@ -138,7 +138,7 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
             const auto Policy = UCk_Utils_InteractTarget_UE::Get_ConcurrentInteractionsPolicy(CapturedTarget);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Policy));
         },
-        CkDebugStyle::Value_Enum());
+        CkStyle::Value_Enum());
 
     // Current Interactions — live badge box
     {

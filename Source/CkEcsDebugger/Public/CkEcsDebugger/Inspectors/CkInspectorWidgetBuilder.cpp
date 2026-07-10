@@ -5,7 +5,7 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -194,7 +194,7 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
         {
             Column->AddSlot()
                 .AutoHeight()
-                .Padding(0.0f, HasAnyRowBefore ? CkDebugStyle::SpaceL : 0.0f, 0.0f, 2.0f)
+                .Padding(0.0f, HasAnyRowBefore ? CkStyle::SpaceL : 0.0f, 0.0f, 2.0f)
                 [
                     SNew(SCkDebug_SectionHeader)
                     .Label(RowDef.Label)
@@ -250,8 +250,8 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
 
             auto ColorAttr = TAttribute<FLinearColor>::Create([CapturedEntity, ColorGetter]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity)) { return CkDebugStyle::None(); }
-                if (NOT ColorGetter) { return CkDebugStyle::Text(); }
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return CkStyle::None(); }
+                if (NOT ColorGetter) { return CkStyle::Text(); }
                 return ColorGetter(CapturedEntity);
             });
 

@@ -2,7 +2,7 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkEcs/Handle/CkHandle.h"
 
@@ -31,13 +31,13 @@ namespace
 	{
 		switch (InStatus)
 		{
-			case ECkCrowdDebugger_AgentStatus::Walking:     return CkDebugStyle::Info();
-			case ECkCrowdDebugger_AgentStatus::Idle:        return CkDebugStyle::TextDim();
-			case ECkCrowdDebugger_AgentStatus::Replanning:  return CkDebugStyle::Warn();
-			case ECkCrowdDebugger_AgentStatus::Failed:      return CkDebugStyle::Err();
-			case ECkCrowdDebugger_AgentStatus::Asleep:      return CkDebugStyle::TextMute();
-			case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkDebugStyle::Accent();
-			default:                                        return CkDebugStyle::TextDim();
+			case ECkCrowdDebugger_AgentStatus::Walking:     return CkStyle::Info();
+			case ECkCrowdDebugger_AgentStatus::Idle:        return CkStyle::TextDim();
+			case ECkCrowdDebugger_AgentStatus::Replanning:  return CkStyle::Warn();
+			case ECkCrowdDebugger_AgentStatus::Failed:      return CkStyle::Err();
+			case ECkCrowdDebugger_AgentStatus::Asleep:      return CkStyle::TextMute();
+			case ECkCrowdDebugger_AgentStatus::PlayerProxy: return CkStyle::Accent();
+			default:                                        return CkStyle::TextDim();
 		}
 	}
 }
@@ -51,27 +51,27 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::BgRoot()))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::BgRoot()))
 		.Padding(FMargin(0.0f))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS, CkDebugStyle::SpaceM, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("TOP-DOWN VIEWPORT")))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+					.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("wheel zoom · drag pan · click select · F follow · Home fit navmesh")))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
 				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
@@ -262,7 +262,7 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 			Pts, ESlateDrawEffect::None, InColor, true, 1.5f);
 	};
 
-	const auto* FillBrush = CkDebugStyle::GetFilledBrush();
+	const auto* FillBrush = CkStyle::GetFilledBrush();
 
 	// --- Navmesh walkable triangles — very transparent green fill (the base layer) -----------------
 	const auto& NavTris = _ViewModel->Get_NavTriVerts();
@@ -311,7 +311,7 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 			WorldToScreen(WMin.X, WMin.Y)};
 		FSlateDrawElement::MakeLines(
 			OutDrawElements, RetLayerId + 2, AllottedGeometry.ToPaintGeometry(),
-			Loop, ESlateDrawEffect::None, CkDebugStyle::OverlayOf(CkDebugStyle::BorderStrong(), 0.9f), true, 1.0f);
+			Loop, ESlateDrawEffect::None, CkStyle::OverlayOf(CkStyle::BorderStrong(), 0.9f), true, 1.0f);
 	}
 
 	// --- Agents as dots (color by status; selected = bright + larger) ------------------------------
@@ -348,10 +348,10 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 	if (Sel != nullptr)
 	{
 		const auto OverlayLayer = RetLayerId + 5;
-		const auto Color_Arrival = CkDebugStyle::Ok();   // green
-		const auto Color_Orbit   = CkDebugStyle::Err();  // red
-		const auto Color_Turn    = CkDebugStyle::Info(); // blue
-		const auto Color_Vel     = CkDebugStyle::Warn(); // yellow
+		const auto Color_Arrival = CkStyle::Ok();   // green
+		const auto Color_Orbit   = CkStyle::Err();  // red
+		const auto Color_Turn    = CkStyle::Info(); // blue
+		const auto Color_Vel     = CkStyle::Warn(); // yellow
 		const auto Color_Path     = FLinearColor(0.48f, 0.64f, 1.0f, 0.9f); // planned-path light blue
 
 		// Planned path — the nav waypoint polyline the agent is following.
@@ -395,7 +395,7 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 				// Both tangent turn-radius circles — the agent can curve either way, and rides the
 				// edge of both (they touch at the agent). Faded + dashed so they read as hypothetical.
 				const auto TurnRadius = Speed2D / Sel->MaxTurnRate;
-				const auto TurnFaded = CkDebugStyle::OverlayOf(Color_Turn, 0.5f);
+				const auto TurnFaded = CkStyle::OverlayOf(Color_Turn, 0.5f);
 				const auto LeftCentre  = FVector2D(AgentWorld.X - DirY * TurnRadius, AgentWorld.Y + DirX * TurnRadius);
 				const auto RightCentre = FVector2D(AgentWorld.X + DirY * TurnRadius, AgentWorld.Y - DirX * TurnRadius);
 				DrawWorldCircle(LeftCentre,  TurnRadius, TurnFaded, OverlayLayer, /*dashed*/ true);

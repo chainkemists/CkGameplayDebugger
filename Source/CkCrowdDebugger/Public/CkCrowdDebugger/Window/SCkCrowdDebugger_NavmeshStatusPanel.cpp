@@ -2,7 +2,7 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 
 #include "HAL/PlatformTime.h"
@@ -37,17 +37,17 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Construct(const FArguments& InArgs) ->
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetFilledBrush())
-		.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-		.Padding(FMargin(CkDebugStyle::SpaceM, CkDebugStyle::SpaceS))
+		.BorderImage(CkStyle::GetFilledBrush())
+		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+		.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("NAVMESH STATUS")))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
+				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -71,9 +71,9 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Construct(const FArguments& InArgs) ->
 			[
 				NavRow(TEXT("Supported Agents"),
 					TAttribute<FText>::CreateSP(this, &SCkCrowdDebugger_NavmeshStatusPanel::Get_SupportedAgentsText),
-					TAttribute<FLinearColor>(CkDebugStyle::Value_Numeric()))
+					TAttribute<FLinearColor>(CkStyle::Value_Numeric()))
 			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkDebugStyle::SpaceXS, 0.0f, 0.0f)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
 			[
 				NavRow(TEXT("Health Check"),
 					TAttribute<FText>::CreateSP(this, &SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckText),
@@ -96,10 +96,10 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavSystemText() const -> FText
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavSystemColor() const -> FLinearColor
 {
-	if (NOT _ViewModel.IsValid()) { return CkDebugStyle::TextMute(); }
+	if (NOT _ViewModel.IsValid()) { return CkStyle::TextMute(); }
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
-	if (NOT Status._Sampled)      { return CkDebugStyle::TextMute(); }
-	return Status._NavSystemPresent ? CkDebugStyle::Ok() : CkDebugStyle::Err();
+	if (NOT Status._Sampled)      { return CkStyle::TextMute(); }
+	return Status._NavSystemPresent ? CkStyle::Ok() : CkStyle::Err();
 }
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavDataText() const -> FText
@@ -115,11 +115,11 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavDataText() const -> FText
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_NavDataColor() const -> FLinearColor
 {
-	if (NOT _ViewModel.IsValid()) { return CkDebugStyle::TextMute(); }
+	if (NOT _ViewModel.IsValid()) { return CkStyle::TextMute(); }
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
-	if (NOT Status._Sampled)                { return CkDebugStyle::TextMute(); }
-	if (Status._NavDataClassName.IsEmpty()) { return CkDebugStyle::Err(); }
-	return Status._DefaultFilterValid ? CkDebugStyle::Ok() : CkDebugStyle::Warn();
+	if (NOT Status._Sampled)                { return CkStyle::TextMute(); }
+	if (Status._NavDataClassName.IsEmpty()) { return CkStyle::Err(); }
+	return Status._DefaultFilterValid ? CkStyle::Ok() : CkStyle::Warn();
 }
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_FilterText() const -> FText
@@ -134,10 +134,10 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_FilterText() const -> FText
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_FilterColor() const -> FLinearColor
 {
-	if (NOT _ViewModel.IsValid()) { return CkDebugStyle::TextMute(); }
+	if (NOT _ViewModel.IsValid()) { return CkStyle::TextMute(); }
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
-	if (NOT Status._Sampled) { return CkDebugStyle::TextMute(); }
-	return Status._DefaultFilterValid ? CkDebugStyle::Ok() : CkDebugStyle::Err();
+	if (NOT Status._Sampled) { return CkStyle::TextMute(); }
+	return Status._DefaultFilterValid ? CkStyle::Ok() : CkStyle::Err();
 }
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_SupportedAgentsText() const -> FText
@@ -171,10 +171,10 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckText() const -> FText
 
 auto SCkCrowdDebugger_NavmeshStatusPanel::Get_HealthCheckColor() const -> FLinearColor
 {
-	if (NOT _ViewModel.IsValid()) { return CkDebugStyle::TextMute(); }
+	if (NOT _ViewModel.IsValid()) { return CkStyle::TextMute(); }
 	const auto& Status = _ViewModel->Get_NavmeshStatus();
-	if (NOT Status._HealthCheckRun) { return CkDebugStyle::TextMute(); }
-	return Status._HealthCheckPassed ? CkDebugStyle::Ok() : CkDebugStyle::Err();
+	if (NOT Status._HealthCheckRun) { return CkStyle::TextMute(); }
+	return Status._HealthCheckPassed ? CkStyle::Ok() : CkStyle::Err();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

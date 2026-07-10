@@ -9,7 +9,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_MontagePlayer)
 
@@ -21,12 +21,12 @@ namespace
     {
         switch (Kind)
         {
-            case ECk_MontagePlayer_StateKind::Play:           return CkDebugStyle::Status_Active();
-            case ECk_MontagePlayer_StateKind::Stop:           return CkDebugStyle::TextMute();
-            case ECk_MontagePlayer_StateKind::Pause:          return CkDebugStyle::Warn();
-            case ECk_MontagePlayer_StateKind::Resume:         return CkDebugStyle::Ok();
-            case ECk_MontagePlayer_StateKind::JumpToSection:  return CkDebugStyle::Value_Enum();
-            default:                                           return CkDebugStyle::None();
+            case ECk_MontagePlayer_StateKind::Play:           return CkStyle::Status_Active();
+            case ECk_MontagePlayer_StateKind::Stop:           return CkStyle::TextMute();
+            case ECk_MontagePlayer_StateKind::Pause:          return CkStyle::Warn();
+            case ECk_MontagePlayer_StateKind::Resume:         return CkStyle::Ok();
+            case ECk_MontagePlayer_StateKind::JumpToSection:  return CkStyle::Value_Enum();
+            default:                                           return CkStyle::None();
         }
     }
 
@@ -88,25 +88,25 @@ auto FCkInspector_MontagePlayer::Build_Inspector(const FCk_Handle& Entity) -> TS
             { return FText::FromString(TEXT("(none)")); }
             return FText::FromString(ActiveMontage.Get()->GetFName().ToString());
         },
-        ActiveMontage.IsValid() ? CkDebugStyle::Value_Object() : CkDebugStyle::TextMute());
+        ActiveMontage.IsValid() ? CkStyle::Value_Object() : CkStyle::TextMute());
 
     Builder.AddRow(
         FText::FromString(TEXT("Anim Instance:")),
         [AnimInstance](const FCk_Handle&)
         { return FText::FromString(AnimInstance.IsValid() ? TEXT("Valid") : TEXT("Invalid")); },
-        AnimInstance.IsValid() ? CkDebugStyle::Ok() : CkDebugStyle::Err());
+        AnimInstance.IsValid() ? CkStyle::Ok() : CkStyle::Err());
 
     Builder.AddRow(
         FText::FromString(TEXT("Play Rate:")),
         [State](const FCk_Handle&)
         { return FText::FromString(FString::Printf(TEXT("%.2f"), State.Get_PlayRate())); },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Catch-up Remaining:")),
         [CatchUp](const FCk_Handle&)
         { return FText::FromString(FString::Printf(TEXT("%.3f s"), CatchUp.Get_Seconds())); },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     return Builder.Build(Entity);
 }

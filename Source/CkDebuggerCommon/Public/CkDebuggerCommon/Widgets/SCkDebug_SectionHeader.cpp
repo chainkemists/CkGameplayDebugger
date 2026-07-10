@@ -1,6 +1,6 @@
 #include "SCkDebug_SectionHeader.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -20,8 +20,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Label)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeH4()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeH4()))
+			.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -30,17 +30,17 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkDebugStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 			[
 				SNew(STextBlock)
 				.Text(InArgs._CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}
 
 	ChildSlot
-	.Padding(FMargin(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS))
+	.Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceS))
 	[
 		Row
 	];

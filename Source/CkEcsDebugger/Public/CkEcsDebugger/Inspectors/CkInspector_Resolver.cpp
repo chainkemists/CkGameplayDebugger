@@ -9,7 +9,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Resolver)
 
@@ -48,7 +48,7 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
             const auto Value = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_FinalValue();
             return FText::FromString(FString::Printf(TEXT("%.3f"), Value));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Phase:")),
@@ -59,7 +59,7 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
             const auto Phase = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_CurrentPhaseIndex();
             return FText::FromString(ck::Format_UE(TEXT("{}"), Phase));
         },
-        CkDebugStyle::Value_Numeric());
+        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("Metadata Tags:")),
@@ -72,7 +72,7 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
                 ? FString(TEXT("(none)"))
                 : Tags.ToString());
         },
-        CkDebugStyle::Value_Tag());
+        CkStyle::Value_Tag());
 
     // ---- Pending operations ----
     if (Entity.Has<ck::FFragment_ResolverDataBundle_PendingOperations>())
@@ -88,7 +88,7 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
                 const auto Count = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingModifiersOperations().Num();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("Metadata Ops:")),
@@ -99,7 +99,7 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
                 const auto Count = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingMetadataOperations().Num();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     return Builder.Build(Entity);

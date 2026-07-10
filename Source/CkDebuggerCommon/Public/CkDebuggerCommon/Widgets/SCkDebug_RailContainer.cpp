@@ -1,6 +1,6 @@
 #include "SCkDebug_RailContainer.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -22,8 +22,8 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(InArgs._Title)
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::PaneHeadingFontSize()))
-			.ColorAndOpacity(FSlateColor(CkDebugStyle::PaneHeadingColor()))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+			.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
 			.TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 
@@ -36,8 +36,8 @@ auto
 			[
 				SAssignNew(_CountBadge, STextBlock)
 				.Text(InArgs._CountText)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeMicro()))
-				.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}
 
@@ -49,9 +49,9 @@ auto
 		.AutoHeight()
 		[
 			SNew(SBorder)
-			.BorderImage(CkDebugStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkDebugStyle::Bg1()))
-			.Padding(FMargin(CkDebugStyle::SpaceL, CkDebugStyle::SpaceM))
+			.BorderImage(CkStyle::GetFilledBrush())
+			.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+			.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 			[
 				HeaderRow
 			]

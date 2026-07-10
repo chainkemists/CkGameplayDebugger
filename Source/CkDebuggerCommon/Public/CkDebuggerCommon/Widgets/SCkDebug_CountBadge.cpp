@@ -1,6 +1,6 @@
 #include "SCkDebug_CountBadge.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -43,12 +43,12 @@ auto
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkDebugStyle::GetRoundedBrush())
+		.BorderImage(CkStyle::GetRoundedBrush())
 		.BorderBackgroundColor(FSlateColor(InArgs._BorderColor))
 		.Padding(FMargin(1.0f))
 		[
 			SNew(SBorder)
-			.BorderImage(CkDebugStyle::GetRoundedBrush())
+			.BorderImage(CkStyle::GetRoundedBrush())
 			.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
 			.Padding(FMargin(6.0f, 1.0f))
 			[

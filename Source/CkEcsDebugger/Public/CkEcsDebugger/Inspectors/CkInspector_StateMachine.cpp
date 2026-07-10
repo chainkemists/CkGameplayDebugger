@@ -18,7 +18,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_StateMachine)
 
@@ -30,10 +30,10 @@ namespace
     {
         switch (InStatus)
         {
-            case ECk_SmRunStatus::Running: return CkDebugStyle::Status_Active();
-            case ECk_SmRunStatus::Paused:  return CkDebugStyle::Warn();
+            case ECk_SmRunStatus::Running: return CkStyle::Status_Active();
+            case ECk_SmRunStatus::Paused:  return CkStyle::Warn();
             case ECk_SmRunStatus::Stopped:
-            default:                       return CkDebugStyle::TextMute();
+            default:                       return CkStyle::TextMute();
         }
     }
 
@@ -41,10 +41,10 @@ namespace
     {
         switch (InResult)
         {
-            case ECk_SmTaskResult::Running:   return CkDebugStyle::Status_Active();
-            case ECk_SmTaskResult::Succeeded: return CkDebugStyle::Ok();
+            case ECk_SmTaskResult::Running:   return CkStyle::Status_Active();
+            case ECk_SmTaskResult::Succeeded: return CkStyle::Ok();
             case ECk_SmTaskResult::Failed:
-            default:                          return CkDebugStyle::Err();
+            default:                          return CkStyle::Err();
         }
     }
 
@@ -52,10 +52,10 @@ namespace
     {
         switch (InResult)
         {
-            case ECk_SmConditionResult::Pass:        return CkDebugStyle::Ok();
-            case ECk_SmConditionResult::Fail:        return CkDebugStyle::Err();
+            case ECk_SmConditionResult::Pass:        return CkStyle::Ok();
+            case ECk_SmConditionResult::Fail:        return CkStyle::Err();
             case ECk_SmConditionResult::Undetermined:
-            default:                                 return CkDebugStyle::TextMute();
+            default:                                 return CkStyle::TextMute();
         }
     }
 
@@ -63,10 +63,10 @@ namespace
     {
         switch (InResult)
         {
-            case ECk_SmTransitionResult::Pass:        return CkDebugStyle::Ok();
-            case ECk_SmTransitionResult::Fail:        return CkDebugStyle::Err();
+            case ECk_SmTransitionResult::Pass:        return CkStyle::Ok();
+            case ECk_SmTransitionResult::Fail:        return CkStyle::Err();
             case ECk_SmTransitionResult::Undetermined:
-            default:                                  return CkDebugStyle::TextMute();
+            default:                                  return CkStyle::TextMute();
         }
     }
 
@@ -129,7 +129,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
-                { return CkDebugStyle::None(); }
+                { return CkStyle::None(); }
                 return Format_RunStatus_Color(CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus());
             });
 
@@ -142,7 +142,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
                 return FText::FromString(Format_Sm_ClassName(StateClass));
             },
-            CkDebugStyle::Value_Object());
+            CkStyle::Value_Object());
     }
 
     // ---- Pending Transition ----
@@ -161,7 +161,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 const UClass* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_PreviousStateClass();
                 return FText::FromString(Format_Sm_ClassName(Class));
             },
-            CkDebugStyle::Value_Object());
+            CkStyle::Value_Object());
 
         Builder.AddRow(
             FText::FromString(TEXT("To:")),
@@ -172,7 +172,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 const UClass* Class = CapturedEntity.Get<ck::FFragment_Sm_PendingTransition>().Get_TargetStateClass();
                 return FText::FromString(Format_Sm_ClassName(Class));
             },
-            CkDebugStyle::Value_Object());
+            CkStyle::Value_Object());
     }
 
     // ---- Debug history ----
@@ -188,13 +188,13 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             FText::FromString(TEXT("Run #:")),
             [RunCounter](const FCk_Handle&)
             { return FText::FromString(ck::Format_UE(TEXT("{}"), RunCounter)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         Builder.AddRow(
             FText::FromString(TEXT("State Entered At:")),
             [EnteredAt](const FCk_Handle&)
             { return FText::FromString(FString::Printf(TEXT("%.2f s"), EnteredAt)); },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
 
         const auto& History    = Debug.Get_History();
         const auto  HistoryNum = History.Num();
@@ -206,7 +206,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             Builder.AddRow(
                 FText::FromString(TEXT("(empty)")),
                 [](const FCk_Handle&) { return FText::FromString(TEXT("--")); },
-                CkDebugStyle::TextMute());
+                CkStyle::TextMute());
         }
         else
         {
@@ -224,7 +224,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 Builder.AddRow(
                     FText::FromString(EntryLabel),
                     [EntryText](const FCk_Handle&) { return FText::FromString(EntryText); },
-                    CkDebugStyle::Value_Object());
+                    CkStyle::Value_Object());
             }
         }
     }
@@ -243,14 +243,14 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         Builder.AddRow(
             FText::FromString(TEXT("Class:")),
             [ResolvedName](const FCk_Handle&) { return FText::FromString(ResolvedName); },
-            CkDebugStyle::Value_Object());
+            CkStyle::Value_Object());
 
         if (ResolvedClass != RequestedClass)
         {
             Builder.AddRow(
                 FText::FromString(TEXT("Requested:")),
                 [RequestedName](const FCk_Handle&) { return FText::FromString(RequestedName); },
-                CkDebugStyle::Value_Object());
+                CkStyle::Value_Object());
         }
 
         if (Entity.Has<ck::FFragment_SmState_Hierarchy>())
@@ -269,7 +269,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 Builder.AddRow(
                     FText::FromString(TEXT("Hierarchy:")),
                     [HierarchyStr](const FCk_Handle&) { return FText::FromString(HierarchyStr); },
-                    CkDebugStyle::Value_Tag());
+                    CkStyle::Value_Tag());
             }
         }
     }
@@ -287,7 +287,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             Builder.AddRow(
                 FText::FromString(TEXT("Class:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); },
-                CkDebugStyle::Value_Object());
+                CkStyle::Value_Object());
         }
 
         if (Entity.Has<ck::FFragment_SmTask_Current>())
@@ -305,7 +305,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 [CapturedEntity](const FCk_Handle&) -> FLinearColor
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_Current>())
-                    { return CkDebugStyle::None(); }
+                    { return CkStyle::None(); }
                     return Format_TaskResult_Color(CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult());
                 });
         }
@@ -324,7 +324,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                         ? ck::Format_UE(TEXT("[{}]"), SubSm)
                         : FString(TEXT("(None)")));
                 },
-                CkDebugStyle::Value_Handle());
+                CkStyle::Value_Handle());
         }
     }
 
@@ -340,7 +340,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             Builder.AddRow(
                 FText::FromString(TEXT("Target:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); },
-                CkDebugStyle::Value_Object());
+                CkStyle::Value_Object());
         }
 
         if (Entity.Has<ck::FFragment_SmTransition_Current>())
@@ -358,7 +358,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 [CapturedEntity](const FCk_Handle&) -> FLinearColor
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition_Current>())
-                    { return CkDebugStyle::None(); }
+                    { return CkStyle::None(); }
                     return Format_TransitionResult_Color(CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result());
                 });
         }
@@ -376,7 +376,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             Builder.AddRow(
                 FText::FromString(TEXT("Class:")),
                 [ClassName](const FCk_Handle&) { return FText::FromString(ClassName); },
-                CkDebugStyle::Value_Object());
+                CkStyle::Value_Object());
         }
 
         if (Entity.Has<ck::FFragment_SmCondition_Current>())
@@ -394,7 +394,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 [CapturedEntity](const FCk_Handle&) -> FLinearColor
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition_Current>())
-                    { return CkDebugStyle::None(); }
+                    { return CkStyle::None(); }
                     return Format_ConditionResult_Color(CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result());
                 });
         }

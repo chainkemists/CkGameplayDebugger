@@ -7,7 +7,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Objective)
 
 static const FLinearColor Color_MetaData = FLinearColor(0.85f, 0.75f, 0.55f);
@@ -49,7 +49,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
     Builder.AddRow(
         FText::FromString(TEXT("Name:")),
         [Name](const FCk_Handle& E) { return FText::FromString(Name.ToString()); },
-        CkDebugStyle::Status_Active());
+        CkStyle::Status_Active());
 
     // Display Name
     const auto DisplayName = UCk_Utils_Objective_UE::Get_DisplayName(ObjectiveHandle);
@@ -58,7 +58,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
         Builder.AddRow(
             FText::FromString(TEXT("Display:")),
             [DisplayName](const FCk_Handle& E) { return DisplayName; },
-            CkDebugStyle::Text());
+            CkStyle::Text());
     }
 
     // Description
@@ -68,7 +68,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
         Builder.AddRow(
             FText::FromString(TEXT("Description:")),
             [Description](const FCk_Handle& E) { return Description; },
-            CkDebugStyle::TextDim());
+            CkStyle::TextDim());
     }
 
     // Status (live-updating via TAttribute)
@@ -82,7 +82,7 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
         },
         [CapturedObjective](const FCk_Handle& E) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedObjective)) { return CkDebugStyle::None(); }
+            if (ck::Is_NOT_Valid(CapturedObjective)) { return CkStyle::None(); }
             return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
         });
 

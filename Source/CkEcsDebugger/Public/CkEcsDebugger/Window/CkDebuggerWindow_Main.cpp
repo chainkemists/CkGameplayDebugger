@@ -30,7 +30,7 @@
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 // On-Screen Overlay controls (toolbar popover mirroring the overlay CVars + settings).
@@ -112,7 +112,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                 [
                     SNew(SBorder)
                     .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Border"))
-                    .BorderBackgroundColor(CkDebugStyle::Border())
+                    .BorderBackgroundColor(CkStyle::Border())
                     .Padding(FMargin(1.0f, 0.0f))
                     [
                         SAssignNew(ContentAreaContainer, SBox)
@@ -182,14 +182,14 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                 .ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
                 {
                     return ViewportPicker.IsValid() && ViewportPicker->IsActive()
-                        ? CkDebugStyle::Selection()
-                        : CkDebugStyle::Bg2();
+                        ? CkStyle::Selection()
+                        : CkStyle::Bg2();
                 })
                 .ForegroundColor_Lambda([this]() -> FSlateColor
                 {
                     return ViewportPicker.IsValid() && ViewportPicker->IsActive()
-                        ? FSlateColor(CkDebugStyle::TextStrong())
-                        : FSlateColor(CkDebugStyle::TextDim());
+                        ? FSlateColor(CkStyle::TextStrong())
+                        : FSlateColor(CkStyle::TextDim());
                 })
                 .IsEnabled_Lambda([this]() -> bool
                 {
@@ -255,7 +255,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                 })
                 [
                     SNew(SButton)
-                    .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                    .ButtonColorAndOpacity(CkStyle::Bg2())
                     .ToolTipText(FText::FromString(TEXT("Picker settings")))
                     .OnClicked_Lambda([this]() -> FReply
                     {
@@ -269,7 +269,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\u2699"))) // gear glyph
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 ]
             ]
@@ -292,8 +292,8 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     {
                         const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.DebugOverlay"));
                         return (CVar != nullptr && CVar->GetInt() != 0)
-                            ? CkDebugStyle::Selection()
-                            : CkDebugStyle::Bg2();
+                            ? CkStyle::Selection()
+                            : CkStyle::Bg2();
                     })
                     .ToolTipText(FText::FromString(TEXT(
                         "On-screen entity overlay controls\n"
@@ -310,7 +310,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Overlay")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 ]
             ]
@@ -343,14 +343,14 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     .ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
                     {
                         return FilterModel.IsValid() && FilterModel->Get_HasActiveFilter()
-                            ? CkDebugStyle::Selection()
-                            : CkDebugStyle::Bg2();
+                            ? CkStyle::Selection()
+                            : CkStyle::Bg2();
                     })
                     .ForegroundColor_Lambda([this]() -> FSlateColor
                     {
                         return FilterModel.IsValid() && FilterModel->Get_HasActiveFilter()
-                            ? FSlateColor(CkDebugStyle::TextStrong())
-                            : FSlateColor(CkDebugStyle::TextDim());
+                            ? FSlateColor(CkStyle::TextStrong())
+                            : FSlateColor(CkStyle::TextDim());
                     })
                     .ToolTipText(FText::FromString(TEXT(
                         "Filter entities by which inspectors apply to them.\n"
@@ -436,7 +436,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Ignore Self")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
             ]
 
@@ -454,7 +454,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Cull Radius:")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
                 .AutoWidth()
@@ -502,7 +502,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Billboard Size:")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
                 .AutoWidth()
@@ -548,7 +548,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Max Depth:")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
                 .AutoWidth()
@@ -609,7 +609,7 @@ namespace
                 SNew(STextBlock)
                 .Text(FText::FromString(InLabel))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
             ];
     }
 
@@ -640,7 +640,7 @@ namespace
                 SNew(STextBlock)
                 .Text(FText::FromString(InLabel))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
             ];
     }
 
@@ -759,7 +759,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                         // Cycle button (SEnumComboBox lives in editor-only EditorWidgets,
                         // which an UncookedOnly module can't depend on unconditionally).
                         SNew(SButton)
-                        .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                        .ButtonColorAndOpacity(CkStyle::Bg2())
                         .HAlign(HAlign_Center)
                         .OnClicked_Lambda([]() -> FReply
                         {
@@ -783,7 +783,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                                         static_cast<int64>(Anchor)));
                             })
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     ]
                 ]
@@ -935,7 +935,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     SNew(STextBlock)
                     .Text(DisplayName)
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
             ]
             + SHorizontalBox::Slot()
@@ -965,7 +965,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Hide")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                 ]
             ]
         ];
@@ -995,7 +995,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Match:")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                     + SHorizontalBox::Slot()
                     .AutoWidth()
@@ -1021,7 +1021,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                             SNew(STextBlock)
                             .Text(FText::FromString(TEXT("All")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     ]
                     + SHorizontalBox::Slot()
@@ -1047,7 +1047,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                             SNew(STextBlock)
                             .Text(FText::FromString(TEXT("Any")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkDebugStyle::Text()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     ]
                     + SHorizontalBox::Slot()
@@ -1062,7 +1062,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                         .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
                         [
                             SNew(SButton)
-                            .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                            .ButtonColorAndOpacity(CkStyle::Bg2())
                             .ToolTipText(FText::FromString(TEXT(
                                 "Un-hide every inspector — clears the persistent exclusion list.")))
                             .OnClicked_Lambda([this]() -> FReply
@@ -1077,7 +1077,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                                 SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Clear hidden")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         ]
                         + SHorizontalBox::Slot()
@@ -1085,7 +1085,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                         .VAlign(VAlign_Center)
                         [
                             SNew(SButton)
-                            .ButtonColorAndOpacity(CkDebugStyle::Bg2())
+                            .ButtonColorAndOpacity(CkStyle::Bg2())
                             .ToolTipText(FText::FromString(TEXT("Remove every active filter.")))
                             .OnClicked_Lambda([this]() -> FReply
                             {
@@ -1099,7 +1099,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                                 SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Clear all")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         ]
                     ]
@@ -1119,7 +1119,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Badges:")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                     + SHorizontalBox::Slot()
                     .FillWidth(1.0f)
@@ -1230,7 +1230,7 @@ auto SCkDebuggerWindow_Main::Refresh_FilterBadgeStrip() -> void
                         SNew(STextBlock)
                         .Text(FText::FromString(Label))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(CkDebugStyle::TextStrong()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))
                     ];
                 break;
             }
@@ -1286,11 +1286,11 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
             [
                 SNew(SButton)
                     .ButtonColorAndOpacity(IsActive
-                        ? CkDebugStyle::Selection()
-                        : CkDebugStyle::Bg2())
+                        ? CkStyle::Selection()
+                        : CkStyle::Bg2())
                     .ForegroundColor(IsActive
-                        ? CkDebugStyle::TextStrong()
-                        : CkDebugStyle::TextDim())
+                        ? CkStyle::TextStrong()
+                        : CkStyle::TextDim())
                     .OnClicked_Lambda([this, PageIndex]()
                     {
                         OnPageSelected(PageIndex);
@@ -1312,7 +1312,7 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
             SNew(STextBlock)
             .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
             .Text(FText::FromString(TEXT("No Page Selected")))
-            .ColorAndOpacity(CkDebugStyle::TextMute())
+            .ColorAndOpacity(CkStyle::TextMute())
         ];
 
     if (Pages.IsValidIndex(ActivePageIndex) && Pages[ActivePageIndex].IsValid())

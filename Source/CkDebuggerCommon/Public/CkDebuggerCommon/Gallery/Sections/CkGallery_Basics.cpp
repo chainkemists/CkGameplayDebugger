@@ -6,7 +6,7 @@
 #include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -28,15 +28,15 @@ namespace
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+			.Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 			[
 				SNew(SBox)
 				.MinDesiredWidth(120.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(InLabel))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-					.ColorAndOpacity(FSlateColor(CkDebugStyle::TextMute()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 				]
 			]
 
@@ -74,19 +74,19 @@ public:
 
 		// All six tones, dot visible.
 		auto DottedRow = SNew(SHorizontalBox);
-		for (const auto& Tone : TArray<TPair<FString, ECkDebug_Tone>>{
-				{ TEXT("Neutral"), ECkDebug_Tone::Neutral },
-				{ TEXT("Info"),    ECkDebug_Tone::Info    },
-				{ TEXT("Ok"),      ECkDebug_Tone::Ok      },
-				{ TEXT("Warn"),    ECkDebug_Tone::Warn    },
-				{ TEXT("Err"),     ECkDebug_Tone::Err     },
-				{ TEXT("Accent"),  ECkDebug_Tone::Accent  },
+		for (const auto& Tone : TArray<TPair<FString, ECk_Tone>>{
+				{ TEXT("Neutral"), ECk_Tone::Neutral },
+				{ TEXT("Info"),    ECk_Tone::Info    },
+				{ TEXT("Ok"),      ECk_Tone::Ok      },
+				{ TEXT("Warn"),    ECk_Tone::Warn    },
+				{ TEXT("Err"),     ECk_Tone::Err     },
+				{ TEXT("Accent"),  ECk_Tone::Accent  },
 			})
 		{
 			DottedRow->AddSlot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 				[
 					SNew(SCkDebug_StatusPill)
 					.Text(FText::FromString(Tone.Key))
@@ -94,21 +94,21 @@ public:
 				];
 		}
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("With leading dot (default)")) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ DottedRow ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("With leading dot (default)")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ DottedRow ];
 
 		// Dot suppressed.
 		auto NoDotRow = SNew(SHorizontalBox);
-		for (const auto& Tone : TArray<TPair<FString, ECkDebug_Tone>>{
-				{ TEXT("Neutral"), ECkDebug_Tone::Neutral },
-				{ TEXT("Ok"),      ECkDebug_Tone::Ok      },
-				{ TEXT("Err"),     ECkDebug_Tone::Err     },
+		for (const auto& Tone : TArray<TPair<FString, ECk_Tone>>{
+				{ TEXT("Neutral"), ECk_Tone::Neutral },
+				{ TEXT("Ok"),      ECk_Tone::Ok      },
+				{ TEXT("Err"),     ECk_Tone::Err     },
 			})
 		{
 			NoDotRow->AddSlot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, CkDebugStyle::SpaceM, 0.0f)
+				.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 				[
 					SNew(SCkDebug_StatusPill)
 					.Text(FText::FromString(Tone.Key))
@@ -117,7 +117,7 @@ public:
 				];
 		}
 
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("ShowDot(false) — tone still shows via text color")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("ShowDot(false) — tone still shows via text color")) ];
 		Col->AddSlot().AutoHeight()[ NoDotRow ];
 
 		return Col;
@@ -143,12 +143,12 @@ public:
 	virtual auto Build_Widget() -> TSharedRef<SWidget> override
 	{
 		const auto Categories = TArray<TPair<FString, FLinearColor>>{
-			{ TEXT("Gather"),   CkDebugStyle::CategoryGather()   },
-			{ TEXT("Build"),    CkDebugStyle::CategoryBuild()    },
-			{ TEXT("Research"), CkDebugStyle::CategoryResearch() },
-			{ TEXT("Train"),    CkDebugStyle::CategoryTrain()    },
-			{ TEXT("Age"),      CkDebugStyle::CategoryAge()      },
-			{ TEXT("Trade"),    CkDebugStyle::CategoryTrade()    },
+			{ TEXT("Gather"),   CkStyle::CategoryGather()   },
+			{ TEXT("Build"),    CkStyle::CategoryBuild()    },
+			{ TEXT("Research"), CkStyle::CategoryResearch() },
+			{ TEXT("Train"),    CkStyle::CategoryTrain()    },
+			{ TEXT("Age"),      CkStyle::CategoryAge()      },
+			{ TEXT("Trade"),    CkStyle::CategoryTrade()    },
 		};
 
 		auto MakeRow = [&](float InDiameter)
@@ -159,7 +159,7 @@ public:
 				Row->AddSlot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
-					.Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)
+					.Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
 					[
 						SNew(SHorizontalBox)
 
@@ -175,12 +175,12 @@ public:
 						+ SHorizontalBox::Slot()
 						.AutoWidth()
 						.VAlign(VAlign_Center)
-						.Padding(CkDebugStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+						.Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString(Cat.Key))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkDebugStyle::FontSizeSmall()))
-							.ColorAndOpacity(FSlateColor(CkDebugStyle::TextDim()))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+							.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
 						]
 					];
 			}
@@ -188,11 +188,11 @@ public:
 		};
 
 		auto Col = MakeColumn();
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Diameter 8 (default)")) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ MakeRow(8.0f) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Diameter 12")) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceL)[ MakeRow(12.0f) ];
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Diameter 6")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Diameter 8 (default)")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ MakeRow(8.0f) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Diameter 12")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceL)[ MakeRow(12.0f) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Diameter 6")) ];
 		Col->AddSlot().AutoHeight()[ MakeRow(6.0f) ];
 		return Col;
 	}
@@ -220,7 +220,7 @@ public:
 
 		auto AddBadge = [&](TSharedRef<SWidget> InBadge)
 		{
-			Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkDebugStyle::SpaceL, 0.0f)[ InBadge ];
+			Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)[ InBadge ];
 		};
 
 		AddBadge(SNew(SCkDebug_CountBadge).ValueText(FText::FromString(TEXT("5"))));
@@ -233,12 +233,12 @@ public:
 			SNew(SCkDebug_CountBadge)
 			.ValueText(FText::FromString(TEXT("3")))
 			.SuffixText(FText::FromString(TEXT("err")))
-			.ValueColor(CkDebugStyle::Err())
-			.BorderColor(CkDebugStyle::Err())
+			.ValueColor(CkStyle::Err())
+			.BorderColor(CkStyle::Err())
 		);
 
 		auto Col = MakeColumn();
-		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceS)[ Caption(TEXT("Value-only · value+suffix · currency · color-override")) ];
+		Col->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)[ Caption(TEXT("Value-only · value+suffix · currency · color-override")) ];
 		Col->AddSlot().AutoHeight()[ Row ];
 		return Col;
 	}
@@ -266,7 +266,7 @@ public:
 
 		Col->AddSlot()
 			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, CkDebugStyle::SpaceM)
+			.Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceM)
 			[
 				SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Preconditions")))
 			];

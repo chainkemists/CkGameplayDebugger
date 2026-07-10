@@ -10,7 +10,7 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Aggro)
 
@@ -52,7 +52,7 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 const auto Score = CapturedEntity.Get<ck::FFragment_Aggro_Current>().Get_Score();
                 return FText::FromString(FString::Printf(TEXT("%.3f"), Score));
             },
-            CkDebugStyle::Value_Numeric());
+            CkStyle::Value_Numeric());
     }
 
     // ---- Aggro owner (this entity holds the threat table) ----
@@ -72,7 +72,7 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                     ? ck::Format_UE(TEXT("[{}]"), Best)
                     : FString(TEXT("(None)")));
             },
-            CkDebugStyle::Value_Handle());
+            CkStyle::Value_Handle());
 
         if (Entity.Has<ck::FFragment_AggroOwner_NewBestAggro>())
         {
@@ -90,9 +90,9 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 [CapturedEntity](const FCk_Handle&) -> FLinearColor
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroOwner_NewBestAggro>())
-                    { return CkDebugStyle::None(); }
+                    { return CkStyle::None(); }
                     const auto Best = CapturedEntity.Get<ck::FFragment_AggroOwner_NewBestAggro>().Get_BestAggro();
-                    return ck::IsValid(Best) ? CkDebugStyle::Status_Active() : CkDebugStyle::TextMute();
+                    return ck::IsValid(Best) ? CkStyle::Status_Active() : CkStyle::TextMute();
                 });
         }
     }

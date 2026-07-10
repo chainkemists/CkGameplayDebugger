@@ -18,14 +18,14 @@ class CKDEBUGGERCOMMON_API SCkDebug_HistoryRow : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SCkDebug_HistoryRow)
-		: _Tone(ECkDebug_Tone::Neutral)
+		: _Tone(ECk_Tone::Neutral)
 		, _TitleText(FText::GetEmpty())
 		, _MetaText(FText::GetEmpty())
 		, _RightText(FText::GetEmpty())
 		, _SubtitleText(FText::GetEmpty())
 		, _IsSelected(false)
 	{}
-		SLATE_ARGUMENT(ECkDebug_Tone, Tone)
+		SLATE_ARGUMENT(ECk_Tone, Tone)
 		SLATE_ARGUMENT(FText, TitleText)
 		SLATE_ARGUMENT(FText, MetaText)
 		SLATE_ARGUMENT(FText, RightText)

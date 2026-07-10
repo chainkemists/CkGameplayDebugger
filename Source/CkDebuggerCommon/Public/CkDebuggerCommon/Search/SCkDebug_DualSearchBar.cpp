@@ -1,6 +1,6 @@
 #include "SCkDebug_DualSearchBar.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -29,7 +29,7 @@ auto SCkDebug_DualSearchBar::Construct(const FArguments& InArgs) -> void
 
         + SVerticalBox::Slot()
         .AutoHeight()
-        .Padding(0.0f, CkDebugStyle::SpaceS, 0.0f, 0.0f)
+        .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
         [
             SAssignNew(_HighlightBox, SSearchBox)
             .HintText(InArgs._HighlightHintText)

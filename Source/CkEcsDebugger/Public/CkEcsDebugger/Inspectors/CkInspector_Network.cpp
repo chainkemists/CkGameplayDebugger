@@ -10,7 +10,7 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Network)
 
 auto FCkInspector_Network::Get_ComponentName() const -> FText
@@ -29,11 +29,11 @@ auto FCkInspector_Network::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         .AddRow(
             FText::FromString(TEXT("NetMode:")),
             [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Net_UE::Get_EntityNetMode(E))); },
-            CkDebugStyle::Network())
+            CkStyle::Network())
         .AddRow(
             FText::FromString(TEXT("NetRole:")),
             [](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Net_UE::Get_EntityNetRole(E))); },
-            CkDebugStyle::Network())
+            CkStyle::Network())
         .Build(Entity);
 }
 

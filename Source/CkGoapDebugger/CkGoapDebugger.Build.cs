@@ -30,6 +30,7 @@ public class CkGoapDebugger : CkModuleRules
 			"CkRecord",
 			"CkLabel",
 			"CkDebuggerCommon",
+            "CkEditorTools",
 
 			"GraphEditor",
 		});

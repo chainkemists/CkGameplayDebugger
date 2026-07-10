@@ -6,7 +6,7 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
-#include "CkDebuggerCommon/Style/CkDebugStyle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
@@ -26,7 +26,7 @@ auto
 
     const auto MonoFont = InArgs._Font.IsSet()
         ? InArgs._Font
-        : TAttribute<FSlateFontInfo>(FCoreStyle::GetDefaultFontStyle("Bold", CkDebugStyle::FontSizeSmall()));
+        : TAttribute<FSlateFontInfo>(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()));
 
     ChildSlot
     [
@@ -113,9 +113,9 @@ auto
     -> FSlateColor
 {
     if (ck::Is_NOT_Valid(_Entity.Get()))
-    { return FSlateColor(CkDebugStyle::None()); }
+    { return FSlateColor(CkStyle::None()); }
 
-    return FSlateColor(CkDebugStyle::EntityId());
+    return FSlateColor(CkStyle::EntityId());
 }
 
 auto

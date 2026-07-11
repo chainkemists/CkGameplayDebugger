@@ -70,6 +70,9 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
                 TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.ByteAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.VectorAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.RotatorAttributes"),
+                TEXT("Ck.OnScreenDebugger.Provider.Crowd"),
                 TEXT("Ck.OnScreenDebugger.Provider.Inventory"),
                 TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
                 TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
@@ -95,6 +98,7 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
             TEXT("Ck.OnScreenDebugger.Provider.Goap"),
             TEXT("Ck.OnScreenDebugger.Provider.Aggro"),
             TEXT("Ck.OnScreenDebugger.Provider.AStar"),
+            TEXT("Ck.OnScreenDebugger.Provider.Crowd"),
             TEXT("Ck.OnScreenDebugger.Provider.Objective"),
             TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
             TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
@@ -149,6 +153,34 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
 
     // "All" layout is the default starting view — gyms are too sparse for the narrower ones.
     StartingLayout = TAG_Ck_OnScreenDebugger_Layout_All;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    UCk_DebugOverlay_Settings::
+    Get_PassesAttributeFilter(
+        const FString& InAttributeName)
+    -> bool
+{
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    if (Settings == nullptr || Settings->AttributeFilterPatterns.IsEmpty())
+    { return true; }   // empty list = no filtering in either mode
+
+    auto MatchesAny = false;
+    for (const auto& Pattern : Settings->AttributeFilterPatterns)
+    {
+        if (Pattern.IsEmpty())
+        { continue; }
+
+        if (InAttributeName.Contains(Pattern))   // ESearchCase::IgnoreCase default
+        {
+            MatchesAny = true;
+            break;
+        }
+    }
+
+    return Settings->bAttributeFilterIsExclusion ? !MatchesAny : MatchesAny;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

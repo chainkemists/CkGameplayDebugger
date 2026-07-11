@@ -10,6 +10,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SSegmentedControl.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Input/SMenuAnchor.h"
@@ -473,6 +474,90 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Meshes First")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
+                ]
+            ]
+
+            // ---- Overlay attribute filter (focus-card volume control) ----
+            // Persisted on UCk_DebugOverlay_Settings; the overlay's attribute providers
+            // consult it per row, so edits apply live during PIE.
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f))
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("OVERLAY ATTRIBUTES")))
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+            [
+                SNew(SBox)
+                .WidthOverride(240.0f)
+                [
+                    SNew(SEditableTextBox)
+                    .HintText(FText::FromString(TEXT("patterns, comma-separated")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Case-insensitive SUBSTRING patterns matched against attribute names\n"
+                        "on the overlay focus card ('Health' catches 'Attr.Health.Max').\n"
+                        "Empty = show all. Mode below flips between show-only and hide.")))
+                    .Text_Lambda([]() -> FText
+                    {
+                        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+                        return FText::FromString(Settings != nullptr
+                            ? FString::Join(Settings->AttributeFilterPatterns, TEXT(", "))
+                            : FString{});
+                    })
+                    .OnTextCommitted_Lambda([](const FText& InText, ETextCommit::Type)
+                    {
+                        auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
+                        if (Settings == nullptr)
+                        { return; }
+
+                        auto Patterns = TArray<FString>{};
+                        InText.ToString().ParseIntoArray(Patterns, TEXT(","));
+                        for (auto& Pattern : Patterns)
+                        { Pattern.TrimStartAndEndInline(); }
+                        Patterns.RemoveAll([](const FString& InPattern) { return InPattern.IsEmpty(); });
+
+                        Settings->AttributeFilterPatterns = MoveTemp(Patterns);
+                        Settings->SaveConfig();
+                    })
+                ]
+            ]
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([]() -> ECheckBoxState
+                {
+                    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+                    return Settings != nullptr && Settings->bAttributeFilterIsExclusion
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([](ECheckBoxState InState)
+                {
+                    auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
+                    if (Settings == nullptr)
+                    { return; }
+
+                    Settings->bAttributeFilterIsExclusion = InState == ECheckBoxState::Checked;
+                    Settings->SaveConfig();
+                })
+                .ToolTipText(FText::FromString(TEXT(
+                    "Unchecked: show ONLY attributes matching a pattern.\n"
+                    "Checked: show all EXCEPT matching (deny-list mode).")))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Exclude listed")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]

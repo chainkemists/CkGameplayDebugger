@@ -334,6 +334,17 @@ auto
         FSlateApplication::Get().RegisterInputPreProcessor(_InputProcessor.ToSharedRef());
     }
 
+    // Suppress engine on-screen debug text (AddOnScreenDebugMessage / ck::Trace — same
+    // channel) while the overlay is active: the plate now owns the top-left corner and
+    // the tall height budget. Prior value restored on deactivate. Primary-owner-gated
+    // so split-screen LP subsystems don't double-save (the second save would capture
+    // the already-suppressed 'false' and the restore would stick).
+    if (_bIsPrimaryConsoleOwner && ck::IsValid(GEngine))
+    {
+        _PriorOnScreenMessagesEnabled = GEngine->bEnableOnScreenDebugMessages;
+        GEngine->bEnableOnScreenDebugMessages = false;
+    }
+
     // Register the per-frame ticker.
     _TickerHandle = FTSTicker::GetCoreTicker().AddTicker(
         FTickerDelegate::CreateUObject(this, &UCk_DebugOverlay_Subsystem::DoTick),
@@ -347,6 +358,14 @@ auto
     DoDeactivate()
     -> void
 {
+    // Restore engine on-screen debug text to its pre-activation state. Guarded on the
+    // ticker being live so a redundant DoDeactivate (Deinitialize after a cvar-off)
+    // doesn't restore twice.
+    if (_bIsPrimaryConsoleOwner && _TickerHandle.IsValid() && ck::IsValid(GEngine))
+    {
+        GEngine->bEnableOnScreenDebugMessages = _PriorOnScreenMessagesEnabled;
+    }
+
     if (_TickerHandle.IsValid())
     {
         FTSTicker::GetCoreTicker().RemoveTicker(_TickerHandle);
@@ -854,10 +873,11 @@ auto
     const auto* OverlaySettings = GetDefault<UCk_DebugOverlay_Settings>();
     const auto* InputSettings   = GetDefault<UCk_DebugOverlay_InputSettings>();
 
-    // ---- Plate anchor + width (settings-driven; cheap no-op when unchanged) ----
+    // ---- Plate anchor + width + height budget (settings-driven; cheap no-op when unchanged) ----
     _RootWidget->Set_PlateLayout(
-        OverlaySettings ? OverlaySettings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopRight,
-        OverlaySettings ? OverlaySettings->PlateWidth  : 720.0f);
+        OverlaySettings ? OverlaySettings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopLeft,
+        OverlaySettings ? OverlaySettings->PlateWidth  : 720.0f,
+        OverlaySettings ? OverlaySettings->PlateMaxHeightFraction : 0.66f);
 
     // ---- Focus card ----
     // Use the layout's DefaultStyle for the card level; per-provider style applied inside.

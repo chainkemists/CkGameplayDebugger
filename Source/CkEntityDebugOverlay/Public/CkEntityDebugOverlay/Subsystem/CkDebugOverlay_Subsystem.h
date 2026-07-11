@@ -193,6 +193,10 @@ private:
     // Throttle for the ~1/sec marker diagnostics log line in DoTick.
     double _LastMarkerLogTime = -1.0;
 
+    // Engine on-screen debug text state saved at activation (suppressed while the overlay
+    // is active — the plate owns the top-left corner) and restored on deactivation.
+    bool _PriorOnScreenMessagesEnabled = true;
+
     // PIE world override: INDEX_NONE = use own LP world.
     int32 _WorldOverrideIndex = INDEX_NONE;
 

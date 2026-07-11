@@ -1099,10 +1099,11 @@ auto
 
     const auto Now = FPlatformTime::Seconds();
 
-    // ---- Plate anchor + width (settings-driven; cheap no-op when unchanged) ----
+    // ---- Plate anchor + width + height budget (settings-driven; cheap no-op when unchanged) ----
     _OverlayRoot->Set_PlateLayout(
-        Settings ? Settings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopRight,
-        Settings ? Settings->PlateWidth  : 720.0f);
+        Settings ? Settings->PlateAnchor : ECk_DebugOverlay_PlateAnchor::TopLeft,
+        Settings ? Settings->PlateWidth  : 720.0f,
+        Settings ? Settings->PlateMaxHeightFraction : 0.66f);
 
     // ---- Focus card for the sticky focus entity (empty model hides the card content) ----
     const auto Model = ck_debugoverlay::Build_EntityModel(

@@ -60,14 +60,18 @@ auto
     SCkDebugOverlay_Root::
     Set_PlateLayout(
         ECk_DebugOverlay_PlateAnchor InAnchor,
-        float InWidth)
+        float InWidth,
+        float InMaxHeightFraction)
     -> void
 {
-    if (InAnchor == _PlateAnchor && FMath::IsNearlyEqual(InWidth, _PlateWidth))
+    if (InAnchor == _PlateAnchor &&
+        FMath::IsNearlyEqual(InWidth, _PlateWidth) &&
+        FMath::IsNearlyEqual(InMaxHeightFraction, _PlateMaxHeightFraction))
     { return; }
 
-    _PlateAnchor = InAnchor;
-    _PlateWidth  = InWidth;
+    _PlateAnchor            = InAnchor;
+    _PlateWidth             = InWidth;
+    _PlateMaxHeightFraction = InMaxHeightFraction;
     DoRebuildLayout();
 }
 
@@ -120,13 +124,30 @@ auto
             _TagCanvas.ToSharedRef()
         ]
 
-        // Layer 1: card strip (primary + pinned) at the configured anchor.
+        // Layer 1: card strip (primary + pinned) at the configured anchor. Height is
+        // budgeted to a fraction of the viewport (live — tracks resizes) and CLIPS at
+        // the cap: the root is hit-test invisible, so a scrollbar would be
+        // uninteractable.
         + SOverlay::Slot()
         .HAlign(HAlign)
         .VAlign(VAlign)
         .Padding(FMargin{ OverlayRoot_Constants::FocusCardMargin })
         [
-            _CardStrip.ToSharedRef()
+            SNew(SBox)
+                .Clipping(EWidgetClipping::ClipToBounds)
+                .MaxDesiredHeight_Lambda([this]() -> FOptionalSize
+                {
+                    const auto ViewportH = GetCachedGeometry().GetLocalSize().Y;
+                    if (ViewportH <= KINDA_SMALL_NUMBER)
+                    { return FOptionalSize{}; }   // no geometry yet — unconstrained
+
+                    return FOptionalSize{
+                        ViewportH * _PlateMaxHeightFraction
+                        - 2.0f * OverlayRoot_Constants::FocusCardMargin };
+                })
+                [
+                    _CardStrip.ToSharedRef()
+                ]
         ]
 
         // Layer 2: key-hints strip top-left (top-right when the card is top-left).

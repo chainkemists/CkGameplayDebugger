@@ -158,17 +158,33 @@ Resolver, AStar, UI, MontagePlayer, AnimPlans.
 - **Remaining flag candidates:** Inventory, Objective, Vfx, Tween, Ism/IskmProxy,
   EntityTag, Net, ActorBridge, Camera (verify marker fragment + include per feature).
 
-**Chunk 2 (next): `Test_Entity` → bit tests. PARITY FINDINGS (do not skip):**
-- `CkInspector_FloatAttributes::CanInspect` uses `Has_Any` (OWNER-side record check) —
-  does NOT match the `FFragment_FloatAttribute_Current` bit (attr sub-entity). Do NOT
-  wire; keep legacy path. The flag still serves classification/rollup.
-- Timer/Transform/SceneNode/Probes/InteractionResolver: plain `Utils::Has(Entity)`
-  gates — verify each Utils::Has checks the registered fragment before wiring
-  `Get_FeatureFlagId` overrides. StateMachine/Aggro/Audio: CanInspect bodies not yet
-  read (guard-first) — read before deciding.
-- Design: inspector base gains `Get_FeatureFlagId()` (default NAME_None = legacy path);
-  metadata propagates it; `Test_Entity` bit-tests when id→bit resolves AND cache
-  enabled, else instantiation fallback. Wire ONLY parity-verified inspectors.
+**Chunk 2 — DONE (2026-07-10, gate green: build + editor boot + Ck.DebugFeatureFlags 2/2).
+`Test_Entity` → bit tests. PARITY VERDICTS (all cited first-hand — the contract for any
+future wiring):**
+- `CK_DEFINE_HAS_CAST_CONV_HANDLE_TYPESAFE` generates `Has` = `Has_All<every listed
+  fragment>` (CkHandle_TypeSafe.h:195-203) — a single bit is parity ONLY when the listed
+  fragments are added/removed atomically with the registered marker.
+- **WIRED (5)** — `Get_FeatureFlagId` overrides: Timer (`Has_All<Current,Params>`, both
+  added in one construct lambda CkTimer_Utils.cpp:58-59, no individual removal);
+  Transform (single-fragment `Has_All<FFragment_Transform>`); SceneNode
+  (`Has_All<SceneNodeParent,Current>`, co-added DoAdd :143-145, co-removed ONLY in
+  Request_Detach :229-230); Probe (`Has_All<Params,Current>`, co-added :30-32);
+  InteractionResolver (`Has_All<Params,Current>`, co-added :32-33).
+- **DO-NOT-WIRE**: FloatAttributes (`Has_Any` OWNER-side record — bit is on the attr
+  sub-entity); StateMachine (`Has_Any` over 7+ Sm fragments); Aggro
+  (`Has_Any<Aggro_Current,AggroOwner_Current>`); Audio
+  (`Has_Any<AudioTrack_Current,AudioDirector_Current>`). Their flags stay registered
+  for classification/rollup only.
+- **Chunk-1 defect fixed**: Transform flag was registered on `FFragment_Transform_Params`
+  — a ParamsData ALIAS never added to any entity (real pool = `FFragment_Transform`,
+  CkTransform_Utils.cpp:41). The bit read permanently zero. Re-pointed.
+- Implementation: base `Get_FeatureFlagId()` (default NAME_None = legacy) with the
+  parity contract in its doc comment; metadata propagates it; filter-model entries
+  resolve id→bit at construction; `Test_Entity` + `Test_Entity_IsExcluded` bit-test when
+  the entity's registry has the cache enabled, else instantiate via registry (legacy
+  byte-for-byte when cache off). Bonus: exclusion token→inspector-ID substring matching
+  (entity-independent) precomputed per exclusion-set change instead of per entity per
+  pass (`DoRebuildExclusionMatches`), identical union semantics.
 
 **Chunk 3+:** classification model (primary/internal via bits + settings-driven internal
 set), HAS-rollup, computed names, query tokenizer (+specs), incremental world model

@@ -11,6 +11,9 @@ struct FCkDebuggerInspectorMetadata
     /** See ICkDebuggerComponentInspector_Base::Get_IconName / Get_FeatureColor. */
     FName IconName;
     TOptional<FLinearColor> Color;
+
+    /** See ICkDebuggerComponentInspector_Base::Get_FeatureFlagId (NAME_None = no bit parity). */
+    FName FeatureFlagId;
 };
 
 class CKECSDEBUGGER_API FCkDebuggerInspectorRegistry

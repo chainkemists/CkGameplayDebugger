@@ -62,6 +62,7 @@ auto FCkDebuggerInspectorRegistry::Get_AllMetadata() const -> TArray<FCkDebugger
         int32 SortPriority;
         FName IconName;
         TOptional<FLinearColor> Color;
+        FName FeatureFlagId;
     };
 
     auto Sortable = TArray<FSortable>{};
@@ -78,7 +79,8 @@ auto FCkDebuggerInspectorRegistry::Get_AllMetadata() const -> TArray<FCkDebugger
             Inspector->Get_ComponentName(),
             Inspector->Get_SortPriority(),
             Inspector->Get_IconName(),
-            Inspector->Get_FeatureColor()
+            Inspector->Get_FeatureColor(),
+            Inspector->Get_FeatureFlagId()
         });
     }
 
@@ -89,7 +91,7 @@ auto FCkDebuggerInspectorRegistry::Get_AllMetadata() const -> TArray<FCkDebugger
 
     for (const auto& Item : Sortable)
     {
-        Result.Add(FCkDebuggerInspectorMetadata{ Item.ID, Item.DisplayName, Item.IconName, Item.Color });
+        Result.Add(FCkDebuggerInspectorMetadata{ Item.ID, Item.DisplayName, Item.IconName, Item.Color, Item.FeatureFlagId });
     }
 
     return Result;

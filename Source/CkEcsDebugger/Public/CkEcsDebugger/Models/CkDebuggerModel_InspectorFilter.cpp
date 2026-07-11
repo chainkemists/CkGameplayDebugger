@@ -1,6 +1,7 @@
 #include "CkDebuggerModel_InspectorFilter.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -92,14 +93,24 @@ FCkDebuggerModel_InspectorFilter::FCkDebuggerModel_InspectorFilter()
     _AllEntries.Reserve(Metadata.Num());
     for (const auto& Entry : Metadata)
     {
+        // Flag ids are registered at module startup (before any model exists), so the
+        // bit index is stable for the model's lifetime. An id that never registered
+        // resolves to INDEX_NONE and keeps the instantiation path.
+        const auto FeatureFlagBit = Entry.FeatureFlagId.IsNone()
+            ? int32{INDEX_NONE}
+            : ck::debug_feature_flags::Get_BitIndex(Entry.FeatureFlagId);
+
         _AllEntries.Add(FInspectorEntry{
             Entry.ID,
             Entry.DisplayName,
-            Resolve_BadgeColor(Entry.ID)
+            Resolve_BadgeColor(Entry.ID),
+            Entry.FeatureFlagId,
+            FeatureFlagBit
         });
     }
 
     LoadExclusionsFromSettings();
+    DoRebuildExclusionMatches();
 }
 
 // =====================================================================================================================
@@ -261,13 +272,28 @@ auto
     if (ck::Is_NOT_Valid(InEntity))
     { return false; }
 
+    const auto Flags = DoGet_FlagsIfEnabled(InEntity);
     auto& Registry = FCkDebuggerInspectorRegistry::Get();
+
+    // Parity-wired inspectors answer from the flag cache — O(1) per entity — instead of
+    // instantiating a fresh inspector per Test (redesign spec §5 hot spot).
+    const auto TestOne = [&](FName InID) -> bool
+    {
+        if (Flags.IsSet())
+        {
+            if (const auto* Entry = Find_Entry(InID);
+                Entry != nullptr && Entry->FeatureFlagBit != INDEX_NONE)
+            { return (Flags.GetValue() & (uint64{1} << Entry->FeatureFlagBit)) != 0; }
+        }
+
+        return Registry.Test(InID, InEntity);
+    };
 
     if (_MatchMode == ECk_InspectorFilter_MatchMode::All)
     {
         for (const auto& ID : _SelectedIDs)
         {
-            if (NOT Registry.Test(ID, InEntity))
+            if (NOT TestOne(ID))
             { return false; }
         }
         return true;
@@ -276,7 +302,7 @@ auto
     // Any (OR)
     for (const auto& ID : _SelectedIDs)
     {
-        if (Registry.Test(ID, InEntity))
+        if (TestOne(ID))
         { return true; }
     }
     return false;
@@ -301,21 +327,34 @@ auto
     //   2. Against the entity's debug name ("Ck_CueRelay" matches
     //      "Ck_CueRelay_UE_3") — name-pattern exclusion, which is what users
     //      reach for first. Exact inspector-ID entries keep working via (1).
+    // Token → entry matching is precomputed in DoRebuildExclusionMatches; only the
+    // per-entity tests run here.
+    const auto Flags = DoGet_FlagsIfEnabled(InEntity);
     auto& Registry = FCkDebuggerInspectorRegistry::Get();
-    const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity).ToString();
 
-    for (const auto& ID : _ExcludedIDs)
+    for (const auto EntryIndex : _ExclusionMatchedEntries)
     {
-        const auto Token = ID.ToString();
-        if (Token.IsEmpty())
-        { continue; }
+        const auto& Entry = _AllEntries[EntryIndex];
 
-        for (const auto& Entry : _AllEntries)
+        if (Flags.IsSet() && Entry.FeatureFlagBit != INDEX_NONE)
         {
-            if (Entry.ID.ToString().Contains(Token) && Registry.Test(Entry.ID, InEntity))
+            if ((Flags.GetValue() & (uint64{1} << Entry.FeatureFlagBit)) != 0)
             { return true; }
+
+            continue;
         }
 
+        if (Registry.Test(Entry.ID, InEntity))
+        { return true; }
+    }
+
+    if (_ExclusionNameTokens.IsEmpty())
+    { return false; }
+
+    const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity).ToString();
+
+    for (const auto& Token : _ExclusionNameTokens)
+    {
         if (DebugName.Contains(Token))
         { return true; }
     }
@@ -360,6 +399,7 @@ auto
         _ExcludedIDs.Add(InID);
     }
 
+    DoRebuildExclusionMatches();
     SaveExclusionsToSettings();
     DoBroadcast();
 }
@@ -383,6 +423,7 @@ auto
         _ExcludedIDs.Remove(InID);
     }
 
+    DoRebuildExclusionMatches();
     SaveExclusionsToSettings();
     DoBroadcast();
 }
@@ -395,6 +436,7 @@ auto
     { return; }
 
     _ExcludedIDs.Reset();
+    DoRebuildExclusionMatches();
     SaveExclusionsToSettings();
     DoBroadcast();
 }
@@ -433,7 +475,10 @@ auto
     }
 
     if (Changed)
-    { _ExcludedIDs = New; }
+    {
+        _ExcludedIDs = New;
+        DoRebuildExclusionMatches();
+    }
 
     return Changed;
 }
@@ -448,6 +493,44 @@ auto
 
     Settings->DefaultExcludedInspectorIDs = _ExcludedIDs;
     Settings->SaveConfig();
+}
+
+// =====================================================================================================================
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    DoRebuildExclusionMatches() -> void
+{
+    _ExclusionMatchedEntries.Reset();
+    _ExclusionNameTokens.Reset();
+
+    for (const auto& ID : _ExcludedIDs)
+    {
+        const auto Token = ID.ToString();
+        if (Token.IsEmpty())
+        { continue; }
+
+        _ExclusionNameTokens.Add(Token);
+
+        for (auto EntryIndex = 0; EntryIndex < _AllEntries.Num(); ++EntryIndex)
+        {
+            if (_AllEntries[EntryIndex].ID.ToString().Contains(Token))
+            { _ExclusionMatchedEntries.AddUnique(EntryIndex); }
+        }
+    }
+}
+
+auto
+    FCkDebuggerModel_InspectorFilter::
+    DoGet_FlagsIfEnabled(
+        const FCk_Handle& InEntity) -> TOptional<uint64>
+{
+    const auto& RegistryView = InEntity.Get_RegistryView();
+
+    if (NOT ck::debug_feature_flags::Get_IsEnabled(RegistryView))
+    { return {}; }
+
+    return ck::debug_feature_flags::Get_Flags(RegistryView, InEntity.Get_Entity());
 }
 
 // =====================================================================================================================

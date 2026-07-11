@@ -25,6 +25,9 @@ public:
         TSharedPtr<FCkDebuggerModel_WorldContext> InWorldModel,
         TSharedPtr<FCkDebuggerModel_InspectorFilter> InFilterModel) -> void;
 
+    /** Push a query into the Filter bar (Archetypes-page card click-through). */
+    auto Set_FilterText(const FString& InText) -> void;
+
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;

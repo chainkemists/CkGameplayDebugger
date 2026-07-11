@@ -432,6 +432,10 @@ private:
         if (NOT Node.IsValid() || ck::Is_NOT_Valid(Node->Entity))
         { return CkStyle::Err(); }
 
+        // Fresh spawn → bright flash for a beat (spec §3.6 churn flashes).
+        if (FPlatformTime::Seconds() < Node->FlashUntilSeconds)
+        { return FSlateColor{FLinearColor{0.25f, 1.0f, 0.35f}}; }
+
         if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
         { return CkStyle::TextMute(); }
 
@@ -823,6 +827,8 @@ auto SCkDebuggerWidget_EntityTree::ApplyCacheDiff(
         { continue; }
 
         const auto Node = DoCreateNode(Entity);
+        // Churn flash (spec §3.6): the status dot reads spawn-green for a beat.
+        Node->FlashUntilSeconds = FPlatformTime::Seconds() + 0.6;
         NodeMap.Add(Entity, Node);
         AllNodes.Add(Node);
         NewNodes.Add(Node);

@@ -54,6 +54,9 @@ struct FCkEntityTreeNode
     /** Folded-internal count for the ⊞ chip (0 = no chip). */
     int32 FoldedInternalCount = 0;
 
+    /** Spawn-flash deadline (FPlatformTime::Seconds) — status dot reads green until then. */
+    double FlashUntilSeconds = 0.0;
+
     /**
      * Inspector-filter dim state. Independent of IsVisible — search-text filtering hides
      * non-matches via IsVisible, while inspector filtering dims non-matches via IsFilterMatch.

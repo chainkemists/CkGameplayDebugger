@@ -12,6 +12,9 @@ struct FCkDebuggerPageContext
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
+
+    /** Pushes a query into the entity list's Filter bar (archetype card click-through). */
+    TFunction<void(const FString&)> RequestEntityFilter;
 };
 
 class ICkDebuggerPage_Base

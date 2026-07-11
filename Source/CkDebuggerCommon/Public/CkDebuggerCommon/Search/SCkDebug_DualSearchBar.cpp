@@ -50,3 +50,13 @@ auto SCkDebug_DualSearchBar::Get_HighlightText() const -> FString
 {
     return _HighlightBox.IsValid() ? _HighlightBox->GetText().ToString() : FString{};
 }
+
+auto SCkDebug_DualSearchBar::Set_FilterText(const FString& InText) -> void
+{
+    if (_FilterBox.IsValid())
+    {
+        // SSearchBox::SetText routes through OnTextChanged, so consumers' filter
+        // pipelines run exactly as if the user typed it.
+        _FilterBox->SetText(FText::FromString(InText));
+    }
+}

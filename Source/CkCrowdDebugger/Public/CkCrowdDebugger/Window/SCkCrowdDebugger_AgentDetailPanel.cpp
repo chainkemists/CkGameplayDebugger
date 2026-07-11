@@ -3,11 +3,13 @@
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
@@ -121,6 +123,25 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						.Entity_Lambda([this]() -> FCk_Handle { return _HasSelection ? _Snapshot.Handle : FCk_Handle{}; })
 					]
 				]
+				// Who this agent belongs to — the crowd-agent feature entity is lifetime-owned
+				// by the actual NPC/player entity. Pill click navigates to it in the ECS debugger.
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SCkDebug_KeyValueRow)
+					.KeyText(FText::FromString(TEXT("Owner")))
+					.Tone(ECkDebug_KeyValueTone::Custom)
+					.ValueWidget()
+					[
+						SNew(SCkDebug_EntityRef)
+						.ShowName(true)
+						.Entity_Lambda([this]() -> FCk_Handle
+						{
+							if (NOT _HasSelection || ck::Is_NOT_Valid(_Snapshot.Handle))
+							{ return {}; }
+							return UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(_Snapshot.Handle);
+						})
+					]
+				]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Primary tag"), [this]{ return _Snapshot.PrimaryTag; }, TagColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Tag count"),   [this]{ return FString::FromInt(_Snapshot.Tags.Num()); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Radius"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Radius); }, NumColor) ]
@@ -176,9 +197,24 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						SNew(SButton)
 						.IsEnabled_Lambda([this]{ return _HasSelection; })
 						.OnClicked(this, &SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride)
-						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent so you can drive it from the viewport (left-click to set a goal). Release hands control back to the AI.")))
+						.ToolTipText(FText::FromString(TEXT("Take manual control: the NPC AI stops issuing its own MoveTo for this agent. Right-click a destination (2D map, or the world viewport while ejected) to command it — commanding auto-takes control, so this button mostly matters for releasing back to the AI.")))
 						[
 							SNew(STextBlock).Text_Lambda([this]{ return Get_OverrideButtonText(); })
+						]
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.IsEnabled_Lambda([this]{ return _HasSelection && ck::DebugFocus::Get_CanFocus(); })
+						.OnClicked_Lambda([this]() -> FReply
+						{
+							if (_HasSelection)
+							{ ck::DebugFocus::Focus_Entity(_Snapshot.Handle); }
+							return FReply::Handled();
+						})
+						.ToolTipText(FText::FromString(TEXT("Frame this agent in the editor viewport (ejected/simulate only).")))
+						[
+							SNew(STextBlock).Text(FText::FromString(TEXT("Focus (F)")))
 						]
 					]
 					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
@@ -189,7 +225,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						.Text_Lambda([this]
 						{
 							return Get_HasDebugOverride()
-								? FText::FromString(TEXT("DEBUG OVERRIDE — left-click in the viewport to set a goal"))
+								? FText::FromString(TEXT("DEBUG OVERRIDE — right-click a destination to command"))
 								: FText::GetEmpty();
 						})
 					]

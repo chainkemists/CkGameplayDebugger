@@ -33,6 +33,17 @@ public:
 	auto Get_ViewYawDegrees() const -> float { return _ViewYawDegrees; }
 	auto Get_ViewYawValid() const -> bool { return _ViewYawValid; }
 
+	// View camera position (level-editor camera while ejected, else the possessed
+	// view point) — drawn as the FOV wedge on the 2D map.
+	auto Get_ViewCameraPosition() const -> FVector { return _ViewCameraPosition; }
+	auto Get_ViewCameraValid() const -> bool { return _ViewCameraValid; }
+
+	// Local player pawn pose — drawn as the player chevron on the 2D map. Stays
+	// valid while ejected (the pawn is still in the world, just not driven).
+	auto Get_PlayerPawnPosition() const -> FVector { return _PlayerPawnPosition; }
+	auto Get_PlayerPawnYawDegrees() const -> float { return _PlayerPawnYawDegrees; }
+	auto Get_PlayerPawnValid() const -> bool { return _PlayerPawnValid; }
+
 private:
 	auto SampleAgent(FCk_Handle InHandle) -> void;
 
@@ -45,6 +56,17 @@ private:
 
 	float _ViewYawDegrees = 0.0f;
 	bool  _ViewYawValid = false;
+
+	FVector _ViewCameraPosition = FVector::ZeroVector;
+	bool    _ViewCameraValid = false;
+
+	FVector _PlayerPawnPosition = FVector::ZeroVector;
+	float   _PlayerPawnYawDegrees = 0.0f;
+	bool    _PlayerPawnValid = false;
+
+	// The player pawn's entity (when the pawn is ECS-bridged) — SampleAgent marks
+	// the matching agent row as PlayerProxy.
+	FCk_Handle _PlayerPawnEntity;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

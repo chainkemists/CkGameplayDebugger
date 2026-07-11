@@ -9,6 +9,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
@@ -1607,6 +1608,33 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
         }
     }
 
+    // Focus in viewport — ejected/simulate only; hidden while possessed (the
+    // gameplay camera is not fought over).
+    if (ck::DebugFocus::Get_CanFocus())
+    {
+        auto FocusTarget = FCk_Handle{};
+        for (const auto& Node : SelectedNodes)
+        {
+            if (Node.IsValid() && NOT Node->IsGroupNode && ck::IsValid(Node->Entity))
+            { FocusTarget = Node->Entity; break; }
+        }
+
+        if (ck::IsValid(FocusTarget))
+        {
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(TEXT("Focus in Viewport (F)")),
+                FText::FromString(TEXT("Move the ejected editor camera to frame this entity")),
+                FSlateIcon(),
+                FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
+                {
+                    ck::DebugFocus::Focus_Entity(FocusTarget);
+                }))
+            );
+
+            MenuBuilder.AddMenuSeparator();
+        }
+    }
+
     MenuBuilder.AddMenuEntry(
         FText::FromString(TEXT("Clear Selection")),
         FText::FromString(TEXT("Clears all selected entities")),
@@ -1625,6 +1653,20 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
     );
 
     return MenuBuilder.MakeWidget();
+}
+
+
+auto SCkDebuggerWidget_EntityTree::OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply
+{
+    // F — frame the primary selection in the ejected editor viewport (no-op possessed).
+    if (InKeyEvent.GetKey() == EKeys::F && SelectionModel.IsValid())
+    {
+        const auto Primary = SelectionModel->Get_PrimarySelection();
+        if (ck::IsValid(Primary) && ck::DebugFocus::Focus_Entity(Primary))
+        { return FReply::Handled(); }
+    }
+
+    return SCompoundWidget::OnKeyDown(InGeometry, InKeyEvent);
 }
 
 

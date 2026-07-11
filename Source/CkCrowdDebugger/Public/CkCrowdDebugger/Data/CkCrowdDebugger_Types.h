@@ -49,6 +49,11 @@ struct FCkCrowdDebugger_AgentSnapshot
 	int32                    NeighborCount = 0;
 	FString                  PrimaryTag;       // Display string — first tag, or "—"
 
+	// Who the agent belongs to — the crowd-agent feature entity's lifetime owner
+	// (the actual NPC/player entity). Name pre-sampled so rows don't walk ECS per paint.
+	FCk_Handle               OwnerHandle;
+	FString                  OwnerName;
+
 	// Gate 2+ fills these
 	FVector                  Position = FVector::ZeroVector;
 	FVector                  Velocity = FVector::ZeroVector;

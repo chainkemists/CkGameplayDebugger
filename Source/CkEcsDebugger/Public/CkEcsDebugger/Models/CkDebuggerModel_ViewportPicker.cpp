@@ -4,12 +4,20 @@
 
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
+
+#include "CkIsmRenderer/Proxy/CkIsmProxy_Utils.h"
+
+#include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
+
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Models/CkDebuggerViewportPicker_InputProcessor.h"
 
 // Successful pick re-focuses the debugger tab (the game viewport took focus while picking).
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 
 // On-Screen Overlay reuse — same focus card + world tags, built via the shared presenters.
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
@@ -20,7 +28,9 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_Root.h"
 
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Debug/DebugDrawService.h"
+#include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"
@@ -55,79 +65,9 @@ namespace
     static constexpr auto BillboardHoverScale     = 1.25f;
     static constexpr auto BillboardDefaultAlpha   = 0.45f;
 
-#if WITH_EDITOR
-    // When the PIE player is "ejected" (F8), this project's setup does NOT swap the LocalPlayer to
-    // an ADebugCameraController — the game PC's view simply freezes at the eject point and input
-    // goes to the Level Editor viewport. A pick sourced from the game PC would use a stale camera,
-    // so in that state we deproject against the live Level Editor viewport instead.
-    //
-    // Discriminator: `GEditor->GetActiveViewport()` points at whichever FViewport is currently
-    // driving input/rendering. When possessed it is the PIE game viewport; when ejected it is the
-    // level editor viewport itself. Other candidates (IsInGameView, the viewport's client pointer,
-    // ActorLock, cursor-in-widget checks) do not reliably flip — particularly in "Play in Current
-    // Viewport" mode where the game viewport widget is nested inside the level editor viewport.
-    static auto TryGet_LevelEditorViewport() -> FEditorViewportClient*
-    {
-        if (GEditor == nullptr || GEditor->PlayWorld == nullptr)
-        { return nullptr; }
-
-        auto* LEVC = GCurrentLevelEditingViewportClient;
-        if (LEVC == nullptr || LEVC->Viewport == nullptr)
-        { return nullptr; }
-
-        if (GEditor->GetActiveViewport() != LEVC->Viewport)
-        { return nullptr; }
-
-        return LEVC;
-    }
-
-    static auto Deproject_LevelEditorViewport(
-        FEditorViewportClient* InVC,
-        FVector&               OutOrigin,
-        FVector&               OutDirection) -> bool
-    {
-        auto* Viewport = InVC->Viewport;
-        if (Viewport == nullptr)
-        { return false; }
-
-        const auto Size   = Viewport->GetSizeXY();
-        const auto MouseX = Viewport->GetMouseX();
-        const auto MouseY = Viewport->GetMouseY();
-        if (Size.X <= 0 || Size.Y <= 0)
-        { return false; }
-        if (MouseX < 0 || MouseY < 0 || MouseX >= Size.X || MouseY >= Size.Y)
-        { return false; }
-
-        if (InVC->IsOrtho())
-        { return false; }
-
-        // Build view+projection from the viewport client's CURRENT camera state, rather than
-        // calling FEditorViewportClient::CalcSceneView() — that call returns stale matrices on
-        // repeat invocations outside the viewport's own Draw pass.
-        const auto ViewLocation = InVC->GetViewLocation();
-        const auto ViewRotation = InVC->GetViewRotation();
-
-        const auto ViewRotationMatrix = FInverseRotationMatrix(ViewRotation) * FMatrix(
-            FPlane(0.0, 0.0, 1.0, 0.0),
-            FPlane(1.0, 0.0, 0.0, 0.0),
-            FPlane(0.0, 1.0, 0.0, 0.0),
-            FPlane(0.0, 0.0, 0.0, 1.0));
-        const auto ViewMatrix = FTranslationMatrix(-ViewLocation) * ViewRotationMatrix;
-
-        const auto AspectRatio = static_cast<float>(Size.X) / static_cast<float>(Size.Y);
-        const auto HalfFOVRad  = FMath::DegreesToRadians(InVC->ViewFOV * 0.5f);
-
-        const auto ProjectionMatrix = FReversedZPerspectiveMatrix(
-            HalfFOVRad, AspectRatio, 1.0f, GNearClippingPlane);
-
-        const auto InvViewProj = (ViewMatrix * ProjectionMatrix).InverseFast();
-        const auto ViewRect    = FIntRect(0, 0, Size.X, Size.Y);
-
-        FSceneView::DeprojectScreenToWorld(
-            FVector2D(MouseX, MouseY), ViewRect, InvViewProj, OutOrigin, OutDirection);
-        return true;
-    }
-#endif
+    // Ejected-PIE discrimination + deprojection live in ck::DebugViewportView
+    // (CkDebuggerCommon) — shared with the on-screen overlay, the focus-entity
+    // helper, and the crowd debugger's in-world command mode.
 }
 
 // =====================================================================================================================
@@ -149,6 +89,8 @@ auto
 {
     _SelectionModel = InSelection;
     _WorldModel     = InWorld;
+
+    _MeshesFirst = UCkEcsDebuggerSettings::Get()->PickerMeshesFirst;
 }
 
 // =====================================================================================================================
@@ -345,6 +287,32 @@ auto
     _BillboardSizePx = FMath::Clamp(InValue, BillboardSizeMinPx, BillboardSizeMaxPx);
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    Get_MeshesFirst() const -> bool
+{
+    return _MeshesFirst;
+}
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    Set_MeshesFirst(
+        bool InValue) -> void
+{
+    if (_MeshesFirst == InValue)
+    { return; }
+
+    _MeshesFirst = InValue;
+
+    if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+    {
+        Settings->PickerMeshesFirst = InValue;
+        Settings->SaveConfig();
+    }
+}
+
 // =====================================================================================================================
 
 auto
@@ -380,6 +348,21 @@ auto
         }
     }
 
+    // Hovered geometry-backed entity: outline its resolved bounds (the "you are
+    // about to pick THIS mesh" affordance). One-frame box re-issued from this
+    // UNGATED tick — immediate-mode is right for transient hover; persistent
+    // selection uses the retained PMG gizmo instead. Meshless entities keep the
+    // emphasized diamond as their only hover emphasis.
+    if (ck::IsValid(_FocusEntity) && DoIsMeshResolvable(_FocusEntity))
+    {
+        if (const auto Bounds = ck::DebugFocus::Get_EntityWorldBounds(_FocusEntity))
+        {
+            DrawDebugBox(World, Bounds->Origin, Bounds->BoxExtent,
+                FColor{255, 200, 60}, /*bPersistentLines=*/false, /*LifeTime=*/0.0f,
+                /*DepthPriority=*/0, /*Thickness=*/1.5f);
+        }
+    }
+
     // Push the overlay focus card + world tags for the current focus / candidates.
     if (_OverlayCardsActive)
     {
@@ -388,10 +371,7 @@ auto
         // Ejected PIE: world tags use frozen-camera PC projection — DoUpdateOverlayCards
         // skips them then (the focus card still shows). Mirror the picker's own ejected
         // detection used elsewhere.
-        auto IsEjected = false;
-#if WITH_EDITOR
-        IsEjected = TryGet_LevelEditorViewport() != nullptr;
-#endif
+        const auto IsEjected = ck::DebugViewportView::Get_IsEjected();
         DoUpdateOverlayCards(World, PC, IsEjected);
     }
 }
@@ -453,6 +433,11 @@ auto
         const auto NewSelection = TArray<FCk_Handle>{Hit};
         SelectionModel->Set_SelectedEntities(NewSelection);
     }
+
+    // The entity tree applies model changes as ESelectInfo::Direct and deliberately never
+    // re-broadcasts those, so a world-picked entity would stay invisible to Crowd/GOAP.
+    // Broadcast here — this IS the user-driven selection.
+    ck::DebugSelectionSync::Broadcast(Hit, TEXT("EcsDebugger"));
 
     Deactivate();
 
@@ -571,60 +556,7 @@ auto
         FVector&         OutOrigin,
         FVector&         OutDirection) const -> bool
 {
-    if (ck::Is_NOT_Valid(InWorld))
-    { return false; }
-
-#if WITH_EDITOR
-    // During ejected PIE, the game PC's view freezes — deproject against the active Level Editor
-    // viewport's live camera instead.
-    if (auto* LEVC = TryGet_LevelEditorViewport())
-    {
-        return Deproject_LevelEditorViewport(LEVC, OutOrigin, OutDirection);
-    }
-#endif
-
-    auto* GVC = InWorld->GetGameViewport();
-    if (ck::Is_NOT_Valid(GVC))
-    { return false; }
-
-    auto* LocalPlayer = InWorld->GetFirstLocalPlayerFromController();
-    if (ck::Is_NOT_Valid(LocalPlayer))
-    { return false; }
-
-    const auto ViewportWidget = GVC->GetGameViewportWidget();
-    if (NOT ViewportWidget.IsValid())
-    { return false; }
-
-    const auto& Geom        = ViewportWidget->GetCachedGeometry();
-    const auto  LocalSize   = Geom.GetLocalSize();
-    const auto  LocalPixels = Geom.AbsoluteToLocal(InAbsolutePos);
-
-    if (LocalPixels.X < 0.0f || LocalPixels.Y < 0.0f ||
-        LocalPixels.X >= LocalSize.X || LocalPixels.Y >= LocalSize.Y)
-    { return false; }
-
-    auto* Viewport = GVC->Viewport;
-    if (Viewport == nullptr)
-    { return false; }
-
-    constexpr auto RealtimeUpdate = true;
-    auto ViewFamilyArgs = FSceneViewFamily::ConstructionValues(
-        Viewport, InWorld->Scene, GVC->EngineShowFlags)
-        .SetRealtimeUpdate(RealtimeUpdate);
-    auto ViewFamily = FSceneViewFamilyContext{MoveTemp(ViewFamilyArgs)};
-
-    auto ViewLocation = FVector::ZeroVector;
-    auto ViewRotation = FRotator::ZeroRotator;
-    auto* SceneView   = LocalPlayer->CalcSceneView(
-        &ViewFamily, ViewLocation, ViewRotation, Viewport);
-
-    if (SceneView == nullptr)
-    { return false; }
-
-    // CalcSceneView expects viewport pixels; Slate's local coordinates match when the viewport
-    // widget has a 1:1 DPI scale in the cached geometry (the division is baked into AbsoluteToLocal).
-    SceneView->DeprojectFVector2D(LocalPixels, OutOrigin, OutDirection);
-    return true;
+    return ck::DebugViewportView::Deproject(InWorld, InAbsolutePos, OutOrigin, OutDirection);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -677,10 +609,11 @@ auto
     auto ActorCandidate  = FPickCandidate{};
     auto SphereCandidate = FPickCandidate{};
 
-    // ---- 1. Physics line trace for actor-backed entities ----
+    // ---- 1. Physics line trace for geometry-backed entities ----
     // The resolved entity must be in the marker snapshot — the depth gate, distance
-    // cull, and ignore-self filter apply to actor hits too (what you see is what you
-    // can pick).
+    // cull, and ignore-self filter apply to trace hits too (what you see is what you
+    // can pick). An ISM-instance hit resolves to its proxy entity FIRST (more
+    // specific than the shared ISM actor); only then the actor-attachment walk.
     {
         constexpr auto TraceComplex = false;
         auto Params = FCollisionQueryParams{TEXT("CkDebugger_Picker"), TraceComplex};
@@ -693,8 +626,12 @@ auto
 
         if (Hit_Result)
         {
-            auto* HitActor = Hit.GetActor();
-            const auto ResolvedHandle = DoResolveActorEntity(InWorld, HitActor);
+            auto ResolvedHandle = DoResolveIsmInstanceEntity(Hit);
+            if (NOT ck::IsValid(ResolvedHandle))
+            {
+                ResolvedHandle = DoResolveActorEntity(InWorld, Hit.GetActor());
+            }
+
             if (ck::IsValid(ResolvedHandle) && _Markers.Contains(ResolvedHandle))
             {
                 ActorCandidate.Entity     = ResolvedHandle;
@@ -766,6 +703,64 @@ auto
 
 auto
     FCkDebuggerModel_ViewportPicker::
+    DoResolveIsmInstanceEntity(
+        const FHitResult& InHit) const -> FCk_Handle
+{
+    const auto* IsmComp = Cast<UInstancedStaticMeshComponent>(InHit.GetComponent());
+    if (ck::Is_NOT_Valid(IsmComp) || InHit.Item == INDEX_NONE)
+    { return {}; }
+
+    auto InstanceTransform = FTransform::Identity;
+    constexpr auto WorldSpace = true;
+    if (NOT IsmComp->GetInstanceTransform(InHit.Item, InstanceTransform, WorldSpace))
+    { return {}; }
+
+    // Match the instance's world position against the marker snapshot: the proxy
+    // entity's transform IS the instance transform (modulo small local offsets).
+    // Deliberately transform-based rather than instance-id-based — no dependency on
+    // renderer internals or version-sensitive id<->index component API; the cost is
+    // ambiguity below MatchRadius, which agent separation keeps rare in practice.
+    constexpr auto MatchRadiusSq = 100.0f * 100.0f;
+    const auto InstanceLocation  = InstanceTransform.GetLocation();
+
+    auto BestHandle = FCk_Handle{};
+    auto BestDistSq = MatchRadiusSq;
+    for (const auto& Entry : _Markers.Get_Entries())
+    {
+        const auto DistSq = static_cast<float>(FVector::DistSquared(Entry.WorldPos, InstanceLocation));
+        if (DistSq >= BestDistSq)
+        { continue; }
+
+        if (NOT UCk_Utils_IsmProxy_UE::Has(Entry.Entity))
+        { continue; }
+
+        BestDistSq = DistSq;
+        BestHandle = Entry.Entity;
+    }
+
+    return BestHandle;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
+    DoIsMeshResolvable(
+        const FCk_Handle& InEntity) const -> bool
+{
+    if (ck::Is_NOT_Valid(InEntity))
+    { return false; }
+
+    if (UCk_Utils_IsmProxy_UE::Has(InEntity))
+    { return true; }
+
+    return ck::IsValid(UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebuggerModel_ViewportPicker::
     DoRefreshMarkers(
         UWorld* InWorld) -> void
 {
@@ -787,6 +782,20 @@ auto
     }
 
     _Markers.Gather(InWorld, Params);
+
+    // "Meshes first": diamonds of geometry-pickable entities are suppressed at draw
+    // time (still gathered — they stay pickable via their meshes and keep their links).
+    _MeshSuppressedNums.Reset();
+    if (_MeshesFirst)
+    {
+        for (const auto& Entry : _Markers.Get_Entries())
+        {
+            if (DoIsMeshResolvable(Entry.Entity))
+            {
+                _MeshSuppressedNums.Add(Entry.EntityNum);
+            }
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -824,6 +833,13 @@ auto
             static_cast<uint32>(_FocusEntity.Get_Entity().Get_EntityNumber());
     }
 
+    // "Meshes first" declutter — geometry-pickable entities lose their diamond
+    // (they are hover-outlined + trace-picked via their meshes instead).
+    if (_MeshesFirst && NOT _MeshSuppressedNums.IsEmpty())
+    {
+        DrawParams.SuppressedEntityNums = &_MeshSuppressedNums;
+    }
+
     _Markers.DrawMarkers(InCanvas, DrawParams);
 }
 
@@ -842,12 +858,10 @@ auto
     if (ck::Is_NOT_Valid(InWorld))
     { return IgnoredActors; }
 
-#if WITH_EDITOR
     // Ejected PIE: no in-game "local pawn" context worth ignoring, and the user may want to pick
     // their own pawn anyway.
-    if (TryGet_LevelEditorViewport() != nullptr)
+    if (ck::DebugViewportView::Get_IsEjected())
     { return IgnoredActors; }
-#endif
 
     auto* PC = InWorld->GetFirstPlayerController();
     if (ck::Is_NOT_Valid(PC))
@@ -913,23 +927,7 @@ auto
     DoGet_CameraLocation(
         UWorld* InWorld) const -> FVector
 {
-    if (ck::Is_NOT_Valid(InWorld))
-    { return _LastRayOrigin; }
-
-#if WITH_EDITOR
-    if (auto* LEVC = TryGet_LevelEditorViewport())
-    { return LEVC->GetViewLocation(); }
-#endif
-
-    auto* PC = InWorld->GetFirstPlayerController();
-    if (ck::Is_NOT_Valid(PC))
-    { return _LastRayOrigin; }
-
-    auto  CameraLocation = FVector::ZeroVector;
-    auto  CameraRotation = FRotator::ZeroRotator;
-    PC->GetPlayerViewPoint(CameraLocation, CameraRotation);
-
-    return CameraLocation;
+    return ck::DebugViewportView::Get_ViewCameraLocation(InWorld).Get(_LastRayOrigin);
 }
 
 // =====================================================================================================================

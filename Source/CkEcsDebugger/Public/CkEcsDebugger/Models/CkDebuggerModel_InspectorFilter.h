@@ -49,6 +49,14 @@ public:
         FName        ID;
         FText        DisplayName;
         FLinearColor BadgeColor = FLinearColor::White;
+
+        /**
+         * Bit index in the CkEcs debug flag cache when the inspector declared a
+         * parity-verified Get_FeatureFlagId (see CkDebuggerInspector_Base.h). INDEX_NONE
+         * = no bit; Test_* falls back to instantiating the inspector via the registry.
+         */
+        FName FeatureFlagId;
+        int32 FeatureFlagBit = INDEX_NONE;
     };
 
     FCkDebuggerModel_InspectorFilter();
@@ -182,9 +190,28 @@ private:
     auto
     SaveExclusionsToSettings() const -> void;
 
+    /**
+     * Token → entry matching is entity-independent, so it is precomputed here whenever
+     * the exclusion set changes instead of re-running FName→FString substring scans per
+     * entity per tree pass. _ExclusionMatchedEntries indexes into _AllEntries;
+     * _ExclusionNameTokens holds every non-empty token for the debug-name match.
+     */
+    auto
+    DoRebuildExclusionMatches() -> void;
+
+    /**
+     * Entity's feature bits from the CkEcs debug flag cache, unset when the cache is
+     * not enabled on the entity's registry (bits would read all-zero and lie).
+     */
+    static auto
+    DoGet_FlagsIfEnabled(
+        const FCk_Handle& InEntity) -> TOptional<uint64>;
+
     TArray<FInspectorEntry>          _AllEntries;
     TSet<FName>                      _SelectedIDs;
     TSet<FName>                      _ExcludedIDs;
+    TArray<int32>                    _ExclusionMatchedEntries;
+    TArray<FString>                  _ExclusionNameTokens;
     ECk_InspectorFilter_MatchMode    _MatchMode  = ECk_InspectorFilter_MatchMode::All;
     ECk_InspectorFilter_BadgeStyle   _BadgeStyle = ECk_InspectorFilter_BadgeStyle::ColorAndText;
 };

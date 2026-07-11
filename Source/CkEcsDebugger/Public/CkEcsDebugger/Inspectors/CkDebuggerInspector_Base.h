@@ -28,6 +28,21 @@ public:
     virtual auto Get_IconName() const -> FName { return NAME_None; }
     virtual auto Get_FeatureColor() const -> TOptional<FLinearColor> { return {}; }
 
+    /**
+     * Feature id in the CkEcs debug flag cache (ck::debug_feature_flags) whose bit is
+     * exactly equivalent to CanInspect(). When set, the inspector filter answers
+     * Test_Entity from the bit cache — O(1) per entity — instead of instantiating this
+     * inspector per entity per tree pass.
+     *
+     * PARITY CONTRACT: override ONLY when the registered marker fragment's presence is
+     * observably identical to CanInspect() at any point the debugger can run — the
+     * fragments CanInspect checks are added/removed atomically with the marker, and
+     * nothing removes one without the other (verified per feature in PROGRESS.md,
+     * "Chunk 2 parity findings"). Has_Any gates over multiple features and owner-side
+     * record checks must NOT be wired. NAME_None = always use the instantiation path.
+     */
+    virtual auto Get_FeatureFlagId() const -> FName { return NAME_None; }
+
     virtual auto IsFilterable() const -> bool { return false; }
     virtual auto Build_Inspector(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget> { return Build_Inspector(Entity); }
 

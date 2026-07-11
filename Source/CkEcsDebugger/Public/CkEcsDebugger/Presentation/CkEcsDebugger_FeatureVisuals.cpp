@@ -28,9 +28,11 @@ auto
         Map.Add(TEXT("Aggro"),            FFeatureVisual{ TEXT("Aggro"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C94F4F"))) });
         Map.Add(TEXT("AudioTrack"),       FFeatureVisual{ TEXT("Audio"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FA3C9"))) });
         Map.Add(TEXT("Label"),            FFeatureVisual{ TEXT("Label"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8B93A1"))) });
-        Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-        Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-        Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+        // Attribute types read apart: distinct glyphs AND distinct hues per value type.
+        Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ TEXT("AttributeFloat"),   FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+        Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ TEXT("AttributeByte"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C9884F"))) });
+        Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ TEXT("AttributeInteger"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4F7DC9"))) });
+        Map.Add(TEXT("VectorAttribute"),  FFeatureVisual{ TEXT("AttributeVector"),  FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("7DC94F"))) });
 
         return Map;
     }();

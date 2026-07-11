@@ -70,6 +70,13 @@ struct FCkEntityTreeNode
      * Independent of IsVisible (which is driven by the Filter input).
      */
     bool IsSearchMatch = true;
+
+    /**
+     * Whether this node itself matched the active narrowing (Filter query + rail).
+     * Ancestors of a match stay visible to keep the path readable, but with this flag
+     * false they render dimmed — the eye lands on the actual matches.
+     */
+    bool IsNarrowingMatch = true;
 };
 
 class SCkDebuggerWidget_EntityTree : public SCompoundWidget

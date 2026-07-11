@@ -15,6 +15,9 @@ struct FCkDebuggerPageContext
 
     /** Pushes a query into the entity list's Filter bar (archetype card click-through). */
     TFunction<void(const FString&)> RequestEntityFilter;
+
+    /** Reads the Filter bar's current text — cards derive their toggled state from it. */
+    TFunction<FString()> GetEntityFilter;
 };
 
 class ICkDebuggerPage_Base

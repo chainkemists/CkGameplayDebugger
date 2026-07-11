@@ -23,6 +23,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_ViewportPicker.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
+#include "CkEcsDebugger/Pages/CkDebuggerPage_Dashboard.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Archetypes.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
@@ -71,7 +72,8 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         WorldModel->Set_SelectedWorld(AvailableWorlds[0]);
     }
 
-    Pages.Add(MakeShared<FCkDebuggerPage_Overview>());
+    Pages.Add(MakeShared<FCkDebuggerPage_Dashboard>());   // "Overview" (mockup dashboard)
+    Pages.Add(MakeShared<FCkDebuggerPage_Overview>());     // "Graph" (hierarchy graph)
     Pages.Add(MakeShared<FCkDebuggerPage_Archetypes>());
     Pages.Add(MakeShared<FCkDebuggerPage_Activity>());
     Pages[0]->Set_IsActive(true);
@@ -1284,6 +1286,10 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
         auto PageIndex = i;
         auto IsActive = (i == ActivePageIndex);
 
+        // Weak page ref: the unseen badge polls live so events arriving while another
+        // tab is active surface without a tab-strip rebuild.
+        const auto WeakPage = TWeakPtr<ICkDebuggerPage_Base>(Pages[i]);
+
         TabRow->AddSlot()
             .AutoWidth()
             .Padding(1.0f, 0.0f)
@@ -1301,9 +1307,44 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
                         return FReply::Handled();
                     })
                     [
-                        SNew(STextBlock)
-                            .Text(Pages[i]->Get_PageName())
-                            .Font(FCoreStyle::GetDefaultFontStyle(IsActive ? "Bold" : "Regular", 9))
+                        SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Text(Pages[i]->Get_PageName())
+                                .Font(FCoreStyle::GetDefaultFontStyle(IsActive ? "Bold" : "Regular", 9))
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(3.0f, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(SBorder)
+                            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Badge.Rounded"))
+                            .BorderBackgroundColor(FSlateColor{CkStyle::Err()})
+                            .Padding(FMargin{3.0f, 0.0f})
+                            .Visibility_Lambda([WeakPage]()
+                            {
+                                const auto Pinned = WeakPage.Pin();
+                                return Pinned.IsValid() && Pinned->Get_BadgeCount() > 0
+                                    ? EVisibility::Visible
+                                    : EVisibility::Collapsed;
+                            })
+                            [
+                                SNew(STextBlock)
+                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                                .ColorAndOpacity(FLinearColor::White)
+                                .Text_Lambda([WeakPage]()
+                                {
+                                    const auto Pinned = WeakPage.Pin();
+                                    return FText::AsNumber(Pinned.IsValid() ? Pinned->Get_BadgeCount() : 0);
+                                })
+                            ]
+                        ]
                     ]
             ];
     }

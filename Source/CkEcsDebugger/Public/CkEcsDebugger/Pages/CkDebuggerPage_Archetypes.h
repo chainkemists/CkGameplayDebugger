@@ -2,6 +2,7 @@
 
 #include "CkDebuggerPage_Base.h"
 #include "CkEcs/Handle/CkHandle.h"
+#include "CkEcsDebugger/Presentation/CkEcsDebugger_ArchetypeAggregation.h"
 
 class SVerticalBox;
 class SUniformGridPanel;
@@ -34,18 +35,6 @@ public:
     auto Set_IsActive(bool InIsActive) -> void override;
 
 private:
-    struct FArchetypeBucket
-    {
-        FString Key;            // aggregation key — also the card-cache identity
-        FString DisplayName;
-        FString FilterToken;    // toggled as arch:<token> into the filter
-        int32 Count = 0;
-        uint64 SignatureBits = 0;
-        bool IsRegistered = false;
-        FName IconName;         // bespoke glyph, else dominant-feature glyph, else none (Cube)
-        TOptional<FLinearColor> IconColor;   // set when IconName is a feature glyph
-    };
-
     struct FCardCacheEntry
     {
         TSharedPtr<SWidget> CardWidget;
@@ -54,7 +43,9 @@ private:
     };
 
     auto RebuildCards() -> void;
-    auto DoCreateCard(const FArchetypeBucket& InBucket, FCardCacheEntry& OutEntry) -> void;
+    auto DoCreateCard(
+        const ck::ecs_debugger_aggregation::FArchetypeBucket& InBucket,
+        FCardCacheEntry& OutEntry) -> void;
 
     /** Adds/removes `arch:<token>` in the entity list's filter (cards multi-select by ORing). */
     auto Toggle_ArchFilterToken(const FString& InToken, bool InEnable) -> void;

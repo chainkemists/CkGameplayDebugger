@@ -25,5 +25,14 @@ namespace ck::ecs_debugger_feature_visuals
     // Transform/Label and underscore-prefixed infrastructure ids.
     CKECSDEBUGGER_API auto Get_BadgeFeatures() -> const TArray<TPair<FName, int32>>&;
 
+    // Rail grouping: feature id → group (Core/Attributes/AI/Gameplay/Rendering; unknown
+    // ids fall into Other) and the display order of those groups.
+    CKECSDEBUGGER_API auto Get_FeatureGroup(FName InFeatureId) -> FName;
+    CKECSDEBUGGER_API auto Get_FeatureGroupOrder() -> const TArray<FName>&;
+
+    // Curated accent hues for archetype identity (dark-UI tuned). Assign by stable hash
+    // of the archetype key so an archetype keeps its color across runs.
+    CKECSDEBUGGER_API auto Get_ArchetypePalette() -> const TArray<FLinearColor>&;
+
     constexpr auto MaxBadges = 6;
 }

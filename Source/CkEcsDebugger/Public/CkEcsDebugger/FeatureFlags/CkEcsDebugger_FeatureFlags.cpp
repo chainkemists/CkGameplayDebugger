@@ -9,13 +9,23 @@
 #include "CkAttribute/IntegerAttribute/CkIntegerAttribute_Fragment.h"
 #include "CkAttribute/VectorAttribute/CkVectorAttribute_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
+#include "CkCamera/Camera/CkCamera_Fragment.h"
+#include "CkEcs/OwningActor/CkOwningActor_Fragment.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
+#include "CkEntityCollection/CkEntityCollection_Fragment.h"
+#include "CkEqs/Query/CkEqs_Fragment.h"
+#include "CkGoap/Planner/CkGoap_Planner_Fragment.h"
 #include "CkInteraction/InteractionResolver/CkInteractionResolver_Fragment.h"
+#include "CkIskmRenderer/Proxy/CkIskmProxy_Fragment.h"
+#include "CkIsmRenderer/Proxy/CkIsmProxy_Fragment.h"
 #include "CkLabel/CkLabel_Fragment.h"
+#include "CkObjective/Objective/CkObjective_Fragment.h"
 #include "CkSpatialQuery/Probe/CkProbe_Fragment.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 #include "CkTimer/CkTimer_Fragment.h"
+#include "CkTween/CkTween_Fragment.h"
+#include "CkVfx/Cue/CkVfxCue_Fragment.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -50,6 +60,20 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_GameplayLabel>(TEXT("Label"));
     debug_feature_flags::RegisterFlag<FFragment_InteractionResolver_Params>(TEXT("InteractionResolver"));
     debug_feature_flags::RegisterFlag<FFragment_AudioTrack_Params>(TEXT("AudioTrack"));
+
+    // Second batch (rail coverage) — each keyed on the feature's canonical always-present
+    // fragment; drives rail/badges/queries. Inspector fast-path wiring (Get_FeatureFlagId)
+    // stays unwired for these until parity is individually verified.
+    debug_feature_flags::RegisterFlag<FFragment_Objective_Current>(TEXT("Objective"));
+    debug_feature_flags::RegisterFlag<FFragment_VfxCue_Current>(TEXT("Vfx"));
+    debug_feature_flags::RegisterFlag<FFragment_Camera_Params>(TEXT("Camera"));
+    debug_feature_flags::RegisterFlag<FFragment_Goap_Planner_Current>(TEXT("Goap"));
+    debug_feature_flags::RegisterFlag<FFragment_EqsQuery_State>(TEXT("Eqs"));
+    debug_feature_flags::RegisterFlag<FFragment_IsmProxy_Current>(TEXT("IsmProxy"));
+    debug_feature_flags::RegisterFlag<FFragment_IskmProxy_Current>(TEXT("IskmProxy"));
+    debug_feature_flags::RegisterFlag<FFragment_OwningActor_Current>(TEXT("ActorBridge"));
+    debug_feature_flags::RegisterFlag<FFragment_Tween_Current>(TEXT("Tween"));
+    debug_feature_flags::RegisterFlag<FFragment_EntityCollection_Params>(TEXT("EntityCollection"));
 }
 
 auto

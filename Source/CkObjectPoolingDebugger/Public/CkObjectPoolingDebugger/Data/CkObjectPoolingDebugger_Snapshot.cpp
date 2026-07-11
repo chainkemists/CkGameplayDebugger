@@ -35,8 +35,7 @@ auto
         auto Row = FCkObjectPoolingDebugger_PoolRow{};
         Row.ClassName = ck::IsValid(Class) ? Class->GetName() : TEXT("(null)");
 
-        // the archetype is the class CDO for a plain class-keyed pool — call that out rather than
-        // printing the CDO's mangled Default__ name
+        // show "CDO" for a class-keyed pool rather than the mangled Default__ name
         Row.ArchetypeName = (ck::IsValid(Archetype) && ck::IsValid(Class) && Archetype == Class->GetDefaultObject())
             ? TEXT("CDO")
             : (ck::IsValid(Archetype) ? Archetype->GetName() : TEXT("(null)"));

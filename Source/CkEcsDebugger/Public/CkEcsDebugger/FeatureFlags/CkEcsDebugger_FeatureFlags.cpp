@@ -3,7 +3,9 @@
 #include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
 
 #include "CkAggro/CkAggro_Fragment.h"
+#include "CkAttribute/ByteAttribute/CkByteAttribute_Fragment.h"
 #include "CkAttribute/FloatAttribute/CkFloatAttribute_Fragment.h"
+#include "CkAttribute/IntegerAttribute/CkIntegerAttribute_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
@@ -31,6 +33,8 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_SceneNode_Current>(TEXT("SceneNode"));
     debug_feature_flags::RegisterFlag<FFragment_Probe_Params>(TEXT("Probe"));
     debug_feature_flags::RegisterFlag<FFragment_FloatAttribute_Current>(TEXT("FloatAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_ByteAttribute_Current>(TEXT("ByteAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_IntegerAttribute_Current>(TEXT("IntegerAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_Sm_Params>(TEXT("StateMachine"));
     debug_feature_flags::RegisterFlag<FFragment_Aggro_Current>(TEXT("Aggro"));
     debug_feature_flags::RegisterFlag<FFragment_GameplayLabel>(TEXT("Label"));

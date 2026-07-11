@@ -186,9 +186,33 @@ future wiring):**
   (entity-independent) precomputed per exclusion-set change instead of per entity per
   pass (`DoRebuildExclusionMatches`), identical union semantics.
 
-**Chunk 3+:** classification model (primary/internal via bits + settings-driven internal
-set), HAS-rollup, computed names, query tokenizer (+specs), incremental world model
-(spawn/destroy diff, stable node identity, cached names), registry-first archetype keying.
+**Chunk 3 — DONE (2026-07-10, gate green: build + Ck.EcsDebugger.Classification 2/2):**
+classification + HAS-rollup as pure logic over the bit cache.
+- `CkEcsDebugger/Classification/CkEcsDebugger_Classification.h/.cpp` —
+  `BuildTable(internal-set)` snapshots flag bits (structural mask = Transform|Label);
+  `Classify(ownBits)` = internal iff exactly one non-structural bit AND it's in the
+  internal mask (spec §3.1 literally: structural-only entities are PRIMARY);
+  `ComputeRollups(bits[], ownerIndex[])` = each internal's X counts toward its nearest
+  PRIMARY ancestor, walks through internal chains, stops at primaries, cycle-guarded
+  (path-compressed memo; owner cycles contribute nothing — snapshot-restore history).
+  Pure arrays in/out → Phase 2 feeds cached entities, specs feed synthetic forests.
+- `UCkEcsDebuggerSettings::InternalFeatureIds` (Config, seeded: Timer, SceneNode,
+  Probe, Float/Byte/IntegerAttribute, CueRelay).
+- Flags: +ByteAttribute, +IntegerAttribute (`FFragment_<X>Attribute_Current`, verified
+  single-fragment `Has` like Float). 12 registered total.
+- Specs (in-module, `Private/Tests/`, overlay-module pattern):
+  `Ck.EcsDebugger.Classification.{SignatureAndInternalSet, RollupStopsAtPrimaries}` —
+  discovered on first link (no relink trap this time).
+- **Known gaps (recorded):** (a) features without registered flags are blind spots —
+  an entity carrying only unregistered features + one internal feature misclassifies
+  internal; mitigation = keep extending RegisterAll (remaining candidates in chunk 1
+  note) + the set is user-editable data. (b) CueRelay is an ACTOR (`ACk_CueRelay_UE`),
+  no marker fragment — its internal-set entry is inert until a marker exists.
+
+**Chunk 4+ (remaining Phase 1):** computed names (extend ck::DebugNameClean), query
+tokenizer (+specs), incremental world model (spawn/destroy diff, stable node identity,
+cached names), registry-first archetype keying. Phase 2 consumes classification/rollup
+for fold + badges.
 
 ## Session log
 

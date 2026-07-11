@@ -71,8 +71,13 @@ public:
     auto Update_WorldTags(const TArray<FCk_DebugOverlay_WorldTagInfo>& InTags) -> void;
 
     // Re-anchors / resizes the focus card. Cheap no-op when unchanged; rebuilds the
-    // slot tree (re-using the existing child widgets) when anchor or width differ.
-    auto Set_PlateLayout(ECk_DebugOverlay_PlateAnchor InAnchor, float InWidth) -> void;
+    // slot tree (re-using the existing child widgets) when anchor, width, or the
+    // viewport-height budget fraction differ. Content past the height budget clips
+    // (hit-test-invisible root — a scrollbar would be uninteractable).
+    auto Set_PlateLayout(
+        ECk_DebugOverlay_PlateAnchor InAnchor,
+        float                        InWidth,
+        float                        InMaxHeightFraction = 0.66f) -> void;
 
 private:
     auto DoRebuildLayout() -> void;
@@ -101,6 +106,7 @@ private:
 
     ECk_DebugOverlay_PlateAnchor _PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopRight;
     float                        _PlateWidth  = 720.0f;
+    float                        _PlateMaxHeightFraction = 0.66f;
 };
 
 // ====================================================================================================================

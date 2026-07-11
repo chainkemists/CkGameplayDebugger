@@ -22,6 +22,16 @@ struct FCk_DebugOverlay_Section
     UPROPERTY() FGameplayTag ProviderTag;
     UPROPERTY() int32        SortPriority = 0;
     UPROPERTY() TArray<FCk_DebugOverlay_Row> Rows;
+
+    // Subtree aggregation: which entity this section was collected from. SourceName is
+    // EMPTY when it is the focus entity itself (only sub-entity sections get the dim
+    // source chip). SourceEntityId buckets history — the same field on two sub-entities
+    // must not collide. SourceOrder is the stable tie-break for the card's priority sort
+    // (focus first, then discovery order) — an unstable sort over equal priorities
+    // reorders sections every tick.
+    UPROPERTY() FText  SourceName;
+    UPROPERTY() uint32 SourceEntityId = 0;
+    UPROPERTY() int32  SourceOrder = 0;
 };
 
 USTRUCT()

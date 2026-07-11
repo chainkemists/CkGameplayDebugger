@@ -9,6 +9,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
@@ -67,7 +68,74 @@ auto
             FString::Printf(TEXT("%s [%d]"), *CleanName, EntityNum));
     }
 
-    const auto EntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
+    // ---- Aggregation set: the focus entity plus its whole lifetime subtree ----
+    // Feature state (SM instances, GOAP planner, crowd agent, attributes) lives on
+    // sub-entities BELOW the focused entity — the card is the one-screen union for
+    // the whole NPC, so every source below contributes sections. Breadth-first with
+    // a visited guard (malformed cycles must not hang the overlay tick).
+    auto Sources = TArray<FCk_Handle>{};
+    {
+        Sources.Add(InFocusEntity);
+
+        auto Visited = TSet<FCk_Handle>{};
+        Visited.Add(InFocusEntity);
+
+        for (auto Index = 0; Index < Sources.Num(); ++Index)
+        {
+            for (const auto& Dependent : UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(Sources[Index]))
+            {
+                if (ck::Is_NOT_Valid(Dependent) || Visited.Contains(Dependent))
+                { continue; }
+
+                Visited.Add(Dependent);
+                Sources.Add(Dependent);
+            }
+        }
+    }
+
+    const auto Get_SourceName = [](const FCk_Handle& InSource) -> FText
+    {
+        const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InSource);
+        return FText::FromString(ck::DebugNameClean::Get_CleanName(DebugName.ToString()));
+    };
+
+    // Emit one section per (provider × source) that CanProvide. Provider config is
+    // layout-resolved once; history is bucketed per SOURCE entity so the same field
+    // on two sub-entities never collides.
+    const auto CollectInto = [&](
+        const TSharedPtr<ICk_DebugOverlay_Provider>& InProvider,
+        const FCk_DebugOverlay_ProviderConfig&       InConfig) -> bool
+    {
+        auto Emitted = false;
+
+        for (auto SourceIdx = 0; SourceIdx < Sources.Num(); ++SourceIdx)
+        {
+            const auto& Source = Sources[SourceIdx];
+            if (NOT InProvider->CanProvide(Source))
+            { continue; }
+
+            auto Section           = FCk_DebugOverlay_Section{};
+            Section.ProviderTag    = InProvider->Get_ProviderTag();
+            Section.SortPriority   = InProvider->Get_SortPriority();
+            Section.SourceEntityId = static_cast<uint32>(Source.Get_Entity().Get_EntityNumber());
+            Section.SourceOrder    = SourceIdx;
+            if (SourceIdx > 0)
+            { Section.SourceName = Get_SourceName(Source); }
+
+            InProvider->Collect(Source, InConfig, Section);
+
+            for (const auto& Row : Section.Rows)
+            {
+                const auto Key = FCk_DebugOverlay_HistoryKey{ Section.SourceEntityId, Row.FieldTag };
+                if (InHistory) { InHistory->Observe(Key, Row.Value.ToString(), InNow); }
+            }
+
+            Emitted = true;
+            OutModel.Sections.Add(MoveTemp(Section));
+        }
+
+        return Emitted;
+    };
 
     // Track which provider tags we've already emitted so always-on providers don't double-add.
     auto EmittedProviderTags = FGameplayTagContainer{};
@@ -75,7 +143,7 @@ auto
     // ---- Layout-driven providers ----
     for (const auto& Provider : InProviders)
     {
-        if (NOT Provider || NOT Provider->CanProvide(InFocusEntity))
+        if (NOT Provider)
         { continue; }
 
         const auto& ProviderTag   = Provider->Get_ProviderTag();
@@ -99,20 +167,10 @@ auto
         Config.EnabledFields = EnabledFields;
         Config.EntryFilter   = EntryFilter;
 
-        auto Section          = FCk_DebugOverlay_Section{};
-        Section.ProviderTag   = ProviderTag;
-        Section.SortPriority  = Provider->Get_SortPriority();
-
-        Provider->Collect(InFocusEntity, Config, Section);
-
-        for (const auto& Row : Section.Rows)
+        if (CollectInto(Provider, Config))
         {
-            const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
-            if (InHistory) { InHistory->Observe(Key, Row.Value.ToString(), InNow); }
+            EmittedProviderTags.AddTag(ProviderTag);
         }
-
-        EmittedProviderTags.AddTag(ProviderTag);
-        OutModel.Sections.Add(MoveTemp(Section));
     }
 
     // ---- Always-on providers (force-include if CanProvide and not already emitted) ----
@@ -127,9 +185,6 @@ auto
         { continue; }
 
         if (EmittedProviderTags.HasTagExact(ProviderTag))
-        { continue; }
-
-        if (NOT Provider->CanProvide(InFocusEntity))
         { continue; }
 
         auto EnabledFields = FGameplayTagContainer{};
@@ -147,19 +202,7 @@ auto
         auto Config          = FCk_DebugOverlay_ProviderConfig{};
         Config.EnabledFields = EnabledFields;
 
-        auto Section          = FCk_DebugOverlay_Section{};
-        Section.ProviderTag   = ProviderTag;
-        Section.SortPriority  = Provider->Get_SortPriority();
-
-        Provider->Collect(InFocusEntity, Config, Section);
-
-        for (const auto& Row : Section.Rows)
-        {
-            const auto Key = FCk_DebugOverlay_HistoryKey{ EntityId, Row.FieldTag };
-            if (InHistory) { InHistory->Observe(Key, Row.Value.ToString(), InNow); }
-        }
-
-        OutModel.Sections.Add(MoveTemp(Section));
+        CollectInto(Provider, Config);
     }
 
     return OutModel;

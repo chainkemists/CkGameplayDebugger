@@ -18,8 +18,8 @@ public class CkEntityDebugOverlay : CkModuleRules
             "CkCore", "CkEcs", "CkEcsExt", "CkEntityExtension", "CkLog", "CkSettings", "CkDebuggerCommon",
             "CkEditorTools",
             // AI vertical-slice feature deps (more added as providers are ported):
-            "CkStateMachine", "CkGoap", "CkPhysics", "CkAnimation", "CkRecord",
-            // Attribute providers (Float/Integer/Byte):
+            "CkStateMachine", "CkGoap", "CkPhysics", "CkAnimation", "CkRecord", "CkCrowd",
+            // Attribute providers (Float/Integer/Byte/Vector/Rotator):
             "CkAttribute", "CkLabel",
             // Curated feature pill providers:
             "CkInventory", "CkInteraction", "CkAggro", "CkRelationship", "CkObjective",

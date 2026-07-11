@@ -9,6 +9,7 @@
 #include "CkLabel/CkLabel_Utils.h"
 
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
+#include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -92,6 +93,10 @@ auto FCk_DebugOverlay_Provider_ByteAttributes::Collect(
                 : FString(TEXT("Unnamed"));
 
             // Apply EntryFilter: if a query is set, skip attributes whose label tag doesn't match.
+            // User allow/deny filter (settings; editable live from the ECS Debugger popover).
+            if (NOT UCk_DebugOverlay_Settings::Get_PassesAttributeFilter(AttributeName))
+            { return; }
+
             if (NOT Cfg.EntryFilter.IsEmpty())
             {
                 if (NOT AttributeTag.IsValid() || NOT Cfg.EntryFilter.Matches(FGameplayTagContainer(AttributeTag)))

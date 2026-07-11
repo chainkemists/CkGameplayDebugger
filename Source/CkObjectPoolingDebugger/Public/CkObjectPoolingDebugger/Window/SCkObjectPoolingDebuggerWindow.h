@@ -4,26 +4,27 @@
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "Widgets/Views/SListView.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class SVerticalBox;
 class STextBlock;
+class ITableRow;
+class STableViewBase;
 class FCkDebuggerModel_WorldSelector;
 
 // ====================================================================================================================
-// CK Object Pooling Debugger window.
-//
-// Shows, for the selected world, one row per (class, archetype) pool the CkCore ObjectPooling
-// subsystem is managing — free / in-use / live / high-water / hits / misses / prewarm — plus the
-// count of pinned-unique (DestroyOnRelease) instances. The table is rebuilt each gated tick; pool
-// counts are small, so no in-place-update machinery is warranted.
+// CK Object Pooling Debugger window. One virtualized row per (class, archetype) pool the CkCore
+// ObjectPooling subsystem manages, plus the pinned-unique count. Row objects are rebuilt only when
+// the pool SET changes (keys); stats update in place otherwise, so scroll position survives.
 // ====================================================================================================================
 
 class SCkObjectPoolingDebuggerWindow : public SCkDebugger_WindowBase
 {
 public:
     static const FName WindowId;
+
+    using ItemPtr = TSharedPtr<FCkObjectPoolingDebugger_PoolRow>;
 
     SLATE_BEGIN_ARGS(SCkObjectPoolingDebuggerWindow) {}
     SLATE_END_ARGS()
@@ -37,12 +38,16 @@ public:
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto BuildHeaderRow() -> TSharedRef<SWidget>;
-    auto BuildPoolRow(const FCkObjectPoolingDebugger_PoolRow& InRow) -> TSharedRef<SWidget>;
-    auto RebuildTable(const FCkObjectPoolingDebugger_Snapshot& InSnapshot) -> void;
+    auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase>& InTable) -> TSharedRef<ITableRow>;
+
+    static auto MakeSignature(const FCkObjectPoolingDebugger_Snapshot& InSnapshot) -> FString;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
-    TSharedPtr<STextBlock>                     _SummaryText;
-    TSharedPtr<SVerticalBox>                   _TableBox;
+    TSharedPtr<STextBlock>                      _SummaryText;
+    TSharedPtr<SListView<ItemPtr>>              _ListView;
+
+    TArray<ItemPtr> _Items;
+    FString         _LastSignature;
 };
 
 // ====================================================================================================================

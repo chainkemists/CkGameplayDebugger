@@ -305,6 +305,20 @@ ancestors (`IsNarrowingMatch` on tree nodes, also applies to Filter queries).
 features without registered flags (Message, CueRelay, EntityScript, relays) still
 have no glyph — needs marker-fragment flags per feature (Phase 1 tracker list).
 
+**Polish pass 3 (2026-07-10):** (1) Archetype grid density is user-adjustable:
+`ArchetypeGridColumns` setting (persisted, Project Settings → Ck ECS Debugger) +
+2..6 chips in the page header; SWrapBox → SUniformGridPanel with explicit
+(col,row) slotting — true uniform cells, re-slot on density change, card cache
+reused. (2) General icon library: 148 glyphs in `Resources/Icons/General/`
+(combat/items/nature/creatures/buildings/vehicles/tech/food/people/symbols/
+office/tools + Rewind99 flavor: VhsTape, Register, Shelf, FilmReel, Popcorn,
+Remote …), generated in the house 16x16 stroke style. Icon registration is now a
+directory scan (no hand-list); General/* forms a sorted pool exposed via
+`FCkDebuggerStyle::Get_GeneralIconPool`. Card icon resolution:
+registered-bespoke → dominant-feature glyph (inferred only) → FCrc-hash pick
+from the pool (stable per key) → Cube only if the pool is empty. Registered
+archetypes may name any pool glyph directly via descriptor IconSvgPath.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

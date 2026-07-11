@@ -4,7 +4,7 @@
 #include "CkEcs/Handle/CkHandle.h"
 
 class SVerticalBox;
-class SWrapBox;
+class SUniformGridPanel;
 class STextBlock;
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -62,6 +62,10 @@ private:
     /** Re-derives ActiveArchTokens from the live filter text (no-op while unchanged). */
     auto RefreshActiveArchTokens() -> void;
 
+    /** Persisted grid density (settings-backed, header chips mutate it). */
+    static auto Get_GridColumns() -> int32;
+    auto Set_GridColumns(int32 InColumns) -> void;
+
     bool IsActivePage = false;
     float TimeSinceRebuild = 0.0f;
 
@@ -70,10 +74,11 @@ private:
     TFunction<FString()> GetEntityFilter;
 
     TSharedPtr<STextBlock> HeroText;
-    TSharedPtr<SWrapBox> CardsBox;
+    TSharedPtr<SUniformGridPanel> CardsBox;
 
     TMap<FString, FCardCacheEntry> CardCache;
     TArray<FString> PresentedKeys;
+    int32 LastSlottedColumns = 0;
 
     /** Lowercased arch: term values currently in the filter — drives card checked state. */
     TSet<FString> ActiveArchTokens;

@@ -4,12 +4,15 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkObjective/Objective/CkObjective_Fragment_Data.h"
 
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
 #include "Interfaces/IPluginManager.h"
 
 TSharedPtr<FSlateStyleSet> FCkDebuggerStyle::StyleInstance = nullptr;
+TArray<FName> FCkDebuggerStyle::GeneralIconPool = {};
 
 // -----------------------------------------------------------------------------------------------------------------
 auto FCkDebuggerStyle::Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
@@ -142,27 +145,38 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
 
 auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
 {
-    // Feature glyphs (Resources/Icons/*.svg) — monochrome white, tinted per-feature at
-    // draw time via SImage.ColorAndOpacity. Resolve through Get_IconBrush.
-    static const auto IconIds = TArray<FName>{
-        TEXT("Transform"), TEXT("Network"), TEXT("ActorBridge"), TEXT("StateMachine"),
-        TEXT("Attribute"), TEXT("Timer"), TEXT("SceneNode"), TEXT("Probe"),
-        TEXT("Interaction"), TEXT("Inventory"), TEXT("Objective"), TEXT("Aggro"),
-        TEXT("Perception"), TEXT("Vfx"), TEXT("Audio"), TEXT("Label"),
-        TEXT("Input"), TEXT("Camera"), TEXT("IsmRenderer"), TEXT("Variables"),
-        TEXT("Cube"), TEXT("World"), TEXT("Pin"),
-        TEXT("AttributeFloat"), TEXT("AttributeByte"), TEXT("AttributeInteger"),
-        TEXT("AttributeVector")
+    // Everything under Resources/Icons registers as "CkDebugger.Icon.<BaseName>" —
+    // monochrome white SVGs, tinted at draw time via SImage.ColorAndOpacity. Resolve
+    // through Get_IconBrush. Icons/General/* additionally forms the deterministic
+    // assignment pool for archetypes without a bespoke or feature glyph; names are
+    // sorted so the hash-pick is stable regardless of filesystem enumeration order.
+    const auto RegisterDir = [&InStyle](const FString& InDirectory, TArray<FName>* OutPool) -> void
+    {
+        auto Files = TArray<FString>{};
+        IFileManager::Get().FindFiles(Files, *(InDirectory / TEXT("*.svg")), true, false);
+        Files.Sort();
+
+        for (const auto& File : Files)
+        {
+            const auto IconId = FPaths::GetBaseFilename(File);
+            InStyle->Set(
+                FName{FString{TEXT("CkDebugger.Icon.")} + IconId},
+                new FSlateVectorImageBrush{InDirectory / File, FVector2D{16.0f, 16.0f}});
+
+            if (OutPool != nullptr)
+            { OutPool->Add(FName{IconId}); }
+        }
     };
 
-    for (const auto& IconId : IconIds)
-    {
-        InStyle->Set(
-            FName{FString{TEXT("CkDebugger.Icon.")} + IconId.ToString()},
-            new FSlateVectorImageBrush{
-                InStyle->RootToContentDir(FString{TEXT("Icons/")} + IconId.ToString(), TEXT(".svg")),
-                FVector2D{16.0f, 16.0f}});
-    }
+    const auto IconsDir = InStyle->GetContentRootDir() / TEXT("Icons");
+    GeneralIconPool.Reset();
+    RegisterDir(IconsDir, nullptr);
+    RegisterDir(IconsDir / TEXT("General"), &GeneralIconPool);
+}
+
+auto FCkDebuggerStyle::Get_GeneralIconPool() -> const TArray<FName>&
+{
+    return GeneralIconPool;
 }
 
 auto FCkDebuggerStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*

@@ -368,6 +368,31 @@ registered-bespoke → dominant-feature glyph (inferred only) → FCrc-hash pick
 from the pool (stable per key) → Cube only if the pool is empty. Registered
 archetypes may name any pool glyph directly via descriptor IconSvgPath.
 
+## World-interaction phase — code complete (2026-07-11, Fable e2e, maintainer-approved design)
+
+**Spec:** [docs/specs/2026-07-11-debugger-world-interaction.md](docs/specs/2026-07-11-debugger-world-interaction.md).
+Six workstreams (A–F), all code-complete in one session; gate = toolbox build + `Ck.EcsDebugger.*`
+specs + the spec §3 `[EDITOR-VERIFY]` table for the maintainer's next PIE round.
+
+| WS | What shipped | Key files |
+|---|---|---|
+| A | Viewport-picker selections now broadcast on the selection-sync bus (they were applied `Direct` and never re-broadcast — the confirmed root cause of "world-picked entity doesn't show up in Crowd/GOAP"). Crowd/GOAP receives scroll-into-view + 1.2 s fading row flash; Crowd one-shot re-centers the 2D map via new `Request_FrameSelectedAgent` VM signal. | `CkDebuggerModel_ViewportPicker.cpp` (broadcast), both `*_AgentListPanel.*`, `CkCrowdDebugger_ViewModel.h`, `SCkCrowdDebugger_ViewportPanel.*` |
+| B | Selection gizmo is now a persistent PMG RGB triad (`FCkDebug_PmgGizmoSet`, pooled procmesh, moved per tick) replacing per-tick `DrawDebugTransformGizmo` — kills the refresh-gate blink and per-tick line re-batching. Transform + SceneNode inspectors swapped (SceneNode also re-homes the parent gizmo on re-parent); Camera inspector untouched. NOT built on PMG `Pivot`: it is a Composite whose child arrows bake world transforms at setup (`CkPmg_Processor_DirectionalShapes.cpp:261-310`) — moving the parent moves nothing; the set creates/re-aims 3 Arrows directly. | `CkDebuggerCommon/Markers/CkDebug_PmgGizmoSet.{h,cpp}`, `CkInspector_Transform.*`, `CkInspector_SceneNode.*` |
+| C | `ck::DebugViewportView` (CkDebuggerCommon) now owns ejected-detection / deproject / view-camera-location — picker + overlay duplicates re-pointed. `ck::DebugFocus::Focus_Entity` = editor-F for entities: bounds (ISM mesh → direct actor → 1 m box at transform → recursive actor) framed by pulling the ejected editor camera back along its current view dir (manual fit — no engine `FocusViewportOnBox` dependency). Wired: **F key + context menu** on ECS tree, Crowd list, GOAP list; Focus button in Crowd detail. Possessed = deliberate no-op. | `CkDebuggerCommon/Navigation/CkDebug_ViewportView.{h,cpp}`, `CkDebug_Focus.{h,cpp}` + panel wiring |
+| D | Crowd 2D map: player pawn chevron + view-camera FOV wedge (collector samples pawn/camera pose; ejected camera included); `PlayerProxy` status finally assigned (lineage match vs the possessed pawn's entity). RMB on the map = command (auto-arms debug override), RMB-drag still pans (Slate drag-threshold defer), MMB pan unchanged, LMB-command branch removed. In-world: `FCkCrowdDebugger_WorldCommandProcessor` (passive pre-processor, never consumes — consuming would wedge the viewport's RMB camera-look capture) — RMB-click on ground while ejected commands the selected agent + 1.5 s PMG ring ping. "Take Control" button kept as explicit release. | `CkCrowdDebugger_DataCollector.*`, `SCkCrowdDebugger_ViewportPanel.*`, `CkCrowdDebugger/Input/CkCrowdDebugger_WorldCommandProcessor.{h,cpp}`, `SCkCrowdDebuggerWindow.*`, `SCkCrowdDebugger_AgentDetailPanel.cpp` |
+| E | ECS inspector gets a pinned owner-chain breadcrumb (root › … › selected; `SCkDebug_EntityRef` pills, depth-capped 8, transient root omitted, rebuilt only on selection change). Crowd rows show a muted `→ Owner` name (pre-sampled in the collector — no per-paint ECS walks); Crowd detail gets an Owner pill row. GOAP already lists owners. | `CkDebuggerPanel_Inspector.*`, `CkCrowdDebugger_Types.h`, `SCkCrowdDebugger_AgentListPanel.cpp`, `SCkCrowdDebugger_AgentDetailPanel.cpp` |
+| F | Picker: trace hits on ISM components resolve to the proxy ENTITY via instance-transform match against the marker snapshot (`FHitResult.Item` → `GetInstanceTransform` → nearest `IsmProxy`-carrying entry ≤ 1 m) — deliberately transform-based, no version-sensitive instance-id↔index component API and no renderer-internal poking. Hover on mesh-resolvable entities draws a one-frame bounds box (`DebugFocus::Get_EntityWorldBounds`). New "Meshes First" toolbar toggle (persisted `UCkEcsDebuggerSettings::PickerMeshesFirst`) suppresses diamonds for geometry-pickable entities via the marker `SuppressedEntityNums` mechanism — still gathered, still pickable. | `CkDebuggerModel_ViewportPicker.*`, `CkEcsDebuggerSettings.h`, `CkDebuggerWindow_Main.cpp` |
+
+**Deliberate calls (don't re-litigate without new evidence):**
+- Gizmo alpha 0.85 / no wireframe lines; entity label stays `DrawDebugString` (still gate-blinks — separate follow-up if it bothers).
+- In-world command processor is ejected-only and passive; if PIE shows an editor context menu popping on RMB command, the recorded fallback is consuming the down+up pair when gates hold at down-time (costs RMB-look only while an agent is selected).
+- ISM resolve precision bound: co-located instances within 1 m are ambiguous (nearest wins); exact resolution via `GetInstanceIdForInstanceIndex` recorded as follow-up if it bites.
+- ISKM batched clusters: no per-instance resolve this phase — entities keep diamond picking (spec §4 limitation).
+
+**Recorded follow-ups:** re-point `CkCrowdDebugger_DataCollector`'s own ejected-yaw block onto `DebugViewportView` (still uses `bIsSimulatingInEditor`); ISKM bounds for focus (currently 1 m fallback box); consider PMG text label to kill the label blink.
+
+**`[EDITOR-VERIFY]` (maintainer PIE round):** spec §3 table A1–F1 — sync flash + map ping; gizmo stability at low refresh caps + zero orphans after deselect/EndPIE; F-focus framing from all three lists (ejected only); player chevron/wedge; map + in-world RMB command (incl. no stuck camera-look, no context-menu conflict); breadcrumb + owner column; ISM mesh pick + hover box + Meshes First declutter.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas
@@ -375,3 +400,9 @@ archetypes may name any pool glyph directly via descriptor IconSvgPath.
   implemented: 23 SVGs, style content root + icon brushes + `Get_IconBrush`, inspector
   icon/color metadata plumbing (registry + base interface). Toolbox build launched.
   Docs commit to `dev` pending user approval.
+- **2026-07-11 (Fable, world-interaction phase):** Maintainer accepted polish passes 4–5 in
+  PIE and pivoted the campaign to world interaction (5 new asks). Design brainstormed +
+  approved (4 forks decided: Fable e2e; map+world RTS command; one-shot ejected-only focus;
+  trace+ISM picking). Spec `2026-07-11-debugger-world-interaction.md` written; workstreams
+  A–F implemented (section above). Backlog untouched: pooling-interaction question,
+  inspector fast-path wiring, flag-cache widening, perf acceptance.

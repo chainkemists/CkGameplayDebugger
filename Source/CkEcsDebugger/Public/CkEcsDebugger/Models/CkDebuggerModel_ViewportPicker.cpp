@@ -6,6 +6,7 @@
 
 #include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 
+#include "CkIskmRenderer/Proxy/CkIskmProxy_Utils.h"
 #include "CkIsmRenderer/Proxy/CkIsmProxy_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
@@ -66,8 +67,44 @@ namespace
     static constexpr auto BillboardDefaultAlpha   = 0.45f;
 
     // Ejected-PIE discrimination + deprojection live in ck::DebugViewportView
-    // (CkDebuggerCommon) — shared with the on-screen overlay, the focus-entity
-    // helper, and the crowd debugger's in-world command mode.
+    // (CkDebuggerCommon) — shared with the on-screen overlay and the
+    // focus-entity helper.
+
+    // Slab-method ray/AABB: near-hit T along InDirection (0 when the origin is
+    // inside the box), unset on miss. FMath::LineBoxIntersection returns bool
+    // only — ranking candidates needs the T.
+    auto Intersect_RayBoxNearT(
+        const FBox&    InBox,
+        const FVector& InOrigin,
+        const FVector& InDirection) -> TOptional<float>
+    {
+        auto TMin = 0.0;
+        auto TMax = TNumericLimits<double>::Max();
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            const auto D = InDirection[Axis];
+            if (FMath::IsNearlyZero(D))
+            {
+                if (InOrigin[Axis] < InBox.Min[Axis] || InOrigin[Axis] > InBox.Max[Axis])
+                { return {}; }
+                continue;
+            }
+
+            const auto Inv = 1.0 / D;
+            auto T1 = (InBox.Min[Axis] - InOrigin[Axis]) * Inv;
+            auto T2 = (InBox.Max[Axis] - InOrigin[Axis]) * Inv;
+            if (T1 > T2)
+            { Swap(T1, T2); }
+
+            TMin = FMath::Max(TMin, T1);
+            TMax = FMath::Min(TMax, T2);
+            if (TMin > TMax)
+            { return {}; }
+        }
+
+        return static_cast<float>(TMin);
+    }
 }
 
 // =====================================================================================================================
@@ -641,6 +678,39 @@ auto
         }
     }
 
+    // ---- 1b. Analytic ray-vs-bounds for geometry-backed entities ----
+    // Covers meshes the physics trace can't see: renderer-only ISMs run
+    // NoCollision (the ISKM stress gyms — 500+ agents), so their instances
+    // never produce a trace hit. Nearest box entry competes as a geometry
+    // candidate; when both a trace hit and a box hit exist, nearest-T wins
+    // (a box near-face is at most one mesh extent in front of its surface —
+    // acceptable ranking noise for a debug picker).
+    {
+        auto BestBoxT      = TNumericLimits<float>::Max();
+        auto BestBoxHandle = FCk_Handle{};
+
+        for (const auto& Entry : _MeshPickBounds)
+        {
+            const auto HitT = Intersect_RayBoxNearT(Entry.Box, InOrigin, InDirection);
+            if (NOT HitT.IsSet() || *HitT > _CullRadius)
+            { continue; }
+
+            if (*HitT < BestBoxT)
+            {
+                BestBoxT      = *HitT;
+                BestBoxHandle = Entry.Entity;
+            }
+        }
+
+        if (ck::IsValid(BestBoxHandle) &&
+            (NOT ActorCandidate.IsValid() || BestBoxT < ActorCandidate.RayT))
+        {
+            ActorCandidate.Entity     = BestBoxHandle;
+            ActorCandidate.RayT       = BestBoxT;
+            ActorCandidate.IsActorHit = true;
+        }
+    }
+
     // ---- 2. Ray-sphere test against the previewed marker entries ----
     // The snapshot already applies the depth gate, distance cull, and ignore-self
     // filter, so every entry is fair game.
@@ -754,6 +824,12 @@ auto
     if (UCk_Utils_IsmProxy_UE::Has(InEntity))
     { return true; }
 
+    // Skeletal-instance proxies (ISKM) have no mesh-bounds API yet — they pick
+    // via the 1 m-box fallback in Get_EntityWorldBounds. Exact skeletal bounds
+    // is a recorded CkFoundation follow-up.
+    if (UCk_Utils_IskmProxy_UE::Has(InEntity))
+    { return true; }
+
     return ck::IsValid(UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor(InEntity));
 }
 
@@ -783,18 +859,24 @@ auto
 
     _Markers.Gather(InWorld, Params);
 
-    // "Meshes first": diamonds of geometry-pickable entities are suppressed at draw
-    // time (still gathered — they stay pickable via their meshes and keep their links).
+    // One pass over the snapshot for everything geometry-related:
+    //   - analytic pick volumes (ray-vs-bounds pick + hover outline), always;
+    //   - "Meshes first" diamond suppression (still gathered — such entities stay
+    //     pickable via their meshes and keep their links).
+    // Bounds resolve per entry per tick (ISM-proxy mesh bounds / actor bounds via
+    // DebugFocus) — hundreds of entries is fine for a debug-tool tick.
     _MeshSuppressedNums.Reset();
-    if (_MeshesFirst)
+    _MeshPickBounds.Reset();
+    for (const auto& Entry : _Markers.Get_Entries())
     {
-        for (const auto& Entry : _Markers.Get_Entries())
-        {
-            if (DoIsMeshResolvable(Entry.Entity))
-            {
-                _MeshSuppressedNums.Add(Entry.EntityNum);
-            }
-        }
+        if (NOT DoIsMeshResolvable(Entry.Entity))
+        { continue; }
+
+        if (const auto Bounds = ck::DebugFocus::Get_EntityWorldBounds(Entry.Entity))
+        { _MeshPickBounds.Add(FMeshPickEntry{Entry.Entity, Bounds->GetBox()}); }
+
+        if (_MeshesFirst)
+        { _MeshSuppressedNums.Add(Entry.EntityNum); }
     }
 }
 

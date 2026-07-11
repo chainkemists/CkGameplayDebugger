@@ -34,7 +34,10 @@ public:
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;
-    auto Build_FeatureRail() -> TSharedRef<SWidget>;
+    // The feature-filter chips flank the tree on BOTH sides (whole groups split
+    // deterministically by weight) so a tall window shows them all without
+    // scrolling; each flank still scrolls independently when the window is short.
+    auto Build_FeatureRail(bool InRightFlank) -> TSharedRef<SWidget>;
     auto Build_QueryHelpButton() -> TSharedRef<SWidget>;
 
     /** Pinned + Recent quick-access sections (Phase 3) — rebuilt on change, not bound. */

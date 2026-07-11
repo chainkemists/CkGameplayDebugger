@@ -1623,7 +1623,7 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
         {
             MenuBuilder.AddMenuEntry(
                 FText::FromString(TEXT("Focus in Viewport (F)")),
-                FText::FromString(TEXT("Move the ejected editor camera to frame this entity")),
+                FText::FromString(TEXT("Glide the editor camera to frame this entity (auto-ejects while possessed)")),
                 FSlateIcon(),
                 FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
                 {

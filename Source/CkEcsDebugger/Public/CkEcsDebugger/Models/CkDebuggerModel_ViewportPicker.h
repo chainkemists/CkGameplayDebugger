@@ -261,6 +261,17 @@ private:
     bool         _MeshesFirst = false;
     TSet<uint32> _MeshSuppressedNums;
 
+    // Analytic pick volumes for geometry-backed entities, rebuilt with the marker
+    // snapshot each tick. Rays test against these in ADDITION to the physics trace:
+    // renderer-only ISMs (stress gyms run 500+ at NoCollision) are invisible to
+    // traces, so hover/click on their meshes must resolve analytically.
+    struct FMeshPickEntry
+    {
+        FCk_Handle Entity;
+        FBox       Box = FBox{ForceInit};
+    };
+    TArray<FMeshPickEntry> _MeshPickBounds;
+
     // ---- Cached hover / focus state -------------------------------------
     // _FocusEntity is STICKY: it holds the last validly-hovered entity and is not
     // cleared between markers, so the focus card + emphasized diamond don't flicker

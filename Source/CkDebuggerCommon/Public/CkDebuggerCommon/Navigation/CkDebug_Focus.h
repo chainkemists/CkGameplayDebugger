@@ -8,10 +8,13 @@
 // Focus-entity-in-PIE — the editor's "F" for ECS entities.
 //
 // One-shot: frames the entity's resolved world bounds in the level-editor
-// viewport by pulling the camera back along its CURRENT view direction (no
-// rotation — same feel as the editor's actor focus). Deliberately
-// ejected/simulate-only: while possessed the camera belongs to gameplay and
-// is not fought over; Focus_Entity is then a no-op returning false.
+// viewport by gliding the camera back along its CURRENT view direction (no
+// rotation — same animated feel as the editor's actor focus, via the view
+// transform's TransitionToLocation). While POSSESSED, Focus_Entity queues the
+// framing, requests the PIE↔SIE eject toggle (what F8 does), and completes
+// once the editor processes it — so focus works from any state a debugger
+// row can be clicked in. Distance: the exact FOV-fit distance times the
+// `ck.Debug.Focus.DistanceScale` cvar (default 2 — fit-exact reads too close).
 //
 // Bounds resolution order (tightest first, so focusing a feature sub-entity
 // never frames its whole owner complex):
@@ -23,12 +26,14 @@
 
 namespace ck::DebugFocus
 {
-    // True while an ejected/simulate editor camera drives the viewport —
-    // gate focus buttons/menu entries on this.
+    // True when focusing can act: an editor viewport exists and is either
+    // already ejected or in a PIE session it can eject from — gate focus
+    // buttons/menu entries on this.
     CKDEBUGGERCOMMON_API auto Get_CanFocus() -> bool;
 
-    // Frame the entity in the level-editor viewport. Returns false when not
-    // ejected, the entity is invalid, or no location could be resolved.
+    // Frame the entity in the level-editor viewport (auto-ejects first while
+    // possessed). Returns false when no viewport is available, the entity is
+    // invalid, or no location could be resolved.
     CKDEBUGGERCOMMON_API auto Focus_Entity(const FCk_Handle& InEntity) -> bool;
 
     // The bounds Focus_Entity frames (resolution order in the header comment) —

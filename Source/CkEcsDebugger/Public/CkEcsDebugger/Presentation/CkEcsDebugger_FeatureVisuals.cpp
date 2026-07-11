@@ -169,8 +169,10 @@ auto
         auto Result = TArray<TPair<FName, int32>>{};
         for (const auto& FeatureId : debug_feature_flags::Get_RegisteredFeatureIds())
         {
-            if (FeatureId == TEXT("Transform") || FeatureId == TEXT("Label") ||
-                FeatureId.ToString().StartsWith(TEXT("_")))
+            // Label stays excluded (the name column already IS the label); Transform
+            // is deliberately IN — near-universal, but its absence marks transformless
+            // logic entities, which is exactly the signal worth a badge/rail chip.
+            if (FeatureId == TEXT("Label") || FeatureId.ToString().StartsWith(TEXT("_")))
             { continue; }
 
             const auto Bit = debug_feature_flags::Get_BitIndex(FeatureId);

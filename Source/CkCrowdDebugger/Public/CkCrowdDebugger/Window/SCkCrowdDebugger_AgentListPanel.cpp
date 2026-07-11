@@ -376,7 +376,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnContextMenuOpening() -> TSharedPtr<SWidg
 		const auto FocusTarget = Item.Handle;
 		MenuBuilder.AddMenuEntry(
 			NSLOCTEXT("CkCrowdAgentList", "FocusInViewport", "Focus in Viewport (F)"),
-			NSLOCTEXT("CkCrowdAgentList", "FocusInViewportTip", "Move the ejected editor camera to frame this agent."),
+			NSLOCTEXT("CkCrowdAgentList", "FocusInViewportTip", "Glide the editor camera to frame this agent (auto-ejects while possessed)."),
 			FSlateIcon(),
 			FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
 			{

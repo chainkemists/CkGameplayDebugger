@@ -15,6 +15,10 @@ class STextBlock;
 //
 // v1 deviations (recorded in PROGRESS.md): no sparklines, no population-by-family bars —
 // counts + signature badges only.
+//
+// Card widgets keep stable identity across refreshes (spec §4): counts update in place
+// on the cached text block; the wrap box is only re-slotted when the archetype key set
+// (or its order) changes — recreating cards every tick flickers.
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkDebuggerPage_Archetypes : public ICkDebuggerPage_Base
@@ -32,6 +36,7 @@ public:
 private:
     struct FArchetypeBucket
     {
+        FString Key;            // aggregation key — also the card-cache identity
         FString DisplayName;
         FString FilterToken;    // pushed as arch:<token> on click
         int32 Count = 0;
@@ -40,7 +45,15 @@ private:
         FName IconName;         // registered archetypes may carry a bespoke glyph id
     };
 
+    struct FCardCacheEntry
+    {
+        TSharedPtr<SWidget> CardWidget;
+        TSharedPtr<STextBlock> CountText;
+        int32 LastCount = 0;
+    };
+
     auto RebuildCards() -> void;
+    auto DoCreateCard(const FArchetypeBucket& InBucket, FCardCacheEntry& OutEntry) -> void;
 
     bool IsActivePage = false;
     float TimeSinceRebuild = 0.0f;
@@ -50,4 +63,7 @@ private:
 
     TSharedPtr<STextBlock> HeroText;
     TSharedPtr<SWrapBox> CardsBox;
+
+    TMap<FString, FCardCacheEntry> CardCache;
+    TArray<FString> PresentedKeys;
 };

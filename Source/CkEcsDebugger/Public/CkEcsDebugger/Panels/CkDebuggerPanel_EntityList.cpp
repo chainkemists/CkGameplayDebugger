@@ -257,8 +257,12 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail() -> TSharedRef<SWidget>
             const auto Color = Visual->Color;
             const auto CapturedId = FeatureId;
 
+            // HAlign_Left: the rail column is AutoWidth (sized by the widest group label),
+            // and SVerticalBox slots default to HAlign_Fill — without this the chip (and the
+            // SVG inside) stretches to the label's width.
             Rail->AddSlot()
             .AutoHeight()
+            .HAlign(HAlign_Left)
             .Padding(0.0f, 0.0f, 0.0f, 2.0f)
             [
                 SNew(SCheckBox)

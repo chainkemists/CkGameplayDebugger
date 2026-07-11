@@ -24,6 +24,8 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
+#include "CkEcsDebugger/Pages/CkDebuggerPage_Archetypes.h"
+#include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
@@ -70,6 +72,8 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     }
 
     Pages.Add(MakeShared<FCkDebuggerPage_Overview>());
+    Pages.Add(MakeShared<FCkDebuggerPage_Archetypes>());
+    Pages.Add(MakeShared<FCkDebuggerPage_Activity>());
     Pages[0]->Set_IsActive(true);
 
     ChildSlot
@@ -1321,7 +1325,14 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
         {
             SelectionModel,
             WorldModel,
-            FilterModel
+            FilterModel,
+            // Archetype-card click-through → the entity list's Filter bar.
+            [WeakSelf = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this))](const FString& InFilter)
+            {
+                const auto Pinned = WeakSelf.Pin();
+                if (Pinned.IsValid() && Pinned->EntityListPanel.IsValid())
+                { Pinned->EntityListPanel->Set_FilterText(InFilter); }
+            }
         };
 
         PageContent = Pages[ActivePageIndex]->Build_Content(Context);

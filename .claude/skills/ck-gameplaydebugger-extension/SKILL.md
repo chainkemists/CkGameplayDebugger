@@ -26,6 +26,7 @@ at all, and Blueprint exists only on the legacy Gen-1 path (Runbook D). Source: 
 | You actually want to… | Load instead |
 |---|---|
 | Add/change the fragment, signal, or Utils the debugger would display | `ckecs-architecture-contract` (+ `ckecs-domain-reference` to find the feature) |
+| Slate pitfalls/contracts while WRITING widget code (styles, rows, lifetime, flicker, viewport interaction) | `ck-slate-tools` (this plugin) |
 | Diagnose a framework bug (the debugger is just how you noticed it) | `ck-debugging-playbook` |
 | Fix build/environment failures while compiling this plugin | `ck-build-and-env` |
 | Author automation tests for a feature | `ck-tests-authoring-and-running` |

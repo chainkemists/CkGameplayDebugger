@@ -400,8 +400,8 @@ specs + the spec §3 `[EDITOR-VERIFY]` table for the maintainer's next PIE round
   implemented: 23 SVGs, style content root + icon brushes + `Get_IconBrush`, inspector
   icon/color metadata plumbing (registry + base interface). Toolbox build launched.
   Docs commit to `dev` pending user approval.
-- **2026-07-11 (Fable, world-interaction phase):** Maintainer accepted polish passes 4–5 in
-  PIE and pivoted the campaign to world interaction (5 new asks). Design brainstormed +
+- **2026-07-11 (Fable, world-interaction phase):** Maintainer declared the prior polish passes
+  done and pivoted the campaign to world interaction (5 new asks). Design brainstormed +
   approved (4 forks decided: Fable e2e; map+world RTS command; one-shot ejected-only focus;
   trace+ISM picking). Spec `2026-07-11-debugger-world-interaction.md` written; workstreams
   A–F implemented (section above). Backlog untouched: pooling-interaction question,

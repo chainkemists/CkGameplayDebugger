@@ -423,6 +423,28 @@ auto-eject + glide + distance feel (`ck.Debug.Focus.DistanceScale`); chevron rot
 map-RMB world ping; ISKM hover/pick + Meshes First in the stress gym; two-flank rail;
 Transform chip + badge.
 
+## Overlay aggregated focus card — code complete (2026-07-11, Fable, maintainer-armed goal)
+
+**Spec:** [docs/specs/2026-07-11-overlay-aggregated-focus-card.md](docs/specs/2026-07-11-overlay-aggregated-focus-card.md).
+The focus card becomes the one-screen compressed union of all debuggers for one NPC.
+
+| WS | What shipped | Key files |
+|---|---|---|
+| A — subtree aggregation | `Build_EntityModel` walks the focus entity + ALL lifetime descendants (BFS, visited guard) and emits one section per (provider × source). Sections carry `SourceName` (dim chip on the card for sub-entity sections), `SourceEntityId` (history bucketing — same field on two sub-entities must not share a trail), `SourceOrder` (stable sort tie-break — an unstable sort over equal priorities is the archetype-cards flicker bug all over again). Both the overlay AND the picker's reused cards get this for free (shared builder). | `CkDebugOverlay_Present.cpp`, `CkDebugOverlay_Model.h`, `SCkDebugOverlay_FocusCard.cpp` |
+| B — top-left + tall + quiet | `PlateAnchor` default → TopLeft; new `PlateMaxHeightFraction` (0.66 default) — the card strip is height-budgeted to the viewport fraction via a live `MaxDesiredHeight` attribute and CLIPS past it (hit-test-invisible root — a scrollbar would be uninteractable). Engine on-screen debug text (`AddOnScreenDebugMessage` / `ck::Trace`) is suppressed while the overlay is active and restored on deactivate (primary-owner-gated; pairing guarded by the ticker handle). | `CkDebugOverlay_Settings.h`, `SCkDebugOverlay_Root.{h,cpp}`, `CkDebugOverlay_Subsystem.{h,cpp}`, picker `Set_PlateLayout` call |
+| C — attribute filter | `AttributeFilterPatterns` (case-insensitive substring vs attribute label) + `bAttributeFilterIsExclusion` on the overlay settings; `Get_PassesAttributeFilter` consulted per row by all five attribute providers. Editor UI: "OVERLAY ATTRIBUTES" block in the ECS Debugger picker-toolbar popover (pattern text box + "Exclude listed" checkbox → `SaveConfig`, applies live). | `CkDebugOverlay_Settings.{h,cpp}`, the 5 attribute providers, `CkDebuggerWindow_Main.cpp` |
+| D — content | NEW `Crowd` provider (status incl. DEBUG OVERRIDE badge / speed vs max / active goal + distance while walking / neighbors + separation — mirrors the crowd collector's read set; module dep `CkCrowd` added). NEW `VectorAttributes` / `RotatorAttributes` providers (Float pattern clones). SM `History` + GOAP `Cost` fields flipped to default-enabled. All three new tags registered in the "All" layout (+ Crowd in "AI") + abbrev map (`vATT`/`rATT`/`CRWD`). | `Providers/CkDebugOverlay_Provider_{Crowd,VectorAttributes,RotatorAttributes}.{h,cpp}`, `CkDebugOverlay_Provider_{StateMachine,Goap}.cpp`, `CkDebugOverlay_Settings.cpp`, `CkDebugOverlay_Tags.cpp`, `CkEntityDebugOverlay.Build.cs` |
+
+**Deliberate calls:** clip-not-scroll at the height cap (interactive scrolling needs a
+hit-testable root — recorded follow-up if wanted); planned-path waypoints deliberately NOT
+on the crowd card (too verbose; the crowd debugger map owns that); aggregation cost is
+per-tick × descendants × providers — debug-only, revisit only if a stress NPC feels heavy.
+
+**`[EDITOR-VERIFY]` (spec §3):** A1 sub-entity sections with dim source chips; B1 top-left,
+≤2/3 height, on-screen text suppressed while active and restored after `ck.DebugOverlay 0`;
+C1 filter edits (popover) apply live + persist; D1 Crowd/Vector/Rotator/SM-history/GOAP-cost
+visible on an NPC.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas
@@ -442,3 +464,12 @@ Transform chip + badge.
   distance cvar, chevron aim-yaw fix, ISKM-aware collision-independent mesh picking (IskmProxy
   blindness + NoCollision were the two root causes), Transform badge/chip enabled, icon rail
   split across both tree flanks (the last two were the maintainer's "other comments").
+  Round shipped via ck-ship-dev (submodule `eb54323`, gitlink bumped `883ba47`) after the
+  maintainer's green verdict + ship instruction; `ck-slate-tools` skill added (Slate pitfall
+  catalog) with an index row in CkFoundation's CLAUDE.md.
+- **2026-07-11 (Fable, overlay aggregated focus card):** Maintainer-armed goal — the focus
+  card becomes the one-screen NPC debugger: subtree aggregation (sections from the focus
+  entity + all lifetime descendants, source-labeled, per-source history), top-left anchor +
+  2/3-height budget + on-screen-text suppression while active, attribute allow/deny filter
+  (settings + ECS-debugger popover editor), new Crowd/VectorAttributes/RotatorAttributes
+  providers, SM history + GOAP cost on by default. Section above has the file map.

@@ -161,8 +161,10 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_ProviderTag() const -> FGamepla
 auto FCk_DebugOverlay_Provider_StateMachine::Get_FieldTags() const -> TArray<FCk_DebugOverlay_FieldDesc>
 {
     return {
-        { FieldTag_State(),   true  },
-        { FieldTag_History(), false },
+        { FieldTag_State(),   true },
+        // Recent-transition history reads by default — the card is the one-screen NPC
+        // debugger, and "how did it get into this state" is half the question.
+        { FieldTag_History(), true },
     };
 }
 

@@ -147,12 +147,17 @@ auto
             HeaderRow
         ];
 
-    // ---- Sections (sorted by SortPriority) ----
-    // Copy the sections array so we can sort without mutating the model.
+    // ---- Sections (sorted by SortPriority, then source order) ----
+    // Copy the sections array so we can sort without mutating the model. The SourceOrder
+    // tie-break is load-bearing: subtree aggregation emits one section per source for the
+    // same provider (equal priorities), and an unstable sort over equal keys reorders the
+    // card every tick.
     auto SortedSections = InModel.Sections;
     SortedSections.Sort([](const FCk_DebugOverlay_Section& A, const FCk_DebugOverlay_Section& B)
     {
-        return A.SortPriority < B.SortPriority;
+        if (A.SortPriority != B.SortPriority)
+        { return A.SortPriority < B.SortPriority; }
+        return A.SourceOrder < B.SourceOrder;
     });
 
     // Derive a stable entity id for the history key.
@@ -210,6 +215,21 @@ auto
                     ]
             ];
 
+        // Source chip — dim sub-entity name when the section came from a descendant
+        // (subtree aggregation), so the reader can tell WHOSE SM/attribute this is.
+        if (NOT Section.SourceName.IsEmpty())
+        {
+            SectionRow->AddSlot()
+                .VAlign(VAlign_Center)
+                .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, CkStyle::SpaceXS })
+                [
+                    SNew(STextBlock)
+                        .Text(Section.SourceName)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                        .ColorAndOpacity(CkStyle::TextMute())
+                ];
+        }
+
         // Field chips share a provider-tinted background + key color.
         const auto FieldChipTint = CkStyle::OverlayOf(ProviderColor, 0.18f);
         const auto FieldKeyColor = CkStyle::OverlayOf(ProviderColor, 0.95f);
@@ -221,7 +241,11 @@ auto
             if (Row.Value.IsEmpty() && Row.ExplicitHistory.IsEmpty())
             { continue; }
 
-            const FCk_DebugOverlay_HistoryKey HistKey{ EntityId, Row.FieldTag };
+            // Subtree aggregation: history buckets by the section's SOURCE entity (the
+            // same field on two sub-entities must not share a trail). 0 = legacy model
+            // built without source info — fall back to the focus entity id.
+            const auto RowEntityId = Section.SourceEntityId != 0 ? Section.SourceEntityId : EntityId;
+            const FCk_DebugOverlay_HistoryKey HistKey{ RowEntityId, Row.FieldTag };
 
             // Breadcrumb trail (explicit history wins; else diff-tracked ring).
             FString TrailText;

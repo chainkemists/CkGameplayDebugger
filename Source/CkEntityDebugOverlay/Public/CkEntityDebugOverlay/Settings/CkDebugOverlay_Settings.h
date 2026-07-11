@@ -32,15 +32,22 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(Categories="Ck.OnScreenDebugger.Layout"))
     FGameplayTag StartingLayout;
 
-    // Viewport corner/edge the focus card (plate) is anchored to. Default is top-right so the
-    // plate doesn't fight with engine on-screen debug text (which uses the top-left).
+    // Viewport corner/edge the focus card (plate) is anchored to. Default is top-left: the
+    // overlay suppresses engine on-screen debug text while active (restored on deactivate),
+    // so the plate owns that corner and can use the tall PlateMaxHeightFraction budget.
     // Applied live — changing it during PIE re-anchors the plate on the next overlay tick.
     UPROPERTY(Config, EditAnywhere, Category="General")
-    ECk_DebugOverlay_PlateAnchor PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopRight;
+    ECk_DebugOverlay_PlateAnchor PlateAnchor = ECk_DebugOverlay_PlateAnchor::TopLeft;
 
     // Width (Slate units) of the main overlay plate. Applied live during PIE.
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="240.0", ClampMax="1600.0"))
     float PlateWidth = 720.0f;
+
+    // Maximum height of the card strip (primary + pinned cards) as a fraction of the
+    // viewport height. Content grows as needed and CLIPS at the cap (the overlay is
+    // hit-test invisible, so a scrollbar would be uninteractable). Applied live.
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0.2", ClampMax="0.95"))
+    float PlateMaxHeightFraction = 0.66f;
 
     // Uniform scale applied to the ECS-diamond marker billboards (screen-space icons,
     // base 28px). Applied live during PIE.
@@ -68,6 +75,23 @@ public:
     // `ck.DebugOverlay.Help`.
     UPROPERTY(Config, EditAnywhere, Category="General")
     bool ShowKeyHints = true;
+
+    // ---- Attributes (focus-card volume control) ----
+
+    // Case-insensitive SUBSTRING patterns matched against attribute label tags
+    // ("Health" catches "Attr.Health.Max"). Meaning depends on the mode bool below.
+    // Empty list = no filtering in EITHER mode. Editable live from the ECS Debugger's
+    // picker-toolbar popover ("Overlay Attributes").
+    UPROPERTY(Config, EditAnywhere, Category="Attributes")
+    TArray<FString> AttributeFilterPatterns;
+
+    // false: show ONLY attributes matching a pattern. true: show all EXCEPT matching.
+    UPROPERTY(Config, EditAnywhere, Category="Attributes")
+    bool bAttributeFilterIsExclusion = false;
+
+    // Whether InAttributeName passes the filter above (all five attribute providers
+    // consult this per row).
+    static auto Get_PassesAttributeFilter(const FString& InAttributeName) -> bool;
 
     // ---- World Tags (B1 — distance-scaled / faded / culled pills) ----
 

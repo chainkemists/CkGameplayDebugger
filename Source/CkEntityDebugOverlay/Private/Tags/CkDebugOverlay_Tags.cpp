@@ -35,6 +35,9 @@ namespace ck_debugoverlay
             { TEXT("FloatAttributes"),   TEXT("fATT") },
             { TEXT("IntegerAttributes"), TEXT("iATT") },
             { TEXT("ByteAttributes"),    TEXT("bATT") },
+            { TEXT("VectorAttributes"),  TEXT("vATT") },
+            { TEXT("RotatorAttributes"), TEXT("rATT") },
+            { TEXT("Crowd"),             TEXT("CRWD") },
             { TEXT("Transform"),         TEXT("T")    },
             { TEXT("EntityInfo"),        TEXT("INFO") },
             // Pre-mapped for providers still to be ported:

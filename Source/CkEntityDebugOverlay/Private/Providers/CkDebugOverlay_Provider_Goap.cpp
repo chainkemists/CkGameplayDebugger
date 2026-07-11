@@ -76,7 +76,7 @@ auto FCk_DebugOverlay_Provider_Goap::Get_FieldTags() const -> TArray<FCk_DebugOv
         { FieldTag_Goal(),   true  },
         { FieldTag_Action(), true  },
         { FieldTag_Plan(),   true  },
-        { FieldTag_Cost(),   false },
+        { FieldTag_Cost(),   true  },   // planner cost at a glance — card is the one-screen NPC debugger
     };
 }
 

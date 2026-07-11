@@ -230,7 +230,7 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail() -> TSharedRef<SWidget>
         .Padding(0.0f, 0.0f, 0.0f, 2.0f)
         [
             SNew(SCheckBox)
-            .Style(FAppStyle::Get(), "ToggleButton")
+            .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
             .ToolTipText(FText::FromString(FString::Printf(TEXT("Show only entities with %s (own or rolled up). Click again to release."), *FeatureId.ToString())))
             .IsChecked_Lambda([this, CapturedId]()
             {
@@ -433,7 +433,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
                 [
                     SNew(SCheckBox)
-                    .Style(FAppStyle::Get(), "ToggleButton")
+                    .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
                     .ToolTipText(FText::FromString(TEXT("Fold internal entities (timers, scene nodes, attributes ...) under their owner with a +N chip")))
                     .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_FoldInternals() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
@@ -452,7 +452,7 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 .AutoWidth()
                 [
                     SNew(SCheckBox)
-                    .Style(FAppStyle::Get(), "ToggleButton")
+                    .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
                     .ToolTipText(FText::FromString(TEXT("Coalesce runs of same-archetype siblings into one \"Name xN\" row")))
                     .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_GroupSiblings() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
                     .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)

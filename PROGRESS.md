@@ -275,6 +275,19 @@ question from §3.3 resolved as unnecessary) + deferred descriptor registration
 implied required — relaxed). Spec: `Ck.Archetype.TypedTryCastAndAutoRegistration`
 over real Transform+Timer fragments.
 
+**Polish pass (post user PIE test, 2026-07-10):** three defects from first hands-on:
+(1) Fold/Group toggles + rail chips rendered as grey squares — `FAppStyle`
+`"ToggleButton"` doesn't exist in this engine, so Slate fell back to a
+default-constructed `FCheckBoxStyle`; replaced with own `CkDebugger.ToggleChip`
+(rounded chip, accent fill+outline when checked). (2) Archetypes cards flickered —
+`ClearChildren()`+recreate every 1 s violated the spec §4 stable-identity contract;
+now a key→widget card cache updates counts in place and only re-slots on key-set/order
+change, with a deterministic sort tie-break (unstable `TArray::Sort` over equal counts
+would otherwise reorder every tick). (3) Cards restyled to the mockup shape:
+`CkDebugger.Card` rounded hover-outline button, tinted icon well, GAME pill, 16 pt
+hero count + "instances", badges row; hero line adds archetype count. Gate:
+build + 5/5 `Ck.EcsDebugger` specs.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

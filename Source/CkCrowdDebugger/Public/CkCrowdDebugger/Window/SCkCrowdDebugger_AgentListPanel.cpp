@@ -7,12 +7,14 @@
 
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "Styling/CoreStyle.h"
@@ -224,9 +226,30 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 		AgentColor = UCk_Utils_CrowdAgent_UE::Get_DebugColor(CrowdAgent);
 	}
 
+	const auto WeakPanel = TWeakPtr<SCkCrowdDebugger_AgentListPanel>(SharedThis(this));
+
 	return SNew(STableRow<ItemPtr>, InTable)
 		.Padding(FMargin(8, 3))
 		[
+			SNew(SBorder)
+			.BorderImage(CkStyle::GetFilledBrush())
+			.Padding(FMargin(0))
+			.BorderBackgroundColor_Lambda([WeakPanel, WeakItem]() -> FSlateColor
+			{
+				const auto Panel = WeakPanel.Pin();
+				const auto Item  = WeakItem.Pin();
+				if (NOT Panel.IsValid() || NOT Item.IsValid() || Panel->_SyncFlashItem.Pin() != Item)
+				{ return FSlateColor(FLinearColor::Transparent); }
+
+				const auto Remaining = Panel->_SyncFlashEndSeconds - FSlateApplication::Get().GetCurrentTime();
+				if (Remaining <= 0.0)
+				{ return FSlateColor(FLinearColor::Transparent); }
+
+				auto Tint = CkStyle::Info();
+				Tint.A = 0.35f * FMath::Clamp(static_cast<float>(Remaining), 0.0f, 1.0f);
+				return FSlateColor(Tint);
+			})
+			[
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 6, 0)
 			[
@@ -257,6 +280,21 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 					return FText::FromString(AgentRowText(*Pinned));
 				})
 			]
+			// Owner NPC/player — who this agent belongs to (muted; detail panel
+			// carries the clickable Owner pill).
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+			[
+				SNew(STextBlock)
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+				.Text_Lambda([WeakItem]() -> FText
+				{
+					const auto Pinned = WeakItem.Pin();
+					if (NOT Pinned.IsValid() || Pinned->OwnerName.IsEmpty())
+					{ return FText::GetEmpty(); }
+					return FText::FromString(FString::Printf(TEXT("→ %s"), *Pinned->OwnerName));
+				})
+			]
 			// Status badge — colour bound to a lambda so live status changes (Idle → Walking →
 			// Failed) repaint without us regenerating the row widget.
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
@@ -276,6 +314,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 					{ return FSlateColor(FLinearColor::Gray); }
 					return FSlateColor(StatusColor(Pinned->Status));
 				})
+			]
 			]
 		];
 }
@@ -332,7 +371,37 @@ auto SCkCrowdDebugger_AgentListPanel::OnContextMenuOpening() -> TSharedPtr<SWidg
 		NSLOCTEXT("CkCrowdAgentList", "CopyEntityTip", "Copy the full entity handle (ID|Version + debug name) to the clipboard."),
 		ck::Format_UE(TEXT("{}"), Item.Handle));
 
+	if (ck::DebugFocus::Get_CanFocus() && ck::IsValid(Item.Handle))
+	{
+		const auto FocusTarget = Item.Handle;
+		MenuBuilder.AddMenuEntry(
+			NSLOCTEXT("CkCrowdAgentList", "FocusInViewport", "Focus in Viewport (F)"),
+			NSLOCTEXT("CkCrowdAgentList", "FocusInViewportTip", "Move the ejected editor camera to frame this agent."),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
+			{
+				ck::DebugFocus::Focus_Entity(FocusTarget);
+			})));
+	}
+
 	return MenuBuilder.MakeWidget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentListPanel::OnKeyDown(
+	const FGeometry& InGeometry,
+	const FKeyEvent& InKeyEvent)
+	-> FReply
+{
+	if (InKeyEvent.GetKey() == EKeys::F && _ViewModel.IsValid())
+	{
+		const auto Selected = _ViewModel->Get_SelectedHandle();
+		if (ck::IsValid(Selected) && ck::DebugFocus::Focus_Entity(Selected))
+		{ return FReply::Handled(); }
+	}
+
+	return SCompoundWidget::OnKeyDown(InGeometry, InKeyEvent);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -353,7 +422,16 @@ auto SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync(
 		const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
 		_ViewModel->Set_SelectedHandle(Item->Handle);
 		if (_ListView.IsValid())
-		{ _ListView->SetSelection(Item, ESelectInfo::Direct); }
+		{
+			_ListView->SetSelection(Item, ESelectInfo::Direct);
+			_ListView->RequestScrollIntoView(Item);
+		}
+
+		// Make the resolve visible: flash the row and one-shot re-center the 2D
+		// map on the agent (re-engages follow mode via the viewport panel).
+		_SyncFlashItem       = Item;
+		_SyncFlashEndSeconds = FSlateApplication::Get().GetCurrentTime() + 1.2;
+		_ViewModel->Request_FrameSelectedAgent();
 		return;
 	}
 	// No lineage match — leave the current selection alone (the broadcast

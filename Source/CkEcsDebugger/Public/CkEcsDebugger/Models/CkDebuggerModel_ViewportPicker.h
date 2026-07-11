@@ -17,6 +17,7 @@ class FCkDebuggerViewportPicker_InputProcessor;
 class UGameViewportClient;
 class APlayerController;
 class UCanvas;
+struct FHitResult;
 
 // Overlay focus card + world tags reused from the On-Screen Overlay (CkEntityDebugOverlay).
 class SCkDebugOverlay_Root;
@@ -119,6 +120,13 @@ public:
     Set_BillboardSize(
         float InValue) -> void;
 
+    auto
+    Get_MeshesFirst() const -> bool;
+
+    auto
+    Set_MeshesFirst(
+        bool InValue) -> void;
+
     // ---- Multicast -------------------------------------------------------
 
     FCkDebugger_OnPickModeChanged OnPickModeChanged;
@@ -199,6 +207,17 @@ private:
         UWorld* InWorld,
         AActor* InHitActor) const -> FCk_Handle;
 
+    // ISM-instance hit → proxy entity: the hit instance's world transform is
+    // matched against the marker snapshot (nearest IsmProxy-carrying entry).
+    auto
+    DoResolveIsmInstanceEntity(
+        const FHitResult& InHit) const -> FCk_Handle;
+
+    // Pickable by rendered geometry (ISM-instance- or direct-actor-backed)?
+    auto
+    DoIsMeshResolvable(
+        const FCk_Handle& InEntity) const -> bool;
+
     // Reuse the On-Screen Overlay's focus card + world tags for the picked/hovered entity.
     // No-op when the overlay subsystem is already showing them (ck.DebugOverlay on).
     auto
@@ -236,6 +255,11 @@ private:
     bool  _IgnoreLocalPawn  = true;
     float _CullRadius       = 5000.0f;
     float _BillboardSizePx  = 32.0f;
+
+    // "Meshes first": diamonds hidden (still gathered/pickable) for entities
+    // pickable via their rendered geometry. Persisted in UCkEcsDebuggerSettings.
+    bool         _MeshesFirst = false;
+    TSet<uint32> _MeshSuppressedNums;
 
     // ---- Cached hover / focus state -------------------------------------
     // _FocusEntity is STICKY: it holds the last validly-hovered entity and is not

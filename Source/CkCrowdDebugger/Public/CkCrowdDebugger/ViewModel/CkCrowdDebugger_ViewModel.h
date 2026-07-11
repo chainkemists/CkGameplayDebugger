@@ -44,6 +44,10 @@ public:
 	auto Get_SelectedHandle() const -> FCk_Handle { return _SelectedHandle; }
 	auto Get_SelectedSnapshot() const -> const FCkCrowdDebugger_AgentSnapshot*;
 
+	// One-shot "center the 2D map on the selected agent" request (e.g. a
+	// cross-debugger sync resolved to an agent). The viewport panel listens.
+	auto Request_FrameSelectedAgent() -> void { OnFrameSelectedAgentRequested.Broadcast(); }
+
 	// All agents
 	auto Get_AllAgents() const -> const TArray<FCkCrowdDebugger_AgentSnapshot>&
 	{ return _DataCollector.Get_AllAgents(); }
@@ -61,6 +65,13 @@ public:
 	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }
 	auto Get_ViewYawValid() const -> bool { return _DataCollector.Get_ViewYawValid(); }
 
+	// View camera + player pawn pose (2D-map player marker)
+	auto Get_ViewCameraPosition() const -> FVector { return _DataCollector.Get_ViewCameraPosition(); }
+	auto Get_ViewCameraValid() const -> bool { return _DataCollector.Get_ViewCameraValid(); }
+	auto Get_PlayerPawnPosition() const -> FVector { return _DataCollector.Get_PlayerPawnPosition(); }
+	auto Get_PlayerPawnYawDegrees() const -> float { return _DataCollector.Get_PlayerPawnYawDegrees(); }
+	auto Get_PlayerPawnValid() const -> bool { return _DataCollector.Get_PlayerPawnValid(); }
+
 	// Pause
 	auto Set_Paused(bool InPaused) -> void;
 	auto Get_Paused() const -> bool { return _IsPaused; }
@@ -75,6 +86,7 @@ public:
 	FOnCrowd_SelectedAgentChanged OnSelectedAgentChanged;
 	FOnCrowd_PausedChanged        OnPausedChanged;
 	FOnCrowd_ViewModeChanged      OnViewModeChanged;
+	FSimpleMulticastDelegate      OnFrameSelectedAgentRequested;
 
 private:
 	FCkCrowdDebugger_DataCollector _DataCollector;

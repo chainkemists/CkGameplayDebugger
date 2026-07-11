@@ -48,6 +48,13 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 {
 	_ViewModel = InArgs._ViewModel;
 
+	if (_ViewModel.IsValid())
+	{
+		// Cross-debugger sync resolves to an agent → one-shot re-center on it.
+		_OnFrameRequestedHandle = _ViewModel->OnFrameSelectedAgentRequested.AddSP(
+			SharedThis(this), &SCkCrowdDebugger_ViewportPanel::FrameSelectedAgent);
+	}
+
 	ChildSlot
 	[
 		SNew(SBorder)
@@ -69,7 +76,7 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(TEXT("wheel zoom · drag pan · click select · F follow · Home fit navmesh")))
+					.Text(FText::FromString(TEXT("wheel zoom · drag pan · LMB select · RMB command · F follow · Home fit")))
 					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
 				]
@@ -80,6 +87,16 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 			]
 		]
 	];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+SCkCrowdDebugger_ViewportPanel::~SCkCrowdDebugger_ViewportPanel()
+{
+	if (_ViewModel.IsValid() && _OnFrameRequestedHandle.IsValid())
+	{
+		_ViewModel->OnFrameSelectedAgentRequested.Remove(_OnFrameRequestedHandle);
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -343,6 +360,71 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 			FillBrush, ESlateDrawEffect::None, Color);
 	}
 
+	// --- Player marker: pawn chevron + view-camera wedge --------------------------------------------
+	// The user's constant orientation anchor — without it, "where are the NPCs
+	// relative to ME" is unanswerable from the map.
+	{
+		const auto MarkerLayer = RetLayerId + 4;
+
+		// World direction (yaw degrees) -> screen direction under the map's camera-aligned
+		// rotation (screen up = view forward; screen Y grows downward).
+		const auto YawToScreenDir = [&](float InYawDegrees) -> FVector2D
+		{
+			const auto YawRad = FMath::DegreesToRadians(static_cast<double>(InYawDegrees));
+			const auto Dx = FMath::Cos(YawRad);
+			const auto Dy = FMath::Sin(YawRad);
+			const auto ViewX = -Dx * SinY + Dy * CosY;
+			const auto ViewY =  Dx * CosY + Dy * SinY;
+			return FVector2D(ViewX, -ViewY).GetSafeNormal();
+		};
+
+		if (_ViewModel->Get_PlayerPawnValid())
+		{
+			const auto PawnPos   = _ViewModel->Get_PlayerPawnPosition();
+			const auto Screen    = WorldToScreen(PawnPos.X, PawnPos.Y);
+			const auto Dir       = YawToScreenDir(_ViewModel->Get_PlayerPawnYawDegrees());
+			const auto Perp      = FVector2D(-Dir.Y, Dir.X);
+			const auto PlayerTint = CkStyle::Accent();
+
+			// Chevron: tip forward, notched tail — reads as "player, facing this way".
+			auto Chevron = TArray<FVector2D>{
+				Screen + Dir * 12.0,
+				Screen - Dir * 7.0 + Perp * 8.0,
+				Screen - Dir * 3.0,
+				Screen - Dir * 7.0 - Perp * 8.0,
+				Screen + Dir * 12.0};
+			FSlateDrawElement::MakeLines(
+				OutDrawElements, MarkerLayer, AllottedGeometry.ToPaintGeometry(),
+				Chevron, ESlateDrawEffect::None, PlayerTint, true, 2.5f);
+		}
+
+		// While ejected the flying editor camera is somewhere else entirely — mark it
+		// with a small FOV wedge so the user can tell map-space from camera-space.
+		if (_ViewModel->Get_ViewCameraValid() && _ViewModel->Get_ViewYawValid())
+		{
+			const auto CamPos  = _ViewModel->Get_ViewCameraPosition();
+			const auto Screen  = WorldToScreen(CamPos.X, CamPos.Y);
+			const auto Dir     = YawToScreenDir(_ViewModel->Get_ViewYawDegrees());
+			const auto CamTint = CkStyle::OverlayOf(CkStyle::TextDim(), 0.9f);
+
+			const auto WedgeHalfAngleRad = FMath::DegreesToRadians(30.0);
+			const auto RotateDir = [&](double InRad) -> FVector2D
+			{
+				const auto C = FMath::Cos(InRad);
+				const auto S = FMath::Sin(InRad);
+				return FVector2D(Dir.X * C - Dir.Y * S, Dir.X * S + Dir.Y * C);
+			};
+
+			auto Wedge = TArray<FVector2D>{
+				Screen + RotateDir(-WedgeHalfAngleRad) * 18.0,
+				Screen,
+				Screen + RotateDir(WedgeHalfAngleRad) * 18.0};
+			FSlateDrawElement::MakeLines(
+				OutDrawElements, MarkerLayer, AllottedGeometry.ToPaintGeometry(),
+				Wedge, ESlateDrawEffect::None, CamTint, true, 1.5f);
+		}
+	}
+
 	// --- Selected-agent orbit-diagnosis overlay (the 2D twin of the in-world rings) -----------------
 	const auto* Sel = _ViewModel->Get_SelectedSnapshot();
 	if (Sel != nullptr)
@@ -455,8 +537,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonDown(
 {
 	const auto Button = InMouseEvent.GetEffectingButton();
 
-	// Right/middle drag pans (and drops follow mode so the pan sticks).
-	if (Button == EKeys::RightMouseButton || Button == EKeys::MiddleMouseButton)
+	// Middle drag pans immediately (and drops follow mode so the pan sticks).
+	if (Button == EKeys::MiddleMouseButton)
 	{
 		const FVector2D Local = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
 		// Hand off the current follow transform to the manual zoom/pan so panning starts from here.
@@ -470,6 +552,17 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonDown(
 		_IsPanning = true;
 		_LastDragX = Local.X;
 		_LastDragY = Local.Y;
+		return FReply::Handled().CaptureMouse(SharedThis(this)).SetUserFocus(SharedThis(this), EFocusCause::Mouse);
+	}
+
+	// RMB defers: pan engages only past the drag threshold (OnMouseMove); an
+	// under-threshold release commands the selected agent to the point (RTS-style).
+	if (Button == EKeys::RightMouseButton)
+	{
+		const FVector2D Local = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+		_RmbDown  = true;
+		_RmbDownX = Local.X;
+		_RmbDownY = Local.Y;
 		return FReply::Handled().CaptureMouse(SharedThis(this)).SetUserFocus(SharedThis(this), EFocusCause::Mouse);
 	}
 
@@ -499,18 +592,6 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonDown(
 	if (ck::IsValid(Best))
 	{
 		_ViewModel->Set_SelectedHandle(Best);
-		return Reply;
-	}
-
-	// No dot hit: if the selected agent is under debug override, set its goal at the click point.
-	auto SelectedHandle = _ViewModel->Get_SelectedHandle();
-	auto Agent = UCk_Utils_CrowdAgent_UE::Cast(SelectedHandle);
-	const auto* Sel = _ViewModel->Get_SelectedSnapshot();
-	if (ck::IsValid(Agent) && Sel != nullptr && UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent))
-	{
-		const auto World = ScreenToWorld(Local.X, Local.Y);
-		auto MoveReq = FCk_Request_CrowdAgent_MoveTo(FVector(World.X, World.Y, Sel->Position.Z));
-		UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq);
 	}
 
 	return Reply;
@@ -524,11 +605,41 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonUp(
 	-> FReply
 {
 	const auto Button = InMouseEvent.GetEffectingButton();
-	if ((Button == EKeys::RightMouseButton || Button == EKeys::MiddleMouseButton) && _IsPanning)
+
+	if (Button == EKeys::RightMouseButton && _RmbDown)
+	{
+		const auto WasPanning = _IsPanning;
+		_RmbDown   = false;
+		_IsPanning = false;
+
+		// Under-threshold release = command. Auto-arms the debug override so no
+		// separate "Take Control" click is needed.
+		if (NOT WasPanning && _ViewModel.IsValid() && _XformValid)
+		{
+			const FVector2D Local = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+			auto SelectedHandle = _ViewModel->Get_SelectedHandle();
+			auto Agent = UCk_Utils_CrowdAgent_UE::Cast(SelectedHandle);
+			const auto* Sel = _ViewModel->Get_SelectedSnapshot();
+			if (ck::IsValid(Agent) && Sel != nullptr)
+			{
+				if (NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent))
+				{ UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, true); }
+
+				const auto World = ScreenToWorld(Local.X, Local.Y);
+				auto MoveReq = FCk_Request_CrowdAgent_MoveTo(FVector(World.X, World.Y, Sel->Position.Z));
+				UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq);
+			}
+		}
+
+		return FReply::Handled().ReleaseMouseCapture();
+	}
+
+	if (Button == EKeys::MiddleMouseButton && _IsPanning)
 	{
 		_IsPanning = false;
 		return FReply::Handled().ReleaseMouseCapture();
 	}
+
 	return FReply::Unhandled();
 }
 
@@ -539,10 +650,32 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseMove(
 	const FPointerEvent& InMouseEvent)
 	-> FReply
 {
+	const FVector2D Local = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
+
+	// Engage RMB pan once the cursor leaves the click-vs-drag threshold.
+	if (_RmbDown && NOT _IsPanning)
+	{
+		const auto DistSq = FVector2D::DistSquared(Local, FVector2D(_RmbDownX, _RmbDownY));
+		const auto Threshold = FSlateApplication::Get().GetDragTriggerDistance();
+		if (DistSq > Threshold * Threshold)
+		{
+			// Hand off the current follow transform so panning starts from here.
+			if (_AutoFrame)
+			{
+				_Zoom = _XfZoom;
+				_PanX = _XfPanX;
+				_PanY = _XfPanY;
+				_AutoFrame = false;
+			}
+			_IsPanning = true;
+			_LastDragX = _RmbDownX;
+			_LastDragY = _RmbDownY;
+		}
+	}
+
 	if (NOT _IsPanning)
 	{ return FReply::Unhandled(); }
 
-	const FVector2D Local = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
 	_PanX += Local.X - _LastDragX;
 	_PanY += Local.Y - _LastDragY;
 	_LastDragX = Local.X;

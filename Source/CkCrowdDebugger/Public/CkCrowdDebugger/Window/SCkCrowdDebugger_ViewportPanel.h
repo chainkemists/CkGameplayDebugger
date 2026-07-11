@@ -24,6 +24,7 @@ public:
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
+	virtual ~SCkCrowdDebugger_ViewportPanel() override;
 
 	virtual auto OnPaint(
 		const FPaintArgs& Args,
@@ -53,6 +54,7 @@ private:
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
+	FDelegateHandle _OnFrameRequestedHandle;
 
 	// User view: zoom multiplier + screen-space pan offset on top of the auto-fit. Home resets to 1/0.
 	double _Zoom = 1.0;
@@ -61,6 +63,12 @@ private:
 	bool   _IsPanning = false;
 	double _LastDragX = 0.0;
 	double _LastDragY = 0.0;
+
+	// RMB is command-or-pan: pan only engages past the drag threshold; an
+	// under-threshold release commands the selected agent to the point (RTS-style).
+	bool   _RmbDown = false;
+	double _RmbDownX = 0.0;
+	double _RmbDownY = 0.0;
 
 	// Follow mode (default): keep the selected agent centered in a ~_FollowWindowCm window. Wheel
 	// resizes the window; pan/Home drop to manual; F re-engages.

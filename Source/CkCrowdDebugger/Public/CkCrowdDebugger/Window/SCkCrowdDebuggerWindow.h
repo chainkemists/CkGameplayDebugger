@@ -8,6 +8,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkCrowdDebugger_ViewModel;
+class FCkCrowdDebugger_WorldCommandProcessor;
 
 class SCkCrowdDebugger_NavmeshStatusPanel;
 class SCkCrowdDebugger_AgentListPanel;
@@ -42,6 +43,9 @@ private:
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
 	TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
+
+	// In-world RMB move command (ejected only) — registered for the window's lifetime.
+	TSharedPtr<FCkCrowdDebugger_WorldCommandProcessor> _WorldCommandProcessor;
 
 	TSharedPtr<SCkCrowdDebugger_NavmeshStatusPanel> _NavmeshStatusPanel;
 	TSharedPtr<SCkCrowdDebugger_AgentListPanel>     _AgentListPanel;

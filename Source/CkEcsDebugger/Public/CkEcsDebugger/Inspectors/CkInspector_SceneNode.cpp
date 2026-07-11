@@ -233,13 +233,19 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         }
     }
 
-    // Debug draw: world gizmo for this SceneNode, plus line to parent's world position.
+    // Debug draw: world gizmo for this SceneNode, plus one for its parent — persistent
+    // PMG triads instead of per-tick DrawDebugTransformGizmo (gate-capped one-frame
+    // lines blink; see FCkDebug_PmgGizmoSet).
     if (NOT UCk_Utils_Transform_UE::Has(Entity))
-    { return; }
+    {
+        _Gizmos.Remove(Entity);
+        return;
+    }
 
     const auto NodeWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
-    UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, NodeWorld);
+    _Gizmos.UpdateGizmo(EntityWorld, Entity, NodeWorld);
 
+    auto ParentGizmoKey = FCk_Handle{};
     auto Mut = Entity;
     const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
     if (ck::IsValid(Node))
@@ -248,9 +254,16 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         if (ck::IsValid(Parent) && UCk_Utils_Transform_UE::Has(FCk_Handle(Parent)))
         {
             const auto ParentWorld = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(FCk_Handle(Parent));
-            UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, ParentWorld);
+            ParentGizmoKey = FCk_Handle(Parent);
+            _Gizmos.UpdateGizmo(EntityWorld, ParentGizmoKey, ParentWorld);
         }
     }
+
+    if (_LastParentGizmoKey != ParentGizmoKey && ck::IsValid(_LastParentGizmoKey))
+    {
+        _Gizmos.Remove(_LastParentGizmoKey);
+    }
+    _LastParentGizmoKey = ParentGizmoKey;
 
     const auto TextLocation = NodeWorld.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
     UCk_Utils_DebugDraw_UE::DrawDebugString(
@@ -259,4 +272,10 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         Entity.ToString(),
         FLinearColor::White,
         0.0f);
+}
+
+auto FCkInspector_SceneNode::OnDeactivated() -> void
+{
+    _Gizmos.Reset();
+    _LastParentGizmoKey = FCk_Handle{};
 }

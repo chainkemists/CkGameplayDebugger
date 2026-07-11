@@ -446,6 +446,38 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 ]
             ]
 
+            // ---- Meshes First toggle ----
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
+            [
+                SNew(SCheckBox)
+                .IsChecked_Lambda([this]() -> ECheckBoxState
+                {
+                    return ViewportPicker.IsValid() && ViewportPicker->Get_MeshesFirst()
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                {
+                    if (ViewportPicker.IsValid())
+                    {
+                        ViewportPicker->Set_MeshesFirst(InState == ECheckBoxState::Checked);
+                    }
+                })
+                .ToolTipText(FText::FromString(TEXT(
+                    "Hide the diamond billboards of entities that are pickable by their\n"
+                    "rendered geometry (ISM-instance- or actor-backed) — click the mesh\n"
+                    "itself instead; hover outlines its bounds. Diamonds remain only on\n"
+                    "meshless entities. Everything stays pickable.")))
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Meshes First")))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
+                ]
+            ]
+
             // ---- Cull Radius spinbox ----
             + SVerticalBox::Slot()
             .AutoHeight()

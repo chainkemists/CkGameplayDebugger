@@ -58,7 +58,10 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
 auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
     if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
-    { return; }
+    {
+        _Gizmos.Remove(Entity);
+        return;
+    }
 
     const auto& Transform = UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(Entity);
     const auto EntityWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Entity);
@@ -66,7 +69,9 @@ auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -
     if (ck::Is_NOT_Valid(EntityWorld))
     { return; }
 
-    UCk_Utils_DebugDraw_UE::DrawDebugTransformGizmo(EntityWorld, Transform);
+    // Persistent PMG triad instead of per-tick DrawDebugTransformGizmo — one-frame
+    // debug lines blink whenever the inspector refresh gate caps below frame rate.
+    _Gizmos.UpdateGizmo(EntityWorld, Entity, Transform);
 
     const auto TextLocation = Transform.GetLocation() + FVector(0.0f, 0.0f, 50.0f);
     UCk_Utils_DebugDraw_UE::DrawDebugString(
@@ -75,4 +80,9 @@ auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -
         Entity.ToString(),
         FLinearColor::White,
         0.0f);
+}
+
+auto FCkInspector_Transform::OnDeactivated() -> void
+{
+    _Gizmos.Reset();
 }

@@ -2,9 +2,14 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
+#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
+
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
@@ -19,6 +24,7 @@
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
 
@@ -82,16 +88,17 @@ auto
 		{
 			_ViewYawDegrees = ViewportClient->GetViewRotation().Yaw;
 			_ViewYawValid = true;
+			_ViewCameraPosition = ViewportClient->GetViewLocation();
+			_ViewCameraValid = true;
 			GotView = true;
 		}
 	}
 #endif
 
-	// Possessed-play path: the local player's CURRENT controller (not GetFirstPlayerController, which
-	// can return a stale PC).
-	if (NOT GotView)
+	// Local player's CURRENT controller (not GetFirstPlayerController, which can
+	// return a stale PC) — view yaw source while possessed, pawn pose always.
+	auto* ViewPC = static_cast<APlayerController*>(nullptr);
 	{
-		auto* ViewPC = static_cast<APlayerController*>(nullptr);
 		if (GEngine != nullptr)
 		{
 			if (auto* LocalPlayer = GEngine->GetFirstGamePlayer(InWorld))
@@ -99,14 +106,31 @@ auto
 		}
 		if (ViewPC == nullptr)
 		{ ViewPC = InWorld->GetFirstPlayerController(); }
+	}
 
-		if (ViewPC != nullptr)
+	if (NOT GotView && ViewPC != nullptr)
+	{
+		auto ViewLocation = FVector::ZeroVector;
+		auto ViewRotation = FRotator::ZeroRotator;
+		ViewPC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+		_ViewYawDegrees = ViewRotation.Yaw;
+		_ViewYawValid = true;
+		_ViewCameraPosition = ViewLocation;
+		_ViewCameraValid = true;
+	}
+
+	// Player pawn pose — the pawn keeps existing while ejected, so the map can
+	// always show where the player body is.
+	_PlayerPawnValid  = false;
+	_PlayerPawnEntity = FCk_Handle{};
+	if (ViewPC != nullptr)
+	{
+		if (auto* Pawn = ViewPC->GetPawn().Get(); IsValid(Pawn))
 		{
-			auto ViewLocation = FVector::ZeroVector;
-			auto ViewRotation = FRotator::ZeroRotator;
-			ViewPC->GetPlayerViewPoint(ViewLocation, ViewRotation);
-			_ViewYawDegrees = ViewRotation.Yaw;
-			_ViewYawValid = true;
+			_PlayerPawnPosition   = Pawn->GetActorLocation();
+			_PlayerPawnYawDegrees = Pawn->GetActorRotation().Yaw;
+			_PlayerPawnValid      = true;
+			_PlayerPawnEntity     = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn);
 		}
 	}
 
@@ -255,6 +279,15 @@ auto
 	auto Snapshot = FCkCrowdDebugger_AgentSnapshot{};
 	Snapshot.Handle = InHandle;
 
+	// Owner NPC/player (lifetime owner of the agent feature entity) — pre-sampled
+	// so list rows can show "who this is" without walking ECS per paint.
+	Snapshot.OwnerHandle = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InHandle);
+	if (ck::IsValid(Snapshot.OwnerHandle))
+	{
+		Snapshot.OwnerName = ck::DebugNameClean::Get_CleanName(
+			UCk_Utils_Handle_UE::Get_DebugName(Snapshot.OwnerHandle).ToString());
+	}
+
 	if (InHandle.Has<ck::FFragment_CrowdAgent_Params>())
 	{
 		const auto& Params = InHandle.Get<ck::FFragment_CrowdAgent_Params>();
@@ -352,6 +385,14 @@ auto
 	else if (InHandle.Has<ck::FTag_CrowdAgent_Idle>())
 	{
 		Snapshot.Status = ECkCrowdDebugger_AgentStatus::Idle;
+	}
+
+	// The player's own crowd agent (if the possessed pawn is ECS-bridged and carries
+	// one) reads as PlayerProxy, not as an AI behavior state.
+	if (ck::IsValid(_PlayerPawnEntity) &&
+		ck::DebugSelectionSync::Is_SameLineage(InHandle, _PlayerPawnEntity))
+	{
+		Snapshot.Status = ECkCrowdDebugger_AgentStatus::PlayerProxy;
 	}
 
 	_Agents.Add(MoveTemp(Snapshot));

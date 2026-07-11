@@ -35,6 +35,7 @@
 
 // Double-tap EcsDebuggerFocusKey → open the focused entity in the CK ECS Debugger.
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "Engine/Engine.h"
@@ -56,25 +57,8 @@ namespace
     // NOTE: the `ck.DebugOverlay.NearPlates` cvar now lives in CkDebugOverlay_Present.cpp
     // (alongside Build_WorldTags, its only reader). The overlay popover reads it by name.
 
-#if WITH_EDITOR
-    // Ejected-PIE discriminator — mirrors FCkDebuggerModel_ViewportPicker:
-    // GEditor->GetActiveViewport() is the PIE game viewport while possessed and the
-    // level editor viewport itself while ejected. Other signals don't reliably flip.
-    auto TryGet_LevelEditorViewport() -> FEditorViewportClient*
-    {
-        if (GEditor == nullptr || GEditor->PlayWorld == nullptr)
-        { return nullptr; }
-
-        auto* LEVC = GCurrentLevelEditingViewportClient;
-        if (LEVC == nullptr || LEVC->Viewport == nullptr)
-        { return nullptr; }
-
-        if (GEditor->GetActiveViewport() != LEVC->Viewport)
-        { return nullptr; }
-
-        return LEVC;
-    }
-#endif
+    // Ejected-PIE discrimination lives in ck::DebugViewportView (CkDebuggerCommon),
+    // shared with the ECS viewport picker and the focus-entity helper.
 
     // Locally possessed pawn (+ controller + attached actors) — their entities get no
     // marker billboard, otherwise a marker sits permanently at screen center. While
@@ -442,7 +426,7 @@ auto
 
     _ViewpointIsEjected = false;
 #if WITH_EDITOR
-    if (auto* LEVC = TryGet_LevelEditorViewport())
+    if (auto* LEVC = ck::DebugViewportView::TryGet_LevelEditorViewport())
     {
         Viewpoint.Location  = LEVC->GetViewLocation();
         Viewpoint.Forward   = LEVC->GetViewRotation().Vector();

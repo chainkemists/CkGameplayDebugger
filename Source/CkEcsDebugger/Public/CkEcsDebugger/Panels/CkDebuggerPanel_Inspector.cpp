@@ -1,20 +1,25 @@
 #include "CkDebuggerPanel_Inspector.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 
+#include "Algo/Reverse.h"
+
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Input/SButton.h"
@@ -84,6 +89,12 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
         .Padding(0.0f)
         [
             SNew(SVerticalBox)
+
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            [
+                SAssignNew(_BreadcrumbContainer, SBox)
+            ]
 
             + SVerticalBox::Slot()
             .AutoHeight()
@@ -179,6 +190,8 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
         _ModeToggleContainer->SetContent(SNullWidget::NullWidget);
     }
 
+    RebuildBreadcrumb();
+
     if (NOT SelectionModel.IsValid())
     {
         _CurrentInspectedEntities.Empty();
@@ -245,6 +258,85 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
         [
             Build_SingleEntityInspector(Entity)
         ];
+}
+
+// ============================================================================
+// RebuildBreadcrumb
+// ============================================================================
+
+auto SCkDebuggerPanel_Inspector::RebuildBreadcrumb() -> void
+{
+    if (NOT _BreadcrumbContainer.IsValid())
+    { return; }
+
+    _BreadcrumbContainer->SetContent(SNullWidget::NullWidget);
+
+    if (NOT SelectionModel.IsValid())
+    { return; }
+
+    const auto Primary = SelectionModel->Get_PrimarySelection();
+    if (ck::Is_NOT_Valid(Primary) || UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Primary))
+    { return; }
+
+    // Owner chain, root-first, transient root omitted. Depth-capped like the
+    // selection-sync lineage walk.
+    constexpr auto MaxDepth = 8;
+    auto Chain = TArray<FCk_Handle>{};
+    auto Cursor = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Primary);
+    for (auto Depth = 0; Depth < MaxDepth && ck::IsValid(Cursor); ++Depth)
+    {
+        if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(Cursor))
+        { break; }
+
+        Chain.Add(Cursor);
+        Cursor = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Cursor);
+    }
+
+    // Top-level entity — an ancestry strip would be noise.
+    if (Chain.IsEmpty())
+    { return; }
+
+    Algo::Reverse(Chain);
+
+    const auto Crumbs = SNew(SWrapBox).UseAllottedSize(true);
+    for (const auto& Ancestor : Chain)
+    {
+        Crumbs->AddSlot()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 1.0f))
+            [
+                SNew(SCkDebug_EntityRef)
+                .ShowName(true)
+                .Entity(Ancestor)
+            ];
+
+        Crumbs->AddSlot()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(4.0f, 1.0f))
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("›")))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+            ];
+    }
+
+    // Tail: the selected entity itself, muted (it's already the inspector's subject).
+    Crumbs->AddSlot()
+        .VAlign(VAlign_Center)
+        .Padding(FMargin(0.0f, 1.0f))
+        [
+            SNew(STextBlock)
+            .Text(Format_EntityDisplayName(Primary))
+            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+        ];
+
+    _BreadcrumbContainer->SetContent(
+        SNew(SBorder)
+        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
+        .Padding(FMargin(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small))
+        [
+            Crumbs
+        ]);
 }
 
 // ============================================================================

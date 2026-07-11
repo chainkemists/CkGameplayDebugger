@@ -22,7 +22,8 @@ public class CkDebuggerCommon : CkModuleRules
             "CkEcs",       // FCk_Handle in SCkDebug_EntityRef + the cross-debugger entity navigator
             "CkEcsExt",    // FFragment_Transform view in the shared entity-marker preview
             "CkEditorTools", // Shared CkStyle:: tokens + UCk_Style_UserSettings_UE (migrated from this module)
-            "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview
+            "CkIsmRenderer", // ISM-proxy mesh bounds in the shared focus-entity helper (CkDebug_Focus)
+            "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview + gizmo set
             "CkSettings",
         });
 

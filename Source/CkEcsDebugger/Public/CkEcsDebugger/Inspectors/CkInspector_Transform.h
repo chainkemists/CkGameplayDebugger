@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkDebuggerCommon/Markers/CkDebug_PmgGizmoSet.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 
 class FCkInspector_Transform : public ICkDebuggerComponentInspector_Base
@@ -13,4 +15,10 @@ public:
     auto Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget> override;
     auto Get_SortPriority() const -> int32 override { return 10; }
     auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void override;
+    auto OnDeactivated() -> void override;
+
+private:
+    // Persistent PMG axis triad on the inspected entity — created on first Tick,
+    // moved thereafter, destroyed on deactivation (selection change / panel teardown).
+    FCkDebug_PmgGizmoSet _Gizmos;
 };

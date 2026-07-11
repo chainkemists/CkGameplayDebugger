@@ -16,7 +16,29 @@ class CKECSDEBUGGER_API UCkEcsDebuggerSettings : public UDeveloperSettings
     GENERATED_BODY()
 
 public:
+    UCkEcsDebuggerSettings()
+    {
+        // Seed per the redesign spec §3.1. An ini that already serializes the set
+        // overrides these. CueRelay is listed for intent but has no registered feature
+        // flag (it is an actor, not a fragment-marked feature) — it only participates
+        // once a marker exists.
+        InternalFeatureIds = {
+            TEXT("Timer"), TEXT("SceneNode"), TEXT("Probe"),
+            TEXT("FloatAttribute"), TEXT("ByteAttribute"), TEXT("IntegerAttribute"),
+            TEXT("CueRelay"),
+        };
+    }
+
     virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
+
+    // Feature ids whose single-feature entities classify as INTERNAL (fold/rollup
+    // candidates, redesign spec §3.1): an entity is internal iff its own features are
+    // exactly one of these plus at most Transform/Label. Ids match the debugger-wide
+    // feature-flag ids (ck::ecs_debugger_feature_flags::RegisterAll).
+    UPROPERTY(Config, EditAnywhere, Category = "Entity Tree Classification",
+        meta = (DisplayName = "Internal Feature Ids",
+            ToolTip = "Entities whose only non-structural feature is one of these are classified INTERNAL — foldable under their owner with a rolled-up badge count. Extend with additional feature-flag ids to fold more entity types."))
+    TSet<FName> InternalFeatureIds;
 
     // Substring tokens whose entities should be hidden from the ECS entity tree.
     // Each token matches PARTIALLY against (a) inspector IDs — "Transform"

@@ -305,6 +305,26 @@ ancestors (`IsNarrowingMatch` on tree nodes, also applies to Filter queries).
 features without registered flags (Message, CueRelay, EntityScript, relays) still
 have no glyph — needs marker-fragment flags per feature (Phase 1 tracker list).
 
+**Polish pass 4 (third PIE round, 2026-07-11):** (1) Overview became the mockup
+dashboard: hero count + live 60-sample sparkline (new volatile SLeafWidget
+`SCkEcsDebugger_Sparkline`), population-by-family bars (descriptor gained `_Family`
+in CkEcs; internals/dominant-feature/Other for unregistered), top-12 archetype cards
+with per-card sparklines + family labels, singletons list with EntityRef pills; the
+hierarchy graph moved to a "Graph" tab; Activity tab gained the unseen-count badge
+(`Get_BadgeCount` on the page interface). Aggregation extracted to shared
+`Presentation/CkEcsDebugger_ArchetypeAggregation` (keys/glyphs/colors/family resolved
+once for both pages); arch-token toggle helpers moved into the query namespace.
+(2) Selection highlight was unreadable (engine TableView.Row saturated fill) —
+own `CkDebugger.TableView.Row` style with translucent accent selection, applied to
+tree + activity rows. (3) Icons got color: 16-hue curated palette, stable
+FCrc-hash-assigned per archetype key; registered descriptors' explicit `_Color`
+wins; feature glyphs keep feature hues. (4) Rail: 10 new feature flags (Objective,
+Vfx=VfxCue, Camera, Goap=Planner, Eqs=QueryState, IsmProxy, IskmProxy, ActorBridge=
+OwningActor, Tween, EntityCollection — 24 bits total), 4 new glyphs
+(Goap/Eqs/Tween/EntityCollection), chips clustered under tiny group labels
+(Core/Attributes/AI/Gameplay/Rendering) in a scrollable rail. Known gap: Inventory
+has no single always-present marker fragment — flag deferred.
+
 **Polish pass 3 (2026-07-10):** (1) Archetype grid density is user-adjustable:
 `ArchetypeGridColumns` setting (persisted, Project Settings → Ck ECS Debugger) +
 2..6 chips in the page header; SWrapBox → SUniformGridPanel with explicit

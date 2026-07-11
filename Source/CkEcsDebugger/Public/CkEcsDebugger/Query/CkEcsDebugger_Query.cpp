@@ -242,6 +242,75 @@ auto
 
 auto
     ck::ecs_debugger_query::
+    Get_ArchTokens(
+        const FString& InFilter)
+    -> TSet<FString>
+{
+    auto Result = TSet<FString>{};
+
+    for (const auto& Term : Parse(InFilter).Terms)
+    {
+        if (Term.Type == ETermType::Arch)
+        { Result.Add(Term.Value); }   // Parse lowercases values
+    }
+
+    return Result;
+}
+
+auto
+    ck::ecs_debugger_query::
+    Toggle_ArchToken(
+        const FString& InFilter,
+        const FString& InToken,
+        bool InEnable)
+    -> FString
+{
+    const auto NeedsQuotes = InToken.Contains(TEXT(" "));
+    const auto QuotedForm = FString::Printf(TEXT("arch:\"%s\""), *InToken);
+    const auto BareForm = FString::Printf(TEXT("arch:%s"), *InToken);
+
+    auto NewFilter = InFilter;
+
+    // Remove an existing occurrence — quoted form is unambiguous; the bare form only
+    // when it ends at a word boundary.
+    NewFilter = NewFilter.Replace(*QuotedForm, TEXT(""), ESearchCase::IgnoreCase);
+    if (NOT NeedsQuotes)
+    {
+        auto SearchFrom = 0;
+        while (true)
+        {
+            const auto FoundIndex = NewFilter.Find(BareForm, ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
+            if (FoundIndex == INDEX_NONE)
+            { break; }
+
+            const auto EndIndex = FoundIndex + BareForm.Len();
+            if (EndIndex >= NewFilter.Len() || FChar::IsWhitespace(NewFilter[EndIndex]))
+            {
+                NewFilter.RemoveAt(FoundIndex, BareForm.Len());
+                continue;
+            }
+            SearchFrom = EndIndex;
+        }
+    }
+
+    if (InEnable)
+    {
+        NewFilter.TrimStartAndEndInline();
+        NewFilter += NewFilter.IsEmpty() ? FString{} : FString{TEXT(" ")};
+        NewFilter += NeedsQuotes ? QuotedForm : BareForm;
+    }
+
+    while (NewFilter.Contains(TEXT("  ")))
+    { NewFilter = NewFilter.Replace(TEXT("  "), TEXT(" ")); }
+    NewFilter.TrimStartAndEndInline();
+
+    return NewFilter;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::ecs_debugger_query::
     Get_InferredArchetypeKey(
         const FString& InCleanName,
         uint64 InOwnBits)

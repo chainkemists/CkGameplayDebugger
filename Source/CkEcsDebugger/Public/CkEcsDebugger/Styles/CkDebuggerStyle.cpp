@@ -6,6 +6,7 @@
 
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Styling/AppStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
@@ -141,6 +142,18 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
     // Tintable icon backdrop for cards — white so BorderBackgroundColor carries the tint.
     InStyle->Set("CkDebugger.Card.IconWell", new FSlateRoundedBoxBrush(
         FLinearColor::White, 4.0f));
+
+    // List/tree rows: the engine's selection brush is a saturated fill that drowns row
+    // content — replace the four selection states with a translucent accent so text,
+    // icons, and pills stay readable on a selected row.
+    {
+        auto RowStyle = FAppStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row");
+        RowStyle.SetActiveBrush(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.22f), 3.0f});
+        RowStyle.SetActiveHoveredBrush(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.30f), 3.0f});
+        RowStyle.SetInactiveBrush(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.14f), 3.0f});
+        RowStyle.SetInactiveHoveredBrush(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.20f), 3.0f});
+        InStyle->Set("CkDebugger.TableView.Row", RowStyle);
+    }
 }
 
 auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void

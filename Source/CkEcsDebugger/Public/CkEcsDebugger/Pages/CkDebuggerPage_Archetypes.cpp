@@ -1,10 +1,6 @@
 #include "CkDebuggerPage_Archetypes.h"
 
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
-#include "CkEcs/Archetype/CkArchetype_Registry.h"
-#include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
-#include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
@@ -165,13 +161,7 @@ auto FCkDebuggerPage_Archetypes::RefreshActiveArchTokens() -> void
     { return; }
 
     LastSeenFilterText = FilterText;
-    ActiveArchTokens.Reset();
-
-    for (const auto& Term : ck::ecs_debugger_query::Parse(FilterText).Terms)
-    {
-        if (Term.Type == ck::ecs_debugger_query::ETermType::Arch)
-        { ActiveArchTokens.Add(Term.Value); }   // Parse lowercases values
-    }
+    ActiveArchTokens = ck::ecs_debugger_query::Get_ArchTokens(FilterText);
 }
 
 auto FCkDebuggerPage_Archetypes::Toggle_ArchFilterToken(const FString& InToken, bool InEnable) -> void
@@ -179,46 +169,8 @@ auto FCkDebuggerPage_Archetypes::Toggle_ArchFilterToken(const FString& InToken, 
     if (NOT RequestEntityFilter)
     { return; }
 
-    const auto NeedsQuotes = InToken.Contains(TEXT(" "));
-    const auto QuotedForm = FString::Printf(TEXT("arch:\"%s\""), *InToken);
-    const auto BareForm = FString::Printf(TEXT("arch:%s"), *InToken);
-
-    auto NewFilter = GetEntityFilter ? GetEntityFilter() : FString{};
-
-    // Remove an existing occurrence — quoted form is unambiguous; the bare form only
-    // when it ends at a word boundary (so arch:Timer never clips arch:TimerX).
-    NewFilter = NewFilter.Replace(*QuotedForm, TEXT(""), ESearchCase::IgnoreCase);
-    if (NOT NeedsQuotes)
-    {
-        auto SearchFrom = 0;
-        while (true)
-        {
-            const auto FoundIndex = NewFilter.Find(BareForm, ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
-            if (FoundIndex == INDEX_NONE)
-            { break; }
-
-            const auto EndIndex = FoundIndex + BareForm.Len();
-            if (EndIndex >= NewFilter.Len() || FChar::IsWhitespace(NewFilter[EndIndex]))
-            {
-                NewFilter.RemoveAt(FoundIndex, BareForm.Len());
-                continue;
-            }
-            SearchFrom = EndIndex;
-        }
-    }
-
-    if (InEnable)
-    {
-        NewFilter.TrimStartAndEndInline();
-        NewFilter += NewFilter.IsEmpty() ? FString{} : FString{TEXT(" ")};
-        NewFilter += NeedsQuotes ? QuotedForm : BareForm;
-    }
-
-    while (NewFilter.Contains(TEXT("  ")))
-    { NewFilter = NewFilter.Replace(TEXT("  "), TEXT(" ")); }
-    NewFilter.TrimStartAndEndInline();
-
-    RequestEntityFilter(NewFilter);
+    RequestEntityFilter(ck::ecs_debugger_query::Toggle_ArchToken(
+        GetEntityFilter ? GetEntityFilter() : FString{}, InToken, InEnable));
     LastSeenFilterText.Reset();   // force checked-state re-derive on the next tick
 }
 
@@ -229,108 +181,13 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
 
     const auto& Entities = WorldModel->Get_CachedEntities();
 
-    // Aggregate by registry-first archetype key (spec §3.3 consumption).
-    auto Buckets = TMap<FString, FArchetypeBucket>{};
-
-    for (const auto& Entity : Entities)
-    {
-        if (ck::Is_NOT_Valid(Entity))
-        { continue; }
-
-        const auto Bits = ck::debug_feature_flags::Get_Flags(Entity.Get_RegistryView(), Entity.Get_Entity());
-        const auto Registered = ck::archetype_registry::TryGet_BestMatchName(Entity);
-
-        auto Key = FString{};
-        auto DisplayName = FString{};
-        auto FilterToken = FString{};
-
-        if (Registered.IsNone())
-        {
-            const auto CleanName = ck::DebugNameClean::Get_CleanName(
-                UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString());
-            Key = ck::ecs_debugger_query::Get_InferredArchetypeKey(CleanName, Bits);
-
-            if (NOT Key.Split(TEXT("#"), &DisplayName, nullptr))
-            { DisplayName = Key; }
-            FilterToken = DisplayName;
-        }
-        else
-        {
-            Key = Registered.ToString();
-            DisplayName = Key;
-            FilterToken = Key;
-        }
-
-        auto& Bucket = Buckets.FindOrAdd(Key);
-        if (Bucket.Count == 0)
-        {
-            Bucket.Key = Key;
-            Bucket.DisplayName = DisplayName;
-            Bucket.FilterToken = FilterToken;
-            Bucket.IsRegistered = NOT Registered.IsNone();
-            Bucket.SignatureBits = Bits;
-
-            if (Bucket.IsRegistered)
-            {
-                if (const auto Descriptor = ck::archetype_registry::Find(Registered); Descriptor.IsSet())
-                {
-                    // IconSvgPath resolution is game-plugin territory; v1 uses the id as
-                    // a style icon name when it happens to match, else the fallback below.
-                    const auto BespokeIcon = FName{FPaths::GetBaseFilename(Descriptor->Get_IconSvgPath())};
-                    if (FCkDebuggerStyle::Get_IconBrush(BespokeIcon) != nullptr)
-                    { Bucket.IconName = BespokeIcon; }
-                }
-            }
-
-            // Inferred buckets prefer the dominant-feature glyph (semantic): a Timer
-            // swarm reads as timers. Registered archetypes skip this — each named
-            // archetype deserves its own identity from the general pool below.
-            if (Bucket.IconName.IsNone() && NOT Bucket.IsRegistered)
-            {
-                for (const auto& [FeatureId, Bit] : ck::ecs_debugger_feature_visuals::Get_BadgeFeatures())
-                {
-                    if ((Bits & (uint64{1} << Bit)) == 0)
-                    { continue; }
-
-                    if (const auto* Visual = ck::ecs_debugger_feature_visuals::Get_FeatureVisuals().Find(FeatureId))
-                    {
-                        Bucket.IconName = Visual->IconName;
-                        Bucket.IconColor = Visual->Color;
-                        break;
-                    }
-                }
-            }
-
-            // General-pool assignment: stable hash of the archetype key picks a glyph
-            // from Resources/Icons/General — distinct identity instead of anonymous
-            // cubes. Cube survives only if the pool is empty.
-            if (Bucket.IconName.IsNone())
-            {
-                const auto& Pool = FCkDebuggerStyle::Get_GeneralIconPool();
-                if (Pool.Num() > 0)
-                { Bucket.IconName = Pool[FCrc::StrCrc32(*Key) % static_cast<uint32>(Pool.Num())]; }
-            }
-        }
-        ++Bucket.Count;
-    }
-
-    auto Sorted = TArray<FArchetypeBucket>{};
-    Buckets.GenerateValueArray(Sorted);
-    Sorted.Sort([](const FArchetypeBucket& A, const FArchetypeBucket& B)
-    {
-        // Registered game archetypes first, then by population. Key tie-break keeps the
-        // order deterministic — Sort is unstable, and a shuffling order would defeat the
-        // no-reslot fast path below.
-        if (A.IsRegistered != B.IsRegistered)
-        { return A.IsRegistered; }
-        if (A.Count != B.Count)
-        { return A.Count > B.Count; }
-        return A.Key < B.Key;
-    });
+    // Shared registry-first aggregation (spec §3.3) — keys, glyphs, colors, families
+    // resolved identically here and on the Overview dashboard.
+    const auto Sorted = ck::ecs_debugger_aggregation::Aggregate(Entities);
 
     // Skip single-instance inferred buckets past the first screenful — they are noise
     // at scale; the tree remains the place to browse one-offs.
-    auto Presented = TArray<const FArchetypeBucket*>{};
+    auto Presented = TArray<const ck::ecs_debugger_aggregation::FArchetypeBucket*>{};
     for (const auto& Bucket : Sorted)
     {
         if (NOT Bucket.IsRegistered && Bucket.Count <= 1 && Presented.Num() >= 40)
@@ -341,7 +198,7 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
     if (HeroText.IsValid())
     {
         HeroText->SetText(FText::FromString(
-            FString::Printf(TEXT("%d entities · %d archetypes"), Entities.Num(), Buckets.Num())));
+            FString::Printf(TEXT("%d entities · %d archetypes"), Entities.Num(), Sorted.Num())));
     }
 
     auto NewKeys = TArray<FString>{};
@@ -417,15 +274,14 @@ auto FCkDebuggerPage_Archetypes::Set_GridColumns(int32 InColumns) -> void
 }
 
 auto FCkDebuggerPage_Archetypes::DoCreateCard(
-    const FArchetypeBucket& InBucket,
+    const ck::ecs_debugger_aggregation::FArchetypeBucket& InBucket,
     FCardCacheEntry& OutEntry) -> void
 {
     const auto* IconBrush = FCkDebuggerStyle::Get_IconBrush(InBucket.IconName);
     if (IconBrush == nullptr)
     { IconBrush = FCkDebuggerStyle::Get_IconBrush(TEXT("Cube")); }
 
-    const auto AccentColor = InBucket.IconColor.Get(
-        InBucket.IsRegistered ? CkStyle::Selection() : CkStyle::TextDim());
+    const auto AccentColor = InBucket.IconColor;
 
     // Header row: tinted icon well + name (+ GAME pill for registered archetypes).
     auto HeaderRow = SNew(SHorizontalBox);

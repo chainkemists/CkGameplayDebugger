@@ -51,7 +51,9 @@ FCkDebuggerPage_Overview::~FCkDebuggerPage_Overview()
 
 auto FCkDebuggerPage_Overview::Get_PageName() const -> FText
 {
-    return FText::FromString(TEXT("Overview"));
+    // The dashboard took the "Overview" slot (mockup parity); the hierarchy/relationship
+    // graph lives on its own tab now.
+    return FText::FromString(TEXT("Graph"));
 }
 
 auto FCkDebuggerPage_Overview::Get_PageIcon() const -> const FSlateBrush*

@@ -53,7 +53,10 @@ auto FCkDebuggerPage_Activity::Set_IsActive(bool InIsActive) -> void
     IsActivePage = InIsActive;
 
     if (InIsActive)
-    { FeedDirty = true; }
+    {
+        FeedDirty = true;
+        UnseenCount = 0;   // the badge counts only what happened while looking away
+    }
 }
 
 // =====================================================================================================================
@@ -151,6 +154,9 @@ auto FCkDebuggerPage_Activity::HandleCacheDiff(
     if (Events.Num() > ck_debugger_page_activity::MaxEvents)
     { Events.SetNum(ck_debugger_page_activity::MaxEvents); }
 
+    if (NOT IsActivePage)
+    { UnseenCount += InAdded.Num() + InRemoved.Num(); }
+
     FeedDirty = true;
 }
 
@@ -174,6 +180,7 @@ auto FCkDebuggerPage_Activity::OnGenerateRow(
         : FString{};
 
     return SNew(STableRow<TSharedPtr<FActivityEvent>>, InOwnerTable)
+        .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
         .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 1.0f))
         .ShowSelection(true)
         [

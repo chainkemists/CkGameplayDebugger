@@ -31,4 +31,7 @@ public:
     virtual auto Tick(float InDeltaTime) -> void = 0;
     virtual auto IsActive() const -> bool = 0;
     virtual auto Set_IsActive(bool InIsActive) -> void = 0;
+
+    /** Unseen-count shown on the page's tab (0 = no badge). Activity uses it. */
+    virtual auto Get_BadgeCount() const -> int32 { return 0; }
 };

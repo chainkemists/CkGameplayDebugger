@@ -97,4 +97,18 @@ namespace ck::ecs_debugger_query
     CKECSDEBUGGER_API auto Get_InferredArchetypeKey(
         const FString& InCleanName,
         uint64 InOwnBits) -> FString;
+
+    // ---- arch-token helpers (multi-select archetype cards) --------------------------
+
+    // Lowercased values of every arch: term in a filter string — cards derive their
+    // toggled state from this.
+    CKECSDEBUGGER_API auto Get_ArchTokens(const FString& InFilter) -> TSet<FString>;
+
+    // Returns InFilter with `arch:<InToken>` added/removed (quoted when the token has
+    // whitespace). Removal is word-boundary safe (arch:Timer never clips arch:TimerX)
+    // and preserves every other term as typed.
+    CKECSDEBUGGER_API auto Toggle_ArchToken(
+        const FString& InFilter,
+        const FString& InToken,
+        bool InEnable) -> FString;
 }

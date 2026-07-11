@@ -40,6 +40,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkEntityDebugOverlay",
             "CkEntityExtension",
             "CkEntityTag",
+            "CkEqs",
             "CkGoap",
             "CkGrid",
             "CkInteraction",

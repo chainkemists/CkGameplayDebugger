@@ -118,6 +118,22 @@ public:
     /** ⊞-chip click: reveal/re-fold one owner's internals. */
     auto ToggleUnfoldOverride(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void;
 
+    // ---- Feature rail (Phase 3) --------------------------------------------
+    // Included features compose with the query: entity passes when it carries ANY
+    // included feature (own ∪ rollup). Empty set = rail off.
+
+    auto Get_RailIncluded() const -> const TSet<FName>& { return RailIncluded; }
+    auto Toggle_RailFeature(FName InFeatureId) -> void;
+
+    // ---- Pinned (Phase 3) ---------------------------------------------------
+
+    auto Get_PinnedEntities() const -> const TArray<FCk_Handle>& { return PinnedEntities; }
+    auto Get_IsPinned(const FCk_Handle& InEntity) const -> bool;
+    auto TogglePin(const FCk_Handle& InEntity) -> void;
+
+    DECLARE_MULTICAST_DELEGATE(FOnPinsChanged);
+    FOnPinsChanged OnPinsChanged;
+
 private:
     auto BuildEntityTree() -> void;
     auto BuildHierarchy(const TArray<FCk_Handle>& InEntities) -> void;
@@ -182,4 +198,7 @@ private:
 
     /** Entity node → the group row currently presenting it (for expand-to-reveal). */
     TMap<const FCkEntityTreeNode*, TSharedPtr<FCkEntityTreeNode>> MemberToGroup;
+
+    TSet<FName> RailIncluded;
+    TArray<FCk_Handle> PinnedEntities;
 };

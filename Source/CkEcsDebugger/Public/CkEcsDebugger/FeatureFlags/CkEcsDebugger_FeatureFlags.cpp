@@ -25,7 +25,9 @@ auto
     // lists the remaining candidates: Inventory, Objective, Vfx, Tween, Ism/IskmProxy,
     // EntityTag, Net, ActorBridge, Camera).
     debug_feature_flags::RegisterFlag<FFragment_Timer_Params>(TEXT("Timer"));
-    debug_feature_flags::RegisterFlag<FFragment_Transform_Params>(TEXT("Transform"));
+    // FFragment_Transform is the real pool — FFragment_Transform_Params is a ParamsData
+    // ALIAS that is never added to any entity (CkTransform_Utils.cpp adds FFragment_Transform).
+    debug_feature_flags::RegisterFlag<FFragment_Transform>(TEXT("Transform"));
     debug_feature_flags::RegisterFlag<FFragment_SceneNode_Current>(TEXT("SceneNode"));
     debug_feature_flags::RegisterFlag<FFragment_Probe_Params>(TEXT("Probe"));
     debug_feature_flags::RegisterFlag<FFragment_FloatAttribute_Current>(TEXT("FloatAttribute"));

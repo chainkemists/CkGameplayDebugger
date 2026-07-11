@@ -1,6 +1,5 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
 
-#include "CkCrowdDebugger/Input/CkCrowdDebugger_WorldCommandProcessor.h"
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_NavmeshStatusPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentListPanel.h"
@@ -10,8 +9,6 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_ViewportPanel.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
-
-#include "Framework/Application/SlateApplication.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -44,14 +41,6 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_StatsPanel         = SNew(SCkCrowdDebugger_StatsPanel).ViewModel(_ViewModel);
 	_EventLogPanel      = SNew(SCkCrowdDebugger_EventLogPanel).ViewModel(_ViewModel);
 	_ViewportPanel      = SNew(SCkCrowdDebugger_ViewportPanel).ViewModel(_ViewModel);
-
-	// In-world RTS move command: RMB-click on the ground while ejected commands the
-	// selected agent. Passive observer (never consumes) — see the processor header.
-	if (FSlateApplication::IsInitialized())
-	{
-		_WorldCommandProcessor = MakeShared<FCkCrowdDebugger_WorldCommandProcessor>(_ViewModel.ToWeakPtr());
-		FSlateApplication::Get().RegisterInputPreProcessor(_WorldCommandProcessor);
-	}
 
 	ChildSlot
 	[
@@ -254,12 +243,6 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 
 SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 {
-	if (_WorldCommandProcessor.IsValid() && FSlateApplication::IsInitialized())
-	{
-		FSlateApplication::Get().UnregisterInputPreProcessor(_WorldCommandProcessor);
-	}
-	_WorldCommandProcessor.Reset();
-
 	_ViewModel.Reset();
 }
 

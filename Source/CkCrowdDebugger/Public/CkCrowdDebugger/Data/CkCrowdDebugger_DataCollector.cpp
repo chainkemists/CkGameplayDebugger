@@ -128,7 +128,9 @@ auto
 		if (auto* Pawn = ViewPC->GetPawn().Get(); IsValid(Pawn))
 		{
 			_PlayerPawnPosition   = Pawn->GetActorLocation();
-			_PlayerPawnYawDegrees = Pawn->GetActorRotation().Yaw;
+			// Aim yaw, not body yaw: orient-to-movement characters keep their actor
+			// rotation while the camera looks elsewhere — the chevron read frozen.
+			_PlayerPawnYawDegrees = Pawn->GetBaseAimRotation().Yaw;
 			_PlayerPawnValid      = true;
 			_PlayerPawnEntity     = UCk_Utils_OwningActor_UE::TryGet_ActorEntityHandle(Pawn);
 		}

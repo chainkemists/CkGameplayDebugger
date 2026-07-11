@@ -117,13 +117,14 @@ auto SCkDebuggerPanel_EntityList::Construct(
             [
                 SNew(SHorizontalBox)
 
-                // Feature rail (Phase 3): one chip per flagged feature; click narrows
-                // the tree to entities carrying it (own or rolled up).
+                // Feature rails (Phase 3): one chip per flagged feature; click narrows
+                // the tree to entities carrying it (own or rolled up). Split across
+                // both flanks of the tree so the full set fits without scrolling.
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
                 [
-                    Build_FeatureRail()
+                    Build_FeatureRail(/*InRightFlank=*/false)
                 ]
 
                 + SHorizontalBox::Slot()
@@ -135,6 +136,13 @@ auto SCkDebuggerPanel_EntityList::Construct(
                     [
                         SAssignNew(EntityTree, SCkDebuggerWidget_EntityTree, SelectionModel, WorldModel, InFilterModel)
                     ]
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+                [
+                    Build_FeatureRail(/*InRightFlank=*/true)
                 ]
             ]
 
@@ -219,19 +227,40 @@ auto SCkDebuggerPanel_EntityList::Build_QueryHelpButton() -> TSharedRef<SWidget>
         ];
 }
 
-auto SCkDebuggerPanel_EntityList::Build_FeatureRail() -> TSharedRef<SWidget>
+auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TSharedRef<SWidget>
 {
     namespace visuals = ck::ecs_debugger_feature_visuals;
 
     // Chips clustered by feature group (Core/Attributes/AI/...), each cluster under a
-    // tiny label; the whole rail scrolls so a growing flag set can't overflow the panel.
+    // tiny label. The flag set outgrew one column: groups are split across the tree's
+    // two flanks — whole groups, greedily assigned to the lighter flank in display
+    // order (weight = chips + header), so both columns come out near-equal and the
+    // split is deterministic. Each flank scrolls independently when the window is short.
     auto GroupedFeatures = TMap<FName, TArray<FName>>{};
     for (const auto& [FeatureId, Bit] : visuals::Get_BadgeFeatures())
     { GroupedFeatures.FindOrAdd(visuals::Get_FeatureGroup(FeatureId)).Add(FeatureId); }
 
+    auto FlankGroups = TArray<FName>{};
+    {
+        auto LeftRows  = 0;
+        auto RightRows = 0;
+        for (const auto& Group : visuals::Get_FeatureGroupOrder())
+        {
+            const auto* Features = GroupedFeatures.Find(Group);
+            if (Features == nullptr || Features->IsEmpty())
+            { continue; }
+
+            const auto Weight       = Features->Num() + 1;
+            const auto AssignRight  = LeftRows > RightRows;
+            (AssignRight ? RightRows : LeftRows) += Weight;
+            if (AssignRight == InRightFlank)
+            { FlankGroups.Add(Group); }
+        }
+    }
+
     auto Rail = SNew(SVerticalBox);
 
-    for (const auto& Group : visuals::Get_FeatureGroupOrder())
+    for (const auto& Group : FlankGroups)
     {
         const auto* Features = GroupedFeatures.Find(Group);
         if (Features == nullptr || Features->IsEmpty())

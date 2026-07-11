@@ -13,14 +13,18 @@ class UWorld;
 //
 // Replaces the per-tick DrawDebugTransformGizmo pattern: one-frame debug lines
 // re-issued from a refresh-GATED Slate tick blink whenever the gate caps below
-// frame rate, and re-batch lines every tick. Here each gizmo is three
-// persistent PMG Arrow entities (Duration=-1, pooled procmesh) that are only
-// MOVED per tick — no geometry churn, no flicker at any gate setting.
+// frame rate, and re-batch lines every tick. Here each gizmo is six persistent
+// PMG solids (Duration=-1, pooled procmesh) — a cylinder shaft + cone tip per
+// axis — that are only MOVED per tick: no geometry churn, no flicker at any
+// gate setting. Solids rather than flat arrows: flat shapes read edge-on-
+// invisible in perspective. Each part bakes a full-alpha wireframe outline as
+// a second mesh section (FProcessor_Pmg_DebugShape_BakeLines), so the axes
+// stay legible against same-hue geometry.
 //
 // Not built on CkPmg's Pivot: Pivot is a Composite whose child arrows bake
 // their world transforms once at setup (CkPmg_Processor_DirectionalShapes.cpp,
 // FProcessor_Pmg_Pivot_Setup) — moving the pivot parent afterwards moves
-// nothing. The three arrows are created directly and re-aimed on update.
+// nothing. The six solids are created directly and re-aimed on update.
 //
 // Lifecycle contract (mirrors inspector rebuild semantics):
 //   - UpdateGizmo(World, Key, Transform) — create-on-first-sight, then move.
@@ -50,7 +54,7 @@ private:
     struct FGizmo
     {
         FCk_Handle           Root;
-        FCk_Handle_Transform Arrows[3];
+        FCk_Handle_Transform Parts[6];   // [0..2] axis shafts (cylinders), [3..5] axis tips (cones)
         FTransform           LastTransform = FTransform::Identity;
     };
 

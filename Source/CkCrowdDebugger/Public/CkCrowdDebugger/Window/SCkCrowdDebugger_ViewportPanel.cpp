@@ -9,6 +9,10 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+
+#include "CkPmg/CkPmg_Utils_FlatShapes.h"
+
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -626,8 +630,28 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonUp(
 				{ UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, true); }
 
 				const auto World = ScreenToWorld(Local.X, Local.Y);
-				auto MoveReq = FCk_Request_CrowdAgent_MoveTo(FVector(World.X, World.Y, Sel->Position.Z));
+				const auto Destination = FVector(World.X, World.Y, Sel->Position.Z);
+				auto MoveReq = FCk_Request_CrowdAgent_MoveTo(Destination);
 				UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq);
+
+				// Destination acknowledgment ping in the WORLD (transient PMG ring,
+				// self-destroys) — a map command should still read in the viewport.
+				// Lifted slightly so the ring doesn't z-fight the floor.
+				if (auto* AgentWorld = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(Agent);
+					ck::IsValid(AgentWorld))
+				{
+					UCk_Utils_Pmg_FlatShapes::DrawFilledRing(
+						AgentWorld,
+						Destination + FVector{0.0f, 0.0f, 4.0f},
+						/*InOuterRadius=*/60.0f,
+						/*InInnerRadius=*/45.0f,
+						/*InSegments=*/32,
+						FLinearColor{0.15f, 1.0f, 0.35f, 0.85f},
+						/*InDrawLines=*/false,
+						/*InLineThickness=*/2.0f,
+						ECk_Plane_Axis::XY,
+						/*InDuration=*/1.5f);
+				}
 			}
 		}
 

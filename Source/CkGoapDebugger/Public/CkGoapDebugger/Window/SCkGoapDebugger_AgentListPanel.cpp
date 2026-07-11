@@ -383,7 +383,7 @@ auto
         const auto FocusTarget = Item.Handle;
         MenuBuilder.AddMenuEntry(
             NSLOCTEXT("CkGoapAgentList", "FocusInViewport", "Focus in Viewport (F)"),
-            NSLOCTEXT("CkGoapAgentList", "FocusInViewportTip", "Move the ejected editor camera to frame this agent."),
+            NSLOCTEXT("CkGoapAgentList", "FocusInViewportTip", "Glide the editor camera to frame this agent (auto-ejects while possessed)."),
             FSlateIcon(),
             FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
             {

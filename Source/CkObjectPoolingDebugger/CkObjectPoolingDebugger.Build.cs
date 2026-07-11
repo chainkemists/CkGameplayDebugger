@@ -11,6 +11,8 @@ public class CkObjectPoolingDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
 
+            "InputCore",  // SListView references EKeys (mouse/keyboard nav) — needs InputCore
+
             "Slate",
             "SlateCore",
             "WorkspaceMenuStructure",

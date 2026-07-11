@@ -38,6 +38,9 @@ public:
     auto Get_FilterText() const -> FString;
     auto Get_HighlightText() const -> FString;
 
+    /** Programmatic filter (e.g. Overview card click-through) — fires OnFilterTextChanged. */
+    auto Set_FilterText(const FString& InText) -> void;
+
 private:
     FCkDebug_OnDualSearchTextChanged _OnFilterChanged;
     FCkDebug_OnDualSearchTextChanged _OnHighlightChanged;

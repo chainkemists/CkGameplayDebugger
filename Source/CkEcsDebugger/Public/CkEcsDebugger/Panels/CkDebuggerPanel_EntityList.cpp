@@ -160,6 +160,16 @@ auto SCkDebuggerPanel_EntityList::Construct(
     }
 }
 
+auto SCkDebuggerPanel_EntityList::Set_FilterText(const FString& InText) -> void
+{
+    if (SearchBar.IsValid())
+    {
+        // Routes through the bar's OnFilterTextChanged → the tree's filter pipeline,
+        // exactly as if typed.
+        SearchBar->Set_FilterText(InText);
+    }
+}
+
 auto SCkDebuggerPanel_EntityList::HandleSelectionChanged(const TArray<FCk_Handle>& InSelection) -> void
 {
     if (InSelection.IsEmpty() || ck::Is_NOT_Valid(InSelection[0]))

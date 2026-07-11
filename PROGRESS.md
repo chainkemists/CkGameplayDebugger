@@ -209,10 +209,44 @@ classification + HAS-rollup as pure logic over the bit cache.
   note) + the set is user-editable data. (b) CueRelay is an ACTOR (`ACk_CueRelay_UE`),
   no marker fragment — its internal-set entry is inert until a marker exists.
 
-**Chunk 4+ (remaining Phase 1):** computed names (extend ck::DebugNameClean), query
-tokenizer (+specs), incremental world model (spawn/destroy diff, stable node identity,
-cached names), registry-first archetype keying. Phase 2 consumes classification/rollup
-for fold + badges.
+**Chunk 4 — DONE (2026-07-10, gate green: build + Ck.EcsDebugger 5/5).**
+- Query tokenizer `CkEcsDebugger/Query/` (spec §3.5): Parse (incomplete tokens DROP,
+  unknown keys/malformed ids → fuzzy), FFeatureTokenTable (prefix, id+display-name →
+  bits), Matches (has: own∪rollup; is: own; is:primary/aux; net: prefix-forgiving;
+  id:; arch: substring; fuzzy via ck::fuzzy), Get_InferredArchetypeKey
+  ("Base#signature"). 3 specs. NOTE: `EQueryNetMode` (engine ENetMode collides).
+- **O(1) churn detection**: CkEcs `debug_feature_flags::Get_Revision` (sink-bumped
+  counter) + debugger flag `_TreeEntity` on FFragment_LifetimeOwner (underscore prefix
+  = infrastructure → structural in classification, skipped by badges/tokens). World
+  model polls revision in IsCacheDirty → tree LIVE-TRACKS spawns (it never did!).
+- Incremental world model: Refresh_EntityCache diffs vs previous set
+  (Get_LastAdded/Removed + OnCacheDiff broadcast — Phase 5's feed source); dead-world
+  refresh drops handles without broadcasting.
+- Tree: nodes cache DebugName/CleanName/DisplayText at creation (rows previously
+  derived names PER ROW PER FRAME via bound attributes); ApplyCacheDiff incremental
+  add/remove (stable TSharedPtr identity); RecomputeNodeSignatures per churn (bits,
+  classification, rollup, registry-first ArchetypeKey, NetRole); selection restore +
+  auto-expand now gated to full rebuilds/filters (were about to fire at 10 Hz).
+  Manual Refresh button = ForceFullRefresh (re-derives names).
+
+**Phase 2 — DONE (same gate).** Tree presentation layer:
+- Fold internals (settings default + toolbar toggle + per-owner "+N" chip — ASCII on
+  purpose, decorated glyphs = tofu). Filter-overrides-fold rule. ExpandToReveal
+  auto-unfolds the owner on external navigation to a folded internal.
+- Sibling coalescing: same-ArchetypeKey runs ≥ threshold (settings, default 5) →
+  synthetic "Base xN" group rows; stable identity via GroupNodeCache keyed
+  (owner ptr, key), pruned on node removal (ptr-reuse guard); group click never
+  clobbers entity selection; context menu on group = Copy all N names/IDs.
+- Identity glyphs (internal = feature icon, primary = Cube) + IS/HAS badge strip
+  (solid = own, hollow+count = rollup; cap 6 + "+k"); feature visuals from inspector
+  metadata (flag-wired 5) + manual rows for flag-only ids (SM/Aggro/Audio/Label/attrs).
+- Status bar: "Entities: N (P primary · I internal)". Deviation from spec §5.3: no
+  30-row "Show all" cap inside expanded groups — STreeView virtualization already
+  bounds row materialization; revisit only if group expansion measures hot.
+
+**Phase 1 leftovers folded forward:** computed names §3.4 partially (cleaned names
+cached; archetype DisplayName + role-name pipeline lands with Phase 4's lens);
+refresh time-budget (§5.4) not needed yet — steady state is zero-O(n) by revision gate.
 
 ## Session log
 

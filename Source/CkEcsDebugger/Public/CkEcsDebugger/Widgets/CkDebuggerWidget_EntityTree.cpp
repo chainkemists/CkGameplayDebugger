@@ -1,10 +1,11 @@
-﻿#include "CkDebuggerWidget_EntityTree.h"
+#include "CkDebuggerWidget_EntityTree.h"
 
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/SNullWidget.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
@@ -15,16 +16,93 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
+#include "CkEcs/Archetype/CkArchetype_Registry.h"
+#include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
 #include "CkEcs/Net/CkNet_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
+#include "CkEcsDebugger/Classification/CkEcsDebugger_Classification.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
+#include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+
+#include "Widgets/Input/SCheckBox.h"
+
+namespace ck_debugger_entity_tree
+{
+    struct FFeatureVisual
+    {
+        FName IconName;
+        FLinearColor Color = FLinearColor::White;
+    };
+
+    // Flag-feature-id → glyph + accent. Wired inspectors contribute their declared
+    // icon/color via metadata; flag-only features (no parity-wired inspector) get
+    // manual rows. Built once — registration is startup-only.
+    static auto Get_FeatureVisuals() -> const TMap<FName, FFeatureVisual>&
+    {
+        static const auto Visuals = []() -> TMap<FName, FFeatureVisual>
+        {
+            auto Map = TMap<FName, FFeatureVisual>{};
+
+            for (const auto& Metadata : FCkDebuggerInspectorRegistry::Get().Get_AllMetadata())
+            {
+                if (Metadata.FeatureFlagId.IsNone() || Metadata.IconName.IsNone())
+                { continue; }
+
+                Map.Add(Metadata.FeatureFlagId, FFeatureVisual{
+                    Metadata.IconName,
+                    Metadata.Color.Get(FLinearColor::White) });
+            }
+
+            Map.Add(TEXT("StateMachine"),     FFeatureVisual{ TEXT("StateMachine"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8F6FE8"))) });
+            Map.Add(TEXT("Aggro"),            FFeatureVisual{ TEXT("Aggro"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C94F4F"))) });
+            Map.Add(TEXT("AudioTrack"),       FFeatureVisual{ TEXT("Audio"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FA3C9"))) });
+            Map.Add(TEXT("Label"),            FFeatureVisual{ TEXT("Label"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8B93A1"))) });
+            Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+            Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+            Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
+
+            return Map;
+        }();
+
+        return Visuals;
+    }
+
+    // (feature id, bit) pairs for decoding own-bit masks into badges; skips the
+    // structural carriers (Transform/Label) and underscore-prefixed infrastructure ids.
+    static auto Get_BadgeFeatures() -> const TArray<TPair<FName, int32>>&
+    {
+        static const auto Features = []() -> TArray<TPair<FName, int32>>
+        {
+            auto Result = TArray<TPair<FName, int32>>{};
+            for (const auto& FeatureId : ck::debug_feature_flags::Get_RegisteredFeatureIds())
+            {
+                if (FeatureId == TEXT("Transform") || FeatureId == TEXT("Label") ||
+                    FeatureId.ToString().StartsWith(TEXT("_")))
+                { continue; }
+
+                const auto Bit = ck::debug_feature_flags::Get_BitIndex(FeatureId);
+                if (Bit != INDEX_NONE)
+                { Result.Emplace(FeatureId, Bit); }
+            }
+            return Result;
+        }();
+
+        return Features;
+    }
+
+    constexpr auto MaxBadges = 6;
+}
+
 class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
 {
 public:
@@ -40,6 +118,110 @@ public:
         SelectionModel = InArgs._SelectionModel;
         TreeWidget = InArgs._TreeWidget;
 
+        const auto IsGroup = Node.IsValid() && Node->IsGroupNode;
+
+        auto RowContent = SNew(SHorizontalBox);
+
+        // Status dot (entity rows only — groups have no live/dead state).
+        if (NOT IsGroup)
+        {
+            RowContent->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SNew(SImage)
+                .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
+                .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_EntityStatusColor)
+                .DesiredSizeOverride(FVector2D(6.0f, 6.0f))
+            ];
+        }
+
+        // Identity glyph — one icon language across the debugger (spec §2.4): internals
+        // wear their single feature's glyph, primaries the generic cube, groups the
+        // representative member's glyph.
+        if (const auto* IdentityBrush = Get_IdentityBrush(); IdentityBrush != nullptr)
+        {
+            RowContent->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SNew(SImage)
+                .Image(IdentityBrush)
+                .ColorAndOpacity(Get_IdentityColor())
+                .DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+            ];
+        }
+
+        RowContent->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+            .Text(this, &SCkDebuggerEntityTreeRow::Get_NodeDisplayText)
+            .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_NodeTextColor)
+            .HighlightText(this, &SCkDebuggerEntityTreeRow::Get_HighlightText)
+        ];
+
+        // ⊞ chip — folded-internals count; bounded click target per the STableRow
+        // contract (only the chip traps the click, the row still selects elsewhere).
+        RowContent->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+            .Visibility(this, &SCkDebuggerEntityTreeRow::Get_FoldChipVisibility)
+            .ToolTipText(FText::FromString(TEXT("Folded internal entities - click to show/hide them under this row")))
+            .ContentPadding(FMargin(2.0f, 0.0f))
+            .OnClicked(this, &SCkDebuggerEntityTreeRow::OnFoldChipClicked)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(this, &SCkDebuggerEntityTreeRow::Get_FoldChipText)
+                .ColorAndOpacity(CkStyle::TextDim())
+            ]
+        ];
+
+        // Badge strip — solid = own features, hollow+count = rolled-up internals
+        // (spec §3.2 rendering). Built once per row generation; rows regenerate on
+        // every tree refresh, which follows every signature recompute.
+        RowContent->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+        [
+            BuildBadgeStrip()
+        ];
+
+        RowContent->AddSlot()
+        .FillWidth(1.0f)
+        [
+            SNew(SBox)
+        ];
+
+        // Canonical entity identity — the common pill instead of a raw [ID] STextBlock,
+        // so the tree matches every other debugger surface (right-click → Copy
+        // included). The pill only traps clicks within its own bounds; the rest of the
+        // row still selects normally. Group rows carry no single entity → no pill.
+        if (NOT IsGroup)
+        {
+            RowContent->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebug_EntityRef)
+                .Entity_Lambda([WeakNode = TWeakPtr<FCkEntityTreeNode>(InArgs._Node)]() -> FCk_Handle
+                {
+                    const auto Pinned = WeakNode.Pin();
+                    return Pinned.IsValid() ? Pinned->Entity : FCk_Handle{};
+                })
+            ];
+        }
+
         STableRow<TSharedPtr<FCkEntityTreeNode>>::Construct(
             STableRow<TSharedPtr<FCkEntityTreeNode>>::FArguments()
             .Style(&FAppStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
@@ -50,46 +232,7 @@ public:
                 SNew(SBox)
                 .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 2.0f))
                 [
-                    SNew(SHorizontalBox)
-
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
-                    [
-                        SNew(SImage)
-                        .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
-                        .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_EntityStatusColor)
-                        .DesiredSizeOverride(FVector2D(6.0f, 6.0f))
-                    ]
-
-                    + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                        .Text(this, &SCkDebuggerEntityTreeRow::Get_NodeDisplayText)
-                        .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_NodeTextColor)
-                        .HighlightText(this, &SCkDebuggerEntityTreeRow::Get_HighlightText)
-                    ]
-
-                    // Canonical entity identity — the common pill instead of a
-                    // raw [ID] STextBlock, so the tree matches every other
-                    // debugger surface (right-click → Copy included). The pill
-                    // only traps clicks within its own bounds; the rest of the
-                    // row still selects normally.
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SCkDebug_EntityRef)
-                        .Entity_Lambda([WeakNode = TWeakPtr<FCkEntityTreeNode>(InArgs._Node)]() -> FCk_Handle
-                        {
-                            const auto Pinned = WeakNode.Pin();
-                            return Pinned.IsValid() ? Pinned->Entity : FCk_Handle{};
-                        })
-                    ]
+                    RowContent
                 ]
             ],
             InOwnerTable
@@ -102,10 +245,181 @@ private:
         if (NOT Node.IsValid())
         { return FText::GetEmpty(); }
 
-        // Routed through the shared name-clean so the settings-driven strip
-        // patterns (Project Settings → Ck → Debugger) apply here too.
-        return FText::FromString(ck::DebugNameClean::Get_CleanName(
-            UCk_Utils_Handle_UE::Get_DebugName(Node->Entity).ToString()));
+        if (Node->IsGroupNode)
+        {
+            return FText::FromString(FString::Printf(TEXT("%s x%d"),
+                *Node->GroupBaseName, Node->Children.Num()));
+        }
+
+        // Cached at node creation — bound attributes poll every frame, so deriving
+        // Get_DebugName + name-clean here was a per-row per-frame hot path.
+        return Node->CachedDisplayText;
+    }
+
+    auto Get_RepresentativeNode() const -> TSharedPtr<FCkEntityTreeNode>
+    {
+        if (NOT Node.IsValid())
+        { return nullptr; }
+
+        if (Node->IsGroupNode)
+        { return Node->Children.IsEmpty() ? nullptr : Node->Children[0]; }
+
+        return Node;
+    }
+
+    auto Get_IdentityBrush() const -> const FSlateBrush*
+    {
+        const auto Representative = Get_RepresentativeNode();
+        if (NOT Representative.IsValid())
+        { return nullptr; }
+
+        if (Representative->IsInternal)
+        {
+            if (const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(Representative->InternalFeatureId))
+            {
+                if (const auto* Brush = FCkDebuggerStyle::Get_IconBrush(Visual->IconName))
+                { return Brush; }
+            }
+        }
+
+        return FCkDebuggerStyle::Get_IconBrush(TEXT("Cube"));
+    }
+
+    auto Get_IdentityColor() const -> FSlateColor
+    {
+        const auto Representative = Get_RepresentativeNode();
+        if (Representative.IsValid() && Representative->IsInternal)
+        {
+            if (const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(Representative->InternalFeatureId))
+            { return Visual->Color; }
+        }
+
+        return CkStyle::TextDim();
+    }
+
+    auto Get_FoldChipVisibility() const -> EVisibility
+    {
+        return Node.IsValid() && NOT Node->IsGroupNode && Node->FoldedInternalCount > 0
+            ? EVisibility::Visible
+            : EVisibility::Collapsed;
+    }
+
+    auto Get_FoldChipText() const -> FText
+    {
+        if (NOT Node.IsValid())
+        { return FText::GetEmpty(); }
+
+        // ASCII on purpose — decorated text glyphs render as tofu boxes in the editor
+        // font (the long-standing chevron complaint). "+3" = 3 internals hidden.
+        const auto Symbol = Node->UnfoldInternalsOverride ? TEXT("-") : TEXT("+");
+        return FText::FromString(FString::Printf(TEXT("%s%d"), Symbol, Node->FoldedInternalCount));
+    }
+
+    auto OnFoldChipClicked() const -> FReply
+    {
+        if (const auto Tree = TreeWidget.Pin(); Tree.IsValid() && Node.IsValid())
+        { Tree->ToggleUnfoldOverride(Node); }
+
+        return FReply::Handled();
+    }
+
+    auto BuildBadgeStrip() const -> TSharedRef<SWidget>
+    {
+        const auto Representative = Get_RepresentativeNode();
+        if (NOT Representative.IsValid())
+        { return SNullWidget::NullWidget; }
+
+        auto Strip = SNew(SHorizontalBox);
+        auto BadgeCount = 0;
+        auto OverflowCount = 0;
+
+        const auto AddBadge = [&](const FName InFeatureId, const int32 InRollupCount) -> void
+        {
+            if (BadgeCount >= ck_debugger_entity_tree::MaxBadges)
+            {
+                ++OverflowCount;
+                return;
+            }
+
+            const auto* Visual = ck_debugger_entity_tree::Get_FeatureVisuals().Find(InFeatureId);
+            const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+            if (Brush == nullptr)
+            { return; }
+
+            const auto IsRollup = InRollupCount > 0;
+            const auto Tint = Visual->Color.CopyWithNewOpacity(IsRollup ? 0.45f : 1.0f);
+            const auto Tooltip = IsRollup
+                ? FString::Printf(TEXT("%s ×%d (rolled up from internals)"), *InFeatureId.ToString(), InRollupCount)
+                : InFeatureId.ToString();
+
+            auto BadgeBox = SNew(SHorizontalBox)
+                .ToolTipText(FText::FromString(Tooltip));
+
+            BadgeBox->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SImage)
+                .Image(Brush)
+                .ColorAndOpacity(Tint)
+                .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+            ];
+
+            if (IsRollup)
+            {
+                BadgeBox->AddSlot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(1.0f, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(STextBlock)
+                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                    .Text(FText::FromString(FString::Printf(TEXT("%d"), InRollupCount)))
+                    .ColorAndOpacity(CkStyle::TextMute())
+                ];
+            }
+
+            Strip->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 3.0f, 0.0f)
+            [
+                BadgeBox
+            ];
+
+            ++BadgeCount;
+        };
+
+        // Solid badges: own features (structural carriers excluded by the table).
+        for (const auto& [FeatureId, Bit] : ck_debugger_entity_tree::Get_BadgeFeatures())
+        {
+            if ((Representative->OwnBits & (uint64{1} << Bit)) != 0)
+            { AddBadge(FeatureId, 0); }
+        }
+
+        // Hollow badges: rollup types not already solid.
+        for (const auto& [FeatureId, Count] : Representative->RollupCounts)
+        {
+            const auto Bit = ck::debug_feature_flags::Get_BitIndex(FeatureId);
+            const auto AlreadySolid = Bit != INDEX_NONE && (Representative->OwnBits & (uint64{1} << Bit)) != 0;
+            if (NOT AlreadySolid)
+            { AddBadge(FeatureId, Count); }
+        }
+
+        if (OverflowCount > 0)
+        {
+            Strip->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(FText::FromString(FString::Printf(TEXT("+%d"), OverflowCount)))
+                .ColorAndOpacity(CkStyle::TextMute())
+            ];
+        }
+
+        return Strip;
     }
 
     auto Get_NodeTextColor() const -> FSlateColor
@@ -174,6 +488,13 @@ auto SCkDebuggerWidget_EntityTree::Construct(
     SelectionModel = InSelectionModel;
     WorldModel = InWorldModel;
     FilterModel = InFilterModel;
+
+    if (const auto* Settings = UCkEcsDebuggerSettings::Get())
+    {
+        FoldInternals = Settings->FoldInternalEntities;
+        GroupSiblings = Settings->GroupSiblingsByArchetype;
+        GroupThreshold = FMath::Max(2, Settings->SiblingGroupThreshold);
+    }
 
     if (SelectionModel.IsValid())
     {
@@ -265,9 +586,28 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
         PreviouslySelectedEntities = SelectionModel->Get_SelectedEntities();
     }
 
+    auto DidFullRebuild = false;
+
     if (WorldModel->IsCacheDirty())
     {
         WorldModel->Refresh_EntityCache();
+
+        // Incremental by default (stable TSharedPtr node identity, spec §4): apply the
+        // membership diff and re-derive signatures. Full build only from empty — a world
+        // switch still flows through the diff (all-removed + all-added).
+        if (NodeMap.IsEmpty())
+        {
+            BuildEntityTree();
+            DidFullRebuild = true;
+        }
+        else
+        {
+            ApplyCacheDiff(WorldModel->Get_LastAdded(), WorldModel->Get_LastRemoved());
+        }
+
+        // Bits may have changed without membership churn (feature added to a live
+        // entity also bumps the revision) — recompute classification either way.
+        RecomputeNodeSignatures();
     }
 
     // Pick up Project-Settings edits to the exclusion list live (the model only
@@ -276,7 +616,6 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
     if (FilterModel.IsValid())
     { FilterModel->Sync_ExclusionsFromSettings(); }
 
-    BuildEntityTree();
     ApplyFilterToNodes();
     ApplyInspectorFilter();
     UpdateFilteredRootNodes();
@@ -286,8 +625,26 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
         TreeView->RequestTreeRefresh();
     }
 
-    // Restore selection for entities that still exist
-    RestoreSelection(PreviouslySelectedEntities);
+    // Restore selection only after a FULL rebuild — the incremental path keeps node
+    // TSharedPtrs stable, so the tree view's selection survives untouched. Restoring on
+    // every churn refresh would clear-and-reselect (and scroll-jump) at up to 10 Hz.
+    if (DidFullRebuild)
+    {
+        RestoreSelection(PreviouslySelectedEntities);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::ForceFullRefresh() -> void
+{
+    RootNodes.Empty();
+    AllNodes.Empty();
+    NodeMap.Empty();
+    FilteredRootNodes.Empty();
+
+    if (WorldModel.IsValid())
+    { WorldModel->MarkCacheDirty(); }
+
+    RefreshTree();
 }
 
 auto SCkDebuggerWidget_EntityTree::ApplyFilter(const FString& InFilterText) -> void
@@ -350,6 +707,8 @@ auto SCkDebuggerWidget_EntityTree::BuildEntityTree() -> void
     RootNodes.Empty();
     AllNodes.Empty();
     NodeMap.Empty();
+    GroupNodeCache.Empty();
+    MemberToGroup.Empty();
 
     if (NOT WorldModel.IsValid())
     { return; }
@@ -365,38 +724,194 @@ auto SCkDebuggerWidget_EntityTree::BuildHierarchy(const TArray<FCk_Handle>& InEn
         if (ck::Is_NOT_Valid(Entity))
         { continue; }
 
-        auto Node = MakeShared<FCkEntityTreeNode>();
-        Node->Entity = Entity;
-        Node->IsVisible = true;
-
+        const auto Node = DoCreateNode(Entity);
         NodeMap.Add(Entity, Node);
         AllNodes.Add(Node);
     }
 
     for (const auto& [Entity, Node] : NodeMap)
     {
-        if (NOT Entity.Has<ck::FFragment_LifetimeOwner>())
+        DoLinkNode(Node);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::DoCreateNode(const FCk_Handle& InEntity) -> TSharedPtr<FCkEntityTreeNode>
+{
+    auto Node = MakeShared<FCkEntityTreeNode>();
+    Node->Entity = InEntity;
+    Node->IsVisible = true;
+
+    // Names derive once here (spec §5.2 cached names) — routed through the shared
+    // name-clean so the settings-driven strip patterns apply.
+    Node->CachedDebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity).ToString();
+    Node->CachedCleanName = ck::DebugNameClean::Get_CleanName(Node->CachedDebugName);
+    Node->CachedDisplayText = FText::FromString(Node->CachedCleanName);
+
+    return Node;
+}
+
+auto SCkDebuggerWidget_EntityTree::DoLinkNode(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void
+{
+    const auto& Entity = InNode->Entity;
+
+    if (NOT Entity.Has<ck::FFragment_LifetimeOwner>())
+    {
+        RootNodes.Add(InNode);
+        return;
+    }
+
+    const auto& LifetimeOwner = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+
+    if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(LifetimeOwner))
+    {
+        RootNodes.Add(InNode);
+        return;
+    }
+
+    if (const auto ParentNode = NodeMap.Find(LifetimeOwner))
+    {
+        (*ParentNode)->Children.Add(InNode);
+        InNode->Parent = *ParentNode;
+    }
+    else
+    {
+        RootNodes.Add(InNode);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::ApplyCacheDiff(
+    const TArray<FCk_Handle>& InAdded,
+    const TArray<FCk_Handle>& InRemoved) -> void
+{
+    // ---- Removals ----
+    // Lifetime-owned children die with their owner, so a destroyed subtree arrives as a
+    // batch of removals in the same diff — collect the set first so parent/child unlink
+    // order doesn't matter.
+    auto RemovedNodes = TSet<TSharedPtr<FCkEntityTreeNode>>{};
+    for (const auto& Entity : InRemoved)
+    {
+        if (auto Node = TSharedPtr<FCkEntityTreeNode>{}; NodeMap.RemoveAndCopyValue(Entity, Node))
+        { RemovedNodes.Add(Node); }
+    }
+
+    if (NOT RemovedNodes.IsEmpty())
+    {
+        AllNodes.RemoveAll([&RemovedNodes](const TSharedPtr<FCkEntityTreeNode>& InNode)
         {
-            RootNodes.Add(Node);
-            continue;
+            return RemovedNodes.Contains(InNode);
+        });
+        RootNodes.RemoveAll([&RemovedNodes](const TSharedPtr<FCkEntityTreeNode>& InNode)
+        {
+            return RemovedNodes.Contains(InNode);
+        });
+
+        for (const auto& Removed : RemovedNodes)
+        {
+            const auto Parent = Removed->Parent.Pin();
+            if (Parent.IsValid() && NOT RemovedNodes.Contains(Parent))
+            { Parent->Children.Remove(Removed); }
         }
 
-        const auto& LifetimeOwner = Entity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+        // Prune group-cache entries keyed by dead owner pointers — a recycled
+        // allocation must never resurrect another owner's group rows.
+        auto RemovedPtrs = TSet<const FCkEntityTreeNode*>{};
+        RemovedPtrs.Reserve(RemovedNodes.Num());
+        for (const auto& Removed : RemovedNodes)
+        { RemovedPtrs.Add(Removed.Get()); }
 
-        if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(LifetimeOwner))
+        for (auto It = GroupNodeCache.CreateIterator(); It; ++It)
         {
-            RootNodes.Add(Node);
-            continue;
+            if (RemovedPtrs.Contains(It->Key.Key))
+            { It.RemoveCurrent(); }
+        }
+    }
+
+    // ---- Additions ----
+    // Create every new node before linking: a new node's owner may itself be new.
+    auto NewNodes = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+    for (const auto& Entity : InAdded)
+    {
+        if (ck::Is_NOT_Valid(Entity) || NodeMap.Contains(Entity))
+        { continue; }
+
+        const auto Node = DoCreateNode(Entity);
+        NodeMap.Add(Entity, Node);
+        AllNodes.Add(Node);
+        NewNodes.Add(Node);
+    }
+
+    for (const auto& Node : NewNodes)
+    {
+        DoLinkNode(Node);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::RecomputeNodeSignatures() -> void
+{
+    const auto* Settings = UCkEcsDebuggerSettings::Get();
+    const auto Table = ck::ecs_debugger_classification::BuildTable(
+        Settings != nullptr ? Settings->InternalFeatureIds : TSet<FName>{});
+
+    const auto Num = AllNodes.Num();
+
+    auto IndexOf = TMap<const FCkEntityTreeNode*, int32>{};
+    IndexOf.Reserve(Num);
+    for (auto Index = 0; Index < Num; ++Index)
+    { IndexOf.Add(AllNodes[Index].Get(), Index); }
+
+    auto Bits = TArray<uint64>{};
+    Bits.Reserve(Num);
+    auto OwnerIndex = TArray<int32>{};
+    OwnerIndex.Reserve(Num);
+
+    for (const auto& Node : AllNodes)
+    {
+        const auto NodeBits = ck::IsValid(Node->Entity)
+            ? ck::debug_feature_flags::Get_Flags(Node->Entity.Get_RegistryView(), Node->Entity.Get_Entity())
+            : uint64{0};
+        Bits.Add(NodeBits);
+
+        const auto Parent = Node->Parent.Pin();
+        const auto* ParentIndex = Parent.IsValid() ? IndexOf.Find(Parent.Get()) : nullptr;
+        OwnerIndex.Add(ParentIndex != nullptr ? *ParentIndex : int32{INDEX_NONE});
+    }
+
+    auto Rollups = ck::ecs_debugger_classification::ComputeRollups(Bits, OwnerIndex, Table);
+
+    for (auto Index = 0; Index < Num; ++Index)
+    {
+        const auto& Node = AllNodes[Index];
+
+        Node->OwnBits = Bits[Index];
+
+        const auto Classification = ck::ecs_debugger_classification::Classify(Bits[Index], Table);
+        Node->IsInternal = Classification.IsInternal;
+        Node->InternalFeatureId = Classification.InternalFeatureId;
+
+        Node->RollupCounts = MoveTemp(Rollups[Index]);
+        Node->RollupBits = 0;
+        for (const auto& [FeatureId, Count] : Node->RollupCounts)
+        {
+            const auto Bit = ck::debug_feature_flags::Get_BitIndex(FeatureId);
+            if (Bit != INDEX_NONE)
+            { Node->RollupBits |= uint64{1} << Bit; }
         }
 
-        if (const auto ParentNode = NodeMap.Find(LifetimeOwner))
+        if (ck::IsValid(Node->Entity))
         {
-            (*ParentNode)->Children.Add(Node);
-            Node->Parent = *ParentNode;
+            // Registry-first archetype keying (spec §3.3): registered archetype beats
+            // the inferred base-name + signature key.
+            const auto RegisteredArchetype = ck::archetype_registry::TryGet_BestMatchName(Node->Entity);
+            Node->ArchetypeKey = RegisteredArchetype.IsNone()
+                ? ck::ecs_debugger_query::Get_InferredArchetypeKey(Node->CachedCleanName, Bits[Index])
+                : RegisteredArchetype.ToString();
+
+            Node->NetRole = UCk_Utils_Net_UE::Get_EntityNetRole(Node->Entity);
         }
         else
         {
-            RootNodes.Add(Node);
+            Node->ArchetypeKey.Reset();
+            Node->NetRole = ECk_Net_EntityNetRole::None;
         }
     }
 }
@@ -431,8 +946,7 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             if (NOT Node.IsValid())
             { continue; }
 
-            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity);
-            if (ck::fuzzy::Match(CurrentFilter, DebugName.ToString(), {}).Get_IsMatch())
+            if (ck::fuzzy::Match(CurrentFilter, Node->CachedDebugName, {}).Get_IsMatch())
             {
                 MarkNodeVisibilityRecursive(Node, true);
             }
@@ -471,13 +985,14 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             if (NOT Node.IsValid())
             { continue; }
 
-            const auto& DebugName = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity);
-            Node->IsSearchMatch = ck::fuzzy::Match(CurrentHighlight, DebugName.ToString(), {}).Get_IsMatch();
+            Node->IsSearchMatch = ck::fuzzy::Match(CurrentHighlight, Node->CachedDebugName, {}).Get_IsMatch();
         }
     }
 
-    // Third pass: Auto-expand parents of visible nodes when filtering
-    if (TreeView.IsValid())
+    // Third pass: Auto-expand parents of visible nodes — ONLY while a filter narrows the
+    // set. Unconditional expansion would override the user's collapse state on every
+    // refresh now that live churn refreshes at up to 10 Hz.
+    if (TreeView.IsValid() && NOT CurrentFilter.IsEmpty())
     {
         for (const auto& Node : AllNodes)
         {
@@ -523,14 +1038,225 @@ auto SCkDebuggerWidget_EntityTree::ApplyInspectorFilter() -> void
 
 auto SCkDebuggerWidget_EntityTree::UpdateFilteredRootNodes() -> void
 {
-    FilteredRootNodes.Empty();
+    RebuildPresentation();
+}
 
-    for (const auto& Node : RootNodes)
+auto SCkDebuggerWidget_EntityTree::RebuildPresentation() -> void
+{
+    MemberToGroup.Reset();
+
+    FilteredRootNodes.Reset();
+    DoPresentContainer(RootNodes, nullptr, FilteredRootNodes);
+
+    for (const auto& Node : AllNodes)
     {
-        if (Node.IsValid() && Node->IsVisible)
+        Node->PresentedChildren.Reset();
+        DoPresentContainer(Node->Children, Node, Node->PresentedChildren);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
+    const TArray<TSharedPtr<FCkEntityTreeNode>>& InStructuralChildren,
+    const TSharedPtr<FCkEntityTreeNode>& InOwner,
+    TArray<TSharedPtr<FCkEntityTreeNode>>& OutPresented) -> void
+{
+    // Folding never applies while a text filter narrows the set — a filter hit on an
+    // internal entity must stay reachable.
+    const auto FoldActive = FoldInternals
+        && CurrentFilter.IsEmpty()
+        && InOwner.IsValid()
+        && NOT InOwner->UnfoldInternalsOverride;
+
+    if (InOwner.IsValid())
+    { InOwner->FoldedInternalCount = 0; }
+
+    auto Candidates = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+    Candidates.Reserve(InStructuralChildren.Num());
+
+    for (const auto& Child : InStructuralChildren)
+    {
+        if (NOT Child.IsValid() || NOT Child->IsVisible)
+        { continue; }
+
+        if (FoldInternals && CurrentFilter.IsEmpty() && InOwner.IsValid() && Child->IsInternal)
         {
-            FilteredRootNodes.Add(Node);
+            // Counted even when the override shows them, so the chip can flip back.
+            ++InOwner->FoldedInternalCount;
+
+            if (FoldActive)
+            { continue; }
         }
+
+        Candidates.Add(Child);
+    }
+
+    if (NOT GroupSiblings || Candidates.Num() < GroupThreshold)
+    {
+        OutPresented.Append(Candidates);
+        return;
+    }
+
+    // Coalesce runs of same-archetype siblings (spec idea #6): keys at/over the
+    // threshold collapse into one stable synthetic group row, emitted at the first
+    // member's position.
+    auto CountByKey = TMap<FString, int32>{};
+    for (const auto& Candidate : Candidates)
+    {
+        if (NOT Candidate->ArchetypeKey.IsEmpty())
+        { ++CountByKey.FindOrAdd(Candidate->ArchetypeKey); }
+    }
+
+    auto EmittedGroups = TSet<TSharedPtr<FCkEntityTreeNode>>{};
+
+    for (const auto& Candidate : Candidates)
+    {
+        const auto* KeyCount = CountByKey.Find(Candidate->ArchetypeKey);
+        if (KeyCount == nullptr || *KeyCount < GroupThreshold)
+        {
+            OutPresented.Add(Candidate);
+            continue;
+        }
+
+        const auto CacheKey = TPair<const FCkEntityTreeNode*, FString>{ InOwner.Get(), Candidate->ArchetypeKey };
+        auto& Group = GroupNodeCache.FindOrAdd(CacheKey);
+        if (NOT Group.IsValid())
+        {
+            Group = MakeShared<FCkEntityTreeNode>();
+            Group->IsGroupNode = true;
+
+            auto BaseName = FString{};
+            if (NOT Candidate->ArchetypeKey.Split(TEXT("#"), &BaseName, nullptr))
+            { BaseName = Candidate->ArchetypeKey; }
+            Group->GroupBaseName = BaseName;
+        }
+
+        if (NOT EmittedGroups.Contains(Group))
+        {
+            Group->Children.Reset();
+            EmittedGroups.Add(Group);
+            OutPresented.Add(Group);
+        }
+
+        Group->Children.Add(Candidate);
+        MemberToGroup.Add(Candidate.Get(), Group);
+    }
+
+    for (const auto& Group : EmittedGroups)
+    {
+        Group->PresentedChildren = Group->Children;
+        Group->IsVisible = true;
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::ToggleUnfoldOverride(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void
+{
+    if (NOT InNode.IsValid())
+    { return; }
+
+    InNode->UnfoldInternalsOverride = NOT InNode->UnfoldInternalsOverride;
+
+    RebuildPresentation();
+
+    if (TreeView.IsValid())
+    {
+        // Revealing internals only helps when the owner row is open.
+        if (InNode->UnfoldInternalsOverride)
+        { TreeView->SetItemExpansion(InNode, true); }
+
+        TreeView->RequestTreeRefresh();
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::Set_FoldInternals(bool InFold) -> void
+{
+    if (FoldInternals == InFold)
+    { return; }
+
+    FoldInternals = InFold;
+
+    if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+    {
+        Settings->FoldInternalEntities = InFold;
+        Settings->SaveConfig();
+    }
+
+    RebuildPresentation();
+    if (TreeView.IsValid())
+    { TreeView->RequestTreeRefresh(); }
+}
+
+auto SCkDebuggerWidget_EntityTree::Set_GroupSiblings(bool InGroup) -> void
+{
+    if (GroupSiblings == InGroup)
+    { return; }
+
+    GroupSiblings = InGroup;
+
+    if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+    {
+        Settings->GroupSiblingsByArchetype = InGroup;
+        Settings->SaveConfig();
+    }
+
+    RebuildPresentation();
+    if (TreeView.IsValid())
+    { TreeView->RequestTreeRefresh(); }
+}
+
+auto SCkDebuggerWidget_EntityTree::Get_Counts() const -> FTreeCounts
+{
+    auto Counts = FTreeCounts{};
+    Counts.Total = AllNodes.Num();
+
+    for (const auto& Node : AllNodes)
+    {
+        if (NOT Node.IsValid())
+        { continue; }
+
+        if (Node->IsInternal) { ++Counts.Internals; }
+        else                  { ++Counts.Primaries; }
+
+        if (Node->IsVisible)  { ++Counts.Shown; }
+    }
+
+    return Counts;
+}
+
+auto SCkDebuggerWidget_EntityTree::ExpandToReveal(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void
+{
+    if (NOT InNode.IsValid() || NOT TreeView.IsValid())
+    { return; }
+
+    // A folded-away internal has no row at all — flip its owner's override first.
+    auto NeedsPresentationRebuild = false;
+    if (InNode->IsInternal && FoldInternals)
+    {
+        if (const auto Owner = InNode->Parent.Pin(); Owner.IsValid() && NOT Owner->UnfoldInternalsOverride)
+        {
+            Owner->UnfoldInternalsOverride = true;
+            NeedsPresentationRebuild = true;
+        }
+    }
+
+    if (NeedsPresentationRebuild)
+    {
+        RebuildPresentation();
+        TreeView->RequestTreeRefresh();
+    }
+
+    // Expand real ancestors AND any group row presenting them (or the node itself).
+    if (const auto* OwnGroup = MemberToGroup.Find(InNode.Get()))
+    { TreeView->SetItemExpansion(*OwnGroup, true); }
+
+    auto Current = InNode->Parent.Pin();
+    while (Current.IsValid())
+    {
+        TreeView->SetItemExpansion(Current, true);
+
+        if (const auto* Group = MemberToGroup.Find(Current.Get()))
+        { TreeView->SetItemExpansion(*Group, true); }
+
+        Current = Current->Parent.Pin();
     }
 }
 
@@ -579,18 +1305,10 @@ auto SCkDebuggerWidget_EntityTree::RestoreSelection(const TArray<FCk_Handle>& In
         return;
     }
 
-    // Expand all parent nodes for selected items so they're visible
+    // Expand all parent nodes (and any presenting group rows) so they're visible
     for (const auto& Node : NodesToSelect)
     {
-        if (NOT Node.IsValid())
-        { continue; }
-
-        auto CurrentParent = Node->Parent.Pin();
-        while (CurrentParent.IsValid())
-        {
-            TreeView->SetItemExpansion(CurrentParent, true);
-            CurrentParent = CurrentParent->Parent.Pin();
-        }
+        ExpandToReveal(Node);
     }
 
     // Update the selection model
@@ -636,13 +1354,8 @@ auto SCkDebuggerWidget_EntityTree::TrySelectLocallyControlledCharacter() -> void
     if (NOT LocallyControlledNode.IsValid())
     { return; }
 
-    // Expand all parent nodes so the character is visible
-    auto CurrentParent = LocallyControlledNode->Parent.Pin();
-    while (CurrentParent.IsValid())
-    {
-        TreeView->SetItemExpansion(CurrentParent, true);
-        CurrentParent = CurrentParent->Parent.Pin();
-    }
+    // Expand all parent nodes (and presenting groups) so the character is visible
+    ExpandToReveal(LocallyControlledNode);
 
     // Select the locally controlled character
     const auto EntitiesToSelect = TArray<FCk_Handle>{ LocallyControlledNode->Entity };
@@ -660,13 +1373,9 @@ auto SCkDebuggerWidget_EntityTree::OnGetChildren(
     if (NOT InNode.IsValid())
     { return; }
 
-    for (const auto& Child : InNode->Children)
-    {
-        if (Child.IsValid() && Child->IsVisible)
-        {
-            OutChildren.Add(Child);
-        }
-    }
+    // Presentation layer: folded internals removed, sibling runs coalesced into
+    // group rows (RebuildPresentation). Visibility is already applied.
+    OutChildren = InNode->PresentedChildren;
 }
 
 auto SCkDebuggerWidget_EntityTree::OnGenerateRow(
@@ -696,15 +1405,27 @@ auto SCkDebuggerWidget_EntityTree::OnSelectionChanged(
     auto SelectedEntities = TArray<FCk_Handle>{};
     SelectedEntities.Reserve(SelectedItems.Num());
 
+    auto AnyGroupSelected = false;
     for (const auto& Item : SelectedItems)
     {
-        if (Item.IsValid())
+        if (NOT Item.IsValid())
+        { continue; }
+
+        if (Item->IsGroupNode)
         {
-            SelectedEntities.Add(Item->Entity);
+            AnyGroupSelected = true;
+            continue;
         }
+
+        SelectedEntities.Add(Item->Entity);
     }
 
-    SelectionModel->Set_SelectedEntities(SelectedEntities);
+    // A group row carries no entity — clicking one expands/inspects the group without
+    // clobbering the current entity selection.
+    if (NOT (SelectedEntities.IsEmpty() && AnyGroupSelected))
+    {
+        SelectionModel->Set_SelectedEntities(SelectedEntities);
+    }
 
     IsUpdatingSelection = false;
 
@@ -753,11 +1474,24 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
             if (NOT Node.IsValid())
             { continue; }
 
-            const auto NameStr = UCk_Utils_Handle_UE::Get_DebugName(Node->Entity).ToString();
-            const auto IdStr = ck::Format_UE(TEXT("{}"), Node->Entity.Get_Entity().Get_ID());
-            NameLines.Add(NameStr);
-            IdLines.Add(IdStr);
-            NameAndIdLines.Add(ck::Format_UE(TEXT("{} [{}]"), NameStr, IdStr));
+            // A group row copies every member — "Copy all N names/IDs" (UI contract §4).
+            auto EntityNodes = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+            if (Node->IsGroupNode)
+            { EntityNodes = Node->Children; }
+            else
+            { EntityNodes.Add(Node); }
+
+            for (const auto& EntityNode : EntityNodes)
+            {
+                if (NOT EntityNode.IsValid())
+                { continue; }
+
+                const auto& NameStr = EntityNode->CachedDebugName;
+                const auto IdStr = ck::Format_UE(TEXT("{}"), EntityNode->Entity.Get_Entity().Get_ID());
+                NameLines.Add(NameStr);
+                IdLines.Add(IdStr);
+                NameAndIdLines.Add(ck::Format_UE(TEXT("{} [{}]"), NameStr, IdStr));
+            }
         }
 
         ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
@@ -840,13 +1574,8 @@ auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_H
         {
             TreeView->SetItemSelection(*FoundNode, true);
 
-            // Expand parents so the selected node is visible
-            auto CurrentParent = (*FoundNode)->Parent.Pin();
-            while (CurrentParent.IsValid())
-            {
-                TreeView->SetItemExpansion(CurrentParent, true);
-                CurrentParent = CurrentParent->Parent.Pin();
-            }
+            // Expand parents (and presenting groups) so the selected node is visible
+            ExpandToReveal(*FoundNode);
         }
     }
 

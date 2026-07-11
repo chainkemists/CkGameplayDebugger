@@ -212,7 +212,7 @@ public:
 
         STableRow<TSharedPtr<FCkEntityTreeNode>>::Construct(
             STableRow<TSharedPtr<FCkEntityTreeNode>>::FArguments()
-            .Style(&FAppStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
+            .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
             .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
             .ShowSelection(true)
             .Content()

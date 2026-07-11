@@ -11,8 +11,7 @@
 // destroyed entity has nothing to select). Subscription is always-on (cheap: one array
 // append per diff); the LIST view only refreshes while the page is active.
 //
-// v1 deviations (recorded in PROGRESS.md): no unseen-count tab badge (the page host has
-// no badge surface); SM-transition rows not included (stretch item).
+// v1 deviations (recorded in PROGRESS.md): SM-transition rows not included (stretch).
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkDebuggerPage_Activity : public ICkDebuggerPage_Base
@@ -26,6 +25,7 @@ public:
     auto Tick(float InDeltaTime) -> void override;
     auto IsActive() const -> bool override;
     auto Set_IsActive(bool InIsActive) -> void override;
+    auto Get_BadgeCount() const -> int32 override { return UnseenCount; }
 
 private:
     struct FActivityEvent
@@ -42,6 +42,7 @@ private:
 
     bool IsActivePage = false;
     bool FeedDirty = false;
+    int32 UnseenCount = 0;   // events received while the page was inactive (tab badge)
 
     TArray<TSharedPtr<FActivityEvent>> Events;   // newest first, capped
     TSharedPtr<SListView<TSharedPtr<FActivityEvent>>> ListView;

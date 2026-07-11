@@ -2,7 +2,9 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SNullWidget.h"
+#include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Images/SImage.h"
@@ -219,46 +221,77 @@ auto SCkDebuggerPanel_EntityList::Build_QueryHelpButton() -> TSharedRef<SWidget>
 
 auto SCkDebuggerPanel_EntityList::Build_FeatureRail() -> TSharedRef<SWidget>
 {
+    namespace visuals = ck::ecs_debugger_feature_visuals;
+
+    // Chips clustered by feature group (Core/Attributes/AI/...), each cluster under a
+    // tiny label; the whole rail scrolls so a growing flag set can't overflow the panel.
+    auto GroupedFeatures = TMap<FName, TArray<FName>>{};
+    for (const auto& [FeatureId, Bit] : visuals::Get_BadgeFeatures())
+    { GroupedFeatures.FindOrAdd(visuals::Get_FeatureGroup(FeatureId)).Add(FeatureId); }
+
     auto Rail = SNew(SVerticalBox);
 
-    for (const auto& [FeatureId, Bit] : ck::ecs_debugger_feature_visuals::Get_BadgeFeatures())
+    for (const auto& Group : visuals::Get_FeatureGroupOrder())
     {
-        const auto* Visual = ck::ecs_debugger_feature_visuals::Get_FeatureVisuals().Find(FeatureId);
-        const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
-        if (Brush == nullptr)
+        const auto* Features = GroupedFeatures.Find(Group);
+        if (Features == nullptr || Features->IsEmpty())
         { continue; }
-
-        const auto Color = Visual->Color;
-        const auto CapturedId = FeatureId;
 
         Rail->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 0.0f, 0.0f, 2.0f)
+        .Padding(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f)
         [
-            SNew(SCheckBox)
-            .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
-            .ToolTipText(FText::FromString(FString::Printf(TEXT("Show only entities with %s (own or rolled up). Click again to release."), *FeatureId.ToString())))
-            .IsChecked_Lambda([this, CapturedId]()
-            {
-                return EntityTree.IsValid() && EntityTree->Get_RailIncluded().Contains(CapturedId)
-                    ? ECheckBoxState::Checked
-                    : ECheckBoxState::Unchecked;
-            })
-            .OnCheckStateChanged_Lambda([this, CapturedId](ECheckBoxState)
-            {
-                if (EntityTree.IsValid())
-                { EntityTree->Toggle_RailFeature(CapturedId); }
-            })
-            [
-                SNew(SImage)
-                .Image(Brush)
-                .ColorAndOpacity(Color)
-                .DesiredSizeOverride(FVector2D(14.0f, 14.0f))
-            ]
+            SNew(STextBlock)
+            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 6))
+            .Text(FText::FromString(Group.ToString().ToUpper()))
+            .ColorAndOpacity(CkStyle::TextMute())
         ];
+
+        for (const auto& FeatureId : *Features)
+        {
+            const auto* Visual = visuals::Get_FeatureVisuals().Find(FeatureId);
+            const auto* Brush = Visual != nullptr ? FCkDebuggerStyle::Get_IconBrush(Visual->IconName) : nullptr;
+            if (Brush == nullptr)
+            { continue; }
+
+            const auto Color = Visual->Color;
+            const auto CapturedId = FeatureId;
+
+            Rail->AddSlot()
+            .AutoHeight()
+            .Padding(0.0f, 0.0f, 0.0f, 2.0f)
+            [
+                SNew(SCheckBox)
+                .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
+                .ToolTipText(FText::FromString(FString::Printf(TEXT("Show only entities with %s (own or rolled up). Click again to release."), *FeatureId.ToString())))
+                .IsChecked_Lambda([this, CapturedId]()
+                {
+                    return EntityTree.IsValid() && EntityTree->Get_RailIncluded().Contains(CapturedId)
+                        ? ECheckBoxState::Checked
+                        : ECheckBoxState::Unchecked;
+                })
+                .OnCheckStateChanged_Lambda([this, CapturedId](ECheckBoxState)
+                {
+                    if (EntityTree.IsValid())
+                    { EntityTree->Toggle_RailFeature(CapturedId); }
+                })
+                [
+                    SNew(SImage)
+                    .Image(Brush)
+                    .ColorAndOpacity(Color)
+                    .DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+                ]
+            ];
+        }
     }
 
-    return Rail;
+    return SNew(SScrollBox)
+        .ScrollBarVisibility(EVisibility::Collapsed)
+
+        + SScrollBox::Slot()
+        [
+            Rail
+        ];
 }
 
 auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void

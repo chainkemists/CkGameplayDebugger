@@ -13,7 +13,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
-#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -56,6 +56,7 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
 {
     WorldModel = InContext.WorldModel;
     RequestEntityFilter = InContext.RequestEntityFilter;
+    GetEntityFilter = InContext.GetEntityFilter;
 
     const auto Content =
         SNew(SVerticalBox)
@@ -91,6 +92,9 @@ auto FCkDebuggerPage_Archetypes::Tick(float InDeltaTime) -> void
     if (NOT IsActivePage)
     { return; }
 
+    // Cheap per-frame: re-derive card checked states only when the filter text changed.
+    RefreshActiveArchTokens();
+
     // 1 Hz rebuild while visible — the aggregation walks every cached entity, so it
     // stays off the per-frame path; a hidden tab does no work at all (spec §5 gate).
     TimeSinceRebuild += InDeltaTime;
@@ -99,6 +103,70 @@ auto FCkDebuggerPage_Archetypes::Tick(float InDeltaTime) -> void
 
     TimeSinceRebuild = 0.0f;
     RebuildCards();
+}
+
+auto FCkDebuggerPage_Archetypes::RefreshActiveArchTokens() -> void
+{
+    const auto FilterText = GetEntityFilter ? GetEntityFilter() : FString{};
+    if (LastSeenFilterText.IsSet() && LastSeenFilterText.GetValue() == FilterText)
+    { return; }
+
+    LastSeenFilterText = FilterText;
+    ActiveArchTokens.Reset();
+
+    for (const auto& Term : ck::ecs_debugger_query::Parse(FilterText).Terms)
+    {
+        if (Term.Type == ck::ecs_debugger_query::ETermType::Arch)
+        { ActiveArchTokens.Add(Term.Value); }   // Parse lowercases values
+    }
+}
+
+auto FCkDebuggerPage_Archetypes::Toggle_ArchFilterToken(const FString& InToken, bool InEnable) -> void
+{
+    if (NOT RequestEntityFilter)
+    { return; }
+
+    const auto NeedsQuotes = InToken.Contains(TEXT(" "));
+    const auto QuotedForm = FString::Printf(TEXT("arch:\"%s\""), *InToken);
+    const auto BareForm = FString::Printf(TEXT("arch:%s"), *InToken);
+
+    auto NewFilter = GetEntityFilter ? GetEntityFilter() : FString{};
+
+    // Remove an existing occurrence — quoted form is unambiguous; the bare form only
+    // when it ends at a word boundary (so arch:Timer never clips arch:TimerX).
+    NewFilter = NewFilter.Replace(*QuotedForm, TEXT(""), ESearchCase::IgnoreCase);
+    if (NOT NeedsQuotes)
+    {
+        auto SearchFrom = 0;
+        while (true)
+        {
+            const auto FoundIndex = NewFilter.Find(BareForm, ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
+            if (FoundIndex == INDEX_NONE)
+            { break; }
+
+            const auto EndIndex = FoundIndex + BareForm.Len();
+            if (EndIndex >= NewFilter.Len() || FChar::IsWhitespace(NewFilter[EndIndex]))
+            {
+                NewFilter.RemoveAt(FoundIndex, BareForm.Len());
+                continue;
+            }
+            SearchFrom = EndIndex;
+        }
+    }
+
+    if (InEnable)
+    {
+        NewFilter.TrimStartAndEndInline();
+        NewFilter += NewFilter.IsEmpty() ? FString{} : FString{TEXT(" ")};
+        NewFilter += NeedsQuotes ? QuotedForm : BareForm;
+    }
+
+    while (NewFilter.Contains(TEXT("  ")))
+    { NewFilter = NewFilter.Replace(TEXT("  "), TEXT(" ")); }
+    NewFilter.TrimStartAndEndInline();
+
+    RequestEntityFilter(NewFilter);
+    LastSeenFilterText.Reset();   // force checked-state re-derive on the next tick
 }
 
 auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
@@ -154,8 +222,28 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
                 if (const auto Descriptor = ck::archetype_registry::Find(Registered); Descriptor.IsSet())
                 {
                     // IconSvgPath resolution is game-plugin territory; v1 uses the id as
-                    // a style icon name when it happens to match, else the Cube fallback.
-                    Bucket.IconName = FName{FPaths::GetBaseFilename(Descriptor->Get_IconSvgPath())};
+                    // a style icon name when it happens to match, else the fallback below.
+                    const auto BespokeIcon = FName{FPaths::GetBaseFilename(Descriptor->Get_IconSvgPath())};
+                    if (FCkDebuggerStyle::Get_IconBrush(BespokeIcon) != nullptr)
+                    { Bucket.IconName = BespokeIcon; }
+                }
+            }
+
+            // Dominant-feature glyph fallback: the first flagged feature in the signature
+            // names the card, so a Timer swarm reads as timers, not as anonymous cubes.
+            if (Bucket.IconName.IsNone())
+            {
+                for (const auto& [FeatureId, Bit] : ck::ecs_debugger_feature_visuals::Get_BadgeFeatures())
+                {
+                    if ((Bits & (uint64{1} << Bit)) == 0)
+                    { continue; }
+
+                    if (const auto* Visual = ck::ecs_debugger_feature_visuals::Get_FeatureVisuals().Find(FeatureId))
+                    {
+                        Bucket.IconName = Visual->IconName;
+                        Bucket.IconColor = Visual->Color;
+                        break;
+                    }
                 }
             }
         }
@@ -251,7 +339,8 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
     if (IconBrush == nullptr)
     { IconBrush = FCkDebuggerStyle::Get_IconBrush(TEXT("Cube")); }
 
-    const auto AccentColor = InBucket.IsRegistered ? CkStyle::Selection() : CkStyle::TextDim();
+    const auto AccentColor = InBucket.IconColor.Get(
+        InBucket.IsRegistered ? CkStyle::Selection() : CkStyle::TextDim());
 
     // Header row: tinted icon well + name (+ GAME pill for registered archetypes).
     auto HeaderRow = SNew(SHorizontalBox);
@@ -281,6 +370,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
         .Text(FText::FromString(InBucket.DisplayName))
         .ColorAndOpacity(CkStyle::Text())
+        .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
     ];
 
     if (InBucket.IsRegistered)
@@ -338,21 +428,27 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         .ColorAndOpacity(CkStyle::TextStrong());
 
     const auto FilterToken = InBucket.FilterToken;
+    const auto TokenLower = FilterToken.ToLower();
 
     OutEntry.CardWidget =
-        SNew(SButton)
-        .ButtonStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FButtonStyle>("CkDebugger.Card"))
-        .ContentPadding(FMargin{FCkDebuggerStyle::Padding_Medium})
-        .ToolTipText(FText::FromString(FString::Printf(TEXT("Filter the entity tree to arch:%s"), *FilterToken)))
-        .OnClicked_Lambda([this, FilterToken]() -> FReply
+        SNew(SCheckBox)
+        .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.CardToggle"))
+        .ToolTipText(FText::FromString(FString::Printf(
+            TEXT("Toggle arch:%s in the entity tree filter. Toggle several cards to see them together."), *FilterToken)))
+        .IsChecked_Lambda([this, TokenLower]()
         {
-            if (RequestEntityFilter)
-            { RequestEntityFilter(FString::Printf(TEXT("arch:%s"), *FilterToken)); }
-            return FReply::Handled();
+            return ActiveArchTokens.Contains(TokenLower)
+                ? ECheckBoxState::Checked
+                : ECheckBoxState::Unchecked;
+        })
+        .OnCheckStateChanged_Lambda([this, FilterToken](ECheckBoxState InState)
+        {
+            Toggle_ArchFilterToken(FilterToken, InState == ECheckBoxState::Checked);
         })
         [
+            // Fixed width — the wrap box reads as a uniform grid, not a ragged cloud.
             SNew(SBox)
-            .MinDesiredWidth(170.0f)
+            .WidthOverride(200.0f)
             [
                 SNew(SVerticalBox)
 

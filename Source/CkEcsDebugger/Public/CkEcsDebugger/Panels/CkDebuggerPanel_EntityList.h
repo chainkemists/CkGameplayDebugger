@@ -28,6 +28,9 @@ public:
     /** Push a query into the Filter bar (Archetypes-page card click-through). */
     auto Set_FilterText(const FString& InText) -> void;
 
+    /** Current Filter bar text — archetype cards derive toggled state from it. */
+    auto Get_FilterText() const -> FString;
+
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;

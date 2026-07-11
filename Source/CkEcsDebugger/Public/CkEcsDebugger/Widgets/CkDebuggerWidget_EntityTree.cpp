@@ -417,8 +417,9 @@ private:
 
         // Inspector-filter dim takes precedence over selection — dimmed entities still
         // read as dimmed even when clicked, so the user knows the row didn't pass the filter.
-        // The same dim applies to non-matches in Highlight search mode.
-        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
+        // The same dim applies to non-matches in Highlight search mode and to ancestors
+        // that are only visible to keep a narrowing match's path readable.
+        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch || NOT Node->IsNarrowingMatch)
         { return CkStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
@@ -436,7 +437,7 @@ private:
         if (FPlatformTime::Seconds() < Node->FlashUntilSeconds)
         { return FSlateColor{FLinearColor{0.25f, 1.0f, 0.35f}}; }
 
-        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch)
+        if (NOT Node->IsFilterMatch || NOT Node->IsSearchMatch || NOT Node->IsNarrowingMatch)
         { return CkStyle::TextMute(); }
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
@@ -937,7 +938,11 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
     {
         for (const auto& Node : AllNodes)
         {
-            if (Node.IsValid()) { Node->IsVisible = true; }
+            if (Node.IsValid())
+            {
+                Node->IsVisible = true;
+                Node->IsNarrowingMatch = true;
+            }
         }
     }
     else
@@ -947,7 +952,11 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
 
         for (const auto& Node : AllNodes)
         {
-            if (Node.IsValid()) { Node->IsVisible = false; }
+            if (Node.IsValid())
+            {
+                Node->IsVisible = false;
+                Node->IsNarrowingMatch = false;
+            }
         }
 
         for (const auto& Node : AllNodes)
@@ -961,6 +970,9 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             if (ck::ecs_debugger_query::Matches(
                     ck_debugger_entity_tree::Make_QueryContext(*Node), Query, TokenTable))
             {
+                // The node itself matched; ancestors become visible for the path but
+                // keep IsNarrowingMatch=false, so they render greyed.
+                Node->IsNarrowingMatch = true;
                 MarkNodeVisibilityRecursive(Node, true);
             }
         }
@@ -1006,10 +1018,10 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
         }
     }
 
-    // Third pass: Auto-expand parents of visible nodes — ONLY while a filter narrows the
-    // set. Unconditional expansion would override the user's collapse state on every
-    // refresh now that live churn refreshes at up to 10 Hz.
-    if (TreeView.IsValid() && NOT CurrentFilter.IsEmpty())
+    // Third pass: Auto-expand parents of visible nodes — ONLY while a narrowing (filter
+    // query OR rail chips) is active. Unconditional expansion would override the user's
+    // collapse state on every refresh now that live churn refreshes at up to 10 Hz.
+    if (TreeView.IsValid() && (NOT CurrentFilter.IsEmpty() || RailMask != 0))
     {
         for (const auto& Node : AllNodes)
         {

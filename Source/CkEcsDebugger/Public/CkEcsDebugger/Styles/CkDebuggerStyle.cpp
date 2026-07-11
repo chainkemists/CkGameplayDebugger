@@ -123,13 +123,17 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
         .SetCheckedPressedForegroundColor(CkStyle::TextStrong())
         .SetPadding(FMargin{6.0f, 3.0f}));
 
-    // Clickable cards (Archetypes page): rounded, accent outline on hover.
-    InStyle->Set("CkDebugger.Card", FButtonStyle()
-        .SetNormal(FSlateRoundedBoxBrush{CkStyle::Bg1(), 4.0f, CkStyle::Border(), 1.0f})
-        .SetHovered(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetPressed(FSlateRoundedBoxBrush{CkStyle::Bg2(), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetNormalPadding(FMargin{0.0f})
-        .SetPressedPadding(FMargin{0.0f}));
+    // Toggleable cards (Archetypes page): rounded, accent outline on hover, accent
+    // fill while toggled into the filter. Content padding lives in the style.
+    InStyle->Set("CkDebugger.CardToggle", FCheckBoxStyle()
+        .SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
+        .SetUncheckedImage(FSlateRoundedBoxBrush{CkStyle::Bg1(), 4.0f, CkStyle::Border(), 1.0f})
+        .SetUncheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetUncheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Bg2(), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetCheckedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.18f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetCheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.28f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetCheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.18f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetPadding(FMargin{Padding_Medium}));
 
     // Tintable icon backdrop for cards — white so BorderBackgroundColor carries the tint.
     InStyle->Set("CkDebugger.Card.IconWell", new FSlateRoundedBoxBrush(
@@ -146,7 +150,9 @@ auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> 
         TEXT("Interaction"), TEXT("Inventory"), TEXT("Objective"), TEXT("Aggro"),
         TEXT("Perception"), TEXT("Vfx"), TEXT("Audio"), TEXT("Label"),
         TEXT("Input"), TEXT("Camera"), TEXT("IsmRenderer"), TEXT("Variables"),
-        TEXT("Cube"), TEXT("World"), TEXT("Pin")
+        TEXT("Cube"), TEXT("World"), TEXT("Pin"),
+        TEXT("AttributeFloat"), TEXT("AttributeByte"), TEXT("AttributeInteger"),
+        TEXT("AttributeVector")
     };
 
     for (const auto& IconId : IconIds)

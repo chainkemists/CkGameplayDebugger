@@ -6,6 +6,42 @@
 
 namespace ck_ecs_debugger_query_impl
 {
+    // Whitespace splitting that honors double quotes, so multi-word values survive as
+    // one token: arch:"UnrealComponent: BackWall". Quotes delimit and are never emitted;
+    // an unbalanced quote (mid-typing) swallows the rest into one token — harmless.
+    static auto TokenizeRespectingQuotes(const FString& InQuery) -> TArray<FString>
+    {
+        auto Tokens = TArray<FString>{};
+        auto Current = FString{};
+        auto InQuotes = false;
+
+        for (const auto Char : InQuery)
+        {
+            if (Char == TEXT('"'))
+            {
+                InQuotes = NOT InQuotes;
+                continue;
+            }
+
+            if (FChar::IsWhitespace(Char) && NOT InQuotes)
+            {
+                if (NOT Current.IsEmpty())
+                {
+                    Tokens.Add(Current);
+                    Current.Reset();
+                }
+                continue;
+            }
+
+            Current.AppendChar(Char);
+        }
+
+        if (NOT Current.IsEmpty())
+        { Tokens.Add(Current); }
+
+        return Tokens;
+    }
+
     // Incomplete tokens ("has:", "net:") are DROPPED rather than evaluated — a
     // half-typed term must never blank the tree mid-keystroke.
     static auto ParseOne(const FString& InToken) -> TOptional<ck::ecs_debugger_query::FQueryTerm>
@@ -101,8 +137,7 @@ auto
 {
     auto Result = FParsedQuery{};
 
-    auto Tokens = TArray<FString>{};
-    InQuery.ParseIntoArrayWS(Tokens);
+    const auto Tokens = ck_ecs_debugger_query_impl::TokenizeRespectingQuotes(InQuery);
 
     for (const auto& Token : Tokens)
     {
@@ -152,8 +187,21 @@ auto
         const FFeatureTokenTable& InTokenTable)
     -> bool
 {
+    // Repeated arch: terms OR-compose (an entity has exactly ONE archetype, so ANDing
+    // them is always empty — OR is the only useful multi-card semantics); every other
+    // term type ANDs as usual, including against the arch group as a whole.
+    auto ArchTermSeen = false;
+    auto ArchAnyMatched = false;
+
     for (const auto& Term : InQuery.Terms)
     {
+        if (Term.Type == ETermType::Arch)
+        {
+            ArchTermSeen = true;
+            ArchAnyMatched = ArchAnyMatched || InContext.ArchetypeName.Contains(Term.Value);
+            continue;
+        }
+
         const auto TermMatches = [&]() -> bool
         {
             switch (Term.Type)
@@ -176,8 +224,6 @@ auto
                 { return ck_ecs_debugger_query_impl::MatchesNet(Term.Value, InContext.NetMode); }
                 case ETermType::Id:
                 { return InContext.EntityId == Term.IdValue; }
-                case ETermType::Arch:
-                { return InContext.ArchetypeName.Contains(Term.Value); }
                 case ETermType::Fuzzy:
                 { return ck::fuzzy::Match(Term.Value, InContext.DisplayName, {}).Get_IsMatch(); }
                 default:
@@ -189,7 +235,7 @@ auto
         { return false; }
     }
 
-    return true;
+    return NOT ArchTermSeen || ArchAnyMatched;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

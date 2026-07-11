@@ -7,6 +7,7 @@
 #include "CkAttribute/ByteAttribute/CkByteAttribute_Fragment.h"
 #include "CkAttribute/FloatAttribute/CkFloatAttribute_Fragment.h"
 #include "CkAttribute/IntegerAttribute/CkIntegerAttribute_Fragment.h"
+#include "CkAttribute/VectorAttribute/CkVectorAttribute_Fragment.h"
 #include "CkAudio/AudioTrack/CkAudioTrack_Fragment.h"
 #include "CkEcsExt/SceneNode/CkSceneNode_Fragment.h"
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
@@ -42,6 +43,8 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_FloatAttribute_Current>(TEXT("FloatAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_ByteAttribute_Current>(TEXT("ByteAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_IntegerAttribute_Current>(TEXT("IntegerAttribute"));
+    // Same TUtils_Attribute<_Current> machinery as Float/Byte/Integer — parity carries over.
+    debug_feature_flags::RegisterFlag<FFragment_VectorAttribute_Current>(TEXT("VectorAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_Sm_Params>(TEXT("StateMachine"));
     debug_feature_flags::RegisterFlag<FFragment_Aggro_Current>(TEXT("Aggro"));
     debug_feature_flags::RegisterFlag<FFragment_GameplayLabel>(TEXT("Label"));

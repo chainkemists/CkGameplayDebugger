@@ -38,11 +38,12 @@ private:
     {
         FString Key;            // aggregation key — also the card-cache identity
         FString DisplayName;
-        FString FilterToken;    // pushed as arch:<token> on click
+        FString FilterToken;    // toggled as arch:<token> into the filter
         int32 Count = 0;
         uint64 SignatureBits = 0;
         bool IsRegistered = false;
-        FName IconName;         // registered archetypes may carry a bespoke glyph id
+        FName IconName;         // bespoke glyph, else dominant-feature glyph, else none (Cube)
+        TOptional<FLinearColor> IconColor;   // set when IconName is a feature glyph
     };
 
     struct FCardCacheEntry
@@ -55,15 +56,26 @@ private:
     auto RebuildCards() -> void;
     auto DoCreateCard(const FArchetypeBucket& InBucket, FCardCacheEntry& OutEntry) -> void;
 
+    /** Adds/removes `arch:<token>` in the entity list's filter (cards multi-select by ORing). */
+    auto Toggle_ArchFilterToken(const FString& InToken, bool InEnable) -> void;
+
+    /** Re-derives ActiveArchTokens from the live filter text (no-op while unchanged). */
+    auto RefreshActiveArchTokens() -> void;
+
     bool IsActivePage = false;
     float TimeSinceRebuild = 0.0f;
 
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
     TFunction<void(const FString&)> RequestEntityFilter;
+    TFunction<FString()> GetEntityFilter;
 
     TSharedPtr<STextBlock> HeroText;
     TSharedPtr<SWrapBox> CardsBox;
 
     TMap<FString, FCardCacheEntry> CardCache;
     TArray<FString> PresentedKeys;
+
+    /** Lowercased arch: term values currently in the filter — drives card checked state. */
+    TSet<FString> ActiveArchTokens;
+    TOptional<FString> LastSeenFilterText;
 };

@@ -22,7 +22,12 @@ auto
 
         Table.BitToFeatureId[Bit] = FeatureId;
 
-        if (FeatureId == TEXT("Transform") || FeatureId == TEXT("Label"))
+        // Underscore-prefixed ids are infrastructure flags (e.g. "_TreeEntity", the churn
+        // detector on FFragment_LifetimeOwner) — structural like Transform/Label, never a
+        // classifying feature.
+        const auto IsInfrastructure = FeatureId.ToString().StartsWith(TEXT("_"));
+
+        if (IsInfrastructure || FeatureId == TEXT("Transform") || FeatureId == TEXT("Label"))
         { Table.StructuralMask |= uint64{1} << Bit; }
 
         if (InInternalFeatureIds.Contains(FeatureId))

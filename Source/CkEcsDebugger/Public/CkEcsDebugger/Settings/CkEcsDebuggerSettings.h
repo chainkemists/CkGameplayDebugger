@@ -40,6 +40,23 @@ public:
             ToolTip = "Entities whose only non-structural feature is one of these are classified INTERNAL — foldable under their owner with a rolled-up badge count. Extend with additional feature-flag ids to fold more entity types."))
     TSet<FName> InternalFeatureIds;
 
+    // Fold single-feature internal entities (timers, scene nodes, attribute entries …)
+    // under their owner, showing a per-owner "⊞ N" chip instead of N rows. Toggleable
+    // live from the entity-list toolbar; this is the persisted default.
+    UPROPERTY(Config, EditAnywhere, Category = "Entity Tree Presentation",
+        meta = (DisplayName = "Fold Internal Entities"))
+    bool FoldInternalEntities = true;
+
+    // Coalesce runs of same-archetype siblings into a single "Name ×N" group row once
+    // they exceed the threshold. Toggleable live from the entity-list toolbar.
+    UPROPERTY(Config, EditAnywhere, Category = "Entity Tree Presentation",
+        meta = (DisplayName = "Group Siblings By Archetype"))
+    bool GroupSiblingsByArchetype = true;
+
+    UPROPERTY(Config, EditAnywhere, Category = "Entity Tree Presentation",
+        meta = (DisplayName = "Sibling Group Threshold", ClampMin = 2))
+    int32 SiblingGroupThreshold = 5;
+
     // Substring tokens whose entities should be hidden from the ECS entity tree.
     // Each token matches PARTIALLY against (a) inspector IDs — "Transform"
     // matches "FCkInspector_Transform", hiding entities that inspector can

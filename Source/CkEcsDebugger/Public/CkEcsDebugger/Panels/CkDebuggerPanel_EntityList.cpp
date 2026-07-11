@@ -4,6 +4,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
@@ -168,6 +169,46 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 [
                     SNew(SBox)
                 ]
+
+                // Presentation toggles (Phase 2): fold internals + group siblings.
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+                [
+                    SNew(SCheckBox)
+                    .Style(FAppStyle::Get(), "ToggleButton")
+                    .ToolTipText(FText::FromString(TEXT("Fold internal entities (timers, scene nodes, attributes ...) under their owner with a +N chip")))
+                    .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_FoldInternals() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                    {
+                        if (EntityTree.IsValid())
+                        { EntityTree->Set_FoldInternals(InState == ECheckBoxState::Checked); }
+                    })
+                    [
+                        SNew(STextBlock)
+                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                        .Text(FText::FromString(TEXT("Fold")))
+                    ]
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                [
+                    SNew(SCheckBox)
+                    .Style(FAppStyle::Get(), "ToggleButton")
+                    .ToolTipText(FText::FromString(TEXT("Coalesce runs of same-archetype siblings into one \"Name xN\" row")))
+                    .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_GroupSiblings() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                    {
+                        if (EntityTree.IsValid())
+                        { EntityTree->Set_GroupSiblings(InState == ECheckBoxState::Checked); }
+                    })
+                    [
+                        SNew(STextBlock)
+                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                        .Text(FText::FromString(TEXT("Group")))
+                    ]
+                ]
             ]
         ];
 }
@@ -223,14 +264,11 @@ auto SCkDebuggerPanel_EntityList::OnHighlightTextChanged(const FString& InText) 
 
 auto SCkDebuggerPanel_EntityList::OnRefreshClicked() -> FReply
 {
-    if (WorldModel.IsValid())
-    {
-        WorldModel->MarkCacheDirty();
-    }
-
+    // Manual refresh is the escape hatch: full rebuild, re-deriving cached names —
+    // the incremental path (live churn) reuses nodes and never re-reads names.
     if (EntityTree.IsValid())
     {
-        EntityTree->RefreshTree();
+        EntityTree->ForceFullRefresh();
     }
 
     return FReply::Handled();
@@ -258,11 +296,14 @@ auto SCkDebuggerPanel_EntityList::OnCollapseAllClicked() -> FReply
 
 auto SCkDebuggerPanel_EntityList::Get_EntityCountText() const -> FText
 {
-    if (NOT WorldModel.IsValid())
+    if (NOT EntityTree.IsValid())
     { return FText::FromString(TEXT("Entities: 0")); }
 
-    const auto EntityCount = WorldModel->Get_CachedEntities().Num();
-    return FText::FromString(ck::Format_UE(TEXT("Entities: {}"), EntityCount));
+    // Classification-aware counts (Phase 2): total plus the primary/internal split the
+    // fold + rollup presentation is built on.
+    const auto Counts = EntityTree->Get_Counts();
+    return FText::FromString(ck::Format_UE(TEXT("Entities: {} ({} primary · {} internal)"),
+        Counts.Total, Counts.Primaries, Counts.Internals));
 }
 
 auto SCkDebuggerPanel_EntityList::Get_SelectionCountText() const -> FText

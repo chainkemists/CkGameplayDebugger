@@ -1,6 +1,7 @@
 #include "CkEcsDebugger_FeatureFlags.h"
 
 #include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 
 #include "CkAggro/CkAggro_Fragment.h"
 #include "CkAttribute/ByteAttribute/CkByteAttribute_Fragment.h"
@@ -26,6 +27,12 @@ auto
     // Extend alongside new per-inspector Get_FeatureFlagId overrides (Phase 1 tracker
     // lists the remaining candidates: Inventory, Objective, Vfx, Tween, Ism/IskmProxy,
     // EntityTag, Net, ActorBridge, Camera).
+    // Infrastructure flag (underscore prefix = structural, ignored by classification and
+    // feature tokens): LifetimeOwner sits on every tree-relevant entity, so its sinks make
+    // Get_Revision bump on every spawn/destroy — the incremental world model's O(1) churn
+    // detector.
+    debug_feature_flags::RegisterFlag<FFragment_LifetimeOwner>(TEXT("_TreeEntity"));
+
     debug_feature_flags::RegisterFlag<FFragment_Timer_Params>(TEXT("Timer"));
     // FFragment_Transform is the real pool — FFragment_Transform_Params is a ParamsData
     // ALIAS that is never added to any entity (CkTransform_Utils.cpp adds FFragment_Transform).

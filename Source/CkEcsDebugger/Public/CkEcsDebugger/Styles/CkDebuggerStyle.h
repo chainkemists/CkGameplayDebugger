@@ -29,6 +29,14 @@ public:
      */
     static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
 
+    /**
+     * The general archetype glyph library (Resources/Icons/General/*.svg, sorted by
+     * name). Archetypes without a bespoke or dominant-feature icon hash their key into
+     * this pool for a stable, distinct glyph. Game archetype descriptors may also name
+     * any of these directly via their IconSvgPath.
+     */
+    static auto Get_GeneralIconPool() -> const TArray<FName>&;
+
     static constexpr float Padding_Small = 4.0f;
     static constexpr float Padding_Medium = 8.0f;
     static constexpr float Padding_Large = 16.0f;
@@ -42,6 +50,7 @@ public:
 
 private:
     static TSharedPtr<FSlateStyleSet> StyleInstance;
+    static TArray<FName> GeneralIconPool;
 
     static auto Create() -> TSharedRef<FSlateStyleSet>;
     static auto CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;

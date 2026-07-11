@@ -8,6 +8,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -17,7 +18,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SWrapBox.h"
+#include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/CoreStyle.h"
@@ -58,6 +59,33 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
     RequestEntityFilter = InContext.RequestEntityFilter;
     GetEntityFilter = InContext.GetEntityFilter;
 
+    // Column-density chips (2..6) — radio semantics against the persisted setting.
+    auto ColumnChips = SNew(SHorizontalBox);
+    for (auto Columns = 2; Columns <= 6; ++Columns)
+    {
+        ColumnChips->AddSlot()
+        .AutoWidth()
+        .Padding(2.0f, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SCheckBox)
+            .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
+            .ToolTipText(FText::FromString(FString::Printf(TEXT("%d card columns"), Columns)))
+            .IsChecked_Lambda([Columns]()
+            {
+                return Get_GridColumns() == Columns ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+            })
+            .OnCheckStateChanged_Lambda([this, Columns](ECheckBoxState)
+            {
+                Set_GridColumns(Columns);
+            })
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(FText::AsNumber(Columns))
+            ]
+        ];
+    }
+
     const auto Content =
         SNew(SVerticalBox)
 
@@ -65,9 +93,34 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
         .AutoHeight()
         .Padding(FCkDebuggerStyle::Padding_Medium)
         [
-            SAssignNew(HeroText, STextBlock)
-            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-            .Text(FText::FromString(TEXT("No world observed")))
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SAssignNew(HeroText, STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
+                .Text(FText::FromString(TEXT("No world observed")))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(FText::FromString(TEXT("Columns")))
+                .ColorAndOpacity(CkStyle::TextMute())
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                ColumnChips
+            ]
         ]
 
         + SVerticalBox::Slot()
@@ -78,8 +131,8 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
 
             + SScrollBox::Slot()
             [
-                SAssignNew(CardsBox, SWrapBox)
-                .UseAllottedSize(true)
+                SAssignNew(CardsBox, SUniformGridPanel)
+                .SlotPadding(FMargin{0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small})
             ]
         ];
 
@@ -229,9 +282,10 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
                 }
             }
 
-            // Dominant-feature glyph fallback: the first flagged feature in the signature
-            // names the card, so a Timer swarm reads as timers, not as anonymous cubes.
-            if (Bucket.IconName.IsNone())
+            // Inferred buckets prefer the dominant-feature glyph (semantic): a Timer
+            // swarm reads as timers. Registered archetypes skip this — each named
+            // archetype deserves its own identity from the general pool below.
+            if (Bucket.IconName.IsNone() && NOT Bucket.IsRegistered)
             {
                 for (const auto& [FeatureId, Bit] : ck::ecs_debugger_feature_visuals::Get_BadgeFeatures())
                 {
@@ -245,6 +299,16 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
                         break;
                     }
                 }
+            }
+
+            // General-pool assignment: stable hash of the archetype key picks a glyph
+            // from Resources/Icons/General — distinct identity instead of anonymous
+            // cubes. Cube survives only if the pool is empty.
+            if (Bucket.IconName.IsNone())
+            {
+                const auto& Pool = FCkDebuggerStyle::Get_GeneralIconPool();
+                if (Pool.Num() > 0)
+                { Bucket.IconName = Pool[FCrc::StrCrc32(*Key) % static_cast<uint32>(Pool.Num())]; }
             }
         }
         ++Bucket.Count;
@@ -285,7 +349,9 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
     for (const auto* Bucket : Presented)
     { NewKeys.Add(Bucket->Key); }
 
-    if (NewKeys == PresentedKeys)
+    const auto Columns = FMath::Clamp(Get_GridColumns(), 1, 8);
+
+    if (NewKeys == PresentedKeys && LastSlottedColumns == Columns)
     {
         // Same cards in the same order — update counts in place. No ClearChildren, no
         // widget churn, no flicker.
@@ -301,7 +367,7 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
         return;
     }
 
-    // Key set (or order) changed: re-slot, reusing surviving card widgets by key.
+    // Key set (or order or density) changed: re-slot, reusing surviving card widgets by key.
     for (auto It = CardCache.CreateIterator(); It; ++It)
     {
         if (NOT NewKeys.Contains(It->Key))
@@ -309,6 +375,7 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
     }
 
     CardsBox->ClearChildren();
+    auto SlotIndex = 0;
     for (const auto* Bucket : Presented)
     {
         auto& Entry = CardCache.FindOrAdd(Bucket->Key);
@@ -321,14 +388,32 @@ auto FCkDebuggerPage_Archetypes::RebuildCards() -> void
             Entry.LastCount = Bucket->Count;
         }
 
-        CardsBox->AddSlot()
-        .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small)
+        CardsBox->AddSlot(SlotIndex % Columns, SlotIndex / Columns)
         [
             Entry.CardWidget.ToSharedRef()
         ];
+        ++SlotIndex;
     }
 
     PresentedKeys = MoveTemp(NewKeys);
+    LastSlottedColumns = Columns;
+}
+
+auto FCkDebuggerPage_Archetypes::Get_GridColumns() -> int32
+{
+    return FMath::Clamp(UCkEcsDebuggerSettings::Get()->ArchetypeGridColumns, 1, 8);
+}
+
+auto FCkDebuggerPage_Archetypes::Set_GridColumns(int32 InColumns) -> void
+{
+    if (auto* Settings = GetMutableDefault<UCkEcsDebuggerSettings>())
+    {
+        Settings->ArchetypeGridColumns = FMath::Clamp(InColumns, 1, 8);
+        Settings->SaveConfig();
+    }
+
+    // Re-slot immediately so the click lands this frame instead of on the 1 Hz tick.
+    RebuildCards();
 }
 
 auto FCkDebuggerPage_Archetypes::DoCreateCard(
@@ -446,9 +531,8 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
             Toggle_ArchFilterToken(FilterToken, InState == ECheckBoxState::Checked);
         })
         [
-            // Fixed width — the wrap box reads as a uniform grid, not a ragged cloud.
+            // Width comes from the uniform grid cell (panel width / column count).
             SNew(SBox)
-            .WidthOverride(200.0f)
             [
                 SNew(SVerticalBox)
 

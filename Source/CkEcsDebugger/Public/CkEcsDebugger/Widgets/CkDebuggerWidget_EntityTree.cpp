@@ -14,8 +14,8 @@
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
+#include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Validation/CkIsValid.h"
-#include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkEcs/Archetype/CkArchetype_Registry.h"
 #include "CkEcs/DebugFeatureFlags/CkDebugFeatureFlags.h"
 #include "CkEcs/Net/CkNet_Utils.h"
@@ -26,6 +26,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
+#include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
 #include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
@@ -38,69 +39,56 @@
 
 namespace ck_debugger_entity_tree
 {
-    struct FFeatureVisual
-    {
-        FName IconName;
-        FLinearColor Color = FLinearColor::White;
-    };
+    // Shorthand into the shared presentation metadata (also used by the rail + Overview).
+    using ck::ecs_debugger_feature_visuals::Get_FeatureVisuals;
+    using ck::ecs_debugger_feature_visuals::Get_BadgeFeatures;
+    constexpr auto MaxBadges = ck::ecs_debugger_feature_visuals::MaxBadges;
 
-    // Flag-feature-id → glyph + accent. Wired inspectors contribute their declared
-    // icon/color via metadata; flag-only features (no parity-wired inspector) get
-    // manual rows. Built once — registration is startup-only.
-    static auto Get_FeatureVisuals() -> const TMap<FName, FFeatureVisual>&
+    // Feature-token table for the query grammar: flag ids + wired inspectors' display
+    // names, both prefix-matchable (spec §3.5). Built once — registration is startup-only.
+    static auto Get_QueryTokenTable() -> const ck::ecs_debugger_query::FFeatureTokenTable&
     {
-        static const auto Visuals = []() -> TMap<FName, FFeatureVisual>
+        static const auto Table = []() -> ck::ecs_debugger_query::FFeatureTokenTable
         {
-            auto Map = TMap<FName, FFeatureVisual>{};
+            auto Result = ck::ecs_debugger_query::FFeatureTokenTable{};
+
+            for (const auto& [FeatureId, Bit] : Get_BadgeFeatures())
+            {
+                Result.Add(FeatureId.ToString(), uint64{1} << Bit);
+            }
 
             for (const auto& Metadata : FCkDebuggerInspectorRegistry::Get().Get_AllMetadata())
             {
-                if (Metadata.FeatureFlagId.IsNone() || Metadata.IconName.IsNone())
+                if (Metadata.FeatureFlagId.IsNone())
                 { continue; }
 
-                Map.Add(Metadata.FeatureFlagId, FFeatureVisual{
-                    Metadata.IconName,
-                    Metadata.Color.Get(FLinearColor::White) });
-            }
-
-            Map.Add(TEXT("StateMachine"),     FFeatureVisual{ TEXT("StateMachine"), FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8F6FE8"))) });
-            Map.Add(TEXT("Aggro"),            FFeatureVisual{ TEXT("Aggro"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("C94F4F"))) });
-            Map.Add(TEXT("AudioTrack"),       FFeatureVisual{ TEXT("Audio"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("4FA3C9"))) });
-            Map.Add(TEXT("Label"),            FFeatureVisual{ TEXT("Label"),        FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("8B93A1"))) });
-            Map.Add(TEXT("FloatAttribute"),   FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-            Map.Add(TEXT("ByteAttribute"),    FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-            Map.Add(TEXT("IntegerAttribute"), FFeatureVisual{ TEXT("Attribute"),    FLinearColor::FromSRGBColor(FColor::FromHex(TEXT("3FA1AD"))) });
-
-            return Map;
-        }();
-
-        return Visuals;
-    }
-
-    // (feature id, bit) pairs for decoding own-bit masks into badges; skips the
-    // structural carriers (Transform/Label) and underscore-prefixed infrastructure ids.
-    static auto Get_BadgeFeatures() -> const TArray<TPair<FName, int32>>&
-    {
-        static const auto Features = []() -> TArray<TPair<FName, int32>>
-        {
-            auto Result = TArray<TPair<FName, int32>>{};
-            for (const auto& FeatureId : ck::debug_feature_flags::Get_RegisteredFeatureIds())
-            {
-                if (FeatureId == TEXT("Transform") || FeatureId == TEXT("Label") ||
-                    FeatureId.ToString().StartsWith(TEXT("_")))
-                { continue; }
-
-                const auto Bit = ck::debug_feature_flags::Get_BitIndex(FeatureId);
+                const auto Bit = ck::debug_feature_flags::Get_BitIndex(Metadata.FeatureFlagId);
                 if (Bit != INDEX_NONE)
-                { Result.Emplace(FeatureId, Bit); }
+                { Result.Add(Metadata.DisplayName.ToString(), uint64{1} << Bit); }
             }
+
             return Result;
         }();
 
-        return Features;
+        return Table;
     }
 
-    constexpr auto MaxBadges = 6;
+    static auto Make_QueryContext(const FCkEntityTreeNode& InNode) -> ck::ecs_debugger_query::FEntityQueryContext
+    {
+        using namespace ck::ecs_debugger_query;
+
+        auto Context = FEntityQueryContext{};
+        Context.OwnBits = InNode.OwnBits;
+        Context.RollupBits = InNode.RollupBits;
+        Context.IsInternal = InNode.IsInternal;
+        Context.NetMode = InNode.NetRole == ECk_Net_EntityNetRole::Authority ? EQueryNetMode::Authority
+                        : InNode.NetRole == ECk_Net_EntityNetRole::Proxy     ? EQueryNetMode::Proxy
+                        : EQueryNetMode::None;
+        Context.EntityId = static_cast<uint32>(InNode.Entity.Get_Entity().Get_ID());
+        Context.ArchetypeName = InNode.ArchetypeKey.ToLower();
+        Context.DisplayName = InNode.CachedDebugName;
+        return Context;
+    }
 }
 
 class SCkDebuggerEntityTreeRow : public STableRow<TSharedPtr<FCkEntityTreeNode>>
@@ -926,8 +914,20 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
     // Either string can be empty; an empty Filter shows everything, an empty
     // Highlight makes every visible row read as a match.
 
-    // ---- Pass 1: visibility from CurrentFilter ----
-    if (CurrentFilter.IsEmpty())
+    // ---- Pass 1: visibility from CurrentFilter (query grammar, spec §3.5) + rail ----
+    const auto RailMask = [this]() -> uint64
+    {
+        auto Mask = uint64{0};
+        for (const auto& FeatureId : RailIncluded)
+        {
+            const auto Bit = ck::debug_feature_flags::Get_BitIndex(FeatureId);
+            if (Bit != INDEX_NONE)
+            { Mask |= uint64{1} << Bit; }
+        }
+        return Mask;
+    }();
+
+    if (CurrentFilter.IsEmpty() && RailMask == 0)
     {
         for (const auto& Node : AllNodes)
         {
@@ -936,6 +936,9 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
     }
     else
     {
+        const auto Query = ck::ecs_debugger_query::Parse(CurrentFilter);
+        const auto& TokenTable = ck_debugger_entity_tree::Get_QueryTokenTable();
+
         for (const auto& Node : AllNodes)
         {
             if (Node.IsValid()) { Node->IsVisible = false; }
@@ -946,7 +949,11 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
             if (NOT Node.IsValid())
             { continue; }
 
-            if (ck::fuzzy::Match(CurrentFilter, Node->CachedDebugName, {}).Get_IsMatch())
+            if (RailMask != 0 && ((Node->OwnBits | Node->RollupBits) & RailMask) == 0)
+            { continue; }
+
+            if (ck::ecs_debugger_query::Matches(
+                    ck_debugger_entity_tree::Make_QueryContext(*Node), Query, TokenTable))
             {
                 MarkNodeVisibilityRecursive(Node, true);
             }
@@ -980,12 +987,16 @@ auto SCkDebuggerWidget_EntityTree::ApplyFilterToNodes() -> void
     }
     else
     {
+        const auto HighlightQuery = ck::ecs_debugger_query::Parse(CurrentHighlight);
+        const auto& TokenTable = ck_debugger_entity_tree::Get_QueryTokenTable();
+
         for (const auto& Node : AllNodes)
         {
             if (NOT Node.IsValid())
             { continue; }
 
-            Node->IsSearchMatch = ck::fuzzy::Match(CurrentHighlight, Node->CachedDebugName, {}).Get_IsMatch();
+            Node->IsSearchMatch = ck::ecs_debugger_query::Matches(
+                ck_debugger_entity_tree::Make_QueryContext(*Node), HighlightQuery, TokenTable);
         }
     }
 
@@ -1060,10 +1071,11 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
     const TSharedPtr<FCkEntityTreeNode>& InOwner,
     TArray<TSharedPtr<FCkEntityTreeNode>>& OutPresented) -> void
 {
-    // Folding never applies while a text filter narrows the set — a filter hit on an
-    // internal entity must stay reachable.
+    // Folding never applies while a text filter or rail selection narrows the set —
+    // a filter hit on an internal entity must stay reachable.
+    const auto NoActiveNarrowing = CurrentFilter.IsEmpty() && RailIncluded.IsEmpty();
     const auto FoldActive = FoldInternals
-        && CurrentFilter.IsEmpty()
+        && NoActiveNarrowing
         && InOwner.IsValid()
         && NOT InOwner->UnfoldInternalsOverride;
 
@@ -1078,7 +1090,7 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
         if (NOT Child.IsValid() || NOT Child->IsVisible)
         { continue; }
 
-        if (FoldInternals && CurrentFilter.IsEmpty() && InOwner.IsValid() && Child->IsInternal)
+        if (FoldInternals && NoActiveNarrowing && InOwner.IsValid() && Child->IsInternal)
         {
             // Counted even when the override shows them, so the chip can flip back.
             ++InOwner->FoldedInternalCount;
@@ -1165,6 +1177,38 @@ auto SCkDebuggerWidget_EntityTree::ToggleUnfoldOverride(const TSharedPtr<FCkEnti
 
         TreeView->RequestTreeRefresh();
     }
+}
+
+auto SCkDebuggerWidget_EntityTree::Toggle_RailFeature(FName InFeatureId) -> void
+{
+    if (RailIncluded.Contains(InFeatureId))
+    { RailIncluded.Remove(InFeatureId); }
+    else
+    { RailIncluded.Add(InFeatureId); }
+
+    ApplyFilterToNodes();
+    UpdateFilteredRootNodes();
+
+    if (TreeView.IsValid())
+    { TreeView->RequestTreeRefresh(); }
+}
+
+auto SCkDebuggerWidget_EntityTree::Get_IsPinned(const FCk_Handle& InEntity) const -> bool
+{
+    return PinnedEntities.Contains(InEntity);
+}
+
+auto SCkDebuggerWidget_EntityTree::TogglePin(const FCk_Handle& InEntity) -> void
+{
+    if (ck::Is_NOT_Valid(InEntity))
+    { return; }
+
+    if (PinnedEntities.Contains(InEntity))
+    { PinnedEntities.Remove(InEntity); }
+    else
+    { PinnedEntities.Add(InEntity); }
+
+    OnPinsChanged.Broadcast();
 }
 
 auto SCkDebuggerWidget_EntityTree::Set_FoldInternals(bool InFold) -> void
@@ -1510,6 +1554,39 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
             FString::Join(NameAndIdLines, TEXT("\n")));
 
         MenuBuilder.AddMenuSeparator();
+    }
+
+    // Pin / Unpin (Phase 3): pinned entities surface in the panel's Pinned section.
+    {
+        auto EntityNodes = TArray<TSharedPtr<FCkEntityTreeNode>>{};
+        for (const auto& Node : SelectedNodes)
+        {
+            if (Node.IsValid() && NOT Node->IsGroupNode && ck::IsValid(Node->Entity))
+            { EntityNodes.Add(Node); }
+        }
+
+        if (EntityNodes.Num() > 0)
+        {
+            const auto AllPinned = ck::algo::AllOf(EntityNodes,
+                [this](const TSharedPtr<FCkEntityTreeNode>& InNode)
+                { return Get_IsPinned(InNode->Entity); });
+
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(AllPinned ? TEXT("Unpin") : TEXT("Pin")),
+                FText::FromString(TEXT("Pinned entities stay one click away in the Pinned section above the tree")),
+                FSlateIcon(),
+                FUIAction(FExecuteAction::CreateLambda([this, EntityNodes, AllPinned]()
+                {
+                    for (const auto& Node : EntityNodes)
+                    {
+                        if (Get_IsPinned(Node->Entity) == AllPinned)
+                        { TogglePin(Node->Entity); }
+                    }
+                }))
+            );
+
+            MenuBuilder.AddMenuSeparator();
+        }
     }
 
     MenuBuilder.AddMenuEntry(

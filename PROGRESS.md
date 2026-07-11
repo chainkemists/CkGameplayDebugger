@@ -305,6 +305,35 @@ ancestors (`IsNarrowingMatch` on tree nodes, also applies to Filter queries).
 features without registered flags (Message, CueRelay, EntityScript, relays) still
 have no glyph — needs marker-fragment flags per feature (Phase 1 tracker list).
 
+**Polish pass 5 (fourth PIE round, 2026-07-11):** (1) Rail chips were stretching to
+the rail's full width — the grouped rail's SVerticalBox slots default to HAlign_Fill
+and the AutoWidth column is sized by the widest group label; chips now HAlign_Left.
+(2) Full feature-coverage audit, per the maintainer's "count the `Ck*_Fragment`
+files" method: 127 fragment headers across ~55 CkFoundation modules inventoried
+(struct decls + `using` aliases + `Add<>`/`AddOrGet<>` call sites). Result: 32 new
+flags, every one keyed on a fragment verified to be added at feature-Add() time —
+EntityExtension, UnrealComponent, Snapshot (SaveKey), TagSet, EntityTag,
+RotatorAttribute (+ bespoke AttributeRotator glyph), CrowdAgent, Grid (+ bespoke
+glyph), Marker, Sensor, RaySense, Velocity, Spline, InteractSource, InteractTarget,
+Inventory (Params alias existed after all), Item, Team, Player, Projectile
+(tag-keyed), ResolverSource, ResolverTarget, GeometryCollection, AnimPlan,
+MontagePlayer, VatProxy, RenderTarget, WorldSpaceWidget, CameraShake, Vfx (CkFx
+leaf), AudioDirector, Sfx. Existing "Vfx" flag renamed **VfxCue** (it keys on
+CkVfx's cue coordinator; CkFx's leaf Niagara wrapper now owns "Vfx"). 56/64 flag
+bits used — the next batch this size needs the cache widened past one uint64 row.
+Deliberately unflagged with reasons (recorded in FeatureFlags.cpp): Cue/Messaging
+(record/transient-entity based), Nav (request-driven), AStar (rides on Goap
+planners), EntitySpawner (transient PendingSpawn), Variables/Dynamic (no single
+static type), Shapes, sub-features (Homing/Ballistic/CameraLayer/AnimAsset), owner
+sides, renderer singletons, LagCompensation (revisit), infrastructure. (3) Rail
+regrouped into 12 clusters (Core/Tags/Attributes/AI/Spatial/Motion/Gameplay/Combat/
+Animation/Rendering/Audio/Other), ~53 chips; new features' glyphs are hand-picked
+semantic matches from the 148-icon general pool (People, Backpack, Coin, Sword,
+Shield, Tv, FilmReel, …) with per-feature hues. CkEcsDebugger.Build.cs gained 10
+module deps (Chaos, Crowd, Fx, Projectile, RaySense, RenderTarget, Snapshot,
+Spline, UnrealComponent, Vat). Inspector fast-path (Get_FeatureFlagId) remains
+unwired for the new batch, same as batch 2.
+
 **Polish pass 4 (third PIE round, 2026-07-11):** (1) Overview became the mockup
 dashboard: hero count + live 60-sample sparkline (new volatile SLeafWidget
 `SCkEcsDebugger_Sparkline`), population-by-family bars (descriptor gained `_Family`

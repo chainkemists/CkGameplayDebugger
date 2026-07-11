@@ -132,3 +132,22 @@ limitation); replacing the `DrawDebugString` entity label above the gizmo.
 - ISKM batched clusters may not produce per-instance trace hits — ISKM entities then stay
   diamond-picked this phase (recorded limitation, not a defect).
 - RMB threshold interplay with editor camera-look while ejected — tune threshold in PIE.
+
+## 5. PIE feedback round 1 (2026-07-11) — verdicts + revisions
+
+Maintainer verified A–F in PIE. A (sync) and E (owner linkage) passed as shipped. The rest
+produced seven revision items, all code-complete in this round:
+
+| # | Feedback | Root cause / change |
+|---|---|---|
+| R1 | In-world RMB never fires — the editor viewport's context menu owns the ejected RMB click. Maintainer: map-only commanding is fine. | `FCkCrowdDebugger_WorldCommandProcessor` deleted (files + registration). The 2D-map RMB command now draws the in-world PMG destination ring itself. Spec §D's "in-world (ejected)" acceptance clause is void; D1 is map-only. |
+| R2 | Gizmo axes are flat (edge-on-invisible) — wants real cylinders/cones with bright outlines. | `FCkDebug_PmgGizmoSet` rebuilt on `UCk_Utils_Pmg_BasicShapes::Create_Cylinder/Create_Cone` (6 parts/gizmo). `InDrawLines=true` outlines are baked as a second procmesh section at alpha 1 (`FProcessor_Pmg_DebugShape_BakeLines`) — retained geometry, moves with the entity, cannot blink. |
+| R3 | Focus: (a) force-eject when possessed, (b) glide not teleport, (c) too close — 2× distance, tunable. | (a) queued focus + `GEditor->RequestToggleBetweenPIEandSIE()` + ticker completes once ejected (EndPIE clears the queued handle); (b) `FViewportCameraTransform::TransitionToLocation` (fork-verified, EditorViewportClient.h:283/490); (c) `ck.Debug.Focus.DistanceScale` cvar, default 2.0. |
+| R4 | Player chevron doesn't rotate. | Collector sampled `GetActorRotation().Yaw` — orient-to-movement bodies don't follow the camera. Now `GetBaseAimRotation().Yaw`. |
+| R5 | Mesh picking dead in ISKM stress gyms (500 agents). | TWO causes: (1) ISKM entities carry `IskmProxy` (CkIskmRenderer), not `IsmProxy` — every gate was blind to them; (2) renderer ISMs run `NoCollision` — the visibility trace can never hit. Fix: `DoIsMeshResolvable` accepts IskmProxy; new analytic ray-vs-bounds candidate stage in `DoPickAtRay` over per-tick cached `_MeshPickBounds` (collision-independent). ISKM pick volume = the 1 m-box bounds fallback until a `Get_MeshBounds` exists on IskmProxy utils (recorded CkFoundation follow-up). |
+| R6 | Transform missing from rail + has/is badges. | Deliberate exclusion in `Get_BadgeFeatures()` removed (Label stays excluded). Also enables `has:transform` query token. |
+| R7 | One icon rail scrolls — split across both flanks of the tree. | `Build_FeatureRail(bool InRightFlank)`: whole groups greedily assigned to the lighter flank in display order; deterministic; each flank still scrolls when short. |
+
+Re-verify queue (round 2): B1 solids + outlines legibility, C1 auto-eject/glide/distance feel,
+D1 chevron rotation + map ping, F1 in the ISKM gym (hover box = 1 m box for now, "Meshes First"
+declutter), R7 two-flank layout, Transform chip/badge presence.

@@ -393,6 +393,36 @@ specs + the spec §3 `[EDITOR-VERIFY]` table for the maintainer's next PIE round
 
 **`[EDITOR-VERIFY]` (maintainer PIE round):** spec §3 table A1–F1 — sync flash + map ping; gizmo stability at low refresh caps + zero orphans after deselect/EndPIE; F-focus framing from all three lists (ejected only); player chevron/wedge; map + in-world RMB command (incl. no stuck camera-look, no context-menu conflict); breadcrumb + owner column; ISM mesh pick + hover box + Meshes First declutter.
 
+## PIE feedback round 1 — code complete (2026-07-11, Fable)
+
+Maintainer PIE-verified the world-interaction phase: **A (sync) and E (owner linkage) passed**;
+seven revision items came back (spec §5 has the full verdict table). All code-complete:
+
+| # | Item | Root cause → change | Key files |
+|---|---|---|---|
+| R1 | In-world RMB command dropped (maintainer accepted): the editor viewport's context menu owns the ejected RMB click, so the passive processor's clean-click never fires usefully. Map-only commanding stays; the map command now draws the in-world PMG destination ring itself. | `CkCrowdDebugger_WorldCommandProcessor.{h,cpp}` **deleted**; window registration removed; ping + `Destination` local added to the map RMB branch; banner/tooltip strings say "map destination". | `SCkCrowdDebuggerWindow.{h,cpp}`, `SCkCrowdDebugger_ViewportPanel.cpp`, `SCkCrowdDebugger_AgentDetailPanel.cpp` |
+| R2 | Flat gizmo arrows read edge-on-invisible → real solids with bright outlines. | `FCkDebug_PmgGizmoSet` now builds 6 parts/gizmo (cylinder shaft + cone tip per axis, `UCk_Utils_Pmg_BasicShapes`); `InDrawLines=true` outlines bake as a second procmesh section at alpha 1 (`FProcessor_Pmg_DebugShape_BakeLines`) — retained geometry, moves with the part, cannot blink. Aim = `FRotationMatrix::MakeFromZ(WorldDir)` (both solids build along +Z; `ECk_Plane_Axis::XY` = identity, verified `Get_PlaneAxisRotation`). | `CkDebuggerCommon/Markers/CkDebug_PmgGizmoSet.{h,cpp}` |
+| R3 | Focus: force-eject when possessed; glide; 2× distance (tunable). | Possessed → queued focus + `GEditor->RequestToggleBetweenPIEandSIE()` + core-ticker poll until ejected (2 s expiry; `FEditorDelegates::EndPIE` clears the queued handle — handle contract). Framing now `GetViewTransform().TransitionToLocation(...)` (fork-verified EditorViewportClient.h:283/490 — the editor's own animated F). New cvar `ck.Debug.Focus.DistanceScale` (default 2.0) scales the FOV-fit distance. `Get_CanFocus` loosened to "ejected OR PIE exists". Tooltips updated in all three lists + detail button. | `CkDebug_Focus.{h,cpp}` + 4 string sites |
+| R4 | Chevron didn't rotate: collector sampled `GetActorRotation().Yaw` — orient-to-movement bodies don't follow the camera. | Now `GetBaseAimRotation().Yaw`. | `CkCrowdDebugger_DataCollector.cpp` |
+| R5 | Mesh picking dead in ISKM stress gyms — TWO causes: (1) ISKM entities carry `IskmProxy` (CkIskmRenderer), not `IsmProxy` — every mesh gate was blind; (2) renderer ISMs run `NoCollision` (`CkIsmRenderer_Processor.h:157` param-driven) so the visibility trace can never hit. | `DoIsMeshResolvable` accepts `UCk_Utils_IskmProxy_UE::Has`; new analytic ray-vs-AABB candidate stage in `DoPickAtRay` (slab test w/ near-T) over `_MeshPickBounds` — per-tick cache built in `DoRefreshMarkers` from `DebugFocus::Get_EntityWorldBounds` (collision-independent; nearest-T competes with the trace hit). ISKM pick volume = the 1 m-box fallback (no `Get_MeshBounds` on IskmProxy utils yet — recorded CkFoundation follow-up). | `CkDebuggerModel_ViewportPicker.{h,cpp}` |
+| R6 | Transform missing from rail + has/is badges: deliberate exclusion in `Get_BadgeFeatures()`. | Exclusion removed (Label stays excluded — the name column IS the label). Also enables the `has:transform` query token. Transform visual already existed via the inspector's metadata (`CkInspector_Transform.h:11-12` + `Transform.svg`). | `CkEcsDebugger_FeatureVisuals.cpp` |
+| R7 | One icon rail needs scrolling → split across both flanks of the tree. | `Build_FeatureRail(bool InRightFlank)`: whole groups greedily assigned to the lighter flank in display order (weight = chips + header); deterministic across both calls; each flank keeps its own scrollbox for short windows. Right flank slotted after the tree. | `CkDebuggerPanel_EntityList.{h,cpp}` |
+
+**Deliberate calls:** in-world commanding could return later behind a modifier key
+(e.g. Ctrl+RMB) if wanted — dropped per maintainer, not for technical impossibility. R5 keeps
+the physics trace as a precision assist (actor-backed meshes with collision); nearest-T
+between trace and box candidates is accepted ranking noise for a debug picker.
+
+**Recorded follow-ups (new):** `Get_MeshBounds` (or bounds getter) on `UCk_Utils_IskmProxy_UE`
+in CkFoundation for exact ISKM pick volumes / focus framing (1 m box today); per-row badge
+strips near `MaxBadges` now spend one slot on Transform for most entities — revisit the cap if
+rows start truncating badges that matter.
+
+**`[EDITOR-VERIFY]` (round 2):** spec §5 re-verify queue — gizmo solids/outlines; focus
+auto-eject + glide + distance feel (`ck.Debug.Focus.DistanceScale`); chevron rotation;
+map-RMB world ping; ISKM hover/pick + Meshes First in the stress gym; two-flank rail;
+Transform chip + badge.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas
@@ -406,3 +436,9 @@ specs + the spec §3 `[EDITOR-VERIFY]` table for the maintainer's next PIE round
   trace+ISM picking). Spec `2026-07-11-debugger-world-interaction.md` written; workstreams
   A–F implemented (section above). Backlog untouched: pooling-interaction question,
   inspector fast-path wiring, flag-cache widening, perf acceptance.
+- **2026-07-11 (Fable, PIE feedback round 1):** Maintainer's PIE verdicts: A + E pass; seven
+  revisions (spec §5, section above) — in-world RMB dropped (editor context menu owns the
+  click), gizmo → solid cylinder/cone triad with baked outlines, focus auto-eject + glide +
+  distance cvar, chevron aim-yaw fix, ISKM-aware collision-independent mesh picking (IskmProxy
+  blindness + NoCollision were the two root causes), Transform badge/chip enabled, icon rail
+  split across both tree flanks (the last two were the maintainer's "other comments").

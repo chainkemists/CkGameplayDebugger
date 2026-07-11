@@ -63,6 +63,14 @@ public:
         meta = (DisplayName = "Archetype Grid Columns", ClampMin = 1, ClampMax = 8))
     int32 ArchetypeGridColumns = 4;
 
+    // Viewport picker: hide the diamond billboards of entities that are pickable by
+    // their rendered geometry (ISM-instance- or actor-backed), leaving diamonds only
+    // on meshless entities. Everything stays pickable. Toggleable live from the
+    // picker toolbar; this is the persisted default.
+    UPROPERTY(Config, EditAnywhere, Category = "Viewport Picker",
+        meta = (DisplayName = "Meshes First (hide diamonds on mesh-backed entities)"))
+    bool PickerMeshesFirst = false;
+
     // Substring tokens whose entities should be hidden from the ECS entity tree.
     // Each token matches PARTIALLY against (a) inspector IDs — "Transform"
     // matches "FCkInspector_Transform", hiding entities that inspector can

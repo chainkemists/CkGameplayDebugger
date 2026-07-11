@@ -46,8 +46,13 @@ private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& NewSelection) -> void;
     auto OnInspectorFilterChanged(int32 InspectorIndex, const FString& InFilterText) -> void;
 
+    // Owner-chain breadcrumb (root › … › selected) pinned above the sections —
+    // rebuilt only on selection change (stable-identity rule).
+    auto RebuildBreadcrumb() -> void;
+
     TSharedPtr<SScrollBox> ScrollBox;
     TSharedPtr<SBox> _ModeToggleContainer;
+    TSharedPtr<SBox> _BreadcrumbContainer;
     TArray<TSharedPtr<ICkDebuggerComponentInspector_Base>> Inspectors;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
 

@@ -95,6 +95,9 @@ public:
 
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
 
+    // F — frame the primary selection in the ejected editor viewport.
+    auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
+
     auto RefreshTree() -> void;
 
     /** Drops every node and rebuilds from scratch (re-derives cached names). */

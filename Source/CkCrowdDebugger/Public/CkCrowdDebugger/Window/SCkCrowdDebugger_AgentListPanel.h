@@ -19,6 +19,10 @@ public:
 	auto Construct(const FArguments& InArgs) -> void;
 	virtual ~SCkCrowdDebugger_AgentListPanel();
 
+	// F — frame the selected agent in the ejected editor viewport.
+	virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
+	virtual auto SupportsKeyboardFocus() const -> bool override { return true; }
+
 private:
 	using ItemPtr = TSharedPtr<FCkCrowdDebugger_AgentSnapshot>;
 
@@ -37,6 +41,11 @@ private:
 	TSharedPtr<SListView<ItemPtr>> _ListView;
 	FDelegateHandle _OnListChangedHandle;
 	FDelegateHandle _OnSelectionSyncHandle;
+
+	// Sync-received selection flash — the row's background tint fades out so the
+	// user notices WHICH agent a cross-debugger selection resolved to.
+	TWeakPtr<FCkCrowdDebugger_AgentSnapshot> _SyncFlashItem;
+	double _SyncFlashEndSeconds = 0.0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

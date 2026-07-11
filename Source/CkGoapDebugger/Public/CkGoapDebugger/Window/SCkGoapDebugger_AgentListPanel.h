@@ -33,6 +33,10 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkGoapDebugger_AgentListPanel() override;
 
+    // F — frame the selected agent in the ejected editor viewport.
+    virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
+    virtual auto SupportsKeyboardFocus() const -> bool override { return true; }
+
     // Identity-stable refresh off the ViewModel's snapshot batch. Cheap when
     // the entity set is unchanged.
     auto RefreshFromViewModel() -> void;
@@ -77,6 +81,11 @@ private:
     FString _HighlightString;
 
     FDelegateHandle _OnSelectionSyncHandle;
+
+    // Sync-received selection flash — fading row tint so the user notices which
+    // agent a cross-debugger selection resolved to.
+    TWeakPtr<FAgentRow> _SyncFlashItem;
+    double _SyncFlashEndSeconds = 0.0;
 };
 
 // ====================================================================================================================

@@ -7,12 +7,16 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
@@ -243,11 +247,31 @@ auto
     }
 
     const auto WeakItem = TWeakPtr<FAgentRow>(InItem);
+    const auto WeakPanel = TWeakPtr<SCkGoapDebugger_AgentListPanel>(SharedThis(this));
 
     return SNew(STableRow<ItemPtr>, InTable)
         .Padding(FMargin(8.0f, 3.0f))
         .ShowSelection(true)
         [
+            SNew(SBorder)
+                .BorderImage(CkStyle::GetFilledBrush())
+                .Padding(FMargin(0.0f))
+                .BorderBackgroundColor_Lambda([WeakPanel, WeakItem]() -> FSlateColor
+                {
+                    const auto Panel = WeakPanel.Pin();
+                    const auto Item  = WeakItem.Pin();
+                    if (NOT Panel.IsValid() || NOT Item.IsValid() || Panel->_SyncFlashItem.Pin() != Item)
+                    { return FSlateColor(FLinearColor::Transparent); }
+
+                    const auto Remaining = Panel->_SyncFlashEndSeconds - FSlateApplication::Get().GetCurrentTime();
+                    if (Remaining <= 0.0)
+                    { return FSlateColor(FLinearColor::Transparent); }
+
+                    auto Tint = CkStyle::Info();
+                    Tint.A = 0.35f * FMath::Clamp(static_cast<float>(Remaining), 0.0f, 1.0f);
+                    return FSlateColor(Tint);
+                })
+                [
             SNew(SHorizontalBox)
 
                 // Canonical entity identity — click navigates to the ECS debugger.
@@ -301,6 +325,7 @@ auto
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                             .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
                     ]
+                ]
         ];
 }
 
@@ -353,7 +378,39 @@ auto
         NSLOCTEXT("CkGoapAgentList", "CopyEntityTip", "Copy the full entity handle (ID|Version + debug name) to the clipboard."),
         ck::Format_UE(TEXT("{}"), Item.Handle));
 
+    if (ck::DebugFocus::Get_CanFocus() && ck::IsValid(Item.Handle))
+    {
+        const auto FocusTarget = Item.Handle;
+        MenuBuilder.AddMenuEntry(
+            NSLOCTEXT("CkGoapAgentList", "FocusInViewport", "Focus in Viewport (F)"),
+            NSLOCTEXT("CkGoapAgentList", "FocusInViewportTip", "Move the ejected editor camera to frame this agent."),
+            FSlateIcon(),
+            FUIAction(FExecuteAction::CreateLambda([FocusTarget]()
+            {
+                ck::DebugFocus::Focus_Entity(FocusTarget);
+            })));
+    }
+
     return MenuBuilder.MakeWidget();
+}
+
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_AgentListPanel::
+    OnKeyDown(
+        const FGeometry& InGeometry,
+        const FKeyEvent& InKeyEvent)
+    -> FReply
+{
+    if (InKeyEvent.GetKey() == EKeys::F && _ViewModel.IsValid())
+    {
+        const auto Selected = _ViewModel->GetSelectedEntity();
+        if (ck::IsValid(Selected) && ck::DebugFocus::Focus_Entity(Selected))
+        { return FReply::Handled(); }
+    }
+
+    return SCompoundWidget::OnKeyDown(InGeometry, InKeyEvent);
 }
 
 // ====================================================================================================================
@@ -376,7 +433,14 @@ auto
         const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
         _ViewModel->SetSelectedEntity(Item->Handle);
         if (_ListView.IsValid())
-        { _ListView->SetSelection(Item, ESelectInfo::Direct); }
+        {
+            _ListView->SetSelection(Item, ESelectInfo::Direct);
+            _ListView->RequestScrollIntoView(Item);
+        }
+
+        // Make the resolve visible — fading row flash.
+        _SyncFlashItem       = Item;
+        _SyncFlashEndSeconds = FSlateApplication::Get().GetCurrentTime() + 1.2;
         return;
     }
     // No lineage match — broadcast entity has no GOAP root; keep current selection.

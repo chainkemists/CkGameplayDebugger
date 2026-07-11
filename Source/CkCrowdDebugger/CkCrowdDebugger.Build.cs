@@ -35,6 +35,7 @@ public class CkCrowdDebugger : CkModuleRules
 
 			"CkNavigation",
 			"CkCrowd",
+			"CkPmg",       // destination-ping ring in the in-world RMB command processor
 		});
 
 		if (Target.bBuildEditor)

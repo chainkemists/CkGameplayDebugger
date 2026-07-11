@@ -288,6 +288,23 @@ would otherwise reorder every tick). (3) Cards restyled to the mockup shape:
 hero count + "instances", badges row; hero line adds archetype count. Gate:
 build + 5/5 `Ck.EcsDebugger` specs.
 
+**Polish pass 2 (second PIE round, 2026-07-10):** (1) Archetype cards became
+multi-select toggles: repeated `arch:` terms now OR-compose in the query (an entity
+has exactly one archetype — AND was always empty); tokenizer honors double quotes so
+multi-word tokens (`arch:"UnrealComponent: BackWall"`) survive whole; cards derive
+checked state from the live Filter text (context gained `GetEntityFilter`) and
+add/remove their token with word-boundary-safe string surgery. +4 spec cases.
+(2) Uniform grid: fixed 200 px card width + name ellipsis. (3) Cube fallback replaced
+by dominant-feature glyph (first flagged feature in the signature, feature-colored);
+registered bespoke icons validated at bucket time. (4) Distinct attribute icons:
+new AttributeFloat/Byte/Integer/Vector SVGs, per-type hues, inspectors re-pointed;
+`VectorAttribute` flag registered (same TUtils_Attribute machinery = same parity).
+(5) Rail narrowing now auto-expands to reveal matches and greys non-matching
+ancestors (`IsNarrowingMatch` on tree nodes, also applies to Filter queries).
+(6) Pinned/Recent headers are label+rule separators with spacing. Known gap:
+features without registered flags (Message, CueRelay, EntityScript, relays) still
+have no glyph — needs marker-fragment flags per feature (Phase 1 tracker list).
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

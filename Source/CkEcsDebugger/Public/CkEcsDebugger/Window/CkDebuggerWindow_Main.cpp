@@ -1332,6 +1332,14 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
                 const auto Pinned = WeakSelf.Pin();
                 if (Pinned.IsValid() && Pinned->EntityListPanel.IsValid())
                 { Pinned->EntityListPanel->Set_FilterText(InFilter); }
+            },
+            // Filter-bar readback — cards derive their toggled state from the live text.
+            [WeakSelf = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this))]() -> FString
+            {
+                const auto Pinned = WeakSelf.Pin();
+                return Pinned.IsValid() && Pinned->EntityListPanel.IsValid()
+                    ? Pinned->EntityListPanel->Get_FilterText()
+                    : FString{};
             }
         };
 

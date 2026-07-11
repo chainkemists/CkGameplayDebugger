@@ -59,6 +59,15 @@ bool FCkEcsDebuggerQuery_Parse_Test::RunTest(const FString&)
 
     TestTrue(TEXT("empty query is empty"), Parse(TEXT("   ")).IsEmpty());
 
+    // Quoted values keep multi-word tokens whole (archetype cards push these).
+    {
+        const auto Query = Parse(TEXT("arch:\"UnrealComponent: BackWall\" loose"));
+        TestEqual(TEXT("quoted term count"), Query.Terms.Num(), 2);
+        TestEqual(TEXT("quoted arch"), static_cast<int32>(Query.Terms[0].Type), static_cast<int32>(ETermType::Arch));
+        TestEqual(TEXT("quoted value whole"), Query.Terms[0].Value, FString(TEXT("unrealcomponent: backwall")));
+        TestEqual(TEXT("trailing fuzzy intact"), static_cast<int32>(Query.Terms[1].Type), static_cast<int32>(ETermType::Fuzzy));
+    }
+
     return true;
 }
 
@@ -114,6 +123,12 @@ bool FCkEcsDebuggerQuery_Matches_Test::RunTest(const FString&)
     // Terms AND-compose.
     TestTrue(TEXT("AND all pass"), Matches(Station, Parse(TEXT("has:timer net:auth id:7")), Table));
     TestFalse(TEXT("AND one fails"), Matches(Station, Parse(TEXT("has:timer net:proxy")), Table));
+
+    // Repeated arch: terms OR-compose (multi-card selection); the arch group still
+    // ANDs against every other term.
+    TestTrue(TEXT("arch OR one hits"), Matches(Station, Parse(TEXT("arch:crate arch:shelf")), Table));
+    TestFalse(TEXT("arch OR none hit"), Matches(Station, Parse(TEXT("arch:crate arch:barrel")), Table));
+    TestFalse(TEXT("arch OR ANDs with others"), Matches(Station, Parse(TEXT("arch:shelf net:proxy")), Table));
 
     // Empty query matches everything.
     TestTrue(TEXT("empty query"), Matches(Station, Parse(TEXT("")), Table));

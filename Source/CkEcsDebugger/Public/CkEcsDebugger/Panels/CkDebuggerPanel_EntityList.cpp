@@ -170,6 +170,11 @@ auto SCkDebuggerPanel_EntityList::Set_FilterText(const FString& InText) -> void
     }
 }
 
+auto SCkDebuggerPanel_EntityList::Get_FilterText() const -> FString
+{
+    return SearchBar.IsValid() ? SearchBar->Get_FilterText() : FString{};
+}
+
 auto SCkDebuggerPanel_EntityList::HandleSelectionChanged(const TArray<FCk_Handle>& InSelection) -> void
 {
     if (InSelection.IsEmpty() || ck::Is_NOT_Valid(InSelection[0]))
@@ -195,9 +200,10 @@ auto SCkDebuggerPanel_EntityList::Build_QueryHelpButton() -> TSharedRef<SWidget>
         TEXT("  is:aux          only internal (folded) entities\n")
         TEXT("  net:<auth|proxy|none>\n")
         TEXT("  id:<n>          exact entity id\n")
-        TEXT("  arch:<substr>   archetype name contains\n")
+        TEXT("  arch:<substr>   archetype name contains; repeat to OR several\n")
         TEXT("  <text>          fuzzy name match\n")
-        TEXT("\nFilter hides non-matches; Highlight dims them.");
+        TEXT("\nQuote multi-word values: arch:\"UnrealComponent: BackWall\".\n")
+        TEXT("Filter hides non-matches; Highlight dims them.");
 
     return SNew(SButton)
         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -281,13 +287,37 @@ auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void
         if (ValidEntities.IsEmpty())
         { return; }
 
+        // Separator-style header: label + rule line, with air above — the sections read
+        // as distinct bands instead of two more rows of text.
         InContainer->AddSlot()
         .AutoHeight()
+        .Padding(0.0f, FCkDebuggerStyle::Padding_Medium, 0.0f, 2.0f)
         [
-            SNew(STextBlock)
-            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-            .Text(FText::FromString(FString::Printf(TEXT("%s (%d)"), InTitle, ValidEntities.Num())))
-            .ColorAndOpacity(CkStyle::TextDim())
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
+                .Text(FText::FromString(FString::Printf(TEXT("%s (%d)"), InTitle, ValidEntities.Num())))
+                .ColorAndOpacity(CkStyle::TextDim())
+            ]
+
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            [
+                SNew(SBox)
+                .HeightOverride(1.0f)
+                [
+                    SNew(SImage)
+                    .Image(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Separator"))
+                    .ColorAndOpacity(CkStyle::Border())
+                ]
+            ]
         ];
 
         DoBuildQuickAccessRows(ValidEntities, InContainer);

@@ -145,6 +145,35 @@ Resolver, AStar, UI, MontagePlayer, AnimPlans.
 - Phase B note: native matcher param on `ck::archetype_registry::Register` is the
   `CK_DEFINE_ARCHETYPE` TryCast hook.
 
+## Phase 1 — IN PROGRESS (2026-07-10)
+
+**Chunk 1 (this session): flag registration + enable wiring.**
+- `CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h/.cpp` — `RegisterAll()` maps
+  10 verified marker fragments: Timer, Transform, SceneNode(Current), Probe,
+  FloatAttribute(Current — on the ATTR entity), StateMachine(Sm_Params), Aggro(Current),
+  Label(GameplayLabel), InteractionResolver, AudioTrack. Called from
+  `FCkEcsDebuggerModule::StartupModule`. Enable hook:
+  `FCkDebuggerModel_WorldContext::Refresh_EntityCache` → `EnableFor(registry view)`
+  (idempotent; ctx + sinks die with the registry on PIE end — no explicit teardown).
+- **Remaining flag candidates:** Inventory, Objective, Vfx, Tween, Ism/IskmProxy,
+  EntityTag, Net, ActorBridge, Camera (verify marker fragment + include per feature).
+
+**Chunk 2 (next): `Test_Entity` → bit tests. PARITY FINDINGS (do not skip):**
+- `CkInspector_FloatAttributes::CanInspect` uses `Has_Any` (OWNER-side record check) —
+  does NOT match the `FFragment_FloatAttribute_Current` bit (attr sub-entity). Do NOT
+  wire; keep legacy path. The flag still serves classification/rollup.
+- Timer/Transform/SceneNode/Probes/InteractionResolver: plain `Utils::Has(Entity)`
+  gates — verify each Utils::Has checks the registered fragment before wiring
+  `Get_FeatureFlagId` overrides. StateMachine/Aggro/Audio: CanInspect bodies not yet
+  read (guard-first) — read before deciding.
+- Design: inspector base gains `Get_FeatureFlagId()` (default NAME_None = legacy path);
+  metadata propagates it; `Test_Entity` bit-tests when id→bit resolves AND cache
+  enabled, else instantiation fallback. Wire ONLY parity-verified inspectors.
+
+**Chunk 3+:** classification model (primary/internal via bits + settings-driven internal
+set), HAS-rollup, computed names, query tokenizer (+specs), incremental world model
+(spawn/destroy diff, stable node identity, cached names), registry-first archetype keying.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

@@ -1,5 +1,6 @@
 #include "CkEcsDebugger_Module.h"
 
+#include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 #include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
@@ -46,6 +47,10 @@ static FAutoConsoleCommand CmdEcsDebugger(
 auto FCkEcsDebuggerModule::StartupModule() -> void
 {
     FCkDebuggerStyle::Initialize();
+
+    // Feature-id → marker-fragment table for the CkEcs debug feature-flag cache.
+    // Registration is inert until a registry is enabled (world observation).
+    ck::ecs_debugger_feature_flags::RegisterAll();
 
     _NodeFactory = MakeShared<FCkEcsDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);

@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
+#include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
 
 // ====================================================================================================================
 
@@ -49,6 +50,11 @@ auto FCkDebuggerModel_WorldContext::Refresh_EntityCache() -> void
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(World);
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
+
+    // Connect the CkEcs debug feature-flag cache to the observed world's registry.
+    // Idempotent; the ctx payload (and its sink connections) dies with the registry
+    // on PIE end, so no explicit teardown is required here.
+    ck::ecs_debugger_feature_flags::EnableFor(TransientEntity.Get_RegistryView());
 
     TransientEntity.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
         [&](FCk_Entity InEntity, const ck::FFragment_LifetimeOwner& InFragment)

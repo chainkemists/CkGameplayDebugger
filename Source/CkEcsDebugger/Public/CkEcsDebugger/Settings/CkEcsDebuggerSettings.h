@@ -57,6 +57,12 @@ public:
         meta = (DisplayName = "Sibling Group Threshold", ClampMin = 2))
     int32 SiblingGroupThreshold = 5;
 
+    // Archetypes-page card grid density. Adjustable live from the page header chips;
+    // this is the persisted value.
+    UPROPERTY(Config, EditAnywhere, Category = "Archetypes Page",
+        meta = (DisplayName = "Archetype Grid Columns", ClampMin = 1, ClampMax = 8))
+    int32 ArchetypeGridColumns = 4;
+
     // Substring tokens whose entities should be hidden from the ECS entity tree.
     // Each token matches PARTIALLY against (a) inspector IDs — "Transform"
     // matches "FCkInspector_Transform", hiding entities that inspector can

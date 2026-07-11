@@ -248,6 +248,33 @@ classification + HAS-rollup as pure logic over the bit cache.
 cached; archetype DisplayName + role-name pipeline lands with Phase 4's lens);
 refresh time-budget (§5.4) not needed yet — steady state is zero-O(n) by revision gate.
 
+## Phases 3–5 + B — DONE (2026-07-10/11, single session, per-phase gates green)
+
+**Phase 3 (`85cbc68`):** Filter+Highlight inputs parse the §3.5 grammar and evaluate
+against cached node signatures (plain text = fuzzy, unchanged UX); "?" help button;
+feature rail (icon chips, include-any semantics, own∪rollup); Pin/Unpin context menu +
+Pinned/Recent sections above the tree (Recent = last 5 selections, panel-tracked).
+Rail/filter suppress folding so matches stay reachable. Feature visuals shared via
+`Presentation/CkEcsDebugger_FeatureVisuals`. Deviation: rail is include-only (spec's
+rail-exclusion composes through the existing exclusion popover instead).
+
+**Phases 4+5 (`5327429`):** Archetypes page (hero count + per-archetype cards,
+registered-first with [GAME] tag + signature badges; click → `arch:<name>` into the
+Filter bar via new page-context RequestEntityFilter + `SCkDebug_DualSearchBar::
+Set_FilterText`; 1 Hz rebuild only while visible). Activity page (spawn/destroy feed
+from OnCacheDiff, 200-event ring, click-to-select spawns, world-switch clears).
+Spawn rows flash the tree status dot green 0.6s. Deviations: no sparklines/family
+bars; no unseen-count tab badge; SM-transition rows not tapped (stretch item).
+
+**Phase B:** `CkEcs/Archetype/CkArchetype_Typed.h` — `CK_ARCHETYPE_BODY` +
+`CK_DEFINE_ARCHETYPE(Struct, "Name", Members...)` (≤8): generates all-or-nothing
+`TryCast` from the member-name==feature-name==Utils-class convention (purely textual —
+utils resolve at expansion site, CkEcs stays feature-agnostic; the open cast-trait
+question from §3.3 resolved as unnecessary) + deferred descriptor registration
+(EndOfEngineInit) with TryCast as the native matcher. USTRUCT optional (spec's sketch
+implied required — relaxed). Spec: `Ck.Archetype.TypedTryCastAndAutoRegistration`
+over real Transform+Timer fragments.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas

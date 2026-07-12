@@ -286,12 +286,13 @@ auto
     BuildOverviewStrip()
     -> TSharedRef<SWidget>
 {
-    const auto MakeTile = [](TSharedPtr<SCkDebug_StatPair>& OutStat, const FString& InLabel, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    const auto MakeTile = [](TSharedPtr<SCkDebug_StatPair>& OutStat, const FString& InLabel, const FLinearColor& InColor, const FString& InTooltip = {}) -> TSharedRef<SWidget>
     {
         return SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(CkStyle::Bg2())
             .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+            .ToolTipText(FText::FromString(InTooltip))
             [
                 SAssignNew(OutStat, SCkDebug_StatPair)
                     .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
@@ -317,9 +318,15 @@ auto
             + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [ MakeTile(_StatParked,  TEXT("PARKED"),         CkStyle::Ok()) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatMisses,  TEXT("MISSES"),         CkStyle::Warn()) ]
+                [ MakeTile(_StatMisses,  TEXT("MISSES"),         CkStyle::Warn(),
+                    TEXT("An Acquire found the pool's free list empty (or only stale GC'd slots) and had to "
+                         "spawn a brand-new instance instead of recycling one — under Grow policy — or "
+                         "returned null under Fail policy. Frequent misses on a pool mean its PrewarmCount / "
+                         "GrowBatchCount is undersized for its real peak demand.")) ]
             + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                [ MakeTile(_StatHitRate, TEXT("HIT RATE"),       CkStyle::Accent()) ]
+                [ MakeTile(_StatHitRate, TEXT("HIT RATE"),       CkStyle::Accent(),
+                    TEXT("Hits / (Hits + Misses). A Hit is an Acquire satisfied by popping an existing "
+                         "recycled instance off the free list — no new UObject allocation.")) ]
 
             + SHorizontalBox::Slot().FillWidth(1.0f)
                 [
@@ -371,13 +378,15 @@ auto
         const FString& InLabel,
         ESortColumn InColumn,
         float InFillWidth,
-        bool InRightAlign)
+        bool InRightAlign,
+        const FString& InTooltip)
     -> TSharedRef<SWidget>
 {
     return SNew(SButton)
         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
         .ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
         .HAlign(InRightAlign ? HAlign_Right : HAlign_Left)
+        .ToolTipText(FText::FromString(InTooltip))
         .OnClicked(this, &SCkObjectPoolingDebuggerWindow::OnSortColumnClicked, InColumn)
         [
             SNew(STextBlock)
@@ -424,8 +433,13 @@ auto
             + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("IN USE"),  ESortColumn::InUse,   Col_Num, true) ]
             + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("LIVE"),    ESortColumn::Live,    Col_Num, true) ]
             + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("HIGH"),    ESortColumn::High,    Col_Num, true) ]
-            + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("HIT %"),   ESortColumn::HitRate, Col_Num, true) ]
-            + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("MISS"),    ESortColumn::Miss,    Col_Num, true) ]
+            + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("HIT %"),   ESortColumn::HitRate, Col_Num, true,
+                TEXT("Hits / (Hits + Misses). A Hit is an Acquire satisfied by popping an existing recycled "
+                     "instance off the free list — no new UObject allocation.")) ]
+            + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("MISS"),    ESortColumn::Miss,    Col_Num, true,
+                TEXT("An Acquire found the free list empty (or only stale GC'd slots) and had to spawn a "
+                     "brand-new instance instead of recycling one — under Grow policy — or returned null "
+                     "under Fail policy. Frequent misses mean PrewarmCount / GrowBatchCount is undersized.")) ]
             + SHorizontalBox::Slot().FillWidth(Col_Num)       [ MakeSortableHeader(TEXT("PREWARM"), ESortColumn::Prewarm, Col_Num, true) ]
         ];
 }
@@ -605,12 +619,13 @@ auto
     const auto EnumColor = CkStyle::Value_Enum();
     const auto NumColor = CkStyle::Value_Numeric();
 
-    const auto MakeRateCard = [](TSharedPtr<SCkDebug_StatPair>& OutStat, const FString& InLabel) -> TSharedRef<SWidget>
+    const auto MakeRateCard = [](TSharedPtr<SCkDebug_StatPair>& OutStat, const FString& InLabel, const FString& InTooltip = {}) -> TSharedRef<SWidget>
     {
         return SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(CkStyle::Bg2())
             .Padding(FMargin(CkStyle::SpaceS))
+            .ToolTipText(FText::FromString(InTooltip))
             [
                 SAssignNew(OutStat, SCkDebug_StatPair)
                     .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
@@ -703,7 +718,10 @@ auto
                                     [ MakeRateCard(_RateReleases, TEXT("RELEASES/S")) ]
 
                                 + SHorizontalBox::Slot().FillWidth(1.0f)
-                                    [ MakeRateCard(_RateHitRate, TEXT("HIT RATE")) ]
+                                    [ MakeRateCard(_RateHitRate, TEXT("HIT RATE"),
+                                        TEXT("Hits / (Hits + Misses) for this pool. A Hit is an Acquire "
+                                             "satisfied by popping an existing recycled instance off the "
+                                             "free list — no new UObject allocation.")) ]
                             ]
                     ]
 

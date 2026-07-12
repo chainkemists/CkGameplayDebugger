@@ -85,7 +85,7 @@ private:
     auto OnSelectionChanged(ItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
     auto OnSortColumnClicked(ESortColumn InColumn) -> FReply;
 
-    auto MakeSortableHeader(const FString& InLabel, ESortColumn InColumn, float InFillWidth, bool InRightAlign) -> TSharedRef<SWidget>;
+    auto MakeSortableHeader(const FString& InLabel, ESortColumn InColumn, float InFillWidth, bool InRightAlign, const FString& InTooltip = {}) -> TSharedRef<SWidget>;
 
     auto DoSample_Histories(const FCkObjectPoolingDebugger_Snapshot& InSnapshot, double InCurrentTime) -> void;
     auto DoRefresh_VisibleItems() -> void;

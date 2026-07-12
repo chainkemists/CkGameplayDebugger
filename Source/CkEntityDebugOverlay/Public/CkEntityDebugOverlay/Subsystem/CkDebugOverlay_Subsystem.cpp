@@ -257,6 +257,28 @@ auto
     Super::Deinitialize();
 }
 
+auto
+    UCk_DebugOverlay_Subsystem::
+    PlayerControllerChanged(
+        APlayerController* InNewPlayerController)
+    -> void
+{
+    Super::PlayerControllerChanged(InNewPlayerController);
+
+    // The master cvar is a process-global static that SURVIVES PIE restarts, but this
+    // subsystem is per-LocalPlayer and recreated each session — with the cvar already
+    // at 1 no change event ever fires, so a session started with the overlay left on
+    // sits inactive until the toggle is cycled. Level-trigger here instead: this hook
+    // fires once the world/viewport are up (Initialize is too early — DoActivate needs
+    // the LP's viewport client and does not retry). Primary-gated to match the toggle
+    // path (only the primary instance owns the cvar callback).
+    if (_bIsPrimaryConsoleOwner && ck::IsValid(InNewPlayerController) &&
+        _CVar_Master != nullptr && _CVar_Master->GetValueOnGameThread() != 0)
+    {
+        DoActivate();   // no-op when already active
+    }
+}
+
 // ====================================================================================================================
 // Activation
 // ====================================================================================================================
@@ -1376,6 +1398,11 @@ void UCk_DebugOverlay_Subsystem::Initialize(FSubsystemCollectionBase& InCollecti
 void UCk_DebugOverlay_Subsystem::Deinitialize()
 {
     Super::Deinitialize();
+}
+
+void UCk_DebugOverlay_Subsystem::PlayerControllerChanged(APlayerController* InNewPlayerController)
+{
+    Super::PlayerControllerChanged(InNewPlayerController);
 }
 
 #endif // WITH_CK_DEBUG_OVERLAY

@@ -44,6 +44,14 @@ public:
     /** If true, the provider honours FCk_DebugOverlay_ProviderConfig::EntryFilter. */
     virtual auto Get_SupportsEntryFilter() const -> bool { return false; }
 
+    /**
+     * If false, the aggregated card collects this provider from the FOCUS entity only —
+     * never from lifetime-descendant sources. For providers whose payload is identity-like
+     * (EntityInfo, Transform), every unnamed sub-entity would otherwise emit one
+     * boilerplate section per tick.
+     */
+    virtual auto Get_CollectsFromSubSources() const -> bool { return true; }
+
     /** Return true if this provider has data to show for the given entity. */
     virtual auto CanProvide(const FCk_Handle& Entity) const -> bool = 0;
 

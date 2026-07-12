@@ -108,8 +108,14 @@ auto
     {
         auto Emitted = false;
 
+        // Sources[0] is the focus entity; the rest are lifetime descendants (BFS order).
+        const auto CollectsFromSubSources = InProvider->Get_CollectsFromSubSources();
+
         for (auto SourceIdx = 0; SourceIdx < Sources.Num(); ++SourceIdx)
         {
+            if (SourceIdx > 0 && NOT CollectsFromSubSources)
+            { break; }
+
             const auto& Source = Sources[SourceIdx];
             if (NOT InProvider->CanProvide(Source))
             { continue; }

@@ -5,6 +5,8 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
@@ -58,6 +60,15 @@ auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TShare
 auto FCkInspector_Transform::Tick(const FCk_Handle& Entity, float InDeltaTime) -> void
 {
     if (ck::Is_NOT_Valid(Entity) || NOT UCk_Utils_Transform_UE::Has(Entity))
+    {
+        _Gizmos.Remove(Entity);
+        return;
+    }
+
+    // Possessed first person + inspecting your own pawn: the triad + floating label
+    // sit inside the camera. Suppressed until ejected (mirrors the overlay's
+    // self-marker suppression).
+    if (ck::DebugViewportView::Get_IsLocalPlayerSelf(Entity))
     {
         _Gizmos.Remove(Entity);
         return;

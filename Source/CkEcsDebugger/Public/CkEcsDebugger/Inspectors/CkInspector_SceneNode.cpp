@@ -14,6 +14,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
@@ -239,6 +240,16 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
     if (NOT UCk_Utils_Transform_UE::Has(Entity))
     {
         _Gizmos.Remove(Entity);
+        return;
+    }
+
+    // Possessed first person + inspecting your own pawn's nodes: the triads + label
+    // sit inside the camera. Suppressed until ejected (mirrors the overlay's
+    // self-marker suppression).
+    if (ck::DebugViewportView::Get_IsLocalPlayerSelf(Entity))
+    {
+        _Gizmos.Reset();
+        _LastParentGizmoKey = FCk_Handle{};
         return;
     }
 

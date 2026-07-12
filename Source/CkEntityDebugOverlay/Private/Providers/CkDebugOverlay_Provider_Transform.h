@@ -9,6 +9,8 @@ public:
     auto Get_ProviderTag()          const -> FGameplayTag                    override;
     auto Get_FieldTags()            const -> TArray<FCk_DebugOverlay_FieldDesc> override;
     auto Get_SortPriority()         const -> int32                           override { return 20; }
+    // Sub-entity transforms are SceneNode-inspector depth, not card material — focus entity only.
+    auto Get_CollectsFromSubSources() const -> bool                          override { return false; }
     auto CanProvide(const FCk_Handle& Entity) const -> bool                  override;
     auto Collect(const FCk_Handle& Entity, const FCk_DebugOverlay_ProviderConfig& Cfg,
                  FCk_DebugOverlay_Section& Out) -> void                      override;

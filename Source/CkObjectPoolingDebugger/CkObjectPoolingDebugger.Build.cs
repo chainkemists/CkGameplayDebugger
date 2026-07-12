@@ -20,6 +20,7 @@ public class CkObjectPoolingDebugger : CkModuleRules
             "CkCore",
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
             "CkDebuggerCommon",
+            "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
         });
 
         if (Target.bBuildEditor)

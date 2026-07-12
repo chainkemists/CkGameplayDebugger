@@ -2,6 +2,9 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcs/OwningActor/CkOwningActor_Utils.h"
+
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
@@ -51,6 +54,40 @@ auto
 #else
     return false;
 #endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    Get_IsLocalPlayerSelf(
+        const FCk_Handle& InEntity) -> bool
+{
+    if (ck::Is_NOT_Valid(InEntity))
+    { return false; }
+
+    if (Get_IsEjected())
+    { return false; }
+
+    auto* World = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity);
+    if (ck::Is_NOT_Valid(World))
+    { return false; }
+
+    auto* PC = World->GetFirstPlayerController();
+    if (ck::Is_NOT_Valid(PC))
+    { return false; }
+
+    auto* LocalPawn = PC->GetPawn().Get();
+    if (ck::Is_NOT_Valid(LocalPawn))
+    { return false; }
+
+    auto* OwningActor = UCk_Utils_OwningActor_UE::TryGet_EntityOwningActor_Recursive(InEntity);
+    if (ck::Is_NOT_Valid(OwningActor))
+    { return false; }
+
+    if (OwningActor == LocalPawn || OwningActor == PC)
+    { return true; }
+
+    return OwningActor->IsAttachedTo(LocalPawn);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -515,3 +515,8 @@ sections still aggregate from the whole subtree.
   EntityInfo/Transform on the aggregated card (`Get_CollectsFromSubSources` provider
   opt-out — kills the per-sub-entity INFO/T boilerplate the maintainer screenshotted).
   Error-strip proposal rejected (watermark owns ensure visibility).
+- **2026-07-11 (Fable, overlay PIE round 2b):** Overlay now survives PIE restart
+  (`441d4b6`, 35/35): the master cvar persists across sessions but the per-LP subsystem
+  is recreated and was only edge-triggered by the cvar CHANGE callback —
+  `PlayerControllerChanged` now level-triggers activation when the cvar is already on
+  (primary-gated, idempotent; ini-set cvar auto-activates the first session too).

@@ -3,6 +3,8 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/ObjectPooling/CkObjectPooling_Subsystem.h"
 
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
+
 #include "Engine/World.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -34,11 +36,13 @@ auto
 
         auto Row = FCkObjectPoolingDebugger_PoolRow{};
         Row.ClassName = ck::IsValid(Class) ? Class->GetName() : TEXT("(null)");
+        Row.DisplayClassName = ck::DebugNameClean::Get_CleanName(Row.ClassName);
 
         // show "CDO" for a class-keyed pool rather than the mangled Default__ name
-        Row.ArchetypeName = (ck::IsValid(Archetype) && ck::IsValid(Class) && Archetype == Class->GetDefaultObject())
+        Row.IsArchetypeCDO = ck::IsValid(Archetype) && ck::IsValid(Class) && Archetype == Class->GetDefaultObject();
+        Row.ArchetypeName = Row.IsArchetypeCDO
             ? TEXT("CDO")
-            : (ck::IsValid(Archetype) ? Archetype->GetName() : TEXT("(null)"));
+            : (ck::IsValid(Archetype) ? ck::DebugNameClean::Get_CleanName(Archetype->GetName()) : TEXT("(null)"));
 
         Row.NumFree             = InStats.Get_NumFree();
         Row.NumInUse            = InStats.Get_NumInUse();
@@ -47,6 +51,15 @@ auto
         Row.HighWaterMark       = InStats.Get_HighWaterMark();
         Row.NumHits             = InStats.Get_NumHits();
         Row.NumMisses           = InStats.Get_NumMisses();
+
+        const auto& Params = InStats.Get_Params();
+        Row.IsRecyclePolicy      = Params.Get_RecyclePolicy() == ECk_ObjectPooling_RecyclePolicy::Recycle;
+        Row.IsBoundedCapacity    = Params.Get_CapacityPolicy() == ECk_ObjectPooling_CapacityPolicy::Bounded;
+        Row.MaxSize              = Params.Get_MaxSize();
+        Row.IsGrowOnExhaustion   = Params.Get_ExhaustionPolicy() == ECk_ObjectPooling_ExhaustionPolicy::Grow;
+        Row.GrowBatchCount       = Params.Get_GrowBatchCount();
+        Row.PrewarmCount         = Params.Get_PrewarmCount();
+        Row.PrewarmBudgetPerTick = Params.Get_PrewarmBudgetPerTick();
 
         Snapshot.Pools.Emplace(MoveTemp(Row));
     });

@@ -56,6 +56,7 @@ public:
     // --- USubsystem ---
     virtual void Initialize(FSubsystemCollectionBase& InCollection) override;
     virtual void Deinitialize() override;
+    virtual void PlayerControllerChanged(APlayerController* InNewPlayerController) override;
 
 #if WITH_CK_DEBUG_OVERLAY
 

@@ -4,6 +4,7 @@
 
 class FEditorViewportClient;
 class UWorld;
+struct FCk_Handle;
 
 // ====================================================================================================================
 // Shared PIE view resolution — one home for the "which camera is the user
@@ -29,6 +30,13 @@ namespace ck::DebugViewportView
 
     // True when an ejected/simulate editor camera is the active view.
     CKDEBUGGERCOMMON_API auto Get_IsEjected() -> bool;
+
+    // True while POSSESSED and InEntity resolves (via owning actor, recursively) to
+    // the locally possessed pawn / its controller / anything attached to the pawn —
+    // in-world self-decoration (gizmos, floating labels) would sit inside the
+    // first-person camera. Always false while ejected: the pawn is then just
+    // another world object.
+    CKDEBUGGERCOMMON_API auto Get_IsLocalPlayerSelf(const FCk_Handle& InEntity) -> bool;
 
     // Location of the camera the user is looking through — the level-editor
     // camera while ejected, else the first player controller's view point.

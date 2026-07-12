@@ -116,7 +116,9 @@ no self-silencing, refires every frame. Fixed at the source: CkFoundation `cba35
 (`Get_Name` label-gates; unnamed timers are a designed state per `Add`). Also defuses the
 same latent storm in Gen-2 `CkInspector_Timer`.
 
-**Blind-spot note:** the suppression in §B hides engine-channel ERROR text too — the red
-ensure spam was invisible while the overlay was up. Follow-up recorded: an error/ensure
-strip on the card itself. Follow-up recorded: regression AutoTest (unnamed timer →
-`Get_Name` returns invalid tag, no ensure) once CkTests is free.
+**Blind-spot note (resolved):** the suppression in §B hides engine-channel ERROR text,
+but ensure VISIBILITY is already owned by the CkWatermark panel — pure Slate reading
+`UCk_Ensure_Subsystem_UE::Get_EnsureCount()` live, unaffected by
+`bEnableOnScreenDebugMessages` (maintainer call: no error strip on the card; ensures that
+appear get root-caused and fixed, not re-displayed). Follow-up recorded: regression
+AutoTest (unnamed timer → `Get_Name` returns invalid tag, no ensure) once CkTests is free.

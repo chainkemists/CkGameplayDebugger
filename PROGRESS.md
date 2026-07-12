@@ -458,9 +458,11 @@ returns an invalid tag (unnamed timers are a designed state per `Add`); overlay 
 already handled invalid tags. Also defuses the identical latent storm in Gen-2
 `CkInspector_Timer`. Regate: 35/35. Ship note: the overlay phase now spans TWO submodules
 (CkGameplayDebugger `55c904f`+`3a41ea1` + CkFoundation `cba35adf6`), all local/unpushed.
-Follow-ups recorded: error/ensure strip on the card (suppression currently hides
-engine-channel errors while the overlay is up); regression AutoTest for unnamed-timer
-`Get_Name` (CkTests-land, other session's territory today).
+Follow-up recorded: regression AutoTest for unnamed-timer `Get_Name` (CkTests-land,
+other session's territory today). Error-strip idea REJECTED by maintainer — the
+CkWatermark panel (pure Slate, `Get_EnsureCount()` live) already surfaces ensures and is
+unaffected by the on-screen-text suppression; policy is fix ensures at source, not
+re-display them.
 
 ## Session log
 

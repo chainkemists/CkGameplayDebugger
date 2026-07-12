@@ -445,6 +445,23 @@ per-tick × descendants × providers — debug-only, revisit only if a stress NP
 C1 filter edits (popover) apply live + persist; D1 Crowd/Vector/Rotator/SM-history/GOAP-cost
 visible on an NPC.
 
+**PIE round defect (2026-07-11) — "overlay kills WASD/mouse" — root-caused + fixed:**
+3,194 identical label-`CK_ENSURE` fires in one session (log-verified, all inside the
+overlay-active windows): the subtree BFS reached ability sub-entities owning UNNAMED
+cooldown timers, and `UCk_Utils_Timer_UE::Get_Name` was an ungated
+`GameplayLabel::Get_Label` — ~2 fires/frame, each capturing native+BP+AS stacks →
+~45–80 ms frames → input felt dead; the phase's own on-screen-text suppression hid the
+red spam (log was the only witness). Ruled out by evidence: gesture keys (log lines
+absent), hit-testable widgets (HitTestInvisible end-to-end), focus/capture calls (none in
+module). Fix at the source: **CkFoundation `cba35adf6`** — `Get_Name` label-gates and
+returns an invalid tag (unnamed timers are a designed state per `Add`); overlay provider
+already handled invalid tags. Also defuses the identical latent storm in Gen-2
+`CkInspector_Timer`. Regate: 35/35. Ship note: the overlay phase now spans TWO submodules
+(CkGameplayDebugger `55c904f`+`3a41ea1` + CkFoundation `cba35adf6`), all local/unpushed.
+Follow-ups recorded: error/ensure strip on the card (suppression currently hides
+engine-channel errors while the overlay is up); regression AutoTest for unnamed-timer
+`Get_Name` (CkTests-land, other session's territory today).
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas
@@ -473,3 +490,9 @@ visible on an NPC.
   2/3-height budget + on-screen-text suppression while active, attribute allow/deny filter
   (settings + ECS-debugger popover editor), new Crowd/VectorAttributes/RotatorAttributes
   providers, SM history + GOAP cost on by default. Section above has the file map.
+- **2026-07-11 (Fable, overlay PIE round — ensure-storm fix):** Maintainer's first PIE pass
+  hit "overlay kills WASD/mouse". Root-caused from the PIE log (defect block above):
+  unnamed-timer label ensures, 2/frame, storming under the new subtree BFS with the red
+  spam hidden by the phase's own suppression. Fixed at the source in CkFoundation
+  (`cba35adf6`, `Get_Name` label-gates); regated 35/35. All overlay-phase commits remain
+  local/unpushed across BOTH submodules pending the maintainer's re-verify.

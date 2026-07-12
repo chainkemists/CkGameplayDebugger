@@ -102,3 +102,21 @@ backed by persisted config.
   restores (subsystem deinit path) — verify restore ordering on abrupt PIE stop.
 - Clip-not-scroll at the 2/3 cap is deliberate (hit-test-invisible root); if the maintainer
   wants scroll, the root would need selective hit-testing — recorded as a possible follow-up.
+
+### PIE round finding (2026-07-11) — ensure storm, root-caused + fixed
+
+Enabling the overlay in the crowd pathing gym collapsed frame time until WASD/mouse felt
+dead. Log verdict: 3,194 identical `CK_ENSURE` fires (GameplayLabel `Has(InHandle)`), all
+inside the overlay-active windows — the subtree BFS reached ability sub-entities owning
+UNNAMED cooldown timers, and `UCk_Utils_Timer_UE::Get_Name` was an ungated
+`GameplayLabel::Get_Label`. ~2 fires/frame × (native+BP+AS stack capture + dual-channel
+log + editor-message push) ≈ 45–80 ms frames. Because the overlay ticks from FTSTicker
+(outside the PIE world scope), CkEnsure took the editor-notification branch — no dialog,
+no self-silencing, refires every frame. Fixed at the source: CkFoundation `cba35adf6`
+(`Get_Name` label-gates; unnamed timers are a designed state per `Add`). Also defuses the
+same latent storm in Gen-2 `CkInspector_Timer`.
+
+**Blind-spot note:** the suppression in §B hides engine-channel ERROR text too — the red
+ensure spam was invisible while the overlay was up. Follow-up recorded: an error/ensure
+strip on the card itself. Follow-up recorded: regression AutoTest (unnamed timer →
+`Get_Name` returns invalid tag, no ensure) once CkTests is free.

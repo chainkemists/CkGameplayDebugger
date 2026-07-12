@@ -464,6 +464,17 @@ CkWatermark panel (pure Slate, `Get_EnsureCount()` live) already surfaces ensure
 unaffected by the on-screen-text suppression; policy is fix ensures at source, not
 re-display them.
 
+**PIE round 2 (2026-07-11) — two UX fixes (`45a11de`, gate 35/35):** (1) selecting your
+own possessed pawn put the PMG coordinate triad + floating label in the first-person
+camera — new shared `ck::DebugViewportView::Get_IsLocalPlayerSelf` (possessed AND entity
+resolves via owning-actor-recursive to local pawn/controller/attachments; always false
+ejected) gates the Transform + SceneNode inspectors' in-world visuals; other entities'
+gizmos still show while possessed, eject shows everything (mirrors overlay self-marker
+suppression). (2) The aggregated card emitted one boilerplate INFO + T section per
+unnamed sub-entity — providers can now opt out of subtree collection
+(`Get_CollectsFromSubSources`, default true); EntityInfo + Transform opt out, feature
+sections still aggregate from the whole subtree.
+
 ## Session log
 
 - **2026-07-10 (Fable):** Spec + mockup written and reviewed (user + colleague ideas
@@ -498,3 +509,9 @@ re-display them.
   spam hidden by the phase's own suppression. Fixed at the source in CkFoundation
   (`cba35adf6`, `Get_Name` label-gates); regated 35/35. All overlay-phase commits remain
   local/unpushed across BOTH submodules pending the maintainer's re-verify.
+- **2026-07-11 (Fable, overlay PIE round 2):** Two maintainer reports fixed (`45a11de`,
+  35/35): possessed self-gizmo suppression (new `Get_IsLocalPlayerSelf` in
+  DebuggerCommon, gating Transform + SceneNode inspector visuals) and focus-only
+  EntityInfo/Transform on the aggregated card (`Get_CollectsFromSubSources` provider
+  opt-out — kills the per-sub-entity INFO/T boilerplate the maintainer screenshotted).
+  Error-strip proposal rejected (watermark owns ensure visibility).

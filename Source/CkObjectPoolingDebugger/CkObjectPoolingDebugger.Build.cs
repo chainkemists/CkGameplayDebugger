@@ -10,6 +10,7 @@ public class CkObjectPoolingDebugger : CkModuleRules
             "CoreUObject",
             "Engine",
             "GameplayTags",
+            "Json",  // FJsonObject / serializer for the pool-tuning JSON report export
 
             "InputCore",  // SListView references EKeys (mouse/keyboard nav) — needs InputCore
 

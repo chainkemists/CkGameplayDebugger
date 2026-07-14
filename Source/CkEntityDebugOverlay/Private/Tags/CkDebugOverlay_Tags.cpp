@@ -38,6 +38,7 @@ namespace ck_debugoverlay
             { TEXT("VectorAttributes"),  TEXT("vATT") },
             { TEXT("RotatorAttributes"), TEXT("rATT") },
             { TEXT("Crowd"),             TEXT("CRWD") },
+            { TEXT("PathNetworkFollower"), TEXT("PNET") },
             { TEXT("Transform"),         TEXT("T")    },
             { TEXT("EntityInfo"),        TEXT("INFO") },
             // Pre-mapped for providers still to be ported:

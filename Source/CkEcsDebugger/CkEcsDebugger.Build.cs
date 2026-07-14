@@ -53,6 +53,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkLabel",
             "CkObjective",
             "CkOverlapBody",
+            "CkPathNetwork",
             "CkPhysics",
             "CkProjectile",
             "CkRaySense",

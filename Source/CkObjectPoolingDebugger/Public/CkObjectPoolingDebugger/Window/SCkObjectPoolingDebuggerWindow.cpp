@@ -19,6 +19,15 @@
 
 #include "Engine/World.h"
 
+#include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
+#include "Misc/DateTime.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+#include "Framework/Notifications/NotificationManager.h"
+#include "Widgets/Notifications/SNotificationList.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
@@ -272,6 +281,22 @@ auto
                         {
                             _HighlightText = InText;
                         })
+                ]
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(SButton)
+                        .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                        .ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
+                        .ToolTipText(FText::FromString(TEXT("Write a JSON report of every pool (counters + params) "
+                            "to Saved/CkReports/ — for offline tuning of undersized-prewarm or over-allocated pools.")))
+                        .OnClicked(this, &SCkObjectPoolingDebuggerWindow::DoExport_JsonReport)
+                        [
+                            SNew(STextBlock)
+                                .Text(FText::FromString(TEXT("Export JSON")))
+                                .Font(ck_object_pooling_debugger_window::BoldFont(CkStyle::FontSizeMicro()))
+                                .ColorAndOpacity(CkStyle::Accent())
+                        ]
                 ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
@@ -906,6 +931,55 @@ auto
     DoRefresh_VisibleItems();
     return FReply::Handled();
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkObjectPoolingDebuggerWindow::
+    DoExport_JsonReport()
+    -> FReply
+{
+    const auto ShowToast = [](const FString& InMessage, bool InSuccess, const FString& InRevealDir)
+    {
+        auto Info = FNotificationInfo{FText::FromString(InMessage)};
+        Info.bFireAndForget = true;
+        Info.ExpireDuration = 6.0f;
+
+        if (NOT InRevealDir.IsEmpty())
+        {
+            Info.Hyperlink = FSimpleDelegate::CreateLambda([InRevealDir]()
+            { FPlatformProcess::ExploreFolder(*InRevealDir); });
+            Info.HyperlinkText = FText::FromString(TEXT("Show in folder"));
+        }
+
+        if (const auto Item = FSlateNotificationManager::Get().AddNotification(Info);
+            Item.IsValid())
+        { Item->SetCompletionState(InSuccess ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail); }
+    };
+
+    const auto Snapshot = FCkObjectPoolingDebugger_Snapshot::Gather(_WorldModel->Get_SelectedWorld());
+
+    if (NOT Snapshot.HasSubsystem)
+    {
+        ShowToast(TEXT("No pooling subsystem in the selected world — start PIE first."), false, {});
+        return FReply::Handled();
+    }
+
+    const auto Dir = FPaths::ProjectSavedDir() / TEXT("CkReports");
+    IFileManager::Get().MakeDirectory(*Dir, true);
+
+    const auto FilePath = Dir / ck::Format_UE(TEXT("CkObjectPooling_{}.json"),
+        FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")));
+
+    if (FFileHelper::SaveStringToFile(Snapshot.ToJsonString(), *FilePath))
+    { ShowToast(ck::Format_UE(TEXT("Pool report written to {}"), FilePath), true, FPaths::ConvertRelativePathToFull(Dir)); }
+    else
+    { ShowToast(ck::Format_UE(TEXT("Failed to write pool report to {}"), FilePath), false, {}); }
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkObjectPoolingDebuggerWindow::

@@ -85,6 +85,9 @@ private:
     auto OnSelectionChanged(ItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
     auto OnSortColumnClicked(ESortColumn InColumn) -> FReply;
 
+    // gather a fresh snapshot, write its JSON report to Saved/CkReports/, toast the resulting path
+    auto DoExport_JsonReport() -> FReply;
+
     auto MakeSortableHeader(const FString& InLabel, ESortColumn InColumn, float InFillWidth, bool InRightAlign, const FString& InTooltip = {}) -> TSharedRef<SWidget>;
 
     auto DoSample_Histories(const FCkObjectPoolingDebugger_Snapshot& InSnapshot, double InCurrentTime) -> void;

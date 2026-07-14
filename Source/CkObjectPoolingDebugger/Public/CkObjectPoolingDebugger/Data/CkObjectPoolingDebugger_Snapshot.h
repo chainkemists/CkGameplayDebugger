@@ -56,6 +56,7 @@ struct FCkObjectPoolingDebugger_PoolRow
 
 struct FCkObjectPoolingDebugger_Snapshot
 {
+    FString WorldName;           // the gathered world's object name (empty when none)
     bool    HasSubsystem   = false;
     int32   NumPinnedUnique = 0; // DestroyOnRelease instances the subsystem pins (not in any pool)
     TArray<FCkObjectPoolingDebugger_PoolRow> Pools; // sorted by class name, then archetype
@@ -64,6 +65,11 @@ struct FCkObjectPoolingDebugger_Snapshot
     // no game instance / the subsystem does not exist (e.g. not in PIE).
     static auto Gather(
         UWorld* InWorld) -> FCkObjectPoolingDebugger_Snapshot;
+
+    // Pretty-printed JSON report: top-level metadata + aggregate totals + a per-pool array carrying
+    // every raw counter/param plus derived totalAcquires/hitRate. Intended for offline pool tuning
+    // (spotting high-miss pools or large pools with low peak usage). Pure — no Slate/subsystem access.
+    auto ToJsonString() const -> FString;
 };
 
 // ====================================================================================================================

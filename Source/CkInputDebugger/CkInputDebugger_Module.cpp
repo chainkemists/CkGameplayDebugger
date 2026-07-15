@@ -2,6 +2,8 @@
 
 #include "CkInputDebugger/Window/SCkInputDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -44,10 +46,22 @@ auto FCkInputDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK Enhanced Input Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Enhanced Input Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkInputDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK Enhanced Input Debugger")),
+        FText::FromString(TEXT("Inspect input contexts, actions, bindings, and live values")),
+        TEXT("Input"),
+        ECkDebuggerToolCategory::Interface,
+        20});
 }
 
 auto FCkInputDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

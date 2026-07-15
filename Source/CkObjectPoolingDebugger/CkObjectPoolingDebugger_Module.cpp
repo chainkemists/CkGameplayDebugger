@@ -2,6 +2,8 @@
 
 #include "CkObjectPoolingDebugger/Window/SCkObjectPoolingDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -44,10 +46,22 @@ auto FCkObjectPoolingDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK Object Pooling Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Object Pooling Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkObjectPoolingDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK Object Pooling Debugger")),
+        FText::FromString(TEXT("Inspect object pools, occupancy, allocations, and tuning data")),
+        TEXT("Package"),
+        ECkDebuggerToolCategory::Systems,
+        20});
 }
 
 auto FCkObjectPoolingDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

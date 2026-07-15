@@ -25,5 +25,7 @@ private:
 	TSharedPtr<SCkAStarDebuggerWindow> _DebuggerWindow;
 	TSharedPtr<SDockTab> _DebuggerTab;
 
+	uint64 _DebuggerToolRegistrationId = 0;
+
 	static const FName _DebuggerTabName;
 };

@@ -2,6 +2,8 @@
 
 #include "CkAStarDebugger/Window/SCkAStarDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -45,6 +47,15 @@ auto
         .SetDisplayName(FText::FromString(TEXT("CK A* Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK A* Search Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkAStarDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK A* Debugger")),
+        FText::FromString(TEXT("Inspect A* search graphs, candidates, and path costs")),
+        TEXT("Grid"),
+        ECkDebuggerToolCategory::Ai,
+        10});
 }
 
 auto
@@ -52,6 +63,9 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

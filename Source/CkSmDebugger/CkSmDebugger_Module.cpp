@@ -3,6 +3,8 @@
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphFactory.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -47,10 +49,22 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK State Machine Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkSmDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK State Machine Debugger")),
+        FText::FromString(TEXT("Inspect state-machine graphs, transitions, and history")),
+        TEXT("StateMachine"),
+        ECkDebuggerToolCategory::Core,
+        20});
 }
 
 auto FCkSmDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

@@ -42,6 +42,8 @@ private:
     TSharedPtr<SDockTab>              _DebuggerTab;
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
+    uint64 _DebuggerToolRegistrationId = 0;
+
     static const FName _DebuggerTabName;
 };
 

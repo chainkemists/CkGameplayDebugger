@@ -6,6 +6,8 @@
 #include "CkGoapDebugger/Inspector/CkGoapInspector_Gateway.h"
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 
 #include "EdGraphUtilities.h"
@@ -79,6 +81,15 @@ auto
         .SetDisplayName(FText::FromString(TEXT("CK GOAP Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK GOAP Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkGoapDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK GOAP Debugger")),
+        FText::FromString(TEXT("Inspect GOAP planning, world state, actions, and plan history")),
+        TEXT("Goap"),
+        ECkDebuggerToolCategory::Ai,
+        20});
 }
 
 auto
@@ -86,6 +97,9 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     FCkDebuggerInspectorRegistry::Get().Unregister(GGoapInspectorID);
 
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))

@@ -2,6 +2,8 @@
 
 #include "CkUIDebugger/Window/SCkUIDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -44,10 +46,22 @@ auto FCkUIDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK UI Layer Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK UI Layer Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkUIDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK UI Layer Debugger")),
+        FText::FromString(TEXT("Inspect UI layers, widgets, and viewport ownership")),
+        TEXT("Window"),
+        ECkDebuggerToolCategory::Interface,
+        10});
 }
 
 auto FCkUIDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

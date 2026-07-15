@@ -2,6 +2,8 @@
 
 #include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -45,6 +47,15 @@ auto
         .SetDisplayName(FText::FromString(TEXT("CK EQS Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Environmental Query System Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkEqsDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK EQS Debugger")),
+        FText::FromString(TEXT("Inspect environmental queries, generators, tests, and scores")),
+        TEXT("Eqs"),
+        ECkDebuggerToolCategory::Ai,
+        40});
 }
 
 auto
@@ -52,6 +63,9 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

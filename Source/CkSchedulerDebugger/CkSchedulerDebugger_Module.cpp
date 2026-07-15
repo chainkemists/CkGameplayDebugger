@@ -3,6 +3,8 @@
 #include "CkSchedulerDebugger/Window/SCkSchedulerDebuggerWindow.h"
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphFactory.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -49,10 +51,22 @@ auto FCkSchedulerDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK Scheduler Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Scheduler Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkSchedulerDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK Scheduler Debugger")),
+        FText::FromString(TEXT("Inspect processor scheduling, phases, and frame execution")),
+        TEXT("Stopwatch"),
+        ECkDebuggerToolCategory::Systems,
+        10});
 }
 
 auto FCkSchedulerDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);

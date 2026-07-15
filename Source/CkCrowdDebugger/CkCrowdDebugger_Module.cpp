@@ -2,6 +2,8 @@
 
 #include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+
 #include "Framework/Docking/TabManager.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
@@ -23,12 +25,24 @@ void FCkCrowdDebuggerModule::StartupModule()
 		.SetDisplayName(LOCTEXT("TabTitle", "CK Crowd Debugger"))
 		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK Crowd / Navigation debugger window"))
 		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+	_DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+		TEXT("CkCrowdDebugger"),
+		_TabId,
+		LOCTEXT("LauncherDisplayName", "CK Crowd Debugger"),
+		LOCTEXT("LauncherTooltip", "Inspect crowd agents, navigation, paths, and avoidance"),
+		TEXT("People"),
+		ECkDebuggerToolCategory::Ai,
+		30});
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 void FCkCrowdDebuggerModule::ShutdownModule()
 {
+	FCkDebuggerToolRegistry::Get().Unregister(_TabId, _DebuggerToolRegistrationId);
+	_DebuggerToolRegistrationId = 0;
+
 	if (FGlobalTabmanager::Get()->HasTabSpawner(_TabId))
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);

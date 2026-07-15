@@ -7,6 +7,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
@@ -61,6 +62,15 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
         .SetDisplayName(FText::FromString(TEXT("CK ECS Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK ECS Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkEcsDebugger"),
+        DebuggerTabName,
+        FText::FromString(TEXT("CK ECS Debugger")),
+        FText::FromString(TEXT("Browse ECS entities, archetypes, fragments, and relationships")),
+        TEXT("EntityCollection"),
+        ECkDebuggerToolCategory::Core,
+        10});
 
     // Tear the debugger UI down BEFORE module shutdown / world cleanup, so that
     // any inspector-held FCk_Handle (and any captured handles in Slate delegates)
@@ -127,6 +137,9 @@ auto FCkEcsDebuggerModule::HandleEnginePreExit() -> void
 
 auto FCkEcsDebuggerModule::ShutdownModule() -> void
 {
+    FCkDebuggerToolRegistry::Get().Unregister(DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
     // Drop the navigator first — any subsequent click on a stale SCkDebug_EntityRef
     // becomes a no-op instead of dereferencing a half-torn-down module.
     ck::DebugNav::Register_EntityNavigator(ck::DebugNav::FGotoEntityFn{});

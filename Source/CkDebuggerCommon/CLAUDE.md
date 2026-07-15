@@ -29,6 +29,9 @@ provides:
 - **Cross-debugger navigator** (`Navigation/CkDebug_Navigator.h`) — the
   one-way registration hook the EntityRef widget uses to invoke the ECS
   Debugger without taking a hard dependency on it.
+- **Debugger tool registry** (`Launcher/CkDebuggerToolRegistry.h`) — the
+  plain-data, generation-token catalog used by the dockable CK Debugger Launcher.
+  Feature modules own registration; the launcher stores tab IDs rather than module callbacks.
 - **Window-level plumbing** (`Window/CkDebuggerRefreshGate.h`) — refresh-rate
   gate honouring user settings (Use Global / OnlyWhenVisible / Hz cap).
 
@@ -483,6 +486,8 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 
 ```
 CkDebuggerCommon/
+├── Launcher/
+│   └── CkDebuggerToolRegistry.h      (standalone debugger descriptor catalog + reload-safe token)
 ├── Navigation/
 │   └── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
 ├── Search/

@@ -1,6 +1,6 @@
 ---
 name: ck-slate-tools
-description: Use whenever writing or modifying ANY Slate UI in the Ck plugin ecosystem — debugger tabs, panels, widgets, SListView/STreeView rows, toolbars, styles/brushes/SVG icons, input pre-processors, or editor-viewport interaction (focus, deproject, ejected-PIE). Hard-won pitfall catalog: silent engine-style fallbacks (grey squares), ClearChildren-per-refresh flicker, HAlign_Fill stretching, EndPIE handle crashes, click-traps, gated-tick debug-draw blink, TSharedPtr conversions needing complete types. Load BEFORE writing Slate code, not after the symptom appears.
+description: "Use when writing or modifying Ck Slate UI, including debugger widgets, list/tree rows, styling, input, viewport interaction, refresh, or teardown behavior."
 ---
 
 # Ck Slate Tools — pitfall catalog + contracts

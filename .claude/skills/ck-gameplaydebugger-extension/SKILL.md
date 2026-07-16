@@ -1,6 +1,6 @@
 ---
 name: ck-gameplaydebugger-extension
-description: Use when adding debug UI for a Ck feature in Plugins/CkGameplayDebugger — on-screen overlay providers (ck.DebugOverlay, CK_REGISTER_DEBUG_OVERLAY_PROVIDER), CK ECS Debugger inspectors (ck.EcsDebugger, CK_REGISTER_DEBUGGER_INSPECTOR), a new Slate debugger tab, legacy UE GameplayDebugger submenus/profiles, or a debugger crash on PIE stop (~FCk_Handle ReleaseSharedReference). Not for authoring the fragments/data being visualized (ckecs-architecture-contract) or diagnosing framework bugs (ck-debugging-playbook).
+description: "Use when adding Ck debugger UI: overlays, ECS inspectors, Slate tabs, legacy UE GameplayDebugger maintenance, or PIE teardown crashes. Not for authoring debug data."
 ---
 
 # Extending the Ck Debugger Suite

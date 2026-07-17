@@ -23,10 +23,12 @@ public:
     auto IsLauncherOpen() const -> bool;
 
     static const FName LauncherTabName;
+    static const FName InsightsAnalyzerTabName;
 
 private:
     auto OnSpawnLauncherTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
 
     TSharedPtr<SCkDebuggerLauncher> _LauncherWindow;
     TSharedPtr<SDockTab> _LauncherTab;
+    uint64 _InsightsAnalyzerToolRegistrationId = 0;
 };

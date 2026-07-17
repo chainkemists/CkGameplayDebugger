@@ -18,6 +18,11 @@
 | AI | A*, GOAP, Crowd, EQS |
 | Systems | Scheduler, Object Pooling |
 | Interface | UI Layer, Enhanced Input |
+| Tools | Insights Analyzer |
+
+The Insights Analyzer descriptor is registered by the launcher module itself (by proxy): its tab
+spawner lives in CkFoundation's `CkInsightsAnalyzer` module, which cannot depend on
+`CkDebuggerCommon` without a plugin cycle.
 
 ## Adding another standalone debugger
 

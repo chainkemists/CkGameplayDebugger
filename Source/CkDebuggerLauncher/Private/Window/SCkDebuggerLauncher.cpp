@@ -248,6 +248,7 @@ auto SCkDebuggerLauncher::Get_CategoryDisplayName(ECkDebuggerToolCategory InCate
         case ECkDebuggerToolCategory::Ai: return LOCTEXT("CategoryAi", "AI");
         case ECkDebuggerToolCategory::Systems: return LOCTEXT("CategorySystems", "SYSTEMS");
         case ECkDebuggerToolCategory::Interface: return LOCTEXT("CategoryInterface", "INTERFACE");
+        case ECkDebuggerToolCategory::Tools: return LOCTEXT("CategoryTools", "TOOLS");
         case ECkDebuggerToolCategory::Invalid: return FText::GetEmpty();
     }
 

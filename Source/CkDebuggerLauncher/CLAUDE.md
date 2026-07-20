@@ -14,7 +14,7 @@
 
 | Group | Tools |
 |---|---|
-| Core | ECS, State Machine |
+| Core | ECS, State Machine, Map |
 | AI | A*, GOAP, Crowd, EQS |
 | Systems | Scheduler, Object Pooling, Jolt Physics |
 | Interface | UI Layer, Enhanced Input |

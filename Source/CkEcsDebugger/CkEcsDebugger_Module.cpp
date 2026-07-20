@@ -1,5 +1,7 @@
 #include "CkEcsDebugger_Module.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
@@ -190,7 +192,11 @@ auto FCkEcsDebuggerModule::CloseDebugger() -> void
 {
     if (DebuggerTab.IsValid())
     {
-        DebuggerTab->RequestCloseTab();
+        // Engine shutdown destroys Slate windows BEFORE module unload — by then
+        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
+        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+        if (NOT IsEngineExitRequested())
+        { DebuggerTab->RequestCloseTab(); }
         DebuggerTab.Reset();
     }
 

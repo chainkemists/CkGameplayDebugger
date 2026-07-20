@@ -1,6 +1,9 @@
 #include "CkDebuggerCommon_Module.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 
 #if WITH_EDITOR
 #include "Framework/Docking/TabManager.h"
@@ -39,6 +42,8 @@ static FAutoConsoleCommand CmdDebuggerGallery(
 
 void FCkDebuggerCommonModule::StartupModule()
 {
+	FCkDebuggerCommonStyle::Initialize();
+
 #if WITH_EDITOR
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		GalleryTabName,
@@ -60,6 +65,8 @@ void FCkDebuggerCommonModule::ShutdownModule()
 	_GalleryWindow.Reset();
 	_GalleryTab.Reset();
 #endif
+
+	FCkDebuggerCommonStyle::Shutdown();
 }
 
 auto FCkDebuggerCommonModule::Get() -> FCkDebuggerCommonModule&
@@ -79,7 +86,11 @@ auto FCkDebuggerCommonModule::CloseGallery() -> void
 #if WITH_EDITOR
 	if (_GalleryTab.IsValid())
 	{
-		_GalleryTab->RequestCloseTab();
+		// Engine shutdown destroys Slate windows BEFORE module unload — by then
+		// the tab's TSharedFromThis backing is gone and RequestCloseTab →
+		// SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+		if (NOT IsEngineExitRequested())
+		{ _GalleryTab->RequestCloseTab(); }
 		_GalleryTab.Reset();
 	}
 	_GalleryWindow.Reset();

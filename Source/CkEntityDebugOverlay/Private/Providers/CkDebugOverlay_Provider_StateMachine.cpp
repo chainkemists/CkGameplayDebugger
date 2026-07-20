@@ -9,6 +9,8 @@
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment_Data.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
@@ -53,29 +55,14 @@ namespace
     FGameplayTag FieldTag_State()     { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_State; }
     FGameplayTag FieldTag_History()   { return TAG_Ck_OnScreenDebugger_Provider_StateMachine_History; }
 
-    // Mirrors FCkSmLayoutParams::ComputeDisplayName (CkSmDebugger, source of truth for
-    // the SM debugger's name-depth rule): strip "_C", split on "_", show the last
-    // SmStateNameDepth segments joined with "." ("Ck_SmTest_Complex_State_Chase" →
-    // depth 1 → "Chase"). Depth <= 0 → full dotted name.
+    // The canonical shortener (SCkDebug_NameLabel::Get_ShortName, CkDebuggerCommon)
+    // at the overlay's SmStateNameDepth setting — same rule as the SM debugger
+    // ("Ck_SmTest_Complex_State_Chase" → depth 1 → "Chase"; depth <= 0 → full).
     auto Format_Sm_StateName(const FString& InClassName) -> FString
     {
-        auto Name = InClassName;
-        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
-
-        auto Segments = TArray<FString>{};
-        Name.ParseIntoArray(Segments, TEXT("_"), true);
-
-        const auto Depth = GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth;
-        if (Depth <= 0 || Depth >= Segments.Num())
-        { return FString::Join(Segments, TEXT(".")); }
-
-        auto Result = FString{};
-        for (auto i = Segments.Num() - Depth; i < Segments.Num(); ++i)
-        {
-            if (Result.Len() > 0) { Result += TEXT("."); }
-            Result += Segments[i];
-        }
-        return Result;
+        return SCkDebug_NameLabel::Get_ShortName(
+            InClassName,
+            GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth);
     }
 
     auto Format_Sm_ClassName(const UClass* InClass) -> FString

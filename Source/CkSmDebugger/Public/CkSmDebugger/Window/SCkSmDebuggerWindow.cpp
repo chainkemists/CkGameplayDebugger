@@ -37,6 +37,8 @@
 #include "Engine/World.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 
@@ -952,70 +954,28 @@ auto
                     ]
             ]
 
-        // Name depth:  [<]  value  [>]
+        // Name depth — the shared cycler widget; depth lives on the graph's
+        // LayoutParams and a change forces a graph relayout.
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Name")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25C0")))  // ◀
-                    .OnClicked_Lambda([this]()
+                SNew(SCkDebug_NameDepthCycler)
+                    .Depth_Lambda([this]() -> int32
                     {
-                        if (_Graph)
-                        {
-                            auto& Depth = _Graph->LayoutParams.NameDepth;
-                            const auto MaxDepth = _Graph->Get_MaxNameDepth();
-                            // Cycle: Full(0) → MaxDepth → … → 2 → 1 → Full(0)
-                            Depth = (Depth == 0) ? MaxDepth : (Depth - 1);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
+                        return _Graph ? _Graph->LayoutParams.NameDepth : 1;
                     })
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text_Lambda([this]()
+                    .MaxDepth_Lambda([this]() -> int32
                     {
-                        if (NOT _Graph) { return FText::FromString(TEXT("1")); }
-                        auto D = _Graph->LayoutParams.NameDepth;
-                        return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
+                        return _Graph ? _Graph->Get_MaxNameDepth() : 1;
                     })
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FLinearColor(0.85f, 0.85f, 0.85f))
-                    .Justification(ETextJustify::Center)
-                    .MinDesiredWidth(24.0f)
-            ]
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SNew(SButton)
-                    .Text(FText::FromString(TEXT("\x25B6")))  // ▶
-                    .OnClicked_Lambda([this]()
+                    .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
                     {
-                        if (_Graph)
-                        {
-                            auto& Depth = _Graph->LayoutParams.NameDepth;
-                            const auto MaxDepth = _Graph->Get_MaxNameDepth();
-                            // Cycle: Full(0) → 1 → 2 → … → MaxDepth → Full(0)
-                            Depth = (Depth >= MaxDepth) ? 0 : (Depth + 1);
-                            _Graph->ForceRebuild();
-                        }
-                        return FReply::Handled();
-                    })
+                        if (NOT _Graph) { return; }
+                        _Graph->LayoutParams.NameDepth = InNewDepth;
+                        _Graph->ForceRebuild();
+                    }))
             ]
 
         // Relayout
@@ -1426,7 +1386,11 @@ auto
                     {
                         if (GEditor && GEditor->PlayWorld && GEditor->PlayWorld->bDebugPauseExecution)
                         { return FText::FromString(TEXT("\x25B6 Resume")); }
-                        return FText::FromString(TEXT("\x23F8 Pause"));
+                        // ASCII bars, not U+23F8 ⏸ — that codepoint misses the whole
+                        // editor font chain and forces a synchronous LastResort.ttf
+                        // load mid-paint (log-confirmed; also the prime suspect for a
+                        // font-cache "array changed during ranged-for" ensure).
+                        return FText::FromString(TEXT("|| Pause"));
                     })
                     .OnClicked_Lambda([this]()
                     {
@@ -2093,8 +2057,8 @@ auto
     if (NOT IsScrubbingForCase1 && _SelectedHistoryEntry.IsValid())
     {
         auto& Entry = *_SelectedHistoryEntry;
-        auto ToName   = FCkSmLayoutParams::ComputeDisplayName(Entry.ToStateName,   Depth);
-        auto FromName = FCkSmLayoutParams::ComputeDisplayName(Entry.FromStateName, Depth);
+        auto ToName   = SCkDebug_NameLabel::Get_ShortName(Entry.ToStateName,   Depth);
+        auto FromName = SCkDebug_NameLabel::Get_ShortName(Entry.FromStateName, Depth);
 
         // Find state indices
         auto ToIdx = -1;
@@ -2131,7 +2095,7 @@ auto
             auto& ToState = SmInfo->States[ToIdx];
             for (auto& Task : ToState.Tasks)
             {
-                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                auto TName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, Depth);
                 auto IconChar = FString{TEXT("\x25CF")};
                 auto IconColor = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
                 switch (Task.LastResult)
@@ -2187,7 +2151,7 @@ auto
             auto& FromState = SmInfo->States[FromIdx];
             for (auto& Task : FromState.Tasks)
             {
-                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                auto TName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, Depth);
                 Root->AddSlot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(STextBlock)
@@ -2204,7 +2168,7 @@ auto
             Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TASKS AT TRANSITION")) ];
             for (auto& Snap : Entry.TaskSnapshots)
             {
-                auto TName = FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth);
+                auto TName = SCkDebug_NameLabel::Get_ShortName(Snap.TaskName, Depth);
                 auto Label = FString{TEXT("RUNNING")};
                 auto Color = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
                 switch (Snap.Result)
@@ -2237,7 +2201,7 @@ auto
         {
             for (auto& CondName : Entry.ConditionNames)
             {
-                auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                auto CName = SCkDebug_NameLabel::Get_ShortName(CondName, Depth);
                 Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(SHorizontalBox)
@@ -2286,8 +2250,8 @@ auto
 
         Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("TRANSITION")) ];
 
-        auto SrcName = FCkSmLayoutParams::ComputeDisplayName(SmInfo->Transitions[TransIdx].SourceStateName, Depth);
-        auto DstName = FCkSmLayoutParams::ComputeDisplayName(SmInfo->Transitions[TransIdx].TargetStateName, Depth);
+        auto SrcName = SCkDebug_NameLabel::Get_ShortName(SmInfo->Transitions[TransIdx].SourceStateName, Depth);
+        auto DstName = SCkDebug_NameLabel::Get_ShortName(SmInfo->Transitions[TransIdx].TargetStateName, Depth);
 
         Root->AddSlot().AutoHeight()
         [
@@ -2356,7 +2320,7 @@ auto
         for (auto i = 0; i < Trans.Conditions.Num(); ++i)
         {
             auto& Cond = Trans.Conditions[i];
-            auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+            auto CName = SCkDebug_NameLabel::Get_ShortName(Cond.ClassName, Depth);
             auto ClassStr = IsValid(Cond.ScriptClass) ? Cond.ScriptClass->GetName() : FString(TEXT("(unknown)"));
 
             auto CondIdx = i;
@@ -2497,7 +2461,7 @@ auto
             if (CameFromHistIdx >= 0 && CameFromHistIdx < SRun.History.Num())
             {
                 auto& PrevEntry = SRun.History[CameFromHistIdx];
-                auto FromName = FCkSmLayoutParams::ComputeDisplayName(PrevEntry.FromStateName, Depth);
+                auto FromName = SCkDebug_NameLabel::Get_ShortName(PrevEntry.FromStateName, Depth);
 
                 Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
                 Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
@@ -2516,7 +2480,7 @@ auto
             if (NextHistIdx >= 0 && NextHistIdx < SRun.History.Num())
             {
                 auto& NextEntry = SRun.History[NextHistIdx];
-                auto NextName = FCkSmLayoutParams::ComputeDisplayName(NextEntry.ToStateName, Depth);
+                auto NextName = SCkDebug_NameLabel::Get_ShortName(NextEntry.ToStateName, Depth);
                 auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber) - static_cast<int64>(ActiveSegStartFrame);
 
                 Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
@@ -2536,7 +2500,7 @@ auto
                 {
                     for (auto& CondName : NextEntry.ConditionNames)
                     {
-                        auto CName = FCkSmLayoutParams::ComputeDisplayName(CondName, Depth);
+                        auto CName = SCkDebug_NameLabel::Get_ShortName(CondName, Depth);
                         Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                         [
                             SNew(SHorizontalBox)
@@ -2590,7 +2554,7 @@ auto
     if (SelectedIdx >= 0 && SelectedIdx < SmInfo->States.Num())
     {
         auto& State = SmInfo->States[SelectedIdx];
-        auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(State.StateName, Depth);
+        auto DisplayName = SCkDebug_NameLabel::Get_ShortName(State.StateName, Depth);
         auto ClassStr = IsValid(State.ScriptClass) ? State.ScriptClass->GetName() : FString(TEXT("(unknown)"));
         auto HasOverride = IsValid(State.RequestedScriptClass) && State.RequestedScriptClass != State.ScriptClass;
         auto OverrideStr = HasOverride ? State.RequestedScriptClass->GetName() : FString{};
@@ -2770,7 +2734,7 @@ auto
             for (auto TaskIdx = 0; TaskIdx < State.Tasks.Num(); ++TaskIdx)
             {
                 auto& Task = State.Tasks[TaskIdx];
-                auto TName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, Depth);
+                auto TName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, Depth);
                 auto TaskClassStr = IsValid(Task.ScriptClass) ? Task.ScriptClass->GetName() : FString(TEXT("(unknown)"));
 
                 auto TaskNameCapture = Task.ClassName;
@@ -2864,7 +2828,7 @@ auto
                 auto& Transition = SmInfo->Transitions[TrIdx];
                 if (Transition.SourceStateIndex != SelectedIdx) { continue; }
 
-                auto DstName = FCkSmLayoutParams::ComputeDisplayName(Transition.TargetStateName, Depth);
+                auto DstName = SCkDebug_NameLabel::Get_ShortName(Transition.TargetStateName, Depth);
 
                 auto TargetIdx = TrIdx;
                 auto CountAttr = TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
@@ -2944,7 +2908,7 @@ auto
                 for (auto CondIdx = 0; CondIdx < Transition.Conditions.Num(); ++CondIdx)
                 {
                     auto& Cond = Transition.Conditions[CondIdx];
-                    auto CName = FCkSmLayoutParams::ComputeDisplayName(Cond.ClassName, Depth);
+                    auto CName = SCkDebug_NameLabel::Get_ShortName(Cond.ClassName, Depth);
                     auto CondClassStr = IsValid(Cond.ScriptClass) ? Cond.ScriptClass->GetName() : FString(TEXT("(unknown)"));
 
                     auto CondNameCapture = Cond.ClassName;

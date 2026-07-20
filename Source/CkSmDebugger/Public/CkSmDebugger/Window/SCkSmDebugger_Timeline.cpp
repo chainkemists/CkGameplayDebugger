@@ -2,6 +2,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
 #include "Rendering/SlateRenderer.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
@@ -384,7 +386,7 @@ auto
 
         if (Width > 30.0f)
         {
-            auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(Segment.StateName, NameDepth);
+            auto DisplayName = SCkDebug_NameLabel::Get_ShortName(Segment.StateName, NameDepth);
             auto Font = FCoreStyle::GetDefaultFontStyle("Bold", 8);
             auto FontService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
             auto TextSize = FontService->Measure(DisplayName, Font);

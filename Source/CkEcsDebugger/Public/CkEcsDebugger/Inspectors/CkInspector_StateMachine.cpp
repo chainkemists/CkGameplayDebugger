@@ -14,9 +14,13 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+
+#include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -70,9 +74,23 @@ namespace
         }
     }
 
+    // Depth-tuned via the canonical shortener at the shared SM name-depth
+    // setting — the "SM Name Depth" spinbox in the window's overlay popover now
+    // drives the inspector too (0 = full name).
     auto Format_Sm_ClassName(const UClass* InClass) -> FString
     {
-        return InClass != nullptr ? InClass->GetName() : FString(TEXT("(None)"));
+        if (InClass == nullptr) { return FString(TEXT("(None)")); }
+        return SCkDebug_NameLabel::Get_ShortName(
+            InClass->GetName(),
+            GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth);
+    }
+
+    auto Format_Sm_StateName(const FString& InStateName) -> FString
+    {
+        if (InStateName.IsEmpty()) { return FString(TEXT("(None)")); }
+        return SCkDebug_NameLabel::Get_ShortName(
+            InStateName,
+            GetDefault<UCk_DebugOverlay_Settings>()->SmStateNameDepth);
     }
 }
 
@@ -216,8 +234,8 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
             for (auto Index = StartIndex; Index < HistoryNum; ++Index)
             {
                 const auto& Entry      = History[Index];
-                const auto  FromName   = Entry.FromStateName.IsEmpty() ? FString(TEXT("(None)")) : Entry.FromStateName;
-                const auto  ToName     = Entry.ToStateName.IsEmpty() ? FString(TEXT("(None)")) : Entry.ToStateName;
+                const auto  FromName   = Format_Sm_StateName(Entry.FromStateName);
+                const auto  ToName     = Format_Sm_StateName(Entry.ToStateName);
                 const auto  EntryLabel = FString::Printf(TEXT("[%d]"), Index);
                 const auto  EntryText  = FString::Printf(TEXT("%s → %s"), *FromName, *ToName);
 

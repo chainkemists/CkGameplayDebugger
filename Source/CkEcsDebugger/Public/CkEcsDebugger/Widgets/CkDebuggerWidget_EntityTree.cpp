@@ -14,6 +14,7 @@
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 
 #include "CkCore/Algorithms/CkAlgorithms.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -128,18 +129,25 @@ public:
 
         // Identity glyph — one icon language across the debugger (spec §2.4): internals
         // wear their single feature's glyph, primaries the generic cube, groups the
-        // representative member's glyph.
+        // representative member's glyph. SCkDebug_Icon is click-passive, so the
+        // row still selects (STableRow contract).
         if (const auto* IdentityBrush = Get_IdentityBrush(); IdentityBrush != nullptr)
         {
+            const auto Representative = Get_RepresentativeNode();
+            const auto IdentityMeaning = Representative.IsValid() && Representative->IsInternal
+                ? Representative->InternalFeatureId.ToString()
+                : FString(TEXT("Entity"));
+
             RowContent->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
-                SNew(SImage)
-                .Image(IdentityBrush)
+                SNew(SCkDebug_Icon)
+                .Brush(IdentityBrush)
+                .Meaning(FText::FromString(IdentityMeaning))
                 .ColorAndOpacity(Get_IdentityColor())
-                .DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+                .Size(FVector2D(14.0f, 14.0f))
             ];
         }
 

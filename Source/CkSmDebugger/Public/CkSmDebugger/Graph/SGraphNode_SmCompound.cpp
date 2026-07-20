@@ -7,6 +7,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
 #include "SGraphPanel.h"
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
@@ -271,7 +273,7 @@ auto
         if (auto* Graph = Cast<UCkSmDebugGraph>(_CompoundNode->GetGraph()))
         { NameDepth = Graph->LayoutParams.NameDepth; }
     }
-    auto DisplayLabel = FCkSmLayoutParams::ComputeDisplayName(Label, NameDepth);
+    auto DisplayLabel = SCkDebug_NameLabel::Get_ShortName(Label, NameDepth);
 
     GetOrAddSlot(ENodeZone::Center)
         .HAlign(HAlign_Fill)

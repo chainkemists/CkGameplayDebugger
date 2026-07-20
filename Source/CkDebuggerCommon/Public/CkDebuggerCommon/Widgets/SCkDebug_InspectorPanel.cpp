@@ -1,5 +1,7 @@
 #include "SCkDebug_InspectorPanel.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
@@ -87,10 +89,11 @@ auto
 			.VAlign(VAlign_Center)
 			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 			[
-				SNew(SImage)
-				.Image(_IconBrush)
+				SNew(SCkDebug_Icon)
+				.Brush(_IconBrush)
+				.Meaning(_Title)
 				.ColorAndOpacity(FSlateColor(_IconColor))
-				.DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+				.Size(FVector2D(14.0f, 14.0f))
 			];
 	}
 

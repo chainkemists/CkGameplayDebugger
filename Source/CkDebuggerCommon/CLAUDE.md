@@ -49,6 +49,9 @@ selectable.
 | Use case | Widget | Notes |
 |---|---|---|
 | A label or value previously written as `STextBlock` | `SCkDebug_SelectableLabel` | Drop-in. Has `.Text/.Font/.ColorAndOpacity` and an imperative `SetText()`. **Single-line only**, no `AutoWrapText`, no `TransformPolicy::ToUpper`. For uppercase headers, use `STextBlock` or apply `FString::ToUpper()` to the input. |
+| An EntityScript class name or gameplay-tag path | `SCkDebug_NameLabel` | **The** name widget — every debugger renders class/tag names through it. Short form selectable, tooltip = full name, tiny »/« button expands/contracts when shortened. `.NameDepth` binds to the debugger's depth tuner; `SCkDebug_NameLabel::Get_ShortName()` is the one canonical shortener for composite strings the widget can't host (crumbs, log lines, graph measurement), `Get_SegmentCount()` feeds a cycler's MaxDepth. Don't use inside `SListView` rows (internal SButton — see click-traps below); use `Get_ShortName` + `STextBlock` there. |
+| A toolbar name-verbosity control | `SCkDebug_NameDepthCycler` | The "Name ◀ value ▶" chrome control (canonical cycle: Full(0) ↔ 1 … MaxDepth). State stays with the owner (view model / graph / window member); widget reports via `OnDepthChanged`. Used by GOAP, SM, UI debuggers — add it to any debugger that renders class/tag names. |
+| A glyph/icon anywhere in a debugger | `SCkDebug_Icon` | **Never drop a bare `SImage` icon into a slot** — that is how icons ship without tooltips. `.Meaning` (what the glyph stands for) becomes the hover tooltip; `.Brush` comes from the owning module's style registry. Click-passive — safe in `SListView` rows. Exception: an icon inside a control that already carries a richer tooltip (filter-chip SCheckBox, launcher tool button) keeps the wrapper's tooltip instead — one surface, one tooltip. |
 | Composite widget that should support right-click → Copy as a unit (group, pill, custom row) | Wrap with `SCkDebug_CopyableContainer` | Pass `.CopyText(...)` with the multi-line clipboard payload. SButton inside the wrapped child still receives left-clicks; right-click bubbles through. |
 | Inspector key/value rows | `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) | Values are already `SEditableText` — automatic. |
 | Standalone history row in a fixed-rebuild panel (plan history rail, transition log strip) | `SCkDebug_HistoryRow` with `.CopyText(...)` | Shares tone, accent, selection styling. **Click-trap warning — do NOT use inside `SListView`/`STreeView`/`STableRow`.** Its body is wrapped in an `SButton` that returns `FReply::Handled()` on every left click, so the parent `STableRow` never sees the selection click and the user cannot select rows. See "List / tree rows" section below for the correct pattern. |
@@ -496,6 +499,9 @@ CkDebuggerCommon/
 │   └── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
 ├── Widgets/
 │   ├── SCkDebug_EntityRef.h          (clickable FCk_Handle pill — navigates to ECS Debugger)
+│   ├── SCkDebug_Icon.h               (THE icon widget — glyph + mandatory Meaning tooltip, click-passive)
+│   ├── SCkDebug_NameDepthCycler.h    (toolbar "Name ◀ value ▶" verbosity control)
+│   ├── SCkDebug_NameLabel.h          (THE class-name/tag label — depth-shortened, »/« expand; Get_ShortName/Get_SegmentCount statics)
 │   ├── SCkDebug_SelectableLabel.h    (STextBlock-shape, copyable)
 │   ├── SCkDebug_CopyableContainer.h  (wrap any widget with right-click → Copy)
 │   ├── SCkDebug_KeyValueRow.h        (inspector row; values selectable)

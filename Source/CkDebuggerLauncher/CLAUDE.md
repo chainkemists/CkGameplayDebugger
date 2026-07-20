@@ -16,7 +16,7 @@
 |---|---|
 | Core | ECS, State Machine |
 | AI | A*, GOAP, Crowd, EQS |
-| Systems | Scheduler, Object Pooling |
+| Systems | Scheduler, Object Pooling, Jolt Physics |
 | Interface | UI Layer, Enhanced Input |
 | Tools | Insights Analyzer |
 

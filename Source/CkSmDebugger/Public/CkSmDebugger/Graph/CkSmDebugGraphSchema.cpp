@@ -10,6 +10,7 @@
 #include "ToolMenu.h"
 
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -72,7 +73,7 @@ auto
                 { continue; }
 
                 const auto& Full = State->Get_StateName();
-                ChildDisplayLines.Add(FCkSmLayoutParams::ComputeDisplayName(Full, NameDepth));
+                ChildDisplayLines.Add(SCkDebug_NameLabel::Get_ShortName(Full, NameDepth));
                 ChildClassLines.Add(Full);
             }
         }
@@ -125,7 +126,7 @@ auto
     auto NameDepth = 1;
     if (const auto* Graph = Cast<UCkSmDebugGraph>(Node->GetGraph()))
     { NameDepth = Graph->LayoutParams.NameDepth; }
-    const auto DisplayName = FCkSmLayoutParams::ComputeDisplayName(FullName, NameDepth);
+    const auto DisplayName = SCkDebug_NameLabel::Get_ShortName(FullName, NameDepth);
 
     ck::DebugCopyMenu::AddCopyEntryToToolMenu(InMenu,
         TEXT("CopyDisplayName"),

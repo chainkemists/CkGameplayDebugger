@@ -35,29 +35,9 @@ struct FCkSmLayoutParams
     float BadgeSpread              = 20.0f;  // slide step (px) for separating overlapping transition badges
     ECkSmDebugger_HistoryStyle HistoryStyle = ECkSmDebugger_HistoryStyle::ClassicArrows;
 
-    // Convert a class name like "Ck_SmTest_Complex_State_Chase" to a short display name
-    // at the configured depth. Depth 1 → "Chase", 2 → "State.Chase", 0 → full tag.
-    static auto ComputeDisplayName(const FString& InClassName, int32 InDepth) -> FString
-    {
-        auto Name = InClassName;
-        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
-
-        TArray<FString> Segments;
-        Name.ParseIntoArray(Segments, TEXT("_"), true);
-
-        if (InDepth <= 0 || InDepth >= Segments.Num())
-        {
-            return FString::Join(Segments, TEXT("."));
-        }
-
-        auto Result = FString{};
-        for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
-        {
-            if (Result.Len() > 0) { Result += TEXT("."); }
-            Result += Segments[i];
-        }
-        return Result;
-    }
+    // Display-name shortening lives in the shared SCkDebug_NameLabel::Get_ShortName
+    // (CkDebuggerCommon) — one shortener for every debugger. NameDepth above is
+    // the depth this module feeds it.
 };
 
 // --------------------------------------------------------------------------------------------------------------------

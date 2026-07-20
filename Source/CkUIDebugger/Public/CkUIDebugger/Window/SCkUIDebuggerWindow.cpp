@@ -3,6 +3,8 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
@@ -260,6 +262,19 @@ auto
                         FOnClicked::CreateLambda([this]() { _HistoryEvents.Empty(); DoBuildHistoryList(); return FReply::Handled(); }))
                 ]
 
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(style::Pad_M, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(SCkDebug_NameDepthCycler)
+                        .Depth_Lambda([this]() -> int32 { return _NameDepth; })
+                        .MaxDepth_Lambda([this]() -> int32 { return _MaxNameSegments; })
+                        .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
+                        {
+                            _NameDepth = InNewDepth;
+                            _IsDirty = true;   // layer/widget slot texts re-stamp on the next update pass
+                        }))
+                ]
+
             + SHorizontalBox::Slot().FillWidth(1.0f)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -440,12 +455,12 @@ auto
     -> void
 {
     const auto ClassName = ck::IsValid(InWidget, ck::IsValid_Policy_NullptrOnly{})
-        ? InWidget->GetClass()->GetName()
+        ? DoShortName(InWidget->GetClass()->GetName())
         : FString(TEXT("Unknown"));
 
     _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
         FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Push] %s -> %s"), *ClassName, *InLayerTag.ToString())
+        FString::Printf(TEXT("[Push] %s -> %s"), *ClassName, *DoShortName(InLayerTag.ToString()))
     }, 0);
 
     if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
@@ -461,12 +476,12 @@ auto
     -> void
 {
     const auto ClassName = ck::IsValid(InWidget, ck::IsValid_Policy_NullptrOnly{})
-        ? InWidget->GetClass()->GetName()
+        ? DoShortName(InWidget->GetClass()->GetName())
         : FString(TEXT("Unknown"));
 
     _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
         FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Pop] %s <- %s"), *ClassName, *InLayerTag.ToString())
+        FString::Printf(TEXT("[Pop] %s <- %s"), *ClassName, *DoShortName(InLayerTag.ToString()))
     }, 0);
 
     if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
@@ -482,7 +497,7 @@ auto
 {
     _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
         FPlatformTime::Seconds(),
-        FString::Printf(TEXT("[Cleared] %s"), *InLayerTag.ToString())
+        FString::Printf(TEXT("[Cleared] %s"), *DoShortName(InLayerTag.ToString()))
     }, 0);
 
     if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
@@ -498,7 +513,7 @@ auto
 {
     _HistoryEvents.Insert(FCkUIDebugger_HistoryEvent{
         FPlatformTime::Seconds(),
-        FString::Printf(TEXT("Active Layer -> %s"), *InNewActiveTag.ToString())
+        FString::Printf(TEXT("Active Layer -> %s"), *DoShortName(InNewActiveTag.ToString()))
     }, 0);
 
     if (_HistoryEvents.Num() > MaxHistoryEvents) { _HistoryEvents.SetNum(MaxHistoryEvents); }
@@ -737,7 +752,8 @@ auto
 
     InSlot.StatusDot->SetColorAndOpacity(FSlateColor(DotColor));
 
-    InSlot.TagText->SetText(FText::FromString(LayerTag.ToString()));
+    InSlot.TagText->SetText(FText::FromString(DoShortName(LayerTag.ToString())));
+    InSlot.TagText->SetToolTipText(FText::FromString(LayerTag.ToString()));
     InSlot.TagText->SetColorAndOpacity(InIsActive ? style::Text_Highlight : style::Text_Primary);
 
     InSlot.PriorityText->SetText(FText::FromString(FString::Printf(TEXT("[%d]"), Priority)));
@@ -773,7 +789,7 @@ auto
             auto* Widget = WidgetList[WidgetIdx];
             const auto IsActiveWidget = Widget == ActiveWidget;
 
-            WSlot.ClassNameText->SetText(FText::FromString(Widget->GetClass()->GetName()));
+            WSlot.ClassNameText->SetText(FText::FromString(DoShortName(Widget->GetClass()->GetName())));
             WSlot.ClassNameText->SetToolTipText(FText::FromString(Widget->GetClass()->GetName()));
             WSlot.ClassNameText->SetColorAndOpacity(IsActiveWidget ? style::Text_Primary : style::Text_Secondary);
 
@@ -866,6 +882,16 @@ auto
     { return true; }
 
     return ck::fuzzy::Match(_SearchFilter, InLayerTag, {}).Get_IsMatch();
+}
+
+auto
+    SCkUIDebuggerWindow::
+    DoShortName(
+        const FString& InFullName)
+    -> FString
+{
+    _MaxNameSegments = FMath::Max(_MaxNameSegments, SCkDebug_NameLabel::Get_SegmentCount(InFullName));
+    return SCkDebug_NameLabel::Get_ShortName(InFullName, _NameDepth);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

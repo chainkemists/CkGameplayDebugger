@@ -109,6 +109,12 @@ private:
 
     auto DoMatchesFilter(const FString& InLayerTag) const -> bool;
 
+    // ---- Name shortening ----
+
+    // Depth-shortens via SCkDebug_NameLabel::Get_ShortName and tracks the
+    // largest segment count seen so the toolbar cycler's Max stays honest.
+    auto DoShortName(const FString& InFullName) -> FString;
+
     // ---- Widgets ----
 
     TSharedPtr<SVerticalBox> _LayerListBox;
@@ -130,6 +136,10 @@ private:
     FString _SearchFilter;
     bool _IsDirty = true;
     bool _StructureDirty = true;
+
+    // Display-name verbosity for widget class names + layer tags (0 = full).
+    int32 _NameDepth = 1;
+    int32 _MaxNameSegments = 1;
 
     static constexpr int32 MaxHistoryEvents = 100;
 };

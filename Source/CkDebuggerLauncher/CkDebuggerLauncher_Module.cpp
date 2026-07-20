@@ -1,5 +1,7 @@
 #include "CkDebuggerLauncher_Module.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "Styles/CkDebuggerLauncherStyle.h"
 #include "Window/SCkDebuggerLauncher.h"
 
@@ -96,7 +98,11 @@ auto FCkDebuggerLauncherModule::CloseLauncher() -> void
 {
     if (_LauncherTab.IsValid())
     {
-        _LauncherTab->RequestCloseTab();
+        // Engine shutdown destroys Slate windows BEFORE module unload — by then
+        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
+        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+        if (NOT IsEngineExitRequested())
+        { _LauncherTab->RequestCloseTab(); }
         _LauncherTab.Reset();
     }
 

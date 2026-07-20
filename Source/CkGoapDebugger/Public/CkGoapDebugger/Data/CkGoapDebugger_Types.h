@@ -225,6 +225,28 @@ struct FCkGoapDebugger_PlannerInfo
     bool                                       AllowPlanFailed         = false;
     bool                                       HasUnconditionalFallback = false;
 
+    // Settings block (Mission Control Settings drawer) — mirrors
+    // FFragment_Goap_Planner_Params via the P3 getters.
+    ECk_Goap_ReplanPolicy                      ReplanPolicy = ECk_Goap_ReplanPolicy::OnWorldStateDirty;
+    float                                      MinReplanIntervalSeconds = 0.0f;
+    int64                                      SearchBudgetMicroseconds = 0;
+    float                                      CostThreshold = 0.0f;
+    bool                                       PlanOnStart = true;
+
+    // Last-replan diagnostics (P3 hooks): why the last replan fired, the
+    // post-search stats, and the regressive trace (nerd tab).
+    FCk_Goap_ReplanCauseInfo                   LastReplanCause;
+    FCk_Goap_SearchStats                       SearchStats;
+    TArray<FCk_Goap_SearchDebugRow>            SearchDebug;
+
+    // The resolved WS source's recent effective-value changes (engine ring) —
+    // the timeline's WS lane.
+    TArray<FCk_Goap_WorldStateChange>          RecentWorldStateChanges;
+
+    // Per-key usage over THIS planner's subtree: X = precondition/goal reads,
+    // Y = effect writes. The WS panel's "nP·mE" chips + click-to-trace census.
+    TMap<FGameplayTag, FIntPoint>              KeyUsage;
+
     // Action role fields (only valid if IsActionRole — populated from the
     // dual-role entity's FFragment_Goap_Action_Definition).
     TArray<FCkGoapDebugger_Condition>          Preconditions;
@@ -309,7 +331,15 @@ enum class ECkGoapDebugger_HistoryEventKind : uint8
     ActionDeactivated,
     PlanFound,
     PlanFailed,
-    ChainReset
+    ChainReset,
+
+    // A world-state key's effective value changed (from the engine's WS
+    // change-log ring; carries WorldStateChangeAtEvent).
+    WorldStateChanged,
+
+    // A planner's attempt counter advanced — a replan fired (carries
+    // CauseAtEvent from Get_LastReplanCause).
+    Replanned
 };
 
 struct FCkGoapDebugger_HistoryEvent
@@ -324,12 +354,18 @@ struct FCkGoapDebugger_HistoryEvent
 
     // Raw class name of the Action this event refers to (when applicable).
     // The sidebar's history-row generator runs this through
-    // FCkGoapDebugger_NameParams::ComputeDisplayName(_, NameDepth) so the row
+    // SCkDebug_NameLabel::Get_ShortName(_, NameDepth) so the row
     // text follows the live name-depth toolbar without re-baking history.
     FString ActionClassName;
 
     double  WorldTimeSeconds = 0.0;
     int64   FrameNumber      = 0;
+
+    // Replanned events: why (origin, coalesced key changes, attempt #).
+    FCk_Goap_ReplanCauseInfo CauseAtEvent;
+
+    // WorldStateChanged events: the recorded change (key, old→new, mutator).
+    FCk_Goap_WorldStateChange WorldStateChangeAtEvent;
 
     // Snapshot of the Planner/ActionSet at the moment this event fired.
     // Held by shared-ptr so the events list can share a single allocation

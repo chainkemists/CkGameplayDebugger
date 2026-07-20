@@ -1,211 +1,216 @@
-# CkGoapDebugger — per-Planner debugger UI
+# CkGoapDebugger — "GOAP Mission Control"
 
-> **Read `CkDebuggerCommon/CLAUDE.md` first.** It covers shared conventions: copy-selectable text, entity-ref pills, list/tree row contracts, search bars, PIE world lifecycle, in-world overlays, and safety rules. This file only covers CkGoapDebugger's own architecture.
+> **Read `CkDebuggerCommon/CLAUDE.md` first.** It covers shared conventions: copy-selectable text, entity-ref pills, list/tree row contracts, search bars, PIE world lifecycle, and safety rules. This file only covers CkGoapDebugger's own architecture.
 
 ---
 
 ## What this module does
 
-`CkGoapDebugger` is the editor debugger window for the `CkGoap` module. It renders the full Planner/Action tree for any entity selected in the debugger, shows each Planner's live plan strip, world-state source, goal, plan history, and A* search statistics. It opens as a tab via `CK GOAP Debugger` (registered by `CkGoapDebugger_Module`).
+`CkGoapDebugger` is the editor debugger window for the `CkGoap` module — a designer-first "Mission Control" that answers, per agent: *what is it doing, why this plan, what does it believe, and what just happened?* It opens as a tab via `CK GOAP Debugger` (registered by `CkGoapDebugger_Module`).
+
+The layout, feature set, and visual language are a faithful Slate port of the interactive HTML mockup at [Mockups/mockup_d_mission_control.html](Mockups/mockup_d_mission_control.html) — treat that file as the visual spec. The port plan + phase history live in `docs/plans/2026-07-18-goap-mission-control/PROGRESS.md` (repo root docs).
 
 ---
 
-## UI structure
+## Window anatomy (top to bottom)
 
-### Window — `SCkGoapDebuggerWindow`
-
-Top-level Slate widget (`SCkDebugger_WindowBase` subclass). Owns:
-
-- `FCkGoapDebugger_ViewModel _ViewModel` — tick loop + data pipeline.
-- `UCkGoapDebugGraph* _Graph` — UEdGraph managing action/goal node layout.
-- `STextComboBox* _EntitySelector` — combo box for selecting the entity under inspection.
-- `SCkGoapDebug_PlanStrip* _PlanStrip` — hero band below the graph showing the plan as card pills.
-- `SCkGoapDebug_HistoryRail* _HistoryRail` — left-side rail of past plan attempts (each entry is an `SCkDebug_HistoryRow`; **not** inside an `SListView` — it lives in a `SVerticalBox` inside `SCkDebug_RailContainer`).
-- `SCkGoapDebugger_WorldStatePanel`, `SCkGoapDebugger_StatsPanel`, `SCkGoapDebugger_FailureAnalysisPanel` — right inspector stack.
-- `SCkGoapDebug_MacroNodesPanel` — macro-node (goal / action category) panel.
-- `SWidgetSwitcher* _TopTabSwitcher` — switches between Graph view and Macro-nodes view.
-
-`Tick` drives `_ViewModel->Tick(World, DeltaTime)` and then calls panel-specific refresh methods.
-
-### ViewModel — `FCkGoapDebugger_ViewModel`
-
-Orchestrates the data pipeline and selection model:
-
-- `_DataCollector` — runs `Collect(World)` each tick (live mode) or returns from history (scrub mode).
-- `_SelectedEntityHandle` — the entity currently selected in the combo box.
-- `_IsPaused` — when true, `Collect` is skipped; panels read the last snapshot.
-- `_ViewMode` (`Live` / `Scrub`) — in Scrub mode, `Get_CurrentGoapInfo()` returns the frozen snapshot at `_ScrubHistoryIndex`.
-
-Multicast delegates: `OnGoapListChanged`, `OnGoapDataRefreshed`, `OnSelectedEntityChanged`, `OnPausedChanged`, `OnViewModeChanged`.
-
-### DataCollector — `FCkGoapDebugger_DataCollector`
-
-Walks all entities on the given `UWorld` each tick, collecting `FCkGoapDebugger_GoapInfo` per entity (plan status, world state entries, action infos, goal infos, A* stats, diagnostics, failure analysis). Maintains rolling plan-history (`_PlanHistory`) and per-frame search-progress log (`_SearchLog`, capped at 120 entries per entity).
-
----
-
-## Graph — `UCkGoapDebugGraph`
-
-`UEdGraph` subclass. Contains `TArray<TObjectPtr<UCkGoapDebugNode_Action>> _ActionNodes` and `TObjectPtr<UCkGoapDebugNode_Goal> _GoalNode`. Driven by `UpdateFromGoapInfo`:
-
-1. **Topology gate**: `ComputeTopologyHash(InInfo)` compares against `_TopologyHash`. If unchanged, skip `RebuildTopology`; go straight to `UpdateRuntimeState`.
-2. **Topology rebuild** (`RebuildTopology`): clears nodes, spawns a `UCkGoapDebugNode_Action` per action in `InInfo.Actions`, spawns the `UCkGoapDebugNode_Goal`, wires dependency edges (effect → precondition, solid pins) and tree edges (parent → child, dashed pins), calls `PerformLayout` to position nodes.
-3. **Runtime-state update** (`UpdateRuntimeState`): updates cost tint, in-plan highlighting, status badge — no node reallocation. Returns `bool` (true = changed) for the caller to know whether to invalidate the graph view.
-
-`SetSuppressNotifications(true)` wraps bulk operations to prevent `NotifyGraphChanged` storms. Always suppress during rebuild; re-enable after.
-
-**`UEdGraph::Nodes` iteration rule**: `Nodes` is `TArray<TObjectPtr<UEdGraphNode>>`. Always use explicit `UEdGraphNode*` when iterating:
-
-```cpp
-for (UEdGraphNode* Node : Graph->Nodes)
-{
-    auto* ActionNode = Cast<UCkGoapDebugNode_Action>(Node);
-    if (NOT ActionNode) { continue; }
-    // ...
-}
+```
+SCkGoapDebuggerWindow
+├── Chrome bar        product mark · world selector · agent EntityRef pill ·
+│                     LIVE/PAUSED StatusPill + ⏮⏭ scrub steps · REC-clear ·
+│                     Nerd-mode Switch · name-depth cycle
+├── Nerd strip        (nerd-gated) plan µs · budget µs + MeterBar + slices ·
+│                     states expanded · state pool · parent-gate note ·
+│                     planner/WS ids — all live off the selected PlannerInfo
+├── Alert strip       live-visibility AlertRows: Sandbox banner (DebugUI layer
+│                     key count + shared-WS blast radius + Pop action) ·
+│                     Fallback-plan-active warning
+├── Top tabs          Squad (count) | Agent Inspector | Catalog Audit
+└── Active view (SWidgetSwitcher)
+    ├── SQUAD         SCkGoapDebugger_SquadTable — one row per top-level
+    │                 Planner world-wide: avatar+name · planner label ·
+    │                 status pill (all 5 states) · active chain · cost ·
+    │                 attempts · replans-60s Sparkline · alert tags ·
+    │                 Inspect ▸ (selects + flips to Inspector)
+    ├── INSPECTOR     vertical splitter:
+    │   ├── top: horizontal splitter
+    │   │   ├── LEFT   vertical: SCkGoapDebugger_AgentColumn (agent card,
+    │   │   │          chain crumb w/ GlowWrap leaf, goal chips w/ live
+    │   │   │          satisfaction, plan step cards w/ NOW stripe + nested
+    │   │   │          sub-plan + fallback note, Settings drawer w/ all
+    │   │   │          params + RO locks + live requests + Replan/Cancel/
+    │   │   │          Reset) over SCkGoapDebugger_Sidebar (Planner tree —
+    │   │   │          the selection surface)
+    │   │   ├── CENTER SCkDebug_UnderlineTabs (Decision | Plan graph |
+    │   │   │          Search trace*) + switcher:
+    │   │   │          · SCkGoapDebugger_DecisionPanel — every candidate,
+    │   │   │            scored (DecisionModel): in-plan/viable/blocked/
+    │   │   │            fallback groups, why-lines w/ forced-first Δ, cost
+    │   │   │            steppers (Request_SetChildActionCost) + edited
+    │   │   │            badges + reset, cond chips w/ trace highlight,
+    │   │   │            cross-tier notes, per-composite sub-groups
+    │   │   │          · SCkGoapDebugger_GraphPane — SGraphEditor tree
+    │   │   │            (glow halo + role line on nodes, exp→cur pre dots,
+    │   │   │            live costs, in-plan edge pulse, dashed tree edges)
+    │   │   │          · SCkGoapDebugger_SearchTracePanel* — regressive-A*
+    │   │   │            constraint-set rows + SearchStats strip (*nerd)
+    │   │   └── RIGHT  SCkGoapDebugger_WorldStateRail — SectionHeader +
+    │   │              Sandbox switch, nP·mE usage chips, layer shadow
+    │   │              badges, "just changed" chips, editable ValuePills
+    │   │              (DebugUI layer), click-to-trace rows, layer stack +
+    │   │              base store, keys n/64 + subscribers footer
+    │   └── bottom: SCkGoapDebugger_TimelineDock — SCkDebug_EventTimeline
+    │              (WS/REPLAN/ACTIVE lanes, selectable replan diamonds,
+    │              coalesce ×N) + jump-to-replan buttons + Pause-on
+    │              checkboxes (bDebugPauseExecution) + diff card (trigger/
+    │              old→new) + event log (click-to-scrub)
+    └── CATALOG       SCkGoapDebugger_CatalogPanel — persistent SSplitter
+                      chrome (drag positions survive rebuilds): action cards
+                      per tier left (default half-window) · right = vertical
+                      splitter of health checks (fallback guarantee, cycles,
+                      goal keys, key budget n/64, cross-tier + dead-effect
+                      INFO via DecisionModel::Lint) over the key×action
+                      matrix (P/E cells, goal badges, active-chain column
+                      tint, click-to-trace); every pane resizable + scrolls
 ```
 
-Do not iterate with `auto&` — `TObjectPtr<UEdGraphNode>` does not implicitly supply the underlying `UCkGoapDebugNode_*` cast.
+---
+
+## Data flow
+
+```
+UWorld tick (gated by FCkDebuggerRefreshGate)
+  └── FCkGoapDebugger_ViewModel::Tick
+        ├── FCkGoapDebugger_DataCollector::Collect(World)
+        │     ├── per entity → FCkGoapDebugger_EntitySnapshot
+        │     │     └── TopLevelPlanners: FCkGoapDebugger_PlannerInfo forest
+        │     │         (settings block, LastReplanCause, SearchStats,
+        │     │          SearchDebug, RecentWorldStateChanges, KeyUsage
+        │     │          census, ChildActions/ChildPlanners recursion)
+        │     └── DetectAndPushEvents → per-entity history ring
+        │         (FCkGoapDebugger_HistoryEvent: +WorldStateChanged w/ change,
+        │          +Replanned w/ CauseAtEvent, PlanFound/Failed w/ snapshot)
+        ├── OnChanged.Broadcast()
+        └── window fan-out: Sidebar / AgentColumn / DecisionPanel /
+            SearchTracePanel / TimelineDock / SquadTable / CatalogPanel /
+            WorldStateRail all RefreshFromViewModel()
+```
+
+- **DecisionModel** (`Data/CkGoapDebugger_DecisionModel.*`) — pure, Slate-free,
+  headless-tested miniature of ck::goap's regressive A* (FName-keyed). Powers
+  the Decision panel's forced-first deltas, cross-tier notes, and the Catalog
+  lint. It must never drive gameplay. Specs:
+  `Tests/CkGoapDebugger_DecisionModel.spec.cpp` (FEAR-gym truth table).
+- **Engine hooks consumed** (added in CkGoap for this debugger): params
+  getters, `Get_LastReplanCause`, `Get_LastSearchStats`/`Get_LastSearchDebug`,
+  WS `Get_RecentChanges` (change-log ring), `Get_SubscriberCount`,
+  `Get_TopOverrideLayerForKey`, `Get_LayerValues`/`Get_LayerKeyCount`.
+- **Agent enumeration covers BOTH Planner installation paradigms.** Create-style
+  planners live in the owner's `FFragment_RecordOfGoapPlanners`; Add-style stamps
+  the Planner role directly on the owner and writes NO record entry — and nearly
+  every gym installs via `Add`. `CollectSnapshots` therefore walks the record
+  view first, then a `FFragment_Goap_Planner_Params` view filtered to
+  non-Action-role, non-record-registered entities (the Add-style owners, each
+  its own agent). `BuildEntitySnapshot` appends the owner's own Planner role
+  before record entries. A record-only walk renders the entire debugger empty
+  on Add-style content (2026-07-19 defect).
+
+### Cross-pane channels on the ViewModel
+
+- **Selection**: `SetSelectedEntity` / `SetSelectedActionSet(Planner)` — the
+  Sidebar tree and the Squad table's Inspect both drive it.
+- **Scrub**: `SetMode(Scrub)` + `SetScrubEventIndex` — timeline diamonds, jump
+  buttons, and event-log rows all scrub; the chrome LIVE pill returns to live.
+- **Key trace**: `Set_TracedWsKey` / `Get_TracedWsKey` — WS-rail row clicks and
+  matrix key rows set it; condition chips (Decision) highlight live, the WS
+  rail row tints, the footer shows the trace hint. Cleared on world change.
 
 ---
 
-## Plan strip — `SCkGoapDebug_PlanStrip`
+## Sandbox (WS override) semantics
 
-Hero band rendered below the graph viewport. Subscribes to the ViewModel. Rebuilds only when `ComputeHash()` detects a plan-content change (`_LastHash` comparison).
-
-Renders:
-- `[Plan · N steps · cost C]` meta-text.
-- A card pill per plan step (`BuildStepPill`), with `bActive = (StepIdx == 0)` visually distinct (highlighted border + `ACTIVE` status pill).
-- An arrow widget (`BuildArrow`) between each step.
-- A goal pill (`BuildGoalPill`) at the end showing the active goal name.
-
-`OnStepClicked` delegate fires with the step's class name; `SCkGoapDebuggerWindow::OnPlanStepClicked` finds the corresponding graph node and sets selection.
+The rail's Sandbox switch arms editing: value-pill flips push single-key
+overrides into the reserved `"DebugUI"` layer
+(`Push_Override_SingleKey`); switching Sandbox OFF pops the layer. Reads are
+shadowed, the base store stays truthful. The alert strip surfaces the blast
+radius — a shared WS (subscribers > 1) means every subscribed planner replans
+under the sandbox. Gameplay-pushed layers ("FlierAttract", …) are never popped
+by the sandbox; per-layer Pop buttons live in the rail's layer stack.
 
 ---
 
-## History rail — `SCkGoapDebug_HistoryRail`
+## Refresh discipline (unchanged contracts)
 
-Left-side plan history. Each past plan attempt is an `SCkDebug_HistoryRow` inside a `SVerticalBox` (not an `SListView`). `SCkDebug_HistoryRow` is correct here — it's a standalone fixed-rebuild panel, not inside a table row. Selecting a history entry calls `_ViewModel->Set_ViewMode(Scrub)` + `Set_ScrubHistoryIndex(Index)`.
-
-`_LastHash` tracks the history entry count; `RebuildRows()` runs when the hash changes.
+- **Hash-debounce everywhere** — every panel computes a content hash and
+  early-outs; live values (status, satisfaction, override state, trace
+  highlight, editability) are `TAttribute`-bound so they track without
+  rebuilds. Never `ChildSlot[...]` per tick.
+- **`FCkDebuggerRefreshGate::Should_RefreshNow(WindowId)`** gates the window
+  Tick.
+- **EndPIE / world teardown**: `HandleWorldTornDown` resets AgentList,
+  Sidebar, AgentColumn, DecisionPanel (edited-cost planner handles!),
+  TimelineDock, SquadTable, CatalogPanel, GraphPane, then the ViewModel — the
+  ViewModel reset broadcasts, which clears the WS rail's cached WS handle
+  while the registry is alive. Every new pane holding `FCk_Handle` state must
+  join this chain.
+- **Stable `TSharedPtr` identity** in the Squad table (rows keyed by planner
+  handle) and Agent list. Weak-capture (`WeakRail`/`WeakPanel` — NEVER
+  `WeakThis`, it shadows `TSharedFromThis::WeakThis` and C4458 is an error)
+  in attribute lambdas; feature handles captured by value + `ck::IsValid`
+  checked per read.
 
 ---
 
-## Refresh discipline
+## Legacy / transitional notes
 
-**Hash-debounce everywhere.** Every panel computes a cheap hash of the data it renders and only rebuilds when the hash changes. No unconditional `ChildSlot[...]` replacements per tick.
-
-**`FCkDebuggerRefreshGate::Should_RefreshNow`** must be honoured in the window `Tick`. If the gate returns false, skip `_ViewModel->Tick` and all panel refresh calls. This respects the user's per-window refresh settings (Use Global / Hz cap / OnlyWhenVisible).
-
-**Topology gate before graph rebuild.** `UCkGoapDebugGraph::UpdateFromGoapInfo` applies a topology hash check before any node reallocation. Cost tint and highlighting update in-place via `UpdateRuntimeState` without touching node count or wiring.
-
-**Stable `TSharedPtr` identity.** History rail row items and any `SListView`/`STreeView` used in future panels must follow the stable-pointer protocol from `CkDebuggerCommon/CLAUDE.md`: reuse existing `TSharedPtr` entries by a stable key, update in-place, only `RequestListRefresh` / `RequestTreeRefresh` when the set actually changes. Reallocating `TSharedPtr` per tick destroys selection state every frame.
+- `SCkGoapDebugger_AgentListPanel` is constructed but **unslotted** — it still
+  receives cross-debugger selection-sync broadcasts. Re-home the sync
+  subscription (window- or SquadTable-side) before deleting it.
+- `SCkGoapDebugger_Sidebar` still owns an internal history widget that is no
+  longer slotted (the TimelineDock replaced it); its tree remains the planner
+  selection surface until a chrome planner-picker exists.
+- `FCkGoapDebuggerStyle` (legacy token set) was retuned to the Mission Control
+  palette (hex literals — static-init-safe). New code should use `CkStyle::`
+  tokens + `FCkDebuggerCommonStyle` (glow brushes) directly.
+- **Name shortening is the common widget's job.** `SCkDebug_NameLabel`
+  (CkDebuggerCommon) renders every pure class-name/tag label (Decision +
+  Catalog card titles, plan steps, Planner-tag / World-state settings rows,
+  WS-rail header) with depth tuning + »/« expand; composite strings (crumbs,
+  Squad chains, timeline/event-log lines, graph text measurement) go through
+  `SCkDebug_NameLabel::Get_ShortName`. The old
+  `FCkGoapDebugger_NameParams::ComputeDisplayName` is deleted.
+- Deleted in the port: `SCkGoapDebugger_Breadcrumb`, `SCkGoapDebugger_PrimaryPane`,
+  `SCkGoapDebug_PlanStrip` (superseded by AgentColumn + DecisionPanel), the old
+  ModeBar/Toolbar/Legend chrome, and the old right-stack panels
+  (WorldStatePanel/StatsPanel/FailureAnalysisPanel → WS rail / nerd strip /
+  Decision panel).
+- Known data gap: `FCkGoapDebugger_ActionInfo` has no `HasCostProvider` flag —
+  the mockup's "cost provider" badge (Decision + Catalog cards) needs a
+  collector read of the provider registration.
 
 ---
 
 ## Common gotchas
 
-### Anonymous-namespace constant collisions in .cpp files
-
-Multiple `.cpp` files in the same module that each declare `namespace { constexpr auto Duration = ...}` or similar generic names will collide under unity build (C2374/C2086). Use a unique local name (`constexpr auto GraphRebuild_Delay = ...`) or move the constant inside the function body.
-
-### `UEdGraph::Nodes` type
-
-`Nodes` is `TArray<TObjectPtr<UEdGraphNode>>`. Iterating with `for (auto& Node : Nodes)` gives a `TObjectPtr<UEdGraphNode>&`, not a `UCkGoapDebugNode_Action*`. Always dereference explicitly or use `for (UEdGraphNode* Node : Nodes)` — the implicit conversion is present but `Cast<>` on `TObjectPtr` does not compile the same way on all tool builds.
-
-### `SCkDebug_HistoryRow` inside `STableRow` is wrong
-
-`SCkDebug_HistoryRow`'s internal `SButton` returns `FReply::Handled()` on left-click, trapping the click before `STableRow` can process selection. The history rail correctly uses it inside a `SVerticalBox`, not a list view. For any future list/tree panel, use plain `SHorizontalBox` + `STextBlock` inside `STableRow` (see `CkDebuggerCommon/CLAUDE.md` "List / tree rows").
-
-### Refresh thrash — never use `ChildSlot[...]` in hot paths
-
-Replacing `ChildSlot[...]` unconditionally on every tick rebuilds the entire widget subtree, destroying selection state and causing visual flicker. Gate all rebuilds behind a hash check. If the hash matches, return immediately.
-
----
-
-## Data flow summary
-
-```
-UWorld tick
-  └── FCkGoapDebugger_ViewModel::Tick
-        ├── FCkGoapDebugger_DataCollector::Collect(World)
-        │     └── CollectGoapEntity per entity → FCkGoapDebugger_GoapInfo
-        │           → TrackPlanCompletion  → _PlanHistory
-        │           → TrackSearchProgress → _SearchLog
-        ├── Fire OnGoapListChanged / OnGoapDataRefreshed delegates
-        └── SCkGoapDebuggerWindow::Tick
-              ├── RefreshEntitySelector (if list changed)
-              ├── UCkGoapDebugGraph::UpdateFromGoapInfo
-              │     ├── ComputeTopologyHash → gate
-              │     ├── RebuildTopology (if hash changed) + SuppressNotifications
-              │     └── UpdateRuntimeState (always) → tint / highlight
-              ├── SCkGoapDebug_PlanStrip::Tick → hash-debounced RebuildStrip
-              ├── SCkGoapDebug_HistoryRail::Tick → hash-debounced RebuildRows
-              ├── SCkGoapDebugger_WorldStatePanel::Tick → hash-debounced rebuild
-              ├── SCkGoapDebugger_StatsPanel::Tick → hash-debounced rebuild
-              └── SCkGoapDebugger_FailureAnalysisPanel::Tick → hash-debounced rebuild
-```
-
----
-
-## File layout (Public headers)
-
-```
-CkGoapDebugger/
-├── Data/
-│   ├── CkGoapDebugger_DataCollector.h   (FCkGoapDebugger_DataCollector)
-│   └── CkGoapDebugger_Types.h           (FCkGoapDebugger_GoapInfo, HistoryEntry, SearchSnapshot, etc.)
-├── Graph/
-│   ├── CkGoapDebugGraph.h               (UCkGoapDebugGraph — UEdGraph)
-│   ├── CkGoapDebugNode_Action.h         (UCkGoapDebugNode_Action)
-│   ├── CkGoapDebugNode_Goal.h           (UCkGoapDebugNode_Goal)
-│   ├── CkGoapDebugGraphSchema.h         (schema + right-click copy menus)
-│   ├── CkGoapDebugGraphFactory.h        (FGraphPanelNodeFactory)
-│   ├── CkGoapDebugConnectionPolicy.h    (connection rules)
-│   ├── SGraphNode_GoapAction.h          (Slate node widget)
-│   └── SGraphNode_GoapGoal.h            (Slate goal node widget)
-├── ViewModel/
-│   └── CkGoapDebugger_ViewModel.h       (FCkGoapDebugger_ViewModel)
-└── Window/
-    ├── SCkGoapDebuggerWindow.h          (top-level window widget)
-    ├── SCkGoapDebug_PlanStrip.h         (plan card strip)
-    ├── SCkGoapDebug_HistoryRail.h       (plan history left rail)
-    ├── SCkGoapDebugger_WorldStatePanel.h
-    ├── SCkGoapDebugger_StatsPanel.h
-    ├── SCkGoapDebugger_FailureAnalysisPanel.h
-    ├── SCkGoapDebugger_GoalPanel.h
-    ├── SCkGoapDebugger_PlanView.h
-    ├── SCkGoapDebugger_StyleTest.h
-    └── MacroNodes/
-        ├── SCkGoapDebug_MacroNodesPanel.h
-        ├── SCkGoapDebug_ActionRow.h
-        ├── SCkGoapDebug_GoalCard.h
-        └── CkGoapDebug_ActionCategorizer.h
-```
-
----
-
-## WorldState rail: debug-toggle behavior
-
-Each WS key row in `SCkGoapDebugger_WorldStatePanel` is clickable. A click flips the key's effective value by pushing the new value into a named layer `"DebugUI"` via `UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey(WS, "DebugUI", Key, !CurrentEffectiveValue)`. The layer is auto-created on the first click; subsequent clicks on the same key update it in place — same-name push is idempotent per the override stack rules (see CkGoap `CLAUDE.md` §"World State override stack").
-
-**Override-active visuals.** All override-driven visuals are `TAttribute`-bound and update live as the user clicks, without forcing a rail rebuild:
-
-- Rows where `Has_KeyOverride(WS, Key)` returns true render with an amber tint and an `OVERRIDE` pill.
-- A `[+N layer(s)]` badge in the rail header reflects `Get_OverrideDepth(WS)` live.
-- A Reset button appears next to the rail header when `Get_OverrideDepth(WS) > 0`. Clicking it calls `Pop_Override_ByName(WS, "DebugUI")` — narrow pop that preserves any AI-deliberation layers that may coexist.
-- The Reset button's tooltip lists the names of all currently-pushed layers (from `Get_OverrideLayerNames(WS)`).
-
-This is the canonical pattern for runtime debugger visuals that must not trigger destructive widget re-creation. See also `SGraphNode_GoapAction` border color (`CkDebuggerCommon/CLAUDE.md` SGraphNode live-bind invariant) for the equivalent pattern in the graph pane.
-
-**Snapshot click semantics.** Per-row click handlers capture the effective value at row-build time. Rapid double-clicks before the next collector tick rebuilds the rows will re-push the same value. That is a quiet no-op per the override stack's idempotent semantics — no spurious replans result.
-
-**PIE lifecycle.** Override layers reset on PIE start. The Reset button disappears automatically as `Get_OverrideDepth(WS)` returns to zero after the reset.
+- **Anonymous-namespace collisions under unity build** — use per-file named
+  namespaces (`ck_goap_debugger_<file>`); the module compiles unity.
+- **`UEdGraph::Nodes` iteration** — `for (UEdGraphNode* Node : Graph->Nodes)`,
+  never `auto&` (TObjectPtr cast quirks).
+- **Refresh thrash** — no unconditional `ChildSlot[...]`/`ClearChildren()` in
+  hot paths; gate on hashes.
+- **SLeafWidget tooltips** (`SCkDebug_EventTimeline`) — per-marker tooltips go
+  through a hover-tracked widget-level tooltip; there are no child widgets to
+  attach to.
+- **Pause-on** uses `GEditor->PlayWorld->bDebugPauseExecution = true` (the
+  blueprint-breakpoint pause), same as CkSmDebugger.
 
 ---
 
 ## See also
 
-- `CkDebuggerCommon/CLAUDE.md` — cross-debugger conventions (copy text, entity refs, list rows, search bars, PIE lifecycle, PMG overlays, safety rules).
-- `CkGoap/CLAUDE.md` (in `CkFoundation`) — the U11 Planner/Action model this debugger reflects.
-- Design spec: `docs/superpowers/specs/2026-05-21-CkGoap-PlannerActionCollapse-design.md`.
+- `CkDebuggerCommon/CLAUDE.md` — shared widget catalog (StatusPill, Chip,
+  ValuePill, Switch, MeterBar, Card, AlertRow, UnderlineTabs, Stepper,
+  GlowWrap, EventTimeline, Sparkline, SectionHeader …) + safety rules.
+- `CkGoap/CLAUDE.md` (in `CkFoundation`) — the Planner/Action model, WS
+  override stack, replan policies, always-valid-plan tenet.
+- `Mockups/mockup_d_mission_control.html` — the interactive visual spec.

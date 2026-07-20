@@ -122,12 +122,26 @@ public:
     // then calls Broadcast_Changed so the sidebar / plan strip / primary pane
     // / breadcrumb / history rail all re-render with the new verbosity.
     //
-    // Depth semantics (mirrors FCkGoapDebugger_NameParams::ComputeDisplayName):
+    // Depth semantics (mirrors SCkDebug_NameLabel::Get_ShortName):
     //   0 = full joined name (every segment), 1 = leaf, 2 = last two, ...
     // -----------------------------------------------------------------------------------------------------------------
 
     auto Get_NameDepth() const -> int32 { return _NameDepth; }
     auto Set_NameDepth(int32 InDepth) -> void { _NameDepth = FMath::Max(0, InDepth); }
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // Key trace — cross-pane highlight of one WS key. The WS rail sets it on
+    // row click; decision cards / plan chips / graph nodes highlight every
+    // condition chip referencing the traced key. Empty tag = no trace.
+    // -----------------------------------------------------------------------------------------------------------------
+
+    auto Get_TracedWsKey() const -> FGameplayTag { return _TracedWsKey; }
+    auto Set_TracedWsKey(FGameplayTag InKey) -> void
+    {
+        if (_TracedWsKey == InKey) { return; }
+        _TracedWsKey = InKey;
+        Broadcast_Changed();
+    }
 
 private:
     auto BroadcastIfChanged() -> void;
@@ -141,6 +155,10 @@ private:
 
     EMode _Mode = EMode::Live;
     int32 _ScrubEventIndex = INDEX_NONE;
+
+    // Cross-pane WS key trace (see Get_TracedWsKey). Plain tag — no handle,
+    // so no EndPIE clearing needed.
+    FGameplayTag _TracedWsKey;
 
     // Hash of the last broadcast state — used to suppress no-op OnChanged.
     uint32 _LastBroadcastHash = 0;

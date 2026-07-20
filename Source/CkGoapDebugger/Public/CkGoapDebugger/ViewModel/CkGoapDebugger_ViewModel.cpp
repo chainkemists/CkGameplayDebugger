@@ -204,6 +204,7 @@ auto
     _SelectedAction    = FCk_Handle_Goap_Action{};
     _Mode              = EMode::Live;
     _ScrubEventIndex   = INDEX_NONE;
+    _TracedWsKey       = FGameplayTag{};
     _LastBroadcastHash = 0;
     _HasBroadcast      = false;
 

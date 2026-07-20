@@ -10,12 +10,17 @@
 
 class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
-class SCkGoapDebugger_Breadcrumb;
-class SCkGoapDebugger_PrimaryPane;
 class SCkGoapDebugger_WorldStateRail;
 class SCkGoapDebugger_GraphPane;
 class SCkGoapDebugger_AgentListPanel;
+class SCkGoapDebugger_AgentColumn;
+class SCkGoapDebugger_DecisionPanel;
+class SCkGoapDebugger_SearchTracePanel;
+class SCkGoapDebugger_TimelineDock;
+class SCkGoapDebugger_SquadTable;
+class SCkGoapDebugger_CatalogPanel;
 class STextBlock;
+class STextComboBox;
 class SBox;
 
 // ====================================================================================================================
@@ -64,19 +69,43 @@ public:
     // Used by the static OpenForEntity above to push selection into a live window.
     auto Set_SelectedEntityExternal(const FCk_Handle& InEntity) -> void;
 
+    // Mission Control top-level views (underline tabs in the chrome).
+    static const FName Tab_Squad;
+    static const FName Tab_Inspector;
+    static const FName Tab_Catalog;
+
+    // Center-column tabs inside the Inspector view (mockup ".ctabs").
+    static const FName CTab_Decision;
+    static const FName CTab_Graph;
+    static const FName CTab_Search;
+
+    // Nerd mode — reveals search internals (nerd strip, Search-trace tab,
+    // entity handles). Read by child panels via the window.
+    auto Get_NerdMode() const -> bool { return _NerdMode; }
+
 private:
     // -----------------------------------------------------------------------------------------------------------------
     // Build helpers — called once from Construct; result subtrees are cached.
     // -----------------------------------------------------------------------------------------------------------------
 
-    auto BuildModeBar()  -> TSharedRef<SWidget>;
-    auto BuildToolbar()  -> TSharedRef<SWidget>;
-    auto BuildLegend()   -> TSharedRef<SWidget>;
+    auto BuildChromeBar() -> TSharedRef<SWidget>;
+    auto BuildNerdStrip() -> TSharedRef<SWidget>;
+    auto BuildAlertStrip() -> TSharedRef<SWidget>;
+    auto BuildTopTabs()   -> TSharedRef<SWidget>;
+    auto BuildSquadView()     -> TSharedRef<SWidget>;
+    auto BuildInspectorView() -> TSharedRef<SWidget>;
+    auto BuildCatalogView()   -> TSharedRef<SWidget>;
     auto BuildCenterColumn()  -> TSharedRef<SWidget>;
 
     // Refresh the agent-list panel off the current snapshot batch. Cheap;
     // called every gated Tick — the panel reuses row pointers by handle.
     auto RefreshAgentList() -> void;
+
+    // Rebuild the chrome picker option lists from the snapshot batch and sync
+    // their selected items to the ViewModel (echo-guarded via Direct).
+    auto RefreshPickers() -> void;
+    auto HandleAgentPicked(TSharedPtr<FString> InItem, ESelectInfo::Type InSelectInfo) -> void;
+    auto HandlePlannerPicked(TSharedPtr<FString> InItem, ESelectInfo::Type InSelectInfo) -> void;
 
     // PIE lifecycle — drop handle-bearing state.
     auto HandleWorldTornDown() -> void;
@@ -84,16 +113,34 @@ private:
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel>   _ViewModel;
     TSharedPtr<SCkGoapDebugger_Sidebar>     _Sidebar;
-    TSharedPtr<SCkGoapDebugger_Breadcrumb>  _Breadcrumb;
-    TSharedPtr<SCkGoapDebugger_PrimaryPane> _PrimaryPane;
+    TSharedPtr<SCkGoapDebugger_AgentColumn> _AgentColumn;
     TSharedPtr<SCkGoapDebugger_WorldStateRail> _WorldStateRail;
     TSharedPtr<SCkGoapDebugger_GraphPane>   _GraphPane;
+    TSharedPtr<SCkGoapDebugger_DecisionPanel>    _DecisionPanel;
+    TSharedPtr<SCkGoapDebugger_SearchTracePanel> _SearchTracePanel;
+    TSharedPtr<SCkGoapDebugger_TimelineDock>     _TimelineDock;
+    TSharedPtr<SCkGoapDebugger_SquadTable>       _SquadTable;
+    TSharedPtr<SCkGoapDebugger_CatalogPanel>     _CatalogPanel;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
 
     // Agent list (replaces the old combo-box entity picker)
     TSharedPtr<SCkGoapDebugger_AgentListPanel> _AgentList;
+
+    // Chrome pickers — combo labels + parallel handle arrays (index-mapped).
+    // Handles cleared on world teardown.
+    TArray<TSharedPtr<FString>>     _AgentPickerLabels;
+    TArray<FCk_Handle>              _AgentPickerHandles;
+    TSharedPtr<STextComboBox>       _AgentPicker;
+    TArray<TSharedPtr<FString>>     _PlannerPickerLabels;
+    TArray<FCk_Handle_Goap_Planner> _PlannerPickerHandles;
+    TSharedPtr<STextComboBox>       _PlannerPicker;
+
+    // Mission Control chrome state.
+    FName _ActiveTab;
+    FName _CenterTab;
+    bool  _NerdMode = false;
 
     // Editor delegate handles
     FDelegateHandle _OnBeginPieHandle;

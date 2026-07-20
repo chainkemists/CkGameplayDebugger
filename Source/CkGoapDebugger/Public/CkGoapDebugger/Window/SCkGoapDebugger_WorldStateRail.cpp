@@ -7,8 +7,16 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ValuePill.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkGoap/Algorithm/CkGoap_WorldState.h"
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
 #include "Styling/CoreStyle.h"
@@ -21,6 +29,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
@@ -46,22 +55,6 @@ namespace ck_goap_debugger_wsrail_internal
         return FString(TEXT("…")) + Tail;
     }
 
-    // Tag-depth truncation: keep the last InDepth dot-separated segments of a
-    // gameplay tag. Depth 0 = full tag (no truncation). Depth 1 = leaf segment.
-    // Mirrors FCkGoapDebugger_NameParams::ComputeDisplayName but operates on
-    // tag-style strings (period-separated) instead of class names.
-    auto TruncateTagByDepth(const FString& InTag, int32 InDepth) -> FString
-    {
-        if (InDepth <= 0) { return InTag; }
-        TArray<FString> Segments;
-        InTag.ParseIntoArray(Segments, TEXT("."), true);
-        if (Segments.Num() <= InDepth) { return InTag; }
-        auto Tail = TArray<FString>{};
-        Tail.Reserve(InDepth);
-        for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
-        { Tail.Add(Segments[i]); }
-        return FString::Join(Tail, TEXT("."));
-    }
 }
 
 // ====================================================================================================================
@@ -214,9 +207,24 @@ auto
             NewHash ^= Pair;  // commutative — entry-order doesn't fake a change
         }
     }
+    // Fold in the per-key usage census. Rows capture their nP·mE text by VALUE
+    // at build time, and the census back-fills a frame or two AFTER the key
+    // list exists (child-action CDO extraction runs a tick after AddAction) —
+    // without this fold the rail keeps the goal-only census forever.
+    if (const auto* CensusPlannerInfo = _ViewModel->GetSelectedPlannerInfo())
+    {
+        for (const auto& [UsageKey, Usage] : CensusPlannerInfo->KeyUsage)
+        {
+            auto Pair = GetTypeHash(UsageKey);
+            Pair = HashCombine(Pair, ::GetTypeHash(Usage.X));
+            Pair = HashCombine(Pair, ::GetTypeHash(Usage.Y));
+            NewHash ^= Pair;  // commutative — map order doesn't fake a change
+        }
+    }
+
     // Fold in the shared name-depth so toolbar +/- toggles re-render the rail
     // with new key truncation. WS keys honour the same depth as planner-tier
-    // display names — see TruncateTagByDepth below.
+    // display names — SCkDebug_NameLabel::Get_ShortName is the one shortener.
     if (_ViewModel.IsValid())
     { NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth())); }
 
@@ -253,19 +261,7 @@ auto
     if (NOT HasSelection || Entries == nullptr || Entries->Num() == 0)
     {
         if (_HeaderHost.IsValid())
-        {
-            _HeaderHost->SetContent(
-                SNew(SBorder)
-                    .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-                    .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
-                                     FCkGoapDebuggerStyle::Padding_Medium))
-                    [
-                        SNew(SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(TEXT("WORLDSTATE")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                    ]);
-        }
+        { _HeaderHost->SetContent(BuildHeader(FString{})); }
 
         if (_Body.IsValid())
         {
@@ -305,157 +301,32 @@ auto
         return A.Key.ToString() < B.Key.ToString();
     });
 
-    // ---- Header (label + key count) ------------------------------------------
+    // ---- Header (SectionHeader + Sandbox switch) -----------------------------
     const auto KeyCount = Entries->Num();
-    auto RecentCount    = 0;
-    for (const auto& E : *Entries)
-    { if (E.RecentlyChanged) { ++RecentCount; } }
 
     if (_HeaderHost.IsValid())
-    {
-        const auto CountText = _FilterString.IsEmpty()
-            ? FString::Printf(TEXT("%d keys"), KeyCount)
-            : FString::Printf(TEXT("%d / %d keys"), ViewEntries.Num(), KeyCount);
-
-        // The "[+N layer]" suffix is bound via TAttribute so push/pop of the
-        // DebugUI layer updates the header text live, without forcing the
-        // rail to rebuild. Per CkDebuggerCommon SGraphNode live-bind invariant.
-        auto HeaderTextAttr = TAttribute<FText>::Create(
-            TAttribute<FText>::FGetter::CreateLambda(
-                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
-                 Label]() -> FText
-                {
-                    const auto Pinned = WeakThis.Pin();
-                    if (NOT Pinned.IsValid())
-                    { return FText::FromString(TEXT("WORLDSTATE")); }
-
-                    auto Base = FString::Printf(TEXT("WORLDSTATE · %s"),
-                        Label.IsEmpty() ? TEXT("(unresolved)") : *Label);
-
-                    auto WsHandle = Pinned->_CurrentWorldState;
-                    if (ck::IsValid(WsHandle))
-                    {
-                        const auto Depth = UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(WsHandle);
-                        if (Depth > 0)
-                        {
-                            Base += FString::Printf(TEXT("  [+%d layer%s]"),
-                                Depth, Depth == 1 ? TEXT("") : TEXT("s"));
-                        }
-                    }
-                    return FText::FromString(Base);
-                }));
-
-        // Reset button visibility: only when DebugUI layer is active.
-        auto ResetVisibilityAttr = TAttribute<EVisibility>::Create(
-            TAttribute<EVisibility>::FGetter::CreateLambda(
-                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this))]() -> EVisibility
-                {
-                    const auto Pinned = WeakThis.Pin();
-                    if (NOT Pinned.IsValid()) { return EVisibility::Collapsed; }
-
-                    auto WsHandle = Pinned->_CurrentWorldState;
-                    if (NOT ck::IsValid(WsHandle)) { return EVisibility::Collapsed; }
-
-                    return UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(WsHandle) > 0
-                        ? EVisibility::Visible
-                        : EVisibility::Collapsed;
-                }));
-
-        // Reset tooltip: list currently-pushed layer names (live).
-        auto ResetTooltipAttr = TAttribute<FText>::Create(
-            TAttribute<FText>::FGetter::CreateLambda(
-                [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this))]() -> FText
-                {
-                    const auto Pinned = WeakThis.Pin();
-                    if (NOT Pinned.IsValid())
-                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
-
-                    auto WsHandle = Pinned->_CurrentWorldState;
-                    if (NOT ck::IsValid(WsHandle))
-                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
-
-                    const auto Layers = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(WsHandle);
-                    if (Layers.Num() == 0)
-                    { return FText::FromString(TEXT("Reset DebugUI override layer.")); }
-
-                    auto Joined = FString{};
-                    for (auto Idx = 0; Idx < Layers.Num(); ++Idx)
-                    {
-                        if (Idx > 0) { Joined += TEXT(", "); }
-                        Joined += Layers[Idx].ToString();
-                    }
-                    return FText::FromString(FString::Printf(
-                        TEXT("Pop the \"DebugUI\" override layer.\nActive layers: %s"),
-                        *Joined));
-                }));
-
-        _HeaderHost->SetContent(
-            SNew(SBorder)
-                .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
-                                 FCkGoapDebuggerStyle::Padding_Medium))
-                [
-                    SNew(SHorizontalBox)
-
-                        + SHorizontalBox::Slot()
-                            .FillWidth(1.0f)
-                            .VAlign(VAlign_Center)
-                            [
-                                SNew(SCkDebug_SelectableLabel)
-                                    .Text(HeaderTextAttr)
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
-                            ]
-
-                        + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
-                            [
-                                SNew(SButton)
-                                    .Visibility(ResetVisibilityAttr)
-                                    .ToolTipText(ResetTooltipAttr)
-                                    .OnClicked(this, &SCkGoapDebugger_WorldStateRail::HandleClick_ResetDebugUiLayer)
-                                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
-                                    [
-                                        SNew(SCkDebug_SelectableLabel)
-                                            .Text(FText::FromString(TEXT("Reset")))
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
-                                    ]
-                            ]
-
-                        + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
-                            [
-                                SNew(SCkDebug_SelectableLabel)
-                                    .Text(FText::FromString(CountText))
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
-                            ]
-                ]);
-    }
+    { _HeaderHost->SetContent(BuildHeader(Label)); }
 
     // ---- Body (override layers section + rows) -------------------------------
     if (_Body.IsValid())
     {
         _Body->ClearChildren();
 
-        // Override-stack inspector — only visible when one or more layers are
-        // pushed. Sits above the key rows so layer state is the first thing the
-        // user sees when overrides are active.
-        if (ck::IsValid(_CurrentWorldState) &&
-            UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(_CurrentWorldState) > 0)
+        // Override-stack inspector (mockup "layerbox") — always present so the
+        // base store row anchors the mental model; pushed layers stack above it.
+        if (ck::IsValid(_CurrentWorldState))
         {
             _Body->AddSlot()
                 .AutoHeight()
                 .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium))
                 [
-                    BuildOverrideLayersSection(_CurrentWorldState)
+                    BuildOverrideLayersSection(_CurrentWorldState, KeyCount)
                 ];
         }
+
+        // Per-key usage census from the selected Planner's subtree fold-up
+        // (X = precondition/goal reads, Y = effect writes).
+        const auto* PlannerInfo = _ViewModel->GetSelectedPlannerInfo();
 
         for (const auto* Entry : ViewEntries)
         {
@@ -463,10 +334,17 @@ auto
                 NOT _HighlightString.IsEmpty() &&
                 NOT Entry->Key.ToString().Contains(_HighlightString);
 
+            auto Usage = FIntPoint::ZeroValue;
+            if (PlannerInfo != nullptr)
+            {
+                if (const auto* Found = PlannerInfo->KeyUsage.Find(Entry->Key))
+                { Usage = *Found; }
+            }
+
             _Body->AddSlot()
                 .AutoHeight()
                 [
-                    BuildKeyRow(*Entry, HighlightDimmed)
+                    BuildKeyRow(*Entry, HighlightDimmed, Usage)
                 ];
         }
 
@@ -486,27 +364,7 @@ auto
 
     // ---- Footer ---------------------------------------------------------------
     if (_FooterHost.IsValid())
-    {
-        const auto FooterText = FString::Printf(
-            TEXT("★ = recently changed · %d of %d keys"), RecentCount, KeyCount);
-
-        _FooterHost->SetContent(
-            SNew(SBorder)
-                .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Border.Subtle")))
-                .Padding(FMargin(0.0f, 1.0f, 0.0f, 0.0f))   // top-only divider line
-                [
-                    SNew(SBorder)
-                        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
-                        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
-                                         FCkGoapDebuggerStyle::Padding_Small))
-                        [
-                            SNew(SCkDebug_SelectableLabel)
-                                .Text(FText::FromString(FooterText))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
-                        ]
-                ]);
-    }
+    { _FooterHost->SetContent(BuildFooter(KeyCount)); }
 }
 
 // ====================================================================================================================
@@ -539,6 +397,252 @@ auto
                 .Text(FText::FromString(Message))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+        ];
+}
+
+// ====================================================================================================================
+// BUILD — HEADER (SectionHeader + Sandbox switch)
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    BuildHeader(const FString& InLabel)
+    -> TSharedRef<SWidget>
+{
+    // The WS label doubles as the clarifier when resolved (rendered through the
+    // shared name-label widget so it honours the depth tuner + expand button);
+    // the mockup's static subtext covers the unresolved / empty states.
+    const auto SubWidget = InLabel.IsEmpty()
+        ? SNullWidget::NullWidget
+        : StaticCastSharedRef<SWidget>(
+            SNew(SCkDebug_NameLabel)
+                .FullName(InLabel)
+                .NameDepth_Lambda([this]() -> int32
+                {
+                    return _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
+                })
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextMute())));
+
+    return SNew(SCkDebug_SectionHeader)
+        .Label(FText::FromString(TEXT("World State")))
+        .SubText(FText::FromString(TEXT("what the agent believes")))
+        .SubContent()
+        [
+            SubWidget
+        ]
+        .Underline(true)
+        .RightContent()
+        [
+            // One click target for label + switch (mockup <label> semantics):
+            // the switch consumes its own clicks; clicks on the "Sandbox" text
+            // land on this wrapper button and toggle the same state.
+            SNew(SButton)
+                .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+                .ContentPadding(FMargin(0.0f))
+                .Cursor(EMouseCursor::Hand)
+                .ToolTipText(FText::FromString(TEXT(
+                    "Sandbox pushes a 'DebugUI' override layer onto the World State.\n"
+                    "Reads are shadowed; the base store is untouched.\n"
+                    "Switching off pops the layer — back to live truth.")))
+                .OnClicked_Lambda([this]() -> FReply
+                {
+                    HandleSandboxToggled(NOT _SandboxMode);
+                    return FReply::Handled();
+                })
+                [
+                    SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceS, 0.0f))
+                            [
+                                SNew(STextBlock)
+                                    .Text(FText::FromString(TEXT("Sandbox")))
+                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                            ]
+
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SCkDebug_Switch)
+                                    .IsOn_Lambda([this]() { return _SandboxMode; })
+                                    .OnStateChanged(FOnCkDebug_SwitchChanged::CreateSP(
+                                        this, &SCkGoapDebugger_WorldStateRail::HandleSandboxToggled))
+                            ]
+                ]
+        ];
+}
+
+// ====================================================================================================================
+// BUILD — FOOTER (key budget + subscribers + trace hint)
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    BuildFooter(int32 InKeyCount)
+    -> TSharedRef<SWidget>
+{
+    const auto WeakRail = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this));
+
+    // Live subscriber count — entities re-planned when a key flips. Feeds the
+    // sandbox blast-radius read ("this WS is shared").
+    auto SubscriberTextAttr = TAttribute<FText>::Create(
+        TAttribute<FText>::FGetter::CreateLambda(
+            [WeakRail]() -> FText
+            {
+                const auto Pinned = WeakRail.Pin();
+                if (NOT Pinned.IsValid()) { return FText::FromString(TEXT("0")); }
+
+                auto WsHandle = Pinned->_CurrentWorldState;
+                if (NOT ck::IsValid(WsHandle)) { return FText::FromString(TEXT("0")); }
+
+                return FText::AsNumber(UCk_Utils_Goap_WorldState_UE::Get_SubscriberCount(WsHandle));
+            }));
+
+    // Trace hint — mirrors the mockup: idle prompt, or the traced key + clear.
+    const auto TracedKey = [WeakRail]() -> FGameplayTag
+    {
+        const auto Pinned = WeakRail.Pin();
+        if (NOT Pinned.IsValid() || NOT Pinned->_ViewModel.IsValid()) { return {}; }
+        return Pinned->_ViewModel->Get_TracedWsKey();
+    };
+
+    auto TraceHintTextAttr = TAttribute<FText>::Create(
+        TAttribute<FText>::FGetter::CreateLambda(
+            [TracedKey]() -> FText
+            {
+                const auto Key = TracedKey();
+                if (NOT Key.IsValid())
+                { return FText::FromString(TEXT("click a key to trace it")); }
+
+                auto Leaf = Key.ToString();
+                if (auto Idx = int32{INDEX_NONE}; Leaf.FindLastChar(TEXT('.'), Idx))
+                { Leaf = Leaf.RightChop(Idx + 1); }
+
+                return FText::FromString(FString::Printf(TEXT("tracing %s"), *Leaf));
+            }));
+
+    auto TraceClearVisibilityAttr = TAttribute<EVisibility>::Create(
+        TAttribute<EVisibility>::FGetter::CreateLambda(
+            [TracedKey]() -> EVisibility
+            {
+                return TracedKey().IsValid() ? EVisibility::Visible : EVisibility::Collapsed;
+            }));
+
+    return SNew(SBorder)
+        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Border.Subtle")))
+        .Padding(FMargin(0.0f, 1.0f, 0.0f, 0.0f))   // top-only divider line
+        [
+            SNew(SBorder)
+                .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Panel")))
+                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
+                                 FCkGoapDebuggerStyle::Padding_Small))
+                [
+                    SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceM, 0.0f))
+                            [
+                                SNew(SHorizontalBox)
+                                    .ToolTipText(FText::FromString(TEXT("FKeyRegistry capacity — 64 boolean keys per World State")))
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f))
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(FText::FromString(TEXT("keys")))
+                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                                        ]
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        [
+                                            SNew(SCkDebug_SelectableLabel)
+                                                .Text(FText::FromString(FString::Printf(
+                                                    TEXT("%d / %d"), InKeyCount, ck::goap::WorldState_MaxKeys)))
+                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                                        ]
+                            ]
+
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SHorizontalBox)
+                                    .ToolTipText(FText::FromString(TEXT("Request_AddSubscriber — entities re-planned when a key flips")))
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f))
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(FText::FromString(TEXT("subscribers")))
+                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                                        ]
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(SubscriberTextAttr)
+                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                                        ]
+                            ]
+
+                        + SHorizontalBox::Slot()
+                            .FillWidth(1.0f)
+                            .HAlign(HAlign_Right)
+                            .VAlign(VAlign_Center)
+                            [
+                                SNew(SHorizontalBox)
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        .VAlign(VAlign_Center)
+                                        [
+                                            SNew(STextBlock)
+                                                .Text(TraceHintTextAttr)
+                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                                        ]
+
+                                    + SHorizontalBox::Slot()
+                                        .AutoWidth()
+                                        .VAlign(VAlign_Center)
+                                        .Padding(FMargin(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f))
+                                        [
+                                            SNew(SButton)
+                                                .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+                                                .Visibility(TraceClearVisibilityAttr)
+                                                .ContentPadding(FMargin(CkStyle::SpaceXS, 0.0f))
+                                                .ToolTipText(FText::FromString(TEXT("Clear the key trace.")))
+                                                .OnClicked_Lambda([WeakRail]() -> FReply
+                                                {
+                                                    const auto Pinned = WeakRail.Pin();
+                                                    if (Pinned.IsValid() && Pinned->_ViewModel.IsValid())
+                                                    { Pinned->_ViewModel->Set_TracedWsKey(FGameplayTag{}); }
+                                                    return FReply::Handled();
+                                                })
+                                                [
+                                                    SNew(STextBlock)
+                                                        .Text(FText::FromString(TEXT("clear")))
+                                                        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                        .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
+                                                ]
+                                        ]
+                            ]
+                ]
         ];
 }
 
@@ -619,7 +723,8 @@ auto
     SCkGoapDebugger_WorldStateRail::
     BuildKeyRow(
         const FCkGoapDebugger_WorldStateEntry& InEntry,
-        bool InHighlightDimmed)
+        bool InHighlightDimmed,
+        FIntPoint InUsage)
     -> TSharedRef<SWidget>
 {
     using namespace ck_goap_debugger_wsrail_internal;
@@ -629,54 +734,110 @@ auto
     // pathologically long single segments.
     const auto FullKey = InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString(TEXT("(invalid)"));
     const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 0;
-    const auto KeyText = TruncateKey(TruncateTagByDepth(FullKey, Depth));
-    const auto KeyCol   = InHighlightDimmed
-        ? FCkGoapDebuggerStyle::Color_Text_Ghost
-        : FCkGoapDebuggerStyle::Color_Text_Secondary;
+    const auto KeyText = TruncateKey(SCkDebug_NameLabel::Get_ShortName(FullKey, Depth));
+    const auto KeyCol = InHighlightDimmed ? CkStyle::TextMute() : CkStyle::TextDim();
     const auto EntryKey = InEntry.Key;
-    const bool EffectiveValue = InEntry.Value;
-
-    // The displayed value follows the resolved (post-override) WS view that
-    // the data collector already flattened into _Entries.Value. It stays in
-    // sync with the snapshot, so on click we flip from THAT value.
-    const auto ValueStr = EffectiveValue ? FString(TEXT("TRUE")) : FString(TEXT("false"));
-    const auto ValueCol = InHighlightDimmed
-        ? FCkGoapDebuggerStyle::Color_Text_Ghost
-        : (EffectiveValue
-            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-            : FCkGoapDebuggerStyle::Color_Text_Dim);
+    const bool SnapshotValue = InEntry.Value;
+    const bool RecentlyChanged = InEntry.RecentlyChanged;
+    const auto WeakRail = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this));
 
     // ---- TAttribute lambdas — live updates without rail rebuild -------------
-    // OVERRIDE pill visibility: appears when Has_KeyOverride is true for this
-    // key. Driven by the live override stack so push/pop reflects immediately.
-    auto OverrideVisibilityAttr = TAttribute<EVisibility>::Create(
+    const auto HasOverride = [WeakRail, EntryKey]() -> bool
+    {
+        const auto Pinned = WeakRail.Pin();
+        if (NOT Pinned.IsValid()) { return false; }
+        auto WsHandle = Pinned->_CurrentWorldState;
+        if (NOT ck::IsValid(WsHandle)) { return false; }
+        return UCk_Utils_Goap_WorldState_UE::Has_KeyOverride(WsHandle, EntryKey);
+    };
+
+    // Layer shadow badge — names the top-most shadowing layer (mockup shows
+    // "DebugUI"; gameplay layers like "FlierAttract" name themselves too).
+    auto ShadowVisibilityAttr = TAttribute<EVisibility>::Create(
         TAttribute<EVisibility>::FGetter::CreateLambda(
-            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
-             EntryKey]() -> EVisibility
+            [HasOverride]() -> EVisibility
+            { return HasOverride() ? EVisibility::Visible : EVisibility::Collapsed; }));
+
+    auto ShadowTextAttr = TAttribute<FText>::Create(
+        TAttribute<FText>::FGetter::CreateLambda(
+            [WeakRail, EntryKey]() -> FText
             {
-                const auto Pinned = WeakThis.Pin();
-                if (NOT Pinned.IsValid()) { return EVisibility::Collapsed; }
-
+                const auto Pinned = WeakRail.Pin();
+                if (NOT Pinned.IsValid()) { return FText::GetEmpty(); }
                 auto WsHandle = Pinned->_CurrentWorldState;
-                if (NOT ck::IsValid(WsHandle)) { return EVisibility::Collapsed; }
+                if (NOT ck::IsValid(WsHandle)) { return FText::GetEmpty(); }
+                const auto LayerName = UCk_Utils_Goap_WorldState_UE::Get_TopOverrideLayerForKey(WsHandle, EntryKey);
+                return LayerName.IsNone() ? FText::GetEmpty() : FText::FromName(LayerName);
+            }));
 
-                return UCk_Utils_Goap_WorldState_UE::Has_KeyOverride(WsHandle, EntryKey)
-                    ? EVisibility::Visible
-                    : EVisibility::Collapsed;
+    auto ShadowTooltipAttr = TAttribute<FText>::Create(
+        TAttribute<FText>::FGetter::CreateLambda(
+            [WeakRail, EntryKey]() -> FText
+            {
+                const auto Fallback = FText::FromString(TEXT("Shadowed by an override layer."));
+                const auto Pinned = WeakRail.Pin();
+                if (NOT Pinned.IsValid()) { return Fallback; }
+                auto WsHandle = Pinned->_CurrentWorldState;
+                if (NOT ck::IsValid(WsHandle)) { return Fallback; }
+                const auto LayerName = UCk_Utils_Goap_WorldState_UE::Get_TopOverrideLayerForKey(WsHandle, EntryKey);
+                if (LayerName.IsNone()) { return Fallback; }
+                return FText::FromString(FString::Printf(
+                    TEXT("Shadowed by layer: %s\n\nTop-of-stack wins. Pop this layer in the Override Layers section above to reveal the base or next-lower-layer value."),
+                    *LayerName.ToString()));
+            }));
+
+    // "just changed" chip — snapshot's RecentlyChanged, hidden while an
+    // override shadows the key (the shadow badge carries the row then).
+    auto JustChangedVisibilityAttr = TAttribute<EVisibility>::Create(
+        TAttribute<EVisibility>::FGetter::CreateLambda(
+            [HasOverride, RecentlyChanged]() -> EVisibility
+            {
+                if (NOT RecentlyChanged) { return EVisibility::Collapsed; }
+                return HasOverride() ? EVisibility::Collapsed : EVisibility::Visible;
+            }));
+
+    // Pill value — live effective read (override-aware) so sandbox flips show
+    // instantly; falls back to the snapshot value if the handle died.
+    auto PillValueAttr = TAttribute<bool>::Create(
+        TAttribute<bool>::FGetter::CreateLambda(
+            [WeakRail, EntryKey, SnapshotValue]() -> bool
+            {
+                const auto Pinned = WeakRail.Pin();
+                if (NOT Pinned.IsValid()) { return SnapshotValue; }
+                auto WsHandle = Pinned->_CurrentWorldState;
+                if (NOT ck::IsValid(WsHandle)) { return SnapshotValue; }
+                return UCk_Utils_Goap_WorldState_UE::Get_Value(WsHandle, EntryKey);
+            }));
+
+    auto PillEditableAttr = TAttribute<bool>::Create(
+        TAttribute<bool>::FGetter::CreateLambda(
+            [WeakRail]() -> bool
+            {
+                const auto Pinned = WeakRail.Pin();
+                if (NOT Pinned.IsValid()) { return false; }
+                return Pinned->_SandboxMode && ck::IsValid(Pinned->_CurrentWorldState);
+            }));
+
+    // Row background — traced = accent wash (cross-pane trace), otherwise the
+    // amber wash for shadowed / just-changed rows, else transparent.
+    auto RowBgColorAttr = TAttribute<FSlateColor>::Create(
+        TAttribute<FSlateColor>::FGetter::CreateLambda(
+            [WeakRail, EntryKey, HasOverride, RecentlyChanged]() -> FSlateColor
+            {
+                const auto Pinned = WeakRail.Pin();
+                if (Pinned.IsValid() && Pinned->_ViewModel.IsValid() &&
+                    Pinned->_ViewModel->Get_TracedWsKey() == EntryKey)
+                { return FSlateColor(CkStyle::AccentDim()); }
+
+                if (RecentlyChanged || HasOverride())
+                { return FSlateColor(CkStyle::WarnDim()); }
+
+                return FSlateColor(FLinearColor::Transparent);
             }));
 
     auto RowContent = SNew(SHorizontalBox)
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Visibility(InEntry.RecentlyChanged ? EVisibility::Visible : EVisibility::Collapsed)
-                    .Text(FText::FromString(TEXT("★")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
-            ]
+
+        // Key name
         + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             .VAlign(VAlign_Center)
@@ -684,103 +845,101 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(KeyText))
                     .ToolTipText(FText::FromString(InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString{}))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
                     .ColorAndOpacity(FSlateColor(KeyCol))
             ]
+
+        // Usage census — "nP·mE" (precondition/goal reads · effect writes)
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
+            .Padding(FMargin(CkStyle::SpaceS, 0.0f))
             [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(ValueStr))
-                    .Font(EffectiveValue
-                        ? FCoreStyle::GetDefaultFontStyle("Bold", 9)
-                        : FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(ValueCol))
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("%dP·%dE"), InUsage.X, InUsage.Y)))
+                    .ToolTipText(FText::FromString(FString::Printf(
+                        TEXT("%d precondition/goal reads · %d effect writes"), InUsage.X, InUsage.Y)))
+                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ]
-        // OVERRIDE pill — TAttribute-driven visibility. Amber (#f59e0b ~ Color_Status_Selected).
+
+        // Layer shadow badge — live text names the shadowing layer.
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
-            .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
+            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceS, 0.0f))
             [
                 SNew(SBorder)
-                    .Visibility(OverrideVisibilityAttr)
-                    .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
-                    .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 0.0f))
-                    // Live-bound tooltip naming the specific shadowing layer
-                    // instead of the previous generic "a debug override"
-                    // wording — when the gameplay-side picks up override
-                    // layers ("FlierAttract", "KioskBrainwash", etc.) the
-                    // tooltip names them so behaviour is explicable.
-                    .ToolTipText(TAttribute<FText>::Create(
-                        TAttribute<FText>::FGetter::CreateLambda(
-                            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
-                             EntryKey]() -> FText
-                            {
-                                const auto Pinned = WeakThis.Pin();
-                                if (NOT Pinned.IsValid()) { return FText::FromString(TEXT("Shadowed by an override layer.")); }
-                                auto WsHandle = Pinned->_CurrentWorldState;
-                                if (NOT ck::IsValid(WsHandle))
-                                { return FText::FromString(TEXT("Shadowed by an override layer.")); }
-                                const auto LayerName = UCk_Utils_Goap_WorldState_UE::Get_TopOverrideLayerForKey(WsHandle, EntryKey);
-                                if (LayerName.IsNone())
-                                { return FText::FromString(TEXT("Shadowed by an override layer.")); }
-                                return FText::FromString(FString::Printf(
-                                    TEXT("Shadowed by layer: %s\n\nTop-of-stack wins. Pop this layer in the Override Layers section above to reveal the base or next-lower-layer value."),
-                                    *LayerName.ToString()));
-                            })))
+                    .Visibility(ShadowVisibilityAttr)
+                    .BorderImage(CkStyle::GetFilledBrush())
+                    .BorderBackgroundColor(FSlateColor(CkStyle::WarnDim()))
+                    .Padding(FMargin(CkStyle::SpaceS, 0.0f))
+                    .ToolTipText(ShadowTooltipAttr)
                     [
-                        SNew(SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(TEXT("OVERRIDE")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                        SNew(STextBlock)
+                            .Text(ShadowTextAttr)
+                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     ]
+            ]
+
+        // "just changed" chip
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceS, 0.0f))
+            [
+                SNew(SBorder)
+                    .Visibility(JustChangedVisibilityAttr)
+                    .BorderImage(CkStyle::GetFilledBrush())
+                    .BorderBackgroundColor(FSlateColor(CkStyle::WarnDim()))
+                    .Padding(FMargin(CkStyle::SpaceS, 0.0f))
+                    .ToolTipText(FText::FromString(TEXT("Value changed since the previous tick.")))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(TEXT("just changed")))
+                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
+                    ]
+            ]
+
+        // Value pill — editable only in Sandbox mode.
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            [
+                SNew(SCkDebug_ValuePill)
+                    .Value(PillValueAttr)
+                    .Editable(PillEditableAttr)
+                    .ToolTipText_Lambda([WeakRail]() -> FText
+                    {
+                        const auto Pinned = WeakRail.Pin();
+                        const auto Sandbox = Pinned.IsValid() && Pinned->_SandboxMode;
+                        return FText::FromString(Sandbox
+                            ? TEXT("Click to flip in the DebugUI layer")
+                            : TEXT("Live value — enable Sandbox to experiment"));
+                    })
+                    .OnToggled(FOnCkDebug_ValuePillToggled::CreateSP(
+                        this,
+                        &SCkGoapDebugger_WorldStateRail::HandlePillToggled,
+                        EntryKey))
             ];
 
-    // The row background. Pick the "recently changed" amber brush when either
-    // RecentlyChanged OR an override is active on this key. The background
-    // tint matches the spec — a single brush for both "debug-shadowed" and
-    // "recently changed" reads naturally as "this row has something to look at".
-    auto BorderBrushAttr = TAttribute<const FSlateBrush*>::Create(
-        TAttribute<const FSlateBrush*>::FGetter::CreateLambda(
-            [WeakThis = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this)),
-             EntryKey,
-             RecentlyChanged = InEntry.RecentlyChanged]() -> const FSlateBrush*
-            {
-                if (RecentlyChanged)
-                {
-                    return FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent"));
-                }
-                const auto Pinned = WeakThis.Pin();
-                if (Pinned.IsValid())
-                {
-                    auto WsHandle = Pinned->_CurrentWorldState;
-                    if (ck::IsValid(WsHandle) &&
-                        UCk_Utils_Goap_WorldState_UE::Has_KeyOverride(WsHandle, EntryKey))
-                    {
-                        return FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent"));
-                    }
-                }
-                return FStyleDefaults::GetNoBrush();
-            }));
-
-    // The clickable row — SButton wraps the content so left-click invokes the
-    // toggle. Style-wise we use a transparent button to preserve the rail's
-    // visual cadence; the row's amber tint is what signals override state.
+    // The clickable row — click traces the key across panes (the pill handles
+    // its own clicks when editable, so sandbox flips don't retarget the trace).
     return SNew(SBorder)
-        .BorderImage(BorderBrushAttr)
+        .BorderImage(CkStyle::GetFilledBrush())
+        .BorderBackgroundColor(RowBgColorAttr)
         .Padding(FMargin(0.0f))
         [
             SNew(SButton)
                 .ButtonStyle(FCoreStyle::Get(), "NoBorder")
                 .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
-                .ToolTipText(FText::FromString(TEXT("Click to push a DebugUI override that flips this key.\nClick again to flip back.")))
+                .ToolTipText(FText::FromString(TEXT("Click to trace this key across panes (plan chips, decision cards, graph).")))
                 .OnClicked(FOnClicked::CreateSP(
                     this,
-                    &SCkGoapDebugger_WorldStateRail::HandleClick_ToggleKeyOverride,
-                    EntryKey,
-                    EffectiveValue))
+                    &SCkGoapDebugger_WorldStateRail::HandleRowClicked_Trace,
+                    EntryKey))
                 [
                     RowContent
                 ]
@@ -788,30 +947,59 @@ auto
 }
 
 // ====================================================================================================================
-// CLICK HANDLERS — DebugUI override layer
+// HANDLERS — Sandbox / DebugUI override layer / key trace
 // ====================================================================================================================
 
 auto
     SCkGoapDebugger_WorldStateRail::
-    HandleClick_ToggleKeyOverride(
-        FGameplayTag InKey,
-        bool InCurrentEffectiveValue)
-    -> FReply
+    HandlePillToggled(
+        bool InNewValue,
+        FGameplayTag InKey)
+    -> void
 {
     using namespace ck_goap_debugger_wsrail_internal;
 
-    if (NOT ck::IsValid(_CurrentWorldState)) { return FReply::Handled(); }
-    if (NOT InKey.IsValid())                 { return FReply::Handled(); }
+    if (NOT _SandboxMode)                    { return; }
+    if (NOT ck::IsValid(_CurrentWorldState)) { return; }
+    if (NOT InKey.IsValid())                 { return; }
 
-    // Push or update the DebugUI layer with the flipped value. The API is
-    // idempotent and creates the layer on first call; subsequent clicks on
-    // the same key update the override in place. Click again to flip back.
+    // Push or update the DebugUI layer with the pill's new value. The API is
+    // idempotent and creates the layer on first call; subsequent flips on the
+    // same key update the override in place.
     auto MutableWs = _CurrentWorldState;
     UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey(
         MutableWs,
         WsRail_DebugUiLayerName,
         InKey,
-        NOT InCurrentEffectiveValue);
+        InNewValue);
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleSandboxToggled(
+        bool InNewState)
+    -> void
+{
+    _SandboxMode = InNewState;
+
+    // Leaving sandbox pops the DebugUI layer — live truth restored (mockup
+    // semantics). Gameplay-pushed layers are untouched.
+    if (NOT InNewState)
+    { HandleClick_ResetDebugUiLayer(); }
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleRowClicked_Trace(
+        FGameplayTag InKey)
+    -> FReply
+{
+    if (NOT _ViewModel.IsValid()) { return FReply::Handled(); }
+    if (NOT InKey.IsValid())      { return FReply::Handled(); }
+
+    // Click again to clear the trace.
+    const auto NewTrace = _ViewModel->Get_TracedWsKey() == InKey ? FGameplayTag{} : InKey;
+    _ViewModel->Set_TracedWsKey(NewTrace);
 
     return FReply::Handled();
 }
@@ -877,23 +1065,41 @@ auto
 
 auto
     SCkGoapDebugger_WorldStateRail::
-    BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs)
+    BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs, int32 InBaseKeyCount)
     -> TSharedRef<SWidget>
 {
     const auto LayerNames = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(InWs);
 
     auto Section = SNew(SVerticalBox);
 
-    // Section header
+    // Section header — mockup: "Override layers · depth N".
     Section->AddSlot()
         .AutoHeight()
         .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Small))
         [
-            SNew(SCkDebug_SelectableLabel)
-                .Text(FText::FromString(FString::Printf(
-                    TEXT("OVERRIDE LAYERS · %d"), LayerNames.Num())))
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+            SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SCkDebug_SelectableLabel)
+                            .Text(FText::FromString(TEXT("OVERRIDE LAYERS")))
+                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                    ]
+
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f))
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(FString::Printf(
+                                TEXT("· depth %d"), LayerNames.Num())))
+                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                    ]
         ];
 
     // One row per layer, rendered top-of-stack first (most recent / wins)
@@ -907,8 +1113,39 @@ auto
             ];
     }
 
+    // Base store — permanent bottom row; every read falls through to it when
+    // no layer shadows the key.
+    Section->AddSlot()
+        .AutoHeight()
+        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+        [
+            SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SCkDebug_SelectableLabel)
+                            .Text(FText::FromString(TEXT("base store")))
+                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                    ]
+
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(FString::Printf(
+                                TEXT("%d key%s"), InBaseKeyCount, InBaseKeyCount == 1 ? TEXT("") : TEXT("s"))))
+                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                    ]
+        ];
+
     return SNew(SBorder)
-        .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.WS.RowRecent")))
+        .BorderImage(CkStyle::GetFilledBrush())
+        .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium,
                          FCkGoapDebuggerStyle::Padding_Small))
         [

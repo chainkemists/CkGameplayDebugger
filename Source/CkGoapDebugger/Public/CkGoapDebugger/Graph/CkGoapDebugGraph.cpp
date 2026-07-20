@@ -6,6 +6,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
@@ -148,7 +150,7 @@ namespace
         const auto MeasureHeight = [&FontMeasure](const FString& InText, const FSlateFontInfo& InFont) -> float
         { return static_cast<float>(FontMeasure->Measure(InText, InFont).Y); };
 
-        const auto HeaderName = FCkGoapDebugger_NameParams::ComputeDisplayName(InAction.ClassName, InNameDepth);
+        const auto HeaderName = SCkDebug_NameLabel::Get_ShortName(InAction.ClassName, InNameDepth);
         const auto CostText   = FString::Printf(TEXT("$%.0f"), InAction.Cost);
         const auto HeaderWidth  = MeasureWidth(HeaderName, Font_Header) + 4.0f + MeasureWidth(CostText, Font_Cost);
         const auto HeaderHeight = MeasureHeight(HeaderName, Font_Header);
@@ -157,7 +159,7 @@ namespace
         auto CompositeHeight = 0.0f;
         if (InAction.ChildActionHandles.Num() > 0)
         {
-            const auto CompositeText = FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf_GraphLayout(InAction.ActionTag));
+            const auto CompositeText = FString::Printf(TEXT("\x203A %s"), *Compute_TagLeaf_GraphLayout(InAction.ActionTag));
             CompositeWidth  = MeasureWidth(CompositeText, Font_Composite) + 2.0f * 4.0f;        // bar's Padding_Small
             CompositeHeight = MeasureHeight(CompositeText, Font_Composite) + 2.0f * 1.0f + 2.0f; // bar pad + slot Padding_XSmall
         }

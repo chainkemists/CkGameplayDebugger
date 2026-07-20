@@ -1,0 +1,1265 @@
+<title>GOAP Mission Control — Debugger Concept</title>
+<style>
+/* ============ PAGE TOKENS (theme-aware) ============ */
+:root{
+  --pg-bg:#F3F5F8; --pg-panel:#FFFFFF; --pg-ink:#1C232E; --pg-ink2:#5A6675; --pg-line:#DDE3EA;
+  --pg-accent:#0D7DC2; --pg-accent-dim:#E2F0FA; --pg-code:#EEF2F6;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --pg-bg:#0F1319; --pg-panel:#161B23; --pg-ink:#E4E9F1; --pg-ink2:#93A0B3; --pg-line:#28303C;
+         --pg-accent:#54C6FF; --pg-accent-dim:#12293A; --pg-code:#10141B; }
+}
+:root[data-theme="dark"]{ --pg-bg:#0F1319; --pg-panel:#161B23; --pg-ink:#E4E9F1; --pg-ink2:#93A0B3; --pg-line:#28303C;
+         --pg-accent:#54C6FF; --pg-accent-dim:#12293A; --pg-code:#10141B; }
+:root[data-theme="light"]{ --pg-bg:#F3F5F8; --pg-panel:#FFFFFF; --pg-ink:#1C232E; --pg-ink2:#5A6675; --pg-line:#DDE3EA;
+         --pg-accent:#0D7DC2; --pg-accent-dim:#E2F0FA; --pg-code:#EEF2F6; }
+
+/* ============ APP TOKENS (committed dark — the tool itself) ============ */
+:root{
+  --bg:#14181F; --panel:#1B212B; --panel2:#171C25; --inset:#10141B; --line:#2A3240; --line2:#222937;
+  --ink:#E9EDF4; --ink2:#94A0B3; --ink3:#5D6980;
+  --acc:#54C6FF; --acc-dim:#1B3448; --acc-ink:#0B121A;
+  --ok:#46D08D; --ok-dim:#12362A;
+  --warn:#F2B33D; --warn-dim:#3A2E12;
+  --bad:#F0637A; --bad-dim:#3B1B24;
+  --mono:"Cascadia Code",Consolas,ui-monospace,monospace;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--pg-bg);color:var(--pg-ink);font:15px/1.6 var(--ui);}
+.wrap{max-width:1440px;margin:0 auto;padding:0 24px 80px}
+a{color:var(--pg-accent)}
+
+/* ---------- intro band ---------- */
+.intro{padding:44px 0 26px;max-width:880px}
+.intro .eyebrow{font:600 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--pg-accent);margin-bottom:14px}
+.intro h1{font:600 30px/1.2 var(--mono);margin:0 0 14px;letter-spacing:-.01em;text-wrap:balance}
+.intro p{margin:0 0 10px;color:var(--pg-ink2);max-width:66ch}
+.try{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.try span{font:500 12px/1 var(--ui);padding:7px 11px;border:1px solid var(--pg-line);border-radius:99px;background:var(--pg-panel);color:var(--pg-ink2)}
+.try span b{color:var(--pg-accent);font-weight:600}
+
+/* ============ THE APP WINDOW ============ */
+.app{background:var(--bg);border:1px solid var(--line);border-radius:12px;overflow:hidden;color:var(--ink);
+     font:12.5px/1.45 var(--ui);box-shadow:0 24px 60px -24px rgba(0,0,0,.5)}
+.app-scroll{overflow-x:auto}
+.app-min{min-width:1180px}
+.app *:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.app table,.app td,.app th{color:inherit}
+.app ::selection{background:var(--acc-dim)}
+
+/* chrome bar */
+.chrome{display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:8px;font:600 12px var(--mono);color:var(--ink);letter-spacing:.02em}
+.logo .dot{width:9px;height:9px;border-radius:2px;background:var(--acc)}
+.crumb{display:flex;align-items:center;gap:6px}
+.picker{display:flex;align-items:center;gap:6px;background:var(--inset);border:1px solid var(--line);border-radius:7px;
+        padding:5px 10px;font:500 12px var(--ui);color:var(--ink);cursor:pointer}
+.picker small{color:var(--ink3);font-size:10px}
+.picker .car{color:var(--ink3);font-size:9px}
+.spacer{flex:1}
+.transport{display:flex;align-items:center;gap:6px}
+.tbtn{background:var(--inset);border:1px solid var(--line);color:var(--ink2);border-radius:7px;padding:5px 9px;
+      font:600 11px var(--ui);cursor:pointer;display:flex;align-items:center;gap:6px}
+.tbtn:hover{color:var(--ink);border-color:var(--ink3)}
+.tbtn.live{color:var(--ok);border-color:#2E5F49}
+.tbtn.live .pulse{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:pl 1.6s infinite}
+.tbtn.rec .pulse{width:7px;height:7px;border-radius:50%;background:var(--bad)}
+@keyframes pl{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.tbtn.live .pulse,.leaf-pulse{animation:none!important}}
+.nerd{display:flex;align-items:center;gap:7px;font:600 11px var(--ui);color:var(--ink2);cursor:pointer;user-select:none}
+.nerd input{accent-color:var(--acc)}
+
+/* nerd strip */
+.nerdstrip{display:none;gap:18px;align-items:center;padding:6px 16px;background:var(--inset);border-bottom:1px solid var(--line);
+           font:11px var(--mono);color:var(--ink2)}
+.app.nerd-on .nerdstrip{display:flex}
+.nerdstrip b{color:var(--ink);font-weight:600}
+.budgetbar{width:110px;height:5px;background:var(--line2);border-radius:3px;overflow:hidden}
+.budgetbar i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.nerd-only{display:none}
+.app.nerd-on .nerd-only{display:initial}
+
+/* alert strip */
+.alerts{display:flex;flex-direction:column;gap:1px;background:var(--line)}
+.alert{display:flex;align-items:center;gap:10px;padding:7px 16px;font:500 12px var(--ui)}
+.alert.warn{background:var(--warn-dim);color:var(--warn)}
+.alert.sand{background:var(--acc-dim);color:var(--acc)}
+.alert .fix{margin-left:auto;font-size:11px;opacity:.85;font-weight:400}
+.alert button{background:none;border:1px solid currentColor;color:inherit;border-radius:6px;font:600 10.5px var(--ui);
+              padding:3px 8px;cursor:pointer;margin-left:12px;opacity:.9}
+
+/* tabs */
+.tabs{display:flex;gap:2px;padding:0 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.tab{padding:10px 16px 9px;font:600 12px var(--ui);color:var(--ink2);cursor:pointer;border:none;background:none;
+     border-bottom:2px solid transparent;display:flex;gap:7px;align-items:center}
+.tab:hover{color:var(--ink)}
+.tab.on{color:var(--ink);border-bottom-color:var(--acc)}
+.tab .n{font:600 10px var(--mono);background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--ink3)}
+.tab .warn-dot{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.view{display:none}
+.view.on{display:block}
+
+/* ---------- generic app bits ---------- */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.ph{display:flex;align-items:center;gap:8px;padding:10px 13px;border-bottom:1px solid var(--line2)}
+.ph h3{margin:0;font:600 10.5px var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink2)}
+.ph .sub{font:400 11px var(--ui);color:var(--ink3);text-transform:none;letter-spacing:0}
+.ph .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.pill{display:inline-flex;align-items:center;gap:6px;font:600 10.5px var(--ui);padding:3px 9px;border-radius:99px;border:1px solid}
+.pill .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.found{color:var(--ok);border-color:#2E5F49;background:var(--ok-dim)}
+.pill.plan{color:var(--acc);border-color:#2B4F66;background:var(--acc-dim)}
+.pill.fail{color:var(--bad);border-color:#5C2B37;background:var(--bad-dim)}
+.pill.thresh{color:var(--warn);border-color:#5C4A1E;background:var(--warn-dim)}
+.pill.idle,.pill.off{color:var(--ink3);border-color:var(--line);background:var(--inset)}
+.chip{display:inline-flex;align-items:center;gap:5px;font:500 11px var(--ui);padding:2px 8px;border-radius:6px;
+      background:var(--inset);border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+.chip .st{width:6px;height:6px;border-radius:50%;flex:none}
+.chip.sat{border-color:#2E5F49;color:var(--ok)} .chip.sat .st{background:var(--ok)}
+.chip.unsat{border-color:#5C2B37;color:var(--bad)} .chip.unsat .st{background:var(--bad)}
+.chip.eff{border-color:#2B4F66;color:var(--acc)}
+.chip.k{cursor:pointer}
+.chip.k:hover{border-color:var(--ink3)}
+.chip.hl{box-shadow:0 0 0 2px var(--acc);border-color:var(--acc)}
+.mono{font-family:var(--mono)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cost{font:600 11.5px var(--mono);color:var(--ink)}
+.muted{color:var(--ink3)}
+.lock{color:var(--ink3);font-size:10px;cursor:help}
+
+/* ---------- INSPECTOR layout ---------- */
+.inspector{display:grid;grid-template-columns:330px 1fr 316px;gap:12px;padding:12px 14px 0}
+.col{display:flex;flex-direction:column;gap:12px;min-width:0}
+
+/* agent header */
+.agent{display:flex;align-items:center;gap:14px;padding:12px 14px}
+.avatar{width:38px;height:38px;border-radius:9px;background:var(--acc-dim);border:1px solid #2B4F66;display:grid;place-items:center;
+        font:600 13px var(--mono);color:var(--acc)}
+.agent h2{margin:0;font:600 14px var(--ui)}
+.agent .meta{font:11px var(--ui);color:var(--ink3);display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:3px}
+.crumbchain{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:10px 13px;font:600 12px var(--ui)}
+.crumbchain .node{padding:4px 10px;border-radius:7px;background:var(--inset);border:1px solid var(--line);color:var(--ink2)}
+.crumbchain .node.on{background:var(--acc-dim);border-color:#2B4F66;color:var(--acc)}
+.crumbchain .node.leaf{position:relative}
+.crumbchain .node.leaf.on{box-shadow:0 0 12px -2px rgba(84,198,255,.5)}
+.crumbchain .node.fb{background:var(--warn-dim);border-color:#5C4A1E;color:var(--warn)}
+.crumbchain .sep{color:var(--ink3)}
+
+/* goal + plan */
+.goalrow{display:flex;align-items:center;gap:8px;padding:11px 13px;flex-wrap:wrap}
+.steps{padding:6px 8px 10px}
+.step{display:flex;gap:10px;padding:8px 6px;border-radius:8px;align-items:flex-start}
+.step.on{background:var(--acc-dim);outline:1px solid #2B4F66}
+.step .idx{font:600 10px var(--mono);color:var(--ink3);background:var(--inset);border:1px solid var(--line);
+           border-radius:5px;padding:2px 6px;margin-top:2px}
+.step.on .idx{color:var(--acc);border-color:#2B4F66}
+.step .body{flex:1;min-width:0}
+.step .nm{display:flex;align-items:center;gap:8px;font:600 12.5px var(--ui)}
+.step .nm .now{font:600 9.5px var(--ui);letter-spacing:.08em;color:var(--acc);text-transform:uppercase}
+.step .cond{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.step.subplan{margin-left:26px;border-left:2px solid var(--line);padding-left:12px}
+.step .fbnote{color:var(--warn);font-size:11px;margin-top:4px}
+.planfoot{display:flex;gap:14px;padding:9px 13px;border-top:1px solid var(--line2);font:11px var(--ui);color:var(--ink2);flex-wrap:wrap}
+.planfoot b{color:var(--ink);font-weight:600}
+
+/* settings */
+details.settings{border-top:1px solid var(--line2)}
+details.settings summary{list-style:none;cursor:pointer;padding:10px 13px;font:600 10.5px var(--ui);letter-spacing:.09em;
+                         text-transform:uppercase;color:var(--ink2);display:flex;align-items:center;gap:8px}
+details.settings summary::after{content:"▾";margin-left:auto;color:var(--ink3);transition:transform .15s}
+details.settings:not([open]) summary::after{transform:rotate(-90deg)}
+.setrows{padding:2px 13px 12px;display:flex;flex-direction:column;gap:7px}
+.setrow{display:flex;align-items:center;gap:8px;font:12px var(--ui)}
+.setrow label{width:128px;color:var(--ink2);flex:none;cursor:help;text-decoration:underline dotted var(--ink3) 1px;text-underline-offset:3px}
+.setrow .val{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.setrow input[type=text]{width:86px;background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--ink);
+                          font:11.5px var(--mono);padding:4px 7px}
+.setrow select{background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--ink);font:11.5px var(--ui);padding:4px 6px}
+.btnrow{display:flex;gap:7px;padding:0 13px 13px;flex-wrap:wrap}
+.abtn{background:var(--inset);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:6px 11px;
+      font:600 11px var(--ui);cursor:pointer}
+.abtn:hover{border-color:var(--ink3)}
+.abtn.primary{background:var(--acc-dim);border-color:#2B4F66;color:var(--acc)}
+.abtn.danger:hover{border-color:#5C2B37;color:var(--bad)}
+
+/* center tabs */
+.ctabs{display:flex;gap:2px;border-bottom:1px solid var(--line2);padding:4px 8px 0}
+.ctab{border:none;background:none;color:var(--ink2);font:600 11.5px var(--ui);padding:8px 12px;cursor:pointer;
+      border-bottom:2px solid transparent}
+.ctab.on{color:var(--ink);border-bottom-color:var(--acc)}
+.cview{display:none;padding:12px}
+.cview.on{display:block}
+
+/* decision cards */
+.dgroup{margin-bottom:14px}
+.dgroup h4{margin:0 0 8px;font:600 10px var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.dcard{border:1px solid var(--line);border-radius:9px;background:var(--panel2);padding:9px 11px;margin-bottom:7px}
+.dcard.inplan{border-color:#2B4F66;background:linear-gradient(0deg,var(--panel2),var(--panel2)),var(--panel2);box-shadow:inset 3px 0 0 var(--acc)}
+.dcard.blocked{box-shadow:inset 3px 0 0 var(--bad)}
+.dcard.fb{box-shadow:inset 3px 0 0 var(--warn)}
+.dtop{display:flex;align-items:center;gap:9px}
+.dtop .nm{font:600 12.5px var(--ui)}
+.dtop .why{margin-left:auto;font:11px var(--ui);color:var(--ink2);text-align:right}
+.dtop .why b{color:var(--ink)}
+.dconds{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.dnote{margin-top:7px;font:11px var(--ui);color:var(--ink2);border-top:1px dashed var(--line2);padding-top:6px}
+.dnote.tip{color:var(--acc)}
+.costctl{display:inline-flex;align-items:center;gap:4px;margin-left:6px}
+.costctl button{width:17px;height:17px;border-radius:5px;border:1px solid var(--line);background:var(--inset);color:var(--ink2);
+                font:600 11px var(--mono);cursor:pointer;line-height:1;padding:0}
+.costctl button:hover{color:var(--acc);border-color:var(--acc)}
+.edited{font:600 9.5px var(--ui);color:var(--warn);letter-spacing:.05em;text-transform:uppercase}
+.costbar{height:4px;border-radius:2px;background:var(--line2);margin-top:8px;overflow:hidden}
+.costbar i{display:block;height:100%;border-radius:2px;background:var(--ink3)}
+.dcard.inplan .costbar i{background:var(--acc)}
+.dcard.fb .costbar i{background:var(--warn)}
+.resetcosts{font:11px var(--ui);color:var(--acc);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
+
+/* graph */
+.graphwrap{overflow-x:auto}
+svg.g{display:block;min-width:920px;width:100%;height:auto}
+svg.g .edge{stroke:var(--line);stroke-width:1.4;fill:none}
+svg.g .edge.on{stroke:var(--acc);stroke-width:2.2;filter:drop-shadow(0 0 4px rgba(84,198,255,.55))}
+svg.g .nd rect{fill:var(--panel2);stroke:var(--line);rx:8}
+svg.g .nd.on rect{stroke:var(--acc);stroke-width:1.6;filter:drop-shadow(0 0 6px rgba(84,198,255,.4))}
+svg.g .nd.fb rect{stroke:#5C4A1E}
+svg.g text{font:600 11px var(--ui);fill:var(--ink)}
+svg.g .cost{font:600 10px var(--mono);fill:var(--ink2)}
+svg.g .role{font:600 8.5px var(--mono);fill:var(--ink3);letter-spacing:.08em}
+svg.g .eff{font:500 9.5px var(--ui);fill:var(--acc)}
+svg.g .pre{r:3.5}
+svg.g .pre.sat{fill:var(--ok)} svg.g .pre.unsat{fill:var(--bad)}
+.glegend{display:flex;gap:16px;padding:8px 4px 0;font:11px var(--ui);color:var(--ink3);flex-wrap:wrap}
+.glegend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+
+/* search trace */
+.trace{font:11.5px var(--mono);color:var(--ink2)}
+.trace .trow{display:flex;gap:10px;padding:6px 8px;border-radius:7px;align-items:baseline}
+.trace .trow.goalrow2{background:var(--ok-dim)}
+.trace .trow .g{color:var(--ink3);flex:none;width:150px}
+.trace .cset{display:flex;gap:5px;flex-wrap:wrap}
+.trace .expl{padding:8px;color:var(--ink3);font-family:var(--ui);font-size:11.5px;max-width:70ch}
+
+/* world state */
+.wsmode{display:flex;align-items:center;gap:7px;font:600 11px var(--ui);color:var(--ink2)}
+.switch{position:relative;width:30px;height:17px;background:var(--line2);border-radius:99px;border:1px solid var(--line);cursor:pointer;flex:none}
+.switch i{position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--ink3);transition:.15s}
+.switch.on{background:var(--acc-dim);border-color:#2B4F66}
+.switch.on i{left:15px;background:var(--acc)}
+.wsrows{display:flex;flex-direction:column}
+.wsrow{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line2);cursor:pointer}
+.wsrow:last-child{border-bottom:none}
+.wsrow:hover{background:var(--panel2)}
+.wsrow.hl{background:var(--acc-dim)}
+.wsrow .nm{font:500 12px var(--ui);color:var(--ink)}
+.wsrow .use{font:600 9.5px var(--mono);color:var(--ink3);background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.wsrow .right{margin-left:auto;display:flex;align-items:center;gap:7px}
+.vpill{font:600 10px var(--mono);letter-spacing:.04em;padding:3px 8px;border-radius:6px;border:1px solid;min-width:46px;text-align:center}
+.vpill.t{color:var(--ok);border-color:#2E5F49;background:var(--ok-dim)}
+.vpill.f{color:var(--ink3);border-color:var(--line);background:var(--inset)}
+.vpill.editable{cursor:pointer}
+.vpill.editable:hover{border-color:var(--acc);color:var(--acc)}
+.shadow{font:600 9px var(--ui);color:var(--acc);background:var(--acc-dim);border:1px solid #2B4F66;border-radius:5px;padding:2px 6px}
+.wschanged{font:10px var(--ui);color:var(--ink3)}
+.layerbox{padding:10px 12px;border-top:1px solid var(--line2)}
+.layer{display:flex;align-items:center;gap:8px;font:11.5px var(--ui);color:var(--ink2);padding:5px 8px;border:1px dashed var(--line);
+       border-radius:7px;margin-top:5px}
+.layer.top{border-style:solid;border-color:#2B4F66;color:var(--acc)}
+.layer .cnt{margin-left:auto;font:600 10px var(--mono);color:var(--ink3)}
+.wsfoot{display:flex;gap:10px;align-items:center;padding:9px 12px;border-top:1px solid var(--line2);font:10.5px var(--ui);color:var(--ink3);flex-wrap:wrap}
+
+/* timeline dock */
+.dock{margin:12px 14px 14px;display:grid;grid-template-columns:1fr 330px;gap:12px}
+.tl-wrap{overflow-x:auto;padding:8px 10px 4px}
+svg.tl{display:block;min-width:760px;width:100%;height:auto}
+svg.tl .axis{stroke:var(--line);stroke-width:1}
+svg.tl .tick{font:9px var(--mono);fill:var(--ink3)}
+svg.tl .lane{font:600 8.5px var(--ui);fill:var(--ink3);letter-spacing:.08em}
+svg.tl .ws{fill:var(--ink3)}
+svg.tl .rp{fill:var(--acc);cursor:pointer}
+svg.tl .rp.sel{stroke:var(--ink);stroke-width:1.6}
+svg.tl .act{fill:var(--acc-dim);stroke:#2B4F66}
+svg.tl .hit{fill:transparent;cursor:pointer}
+svg.tl .co{font:600 8px var(--mono);fill:var(--ink2)}
+.tl-controls{display:flex;gap:6px;align-items:center;padding:0 10px 10px}
+.tl-controls .lbl{font:600 10.5px var(--ui);color:var(--ink3);margin-right:4px}
+.snapbtn{background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--ink2);font:600 10.5px var(--mono);
+         padding:4px 8px;cursor:pointer}
+.snapbtn.on{color:var(--acc);border-color:#2B4F66;background:var(--acc-dim)}
+.pauseon{margin-left:auto;display:flex;gap:12px;font:11px var(--ui);color:var(--ink3);align-items:center}
+.pauseon label{display:flex;gap:5px;align-items:center;cursor:pointer}
+.pauseon input{accent-color:var(--acc)}
+.diff{padding:10px 12px;border-top:1px solid var(--line2);font:12px var(--ui)}
+.diff .trg{color:var(--ink2);margin-bottom:8px}
+.diff .trg b{color:var(--ink)}
+.diff .row{display:flex;gap:8px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.diff .tag{font:600 9.5px var(--ui);letter-spacing:.07em;text-transform:uppercase;color:var(--ink3);width:34px;flex:none}
+.diff .delta{margin-top:7px;font:600 11.5px var(--mono)}
+.diff .delta.save{color:var(--ok)} .diff .delta.spend{color:var(--warn)}
+.evlog{max-height:238px;overflow-y:auto}
+.ev{display:flex;gap:8px;padding:6px 12px;font:11.5px var(--ui);color:var(--ink2);cursor:pointer;border-bottom:1px solid var(--line2);align-items:baseline}
+.ev:hover{background:var(--panel2)}
+.ev.sel{background:var(--acc-dim)}
+.ev .t{font:600 10px var(--mono);color:var(--ink3);width:40px;flex:none}
+.ev .ic{font:600 9px var(--mono);border-radius:4px;padding:1px 5px;flex:none;border:1px solid var(--line);color:var(--ink3)}
+.ev .ic.rp{color:var(--acc);border-color:#2B4F66}
+.ev .ic.sig{color:var(--ok);border-color:#2E5F49}
+.ev .ic.wsic{color:var(--ink2)}
+
+/* ---------- SQUAD ---------- */
+.squad{padding:14px}
+.sq-table{width:100%;border-collapse:collapse}
+.sq-table th{font:600 10px var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);text-align:left;
+             padding:8px 10px;border-bottom:1px solid var(--line)}
+.sq-table td{padding:9px 10px;border-bottom:1px solid var(--line2);font:12px var(--ui);vertical-align:middle}
+.sq-table tr.me{background:var(--acc-dim)}
+.sq-table tr:hover td{background:var(--panel2)}
+.sq-table tr.me:hover td{background:var(--acc-dim)}
+.sq-table .agentcell{display:flex;align-items:center;gap:9px;font-weight:600}
+.mini-av{width:24px;height:24px;border-radius:6px;background:var(--inset);border:1px solid var(--line);display:grid;place-items:center;
+         font:600 9px var(--mono);color:var(--ink2)}
+.spark{display:block}
+.spark polyline{fill:none;stroke:var(--ink3);stroke-width:1.4}
+.spark circle{fill:var(--acc)}
+.alerttag{font:600 10px var(--ui);border-radius:5px;padding:2px 7px}
+.alerttag.warn{color:var(--warn);background:var(--warn-dim)}
+.alerttag.bad{color:var(--bad);background:var(--bad-dim)}
+.inspectlink{font:600 11px var(--ui);color:var(--acc);background:none;border:1px solid #2B4F66;border-radius:6px;
+             padding:4px 10px;cursor:pointer}
+.sq-note{padding:10px 4px 0;font:11px var(--ui);color:var(--pg-ink2)}
+.squad .sq-note{color:var(--ink3)}
+
+/* ---------- CATALOG ---------- */
+.catalog{display:grid;grid-template-columns:1fr 1.15fr;gap:12px;padding:14px}
+.acard{border-bottom:1px solid var(--line2);padding:10px 13px}
+.acard:last-child{border-bottom:none}
+.acard .top{display:flex;align-items:center;gap:8px}
+.acard .nm{font:600 12.5px var(--ui)}
+.acard .cls{font:10px var(--mono);color:var(--ink3)}
+.badge{font:600 9px var(--ui);letter-spacing:.06em;text-transform:uppercase;border-radius:5px;padding:2px 6px}
+.badge.comp{color:var(--acc);background:var(--acc-dim)}
+.badge.fb{color:var(--warn);background:var(--warn-dim)}
+.badge.prov{color:var(--ok);background:var(--ok-dim)}
+.acard .conds{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+.subhdr{padding:9px 13px;background:var(--panel2);border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);
+        font:600 10px var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3);display:flex;gap:8px;align-items:center}
+.matrixwrap{overflow-x:auto;padding:6px 10px 12px}
+.matrix{border-collapse:collapse;font:11px var(--ui)}
+.matrix th{font:600 9.5px var(--mono);color:var(--ink3);padding:5px;max-width:64px}
+.matrix th.rot div{writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;margin:0 auto;text-align:left}
+.matrix td{border:1px solid var(--line2);width:30px;height:24px;text-align:center;font:600 10px var(--mono)}
+.matrix td.P{color:var(--ink);background:var(--inset)}
+.matrix td.E{color:var(--acc);background:var(--acc-dim)}
+.matrix td.hl,.matrix th.hl{outline:2px solid var(--acc);outline-offset:-2px}
+.matrix .rowkey{text-align:left;font:500 11px var(--ui);color:var(--ink2);border:none;padding-right:8px;white-space:nowrap;cursor:pointer}
+.mlegend{display:flex;gap:14px;padding:2px 12px 10px;font:10.5px var(--ui);color:var(--ink3)}
+.check{display:flex;gap:9px;padding:8px 13px;font:12px var(--ui);align-items:baseline;border-bottom:1px solid var(--line2)}
+.check:last-child{border-bottom:none}
+.check .st{font:600 10px var(--mono);flex:none;width:38px;border-radius:5px;text-align:center;padding:2px 0}
+.check .st.ok{color:var(--ok);background:var(--ok-dim)}
+.check .st.info{color:var(--warn);background:var(--warn-dim)}
+.check .bd{color:var(--ink2)} .check .bd b{color:var(--ink)}
+.keymeter{display:flex;align-items:center;gap:10px;padding:10px 13px;border-bottom:1px solid var(--line2);font:11.5px var(--ui);color:var(--ink2)}
+.keymeter .bar{flex:1;height:6px;border-radius:3px;background:var(--line2);overflow:hidden}
+.keymeter .bar i{display:block;height:100%;width:12.5%;background:var(--ok);border-radius:3px}
+
+/* ---------- doc sections below the app ---------- */
+.doc{margin-top:56px}
+.doc h2{font:600 20px/1.3 var(--mono);margin:0 0 6px;letter-spacing:-.01em}
+.doc .lead{color:var(--pg-ink2);max-width:72ch;margin:0 0 22px}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.qcard{background:var(--pg-panel);border:1px solid var(--pg-line);border-radius:10px;padding:16px 18px}
+.qcard .q{font:600 13.5px var(--ui);margin-bottom:6px}
+.qcard .q em{color:var(--pg-accent);font-style:normal}
+.qcard p{margin:0;font-size:13px;color:var(--pg-ink2)}
+.covwrap{overflow-x:auto;background:var(--pg-panel);border:1px solid var(--pg-line);border-radius:10px;margin-top:14px}
+table.cov{width:100%;border-collapse:collapse;font-size:12.5px}
+table.cov th{text-align:left;font:600 10px var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--pg-ink2);
+             padding:10px 14px;border-bottom:1px solid var(--pg-line)}
+table.cov td{padding:8px 14px;border-bottom:1px solid var(--pg-line);vertical-align:top}
+table.cov tr:last-child td{border-bottom:none}
+table.cov td.api{font:11.5px var(--mono);white-space:nowrap;color:var(--pg-ink)}
+table.cov td.grp{font:600 10.5px var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--pg-accent);
+                 background:var(--pg-accent-dim);padding:6px 14px}
+table.cov td.where{color:var(--pg-ink2)}
+.hooktag{font:600 10px var(--ui);border-radius:5px;padding:2px 7px;white-space:nowrap}
+.hooktag.have{color:#1E7A4D;background:#DCF3E7}
+.hooktag.hook{color:#8A6510;background:#FBEFD3}
+:root[data-theme="dark"] .hooktag.have, .dkh .hooktag.have{color:#46D08D;background:#12362A}
+:root[data-theme="dark"] .hooktag.hook, .dkh .hooktag.hook{color:#F2B33D;background:#3A2E12}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .hooktag.have{color:#46D08D;background:#12362A}
+  :root:not([data-theme="light"]) .hooktag.hook{color:#F2B33D;background:#3A2E12}
+}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:14px}
+.note{background:var(--pg-panel);border:1px solid var(--pg-line);border-radius:10px;padding:16px 18px;font-size:13px;color:var(--pg-ink2)}
+.note b{color:var(--pg-ink)}
+.note .mono{font-size:11.5px}
+footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--pg-line);font-size:12px;color:var(--pg-ink2)}
+</style>
+
+<div class="wrap">
+
+<header class="intro">
+  <div class="eyebrow">CkGoap × CkGameplayDebugger · design concept</div>
+  <h1>GOAP Mission Control</h1>
+  <p>A designer-first debugger for the CkGoap planner. It answers, at a glance: <b>what is this agent doing, and why?</b> — then lets a designer interrogate every rejected alternative, rewind every replan, and test "what if" world states without touching gameplay code.</p>
+  <p>The mockup below is <b>live</b>: it runs a miniature regressive-A* planner over the real FEAR-gym action catalog, so every panel reacts truthfully.</p>
+  <div class="try">
+    <span><b>Scrub</b> the replan timeline</span>
+    <span><b>Toggle Sandbox</b> and flip world-state keys</span>
+    <span><b>Click a key</b> to trace it everywhere</span>
+    <span><b>Edit costs</b> in the Decision panel</span>
+    <span><b>Nerd mode</b> reveals search internals</span>
+  </div>
+</header>
+
+<!-- ==================== APP ==================== -->
+<div class="app" id="app">
+<div class="app-scroll"><div class="app-min">
+
+  <!-- chrome -->
+  <div class="chrome">
+    <div class="logo"><span class="dot"></span>GOAP&nbsp;Studio</div>
+    <div class="crumb">
+      <button class="picker" title="Mockup — agent list is in the Squad tab">🧍 Replica Soldier 03 <span class="car">▾</span></button>
+      <button class="picker" title="Owners can host several planners via Create(Tag). This owner has one top-level planner with one promoted sub-planner."> ◆ FEAR Combatant <small>+1 sub</small> <span class="car">▾</span></button>
+    </div>
+    <div class="spacer"></div>
+    <div class="transport">
+      <button class="tbtn live" id="btnLive" title="Live follows the game. Scrubbing the timeline pauses."><span class="pulse"></span><span id="liveLbl">LIVE</span></button>
+      <button class="tbtn" title="Step one replan back" id="stepBack">⏮</button>
+      <button class="tbtn" title="Step one replan forward" id="stepFwd">⏭</button>
+      <button class="tbtn rec" title="Record this session to a .goaprec file for later scrubbing / bug reports (mockup)"><span class="pulse"></span>REC</button>
+    </div>
+    <label class="nerd" title="Reveals search internals: budget usage, states expanded, entity handles, the regressive trace">
+      <input type="checkbox" id="nerdTgl"> Nerd mode
+    </label>
+  </div>
+
+  <!-- nerd strip -->
+  <div class="nerdstrip">
+    <span>plan <b id="nsTime">—</b> <span class="muted">(sim)</span></span>
+    <span>budget <b>50,000 µs</b> <span class="budgetbar"><i id="nsBudget" style="width:2%"></i></span> <b id="nsSlices">1</b> slice</span>
+    <span>states expanded <b id="nsExp">—</b></span>
+    <span>state pool <b id="nsPool">—</b></span>
+    <span>gate <b id="nsGate">children not deferred</b></span>
+    <span class="muted">planner <span class="mono">E#4213·v7</span> · WS <span class="mono">E#4188·v3</span></span>
+  </div>
+
+  <!-- alerts -->
+  <div class="alerts" id="alerts"></div>
+
+  <!-- tabs -->
+  <div class="tabs">
+    <button class="tab" data-v="squad">Squad <span class="n">6</span></button>
+    <button class="tab on" data-v="inspector">Agent Inspector</button>
+    <button class="tab" data-v="catalog">Catalog Audit <span class="warn-dot" title="2 informational findings"></span></button>
+  </div>
+
+  <!-- ============ SQUAD VIEW ============ -->
+  <div class="view" id="v-squad">
+    <div class="squad">
+      <table class="sq-table">
+        <thead><tr>
+          <th>Agent</th><th>Planner</th><th>Status</th><th>Active chain</th>
+          <th style="text-align:right">Plan cost</th><th style="text-align:right">Attempts</th>
+          <th>Replans · 60s</th><th>Alerts</th><th></th>
+        </tr></thead>
+        <tbody id="sqBody"></tbody>
+      </table>
+      <div class="sq-note">Every planner in the world, one row each — including <span class="mono">Create()</span>-spawned named planners. Sort by alerts to triage. Row data beyond Soldier&nbsp;03 is illustrative.</div>
+    </div>
+  </div>
+
+  <!-- ============ INSPECTOR VIEW ============ -->
+  <div class="view on" id="v-inspector">
+    <div class="inspector">
+
+      <!-- LEFT: agent · goal · plan · settings -->
+      <div class="col">
+        <div class="panel">
+          <div class="agent">
+            <div class="avatar">R3</div>
+            <div>
+              <h2>Replica Soldier 03</h2>
+              <div class="meta">
+                <span class="mono">BP_ReplicaSoldier</span>
+                <span id="agStatus"></span>
+                <span class="muted" id="agAttempts"></span>
+              </div>
+            </div>
+          </div>
+          <div class="crumbchain" id="chain"></div>
+        </div>
+
+        <div class="panel">
+          <div class="ph"><h3>Goal</h3><span class="sub">this planner plans toward</span>
+            <div class="right"><button class="abtn" style="padding:3px 9px" title="Request_SetGoal — edit the goal live; triggers a replan (mockup)">Edit</button></div>
+          </div>
+          <div class="goalrow" id="goalRow"></div>
+        </div>
+
+        <div class="panel">
+          <div class="ph"><h3>Plan</h3><span class="sub" id="planSub"></span></div>
+          <div class="steps" id="steps"></div>
+          <div class="planfoot" id="planFoot"></div>
+          <details class="settings">
+            <summary>Planner settings</summary>
+            <div class="setrows">
+              <div class="setrow"><label title="Identity of this planner on its owner. Set at Add/Create; read-only at runtime.">Planner tag</label>
+                <div class="val"><span class="chip mono">Goap.Planner.FEARCombatant</span><span class="lock" title="Construction-time only">🔒</span></div></div>
+              <div class="setrow"><label title="Which shared World State entity this planner reads. Sub-planners inherit their parent's unless overridden.">World state</label>
+                <div class="val"><span class="chip k">WS · Squad Alpha</span><span class="muted" style="font-size:10.5px">shared ×2 planners</span></div></div>
+              <div class="setrow"><label title="Enable/Disable. Disabled planners skip planning and activation. Request_SetEnableToggle.">Enabled</label>
+                <div class="val"><span class="switch on" role="switch" aria-checked="true" tabindex="0" title="Request_SetEnableToggle (mockup)"><i></i></span></div></div>
+              <div class="setrow"><label title="When the planner replans on its own. Explicit / OnWorldStateDirty / OnCostDirty / OnEitherDirty. Request_SetReplanPolicy.">Replan policy</label>
+                <div class="val"><select title="Request_SetReplanPolicy (mockup)"><option>On world-state change</option><option>On cost change</option><option>On either</option><option>Only when asked (Explicit)</option></select></div></div>
+              <div class="setrow"><label title="Dirty events inside this window coalesce into ONE replan at window end. Your anti-thrash dial. Request_SetReplanInterval.">Min replan interval</label>
+                <div class="val"><input type="text" value="0.25 s" title="Request_SetReplanInterval (mockup)"></div></div>
+              <div class="setrow"><label title="Per-tick A* time slice in microseconds. 0 = finish in one tick. Request_SetSearchBudget.">Search budget</label>
+                <div class="val"><input type="text" value="50,000 µs" title="Request_SetSearchBudget (mockup)"></div></div>
+              <div class="setrow"><label title="If > 0, the planner gives up with 'Cost Threshold Reached' instead of committing to a plan more expensive than this. 0 = off. Request_SetCostThreshold.">Cost threshold</label>
+                <div class="val"><input type="text" value="0 (off)" title="Request_SetCostThreshold (mockup)"></div></div>
+              <div class="setrow"><label title="Fire one plan automatically when the planner activates. Construction-time.">Plan on start</label>
+                <div class="val"><span class="chip sat"><span class="st"></span>true</span><span class="lock" title="Construction-time only">🔒</span></div></div>
+              <div class="setrow"><label title="PlanFailed is treated as a misconfiguration: the framework insists every planner has a no-precondition fallback action covering the goal, and ensures if a plan ever fails. Only tests set this true.">Allow plan failed</label>
+                <div class="val"><span class="chip"><span class="st" style="background:var(--ink3)"></span>false</span><span class="lock" title="Construction-time only. Game content must never set this true.">🔒</span></div></div>
+              <div class="setrow"><label title="Get_InvalidGoal — goal conditions naming world-state keys no action ever registers.">Invalid goal keys</label>
+                <div class="val"><span class="chip sat"><span class="st"></span>none</span></div></div>
+            </div>
+            <div class="btnrow">
+              <button class="abtn primary" id="btnReplan" title="Request_Plan — force an immediate replan">Replan now</button>
+              <button class="abtn" title="Request_CancelPlan — abort the in-flight search (mockup)">Cancel</button>
+              <button class="abtn" title="Request_ResetActiveChain — collapse the chain; it re-extends next frame unless disabled (mockup)">Reset chain</button>
+              <button class="abtn danger" title="Request_SetEnableToggle → Disable (mockup)">Disable</button>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- CENTER: decision / graph / search -->
+      <div class="col">
+        <div class="panel">
+          <div class="ctabs">
+            <button class="ctab on" data-c="decision">Decision</button>
+            <button class="ctab" data-c="graph">Plan graph</button>
+            <button class="ctab nerd-only" data-c="search">Search trace</button>
+          </div>
+          <div class="cview on" id="c-decision"></div>
+          <div class="cview" id="c-graph">
+            <div class="graphwrap" id="graphHost"></div>
+            <div class="glegend">
+              <span><i style="background:var(--ok)"></i>precondition met</span>
+              <span><i style="background:var(--bad)"></i>precondition unmet</span>
+              <span><i style="background:var(--acc)"></i>active chain</span>
+              <span>◆ planner &nbsp;·&nbsp; ● action &nbsp;·&nbsp; ◆● both</span>
+            </div>
+          </div>
+          <div class="cview" id="c-search"></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: world state -->
+      <div class="col">
+        <div class="panel">
+          <div class="ph"><h3>World State</h3><span class="sub">what the agent believes</span>
+            <div class="right wsmode">
+              <span title="Sandbox pushes a 'DebugUI' override layer onto the World State. Reads are shadowed; the base store is untouched. Pop the layer to return to live truth.">Sandbox</span>
+              <span class="switch" id="sandTgl" role="switch" aria-checked="false" tabindex="0"><i></i></span>
+            </div>
+          </div>
+          <div class="wsrows" id="wsRows"></div>
+          <div class="layerbox">
+            <div style="font:600 10px var(--ui);letter-spacing:.09em;text-transform:uppercase;color:var(--ink3)">Override layers <span id="wsDepth" class="mono" style="letter-spacing:0"></span></div>
+            <div id="layers"></div>
+          </div>
+          <div class="wsfoot">
+            <span title="FKeyRegistry capacity — 64 boolean keys per World State">keys <b class="num" id="wsKeys">8 / 64</b></span>
+            <span title="Request_AddSubscriber — entities re-planned when a key flips">subscribers <b class="num">2</b></span>
+            <span id="traceHint" style="margin-left:auto"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIMELINE DOCK -->
+    <div class="dock">
+      <div class="panel">
+        <div class="ph"><h3>Timeline</h3><span class="sub">replans · world-state changes · activations</span></div>
+        <div class="tl-wrap" id="tlHost"></div>
+        <div class="tl-controls">
+          <span class="lbl">Jump to replan</span>
+          <span id="snapBtns"></span>
+          <div class="pauseon">
+            <span class="lbl" title="Debugger halts the session when the event fires — catch the exact frame">Pause on:</span>
+            <label><input type="checkbox" checked> replan</label>
+            <label><input type="checkbox"> plan failed</label>
+            <label><input type="checkbox" checked> fallback selected</label>
+            <label><input type="checkbox"> chain change</label>
+          </div>
+        </div>
+        <div class="diff" id="diff"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h3>Event log</h3><span class="sub">plain-language, from signals</span></div>
+        <div class="evlog" id="evlog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CATALOG VIEW ============ -->
+  <div class="view" id="v-catalog">
+    <div class="catalog">
+      <div class="panel">
+        <div class="ph"><h3>Action catalog</h3><span class="sub">FEAR Combatant — 7 actions</span></div>
+        <div id="cat-top"></div>
+        <div class="subhdr">↳ Sub-planner · Attack Enemy — 4 actions <span class="muted" style="text-transform:none;letter-spacing:0">goal injected by parent</span></div>
+        <div id="cat-sub"></div>
+      </div>
+      <div class="col">
+        <div class="panel">
+          <div class="ph"><h3>Catalog health</h3><span class="sub">static checks, run at Setup</span></div>
+          <div class="keymeter"><span>Key budget</span><div class="bar"><i></i></div><b class="num">8 / 64</b></div>
+          <div class="check"><span class="st ok">PASS</span><div class="bd"><b>Fallback guarantee.</b> Both planners have a no-precondition action covering their goal — <b>Wait For Enemy</b> (999) and <b>Standby</b> (999). A plan always exists.</div></div>
+          <div class="check"><span class="st ok">PASS</span><div class="bd"><b>No dependency cycles.</b> Tarjan SCC over effect→precondition edges found no strongly-connected action groups.</div></div>
+          <div class="check"><span class="st ok">PASS</span><div class="bd"><b>Goal keys registered.</b> Every goal condition names a key some action provides.</div></div>
+          <div class="check"><span class="st info">INFO</span><div class="bd"><b>Flank is unreachable at this tier.</b> Its effect <b>Behind Enemy</b> is only consumed <i>inside</i> the Attack Enemy sub-planner — the top planner will never schedule Flank toward <b>Enemy Neutralized</b>. Either register Flank under the sub-planner, or expect Behind Enemy to be set externally.</div></div>
+          <div class="check"><span class="st info">INFO</span><div class="bd"><b>Dead effect for current goal.</b> <b>Patrolling</b> (from Patrol) is consumed by no precondition and no goal — Patrol can only be chosen if a goal asks for Patrolling.</div></div>
+        </div>
+        <div class="panel">
+          <div class="ph"><h3>Key ⟷ action matrix</h3><span class="sub">P needs it · E provides it — click a key to trace</span></div>
+          <div class="matrixwrap" id="matrixHost"></div>
+          <div class="mlegend"><span><b>P</b> precondition</span><span style="color:var(--acc)"><b>E</b> effect</span><span>column glow = current active chain</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+</div><!-- /app -->
+
+<!-- ==================== RATIONALE ==================== -->
+<section class="doc">
+  <h2>Five questions, five regions</h2>
+  <p class="lead">Every region exists to answer a question a designer actually asks — in this order of frequency. Engineering detail is opt-in (Nerd mode), never the default.</p>
+  <div class="qgrid">
+    <div class="qcard"><div class="q">1 · <em>"What is it doing?"</em></div><p>The chain breadcrumb + Plan panel. Status pill, current step marked <b>NOW</b>, sub-plans nested inline. Fallback steps get an amber flag instead of hiding behind a cost number.</p></div>
+    <div class="qcard"><div class="q">2 · <em>"Why not the thing I built?"</em></div><p>The Decision panel scores <b>every</b> candidate: in-plan, viable-but-costlier (with the exact Δ), blocked (with the unmet keys), fallback. Cross-tier notes explain what the top planner can and cannot see.</p></div>
+    <div class="qcard"><div class="q">3 · <em>"Why did it change its mind?"</em></div><p>The timeline records every replan with its trigger (which key flipped, coalescing, policy) and an old-plan → new-plan diff. Scrub to any moment; pause-on-event catches the frame live.</p></div>
+    <div class="qcard"><div class="q">4 · <em>"What does it believe?"</em></div><p>The World State panel: live values, per-key usage counts, override-layer stack. Sandbox mode pushes a <span class="mono">DebugUI</span> layer to test "what if" without touching gameplay — with a blast-radius warning when the WS is shared.</p></div>
+    <div class="qcard"><div class="q">5 · <em>"Is my catalog sane?"</em></div><p>Catalog Audit re-surfaces the framework's setup checks (fallback guarantee, cycles, invalid goal keys, key budget) plus derived lint: cross-tier reachability and dead effects.</p></div>
+  </div>
+</section>
+
+<!-- ==================== COVERAGE ==================== -->
+<section class="doc">
+  <h2>Feature coverage map</h2>
+  <p class="lead">Every public CkGoap setting, query, request, and signal, and where it lives in this UI. <span class="hooktag have">existing API</span> renders from today's public surface; <span class="hooktag hook">needs hook</span> requires a small engine-side addition.</p>
+  <div class="covwrap">
+    <table class="cov">
+      <tr><th style="width:34%">API surface</th><th>Where it appears</th><th style="width:110px">Source</th></tr>
+      <tr><td class="grp" colspan="3">Planner params — FCk_Fragment_Goap_PlannerParamsData (all 10)</td></tr>
+      <tr><td class="api">_PlannerTag</td><td class="where">Planner picker · Settings (read-only)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_InitialToggle / EnableToggle</td><td class="where">Settings toggle · Disable button · Squad status "Disabled"</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_Goal / _GoalAuthored</td><td class="where">Goal panel (live satisfaction per condition) · Edit → Request_SetGoal</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_WorldStateSource (+ _Resolved)</td><td class="where">Settings WS chip (shows inherited vs overridden, shared-count)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_SearchBudgetMicroseconds</td><td class="where">Settings field · Nerd strip budget bar &amp; slice count</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_CostThreshold</td><td class="where">Settings field · "Cost Threshold Reached" status pill (Squad: Empire Governor)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_ReplanPolicy</td><td class="where">Settings dropdown · replan-cause line in timeline diff</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_MinReplanIntervalSeconds</td><td class="where">Settings field · "×2 coalesced" marker on the timeline</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_PlanOnStart</td><td class="where">Settings (read-only) · Replan #1 in the event log is attributed to it</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_AllowPlanFailed</td><td class="where">Settings (read-only, tenet tooltip) · Squad: MakeTea TestBot's red PlanFailed row</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">Action params &amp; definition</td></tr>
+      <tr><td class="api">_ActionClass (CDO: pre / eff / cost)</td><td class="where">Catalog cards · Decision cards · graph nodes · matrix</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_WorldStateSource_Override</td><td class="where">Catalog card badge when set; WS chip shows "inherited from parent" otherwise</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_ActionTagForClass</td><td class="where">Class-derived tags shown under every action name</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">Plan state &amp; queries</td></tr>
+      <tr><td class="api">Get_PlanStatus (all 5 states)</td><td class="where">Status pills — Idle / Planning (Heavy 02) / PlanFound / PlanFailed (TestBot) / CostThresholdReached (Governor)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_Plan / Get_PlanClasses / Get_PlanCost</td><td class="where">Plan panel steps + total</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_PlanAttemptCount</td><td class="where">Agent header "attempt #" · Squad column</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_ActiveChain</td><td class="where">Chain breadcrumb · glowing path in Plan graph · Squad chain column</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_ActiveParentAction</td><td class="where">Sub-planner header "goal injected by parent"</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_DependencyCycles (Tarjan)</td><td class="where">Catalog health check #2 (lists actions + conditions when it fires)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_InvalidGoal</td><td class="where">Settings diagnostics row + Catalog health check #3</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">_HasUnconditionalFallback</td><td class="where">Catalog health check #1 · amber "fallback plan active" alert</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Find_Planner / Find_Action(ByClass)</td><td class="where">Pickers &amp; key-trace navigation use these under the hood</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">Runtime requests (the tuning verbs)</td></tr>
+      <tr><td class="api">Request_Plan / Request_CancelPlan</td><td class="where">"Replan now" / "Cancel" buttons</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_SetGoal</td><td class="where">Goal panel Edit</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_SetChildActionCost</td><td class="where">− / + cost steppers on Decision &amp; Catalog cards (live re-plan preview)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_RegisterActionCostProvider</td><td class="where">"cost provider" badge on Flank (cost driven externally, e.g. by distance)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_SetReplanInterval / Policy / SearchBudget / CostThreshold</td><td class="where">Settings fields (live-editable)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_SetEnableToggle / Request_ResetActiveChain</td><td class="where">Enable switch · Reset chain button</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_RemoveAction (+ runtime AddAction)</td><td class="where">Catalog card ⋯ menu (with the "new action needs 1–3 frames before Request_Plan" guard surfaced as a spinner)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">World State</td></tr>
+      <tr><td class="api">Get_Value / Has_Key / Set_Value / Request_RegisterKey</td><td class="where">WS rows (value pills; unregistered keys would render hollow)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Push_Override(_SingleKey) / Pop / Clear</td><td class="where">Sandbox toggle = fixed <span class="mono">DebugUI</span> layer; Clear button pops it</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Get_OverrideDepth / LayerNames / LayerValues / LayerKeyCount</td><td class="where">Override-layers stack panel with per-layer key counts</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Has_KeyOverride / Get_TopOverrideLayerForKey</td><td class="where">"DebugUI" shadow badge on shadowed rows</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Request_Add/RemoveSubscriber</td><td class="where">"subscribers 2" footer + shared-WS blast-radius warning in Sandbox banner</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">BindTo_OnValueChanged (old → new)</td><td class="where">WS-change pips on the timeline + event log lines</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">WorldState_MaxKeys (64)</td><td class="where">"8 / 64" key-budget meters (WS footer + Catalog)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">Signals → the recorder</td></tr>
+      <tr><td class="api">OnPlanComplete / OnPlanFailed</td><td class="where">Replan diamonds + event log; payload (actions + total cost) fills the diff card</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">OnActiveChainChanged (old-chain payload)</td><td class="where">Old side of the plan diff</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">OnPlannerActivated / Deactivated</td><td class="where">Activation bars on the timeline (Attack Enemy lane)</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="grp" colspan="3">Search internals (Nerd mode)</td></tr>
+      <tr><td class="api">Regressive A* trace (FConstraintSet nodes)</td><td class="where">Search-trace tab: constraint sets traded for actions, g/h per node</td><td><span class="hooktag hook">needs hook</span></td></tr>
+      <tr><td class="api">States expanded / state-pool size</td><td class="where">Nerd strip (Get_StatePoolSize exists; expanded-count needs a CkAStar counter getter)</td><td><span class="hooktag hook">needs hook</span></td></tr>
+      <tr><td class="api">FTag_Goap_Planner_PlanInFlight gating</td><td class="where">Nerd strip "gate" + Squad "Planning" spinner tooltip ("children deferred")</td><td><span class="hooktag have">existing API</span></td></tr>
+      <tr><td class="api">Replan-cause attribution</td><td class="where">Diff card "Trigger:" line — inferable from OnValueChanged timing today; a cause tag on the Plan request would make it exact</td><td><span class="hooktag hook">needs hook</span></td></tr>
+      <tr><td class="api">Plan history ring buffer</td><td class="where">Timeline scrubbing — recordable debugger-side from the signals above; an engine ring-buffer would survive debugger-open-late</td><td><span class="hooktag hook">needs hook</span></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ==================== IMPLEMENTATION NOTES ==================== -->
+<section class="doc">
+  <h2>Implementation notes</h2>
+  <div class="notes dkh">
+    <div class="note"><b>Almost everything renders from today's API.</b> The debugger is a read-only consumer of the public getters plus a signal recorder (<span class="mono">OnPlanComplete</span>, <span class="mono">OnActiveChainChanged</span>, <span class="mono">OnValueChanged</span>, <span class="mono">OnPlannerActivated</span>). Only four small hooks are marked above: a search-trace/stats getter, an exact replan-cause tag, and an optional engine-side history ring.</div>
+    <div class="note"><b>Sandbox is the override stack, by design.</b> The WS utils already anticipate a fixed <span class="mono">DebugUI</span> layer: reads are shadowed, the base store stays truthful, and popping the layer restores reality. The debugger must surface the blast radius — a shared World State means every subscribed planner replans under the sandbox.</div>
+    <div class="note"><b>Derived lint is cheap and designer-gold.</b> Cross-tier reachability ("Flank can never be scheduled here"), dead effects, and the thrash meter (replans/min vs. the coalescing window) are pure functions over data the debugger already holds — no engine changes.</div>
+  </div>
+  <footer>Concept mockup — no live game data. Built solely from the CkGoap public API surface and the FEAR-gym catalog (2026-07-18). The in-page planner is a faithful miniature: regressive A* over constraint sets, hierarchical via the promoted sub-planner, fallbacks at cost 999.</footer>
+</section>
+
+</div><!-- /wrap -->
+
+<script>
+/* =====================================================================
+   Mini CkGoap — a faithful miniature of the real planner:
+   regressive A* over constraint sets; hierarchical top → sub planner.
+   ===================================================================== */
+const KEYS=[
+ {id:"HasAmmo",nm:"Has Ammo"},
+ {id:"HasAmmoReserve",nm:"Has Ammo Reserve"},
+ {id:"EnemyVisible",nm:"Enemy Visible"},
+ {id:"BehindEnemy",nm:"Behind Enemy"},
+ {id:"AtCover",nm:"At Cover"},
+ {id:"HeardSound",nm:"Heard Sound"},
+ {id:"EnemyNeutralized",nm:"Enemy Neutralized"},
+ {id:"Patrolling",nm:"Patrolling"}];
+const KN=Object.fromEntries(KEYS.map(k=>[k.id,k.nm]));
+const TAG=id=>"Gym.GoapFEAR.WS.Combatant."+id;
+
+const TOP=[
+ {id:"AttackEnemy",nm:"Attack Enemy",cost:1,pre:{HasAmmo:true,EnemyVisible:true},eff:{EnemyNeutralized:true},comp:true},
+ {id:"Reload",nm:"Reload",cost:0.5,pre:{HasAmmoReserve:true},eff:{HasAmmo:true}},
+ {id:"Investigate",nm:"Investigate",cost:1.5,pre:{HeardSound:true},eff:{EnemyVisible:true}},
+ {id:"TakeCover",nm:"Take Cover",cost:1,pre:{},eff:{AtCover:true}},
+ {id:"Flank",nm:"Flank",cost:2,pre:{EnemyVisible:true},eff:{BehindEnemy:true},prov:true},
+ {id:"Patrol",nm:"Patrol",cost:3,pre:{},eff:{Patrolling:true}},
+ {id:"WaitForEnemy",nm:"Wait For Enemy",cost:999,pre:{},eff:{EnemyNeutralized:true},fb:true}];
+const SUB=[
+ {id:"AttackFromFlank",nm:"Attack From Flank",cost:0.5,pre:{BehindEnemy:true,HasAmmo:true,EnemyVisible:true},eff:{EnemyNeutralized:true}},
+ {id:"AttackFromCover",nm:"Attack From Cover",cost:1,pre:{AtCover:true,HasAmmo:true,EnemyVisible:true},eff:{EnemyNeutralized:true}},
+ {id:"AttackOpen",nm:"Attack Open",cost:2,pre:{HasAmmo:true,EnemyVisible:true},eff:{EnemyNeutralized:true}},
+ {id:"Standby",nm:"Standby",cost:999,pre:{},eff:{EnemyNeutralized:true},fb:true}];
+const ALL=[...TOP,...SUB];
+const GOAL={EnemyNeutralized:true};
+
+/* ---- regressive A* ---- */
+const ckey=c=>JSON.stringify(Object.entries(c).sort());
+const unmet=(c,ws)=>Object.entries(c).filter(([k,v])=>!!ws[k]!==v).map(([k])=>k);
+function planFor(ws,cat,goal,costs){
+  const ac=cat.map(a=>({...a,cost:(costs&&costs[a.id]!=null)?costs[a.id]:a.cost}));
+  const start={cons:goal,g:0,path:[]};
+  const open=[{...start,h:unmet(goal,ws).length}];
+  const best=new Map([[ckey(goal),0]]);
+  const trace=[];let expanded=0;
+  while(open.length){
+    open.sort((a,b)=>(a.g+a.h)-(b.g+b.h));
+    const n=open.shift();expanded++;
+    trace.push(n);
+    if(n.h===0){
+      const steps=n.path.slice().reverse().map(id=>ac.find(a=>a.id===id));
+      return{steps,cost:steps.reduce((s,a)=>s+a.cost,0),expanded,pool:best.size,trace,found:true};
+    }
+    if(trace.length>400)break;
+    for(const a of ac){
+      let rel=false,conf=false;
+      for(const k in a.eff){ if(n.cons[k]!==undefined){ if(n.cons[k]===a.eff[k])rel=true; else{conf=true;break;} } }
+      if(!rel||conf)continue;
+      const nc={...n.cons};
+      for(const k in a.eff){ if(nc[k]===a.eff[k])delete nc[k]; }
+      let bad=false;
+      for(const k in a.pre){ if(nc[k]!==undefined&&nc[k]!==a.pre[k]){bad=true;break;} nc[k]=a.pre[k]; }
+      if(bad)continue;
+      const g=n.g+a.cost,kk=ckey(nc);
+      if(best.has(kk)&&best.get(kk)<=g)continue;
+      best.set(kk,g);
+      open.push({cons:nc,g,h:unmet(nc,ws).length,path:[...n.path,a.id],via:a});
+    }
+  }
+  return{steps:[],cost:0,expanded,pool:best.size,trace,found:false};
+}
+
+/* ---- session snapshots (the recording being scrubbed) ---- */
+const SNAPS=[
+ {t:0.0,lbl:"0.0s",trig:[{k:null,txt:"Planner activated — Plan-on-start",src:"PlanOnStart"}],
+  ws:{HasAmmo:true,HasAmmoReserve:true}},
+ {t:8.4,lbl:"8.4s",trig:[{k:"HeardSound",v:true,src:"Perception"}],
+  ws:{HasAmmo:true,HasAmmoReserve:true,HeardSound:true}},
+ {t:9.9,lbl:"9.9s",trig:[{k:"EnemyVisible",v:true,src:"Perception"},{k:"HasAmmo",v:false,src:"Weapon fired dry"}],co:true,
+  ws:{HasAmmoReserve:true,HeardSound:true,EnemyVisible:true}},
+ {t:11.2,lbl:"11.2s",trig:[{k:"HasAmmo",v:true,src:"Reload completed"}],
+  ws:{HasAmmo:true,HasAmmoReserve:true,HeardSound:true,EnemyVisible:true}},
+ {t:12.6,lbl:"12.6s",trig:[{k:"BehindEnemy",v:true,src:"external gameplay write"}],
+  ws:{HasAmmo:true,HasAmmoReserve:true,HeardSound:true,EnemyVisible:true,BehindEnemy:true}}];
+
+/* ---- app state ---- */
+const S={snap:4,live:true,sandbox:false,ovr:{},costs:{},hi:null,ctab:"decision"};
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+
+function baseWS(){const o={};KEYS.forEach(k=>o[k.id]=!!SNAPS[S.snap].ws[k.id]);return o;}
+function effWS(){return{...baseWS(),...S.ovr};}
+function nOvr(){return Object.keys(S.ovr).length;}
+
+function compute(){
+  const ws=effWS();
+  const top=planFor(ws,TOP,GOAL,S.costs);
+  const sub=planFor(ws,SUB,GOAL,S.costs);
+  const attackInPlan=top.steps.some(a=>a.id==="AttackEnemy");
+  const chain=[];
+  if(top.steps.length){
+    const p0=top.steps[0];
+    chain.push(p0);
+    if(p0.comp&&sub.steps.length)chain.push(sub.steps[0]);
+  }
+  return{ws,top,sub,attackInPlan,chain};
+}
+
+/* ---- chips ---- */
+function condChip(k,v,ws,clickable){
+  const sat=(!!ws[k])===v;
+  return `<span class="chip k ${sat?"sat":"unsat"} ${S.hi===k?"hl":""}" data-k="${k}" title="${TAG(k)} — needs ${v?"TRUE":"FALSE"}, currently ${ws[k]?"TRUE":"FALSE"}"><span class="st"></span>${KN[k]}${v?"":" = false"}</span>`;
+}
+function effChip(k,v){
+  return `<span class="chip k eff ${S.hi===k?"hl":""}" data-k="${k}" title="${TAG(k)} — sets ${v?"TRUE":"FALSE"}">→ ${KN[k]}${v?"":" = false"}</span>`;
+}
+
+/* ---- render: chain / goal / plan ---- */
+function rChain(C){
+  const nodes=[`<span class="node on" title="Top-level planner — always active">◆ FEAR Combatant</span>`];
+  C.chain.forEach((a,i)=>{
+    nodes.push(`<span class="sep">▸</span>`);
+    const leaf=i===C.chain.length-1;
+    nodes.push(`<span class="node on ${leaf?"leaf":""} ${a.fb?"fb":""}" title="${a.comp?"Composite — also a planner":"Action"}${a.fb?" · FALLBACK":""}">${a.comp?"◆● ":"● "}${a.nm}</span>`);
+  });
+  $("chain").innerHTML=nodes.join("");
+  $("agStatus").innerHTML=`<span class="pill found"><span class="d"></span>Plan Found</span>`;
+  $("agAttempts").textContent=`attempt #${S.snap+1}`;
+}
+function rGoal(C){
+  const sat=(!!C.ws.EnemyNeutralized)===true;
+  $("goalRow").innerHTML=
+   `<span class="chip k ${sat?"sat":"unsat"}" data-k="EnemyNeutralized" title="${TAG("EnemyNeutralized")}"><span class="st"></span>Enemy Neutralized = true</span>
+    <span class="muted" style="font-size:11px">${sat?"satisfied — plan is empty-able":"not yet — the plan below gets us there"}</span>`;
+}
+function rPlan(C){
+  const t=C.top;
+  let h="";
+  t.steps.forEach((a,i)=>{
+    const now=i===0;
+    h+=`<div class="step ${now?"on":""}">
+      <span class="idx">${i+1}</span>
+      <div class="body">
+        <div class="nm">${a.comp?"◆● ":"● "}${a.nm}<span class="cost num">${a.cost.toFixed(1)}</span>${now?'<span class="now">◂ now</span>':""}</div>
+        <div class="cond">${Object.entries(a.pre).map(([k,v])=>condChip(k,v,C.ws)).join("")}${Object.entries(a.eff).map(([k,v])=>effChip(k,v)).join("")}</div>
+        ${a.fb?'<div class="fbnote">⚠ Fallback — selected because nothing cheaper reaches the goal</div>':""}
+      </div></div>`;
+    if(a.comp&&C.sub.steps.length){
+      const s=C.sub.steps[0];
+      h+=`<div class="step subplan ${now?"":""}">
+        <span class="idx">↳</span>
+        <div class="body">
+          <div class="nm">● ${s.nm}<span class="cost num">${s.cost.toFixed(1)}</span><span class="muted" style="font-size:10.5px">sub-planner expansion</span></div>
+          <div class="cond">${Object.entries(s.pre).map(([k,v])=>condChip(k,v,C.ws)).join("")}${Object.entries(s.eff).map(([k,v])=>effChip(k,v)).join("")}</div>
+          ${s.fb?'<div class="fbnote">⚠ Sub-planner fallback (Standby)</div>':""}
+        </div></div>`;
+    }
+  });
+  if(!t.steps.length)h=`<div class="step"><div class="body muted">Goal already satisfied — empty plan (Plan Found immediately).</div></div>`;
+  $("steps").innerHTML=h;
+  $("planSub").textContent=`status · attempt #${S.snap+1}`;
+  const subCost=C.attackInPlan&&C.sub.steps.length?C.sub.cost:0;
+  $("planFoot").innerHTML=
+    `<span>top-tier cost <b class="num">${t.cost.toFixed(1)}</b></span>`+
+    (C.attackInPlan?`<span>sub expansion <b class="num">${subCost.toFixed(1)}</b></span>`:"")+
+    `<span>attempts <b class="num">${S.snap+1}</b></span>`+
+    `<span class="nerd-only">seeded from flattened WS snapshot</span>`;
+}
+
+/* ---- render: decision cards ---- */
+function costCtl(a){
+  const ed=S.costs[a.id]!=null&&S.costs[a.id]!==a.cost;
+  const val=S.costs[a.id]!=null?S.costs[a.id]:a.cost;
+  return `<span class="cost num">${val.toFixed(1)}</span>
+    <span class="costctl" title="Request_SetChildActionCost — live preview">
+      <button data-c="${a.id}" data-d="-1" aria-label="decrease cost">−</button>
+      <button data-c="${a.id}" data-d="1" aria-label="increase cost">+</button>
+    </span>${ed?'<span class="edited">edited</span>':""}`;
+}
+function dcard(a,C,tier){
+  const ws=C.ws;
+  const inPlanArr=tier==="top"?C.top.steps:C.sub.steps;
+  const planCost=tier==="top"?C.top.cost:C.sub.cost;
+  const pos=inPlanArr.findIndex(x=>x.id===a.id);
+  const un=Object.entries(a.pre).filter(([k,v])=>!!ws[k]!==v);
+  const viable=un.length===0;
+  const cur=S.costs[a.id]!=null?S.costs[a.id]:a.cost;
+  let cls="",why="",note="";
+  if(pos>=0){cls="inplan";why=`<b>in the plan</b> — step ${pos+1}`;}
+  else if(a.fb&&viable){cls="fb";why=`fallback — <b class="num">${cur.toFixed(1)}</b> only wins when nothing else can`;}
+  else if(viable){
+    // forced-first forward preview
+    const ws2={...ws};for(const k in a.eff)ws2[k]=a.eff[k];
+    const rest=planFor(ws2,tier==="top"?TOP:SUB,GOAL,S.costs);
+    const tot=cur+rest.cost;
+    const d=tot-planCost;
+    why=`viable, not chosen — forcing it first would cost <b class="num">${tot.toFixed(1)}</b> (<span class="num">+${d.toFixed(1)}</span>)`;
+    if(rest.cost>=planCost&&Object.keys(a.eff).every(k=>!!ws[k]===a.eff[k]))note=`Its effect is already true — it makes no progress toward the goal from here.`;
+    else if(rest.cost>=planCost)note=`Its effect doesn't shorten the path to <b>Enemy Neutralized</b> at this tier.`;
+    if(tier==="top"&&a.id==="TakeCover"&&C.attackInPlan){
+      const s1=planFor(ws,SUB,GOAL,S.costs).cost,s2=planFor({...ws,AtCover:true},SUB,GOAL,S.costs).cost;
+      if(s2<s1)note=`<span class="dnote tip" style="border:none;padding:0">But: with cover, <b>Attack Enemy</b> would expand to Attack From Cover (${s2.toFixed(1)} instead of ${s1.toFixed(1)}). The top planner can't see sub-planner costs — the composite's authored cost (1.0) is all it compares.</span>`;
+    }
+    if(tier==="top"&&a.id==="Flank"&&C.attackInPlan){
+      const s1=planFor(ws,SUB,GOAL,S.costs).cost,s2=planFor({...ws,BehindEnemy:true},SUB,GOAL,S.costs).cost;
+      if(s2<s1)note=`<span class="dnote tip" style="border:none;padding:0">But: being behind the enemy would flip the sub-plan to Attack From Flank (${s2.toFixed(1)} instead of ${s1.toFixed(1)}) — invisible to this tier. See Catalog Audit: Flank's effect is only consumed in the sub-planner.</span>`;
+    }
+  }else{cls="blocked";why=`blocked — needs ${un.map(([k,v])=>`<b>${KN[k]}${v?"":" = false"}</b>`).join(", ")}`;}
+  const maxc=Math.min(8,Math.max(planCost,cur));
+  const w=Math.min(100,(Math.min(cur,8)/8)*100);
+  return `<div class="dcard ${cls}">
+    <div class="dtop">
+      <span class="nm">${a.comp?"◆● ":"● "}${a.nm}</span>
+      ${costCtl(a)}
+      ${a.prov?'<span class="badge prov" title="Request_RegisterActionCostProvider — cost is pushed by gameplay (e.g. flank distance)">cost provider</span>':""}
+      ${a.comp?'<span class="badge comp">sub-planner</span>':""}
+      ${a.fb?'<span class="badge fb">fallback</span>':""}
+      <span class="why">${why}</span>
+    </div>
+    <div class="dconds">${Object.entries(a.pre).map(([k,v])=>condChip(k,v,ws)).join("")||'<span class="chip"><span class="st" style="background:var(--ok)"></span>no preconditions</span>'}${Object.entries(a.eff).map(([k,v])=>effChip(k,v)).join("")}</div>
+    ${note?`<div class="dnote">${note}</div>`:""}
+    <div class="costbar" title="cost, clamped at 8 for scale"><i style="width:${a.fb?100:w}%"></i></div>
+  </div>`;
+}
+function rDecision(C){
+  const groups=(cat,tier,lbl)=>{
+    const inP=[],via=[],blk=[],fb=[];
+    for(const a of cat){
+      const arr=tier==="top"?C.top.steps:C.sub.steps;
+      const pos=arr.findIndex(x=>x.id===a.id);
+      const un=Object.entries(a.pre).filter(([k,v])=>!!C.ws[k]!==v);
+      if(pos>=0)inP.push([pos,a]);
+      else if(a.fb)fb.push(a);
+      else if(un.length===0)via.push(a);
+      else blk.push(a);
+    }
+    inP.sort((x,y)=>x[0]-y[0]);
+    let h=`<div class="dgroup"><h4>${lbl}</h4>`;
+    if(inP.length)h+=inP.map(([,a])=>dcard(a,C,tier)).join("");
+    if(via.length)h+=via.map(a=>dcard(a,C,tier)).join("");
+    if(blk.length)h+=blk.map(a=>dcard(a,C,tier)).join("");
+    if(fb.length)h+=fb.map(a=>dcard(a,C,tier)).join("");
+    return h+"</div>";
+  };
+  let h=groups(TOP,"top","FEAR Combatant — every candidate, scored");
+  if(C.attackInPlan)h+=groups(SUB,"sub","↳ inside Attack Enemy — which concrete attack?");
+  else h+=`<div class="dgroup"><h4>↳ inside Attack Enemy</h4><div class="dcard"><div class="dtop"><span class="muted">Sub-planner dormant — Attack Enemy isn't in the current plan, so its goal hasn't been injected.</span></div></div></div>`;
+  h+=`<div style="display:flex;justify-content:flex-end"><button class="resetcosts" id="resetCosts" ${Object.keys(S.costs).length?"":"hidden"}>reset edited costs</button></div>`;
+  $("c-decision").innerHTML=h;
+}
+
+/* ---- render: graph ---- */
+const GP={AttackEnemy:[20,150],Reload:[168,150],Investigate:[316,150],TakeCover:[464,150],Flank:[612,150],Patrol:[760,150],WaitForEnemy:[908,150],
+          AttackFromFlank:[20,306],AttackFromCover:[186,306],AttackOpen:[352,306],Standby:[518,306]};
+function gNode(a,C,active){
+  const[x,y]=GP[a.id];const w=138,hh=64;
+  const pres=Object.entries(a.pre);
+  const effs=Object.keys(a.eff);
+  return `<g class="nd ${active?"on":""} ${a.fb?"fb":""}"><title>${a.nm} — cost ${(S.costs[a.id]??a.cost).toFixed(1)}
+needs: ${pres.map(([k,v])=>KN[k]+(v?"":"=false")).join(", ")||"(none)"}
+gives: ${effs.map(k=>KN[k]).join(", ")}</title>
+    <rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="8"></rect>
+    <text x="${x+10}" y="${y+18}">${a.nm}</text>
+    <text class="role" x="${x+10}" y="${y+31}">${a.comp?"◆● ACTION+PLANNER":a.fb?"● FALLBACK":"● ACTION"}</text>
+    <text class="cost" x="${x+w-8}" y="${y+18}" text-anchor="end">${(S.costs[a.id]??a.cost).toFixed(1)}</text>
+    ${pres.map(([k,v],i)=>`<circle class="pre ${(!!C.ws[k])===v?"sat":"unsat"}" cx="${x+12+i*12}" cy="${y+44}"><title>${KN[k]}${v?"":" = false"} — ${(!!C.ws[k])===v?"met":"unmet"}</title></circle>`).join("")}
+    <text class="eff" x="${x+10}" y="${y+58}">→ ${effs.map(k=>KN[k]).join(", ").slice(0,24)}</text>
+  </g>`;
+}
+function rGraph(C){
+  const act=new Set(C.chain.map(a=>a.id));
+  const root=`<g class="nd on"><title>FEAR Combatant — top-level planner. Goal: Enemy Neutralized = true</title>
+    <rect x="443" y="18" width="180" height="52" rx="8"></rect>
+    <text x="455" y="38">FEAR Combatant</text>
+    <text class="role" x="455" y="52">◆ PLANNER · goal: EnemyNeutralized</text></g>`;
+  const e1=TOP.map(a=>{const[x]=GP[a.id];const on=act.has(a.id);
+    return `<path class="edge ${on?"on":""}" d="M533 70 C533 108, ${x+69} 112, ${x+69} 150"/>`;}).join("");
+  const e2=SUB.map(a=>{const[x]=GP[a.id];const on=act.has(a.id);
+    return `<path class="edge ${on?"on":""}" d="M89 214 C89 250, ${x+69} 262, ${x+69} 306"/>`;}).join("");
+  $("graphHost").innerHTML=`<svg class="g" viewBox="0 0 1060 386" role="img" aria-label="Planner tree">${e1}${e2}${root}${TOP.map(a=>gNode(a,C,act.has(a.id))).join("")}${SUB.map(a=>gNode(a,C,act.has(a.id))).join("")}</svg>`;
+}
+
+/* ---- render: search trace ---- */
+function rSearch(C){
+  const t=C.top;
+  let rows=t.trace.slice(0,9).map((n,i)=>{
+    const chips=Object.entries(n.cons).map(([k,v])=>condChip(k,v,C.ws)).join("")||'<span class="chip sat"><span class="st"></span>∅ — satisfied by current world state</span>';
+    const goal=n.h===0;
+    return `<div class="trow ${goal?"goalrow2":""}">
+      <span class="g">#${i} ${n.via?`via <b style="color:var(--ink)">${n.via.nm}</b>`:"start = goal"}</span>
+      <span class="cset">${chips}</span>
+      <span class="g" style="width:auto;margin-left:auto">g ${n.g.toFixed(1)} · h ${n.h}</span></div>`;
+  }).join("");
+  if(t.trace.length>9)rows+=`<div class="trow"><span class="muted">… ${t.trace.length-9} more nodes expanded</span></div>`;
+  $("c-search").innerHTML=`<div class="trace">
+    <div class="expl">Regressive search runs <b>backward from the goal</b>: each node is a set of constraints a predecessor state must satisfy; applying an action in reverse trades its effects away and adds its preconditions. The search ends at a node the <i>current world state already satisfies</i> — the reversed action path is the plan. Heuristic = unsatisfied-constraint count (CountUnsatisfied).</div>
+    ${rows}</div>`;
+}
+
+/* ---- render: world state ---- */
+function usage(k){
+  let p=0,e=0;ALL.forEach(a=>{if(a.pre[k.id]!==undefined)p++;if(a.eff[k.id]!==undefined)e++;});
+  if(GOAL[k.id]!==undefined)p++;
+  return{p,e};
+}
+function rWS(C){
+  const base=baseWS();
+  $("wsRows").innerHTML=KEYS.map(k=>{
+    const shadowed=S.ovr[k.id]!==undefined;
+    const v=C.ws[k.id];
+    const u=usage(k);
+    const changedNow=SNAPS[S.snap].trig.some(t=>t.k===k.id);
+    return `<div class="wsrow ${S.hi===k.id?"hl":""}" data-k="${k.id}" title="${TAG(k.id)}">
+      <span class="nm">${k.nm}</span>
+      <span class="use" title="${u.p} precondition/goal reads · ${u.e} effect writes">${u.p}P·${u.e}E</span>
+      <div class="right">
+        ${shadowed?'<span class="shadow" title="Get_TopOverrideLayerForKey → DebugUI">DebugUI</span>':""}
+        ${changedNow&&!shadowed?`<span class="wschanged">just changed</span>`:""}
+        <span class="vpill ${v?"t":"f"} ${S.sandbox?"editable":""}" data-v="${k.id}" role="${S.sandbox?"button":""}" tabindex="${S.sandbox?"0":"-1"}"
+          title="${S.sandbox?"Click to flip in the DebugUI layer":"Live value — enable Sandbox to experiment"}">${v?"TRUE":"FALSE"}</span>
+      </div></div>`;
+  }).join("");
+  $("wsDepth").textContent=`· depth ${nOvr()?1:0}`;
+  $("layers").innerHTML=
+    (nOvr()?`<div class="layer top">▲ DebugUI <span class="muted">read-shadow, writes still hit base</span><span class="cnt">${nOvr()} key${nOvr()>1?"s":""}</span></div>`:"")+
+    `<div class="layer">base store <span class="cnt">8 keys</span></div>`;
+  $("traceHint").innerHTML=S.hi?`tracing <b>${KN[S.hi]}</b> — <button class="resetcosts" id="clrTrace">clear</button>`:`<span class="muted">click a key to trace it</span>`;
+}
+
+/* ---- render: alerts ---- */
+function rAlerts(C){
+  const A=[];
+  if(nOvr())A.push(`<div class="alert sand">🧪 <b>Sandbox active</b> — “DebugUI” override layer (${nOvr()} key${nOvr()>1?"s":""}). Reads are shadowed; base store untouched.
+     <span class="fix">⚠ WS “Squad Alpha” is shared — 2 planners replan under this sandbox</span>
+     <button id="clrOvr">Pop layer</button></div>`);
+  const fb=C.top.steps.some(a=>a.fb)||(C.attackInPlan&&C.sub.steps.some(a=>a.fb));
+  if(fb)A.push(`<div class="alert warn">⚠ <b>Fallback plan active</b> — no affordable path to the goal from the current world state.
+     <span class="fix">Check the Decision panel: what's blocked?</span></div>`);
+  $("alerts").innerHTML=A.join("");
+  const el=$("clrOvr");if(el)el.onclick=()=>{S.ovr={};render();};
+}
+
+/* ---- render: nerd strip ---- */
+function rNerd(C){
+  const us=6+C.top.expanded*3+(C.attackInPlan?C.sub.expanded*3:0);
+  $("nsTime").textContent=us+" µs";
+  $("nsExp").textContent=C.top.expanded+(C.attackInPlan?" + "+C.sub.expanded:"");
+  $("nsPool").textContent=C.top.pool;
+  $("nsBudget").style.width=Math.max(1.5,us/500)+"%";
+  $("nsGate").textContent=C.attackInPlan?"sub gated 1 frame while parent in flight":"children not deferred";
+}
+
+/* ---- render: timeline ---- */
+const TX=t=>34+t*(920/14);
+function buildTimeline(){
+  let h=`<svg class="tl" viewBox="0 0 1000 108" role="img" aria-label="Session timeline">`;
+  h+=`<text class="lane" x="4" y="30">WS</text><text class="lane" x="4" y="62">REPLAN</text><text class="lane" x="4" y="92">ACTIVE</text>`;
+  h+=`<line class="axis" x1="30" y1="74" x2="960" y2="74"/>`;
+  for(let s=0;s<=14;s+=2)h+=`<line class="axis" x1="${TX(s)}" y1="71" x2="${TX(s)}" y2="77"/><text class="tick" x="${TX(s)}" y="104" text-anchor="middle">${s}s</text>`;
+  h+=`<rect class="act" x="${TX(11.2)}" y="84" width="${TX(14)-TX(11.2)}" height="8" rx="3"><title>Attack Enemy sub-planner active (OnPlannerActivated → …)</title></rect>`;
+  SNAPS.forEach((s,i)=>{
+    s.trig.forEach((t,j)=>{ if(t.k)h+=`<rect class="ws" x="${TX(s.t)-3.5}" y="${20+j*11}" width="7" height="7" rx="1.5"><title>${KN[t.k]} → ${t.v?"TRUE":"FALSE"} (${t.src})</title></rect>`;});
+    if(s.co)h+=`<text class="co" x="${TX(s.t)+6}" y="30">×2</text>`;
+    h+=`<g class="snap" data-s="${i}"><rect class="hit" x="${TX(s.t)-11}" y="40" width="22" height="34"></rect>
+        <rect class="rp ${i===S.snap?"sel":""}" x="${TX(s.t)-4.5}" y="53.5" width="9" height="9" transform="rotate(45 ${TX(s.t)} 58)"><title>Replan #${i+1} @ ${s.lbl}</title></rect></g>`;
+  });
+  h+=`</svg>`;
+  $("tlHost").innerHTML=h;
+  document.querySelectorAll(".snap").forEach(el=>el.addEventListener("click",()=>setSnap(+el.dataset.s)));
+  $("snapBtns").innerHTML=SNAPS.map((s,i)=>`<button class="snapbtn ${i===S.snap?"on":""}" data-s="${i}">#${i+1} · ${s.lbl}</button>`).join(" ");
+  document.querySelectorAll(".snapbtn").forEach(b=>b.addEventListener("click",()=>setSnap(+b.dataset.s)));
+}
+function planName(steps,sub){
+  if(!steps.length)return"(empty)";
+  return steps.map(a=>a.id==="AttackEnemy"&&sub.steps.length?`Attack Enemy ▸ ${sub.steps[0].nm}`:a.nm).join(" → ");
+}
+function rDiff(C){
+  const s=SNAPS[S.snap];
+  let oldTxt="—",oldCost=null;
+  if(S.snap>0){
+    const pw={};KEYS.forEach(k=>pw[k.id]=!!SNAPS[S.snap-1].ws[k.id]);
+    const pt=planFor(pw,TOP,GOAL,S.costs),ps=planFor(pw,SUB,GOAL,S.costs);
+    oldTxt=planName(pt.steps,ps);oldCost=pt.cost+(pt.steps.some(a=>a.id==="AttackEnemy")?ps.cost-1:0);
+  }
+  const newCost=C.top.cost+(C.attackInPlan&&C.sub.steps.length?C.sub.cost-1:0);
+  const trig=s.trig.map(t=>t.k?`<b>${KN[t.k]} → ${t.v?"TRUE":"FALSE"}</b> <span class="muted">(${t.src})</span>`:`<b>${t.txt}</b>`).join(" · ");
+  const d=oldCost==null?null:newCost-oldCost;
+  $("diff").innerHTML=`
+    <div class="trg">Replan <b>#${S.snap+1}</b> @ ${s.lbl} — trigger: ${trig}${s.co?' · <span class="muted">2 changes coalesced into one replan (min-interval window)</span>':""} · <span class="muted">policy: on world-state change</span></div>
+    <div class="row"><span class="tag">old</span><span class="muted">${esc(oldTxt)}</span>${oldCost!=null?`<span class="cost num muted">${oldCost.toFixed(1)}</span>`:""}</div>
+    <div class="row"><span class="tag">new</span><b>${esc(planName(C.top.steps,C.sub))}</b><span class="cost num">${newCost.toFixed(1)}</span></div>
+    ${d!=null&&d!==0?`<div class="delta ${d<0?"save":"spend"}">${d<0?"▼":"▲"} ${Math.abs(d).toFixed(1)} ${d<0?"cheaper":"more expensive"}</div>`:""}`;
+}
+function rLog(){
+  let rows=[];
+  SNAPS.forEach((s,i)=>{
+    s.trig.forEach(t=>{ if(t.k)rows.push({t:s.t,i,ic:"WS",cls:"wsic",txt:`${KN[t.k]} → ${t.v?"TRUE":"FALSE"} (${t.src})`}); });
+    const pw={};KEYS.forEach(k=>pw[k.id]=!!s.ws[k.id]);
+    const pt=planFor(pw,TOP,GOAL,S.costs),ps=planFor(pw,SUB,GOAL,S.costs);
+    rows.push({t:s.t+.1,i,ic:"RP",cls:"rp",txt:i===0?"Plan #1 (plan-on-start): "+planName(pt.steps,ps):"Replan #"+(i+1)+" → "+planName(pt.steps,ps)});
+    rows.push({t:s.t+.15,i,ic:"SIG",cls:"sig",txt:`OnPlanComplete — cost ${(pt.cost+(pt.steps.some(a=>a.id==="AttackEnemy")?ps.cost-1:0)).toFixed(1)}`});
+    if(i===3)rows.push({t:s.t+.2,i,ic:"SIG",cls:"sig",txt:"OnPlannerActivated — Attack Enemy (sub-planner)"});
+    if(i===4)rows.push({t:s.t+.2,i,ic:"SIG",cls:"sig",txt:"OnActiveChainChanged — leaf: Attack Open → Attack From Flank"});
+  });
+  $("evlog").innerHTML=rows.map(r=>`<div class="ev ${r.i===S.snap?"sel":""}" data-s="${r.i}">
+    <span class="t num">${r.t.toFixed(1)}s</span><span class="ic ${r.cls}">${r.ic}</span><span>${esc(r.txt)}</span></div>`).join("");
+  document.querySelectorAll(".ev").forEach(e=>e.addEventListener("click",()=>setSnap(+e.dataset.s)));
+}
+
+/* ---- render: squad ---- */
+function spark(pts){
+  const p=pts.map((v,i)=>`${i*9},${18-v*3.2}`).join(" ");
+  const last=pts[pts.length-1];
+  return `<svg class="spark" width="96" height="20" viewBox="0 0 96 20"><polyline points="${p}"/><circle cx="${(pts.length-1)*9}" cy="${18-last*3.2}" r="2.2"/></svg>`;
+}
+function rSquad(C){
+  const me=planName(C.top.steps,C.sub);
+  const rows=[
+   {av:"R1",nm:"Replica Soldier 01",pl:"FEAR Combatant",st:'<span class="pill found"><span class="d"></span>Plan Found</span>',
+    ch:"Wait For Enemy",cost:"999.0",at:"7",sp:[0,1,0,0,1,0,0,2,1,0,1],al:'<span class="alerttag warn">fallback 12s</span>'},
+   {av:"R3",nm:"Replica Soldier 03",pl:"FEAR Combatant",me:true,st:'<span class="pill found"><span class="d"></span>Plan Found</span>',
+    ch:me,cost:(C.top.cost+(C.attackInPlan&&C.sub.steps.length?C.sub.cost-1:0)).toFixed(1),at:String(S.snap+1),sp:[0,0,1,0,0,1,2,1,1,1,1],al:""},
+   {av:"H2",nm:"Replica Heavy 02",pl:"FEAR Combatant",st:'<span class="pill plan"><span class="d"></span>Planning…</span>',
+    ch:'<span class="muted">searching — sub-planners gated (PlanInFlight)</span>',cost:"—",at:"3",sp:[1,0,0,1,0,0,0,1,0,0,1],al:""},
+   {av:"T7",nm:"Turret 07",pl:"Sentry",st:'<span class="pill off"><span class="d"></span>Disabled</span>',
+    ch:'<span class="muted">planner disabled — skips planning &amp; activation</span>',cost:"—",at:"0",sp:[0,0,0,0,0,0,0,0,0,0,0],al:""},
+   {av:"TB",nm:"MakeTea TestBot",pl:"Kitchen",st:'<span class="pill fail"><span class="d"></span>Plan Failed</span>',
+    ch:'<span class="muted">no path to goal — test catalog, AllowPlanFailed = true</span>',cost:"—",at:"11",sp:[2,3,2,4,3,2,4,3,4,4,5],al:'<span class="alerttag bad">no fallback</span>'},
+   {av:"EG",nm:"Empire Governor",pl:"Strategic",st:'<span class="pill thresh"><span class="d"></span>Cost Threshold</span>',
+    ch:'<span class="muted">best plan 9.5 &gt; threshold 8.0 — declined</span>',cost:"—",at:"2",sp:[0,0,1,0,0,0,1,0,0,1,0],al:'<span class="alerttag warn">threshold</span>'}];
+  $("sqBody").innerHTML=rows.map(r=>`<tr class="${r.me?"me":""}">
+    <td><span class="agentcell"><span class="mini-av">${r.av}</span>${r.nm}</span></td>
+    <td class="mono" style="font-size:11px">${r.pl}</td><td>${r.st}</td>
+    <td>${r.ch}</td><td class="num" style="text-align:right">${r.cost}</td><td class="num" style="text-align:right">${r.at}</td>
+    <td>${spark(r.sp)}</td><td>${r.al}</td>
+    <td>${r.me?'<button class="inspectlink" data-go="inspector">Inspect ▸</button>':""}</td></tr>`).join("");
+  const go=document.querySelector("[data-go]");if(go)go.onclick=()=>showTab("inspector");
+}
+
+/* ---- render: catalog ---- */
+function acard(a,tier){
+  return `<div class="acard">
+    <div class="top"><span class="nm">${a.comp?"◆● ":"● "}${a.nm}</span>${costCtl(a)}
+      ${a.comp?'<span class="badge comp">sub-planner</span>':""}${a.fb?'<span class="badge fb">fallback</span>':""}
+      ${a.prov?'<span class="badge prov">cost provider</span>':""}
+      <span class="spacer"></span><button class="tbtn" style="padding:2px 7px" title="AddAction / Request_RemoveAction — runtime catalog mutation (new actions need 1–3 frames of CDO extraction before the next Request_Plan)">⋯</button></div>
+    <div class="cls">UCk_GoapFEARGym_${a.id} · tag Goap.Action.${a.id}</div>
+    <div class="conds">${Object.entries(a.pre).map(([k,v])=>condChip(k,v,effWS())).join("")||'<span class="chip"><span class="st" style="background:var(--ok)"></span>no preconditions</span>'}${Object.entries(a.eff).map(([k,v])=>effChip(k,v)).join("")}</div>
+  </div>`;
+}
+function rCatalog(C){
+  $("cat-top").innerHTML=TOP.map(a=>acard(a,"top")).join("");
+  $("cat-sub").innerHTML=SUB.map(a=>acard(a,"sub")).join("");
+  const act=new Set(C.chain.map(a=>a.id));
+  let h=`<table class="matrix"><tr><th></th>${ALL.map(a=>`<th class="rot ${act.has(a.id)?"hl":""}"><div>${a.nm}</div></th>`).join("")}</tr>`;
+  KEYS.forEach(k=>{
+    h+=`<tr><td class="rowkey ${S.hi===k.id?"hl":""}" data-k="${k.id}">${k.nm}${GOAL[k.id]!==undefined?' <span class="badge comp" style="font-size:8px">goal</span>':""}</td>`;
+    ALL.forEach(a=>{
+      const p=a.pre[k.id]!==undefined,e=a.eff[k.id]!==undefined;
+      h+=`<td class="${p?"P":e?"E":""} ${S.hi===k.id&&(p||e)?"hl":""}">${p?"P":e?"E":""}</td>`;
+    });
+    h+=`</tr>`;
+  });
+  $("matrixHost").innerHTML=h+"</table>";
+}
+
+/* ---- master render ---- */
+function render(){
+  const C=compute();
+  rChain(C);rGoal(C);rPlan(C);rDecision(C);rGraph(C);rSearch(C);rWS(C);rAlerts(C);rNerd(C);rDiff(C);rLog();rSquad(C);rCatalog(C);
+  document.querySelectorAll(".rp").forEach((r,i)=>r.classList.toggle("sel",i===S.snap));
+  document.querySelectorAll(".snapbtn").forEach(b=>b.classList.toggle("on",+b.dataset.s===S.snap));
+  $("liveLbl").textContent=S.snap===SNAPS.length-1?"LIVE":"PAUSED @ "+SNAPS[S.snap].lbl;
+  document.querySelector("#btnLive").classList.toggle("live",S.snap===SNAPS.length-1);
+  wire();
+}
+function setSnap(i){S.snap=Math.max(0,Math.min(SNAPS.length-1,i));render();}
+
+/* ---- wiring (delegated after each render) ---- */
+function wire(){
+  document.querySelectorAll("[data-k]").forEach(el=>el.onclick=ev=>{
+    ev.stopPropagation();
+    const k=el.dataset.k;S.hi=S.hi===k?null:k;render();
+  });
+  document.querySelectorAll(".vpill[data-v]").forEach(el=>{
+    const act=ev=>{ev.stopPropagation();if(!S.sandbox)return;
+      const k=el.dataset.v;const cur=effWS()[k];
+      const nv=!cur;
+      if(baseWS()[k]===nv)delete S.ovr[k];else S.ovr[k]=nv;
+      render();};
+    el.onclick=act;
+    el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();act(e);}};
+  });
+  document.querySelectorAll(".costctl button").forEach(b=>b.onclick=ev=>{
+    ev.stopPropagation();
+    const id=b.dataset.c;const a=ALL.find(x=>x.id===id);
+    const cur=S.costs[id]!=null?S.costs[id]:a.cost;
+    let nv=Math.max(0,Math.round((cur+(+b.dataset.d)*0.5)*10)/10);
+    if(nv===a.cost)delete S.costs[id];else S.costs[id]=nv;
+    render();
+  });
+  const rc=$("resetCosts");if(rc)rc.onclick=()=>{S.costs={};render();};
+  const ct=$("clrTrace");if(ct)ct.onclick=()=>{S.hi=null;render();};
+}
+
+/* top tabs */
+function showTab(v){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.v===v));
+  document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v));
+}
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>showTab(t.dataset.v)));
+/* center tabs */
+document.querySelectorAll(".ctab").forEach(t=>t.addEventListener("click",()=>{
+  S.ctab=t.dataset.c;
+  document.querySelectorAll(".ctab").forEach(x=>x.classList.toggle("on",x===t));
+  document.querySelectorAll(".cview").forEach(x=>x.classList.toggle("on",x.id==="c-"+t.dataset.c));
+}));
+/* transport */
+$("stepBack").onclick=()=>setSnap(S.snap-1);
+$("stepFwd").onclick=()=>setSnap(S.snap+1);
+$("btnLive").onclick=()=>setSnap(SNAPS.length-1);
+$("btnReplan").onclick=()=>{render();};
+/* nerd */
+$("nerdTgl").addEventListener("change",e=>{
+  $("app").classList.toggle("nerd-on",e.target.checked);
+  if(!e.target.checked&&S.ctab==="search"){document.querySelector('[data-c="decision"]').click();}
+});
+/* sandbox */
+const sT=$("sandTgl");
+function setSand(on){S.sandbox=on;sT.classList.toggle("on",on);sT.setAttribute("aria-checked",on);if(!on){S.ovr={};}render();}
+sT.onclick=()=>setSand(!S.sandbox);
+sT.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setSand(!S.sandbox);}};
+
+buildTimeline();
+render();
+</script>

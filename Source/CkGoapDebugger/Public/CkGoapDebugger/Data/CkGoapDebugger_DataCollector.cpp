@@ -443,6 +443,13 @@ namespace ck_goap_debugger_data_collector_internal
             Info.PlannerTag = Params.Get_PlannerTag();
             Info.EnableToggle = Params.Get_InitialToggle();
             Info.AllowPlanFailed = Params.Get_AllowPlanFailed();
+
+            // Settings drawer block.
+            Info.ReplanPolicy             = Params.Get_ReplanPolicy();
+            Info.MinReplanIntervalSeconds = Params.Get_MinReplanIntervalSeconds();
+            Info.SearchBudgetMicroseconds = Params.Get_SearchBudgetMicroseconds();
+            Info.CostThreshold            = Params.Get_CostThreshold();
+            Info.PlanOnStart              = Params.Get_PlanOnStart();
         }
         if (Info.PlannerTag.IsValid())
         {
@@ -559,6 +566,22 @@ namespace ck_goap_debugger_data_collector_internal
             Info.WorldStateSourceLabel = UCk_Utils_Handle_UE::Get_DebugName(WsForDisplay).ToString();
         }
 
+        // ---- Last-replan diagnostics + search stats (P3 hooks) ---------------------
+        if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_ReplanCause>())
+        {
+            Info.LastReplanCause = CanonicalHandle.Get<ck::FFragment_Goap_Planner_ReplanCause>().Get_Info();
+        }
+
+        Info.SearchStats = UCk_Utils_Goap_Planner_UE::Get_LastSearchStats(InPlannerHandle);
+        Info.SearchDebug = UCk_Utils_Goap_Planner_UE::Get_LastSearchDebug(InPlannerHandle);
+
+        if (ck::IsValid(WsForDisplay) &&
+            WsForDisplay.Has<ck::FFragment_Goap_WorldState_ChangeLog>())
+        {
+            Info.RecentWorldStateChanges =
+                WsForDisplay.Get<ck::FFragment_Goap_WorldState_ChangeLog>().Get_Entries();
+        }
+
         // ---- Goal (canonical entity) -----------------------------------------------
         if (CanonicalHandle.Has<ck::FFragment_Goap_Planner_Goal>())
         {
@@ -671,6 +694,38 @@ namespace ck_goap_debugger_data_collector_internal
                             InOutVisited);
                         Info.ChildPlanners.Add(MoveTemp(SubPlanner));
                     }
+                }
+            }
+        }
+
+        // ---- Per-key usage census over this planner's subtree ----------------------
+        // X = precondition/goal reads, Y = effect writes. Children were built
+        // above, so fold their maps up and add this tier's contributions.
+        {
+            const auto Bump = [&Info](const FGameplayTag& InKey, int32 InPreDelta, int32 InEffDelta)
+            {
+                if (NOT InKey.IsValid()) { return; }
+                auto& Usage = Info.KeyUsage.FindOrAdd(InKey);
+                Usage.X += InPreDelta;
+                Usage.Y += InEffDelta;
+            };
+
+            for (const auto& Goal : Info.GoalAuthored)
+            { Bump(Goal.Get_Key(), 1, 0); }
+
+            for (const auto& Child : Info.ChildActions)
+            {
+                for (const auto& Pre : Child.Preconditions) { Bump(Pre.Key, 1, 0); }
+                for (const auto& Eff : Child.Effects)       { Bump(Eff.Key, 0, 1); }
+            }
+
+            for (const auto& ChildPlanner : Info.ChildPlanners)
+            {
+                for (const auto& [Key, Usage] : ChildPlanner.KeyUsage)
+                {
+                    auto& Merged = Info.KeyUsage.FindOrAdd(Key);
+                    Merged.X += Usage.X;
+                    Merged.Y += Usage.Y;
                 }
             }
         }
@@ -837,6 +892,11 @@ namespace ck_goap_debugger_data_collector_internal
         Snapshot.GoapHandle   = InGoapHandle;
         Snapshot.DebugName    = UCk_Utils_Handle_UE::Get_DebugName(InEntityHandle).ToString();
 
+        // CDO-named entities (Add-style gym stations) carry UE's "Default__"
+        // marker — pure noise on every display surface (agent card, pickers,
+        // squad rows).
+        Snapshot.DebugName.RemoveFromStart(TEXT("Default__"));
+
         if (Snapshot.DebugName.IsEmpty())
         {
             Snapshot.DebugName = TEXT("(unnamed)");
@@ -845,40 +905,48 @@ namespace ck_goap_debugger_data_collector_internal
         Snapshot.FrameNumber      = static_cast<int64>(GFrameCounter);
         Snapshot.WorldTimeSeconds = (InWorld != nullptr) ? InWorld->GetTimeSeconds() : 0.0;
 
-        // Enumerate Planners from the private record-of-planners.
+        // Enumerate top-level Planners from BOTH installation paradigms:
+        //   - Add:    the owner entity ITSELF carries the Planner role (the Add
+        //             path never writes a record entry).
+        //   - Create: child Planner entities registered in the owner's private
+        //             record-of-planners.
         // Each top-level Planner contributes ONE PlannerInfo (new shape) AND ONE
         // legacy ActionSetInfo (shim).
         auto MutableOwner = InEntityHandle;
+
+        const auto AppendTopLevelPlanner = [&Snapshot, InPrevSnapshot](FCk_Handle_Goap_Planner InPlanner)
+        {
+            if (NOT ck::IsValid(InPlanner)) { return; }
+
+            // New shape (spec §2.1). Top-level Planners have invalid ParentPlanner
+            // by construction. Build the full recursive tree with WS-prev linkage
+            // so recently-changed markers carry across frames.
+            auto ActiveChain = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(InPlanner);
+
+            auto ChainDepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
+            for (auto Idx = 0; Idx < ActiveChain.Num(); ++Idx)
+            { ChainDepthByHandle.Add(ActiveChain[Idx], Idx); }
+
+            auto Visited = TSet<FCk_Handle_Goap_Planner>{};
+            auto PlannerInfo = BuildPlannerInfo_Recursive(
+                InPlanner,
+                FCk_Handle_Goap_Planner{},
+                ActiveChain,
+                ChainDepthByHandle,
+                InPrevSnapshot,
+                Snapshot.FrameNumber,
+                Visited);
+            Snapshot.TopLevelPlanners.Add(MoveTemp(PlannerInfo));
+
+            // Legacy shim — synthesize ActionSetInfo for the existing widgets.
+            auto AsInfo = BuildActionSetInfo(InPlanner, InPrevSnapshot, Snapshot.FrameNumber);
+            Snapshot.ActionSets.Add(MoveTemp(AsInfo));
+        };
+
+        AppendTopLevelPlanner(UCk_Utils_Goap_Planner_UE::Cast(MutableOwner));
+
         ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
-            MutableOwner,
-            [&Snapshot, InPrevSnapshot](FCk_Handle_Goap_Planner InPlanner)
-            {
-                if (NOT ck::IsValid(InPlanner)) { return; }
-
-                // New shape (spec §2.1). Top-level Planners have invalid ParentPlanner
-                // by construction. Build the full recursive tree with WS-prev linkage
-                // so recently-changed markers carry across frames.
-                auto ActiveChain = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(InPlanner);
-
-                auto ChainDepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
-                for (auto Idx = 0; Idx < ActiveChain.Num(); ++Idx)
-                { ChainDepthByHandle.Add(ActiveChain[Idx], Idx); }
-
-                auto Visited = TSet<FCk_Handle_Goap_Planner>{};
-                auto PlannerInfo = BuildPlannerInfo_Recursive(
-                    InPlanner,
-                    FCk_Handle_Goap_Planner{},
-                    ActiveChain,
-                    ChainDepthByHandle,
-                    InPrevSnapshot,
-                    Snapshot.FrameNumber,
-                    Visited);
-                Snapshot.TopLevelPlanners.Add(MoveTemp(PlannerInfo));
-
-                // Legacy shim — synthesize ActionSetInfo for the existing widgets.
-                auto AsInfo = BuildActionSetInfo(InPlanner, InPrevSnapshot, Snapshot.FrameNumber);
-                Snapshot.ActionSets.Add(MoveTemp(AsInfo));
-            });
+            MutableOwner, AppendTopLevelPlanner);
 
         return Snapshot;
     }
@@ -1059,6 +1127,97 @@ namespace ck_goap_debugger_data_collector_internal
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
             }
         }
+
+        // ---- New-shape events: replans (with cause) + world-state changes ------
+        // Walked over the TopLevelPlanners forest. WS changes are deduped by
+        // (key, frame) because sibling planners can share one WorldState.
+        {
+            auto SeenWsChanges = TSet<TPair<FGameplayTag, int64>>{};
+
+            const auto FindActionSetSnapshot =
+                [&InCurrent](const FCk_Handle_Goap_Planner& InTopLevel) -> TSharedPtr<FCkGoapDebugger_ActionSetInfo>
+                {
+                    const auto* Found = InCurrent.ActionSets.FindByPredicate(
+                        [&InTopLevel](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == InTopLevel; });
+                    if (Found == nullptr) { return nullptr; }
+                    return MakeShared<FCkGoapDebugger_ActionSetInfo>(*Found);
+                };
+
+            const auto FindPrevPlanner =
+                [InPrev](const FCk_Handle_Goap_Planner& InHandle) -> const FCkGoapDebugger_PlannerInfo*
+                {
+                    if (InPrev == nullptr) { return nullptr; }
+                    auto Walk = [&](auto& InSelf, const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners)
+                        -> const FCkGoapDebugger_PlannerInfo*
+                    {
+                        for (const auto& P : InPlanners)
+                        {
+                            if (P.PlannerHandle == InHandle) { return &P; }
+                            if (const auto* Found = InSelf(InSelf, P.ChildPlanners)) { return Found; }
+                        }
+                        return nullptr;
+                    };
+                    return Walk(Walk, InPrev->TopLevelPlanners);
+                };
+
+            auto EmitForPlanner =
+                [&](auto& InSelf, const FCkGoapDebugger_PlannerInfo& InPlanner,
+                    const FCk_Handle_Goap_Planner& InTopLevelHandle) -> void
+            {
+                const auto* PrevPlanner = FindPrevPlanner(InPlanner.PlannerHandle);
+
+                // Replanned — attempt counter advanced past the previous tick.
+                if (PrevPlanner != nullptr && InPlanner.PlanAttemptCount > PrevPlanner->PlanAttemptCount)
+                {
+                    auto Event = FCkGoapDebugger_HistoryEvent{};
+                    Event.Kind             = ECkGoapDebugger_HistoryEventKind::Replanned;
+                    Event.ActionSetHandle  = InTopLevelHandle;
+                    Event.WorldTimeSeconds = InWorldTime;
+                    Event.FrameNumber      = InFrame;
+                    Event.CauseAtEvent     = InPlanner.LastReplanCause;
+
+                    const auto ChangedCount = InPlanner.LastReplanCause.Get_ChangedKeys().Num();
+                    Event.Title = FString::Printf(TEXT("Replan #%d: %s"),
+                        InPlanner.PlanAttemptCount, *InPlanner.DisplayName);
+                    Event.Meta = ChangedCount > 1
+                        ? FString::Printf(TEXT("%d changes coalesced"), ChangedCount)
+                        : FString{};
+
+                    Event.SnapshotAtEvent = FindActionSetSnapshot(InTopLevelHandle);
+                    PushHistoryEvent(InEntityHandle, MoveTemp(Event));
+                }
+
+                // World-state changes recorded since the previous snapshot frame.
+                const auto PrevFrame = (InPrev != nullptr) ? InPrev->FrameNumber : 0;
+                for (const auto& Change : InPlanner.RecentWorldStateChanges)
+                {
+                    if (Change.Get_FrameNumber() <= PrevFrame) { continue; }
+
+                    const auto DedupKey = TPair<FGameplayTag, int64>{Change.Get_Key(), Change.Get_FrameNumber()};
+                    if (SeenWsChanges.Contains(DedupKey)) { continue; }
+                    SeenWsChanges.Add(DedupKey);
+
+                    auto Event = FCkGoapDebugger_HistoryEvent{};
+                    Event.Kind             = ECkGoapDebugger_HistoryEventKind::WorldStateChanged;
+                    Event.ActionSetHandle  = InTopLevelHandle;
+                    Event.WorldTimeSeconds = InWorldTime;
+                    Event.FrameNumber      = Change.Get_FrameNumber();
+                    Event.WorldStateChangeAtEvent = Change;
+                    Event.Title = FString::Printf(TEXT("%s -> %s"),
+                        *Change.Get_Key().ToString(),
+                        Change.Get_NewValue() ? TEXT("TRUE") : TEXT("FALSE"));
+
+                    Event.SnapshotAtEvent = FindActionSetSnapshot(InTopLevelHandle);
+                    PushHistoryEvent(InEntityHandle, MoveTemp(Event));
+                }
+
+                for (const auto& Child : InPlanner.ChildPlanners)
+                { InSelf(InSelf, Child, InTopLevelHandle); }
+            };
+
+            for (const auto& TopLevel : InCurrent.TopLevelPlanners)
+            { EmitForPlanner(EmitForPlanner, TopLevel, TopLevel.PlannerHandle); }
+        }
     }
 } // namespace ck_goap_debugger_data_collector_internal
 
@@ -1133,47 +1292,86 @@ auto
     // entries whose entities have been destroyed.
     auto SeenThisPass = TSet<FCk_Handle>{};
 
-    // U11.7-A: An owner entity holds FFragment_RecordOfGoapPlanners whose entries
-    // are the typesafe FCk_Handle_Goap_Planner sub-entities. Iterate those owners,
-    // build a snapshot for the owner with its forest of top-level Planners.
+    // Planner entities registered in SOME owner's record (Create-style children).
+    // Collected during the record pass so the Planner-role pass below can tell
+    // an Add-style owner (snapshot it) from a Create-style child (already
+    // covered by its owning entity's snapshot).
+    auto RecordRegisteredPlanners = TSet<FCk_Handle>{};
+
+    const auto SnapshotOwner = [&Out, &SeenThisPass, InWorld](
+        const FCk_Handle& InOwnerHandle,
+        const FCk_Handle_Goap_Planner& InFirstPlanner)
+    {
+        const auto* PrevSnapshot = GPrevSnapshotByEntity.Find(InOwnerHandle);
+
+        auto Snapshot = BuildEntitySnapshot(InOwnerHandle, InFirstPlanner, InWorld, PrevSnapshot);
+
+        DetectAndPushEvents(
+            InOwnerHandle,
+            Snapshot,
+            PrevSnapshot,
+            Snapshot.WorldTimeSeconds,
+            Snapshot.FrameNumber);
+
+        SeenThisPass.Add(InOwnerHandle);
+        GPrevSnapshotByEntity.Add(InOwnerHandle, Snapshot);
+
+        Out.Add(MoveTemp(Snapshot));
+    };
+
+    // U11.7-A: Create-style owners — an owner entity holds
+    // FFragment_RecordOfGoapPlanners whose entries are the typesafe
+    // FCk_Handle_Goap_Planner sub-entities. Iterate those owners, build a
+    // snapshot for the owner with its forest of top-level Planners.
     TransientEntity.View<ck::FFragment_RecordOfGoapPlanners>().ForEach(
-        [&Out, &SeenThisPass, &TransientEntity, InWorld](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
+        [&SnapshotOwner, &RecordRegisteredPlanners, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
         {
             const auto OwnerHandle = ck::MakeHandle(InEntity, TransientEntity);
             if (NOT ck::IsValid(OwnerHandle)) { return; }
 
-            const auto* PrevSnapshot = GPrevSnapshotByEntity.Find(OwnerHandle);
+            // GoapHandle is the first valid Planner on the owner — self-role
+            // first (Add), then record entries (Create) — kept as a legacy
+            // field on the snapshot for widgets that still rely on it as a
+            // stable per-entity identifier. Mirrors BuildEntitySnapshot's
+            // TopLevelPlanners ordering.
+            auto FirstPlannerHandle = UCk_Utils_Goap_Planner_UE::Cast(OwnerHandle);
 
-            // GoapHandle is the first valid Planner in the owner's record — kept
-            // as a legacy field on the snapshot for widgets that still rely on
-            // it as a stable per-entity identifier.
-            auto FirstPlannerHandle = FCk_Handle_Goap_Planner{};
-            {
-                auto MutableOwner = OwnerHandle;
-                ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
-                    MutableOwner,
-                    [&FirstPlannerHandle](FCk_Handle_Goap_Planner InPlanner)
+            auto MutableOwner = OwnerHandle;
+            ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
+                MutableOwner,
+                [&FirstPlannerHandle, &RecordRegisteredPlanners](FCk_Handle_Goap_Planner InPlanner)
+                {
+                    if (NOT ck::IsValid(InPlanner)) { return; }
+
+                    RecordRegisteredPlanners.Add(static_cast<FCk_Handle>(InPlanner));
+
+                    if (NOT ck::IsValid(FirstPlannerHandle))
                     {
-                        if (NOT ck::IsValid(FirstPlannerHandle) && ck::IsValid(InPlanner))
-                        {
-                            FirstPlannerHandle = InPlanner;
-                        }
-                    });
-            }
+                        FirstPlannerHandle = InPlanner;
+                    }
+                });
 
-            auto Snapshot = BuildEntitySnapshot(OwnerHandle, FirstPlannerHandle, InWorld, PrevSnapshot);
+            SnapshotOwner(OwnerHandle, FirstPlannerHandle);
+        });
 
-            DetectAndPushEvents(
-                OwnerHandle,
-                Snapshot,
-                PrevSnapshot,
-                Snapshot.WorldTimeSeconds,
-                Snapshot.FrameNumber);
+    // Add-style owners: the Planner role is stamped directly onto the owning
+    // entity and the Add path never writes a record entry, so the record view
+    // above cannot see these agents (every gym but Survival installs this way).
+    // Walk every Planner-role entity and snapshot the ones that are neither
+    // sub-nodes (Action role => leaf or promoted mid-tier under some Planner)
+    // nor Create-style children (already covered by their owner's snapshot).
+    TransientEntity.View<ck::FFragment_Goap_Planner_Params>().ForEach(
+        [&SnapshotOwner, &SeenThisPass, &RecordRegisteredPlanners, &TransientEntity](
+            FCk_Entity InEntity, const ck::FFragment_Goap_Planner_Params&)
+        {
+            const auto OwnerHandle = ck::MakeHandle(InEntity, TransientEntity);
+            if (NOT ck::IsValid(OwnerHandle)) { return; }
 
-            SeenThisPass.Add(OwnerHandle);
-            GPrevSnapshotByEntity.Add(OwnerHandle, Snapshot);
+            if (SeenThisPass.Contains(OwnerHandle)) { return; }
+            if (RecordRegisteredPlanners.Contains(OwnerHandle)) { return; }
+            if (OwnerHandle.Has<ck::FFragment_Goap_Action_Definition>()) { return; }
 
-            Out.Add(MoveTemp(Snapshot));
+            SnapshotOwner(OwnerHandle, UCk_Utils_Goap_Planner_UE::CastChecked(OwnerHandle));
         });
 
     // Prune entries for entities that no longer exist (destroyed since last tick).

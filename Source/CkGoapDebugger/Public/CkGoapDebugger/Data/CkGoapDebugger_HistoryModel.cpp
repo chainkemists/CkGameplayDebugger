@@ -28,6 +28,8 @@ namespace ck_goap_debugger_history_model
             case ECkGoapDebugger_HistoryEventKind::ActionSetEnabled:  return TEXT("ON");
             case ECkGoapDebugger_HistoryEventKind::ActionSetDisabled: return TEXT("OFF");
             case ECkGoapDebugger_HistoryEventKind::ChainActivated:    return TEXT("CHAIN");
+            case ECkGoapDebugger_HistoryEventKind::WorldStateChanged: return TEXT("WS");
+            case ECkGoapDebugger_HistoryEventKind::Replanned:         return TEXT("REPLAN");
         }
         return TEXT("?");
     }

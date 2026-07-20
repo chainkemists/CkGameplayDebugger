@@ -2,12 +2,19 @@
 
 #include "CkGoapDebugNode_Action.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
 #include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -154,7 +161,7 @@ auto
             .VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                    .Text(FText::FromString(FCkGoapDebugger_NameParams::ComputeDisplayName(Snap.ClassName, OwningDepth)))
+                    .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(Snap.ClassName, OwningDepth)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
@@ -176,11 +183,36 @@ auto
                     .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
             ];
 
+    // Role line — the mockup's "◆● ACTION+PLANNER / ● FALLBACK / ● ACTION"
+    // strip. Composite state and cost both mutate at runtime, so the whole
+    // line is live-bound (fallback = cost at/above the always-valid-plan
+    // convention floor).
+    auto RoleLine = SNew(STextBlock)
+        .Text(TAttribute<FText>::CreateLambda([WeakNode]()
+        {
+            const auto* Node = WeakNode.Get();
+            if (Node == nullptr) { return FText::GetEmpty(); }
+            if (Node->Get_IsComposite())
+            { return FText::FromString(TEXT("\x25C6\x25CF ACTION+PLANNER")); }
+            if (Node->Get_Snapshot().Cost >= ck_goap_debugger_decision_model::k_FallbackCostFloor)
+            { return FText::FromString(TEXT("\x25CF FALLBACK")); }
+            return FText::FromString(TEXT("\x25CF ACTION"));
+        }))
+        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+        .ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([WeakNode]() -> FSlateColor
+        {
+            const auto* Node = WeakNode.Get();
+            if (Node != nullptr &&
+                Node->Get_Snapshot().Cost >= ck_goap_debugger_decision_model::k_FallbackCostFloor)
+            { return FSlateColor(CkStyle::Warn()); }
+            return FSlateColor(CkStyle::TextMute());
+        }));
+
     // Composite bar — small purple "▸ leaf" strip just below the header.
     // ActionTag is a snapshot field (set on topology rebuild). Visibility is
     // bound live to Get_IsComposite() so that future per-tick flips don't
     // require widget recreation.
-    const auto CompositeText = FString::Printf(TEXT("\x25B8 %s"), *Compute_TagLeaf(Snap.ActionTag));
+    const auto CompositeText = FString::Printf(TEXT("\x203A %s"), *Compute_TagLeaf(Snap.ActionTag));
 
     auto CompositeBar = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -264,6 +296,10 @@ auto
 
                         + SVerticalBox::Slot()
                             .AutoHeight()
+                            [ RoleLine ]
+
+                        + SVerticalBox::Slot()
+                            .AutoHeight()
                             .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
                             [ CompositeBar ]
 
@@ -289,6 +325,28 @@ auto
                 .MinDesiredHeight(FCkGoapDebuggerStyle::GraphNode_MinHeight)
                 [
                     SNew(SOverlay)
+
+                        // Active-chain glow — the mockup's ".nd.on" accent halo.
+                        // 9-slice alpha-falloff brush tinted accent, drawn behind
+                        // the card and extended past its bounds; live-bound to
+                        // the in-plan flag UpdateRuntimeState maintains.
+                        + SOverlay::Slot()
+                            .HAlign(HAlign_Fill)
+                            .VAlign(VAlign_Fill)
+                            .Padding(FMargin(-10.0f))
+                            [
+                                SNew(SImage)
+                                    .Image(FCkDebuggerCommonStyle::Get_GlowTightBrush())
+                                    .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
+                                    .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
+                                    {
+                                        const auto* Node = WeakNode.Get();
+                                        if (Node == nullptr) { return EVisibility::Collapsed; }
+                                        return Node->Get_IsInPlan()
+                                            ? EVisibility::HitTestInvisible
+                                            : EVisibility::Collapsed;
+                                    }))
+                            ]
 
                         // Pin overlay — fills entire node so connection geometry attaches to the boundary.
                         + SOverlay::Slot()

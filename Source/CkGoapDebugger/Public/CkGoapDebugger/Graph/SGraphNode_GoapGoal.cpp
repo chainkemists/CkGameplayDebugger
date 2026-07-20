@@ -82,7 +82,7 @@ auto
     }
 
     auto Header = SNew(STextBlock)
-        .Text(FText::FromString(TEXT("\x2605 Goal")))   // ★ Goal
+        .Text(FText::FromString(TEXT("\x25C6 Goal")))   // ◆ Goal (★ tofus in the editor font)
         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
         .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected));
 

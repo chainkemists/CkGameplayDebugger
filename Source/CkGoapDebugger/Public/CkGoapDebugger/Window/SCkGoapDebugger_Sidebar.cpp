@@ -3,7 +3,7 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_HistoryModel.h"
-#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"   // FCkGoapDebugger_NameParams
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -932,10 +932,8 @@ auto
     if (InSelectInfo == ESelectInfo::Direct) { return; }
     if (NOT _ViewModel.IsValid() || NOT InItem.IsValid()) { return; }
 
-    // The new selection state is the Planner handle. We also synthesize the
-    // legacy Planner selection so the existing PrimaryPane / Breadcrumb /
-    // Graph (which still read SelectedActionSet) keep working until they get
-    // migrated in U11.7-C/D.
+    // The selection state is the Planner handle — every Mission Control pane
+    // (AgentColumn, Decision, Catalog, Graph, WS rail) reads SelectedActionSet.
     _ViewModel->SetSelectedActionSet(InItem->PlannerHandle);
 
     // Clear any stale Action selection — the new tree is Planner-only.
@@ -1190,7 +1188,7 @@ auto
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
-                                .Text(FText::FromString(FCkGoapDebugger_NameParams::ComputeDisplayName(InItem->PlannerName, Depth)))
+                                .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(InItem->PlannerName, Depth)))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                                 .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
                         ]
@@ -1202,9 +1200,9 @@ auto
     // ---- Collapsed flap-run row ------------------------------------------------------------------
     if (Row.IsFlap)
     {
-        const auto A    = FCkGoapDebugger_NameParams::ComputeDisplayName(Row.FlapActionA, Depth);
-        const auto B    = FCkGoapDebugger_NameParams::ComputeDisplayName(Row.FlapActionB, Depth);
-        const auto Body = FString::Printf(TEXT("%s  ⇄  %s   x%d"), *A, *B, Row.FlapCount);
+        const auto A    = SCkDebug_NameLabel::Get_ShortName(Row.FlapActionA, Depth);
+        const auto B    = SCkDebug_NameLabel::Get_ShortName(Row.FlapActionB, Depth);
+        const auto Body = FString::Printf(TEXT("%s  →  %s   x%d"), *A, *B, Row.FlapCount);
         const auto Span = FString::Printf(TEXT("%s–%s"),
             *FormatTimestamp_Sidebar(Row.FlapTStart), *FormatTimestamp_Sidebar(Row.FlapTEnd));
 
@@ -1236,7 +1234,7 @@ auto
     const auto& Ev = Row.Event;
     auto NameText = FString{};
     if (NOT Ev.ActionClassName.IsEmpty())
-    { NameText = FCkGoapDebugger_NameParams::ComputeDisplayName(Ev.ActionClassName, Depth); }
+    { NameText = SCkDebug_NameLabel::Get_ShortName(Ev.ActionClassName, Depth); }
     else
     { NameText = Ev.Title.IsEmpty() ? HistoryKindLabel_Sidebar(Ev.Kind) : Ev.Title; }
 

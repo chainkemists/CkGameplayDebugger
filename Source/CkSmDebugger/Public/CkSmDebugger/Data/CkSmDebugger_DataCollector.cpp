@@ -930,12 +930,19 @@ auto
 
     for (auto StateIdx = InScanFrom; StateIdx < OriginalStateCount; ++StateIdx)
     {
-        auto& State = InOutSmInfo.States[StateIdx];
-
-        if (NOT State.HasSubStateMachine)
+        if (NOT InOutSmInfo.States[StateIdx].HasSubStateMachine)
         { continue; }
 
-        for (auto& Task : State.Tasks)
+        // Snapshot by VALUE before merging: the States.Add calls below grow
+        // InOutSmInfo.States, which reallocates the array — a reference into
+        // it (and a ranged-for over that element's Tasks) dangles the moment
+        // the first sub-state lands. Caught live as the checked-iterator
+        // "Array has changed during ranged-for iteration" ensure (2026-07-19,
+        // Hier gym: sub-SM churn makes the merge append every collect).
+        const auto ParentStateName = InOutSmInfo.States[StateIdx].StateName;
+        const auto ParentTasks     = InOutSmInfo.States[StateIdx].Tasks;
+
+        for (const auto& Task : ParentTasks)
         {
             if (NOT Task.HasSubStateMachine)
             { continue; }
@@ -979,7 +986,7 @@ auto
             {
                 SubState.IsSubSmNode = true;
                 SubState.SubSmParentStateIndex = StateIdx;
-                SubState.SubSmParentStateName = State.StateName;
+                SubState.SubSmParentStateName = ParentStateName;
 
                 // Remap the state class to avoid collisions (sub-SM states have unique classes)
                 auto SubStateIndex = InOutSmInfo.States.Num();
@@ -999,7 +1006,7 @@ auto
             // Collect sub-SM history for later merge (after parent dwell-time computation)
             for (auto& SubEntry : SubSmInfo.History)
             {
-                SubEntry.SubSmParentStateName = State.StateName;
+                SubEntry.SubSmParentStateName = ParentStateName;
                 OutSubSmHistories.Add(MoveTemp(SubEntry));
             }
         }
@@ -1580,12 +1587,16 @@ auto
     // tick, re-add the cached states and transitions as historical entries.
     for (auto ParentIdx = 0; ParentIdx < InOutSmInfo.States.Num(); ++ParentIdx)
     {
-        auto& Parent = InOutSmInfo.States[ParentIdx];
-        if (NOT Parent.HasSubStateMachine) { continue; }
-        if (Parent.IsSubSmNode)            { continue; } // skip nested-parent edge case for now
-        if (InLiveMergedParentStateNames.Contains(Parent.StateName)) { continue; }
+        // No reference into States survives past this block — the Adds below
+        // reallocate the array (same dangling-reference class as the
+        // MergeSubStateMachines ensure; this site read pre-Add only, hardened
+        // to the same copy-first idiom so future edits can't regress it).
+        if (NOT InOutSmInfo.States[ParentIdx].HasSubStateMachine) { continue; }
+        if (InOutSmInfo.States[ParentIdx].IsSubSmNode)            { continue; } // skip nested-parent edge case for now
+        const auto ParentStateName = InOutSmInfo.States[ParentIdx].StateName;
+        if (InLiveMergedParentStateNames.Contains(ParentStateName)) { continue; }
 
-        auto* Cache = BySm->Find(Parent.StateName);
+        auto* Cache = BySm->Find(ParentStateName);
         if (NOT Cache || Cache->States.IsEmpty()) { continue; }
 
         // Capture index offset BEFORE adding any states so transition remap is

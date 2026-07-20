@@ -32,12 +32,13 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkInputDebugger"),
         TEXT("CkObjectPoolingDebugger"),
         TEXT("CkInsightsAnalyzerTab"),
+        TEXT("CkJoltDebugger"),
     };
 
     const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
     auto SeenOrderSlots = TSet<FString>{};
 
-    TestEqual(TEXT("Catalog contains the eleven standalone debugger tabs"), Tools.Num(), ExpectedTabIds.Num());
+    TestEqual(TEXT("Catalog contains the twelve standalone debugger tabs"), Tools.Num(), ExpectedTabIds.Num());
     TestTrue(TEXT("Launcher tab spawner is registered"),
         FGlobalTabmanager::Get()->HasTabSpawner(FCkDebuggerLauncherModule::LauncherTabName));
 

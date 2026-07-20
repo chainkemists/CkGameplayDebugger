@@ -67,6 +67,7 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
                 TEXT("Ck.OnScreenDebugger.Provider.StateMachine"),
                 TEXT("Ck.OnScreenDebugger.Provider.Goap"),
                 TEXT("Ck.OnScreenDebugger.Provider.Physics"),
+                TEXT("Ck.OnScreenDebugger.Provider.Jolt"),
                 TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
                 TEXT("Ck.OnScreenDebugger.Provider.ByteAttributes"),
@@ -125,6 +126,7 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
         {
             // EntityInfo removed — entity identity is now shown via SCkDebug_EntityRef in the card header.
             TEXT("Ck.OnScreenDebugger.Provider.Physics"),
+            TEXT("Ck.OnScreenDebugger.Provider.Jolt"),
             TEXT("Ck.OnScreenDebugger.Provider.OverlapBody"),
             TEXT("Ck.OnScreenDebugger.Provider.Shapes"),
             TEXT("Ck.OnScreenDebugger.Provider.Transform"),

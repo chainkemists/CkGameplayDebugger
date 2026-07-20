@@ -120,9 +120,9 @@ auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TShared
             if (ck::Is_NOT_Valid(CapturedFog)) { return FText::FromString(TEXT("--")); }
             const auto& Params = CapturedFog.Get<ck::FFragment_FogOfWar_Params>();
             const auto UpdateInterval = Params.Get_UpdateInterval();
-            return FText::FromString(UpdateInterval <= 0.0f
+            return FText::FromString(UpdateInterval <= FCk_Time::ZeroSecond()
                 ? TEXT("0 (every frame)")
-                : ck::Format_UE(TEXT("{:.2f}s"), UpdateInterval));
+                : ck::Format_UE(TEXT("{:.2f}s"), UpdateInterval.Get_Seconds()));
         },
         CkStyle::Value_Numeric());
 

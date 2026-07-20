@@ -22,24 +22,29 @@ enum class ECkGoapDebugger_WsSortMode : uint8
 };
 
 // ====================================================================================================================
-// SCkGoapDebugger_WorldStateRail — fixed-width right rail mirroring the
-// mockup's `.ws-rail` panel. Shows the resolved WorldState for the currently
+// SCkGoapDebugger_WorldStateRail — Mission Control's "World State" panel
+// (mockup RIGHT column). Shows the resolved WorldState for the currently
 // selected Action (or the selected Planner's WS as a fallback when no
 // specific Action is selected).
 //
 // Layout (top-to-bottom):
-//   - Header  : "WorldState · {WS_Label}"   { keys count }   (pane-head style)
+//   - Header  : SCkDebug_SectionHeader "WORLD STATE · what the agent believes"
+//               with the Sandbox switch as RightContent. Sandbox ON makes the
+//               value pills editable (flips go into the "DebugUI" override
+//               layer); switching OFF pops the layer — back to live truth.
 //   - Search  : SCkDebug_DualSearchBar (Filter narrows rows, Highlight dims
 //               non-matches) + a sort toggle (Name ⇄ TRUE-first). Lives in
 //               the fixed chrome so rebuilds never steal input focus.
-//   - Body    : scrollable list of key/value rows; each row optionally tinted
-//               with the "recently changed" amber background and prefixed by
-//               a star glyph.
-//   - Footer  : "★ = recently changed · {recent} of {total} keys"
+//   - Body    : override-layer stack (when non-empty) + one row per key:
+//               name · usage census "nP·mE" · [layer shadow badge]
+//               [just-changed chip] · SCkDebug_ValuePill. Row click traces
+//               the key across panes (ViewModel Set_TracedWsKey).
+//   - Footer  : "keys n / 64 · subscribers m" + the live trace hint.
 //
 // Rebuild strategy:
-//   - Cheap: each refresh clears the body VBox and re-populates.
-//     The WS list is small (~20 keys typical).
+//   - Cheap: each refresh clears the body VBox and re-populates (hash-gated).
+//     The WS list is small (~20 keys typical). Override/sandbox/trace visuals
+//     are TAttribute-bound so they track live without a rebuild.
 // ====================================================================================================================
 
 class CKGOAPDEBUGGER_API SCkGoapDebugger_WorldStateRail : public SCompoundWidget
@@ -55,20 +60,27 @@ public:
     // Called by the parent window on ViewModel::OnChanged.
     auto RefreshFromViewModel() -> void;
 
+    // Read by the window's alert strip — the sandbox banner shows as soon as
+    // the sandbox is ARMED, not only once a key is actually overridden.
+    auto Get_IsSandboxMode() const -> bool { return _SandboxMode; }
+
 private:
     // -----------------------------------------------------------------------------------------------------------------
     // Build helpers
     // -----------------------------------------------------------------------------------------------------------------
 
     auto BuildEmptyState() -> TSharedRef<SWidget>;
-    auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry, bool InHighlightDimmed) -> TSharedRef<SWidget>;
+    auto BuildHeader(const FString& InLabel) -> TSharedRef<SWidget>;
+    auto BuildKeyRow(const FCkGoapDebugger_WorldStateEntry& InEntry, bool InHighlightDimmed, FIntPoint InUsage) -> TSharedRef<SWidget>;
     auto BuildSearchAndSortBar() -> TSharedRef<SWidget>;
+    auto BuildFooter(int32 InKeyCount) -> TSharedRef<SWidget>;
 
-    // Override-stack inspector — appears above the key rows when one or more
-    // override layers are pushed onto the WS. Each layer is a clickable row
-    // with name + key count + Pop button; click the row to expand a per-key
-    // drilldown showing the keys the layer carries and their values.
-    auto BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs) -> TSharedRef<SWidget>;
+    // Override-stack inspector — always visible above the key rows (mockup
+    // "layerbox"): pushed layers top-of-stack first, then a permanent
+    // "base store" row. Each layer is a clickable row with name + key count +
+    // Pop button; click the row to expand a per-key drilldown showing the
+    // keys the layer carries and their values.
+    auto BuildOverrideLayersSection(const FCk_Handle_Goap_WorldState& InWs, int32 InBaseKeyCount) -> TSharedRef<SWidget>;
     auto BuildOverrideLayerRow(const FCk_Handle_Goap_WorldState& InWs, FName InLayerName) -> TSharedRef<SWidget>;
 
     // Resolve which WS list to show + the label/source. Returns false when no
@@ -78,20 +90,26 @@ private:
         FString& OutLabel) const -> bool;
 
     // -----------------------------------------------------------------------------------------------------------------
-    // Debug-override stack helpers
+    // Sandbox (debug-override) helpers
     //
-    // The rail acts as a hands-on shadow for `Goap.WorldState`. Each key row is
-    // clickable: click pushes a single-key override into the layer named
-    // "DebugUI" via `UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey`.
-    // Click again to flip back; a header "Reset" button pops the whole layer.
+    // The rail acts as a hands-on shadow for `Goap.WorldState`. With Sandbox
+    // ON, each row's value pill is editable: a flip pushes a single-key
+    // override into the layer named "DebugUI" via
+    // `UCk_Utils_Goap_WorldState_UE::Push_Override_SingleKey`. Switching
+    // Sandbox OFF pops the whole layer — live truth restored.
     //
     // The currently-shown WS handle is cached at refresh time (in
     // `_CurrentWorldState`) so click handlers and TAttribute-bound visuals can
     // touch the API without re-resolving from the ViewModel mid-event.
     // -----------------------------------------------------------------------------------------------------------------
 
-    auto HandleClick_ToggleKeyOverride(FGameplayTag InKey, bool InCurrentEffectiveValue) -> FReply;
+    // ValuePill OnToggled — pill payload first (delegate arg), key bound at build time.
+    auto HandlePillToggled(bool InNewValue, FGameplayTag InKey) -> void;
+    auto HandleSandboxToggled(bool InNewState) -> void;
     auto HandleClick_ResetDebugUiLayer() -> FReply;
+
+    // Row click — toggles the cross-pane key trace on the ViewModel.
+    auto HandleRowClicked_Trace(FGameplayTag InKey) -> FReply;
 
     // Generic per-layer Pop button — works for any named layer, not just DebugUI.
     auto HandleClick_PopLayer(FName InLayerName) -> FReply;
@@ -139,6 +157,11 @@ private:
     FString _FilterString;
     FString _HighlightString;
     ECkGoapDebugger_WsSortMode _SortMode = ECkGoapDebugger_WsSortMode::ByName;
+
+    // Sandbox mode — pills editable, flips go into the "DebugUI" layer.
+    // Deliberately NOT in the content hash: pill editability and tooltips are
+    // attribute-bound, so the toggle needs no rebuild.
+    bool _SandboxMode = false;
 };
 
 // ====================================================================================================================

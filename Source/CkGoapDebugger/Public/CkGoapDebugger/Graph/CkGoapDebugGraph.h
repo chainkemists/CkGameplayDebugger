@@ -34,42 +34,10 @@ class UCkGoapDebugNode_Goal;
 //     while the registry is still alive.
 // ====================================================================================================================
 
-// Display-name parameters for the action graph and every other site that
-// renders an EntityScript class name. Mirrors FCkSmLayoutParams::ComputeDisplayName
-// from CkSmDebugger so behaviour is identical between debuggers.
-//
-// Class names are of the form "Default__Ck_GoapGym_Patrol_GoToWaypoint_C" (CDO
-// outers) or "Ck_GoapGym_Patrol_GoToWaypoint_C" (plain class). Both the
-// "Default__" prefix and the trailing "_C" are stripped, then the remaining
-// underscore-separated segments are joined with "." with the last InDepth
-// segments kept. InDepth 0 means the full joined name.
-struct FCkGoapDebugger_NameParams
-{
-    // Class-name → display-name. Examples (depth 1 / 2):
-    //   "Ck_GoapGym_Patrol_GoToWaypoint_C"   → "GoToWaypoint" / "Patrol.GoToWaypoint"
-    //   "Default__Ck_GoapFEARGym_AttackEnemy" → "AttackEnemy" / "GoapFEARGym.AttackEnemy"
-    static auto ComputeDisplayName(const FString& InClassName, int32 InDepth) -> FString
-    {
-        auto Name = InClassName;
-        if (Name.StartsWith(TEXT("Default__"))) { Name = Name.RightChop(9); }
-        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
-
-        TArray<FString> Segments;
-        static const TCHAR* Delims[] = { TEXT("_"), TEXT(".") };
-        Name.ParseIntoArray(Segments, Delims, 2, true);
-
-        if (InDepth <= 0 || InDepth >= Segments.Num())
-        { return FString::Join(Segments, TEXT(".")); }
-
-        auto Result = FString{};
-        for (auto i = Segments.Num() - InDepth; i < Segments.Num(); ++i)
-        {
-            if (Result.Len() > 0) { Result += TEXT("."); }
-            Result += Segments[i];
-        }
-        return Result;
-    }
-};
+// Display-name shortening for the action graph — and every other site that
+// renders an EntityScript class name — lives in the shared
+// SCkDebug_NameLabel::Get_ShortName (CkDebuggerCommon): one shortener for
+// every debugger. This header used to own a local copy; it is gone.
 
 UCLASS()
 class CKGOAPDEBUGGER_API UCkGoapDebugGraph : public UEdGraph
@@ -137,7 +105,7 @@ public:
 
     // Display-name verbosity (0 = full joined name, 1 = leaf segment, 2 = last
     // two joined, ...). Read by every site that renders an action/planner class
-    // name through FCkGoapDebugger_NameParams::ComputeDisplayName. The graph
+    // name through SCkDebug_NameLabel::Get_ShortName. The graph
     // pane owns the live value and exposes it via Get_NameDepth so all panes
     // converge on one source of truth.
     int32 NameDepth = 1;

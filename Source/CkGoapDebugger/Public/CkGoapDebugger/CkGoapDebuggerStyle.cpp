@@ -15,27 +15,31 @@ TSharedPtr<FSlateStyleSet> FCkGoapDebuggerStyle::StyleInstance = nullptr;
 // constructing FLinearColor from FColor, so the resulting tones match the
 // mockup as it renders in a browser.
 
-const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Root            = FLinearColor(FColor::FromHex(TEXT("#0a0e17")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Panel           = FLinearColor(FColor::FromHex(TEXT("#0c1018")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Surface         = FLinearColor(FColor::FromHex(TEXT("#0f1520")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Black           = FLinearColor(FColor::FromHex(TEXT("#000000")));
+// Mission Control palette (P9 retune) — literal hexes on purpose: these run
+// at static-init, where the CkStyle settings-backed token functions are not
+// yet safe to call. Values mirror CkStyleSettings' defaults; legacy consumers
+// render the new look without per-call-site migration.
+const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Root            = FLinearColor(FColor::FromHex(TEXT("#14181F")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Panel           = FLinearColor(FColor::FromHex(TEXT("#1B212B")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Surface         = FLinearColor(FColor::FromHex(TEXT("#171C25")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Bg_Black           = FLinearColor(FColor::FromHex(TEXT("#10141B")));
 
-const FLinearColor FCkGoapDebuggerStyle::Color_Border_Subtle      = FLinearColor(FColor::FromHex(TEXT("#1a2332")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Border_Strong      = FLinearColor(FColor::FromHex(TEXT("#2a3342")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Border_Subtle      = FLinearColor(FColor::FromHex(TEXT("#222937")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Border_Strong      = FLinearColor(FColor::FromHex(TEXT("#2A3240")));
 
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Primary       = FLinearColor(FColor::FromHex(TEXT("#e0e0e0")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Secondary     = FLinearColor(FColor::FromHex(TEXT("#aaaaaa")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Muted         = FLinearColor(FColor::FromHex(TEXT("#888888")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Dim           = FLinearColor(FColor::FromHex(TEXT("#666666")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Faint         = FLinearColor(FColor::FromHex(TEXT("#555555")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Text_Ghost         = FLinearColor(FColor::FromHex(TEXT("#444444")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Primary       = FLinearColor(FColor::FromHex(TEXT("#E9EDF4")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Secondary     = FLinearColor(FColor::FromHex(TEXT("#94A0B3")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Muted         = FLinearColor(FColor::FromHex(TEXT("#7A8699")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Dim           = FLinearColor(FColor::FromHex(TEXT("#5D6980")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Faint         = FLinearColor(FColor::FromHex(TEXT("#4A5462")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Text_Ghost         = FLinearColor(FColor::FromHex(TEXT("#3A4250")));
 
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_PlanFound   = FLinearColor(FColor::FromHex(TEXT("#22c55e")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_Planning    = FLinearColor(FColor::FromHex(TEXT("#60a5fa")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_PlanningBdr = FLinearColor(FColor::FromHex(TEXT("#3b82f6")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_Failed      = FLinearColor(FColor::FromHex(TEXT("#ef4444")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_Selected    = FLinearColor(FColor::FromHex(TEXT("#f59e0b")));
-const FLinearColor FCkGoapDebuggerStyle::Color_Status_Composite   = FLinearColor(FColor::FromHex(TEXT("#a855f7")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_PlanFound   = FLinearColor(FColor::FromHex(TEXT("#46D08D")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_Planning    = FLinearColor(FColor::FromHex(TEXT("#54C6FF")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_PlanningBdr = FLinearColor(FColor::FromHex(TEXT("#3193CC")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_Failed      = FLinearColor(FColor::FromHex(TEXT("#F0637A")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_Selected    = FLinearColor(FColor::FromHex(TEXT("#F2B33D")));
+const FLinearColor FCkGoapDebuggerStyle::Color_Status_Composite   = FLinearColor(FColor::FromHex(TEXT("#B08AF5")));
 
 // ====================================================================================================================
 

@@ -10,10 +10,11 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **14-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 11 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
+- **16-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 13 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
   `CkUIDebugger`, `CkSchedulerDebugger`, `CkAStarDebugger`, `CkGoapDebugger`, `CkCrowdDebugger`,
-  `CkEqsDebugger`, `CkInputDebugger`, `CkObjectPoolingDebugger`, `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
+  `CkEqsDebugger`, `CkInputDebugger`, `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`,
+  `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
   (`CkDebugger.uplugin:160-164`). The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
 - **No AngelScript surface anywhere in this plugin** — no `Script/` dir, zero `.as` files

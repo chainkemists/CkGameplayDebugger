@@ -7,6 +7,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "SGraphPin.h"
@@ -57,7 +58,7 @@ auto
         if (auto* Graph = Cast<UCkSmDebugGraph>(_StateNode->GetGraph()))
         { NameDepth = Graph->LayoutParams.NameDepth; }
     }
-    auto StateName = FCkSmLayoutParams::ComputeDisplayName(FullName, NameDepth);
+    auto StateName = SCkDebug_NameLabel::Get_ShortName(FullName, NameDepth);
     auto PinPadding = FCkSmDebuggerStyle::Sm_PinPadding;
     auto BpStyle = _StateNode ? _StateNode->Get_BreakpointStyle() : 0;
 
@@ -803,7 +804,7 @@ auto
         auto TaskNameDepth = 1;
         if (auto* TaskGraph = Cast<UCkSmDebugGraph>(_StateNode->GetGraph()))
         { TaskNameDepth = TaskGraph->LayoutParams.NameDepth; }
-        auto ClassName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, TaskNameDepth);
+        auto ClassName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, TaskNameDepth);
 
         TaskBox->AddSlot()
             .AutoHeight()

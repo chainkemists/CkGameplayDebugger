@@ -1,6 +1,7 @@
 #include "CkDebuggerPage_Archetypes.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
@@ -296,10 +297,11 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         .BorderBackgroundColor(FSlateColor{AccentColor.CopyWithNewOpacity(0.15f)})
         .Padding(FMargin{5.0f})
         [
-            SNew(SImage)
-            .Image(IconBrush)
+            SNew(SCkDebug_Icon)
+            .Brush(IconBrush)
+            .Meaning(FText::FromString(InBucket.DisplayName))
             .ColorAndOpacity(AccentColor)
-            .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+            .Size(FVector2D(16.0f, 16.0f))
         ]
     ];
 
@@ -353,10 +355,11 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         .AutoWidth()
         .Padding(0.0f, 0.0f, 2.0f, 0.0f)
         [
-            SNew(SImage)
-            .Image(Brush)
+            SNew(SCkDebug_Icon)
+            .Brush(Brush)
+            .Meaning(FText::FromName(FeatureId))
             .ColorAndOpacity(Visual->Color)
-            .DesiredSizeOverride(FVector2D(11.0f, 11.0f))
+            .Size(FVector2D(11.0f, 11.0f))
         ];
         ++BadgeCount;
     }

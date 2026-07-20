@@ -8,6 +8,7 @@
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Node footprint estimation — mirrors the Slate construction in SGraphNode_SmState
@@ -21,14 +22,14 @@ static auto
         const FCkSmLayoutParams& InParams)
     -> float
 {
-    const auto Title = FCkSmLayoutParams::ComputeDisplayName(InState.StateName, InParams.NameDepth);
+    const auto Title = SCkDebug_NameLabel::Get_ShortName(InState.StateName, InParams.NameDepth);
     auto Width = FMath::Max(140.0f, Title.Len() * 7.5f + 40.0f);
 
     if (InParams.ExpandTasks)
     {
         for (const auto& Task : InState.Tasks)
         {
-            const auto TaskName = FCkSmLayoutParams::ComputeDisplayName(Task.ClassName, InParams.NameDepth);
+            const auto TaskName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, InParams.NameDepth);
             // status dot + name + optional TICK tag
             Width = FMath::Max(Width, TaskName.Len() * 6.5f + 64.0f);
         }
@@ -62,12 +63,8 @@ auto
         const auto* StateNode = Cast<UCkSmDebugNode_State>(NodePtr.Get());
         if (ck::Is_NOT_Valid(StateNode)) { continue; }
 
-        auto Name = StateNode->Get_StateName();
-        if (Name.EndsWith(TEXT("_C"))) { Name = Name.LeftChop(2); }
-
-        TArray<FString> Segments;
-        Name.ParseIntoArray(Segments, TEXT("_"), true);
-        MaxSegments = FMath::Max(MaxSegments, Segments.Num());
+        MaxSegments = FMath::Max(MaxSegments,
+            SCkDebug_NameLabel::Get_SegmentCount(StateNode->Get_StateName()));
     }
     return MaxSegments;
 }

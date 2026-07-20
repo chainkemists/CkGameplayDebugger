@@ -14,6 +14,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -166,8 +167,8 @@ auto
 
     const auto Depth   = _Graph ? _Graph->LayoutParams.NameDepth : 1;
     const auto Index   = _Items.IndexOfByKey(InItem);
-    const auto FromName = FCkSmLayoutParams::ComputeDisplayName(InItem->FromStateName, Depth);
-    const auto ToName   = FCkSmLayoutParams::ComputeDisplayName(InItem->ToStateName,   Depth);
+    const auto FromName = SCkDebug_NameLabel::Get_ShortName(InItem->FromStateName, Depth);
+    const auto ToName   = SCkDebug_NameLabel::Get_ShortName(InItem->ToStateName,   Depth);
 
     const auto FrameStr = FString::Printf(TEXT("#%llu"), InItem->FrameNumber);
     auto DeltaStr = FString{};
@@ -181,7 +182,7 @@ auto
     {
         auto Parts = TArray<FString>{};
         for (const auto& Name : InItem->ConditionNames)
-        { Parts.Add(FCkSmLayoutParams::ComputeDisplayName(Name, Depth)); }
+        { Parts.Add(SCkDebug_NameLabel::Get_ShortName(Name, Depth)); }
         CondStr = Parts.Num() > 0
             ? FString::Printf(TEXT("via %s"), *FString::Join(Parts, TEXT(", ")))
             : FString(TEXT("(unconditional)"));
@@ -347,7 +348,7 @@ auto
         }
 
         const auto DisplayName = InShortNames
-            ? FCkSmLayoutParams::ComputeDisplayName(Snap.TaskName, Depth)
+            ? SCkDebug_NameLabel::Get_ShortName(Snap.TaskName, Depth)
             : Snap.TaskName;
 
         Box->AddSlot()

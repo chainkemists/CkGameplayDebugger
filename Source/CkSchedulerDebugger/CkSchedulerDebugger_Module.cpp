@@ -1,5 +1,7 @@
 #include "CkSchedulerDebugger_Module.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkSchedulerDebugger/Window/SCkSchedulerDebuggerWindow.h"
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphFactory.h"
 
@@ -96,7 +98,11 @@ auto FCkSchedulerDebuggerModule::CloseDebugger() -> void
 {
     if (_DebuggerTab.IsValid())
     {
-        _DebuggerTab->RequestCloseTab();
+        // Engine shutdown destroys Slate windows BEFORE module unload — by then
+        // the tab's TSharedFromThis backing is gone and RequestCloseTab →
+        // SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+        if (NOT IsEngineExitRequested())
+        { _DebuggerTab->RequestCloseTab(); }
         _DebuggerTab.Reset();
     }
 

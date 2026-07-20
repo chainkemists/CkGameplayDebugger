@@ -1,5 +1,7 @@
 #include "CkCrowdDebugger_Module.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
@@ -63,7 +65,11 @@ auto FCkCrowdDebuggerModule::CloseDebugger() -> void
 {
 	if (_Tab.IsValid())
 	{
-		_Tab->RequestCloseTab();
+		// Engine shutdown destroys Slate windows BEFORE module unload — by then
+		// the tab's TSharedFromThis backing is gone and RequestCloseTab →
+		// SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+		if (NOT IsEngineExitRequested())
+		{ _Tab->RequestCloseTab(); }
 	}
 }
 

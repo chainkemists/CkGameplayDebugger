@@ -4,6 +4,7 @@
 
 #include "CkCore/Ensure/CkEnsure.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
@@ -78,6 +79,14 @@ auto SCkDebuggerLauncher::Tick(
 
 auto SCkDebuggerLauncher::RebuildTools() -> void
 {
+    // Registry-changed broadcasts also arrive during UnloadModulesAtShutdown —
+    // every feature debugger unregisters its descriptor from ShutdownModule,
+    // AFTER Slate itself has shut down. Constructing widgets then (SButton's
+    // ToolTipText goes through FSlateApplicationBase::Get()) fires the
+    // IsInitialized ensure on exit. Nothing to rebuild for — the app is dying.
+    if (NOT FSlateApplication::IsInitialized())
+    { return; }
+
     if (NOT _ToolList.IsValid())
     { return; }
 

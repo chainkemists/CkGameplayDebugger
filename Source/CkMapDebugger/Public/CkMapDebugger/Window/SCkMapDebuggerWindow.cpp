@@ -18,7 +18,6 @@
 #include "CkMinimap/CkFogOfWar_Fragment.h"
 #include "CkMinimap/CkFogOfWar_Utils.h"
 #include "CkMinimap/CkMinimap_Fragment.h"
-#include "CkMinimap/CkMinimap_Math.h"
 #include "CkMinimap/CkMinimap_Utils.h"
 #include "CkPoi/CkPoi_Fragment.h"
 #include "CkPoi/CkPoi_Utils.h"

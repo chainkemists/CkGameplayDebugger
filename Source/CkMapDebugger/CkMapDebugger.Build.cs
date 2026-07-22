@@ -21,9 +21,12 @@ public class CkMapDebugger : CkModuleRules
             "CkDebuggerCommon",
             "CkEcs",
             "CkEcsExt",
+            "CkEntityTag",
+            "CkLabel",
             "CkMinimap",
             "CkPoi",
             "CkRecord",
+            "CkVisibleRange",
         });
 
         if (Target.bBuildEditor)

@@ -5,6 +5,9 @@
 
 #include "CkPoi/CkPoi_Utils.h"
 
+#include "CkEntityTag/CkEntityTag_Utils.h"
+#include "CkLabel/CkLabel_Utils.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 
@@ -41,67 +44,41 @@ auto FCkInspector_Poi::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<S
     const auto CapturedPoi = PoiHandle;
 
     Builder.AddRow(
-        FText::FromString(TEXT("Category:")),
+        FText::FromString(TEXT("Category Tags:")),
         [CapturedPoi](const FCk_Handle&)
         {
             if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(UCk_Utils_Poi_UE::Get_Category(CapturedPoi).ToString());
+            const auto CategoryTags = UCk_Utils_Poi_UE::Get_CategoryTags(CapturedPoi);
+            return FText::FromString(CategoryTags.IsEmpty() ? TEXT("(none)") : CategoryTags.ToStringSimple());
         },
         CkStyle::Value_Tag());
 
     Builder.AddRow(
-        FText::FromString(TEXT("Display Name:")),
+        FText::FromString(TEXT("Label:")),
         [CapturedPoi](const FCk_Handle&)
         {
             if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            const auto DisplayName = UCk_Utils_Poi_UE::Get_DisplayName(CapturedPoi);
-            return DisplayName.IsEmpty() ? FText::FromString(TEXT("(none)")) : DisplayName;
-        });
+            // CkLabel Get_Label ensures on unlabeled entities — gate with Has first.
+            if (NOT UCk_Utils_GameplayLabel_UE::Has(CapturedPoi)) { return FText::FromString(TEXT("(none)")); }
+            const auto Label = UCk_Utils_GameplayLabel_UE::Get_Label(CapturedPoi);
+            return Label.IsValid() ? FText::FromName(Label.GetTagName()) : FText::FromString(TEXT("(none)"));
+        },
+        CkStyle::Value_Tag());
 
     Builder.AddConditionalRow(
-        FText::FromString(TEXT("State:")),
+        FText::FromString(TEXT("Disabled:")),
         [CapturedPoi](const FCk_Handle&)
         {
             if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Poi_UE::Get_EnableDisable(CapturedPoi)));
+            const auto IsDisabled = UCk_Utils_EntityTag_UE::Has_UsingGameplayTag(CapturedPoi, Tag_Poi_DisabledName);
+            return FText::FromString(ck::Format_UE(TEXT("{}"), IsDisabled));
         },
         [CapturedPoi](const FCk_Handle&) -> FLinearColor
         {
             if (ck::Is_NOT_Valid(CapturedPoi)) { return CkStyle::None(); }
-            return UCk_Utils_Poi_UE::Get_EnableDisable(CapturedPoi) == ECk_EnableDisable::Enable
-                ? CkStyle::Status_Active()
-                : CkStyle::Value_Bool_False();
+            const auto IsDisabled = UCk_Utils_EntityTag_UE::Has_UsingGameplayTag(CapturedPoi, Tag_Poi_DisabledName);
+            return IsDisabled ? CkStyle::Value_Bool_False() : CkStyle::Status_Active();
         });
-
-    Builder.AddRow(
-        FText::FromString(TEXT("Priority:")),
-        [CapturedPoi](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Poi_UE::Get_Priority(CapturedPoi)));
-        },
-        CkStyle::Value_Numeric());
-
-    Builder.AddRow(
-        FText::FromString(TEXT("Offscreen:")),
-        [CapturedPoi](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Poi_UE::Get_OffscreenPolicy(CapturedPoi)));
-        },
-        CkStyle::Value_Enum());
-
-    Builder.AddRow(
-        FText::FromString(TEXT("Max Range:")),
-        [CapturedPoi](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            const auto MaxVisibleRange = UCk_Utils_Poi_UE::Get_MaxVisibleRange(CapturedPoi);
-            return FText::FromString(MaxVisibleRange <= 0.0f
-                ? TEXT("0 (unlimited)")
-                : ck::Format_UE(TEXT("{:.0f}"), MaxVisibleRange));
-        },
-        CkStyle::Value_Numeric());
 
     Builder.AddRow(
         FText::FromString(TEXT("World Pos:")),
@@ -113,16 +90,6 @@ auto FCkInspector_Poi::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<S
                 WorldLocation.X, WorldLocation.Y, WorldLocation.Z));
         },
         CkStyle::Value_Numeric());
-
-    Builder.AddRow(
-        FText::FromString(TEXT("State Tags:")),
-        [CapturedPoi](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedPoi)) { return FText::FromString(TEXT("--")); }
-            const auto StateTags = UCk_Utils_Poi_UE::Get_StateTags(CapturedPoi);
-            return FText::FromString(StateTags.IsEmpty() ? TEXT("(none)") : StateTags.ToStringSimple());
-        },
-        CkStyle::Value_Tag());
 
     return Builder.Build(Entity, FString());
 }

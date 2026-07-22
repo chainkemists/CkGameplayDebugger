@@ -56,6 +56,9 @@ public class CkEcsDebugger : CkModuleRules
             "CkMinimap",
             "CkObjective",
             "CkPoi",
+            // Direct consumer of ECk_Poi_OffscreenPolicy's StaticEnum via ck::Format_UE in CkInspector_Poi.cpp;
+            // the enum moved to CkPoiDisplayDefinition in CkPoi v2 refactor Gate 2.
+            "CkPoiDisplayDefinition",
             "CkOverlapBody",
             "CkPathNetwork",
             "CkPhysics",

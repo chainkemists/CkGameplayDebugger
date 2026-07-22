@@ -13,6 +13,10 @@
 
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
+#include "CkEntityTag/CkEntityTag_Utils.h"
+#include "CkLabel/CkLabel_Utils.h"
+#include "CkVisibleRange/CkVisibleRange_Utils.h"
+
 #include "CkCompass/CkCompass_Fragment.h"
 #include "CkCompass/CkCompass_Utils.h"
 #include "CkMinimap/CkFogOfWar_Fragment.h"
@@ -858,8 +862,8 @@ auto
     {
         auto PoiIndexByHandle = TMap<FCk_Handle, int32>{};
 
-        TransientEntity.View<ck::FFragment_Poi_Params, ck::FFragment_Poi_Current>().ForEach(
-            [&](FCk_Entity InEntity, const ck::FFragment_Poi_Params&, const ck::FFragment_Poi_Current&)
+        TransientEntity.View<ck::FTag_Poi>().ForEach(
+            [&](FCk_Entity InEntity)
             {
                 auto Handle = ck::MakeHandle(InEntity, TransientEntity);
                 const auto PoiHandle = UCk_Utils_Poi_UE::Cast(Handle);
@@ -869,14 +873,17 @@ auto
 
                 auto Info = FCkMapDebug_PoiInfo{};
                 Info.Handle = Handle;
-                Info.Category = UCk_Utils_Poi_UE::Get_Category(PoiHandle);
-                const auto DisplayName = UCk_Utils_Poi_UE::Get_DisplayName(PoiHandle);
-                Info.DisplayName = DisplayName.IsEmpty() ? Info.Category.ToString() : DisplayName.ToString();
-                Info.Enabled = UCk_Utils_Poi_UE::Get_EnableDisable(PoiHandle) == ECk_EnableDisable::Enable;
-                Info.Priority = UCk_Utils_Poi_UE::Get_Priority(PoiHandle);
+                Info.Category = UCk_Utils_Poi_UE::Get_CategoryTags(PoiHandle).First();
+                Info.DisplayName = UCk_Utils_GameplayLabel_UE::Has(Handle)
+                    ? UCk_Utils_GameplayLabel_UE::Get_Label(Handle).GetTagName().ToString()
+                    : Info.Category.GetTagName().ToString();
+                Info.Enabled = NOT UCk_Utils_EntityTag_UE::Has_UsingGameplayTag(Handle, Tag_Poi_DisabledName);
+                Info.Priority = 0; // Priority moved to CkPoiDisplayDefinition in CkPoi v2 refactor; column fate decided in Gate 4.
                 Info.WorldPos = UCk_Utils_Poi_UE::Get_WorldLocation(PoiHandle);
-                Info.MaxRange = UCk_Utils_Poi_UE::Get_MaxVisibleRange(PoiHandle);
-                Info.StateTags = UCk_Utils_Poi_UE::Get_StateTags(PoiHandle);
+                Info.MaxRange = UCk_Utils_VisibleRange_UE::Has(Handle)
+                    ? UCk_Utils_VisibleRange_UE::Get_MaxRange(UCk_Utils_VisibleRange_UE::Cast(Handle))
+                    : 0.0f;
+                Info.StateTags = UCk_Utils_EntityTag_UE::Get_AllTagsAsContainer(Handle);
 
                 if (Info.Enabled)
                 { ++Snapshot->NumEnabledPois; }

@@ -23,13 +23,14 @@ class STableViewBase;
 // registry dies).
 // --------------------------------------------------------------------------------------------------------------------
 
+// Priority is per-consumer (CkPoiDisplayDefinition) since the CkPoi v2 refactor — a single number per Poi is
+// meaningless, so this snapshot no longer carries one; the PoiDisplayDefinition inspector owns per-consumer priority.
 struct FCkMapDebug_PoiInfo
 {
     FCk_Handle Handle;
     FGameplayTag Category;
     FString DisplayName;
     bool    Enabled = true;
-    int32   Priority = 0;
     FVector WorldPos = FVector::ZeroVector;
     float   MaxRange = 0.0f;
     FGameplayTagContainer StateTags;

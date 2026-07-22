@@ -678,12 +678,6 @@ auto
                     return FText::FromString(Info->Enabled ? TEXT("Enabled") : TEXT("Disabled"));
                 })) ]
         + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
-            [ MakeStatRow(TEXT("Priority:"), TAttribute<FText>::CreateLambda([this]()
-                {
-                    const auto* Info = DoFind_SelectedPoiInfo();
-                    return Info != nullptr ? FText::AsNumber(Info->Priority) : FText::FromString(TEXT("--"));
-                })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
             [ MakeStatRow(TEXT("World Pos:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
@@ -878,7 +872,6 @@ auto
                     ? UCk_Utils_GameplayLabel_UE::Get_Label(Handle).GetTagName().ToString()
                     : Info.Category.GetTagName().ToString();
                 Info.Enabled = NOT UCk_Utils_EntityTag_UE::Has_UsingGameplayTag(Handle, Tag_Poi_DisabledName);
-                Info.Priority = 0; // Priority moved to CkPoiDisplayDefinition in CkPoi v2 refactor; column fate decided in Gate 4.
                 Info.WorldPos = UCk_Utils_Poi_UE::Get_WorldLocation(PoiHandle);
                 Info.MaxRange = UCk_Utils_VisibleRange_UE::Has(Handle)
                     ? UCk_Utils_VisibleRange_UE::Get_MaxRange(UCk_Utils_VisibleRange_UE::Cast(Handle))

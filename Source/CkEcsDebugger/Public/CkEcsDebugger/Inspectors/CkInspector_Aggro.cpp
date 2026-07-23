@@ -4,7 +4,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkAggro/CkAggro_Fragment.h"
-#include "CkAggro/CkAggroOwner_Fragment.h"
+#include "CkAggro/CkAggroTarget_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -28,7 +28,7 @@ auto FCkInspector_Aggro::CanInspect(const FCk_Handle& Entity) const -> bool
 
     return Entity.Has_Any<
         ck::FFragment_Aggro_Current,
-        ck::FFragment_AggroOwner_Current>();
+        ck::FFragment_AggroTarget_Score>();
 }
 
 // =====================================================================================================================
@@ -37,64 +37,127 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
 {
     auto Builder = FCkInspectorWidgetBuilder();
 
-    // ---- Aggro entry (this entity is a threat tracked by an owner) ----
-    if (Entity.Has<ck::FFragment_Aggro_Current>())
-    {
-        Builder.AddHeader(FText::FromString(TEXT("Aggro Entry")));
-
-        const auto CapturedEntity = Entity;
-        Builder.AddRow(
-            FText::FromString(TEXT("Score:")),
-            [CapturedEntity](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Score = CapturedEntity.Get<ck::FFragment_Aggro_Current>().Get_Score();
-                return FText::FromString(FString::Printf(TEXT("%.3f"), Score));
-            },
-            CkStyle::Value_Numeric());
-    }
-
     // ---- Aggro owner (this entity holds the threat table) ----
-    if (Entity.Has<ck::FFragment_AggroOwner_Current>())
+    if (Entity.Has<ck::FFragment_Aggro_Current>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Aggro Owner")));
 
         const auto CapturedEntity = Entity;
+
         Builder.AddRow(
-            FText::FromString(TEXT("Best Aggro:")),
+            FText::FromString(TEXT("Active Target:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroOwner_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro_Current>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Best = CapturedEntity.Get<ck::FFragment_AggroOwner_Current>().Get_BestAggro();
-                return FText::FromString(ck::IsValid(Best)
-                    ? ck::Format_UE(TEXT("[{}]"), Best)
-                    : FString(TEXT("(None)")));
+                const auto Active = CapturedEntity.Get<ck::FFragment_Aggro_Current>().Get_ActiveTarget();
+                if (ck::Is_NOT_Valid(Active))
+                { return FText::FromString(TEXT("(None)")); }
+                const auto Tracked = ck::UAggroTarget_TrackedEntity_Utils::Get_StoredEntity(Active);
+                return FText::FromString(ck::Format_UE(TEXT("[{}]"), Tracked));
             },
             CkStyle::Value_Handle());
 
-        if (Entity.Has<ck::FFragment_AggroOwner_NewBestAggro>())
-        {
-            Builder.AddConditionalRow(
-                FText::FromString(TEXT("New Best Aggro:")),
-                [CapturedEntity](const FCk_Handle&)
-                {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroOwner_NewBestAggro>())
-                    { return FText::FromString(TEXT("--")); }
-                    const auto Best = CapturedEntity.Get<ck::FFragment_AggroOwner_NewBestAggro>().Get_BestAggro();
-                    return FText::FromString(ck::IsValid(Best)
-                        ? ck::Format_UE(TEXT("[{}]"), Best)
-                        : FString(TEXT("(None)")));
-                },
-                [CapturedEntity](const FCk_Handle&) -> FLinearColor
-                {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroOwner_NewBestAggro>())
-                    { return CkStyle::None(); }
-                    const auto Best = CapturedEntity.Get<ck::FFragment_AggroOwner_NewBestAggro>().Get_BestAggro();
-                    return ck::IsValid(Best) ? CkStyle::Status_Active() : CkStyle::TextMute();
-                });
-        }
+        Builder.AddRow(
+            FText::FromString(TEXT("Tracked Targets:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro_TargetMap>())
+                { return FText::FromString(TEXT("--")); }
+                const auto Num = CapturedEntity.Get<ck::FFragment_Aggro_TargetMap>().Get_TargetsByTrackedEntity().Num();
+                return FText::FromString(FString::Printf(TEXT("%d"), Num));
+            },
+            CkStyle::Value_Numeric());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Enabled:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity))
+                { return FText::FromString(TEXT("--")); }
+                return FText::FromString(CapturedEntity.Has<ck::FTag_Aggro_Disabled>() ? TEXT("No") : TEXT("Yes"));
+            },
+            CkStyle::Value_Numeric());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Eval Count:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro_EvaluationClock>())
+                { return FText::FromString(TEXT("--")); }
+                const auto Count = CapturedEntity.Get<ck::FFragment_Aggro_EvaluationClock>().Get_DebugEvaluationCount();
+                return FText::FromString(FString::Printf(TEXT("%lld"), Count));
+            },
+            CkStyle::Value_Numeric());
+    }
+
+    // ---- Aggro target (this entity is one tracked target of an owner) ----
+    if (Entity.Has<ck::FFragment_AggroTarget_Score>())
+    {
+        Builder.AddHeader(FText::FromString(TEXT("Aggro Target")));
+
+        const auto CapturedEntity = Entity;
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Tracked Entity:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity))
+                { return FText::FromString(TEXT("--")); }
+                const auto Tracked = ck::UAggroTarget_TrackedEntity_Utils::Get_StoredEntity(CapturedEntity);
+                return FText::FromString(ck::Format_UE(TEXT("[{}]"), Tracked));
+            },
+            CkStyle::Value_Handle());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Threat:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroTarget_Threat>())
+                { return FText::FromString(TEXT("--")); }
+                const auto Threat = CapturedEntity.Get<ck::FFragment_AggroTarget_Threat>().Get_Threat();
+                return FText::FromString(FString::Printf(TEXT("%.2f"), Threat));
+            },
+            CkStyle::Value_Numeric());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Score:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroTarget_Score>())
+                { return FText::FromString(TEXT("--")); }
+                const auto Score = CapturedEntity.Get<ck::FFragment_AggroTarget_Score>().Get_Score();
+                return FText::FromString(FString::Printf(TEXT("%.2f"), Score));
+            },
+            CkStyle::Value_Numeric());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Distance:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroTarget_Score>())
+                { return FText::FromString(TEXT("--")); }
+                const auto Distance = CapturedEntity.Get<ck::FFragment_AggroTarget_Score>().Get_Distance();
+                return FText::FromString(FString::Printf(TEXT("%.0f"), Distance));
+            },
+            CkStyle::Value_Numeric());
+
+        Builder.AddRow(
+            FText::FromString(TEXT("State:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity))
+                { return FText::FromString(TEXT("--")); }
+
+                auto State = FString();
+                if (CapturedEntity.Has<ck::FTag_AggroTarget_IsActive>())         { State += TEXT("Active "); }
+                if (CapturedEntity.Has<ck::FTag_AggroTarget_Perceived>())        { State += TEXT("Perceived "); }
+                if (CapturedEntity.Has<ck::FTag_AggroTarget_WithinRetention>())  { State += TEXT("InRetention "); }
+                if (CapturedEntity.Has<ck::FTag_AggroTarget_PendingForget>())    { State += TEXT("PendingForget "); }
+
+                return FText::FromString(State.IsEmpty() ? FString(TEXT("--")) : State.TrimEnd());
+            },
+            CkStyle::Value_Numeric());
     }
 
     return Builder.Build(Entity);

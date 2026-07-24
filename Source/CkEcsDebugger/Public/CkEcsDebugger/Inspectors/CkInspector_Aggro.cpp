@@ -12,7 +12,92 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Notifications/SProgressBar.h"
+#include "Widgets/SOverlay.h"
+
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Aggro)
+
+// =====================================================================================================================
+
+namespace ck_inspector_aggro
+{
+    auto Get_TargetThreat(const FCk_Handle& InTarget) -> float
+    {
+        return (ck::IsValid(InTarget) && InTarget.Has<ck::FFragment_AggroTarget_Threat>())
+            ? InTarget.Get<ck::FFragment_AggroTarget_Threat>().Get_Threat() : 0.0f;
+    }
+
+    auto Get_TargetScore(const FCk_Handle& InTarget) -> float
+    {
+        return (ck::IsValid(InTarget) && InTarget.Has<ck::FFragment_AggroTarget_Score>())
+            ? InTarget.Get<ck::FFragment_AggroTarget_Score>().Get_Score() : 0.0f;
+    }
+
+    // A live bar filled RELATIVE to the strongest target of the same owner (so the top threat reads full) — the raw
+    // threat clamp ceiling (default 10000) would make an absolute bar read empty. Standalone targets fall back to
+    // their own clamp ceiling. The numeric value is overlaid on the bar.
+    auto MakeValueBar(
+        const FCk_Handle&                   InTarget,
+        TFunction<float(const FCk_Handle&)> InValueGetter,
+        const FLinearColor&                 InFillColor)
+        -> TSharedRef<SWidget>
+    {
+        const auto MaxGetter = [InValueGetter](const FCk_Handle& InSelf) -> float
+        {
+            if (ck::Is_NOT_Valid(InSelf) || NOT InSelf.Has<ck::FFragment_AggroTarget_TargetInfo>())
+            { return 0.0f; }
+
+            auto Owner = InSelf.Get<ck::FFragment_AggroTarget_TargetInfo>().Get_AggroOwner();
+            if (ck::IsValid(Owner) && Owner.Has<ck::FFragment_Aggro_TargetMap>())
+            {
+                auto Max = 0.0f;
+                for (const auto& Pair : Owner.Get<ck::FFragment_Aggro_TargetMap>().Get_TargetsByTrackedEntity())
+                {
+                    if (ck::IsValid(Pair.Value))
+                    { Max = FMath::Max(Max, InValueGetter(Pair.Value)); }
+                }
+                return Max;
+            }
+
+            return InSelf.Has<ck::FFragment_AggroTarget_ThreatParams>()
+                ? static_cast<float>(InSelf.Get<ck::FFragment_AggroTarget_ThreatParams>().Get_ThreatClampRange().Get_Max())
+                : 0.0f;
+        };
+
+        return SNew(SBox)
+            .HeightOverride(16.0f)
+            .MinDesiredWidth(140.0f)
+            [
+                SNew(SOverlay)
+                + SOverlay::Slot()
+                [
+                    SNew(SProgressBar)
+                    .Percent_Lambda([InTarget, InValueGetter, MaxGetter]() -> TOptional<float>
+                    {
+                        if (ck::Is_NOT_Valid(InTarget))
+                        { return 0.0f; }
+                        const auto Max = MaxGetter(InTarget);
+                        return Max > KINDA_SMALL_NUMBER ? FMath::Clamp(InValueGetter(InTarget) / Max, 0.0f, 1.0f) : 0.0f;
+                    })
+                    .FillColorAndOpacity(InFillColor)
+                ]
+                + SOverlay::Slot()
+                .HAlign(HAlign_Center)
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([InTarget, InValueGetter]() -> FText
+                    {
+                        if (ck::Is_NOT_Valid(InTarget))
+                        { return FText::FromString(TEXT("--")); }
+                        return FText::FromString(FString::Printf(TEXT("%.1f"), InValueGetter(InTarget)));
+                    })
+                    .ColorAndOpacity(FSlateColor(FLinearColor::White))
+                ]
+            ];
+    }
+}
 
 // =====================================================================================================================
 
@@ -109,27 +194,14 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             },
             CkStyle::Value_Handle());
 
-        Builder.AddRow(
+        // Threat + Score as live bars (filled relative to the owner's strongest target), value overlaid.
+        Builder.AddWidgetRow(
             FText::FromString(TEXT("Threat:")),
-            [CapturedEntity](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroTarget_Threat>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Threat = CapturedEntity.Get<ck::FFragment_AggroTarget_Threat>().Get_Threat();
-                return FText::FromString(FString::Printf(TEXT("%.2f"), Threat));
-            },
-            CkStyle::Value_Numeric());
+            ck_inspector_aggro::MakeValueBar(Entity, &ck_inspector_aggro::Get_TargetThreat, FLinearColor(0.85f, 0.25f, 0.20f)));
 
-        Builder.AddRow(
+        Builder.AddWidgetRow(
             FText::FromString(TEXT("Score:")),
-            [CapturedEntity](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AggroTarget_Score>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Score = CapturedEntity.Get<ck::FFragment_AggroTarget_Score>().Get_Score();
-                return FText::FromString(FString::Printf(TEXT("%.2f"), Score));
-            },
-            CkStyle::Value_Numeric());
+            ck_inspector_aggro::MakeValueBar(Entity, &ck_inspector_aggro::Get_TargetScore, FLinearColor(0.25f, 0.55f, 0.90f)));
 
         Builder.AddRow(
             FText::FromString(TEXT("Distance:")),

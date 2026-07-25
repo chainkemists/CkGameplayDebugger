@@ -4,6 +4,10 @@
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Editor.h"
 #include "Engine/World.h"
@@ -11,6 +15,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -70,6 +75,11 @@ auto
             + SScrollBox::Slot()
             .Padding(8.0f, 4.0f)
             [
+                SAssignNew(_CooldownBox, SVerticalBox)
+            ]
+            + SScrollBox::Slot()
+            .Padding(8.0f, 4.0f)
+            [
                 SAssignNew(_ContentText, STextBlock)
                 .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
                 .AutoWrapText(true)
@@ -97,6 +107,7 @@ auto
     { return; }
 
     _Collector.Collect(DoGet_PieWorld());
+    DoRebuildCooldowns();
     DoRebuildContent();
 }
 
@@ -198,13 +209,8 @@ auto
         Out += FString::Printf(TEXT("    tags: %s\n"),
             Emitter.EmitterTags.IsEmpty() ? TEXT("(global — no tags)") : *Emitter.EmitterTags.ToStringSimple());
 
-        for (const auto& Cooldown : Emitter.Cooldowns)
-        {
-            Out += FString::Printf(TEXT("    cooldown: %-24s %s\n"),
-                *Cooldown.LineID.ToString(),
-                Cooldown.IsForever ? TEXT("forever") : *FString::Printf(TEXT("%.2fs remaining"), Cooldown.RemainingSeconds));
-        }
-
+        // Cooldowns are NOT printed here — they live in the metered section above, which is the only place that can
+        // show progress rather than a bare number.
         if (Emitter.QueryHistory.Num() > 0)
         {
             const auto& Last = Emitter.QueryHistory.Last();
@@ -218,6 +224,136 @@ auto
     { Out = TEXT("(no active PIE session — start Play In Editor to inspect the Dialog registry)"); }
 
     _ContentText->SetText(FText::FromString(Out));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDialogDebuggerWindow::
+    DoMake_CooldownRow(
+        const FCkDialogDebugger_CooldownInfo& InCooldown)
+    -> TSharedRef<SWidget>
+{
+    // Remaining / total, so a full bar reads "just spent" and an empty one "about to come back". A cooldown started
+    // with a zero (or negative) duration has no meaningful progress — show it full rather than dividing by zero.
+    const auto Fraction = InCooldown.IsForever || InCooldown.TotalSeconds <= 0.0f
+        ? 1.0f
+        : FMath::Clamp(InCooldown.RemainingSeconds / InCooldown.TotalSeconds, 0.0f, 1.0f);
+
+    // Warn while it is still withholding the line, Ok once it is nearly back. Forever is an Err: a line that never
+    // returns is almost always a mistake in the caller, and the colour is what makes that jump out.
+    const auto FillColor = InCooldown.IsForever
+        ? CkStyle::Err()
+        : (Fraction > 0.25f ? CkStyle::Warn() : CkStyle::Ok());
+
+    const auto RemainingText = InCooldown.IsForever
+        ? FString(TEXT("forever"))
+        : FString::Printf(TEXT("%.2fs / %.2fs"), InCooldown.RemainingSeconds, InCooldown.TotalSeconds);
+
+    return SNew(SHorizontalBox)
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+        [
+            SNew(SBox)
+            .WidthOverride(260.0f)
+            [
+                SNew(STextBlock)
+                .Font(CkStyle::MonoFont(9))
+                .ColorAndOpacity(CkStyle::Text())
+                .Text(FText::FromName(InCooldown.LineID))
+            ]
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+        [
+            SNew(SCkDebug_MeterBar)
+            .Fraction(Fraction)
+            .FillColor(FillColor)
+            .DesiredSize(FVector2D(160.0f, 5.0f))
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+            .Font(CkStyle::MonoFont(9))
+            .ColorAndOpacity(CkStyle::TextDim())
+            .Text(FText::FromString(RemainingText))
+        ];
+}
+
+auto
+    SCkDialogDebuggerWindow::
+    DoRebuildCooldowns()
+    -> void
+{
+    if (NOT _CooldownBox.IsValid())
+    { return; }
+
+    _CooldownBox->ClearChildren();
+
+    auto NumCooling = 0;
+    for (const auto& Emitter : _Collector.Get_Snapshot().Emitters)
+    { NumCooling += Emitter.Cooldowns.Num(); }
+
+    _CooldownBox->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(TEXT("COOLDOWNS")))
+            .CountText(FText::AsNumber(NumCooling))
+            .SubText(FText::FromString(TEXT("lines currently withheld from their speaker")))
+            .Underline(true)
+        ];
+
+    if (NumCooling == 0)
+    {
+        _CooldownBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                .Font(CkStyle::MonoFont(9))
+                .ColorAndOpacity(CkStyle::TextMute())
+                .Text(FText::FromString(TEXT("(nothing cooling)")))
+            ];
+        return;
+    }
+
+    for (const auto& Emitter : _Collector.Get_Snapshot().Emitters)
+    {
+        if (Emitter.Cooldowns.IsEmpty())
+        { continue; }
+
+        // Filtered on the EMITTER, matching the text dump below — a filter that hid individual rows would leave an
+        // emitter heading with no rows under it.
+        if (NOT DoPassesFilter(Emitter.DebugName) && NOT DoPassesFilter(Emitter.EmitterTags.ToStringSimple()))
+        { continue; }
+
+        _CooldownBox->AddSlot()
+            .AutoHeight()
+            .Padding(CkStyle::SpaceM, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS)
+            [
+                SNew(STextBlock)
+                .Font(CkStyle::BoldFont(9))
+                .ColorAndOpacity(CkStyle::TextStrong())
+                .Text(FText::FromString(Emitter.DebugName))
+            ];
+
+        for (const auto& Cooldown : Emitter.Cooldowns)
+        {
+            _CooldownBox->AddSlot()
+                .AutoHeight()
+                .Padding(CkStyle::SpaceXL, CkStyle::SpaceXS)
+                [
+                    DoMake_CooldownRow(Cooldown)
+                ];
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

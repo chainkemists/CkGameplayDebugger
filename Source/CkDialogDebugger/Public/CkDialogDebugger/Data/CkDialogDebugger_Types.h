@@ -31,6 +31,9 @@ struct FCkDialogDebugger_CooldownInfo
     FCk_Handle_DialogLine Line;
     FName                 LineID;
     float                 RemainingSeconds = 0.0f;
+    // The duration the cooldown was STARTED with — the meter's denominator. Remaining alone cannot say how far
+    // through a cooldown is.
+    float                 TotalSeconds = 0.0f;
     bool                  IsForever = false;
 };
 

@@ -9,7 +9,9 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class STextBlock;
+class SVerticalBox;
 class UWorld;
+struct FCkDialogDebugger_CooldownInfo;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -40,6 +42,15 @@ private:
     auto
     DoRebuildContent() -> void;
 
+    // The cooldown section is real Slate rather than part of the text dump: a meter is the whole point of it, and a
+    // monospace bar cannot show sub-second progress legibly.
+    auto
+    DoRebuildCooldowns() -> void;
+
+    static auto
+    DoMake_CooldownRow(
+        const FCkDialogDebugger_CooldownInfo& InCooldown) -> TSharedRef<SWidget>;
+
     auto
     DoPassesFilter(
         const FString& InText) const -> bool;
@@ -55,6 +66,7 @@ private:
 
     FCkDialogDebugger_DataCollector _Collector;
     TSharedPtr<STextBlock>          _ContentText;
+    TSharedPtr<SVerticalBox>        _CooldownBox;
     FString                         _FilterString;
     FString                         _HighlightString;
 };

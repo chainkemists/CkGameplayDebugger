@@ -74,9 +74,15 @@ auto
                 Cd.Line   = CooledLine;
                 Cd.LineID = ck::IsValid(CooledLine) ? UCk_Utils_DialogLine_UE::Get_LineID(CooledLine) : FName{};
 
-                const auto Remaining     = UCk_Utils_DialogEmitter_UE::Get_CooldownRemaining(Emitter, CooledLine);
-                Cd.RemainingSeconds      = static_cast<float>(Remaining.Get_Seconds());
-                Cd.IsForever             = Remaining.Get_Seconds() > 1.0e9;
+                // Mode off the stored entry, not a magnitude heuristic on Remaining — a Forever cooldown reports
+                // its sentinel expiry, which a "very large number" test would confuse with a long Timed one.
+                const auto Entry     = UCk_Utils_DialogEmitter_UE::Get_CooldownEntry(Emitter, CooledLine);
+                const auto Remaining = UCk_Utils_DialogEmitter_UE::Get_CooldownRemaining(Emitter, CooledLine);
+
+                Cd.IsForever        = Entry.Get_DurationMode() == ECk_Dialog_CooldownDuration::Forever;
+                Cd.TotalSeconds     = static_cast<float>(Entry.Get_Duration().Get_Seconds());
+                Cd.RemainingSeconds = Cd.IsForever ? 0.0f : static_cast<float>(Remaining.Get_Seconds());
+
                 Info.Cooldowns.Add(Cd);
             }
 

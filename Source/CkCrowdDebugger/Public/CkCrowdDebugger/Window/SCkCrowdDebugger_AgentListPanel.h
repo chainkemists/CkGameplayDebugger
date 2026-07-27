@@ -27,6 +27,13 @@ private:
 	using ItemPtr = TSharedPtr<FCkCrowdDebugger_AgentSnapshot>;
 
 	auto OnAgentListChanged(const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents) -> void;
+
+	// Filter (hide) + highlight (dim) pass over the ViewModel's agent list.
+	// Deliberately takes the source list by reference rather than caching a copy:
+	// a cached TArray<FCkCrowdDebugger_AgentSnapshot> would be another container of
+	// FCk_Handle to clear on EndPIE, and the ViewModel already owns this data.
+	auto ApplyFilterPipeline(const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents) -> void;
+
 	auto OnGenerateRow(ItemPtr InItem, const TSharedRef<STableViewBase>& InTable) -> TSharedRef<ITableRow>;
 	auto OnSelectionChanged(ItemPtr InItem, ESelectInfo::Type InSelectInfo) -> void;
 	auto OnContextMenuOpening() -> TSharedPtr<SWidget>;
@@ -39,8 +46,14 @@ private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
 	TArray<ItemPtr> _ItemSource;
 	TSharedPtr<SListView<ItemPtr>> _ListView;
+	TSharedPtr<class SCkDebug_DualSearchBar> _SearchBar;
 	FDelegateHandle _OnListChangedHandle;
 	FDelegateHandle _OnSelectionSyncHandle;
+
+	// Dual search state. Filter hides rows; Highlight dims the ones that survive
+	// the filter (row text colour reads these through a weak-panel lambda).
+	FString _FilterString;
+	FString _HighlightString;
 
 	// Sync-received selection flash — the row's background tint fades out so the
 	// user notices WHICH agent a cross-debugger selection resolved to.

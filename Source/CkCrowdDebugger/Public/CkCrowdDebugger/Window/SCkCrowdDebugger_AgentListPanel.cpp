@@ -9,6 +9,7 @@
 
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
@@ -70,6 +71,25 @@ namespace
 			default:                                       return TEXT("—");
 		}
 	}
+
+	// Case-insensitive substring match over exactly the columns the row renders:
+	// the entity id (as SCkDebug_EntityRef prints it), the "n=NN  <tag>" text, the
+	// owner name, and the status label. Empty needle matches everything.
+	auto MatchesCrowdAgentQuery(const FCkCrowdDebugger_AgentSnapshot& InSnapshot, const FString& InNeedle) -> bool
+	{
+		if (InNeedle.IsEmpty())
+		{ return true; }
+
+		if (ck::Format_UE(TEXT("{}"), InSnapshot.Handle.Get_Entity()).Contains(InNeedle, ESearchCase::IgnoreCase))
+		{ return true; }
+		if (AgentRowText(InSnapshot).Contains(InNeedle, ESearchCase::IgnoreCase))
+		{ return true; }
+		if (InSnapshot.OwnerName.Contains(InNeedle, ESearchCase::IgnoreCase))
+		{ return true; }
+		if (StatusLabel(InSnapshot).Contains(InNeedle, ESearchCase::IgnoreCase))
+		{ return true; }
+		return false;
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -101,6 +121,24 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 				.Text(FText::FromString(TEXT("AGENT LIST")))
 				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0, CkStyle::SpaceM, CkStyle::SpaceS)
+			[
+				SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
+				.FilterHintText(FText::FromString(TEXT("Filter agents\x2026")))
+				.HighlightHintText(FText::FromString(TEXT("Highlight\x2026")))
+				.OnFilterTextChanged_Lambda([this](const FString& InText)
+				{
+					if (_FilterString == InText) { return; }
+					_FilterString = InText;
+					if (_ViewModel.IsValid()) { ApplyFilterPipeline(_ViewModel->Get_AllAgents()); }
+				})
+				.OnHighlightTextChanged_Lambda([this](const FString& InText)
+				{
+					if (_HighlightString == InText) { return; }
+					_HighlightString = InText;
+					if (_ViewModel.IsValid()) { ApplyFilterPipeline(_ViewModel->Get_AllAgents()); }
+				})
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
@@ -136,41 +174,63 @@ auto SCkCrowdDebugger_AgentListPanel::OnAgentListChanged(
 	const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents)
 	-> void
 {
+	ApplyFilterPipeline(InAgents);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentListPanel::ApplyFilterPipeline(
+	const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents)
+	-> void
+{
 	// Gate 3 — broadcast fires every frame for live data (neighbor count, status). To keep
 	// SListView selection alive, we mutate existing TSharedPtr<AgentSnapshot> contents in
 	// place rather than rebuild _ItemSource. SListView keys selection by pointer identity,
 	// so a wholesale rebuild every tick was eating user clicks before they resolved into
-	// selection. We only re-allocate items when the agent set itself changes (count diff
-	// or handle mismatch at any index).
-	const auto NeedsRebuild = [&]() -> bool
+	// selection. We only re-allocate items when the visible agent set itself changes.
+	//
+	// Reuse is keyed by entity HANDLE rather than by index: the search filter can drop
+	// rows from the middle of the list, so positional correspondence between _ItemSource
+	// and InAgents no longer holds once a filter is active.
+	auto Existing = TMap<FCk_Handle, ItemPtr>{};
+	Existing.Reserve(_ItemSource.Num());
+	for (const auto& Item : _ItemSource)
 	{
-		if (_ItemSource.Num() != InAgents.Num())
-		{ return true; }
-
-		for (auto i = 0; i < InAgents.Num(); ++i)
-		{
-			if (NOT _ItemSource[i].IsValid() || _ItemSource[i]->Handle != InAgents[i].Handle)
-			{ return true; }
-		}
-		return false;
-	}();
-
-	if (NeedsRebuild)
-	{
-		_ItemSource.Reset(InAgents.Num());
-		for (const auto& Agent : InAgents)
-		{
-			_ItemSource.Add(MakeShared<FCkCrowdDebugger_AgentSnapshot>(Agent));
-		}
+		if (Item.IsValid())
+		{ Existing.Add(Item->Handle, Item); }
 	}
-	else
+
+	auto NewItems = TArray<ItemPtr>{};
+	NewItems.Reserve(InAgents.Num());
+	auto NeedsRebuild = false;
+
+	for (const auto& Agent : InAgents)
 	{
-		// In-place content update — same TSharedPtr identities, fresh data inside.
-		for (auto i = 0; i < InAgents.Num(); ++i)
+		// Filter pass — hide non-matches entirely.
+		if (NOT MatchesCrowdAgentQuery(Agent, _FilterString))
+		{ continue; }
+
+		auto Item = ItemPtr{};
+		if (auto* Found = Existing.Find(Agent.Handle))
 		{
-			*_ItemSource[i] = InAgents[i];
+			Item = *Found;      // stable pointer across refreshes
+			*Item = Agent;      // in-place content update
+			Existing.Remove(Agent.Handle);
 		}
+		else
+		{
+			Item = MakeShared<FCkCrowdDebugger_AgentSnapshot>(Agent);
+			NeedsRebuild = true;
+		}
+
+		NewItems.Add(MoveTemp(Item));
 	}
+
+	// Anything left over vanished from the visible set (destroyed or filtered out).
+	if (Existing.Num() > 0)
+	{ NeedsRebuild = true; }
+
+	_ItemSource = MoveTemp(NewItems);
 
 	if (_ListView.IsValid())
 	{
@@ -278,6 +338,20 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 					if (NOT Pinned.IsValid())
 					{ return FText::GetEmpty(); }
 					return FText::FromString(AgentRowText(*Pinned));
+				})
+				// Highlight pass — dim rows that survived the filter but don't match
+				// the highlight query. Read live off the panel (rather than a per-row
+				// flag) so a keystroke re-tints without regenerating row widgets.
+				.ColorAndOpacity_Lambda([WeakPanel, WeakItem]() -> FSlateColor
+				{
+					const auto Panel = WeakPanel.Pin();
+					const auto Item  = WeakItem.Pin();
+					if (NOT Panel.IsValid() || NOT Item.IsValid())
+					{ return FSlateColor::UseForeground(); }
+
+					return MatchesCrowdAgentQuery(*Item, Panel->_HighlightString)
+						? FSlateColor::UseForeground()
+						: FSlateColor(CkStyle::TextMute());
 				})
 			]
 			// Owner NPC/player — who this agent belongs to (muted; detail panel

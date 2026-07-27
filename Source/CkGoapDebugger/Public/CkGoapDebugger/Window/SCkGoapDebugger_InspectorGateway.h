@@ -24,8 +24,14 @@ class UWorld;
 //   - Section : Plan preview — first 3 entries + "K more" footer
 //
 // Data source:
-//   FCkGoapDebugger_DataCollector::CollectSnapshots(World) — same backend the
-//   standalone window uses. Refreshed on Tick from the cached PIE world.
+//   FCkGoapDebugger_DataCollector::CollectFull(World, Entity) — the same deep
+//   tier the standalone window's Inspector renders, scoped to this one entity.
+//   Refreshed on Tick from the cached PIE world.
+//
+//   NOTE: the gateway does NOT drive history-event detection. That is the
+//   roster pass's job (CollectRoster), which only the standalone window ticks —
+//   so with the GOAP window closed no events accrue. Nothing the gateway
+//   renders reads the history ring, so this is invisible here.
 //
 // Lifetime:
 //   The gateway holds only an FCk_Handle entity by value; it does NOT subscribe

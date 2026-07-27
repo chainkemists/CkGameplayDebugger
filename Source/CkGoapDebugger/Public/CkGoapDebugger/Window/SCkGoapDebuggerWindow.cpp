@@ -567,7 +567,7 @@ auto
 {
     if (NOT _ViewModel.IsValid()) { return; }
 
-    const auto& Snapshots = _ViewModel->GetAllEntitySnapshots();
+    const auto& Roster = _ViewModel->Get_Roster();
     const auto SelectedEntity = _ViewModel->GetSelectedEntity();
     const auto SelectedPlanner = _ViewModel->GetSelectedActionSet();
 
@@ -577,12 +577,12 @@ auto
         _AgentPickerHandles.Reset();
 
         auto SelectedItem = TSharedPtr<FString>{};
-        for (const auto& Snapshot : Snapshots)
+        for (const auto& Entry : Roster)
         {
-            auto Label = MakeShared<FString>(Snapshot.DebugName);
+            auto Label = MakeShared<FString>(Entry.DebugName);
             _AgentPickerLabels.Add(Label);
-            _AgentPickerHandles.Add(Snapshot.EntityHandle);
-            if (Snapshot.EntityHandle == SelectedEntity) { SelectedItem = Label; }
+            _AgentPickerHandles.Add(Entry.EntityHandle);
+            if (Entry.EntityHandle == SelectedEntity) { SelectedItem = Label; }
         }
 
         if (_AgentPicker.IsValid())
@@ -991,7 +991,7 @@ auto
         Squad.CountText = TAttribute<FText>::CreateLambda([this]() -> FText
         {
             if (NOT _ViewModel.IsValid()) { return FText::GetEmpty(); }
-            const auto Count = _ViewModel->GetAllEntitySnapshots().Num();
+            const auto Count = _ViewModel->Get_Roster().Num();
             return Count > 0 ? FText::AsNumber(Count) : FText::GetEmpty();
         });
         Tabs.Add(MoveTemp(Squad));

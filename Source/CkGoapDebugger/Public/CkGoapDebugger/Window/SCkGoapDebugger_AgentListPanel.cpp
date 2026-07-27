@@ -136,7 +136,7 @@ auto
 
     if (NOT _ViewModel.IsValid()) { return; }
 
-    const auto& Snapshots = _ViewModel->GetAllEntitySnapshots();
+    const auto& Roster = _ViewModel->Get_Roster();
 
     // Stable-pointer protocol: reuse the existing row for a matching handle,
     // update its fields in place; allocate only for genuinely new entities.
@@ -147,25 +147,25 @@ auto
     }
 
     auto NewItems = TArray<ItemPtr>{};
-    NewItems.Reserve(Snapshots.Num());
+    NewItems.Reserve(Roster.Num());
     auto SetChanged = false;
 
-    for (const auto& Snap : Snapshots)
+    for (const auto& Entry : Roster)
     {
         auto Item = ItemPtr{};
-        if (auto* Found = Existing.Find(Snap.EntityHandle))
+        if (auto* Found = Existing.Find(Entry.EntityHandle))
         {
             Item = *Found;
-            Existing.Remove(Snap.EntityHandle);
+            Existing.Remove(Entry.EntityHandle);
         }
         else
         {
             Item = MakeShared<FAgentRow>();
-            Item->Handle = Snap.EntityHandle;
+            Item->Handle = Entry.EntityHandle;
             SetChanged = true;
         }
-        Item->Name = RowName(Snap.DebugName);
-        Item->PlannerCount = Snap.TopLevelPlanners.Num();
+        Item->Name = RowName(Entry.DebugName);
+        Item->PlannerCount = Entry.Planners.Num();
         NewItems.Add(MoveTemp(Item));
     }
     if (Existing.Num() > 0) { SetChanged = true; }   // vanished entities

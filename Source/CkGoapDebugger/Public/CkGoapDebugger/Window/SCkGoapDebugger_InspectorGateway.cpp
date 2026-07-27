@@ -223,9 +223,9 @@ auto
 
     // Honour the per-window refresh gate. The gateway lives inside the
     // EcsDebugger entity inspector, so it consults that window's gate id —
-    // matching SCkDebuggerWindow_Main::WindowId. Without this, CollectSnapshots
-    // (which walks every entity in the world) runs every editor tick even
-    // when the user has set "OnlyWhenVisible" or a Hz cap on the EcsDebugger.
+    // matching SCkDebuggerWindow_Main::WindowId. Without this the collect below
+    // runs every editor tick even when the user has set "OnlyWhenVisible" or a
+    // Hz cap on the EcsDebugger.
     static const auto EcsDebuggerWindowId = FName(TEXT("EcsDebugger"));
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(EcsDebuggerWindowId))
     { return; }
@@ -235,12 +235,11 @@ auto
     auto* World = Resolve_World();
     if (World == nullptr) { return; }
 
-    // Pull a fresh batch — DataCollector caches diffs internally, so calling
-    // every tick from multiple widgets is the supported pattern.
-    const auto Snapshots = FCkGoapDebugger_DataCollector::CollectSnapshots(World);
-
-    const auto* MySnapshot = Snapshots.FindByPredicate(
-        [this](const FCkGoapDebugger_EntitySnapshot& In) { return In.EntityHandle == _Entity; });
+    // Deep tier for THIS entity only. This used to pull the all-agents batch
+    // and discard everything but its own slice — the dominant cost of having
+    // the gateway open in a populated world.
+    const auto MySnapshotOpt = FCkGoapDebugger_DataCollector::CollectFull(World, _Entity);
+    const auto* MySnapshot = MySnapshotOpt.GetPtrOrNull();
 
     const auto NewHash = HashGatewayState(MySnapshot);
     if (_HasBuilt && NewHash == _LastBuiltHash) { return; }
@@ -275,10 +274,8 @@ auto
         return;
     }
 
-    // CollectSnapshots gives back the full set; pluck this entity's slice.
-    const auto Snapshots = FCkGoapDebugger_DataCollector::CollectSnapshots(World);
-    const auto* MySnapshot = Snapshots.FindByPredicate(
-        [this](const FCkGoapDebugger_EntitySnapshot& In) { return In.EntityHandle == _Entity; });
+    const auto MySnapshotOpt = FCkGoapDebugger_DataCollector::CollectFull(World, _Entity);
+    const auto* MySnapshot = MySnapshotOpt.GetPtrOrNull();
 
     if (MySnapshot == nullptr)
     {

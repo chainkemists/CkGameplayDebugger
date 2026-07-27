@@ -317,6 +317,56 @@ struct FCkGoapDebugger_EntitySnapshot
 };
 
 // ====================================================================================================================
+// ROSTER — the cheap all-agents collection tier.
+//
+// EntitySnapshot above is the DEEP tier: a full recursive PlannerInfo forest
+// plus the legacy ActionSets shim, built for ONE selected entity. Building it
+// for every agent in the world is what made the window unusable at ~150 agents.
+//
+// The roster is the flat mirror: one row per TOP-LEVEL Planner, carrying only
+// what the all-agents surfaces actually render (SquadTable, AgentListPanel,
+// chrome pickers) plus what event detection needs to diff. NO recursion, NO
+// world-state entries, NO catalog.
+// ====================================================================================================================
+
+struct FCkGoapDebugger_RosterPlannerRow
+{
+    FCk_Handle_Goap_Planner        PlannerHandle;
+    FGameplayTag                   PlannerTag;
+    FString                        DisplayName;             // tag leaf, as today
+    ECk_GoapPlanStatus             PlanStatus     = ECk_GoapPlanStatus::Idle;
+    ECk_EnableDisable              EnableToggle   = ECk_EnableDisable::Enable;
+    float                          PlanCost       = 0.0f;
+    int32                          PlanAttemptCount = 0;
+
+    // Active spine (Plan[0] descent), for chain text + chain-delta events.
+    TArray<FCk_Handle_Goap_Action> ChainStepHandles;
+    TArray<FString>                ChainStepClassNames;     // full names; UI applies name-depth
+
+    // Squad alert inputs, pre-derived (replaces the ChildActions scan).
+    bool                           ChainLeafIsFallback      = false;
+    bool                           HasUnconditionalFallback = false;
+    bool                           AllowPlanFailed          = false;
+
+    // Replan diagnostics for the Replanned event (cheap fragment read).
+    FCk_Goap_ReplanCauseInfo       LastReplanCause;
+
+    // Resolved world-state source. The roster pass reads its bounded change-log
+    // ring for WorldStateChanged events — NOT the full key scan.
+    FCk_Handle_Goap_WorldState     WorldStateHandle;
+};
+
+struct FCkGoapDebugger_RosterEntry
+{
+    FCk_Handle EntityHandle;
+    FString    DebugName;            // owner Get_DebugName, "Default__" stripped, as today
+    TArray<FCkGoapDebugger_RosterPlannerRow> Planners;   // top-level only
+
+    int64  FrameNumber      = 0;
+    double WorldTimeSeconds = 0.0;
+};
+
+// ====================================================================================================================
 // HISTORY EVENT — entries on the bottom rail / scrub timeline. Each kind tags
 // the source so the rail can colour-code. SnapshotAtEvent captures the
 // Planner's state at fire-time for scrub-mode inspection.

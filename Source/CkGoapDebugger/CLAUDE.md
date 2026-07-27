@@ -81,20 +81,53 @@ SCkGoapDebuggerWindow
 ```
 UWorld tick (gated by FCkDebuggerRefreshGate)
   └── FCkGoapDebugger_ViewModel::Tick
-        ├── FCkGoapDebugger_DataCollector::Collect(World)
-        │     ├── per entity → FCkGoapDebugger_EntitySnapshot
-        │     │     └── TopLevelPlanners: FCkGoapDebugger_PlannerInfo forest
-        │     │         (settings block, LastReplanCause, SearchStats,
-        │     │          SearchDebug, RecentWorldStateChanges, KeyUsage
-        │     │          census, ChildActions/ChildPlanners recursion)
-        │     └── DetectAndPushEvents → per-entity history ring
-        │         (FCkGoapDebugger_HistoryEvent: +WorldStateChanged w/ change,
-        │          +Replanned w/ CauseAtEvent, PlanFound/Failed w/ snapshot)
+        ├── DataCollector::CollectFull(World, SelectedEntity)   ← DEEP, one agent
+        │     └── FCkGoapDebugger_EntitySnapshot
+        │           ├── TopLevelPlanners: FCkGoapDebugger_PlannerInfo forest
+        │           │   (settings block, LastReplanCause, SearchStats,
+        │           │    SearchDebug, RecentWorldStateChanges, KeyUsage
+        │           │    census, ChildActions/ChildPlanners recursion)
+        │           └── ActionSets: legacy shim
+        ├── DataCollector::CollectRoster(World, &SelectedFull)  ← CHEAP, all agents
+        │     ├── per entity → FCkGoapDebugger_RosterEntry
+        │     │     └── Planners: flat FCkGoapDebugger_RosterPlannerRow
+        │     │         (status/cost/attempts, Plan[0] spine handles + class
+        │     │          names, pre-derived alert bools, LastReplanCause,
+        │     │          resolved WS handle) — NO recursion, NO WS key scan
+        │     └── DetectAndPushEvents → per-entity history ring  ← SINGLE producer
+        │         (FCkGoapDebugger_HistoryEvent: +WorldStateChanged from the WS
+        │          change-log ring, +Replanned w/ CauseAtEvent, PlanFound/Failed,
+        │          chain activate/deactivate/reset, enable-toggle flips)
         ├── OnChanged.Broadcast()
         └── window fan-out: Sidebar / AgentColumn / DecisionPanel /
             SearchTracePanel / TimelineDock / SquadTable / CatalogPanel /
             WorldStateRail all RefreshFromViewModel()
 ```
+
+**Two tiers, and which one a pane reads.** The deep `EntitySnapshot` is built for the
+SELECTED entity only. Building it for every agent — a full recursive planner
+forest, a second full catalog walk through the legacy `BuildActionSetInfo` shim,
+and a whole-world-state key scan per planner — is what made the window crawl at
+BusterBlock's ~150-agent town (the module was built against 1-5-agent gyms).
+
+- **All-agents surfaces read `ViewModel::Get_Roster()`**: SquadTable, AgentListPanel,
+  the chrome agent picker, the Squad tab count.
+- **Selected-agent surfaces read `GetCurrentEntitySnapshot()` / `GetSelectedPlannerInfo()`**
+  and friends, unchanged: Sidebar, AgentColumn, DecisionPanel, SearchTracePanel,
+  WorldStateRail, CatalogPanel, GraphPane, TimelineDock.
+- `SCkGoapDebugger_InspectorGateway` (the card hosted inside the EcsDebugger entity
+  inspector) calls `CollectFull` directly for its own entity — it has no ViewModel.
+  It therefore does NOT drive event detection; with the standalone window closed,
+  no history accrues. Nothing the gateway renders reads history, so this is invisible.
+
+**Declared behavioural degradations** (accepted when the two-tier split landed):
+
+- Scrubbing an agent only has rich `SnapshotAtEvent` state for events that fired
+  WHILE that agent was selected. Older events scrub as metadata-only rows.
+- Plan-status (`PlanFound`/`PlanFailed`) events are detected per TOP-LEVEL Planner
+  from the roster's status field. The old per-catalog-Action diff — which also
+  fired for nested sub-planners off the active spine — is gone. Chain
+  activate/deactivate events still cover the full active spine.
 
 - **DecisionModel** (`Data/CkGoapDebugger_DecisionModel.*`) — pure, Slate-free,
   headless-tested miniature of ck::goap's regressive A* (FName-keyed). Powers
@@ -108,12 +141,13 @@ UWorld tick (gated by FCkDebuggerRefreshGate)
 - **Agent enumeration covers BOTH Planner installation paradigms.** Create-style
   planners live in the owner's `FFragment_RecordOfGoapPlanners`; Add-style stamps
   the Planner role directly on the owner and writes NO record entry — and nearly
-  every gym installs via `Add`. `CollectSnapshots` therefore walks the record
+  every gym installs via `Add`. `CollectRoster` therefore walks the record
   view first, then a `FFragment_Goap_Planner_Params` view filtered to
   non-Action-role, non-record-registered entities (the Add-style owners, each
-  its own agent). `BuildEntitySnapshot` appends the owner's own Planner role
-  before record entries. A record-only walk renders the entire debugger empty
-  on Add-style content (2026-07-19 defect).
+  its own agent). `BuildRosterEntry` and `BuildEntitySnapshot` both append the
+  owner's own Planner role before record entries. A record-only walk renders the
+  entire debugger empty on Add-style content (2026-07-19 defect) — preserve the
+  two-pass enumeration in BOTH tiers.
 
 ### Cross-pane channels on the ViewModel
 

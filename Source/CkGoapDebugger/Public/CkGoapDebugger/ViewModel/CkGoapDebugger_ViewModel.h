@@ -91,7 +91,11 @@ public:
     auto GetSelectedPlannerInfo() const -> const FCkGoapDebugger_PlannerInfo*;
     auto GetPlannerInfoByHandle(FCk_Handle_Goap_Planner InHandle) const -> const FCkGoapDebugger_PlannerInfo*;
 
-    auto GetAllEntitySnapshots() const -> const TArray<FCkGoapDebugger_EntitySnapshot>&;
+    // All-agents tier. Every world-wide surface (Squad table, agent list,
+    // chrome pickers) reads THIS, never a per-agent deep snapshot — building
+    // the deep forest for every agent is what made the window unusable at
+    // ~150 agents.
+    auto Get_Roster() const -> const TArray<FCkGoapDebugger_RosterEntry>&;
 
     // -----------------------------------------------------------------------------------------------------------------
     // Mode + scrub
@@ -147,7 +151,12 @@ private:
     auto BroadcastIfChanged() -> void;
 
 private:
-    TArray<FCkGoapDebugger_EntitySnapshot> _AllSnapshots;
+    // Cheap all-agents tier, refreshed every gated Tick.
+    TArray<FCkGoapDebugger_RosterEntry> _Roster;
+
+    // Deep tier — the SELECTED entity only. Unset when nothing is selected or
+    // the selection carries no Goap role.
+    TOptional<FCkGoapDebugger_EntitySnapshot> _SelectedSnapshot;
 
     FCk_Handle                _SelectedEntity;
     FCk_Handle_Goap_Planner _SelectedActionSet;

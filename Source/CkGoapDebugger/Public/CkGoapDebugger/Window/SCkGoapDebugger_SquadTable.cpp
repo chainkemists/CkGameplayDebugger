@@ -1,7 +1,6 @@
 #include "CkGoapDebugger/Window/SCkGoapDebugger_SquadTable.h"
 
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
-#include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
@@ -63,25 +62,18 @@ namespace ck_goap_debugger_squad_table
         }
     }
 
-    // Active-chain display: walk Plan[0] names down the sub-planner chain.
+    // Active-chain display: the Plan[0] descent, already flattened by the
+    // roster pass (FCkGoapDebugger_RosterPlannerRow::ChainStepClassNames — the
+    // fragment-level twin of the PlannerInfo walk this used to do here).
     // Names run through the shared name-depth tuner.
-    auto Compute_ChainText(const FCkGoapDebugger_PlannerInfo& InPlanner, int32 InNameDepth) -> FString
+    auto Compute_ChainText(const FCkGoapDebugger_RosterPlannerRow& InPlanner, int32 InNameDepth) -> FString
     {
         auto Names = TArray<FString>{};
-        const auto* Cursor = &InPlanner;
-        while (Cursor != nullptr && NOT Cursor->PlanClassNames.IsEmpty())
-        {
-            Names.Add(SCkDebug_NameLabel::Get_ShortName(Cursor->PlanClassNames[0], InNameDepth));
+        Names.Reserve(InPlanner.ChainStepClassNames.Num());
 
-            const FCkGoapDebugger_PlannerInfo* Next = nullptr;
-            if (Cursor->PlanHandles.IsValidIndex(0))
-            {
-                const auto& Step = Cursor->PlanHandles[0];
-                Next = Cursor->ChildPlanners.FindByPredicate(
-                    [&Step](const FCkGoapDebugger_PlannerInfo& In)
-                    { return static_cast<FCk_Handle>(In.PlannerHandle) == static_cast<FCk_Handle>(Step); });
-            }
-            Cursor = Next;
+        for (const auto& StepName : InPlanner.ChainStepClassNames)
+        {
+            Names.Add(SCkDebug_NameLabel::Get_ShortName(StepName, InNameDepth));
         }
         return Names.Num() > 0 ? FString::Join(Names, TEXT(" › ")) : FString(TEXT("\x2014"));
     }
@@ -140,28 +132,31 @@ auto
     -> void
 {
     using namespace ck_goap_debugger_squad_table;
-    using namespace ck_goap_debugger_decision_model;
 
     if (NOT _ViewModel.IsValid() || NOT _ListView.IsValid()) { return; }
 
-    const auto& Snapshots = _ViewModel->GetAllEntitySnapshots();
+    const auto& Roster = _ViewModel->Get_Roster();
 
     // Hash — planner set + per-planner surface state.
+    //
+    // NOTE: deliberately does NOT combine any frame counter. The old
+    // Snapshot.FrameNumber combine changed this hash every tick, so the
+    // early-out below never fired and the whole squad list rebuilt on every
+    // refresh regardless of whether anything visible had changed.
     auto NewHash = uint32{0};
-    for (const auto& Snapshot : Snapshots)
+    for (const auto& Entry : Roster)
     {
-        for (const auto& Planner : Snapshot.TopLevelPlanners)
+        for (const auto& Planner : Entry.Planners)
         {
             auto RowHash = GetTypeHash(Planner.PlannerHandle);
             RowHash = HashCombine(RowHash, ::GetTypeHash(static_cast<uint8>(Planner.PlanStatus)));
             RowHash = HashCombine(RowHash, ::GetTypeHash(static_cast<uint8>(Planner.EnableToggle)));
             RowHash = HashCombine(RowHash, ::GetTypeHash(Planner.PlanCost));
             RowHash = HashCombine(RowHash, ::GetTypeHash(Planner.PlanAttemptCount));
-            for (const auto& StepName : Planner.PlanClassNames)
+            for (const auto& StepName : Planner.ChainStepClassNames)
             { RowHash = HashCombine(RowHash, GetTypeHash(StepName)); }
             NewHash ^= RowHash;
         }
-        NewHash = HashCombine(NewHash, ::GetTypeHash(Snapshot.FrameNumber));
     }
     NewHash = HashCombine(NewHash, GetTypeHash(_ViewModel->GetSelectedActionSet()));
     // Chain names run through the shared name-depth tuner.
@@ -174,12 +169,12 @@ auto
     auto NewVisible = TArray<ItemPtr>{};
     auto SeenPlanners = TSet<FCk_Handle_Goap_Planner>{};
 
-    for (const auto& Snapshot : Snapshots)
+    for (const auto& Entry : Roster)
     {
-        const auto& History = FCkGoapDebugger_DataCollector::GetHistory(Snapshot.EntityHandle);
-        const auto NowSeconds = Snapshot.WorldTimeSeconds;
+        const auto& History = FCkGoapDebugger_DataCollector::GetHistory(Entry.EntityHandle);
+        const auto NowSeconds = Entry.WorldTimeSeconds;
 
-        for (const auto& Planner : Snapshot.TopLevelPlanners)
+        for (const auto& Planner : Entry.Planners)
         {
             SeenPlanners.Add(Planner.PlannerHandle);
 
@@ -190,10 +185,10 @@ auto
                 Row->SparkSamples = MakeShared<TArray<float>>();
             }
 
-            Row->EntityHandle  = Snapshot.EntityHandle;
+            Row->EntityHandle  = Entry.EntityHandle;
             Row->PlannerHandle = Planner.PlannerHandle;
-            Row->AgentName     = Snapshot.DebugName;
-            Row->Avatar        = Compute_Initials(Snapshot.DebugName);
+            Row->AgentName     = Entry.DebugName;
+            Row->Avatar        = Compute_Initials(Entry.DebugName);
             Row->PlannerLabel  = Planner.DisplayName;
             Row->PlanStatus    = Planner.PlanStatus;
             Row->IsDisabled    = Planner.EnableToggle == ECk_EnableDisable::Disable;
@@ -212,18 +207,12 @@ auto
                 ? FString::Printf(TEXT("%.1f"), Planner.PlanCost)
                 : FString(TEXT("\x2014"));
 
-            // Alerts.
+            // Alerts. The three inputs are pre-derived by the roster pass —
+            // the direct-children cost scan this used to do inline now runs
+            // once per planner in the collector.
             Row->AlertTags.Reset();
             {
-                const auto ChainLeafIsFallback =
-                    NOT Planner.PlanClassNames.IsEmpty() &&
-                    Planner.ChildActions.ContainsByPredicate(
-                        [&Planner](const FCkGoapDebugger_ActionInfo& In)
-                        {
-                            return In.ClassName == Planner.PlanClassNames[0] &&
-                                   In.Cost >= k_FallbackCostFloor;
-                        });
-                if (ChainLeafIsFallback)
+                if (Planner.ChainLeafIsFallback)
                 { Row->AlertTags.Add(TEXT("fallback")); }
 
                 if (NOT Planner.HasUnconditionalFallback && NOT Planner.AllowPlanFailed)

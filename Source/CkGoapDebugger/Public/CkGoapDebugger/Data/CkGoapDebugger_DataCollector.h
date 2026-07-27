@@ -11,16 +11,20 @@ class UWorld;
 // ====================================================================================================================
 // CkGoap Debugger — Data Collector.
 //
-// Snapshots every entity with a Goap root into a TArray<FCkGoapDebugger_EntitySnapshot>
-// on demand and maintains a per-entity ring buffer of FCkGoapDebugger_HistoryEvent
-// derived from frame-to-frame diffs (chain mutations, plan-status transitions,
-// Planner enable toggle flips).
+// Two collection tiers (see CkGoapDebugger_Types.h for the why):
+//   - CollectRoster : flat rows for EVERY Goap agent, cheap enough to run each
+//                     gated tick at ~150 agents. Maintains the per-entity ring
+//                     buffer of FCkGoapDebugger_HistoryEvent from frame-to-frame
+//                     roster diffs (chain mutations, plan-status transitions,
+//                     replans, WS change-log entries, enable-toggle flips).
+//   - CollectFull   : the deep FCkGoapDebugger_EntitySnapshot for ONE entity.
 //
 // Lifetime:
 //   - One process-global instance (singleton, all members are file-static).
 //   - Initialize/Shutdown are called from the module's StartupModule/ShutdownModule.
-//   - PIE BeginPIE/EndPIE clear the per-world prev-snapshot cache + history maps
-//     so handles that were valid in the prior session don't leak forward.
+//   - PIE BeginPIE/EndPIE clear the prev-roster map, the prev-full-selected
+//     snapshot, and the history maps so handles that were valid in the prior
+//     session don't leak forward.
 //
 // Threading: collection runs on the game thread (UI Tick), no async work.
 // ====================================================================================================================
@@ -39,15 +43,31 @@ public:
     Shutdown() -> void;
 
     // -----------------------------------------------------------------------------------------------------------------
-    // Snapshot collection — pull a fresh batch from the live ECS world.
+    // Snapshot collection — two tiers.
+    //
+    // Roster : cheap, ALL agents, every gated tick. Flat per-top-level-Planner
+    //          rows read straight off fragments — no recursion, no world-state
+    //          key scan, no catalog. This is ALSO the single event producer:
+    //          it diffs against the previous roster and pushes history events
+    //          for every agent.
+    // Full   : the deep FCkGoapDebugger_EntitySnapshot for ONE entity — the
+    //          Inspector / Catalog / WS-rail / Graph tier.
     // -----------------------------------------------------------------------------------------------------------------
 
-    // Returns a fresh snapshot of every entity that currently has a Goap root.
-    // Internally also diffs against the previous tick's batch for the same
-    // world to populate the per-entity history rings.
+    // InSelectedFull may be null; when an event's entity == the selected entity
+    // it is used to attach rich SnapshotAtEvent copies (scrub fidelity for the
+    // agent the user is watching). All other events carry a null SnapshotAtEvent.
     static auto
-    CollectSnapshots(
-        UWorld* InWorld) -> TArray<FCkGoapDebugger_EntitySnapshot>;
+    CollectRoster(
+        UWorld* InWorld,
+        const FCkGoapDebugger_EntitySnapshot* InSelectedFull) -> TArray<FCkGoapDebugger_RosterEntry>;
+
+    // Full deep snapshot for ONE entity. Unset when the entity carries no Goap
+    // role (or the world/entity is invalid).
+    static auto
+    CollectFull(
+        UWorld* InWorld,
+        const FCk_Handle& InEntity) -> TOptional<FCkGoapDebugger_EntitySnapshot>;
 
     // -----------------------------------------------------------------------------------------------------------------
     // History — per-entity ring buffer of FCkGoapDebugger_HistoryEvent.

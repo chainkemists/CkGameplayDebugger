@@ -1,4 +1,4 @@
-#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+﻿#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
 #include "CkCore/Object/CkObject_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -26,6 +26,7 @@
 #endif
 
 #include "Engine/World.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 // ====================================================================================================================
 // FILE-STATIC STATE — singleton storage.
@@ -37,15 +38,27 @@ namespace ck_goap_debugger_data_collector_internal
     // (the one that holds the Goap root, not the Goap root itself).
     static TMap<FCk_Handle, TArray<FCkGoapDebugger_HistoryEvent>> GHistoryByEntity;
 
-    // Previous-tick snapshot per entity — used for diff-based event detection
-    // and recently-changed-WS markup. Cleared on PIE start/stop.
-    static TMap<FCk_Handle, FCkGoapDebugger_EntitySnapshot> GPrevSnapshotByEntity;
+    // Previous-tick ROSTER per entity — the diff basis for event detection.
+    // Flat by design: the deep per-agent snapshot map this replaced was one of
+    // the dominant per-tick costs at ~150 agents. Cleared on PIE start/stop.
+    static TMap<FCk_Handle, FCkGoapDebugger_RosterEntry> GPrevRosterByEntity;
+
+    // Previous-tick FULL snapshot of the SELECTED entity only — the WS
+    // recently-changed markup needs the previous deep snapshot, and only one
+    // agent's deep data is ever rendered. Cleared on PIE start/stop.
+    static TOptional<FCkGoapDebugger_EntitySnapshot> GPrevFullSelected;
 
     // Maximum events retained per entity. Older events drop off the front.
     constexpr int32 GMaxHistoryPerEntity = 256;
 
     // After this many frames a WS key value-change marker fades.
     constexpr int64 GRecentlyChangedFrameWindow = 30;
+
+    // Fallback-Action cost floor. Duplicated per plan decision rather than
+    // taking a dependency for one float — original:
+    // CkGoapDebugger_DecisionModel.h:102 (ck_goap_debugger_decision_model::
+    // k_FallbackCostFloor). Keep the two in sync.
+    constexpr float GFallbackCostFloor = 900.0f;
 
     // Empty sentinel — returned by GetHistory when the entity has no entries.
     static const TArray<FCkGoapDebugger_HistoryEvent> GEmptyHistory{};
@@ -63,7 +76,8 @@ namespace ck_goap_debugger_data_collector_internal
     ClearAllCaches() -> void
     {
         GHistoryByEntity.Reset();
-        GPrevSnapshotByEntity.Reset();
+        GPrevRosterByEntity.Reset();
+        GPrevFullSelected.Reset();
     }
 
     static auto
@@ -386,32 +400,6 @@ namespace ck_goap_debugger_data_collector_internal
         const FCkGoapDebugger_EntitySnapshot* InPrevSnapshot,
         int64 InCurrentFrame,
         TSet<FCk_Handle_Goap_Planner>& InOutVisited) -> FCkGoapDebugger_PlannerInfo;
-
-    static auto
-    BuildPlannerInfo(
-        const FCk_Handle_Goap_Planner& InPlannerHandle,
-        const FCk_Handle_Goap_Planner& InParentPlannerHandle,
-        const TArray<FCk_Handle_Goap_Action>& InActiveChainHandles,
-        int32 InActiveChainDepthHint) -> FCkGoapDebugger_PlannerInfo
-    {
-        // Compatibility wrapper used by older callers that don't pass WS prev /
-        // depth map. WS-recently-changed markup falls through unset; sub-Planner
-        // recursion uses an empty depth map (chain membership only on top-level).
-        auto DepthByHandle = TMap<FCk_Handle_Goap_Action, int32>{};
-        for (auto Idx = 0; Idx < InActiveChainHandles.Num(); ++Idx)
-        { DepthByHandle.Add(InActiveChainHandles[Idx], Idx); }
-
-        auto Visited = TSet<FCk_Handle_Goap_Planner>{};
-        return BuildPlannerInfo_Recursive(
-            InPlannerHandle,
-            InParentPlannerHandle,
-            InActiveChainHandles,
-            DepthByHandle,
-            /*InPrevSnapshot=*/ nullptr,
-            /*InCurrentFrame=*/ 0,
-            Visited);
-        (void)InActiveChainDepthHint;
-    }
 
     static auto
     BuildPlannerInfo_Recursive(
@@ -952,244 +940,417 @@ namespace ck_goap_debugger_data_collector_internal
     }
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Event detection — diff prev vs current snapshot, push deltas into the
-    // per-entity history ring.
+    // ROSTER — the cheap all-agents tier. One flat row per top-level Planner,
+    // read straight off fragments. No recursion, no WS key scan, no catalog
+    // walk. See CkGoapDebugger_Types.h for why this tier exists.
     // ----------------------------------------------------------------------------------------------------------------
 
-    // Resolve a display name for an action handle. First search EVERY ActionSet's catalog (current,
-    // then previous) — an active-chain entry can belong to a nested planner's catalog, so a
-    // single-catalog lookup misses. The active-chain handles also frequently don't match a catalog
-    // entry by handle at all, so fall back to the action entity's gameplay-label tag (e.g.
-    // "Bb.NpcAction.PickGenreShelf"), which is clean and distinct.
+    // Tag leaf, matching FCkGoapDebugger_PlannerInfo::DisplayName exactly
+    // (BuildPlannerInfo_Recursive's identity block) so squad rows read the same.
     static auto
-    ResolveActionDisplayName(
-        const FCkGoapDebugger_EntitySnapshot& InCurrent,
-        const FCkGoapDebugger_EntitySnapshot* InPrev,
-        const FCk_Handle_Goap_Action& InAction) -> FString
+    DisplayNameFromPlannerTag(
+        const FGameplayTag& InTag) -> FString
     {
-        const auto FromCatalog = [&InAction](const FCkGoapDebugger_EntitySnapshot& InSnapshot) -> FString
+        if (NOT InTag.IsValid()) { return FString{}; }
+
+        auto TagString = InTag.ToString();
+        auto LastDot   = int32{INDEX_NONE};
+        if (TagString.FindLastChar(TEXT('.'), LastDot))
+        { return TagString.RightChop(LastDot + 1); }
+        return TagString;
+    }
+
+    static auto
+    BuildRosterPlannerRow(
+        const FCk_Handle_Goap_Planner& InPlanner) -> FCkGoapDebugger_RosterPlannerRow
+    {
+        auto Row = FCkGoapDebugger_RosterPlannerRow{};
+        Row.PlannerHandle = InPlanner;
+
+        if (NOT ck::IsValid(InPlanner)) { return Row; }
+
+        if (InPlanner.Has<ck::FFragment_Goap_Planner_Params>())
         {
-            for (const auto& As : InSnapshot.ActionSets)
+            const auto& Params = InPlanner.Get<ck::FFragment_Goap_Planner_Params>();
+            Row.PlannerTag      = Params.Get_PlannerTag();
+            Row.EnableToggle    = Params.Get_InitialToggle();
+            Row.AllowPlanFailed = Params.Get_AllowPlanFailed();
+        }
+        Row.DisplayName = DisplayNameFromPlannerTag(Row.PlannerTag);
+
+        if (InPlanner.Has<ck::FFragment_Goap_Planner_Current>())
+        {
+            const auto& Current = InPlanner.Get<ck::FFragment_Goap_Planner_Current>();
+            Row.EnableToggle             = Current.Get_EnableToggle();
+            Row.HasUnconditionalFallback = Current.Get_HasUnconditionalFallback();
+        }
+
+        if (InPlanner.Has<ck::FFragment_Goap_Planner_PlanState>())
+        {
+            const auto& PlanState = InPlanner.Get<ck::FFragment_Goap_Planner_PlanState>();
+            Row.PlanStatus       = PlanState.Get_PlanStatus();
+            Row.PlanCost         = PlanState.Get_PlanCost();
+            Row.PlanAttemptCount = PlanState.Get_PlanAttemptCount();
+        }
+
+        if (InPlanner.Has<ck::FFragment_Goap_Planner_ReplanCause>())
+        {
+            Row.LastReplanCause = InPlanner.Get<ck::FFragment_Goap_Planner_ReplanCause>().Get_Info();
+        }
+
+        if (InPlanner.Has<ck::FFragment_Goap_Planner_WorldStateSource>())
+        {
+            const auto& WsSource = InPlanner.Get<ck::FFragment_Goap_Planner_WorldStateSource>();
+            Row.WorldStateHandle = ck::IsValid(WsSource.Get_Resolved())
+                ? WsSource.Get_Resolved()
+                : WsSource.Get_WorldStateSource();
+        }
+
+        // ---- Active spine: Plan[0] descent -----------------------------------------
+        // Fragment-level twin of SCkGoapDebugger_SquadTable::Compute_ChainText's
+        // walk over PlannerInfo — emit each level's Plan[0] class name, then
+        // descend into it only when that step is itself a Planner (dual-role).
+        {
+            auto Visited = TSet<FCk_Handle>{};
+            auto Cursor  = static_cast<FCk_Handle>(InPlanner);
+
+            while (ck::IsValid(Cursor) && NOT Visited.Contains(Cursor))
             {
-                const auto* Info = As.Catalog.FindByPredicate(
-                    [&InAction](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == InAction; });
-                if (Info != nullptr && NOT Info->ClassName.IsEmpty())
-                { return Info->ClassName; }
+                Visited.Add(Cursor);
+
+                if (NOT Cursor.Has<ck::FFragment_Goap_Planner_PlanState>()) { break; }
+
+                const auto& Plan = Cursor.Get<ck::FFragment_Goap_Planner_PlanState>().Get_Plan();
+                if (Plan.IsEmpty()) { break; }
+
+                const auto& Step = Plan[0];
+                Row.ChainStepHandles.Add(Step);
+
+                auto StepClassName = FString{};
+                if (ck::IsValid(Step) && Step.Has<ck::FFragment_Goap_Action_Params>())
+                {
+                    StepClassName = GetCleanClassName(
+                        Step.Get<ck::FFragment_Goap_Action_Params>().Get_ActionClass().Get());
+                }
+                Row.ChainStepClassNames.Add(MoveTemp(StepClassName));
+
+                if (NOT ck::IsValid(Step) || NOT Step.Has<ck::FFragment_Goap_Planner_Params>())
+                { break; }
+
+                Cursor = static_cast<FCk_Handle>(Step);
             }
-            return FString{};
+        }
+
+        // ---- Fallback alert input ---------------------------------------------------
+        // Reproduces SquadTable.cpp:218-227 exactly: is this Planner's Plan[0]
+        // one of its direct children whose cost sits at/above the fallback
+        // floor? Direct-children resolution mirrors BuildPlannerInfo_Recursive
+        // (Action_Tree first for dual-role hosts, else the catalog index).
+        if (NOT Row.ChainStepClassNames.IsEmpty() && NOT Row.ChainStepClassNames[0].IsEmpty())
+        {
+            const auto& Plan0Name = Row.ChainStepClassNames[0];
+
+            auto DirectChildren = TArray<FCk_Handle_Goap_Action>{};
+            if (InPlanner.Has<ck::FFragment_Goap_Action_Tree>())
+            {
+                DirectChildren = InPlanner.Get<ck::FFragment_Goap_Action_Tree>().Get_ChildActions();
+            }
+            else if (InPlanner.Has<ck::FFragment_Goap_Planner_ActionCatalogIndex>())
+            {
+                const auto& Index = InPlanner.Get<ck::FFragment_Goap_Planner_ActionCatalogIndex>();
+                DirectChildren.Reserve(Index.Get_TagToAction().Num());
+                for (const auto& Pair : Index.Get_TagToAction())
+                {
+                    if (ck::IsValid(Pair.Value)) { DirectChildren.Add(Pair.Value); }
+                }
+            }
+
+            for (const auto& Child : DirectChildren)
+            {
+                if (NOT ck::IsValid(Child)) { continue; }
+                if (NOT Child.Has<ck::FFragment_Goap_Action_Params>())     { continue; }
+                if (NOT Child.Has<ck::FFragment_Goap_Action_Definition>()) { continue; }
+
+                const auto ChildName = GetCleanClassName(
+                    Child.Get<ck::FFragment_Goap_Action_Params>().Get_ActionClass().Get());
+                if (ChildName != Plan0Name) { continue; }
+
+                if (Child.Get<ck::FFragment_Goap_Action_Definition>().Get_Cost() >= GFallbackCostFloor)
+                {
+                    Row.ChainLeafIsFallback = true;
+                    break;
+                }
+            }
+        }
+
+        return Row;
+    }
+
+    static auto
+    BuildRosterEntry(
+        const FCk_Handle& InEntityHandle,
+        UWorld* InWorld) -> FCkGoapDebugger_RosterEntry
+    {
+        auto Entry = FCkGoapDebugger_RosterEntry{};
+        Entry.EntityHandle = InEntityHandle;
+        Entry.DebugName    = UCk_Utils_Handle_UE::Get_DebugName(InEntityHandle).ToString();
+
+        // Same "Default__" strip + unnamed fallback as BuildEntitySnapshot, so
+        // roster-fed surfaces read identically to the deep tier.
+        Entry.DebugName.RemoveFromStart(TEXT("Default__"));
+        if (Entry.DebugName.IsEmpty())
+        { Entry.DebugName = TEXT("(unnamed)"); }
+
+        Entry.FrameNumber      = static_cast<int64>(GFrameCounter);
+        Entry.WorldTimeSeconds = (InWorld != nullptr) ? InWorld->GetTimeSeconds() : 0.0;
+
+        auto MutableOwner = InEntityHandle;
+
+        const auto AppendTopLevelPlanner = [&Entry](FCk_Handle_Goap_Planner InPlanner)
+        {
+            if (NOT ck::IsValid(InPlanner)) { return; }
+            Entry.Planners.Add(BuildRosterPlannerRow(InPlanner));
         };
 
-        auto Name = FromCatalog(InCurrent);
-        if (Name.IsEmpty() && InPrev != nullptr) { Name = FromCatalog(*InPrev); }
+        AppendTopLevelPlanner(UCk_Utils_Goap_Planner_UE::Cast(MutableOwner));
 
-        if (Name.IsEmpty() && UCk_Utils_GameplayLabel_UE::Has(InAction))
+        ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
+            MutableOwner, AppendTopLevelPlanner);
+
+        return Entry;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+    // Event detection — diff prev vs current ROSTER, push deltas into the
+    // per-entity history ring. This is the SINGLE event producer.
+    // ----------------------------------------------------------------------------------------------------------------
+
+    // Fallback display name for a chain step whose class name did not resolve.
+    // Mirrors the label branch of the retired ResolveActionDisplayName: the
+    // action entity's gameplay-label tag (e.g. "Bb.NpcAction.PickGenreShelf").
+    static auto
+    ResolveActionLabelName(
+        const FCk_Handle_Goap_Action& InAction) -> FString
+    {
+        if (NOT ck::IsValid(InAction)) { return FString{}; }
+
+        if (UCk_Utils_GameplayLabel_UE::Has(InAction))
         {
             const auto Label = UCk_Utils_GameplayLabel_UE::Get_Label(InAction);
-            if (Label.IsValid()) { Name = Label.ToString(); }
+            if (Label.IsValid()) { return Label.ToString(); }
         }
-        return Name;
+        return FString{};
     }
 
     static auto
     DetectAndPushEvents(
         const FCk_Handle& InEntityHandle,
-        const FCkGoapDebugger_EntitySnapshot& InCurrent,
-        const FCkGoapDebugger_EntitySnapshot* InPrev,
+        const FCkGoapDebugger_RosterEntry& InCurrent,
+        const FCkGoapDebugger_RosterEntry* InPrev,
+        const FCkGoapDebugger_EntitySnapshot* InSelectedFull,
         double InWorldTime,
         int64  InFrame) -> void
     {
-        for (const auto& CurAs : InCurrent.ActionSets)
+        // Rich SnapshotAtEvent copies exist ONLY for the entity the user has
+        // selected — InSelectedFull is that entity's deep snapshot, or null.
+        // Every other agent's events carry a null snapshot and scrub as
+        // metadata-only rows (declared degradation, see CLAUDE.md).
+        const auto SnapshotForPlanner =
+            [InSelectedFull](const FCk_Handle_Goap_Planner& InTopLevel)
+                -> TSharedPtr<FCkGoapDebugger_ActionSetInfo>
+            {
+                if (InSelectedFull == nullptr) { return nullptr; }
+
+                const auto* Found = InSelectedFull->ActionSets.FindByPredicate(
+                    [&InTopLevel](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == InTopLevel; });
+                if (Found == nullptr) { return nullptr; }
+
+                return MakeShared<FCkGoapDebugger_ActionSetInfo>(*Found);
+            };
+
+        // Chain-step display name by index — read out of the roster row that
+        // recorded the handle, never off the handle itself (a deactivated step
+        // may already be destroyed).
+        const auto StepName =
+            [](const FCkGoapDebugger_RosterPlannerRow& InRow, int32 InIndex,
+               const FCk_Handle_Goap_Action& InStep) -> FString
+            {
+                if (InRow.ChainStepClassNames.IsValidIndex(InIndex) &&
+                    NOT InRow.ChainStepClassNames[InIndex].IsEmpty())
+                { return InRow.ChainStepClassNames[InIndex]; }
+
+                return ResolveActionLabelName(InStep);
+            };
+
+        // Sibling top-level Planners can share one WorldState, so the same ring
+        // entry surfaces on several rows — dedup by (key, frame) as before.
+        auto SeenWsChanges = TSet<TPair<FGameplayTag, int64>>{};
+
+        for (const auto& CurRow : InCurrent.Planners)
         {
-            const auto* PrevAs = (InPrev != nullptr)
-                ? InPrev->ActionSets.FindByPredicate(
-                      [&CurAs](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == CurAs.Handle; })
+            const auto* PrevRow = (InPrev != nullptr)
+                ? InPrev->Planners.FindByPredicate(
+                      [&CurRow](const FCkGoapDebugger_RosterPlannerRow& In)
+                      { return In.PlannerHandle == CurRow.PlannerHandle; })
                 : nullptr;
 
             // ---- Enable toggle flip ----------------------------------------
-            if (PrevAs != nullptr && PrevAs->EnableToggle != CurAs.EnableToggle)
+            if (PrevRow != nullptr && PrevRow->EnableToggle != CurRow.EnableToggle)
             {
                 auto Event = FCkGoapDebugger_HistoryEvent{};
-                Event.Kind = (CurAs.EnableToggle == ECk_EnableDisable::Enable)
+                Event.Kind = (CurRow.EnableToggle == ECk_EnableDisable::Enable)
                     ? ECkGoapDebugger_HistoryEventKind::ActionSetEnabled
                     : ECkGoapDebugger_HistoryEventKind::ActionSetDisabled;
-                Event.ActionSetHandle  = CurAs.Handle;
+                Event.ActionSetHandle  = CurRow.PlannerHandle;
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
                 Event.Title            = (Event.Kind == ECkGoapDebugger_HistoryEventKind::ActionSetEnabled)
-                    ? FString::Printf(TEXT("Enabled: %s"), *CurAs.DebugName)
-                    : FString::Printf(TEXT("Disabled: %s"), *CurAs.DebugName);
-                Event.SnapshotAtEvent  = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
+                    ? FString::Printf(TEXT("Enabled: %s"), *CurRow.DisplayName)
+                    : FString::Printf(TEXT("Disabled: %s"), *CurRow.DisplayName);
+                Event.SnapshotAtEvent  = SnapshotForPlanner(CurRow.PlannerHandle);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
             }
 
             // ---- Chain delta ---------------------------------------------------
-            const auto& CurChain  = CurAs.ActiveChainHandles;
-            const auto& PrevChain = (PrevAs != nullptr) ? PrevAs->ActiveChainHandles : TArray<FCk_Handle_Goap_Action>{};
+            const auto& CurChain  = CurRow.ChainStepHandles;
+            const auto  EmptyChain = TArray<FCk_Handle_Goap_Action>{};
+            const auto& PrevChain = (PrevRow != nullptr) ? PrevRow->ChainStepHandles : EmptyChain;
 
             // Activated: in cur, not in prev.
-            for (const auto& CurEntry : CurChain)
+            for (auto Idx = 0; Idx < CurChain.Num(); ++Idx)
             {
+                const auto& CurEntry = CurChain[Idx];
                 if (PrevChain.Contains(CurEntry)) { continue; }
 
                 auto Event = FCkGoapDebugger_HistoryEvent{};
                 Event.Kind             = ECkGoapDebugger_HistoryEventKind::ActionActivated;
-                Event.ActionSetHandle  = CurAs.Handle;
+                Event.ActionSetHandle  = CurRow.PlannerHandle;
                 Event.ActionHandle     = CurEntry;
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
 
-                // Title = action display name (catalog across all ActionSets, then gameplay label).
-                Event.ActionClassName = ResolveActionDisplayName(InCurrent, nullptr, CurEntry);
+                Event.ActionClassName = StepName(CurRow, Idx, CurEntry);
                 Event.Title = NOT Event.ActionClassName.IsEmpty()
                     ? FString::Printf(TEXT("Activated: %s"), *Event.ActionClassName)
                     : FString::Printf(TEXT("Activated: <action %s>"), *CurEntry.ToString());
 
-                Event.SnapshotAtEvent = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
+                Event.SnapshotAtEvent = SnapshotForPlanner(CurRow.PlannerHandle);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
             }
 
             // Deactivated: in prev, not in cur.
-            for (const auto& PrevEntry : PrevChain)
+            for (auto Idx = 0; Idx < PrevChain.Num(); ++Idx)
             {
+                const auto& PrevEntry = PrevChain[Idx];
                 if (CurChain.Contains(PrevEntry)) { continue; }
 
                 auto Event = FCkGoapDebugger_HistoryEvent{};
                 Event.Kind             = ECkGoapDebugger_HistoryEventKind::ActionDeactivated;
-                Event.ActionSetHandle  = CurAs.Handle;
+                Event.ActionSetHandle  = CurRow.PlannerHandle;
                 Event.ActionHandle     = PrevEntry;
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
 
-                Event.ActionClassName = ResolveActionDisplayName(InCurrent, InPrev, PrevEntry);
+                Event.ActionClassName = (PrevRow != nullptr)
+                    ? StepName(*PrevRow, Idx, PrevEntry)
+                    : FString{};
                 Event.Title = NOT Event.ActionClassName.IsEmpty()
                     ? FString::Printf(TEXT("Deactivated: %s"), *Event.ActionClassName)
                     : FString::Printf(TEXT("Deactivated: <action %s>"), *PrevEntry.ToString());
 
-                Event.SnapshotAtEvent = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
+                Event.SnapshotAtEvent = SnapshotForPlanner(CurRow.PlannerHandle);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
             }
 
             // ChainReset: prev had >=1, cur has exactly 0.
-            if (PrevAs != nullptr && PrevChain.Num() > 0 && CurChain.Num() == 0)
+            if (PrevRow != nullptr && PrevChain.Num() > 0 && CurChain.Num() == 0)
             {
                 auto Event = FCkGoapDebugger_HistoryEvent{};
                 Event.Kind             = ECkGoapDebugger_HistoryEventKind::ChainReset;
-                Event.ActionSetHandle  = CurAs.Handle;
+                Event.ActionSetHandle  = CurRow.PlannerHandle;
                 Event.WorldTimeSeconds = InWorldTime;
                 Event.FrameNumber      = InFrame;
-                Event.Title            = FString::Printf(TEXT("Chain reset: %s"), *CurAs.DebugName);
-                Event.SnapshotAtEvent  = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
+                Event.Title            = FString::Printf(TEXT("Chain reset: %s"), *CurRow.DisplayName);
+                Event.SnapshotAtEvent  = SnapshotForPlanner(CurRow.PlannerHandle);
                 PushHistoryEvent(InEntityHandle, MoveTemp(Event));
             }
 
-            // ---- Plan status transitions per Action in the catalog -------------
-            for (const auto& CurAction : CurAs.Catalog)
+            // ---- Plan status transition (top-level Planner) --------------------
+            if (PrevRow != nullptr && PrevRow->PlanStatus != CurRow.PlanStatus)
             {
-                const auto* PrevAction = (PrevAs != nullptr)
-                    ? PrevAs->Catalog.FindByPredicate(
-                          [&CurAction](const FCkGoapDebugger_ActionInfo& In) { return In.Handle == CurAction.Handle; })
-                    : nullptr;
+                const auto IsPlanFoundTransition =
+                    (PrevRow->PlanStatus == ECk_GoapPlanStatus::Idle ||
+                     PrevRow->PlanStatus == ECk_GoapPlanStatus::Planning) &&
+                    CurRow.PlanStatus == ECk_GoapPlanStatus::PlanFound;
 
-                if (PrevAction == nullptr) { continue; }
-                if (PrevAction->PlanStatus == CurAction.PlanStatus) { continue; }
+                const auto IsPlanFailedTransition =
+                    CurRow.PlanStatus == ECk_GoapPlanStatus::PlanFailed &&
+                    PrevRow->PlanStatus != ECk_GoapPlanStatus::PlanFailed;
 
-                auto IsPlanFoundTransition =
-                    (PrevAction->PlanStatus == ECk_GoapPlanStatus::Idle ||
-                     PrevAction->PlanStatus == ECk_GoapPlanStatus::Planning) &&
-                    CurAction.PlanStatus == ECk_GoapPlanStatus::PlanFound;
-
-                auto IsPlanFailedTransition =
-                    CurAction.PlanStatus == ECk_GoapPlanStatus::PlanFailed &&
-                    PrevAction->PlanStatus != ECk_GoapPlanStatus::PlanFailed;
-
-                if (NOT IsPlanFoundTransition && NOT IsPlanFailedTransition) { continue; }
-
-                auto Event = FCkGoapDebugger_HistoryEvent{};
-                Event.Kind = IsPlanFoundTransition
-                    ? ECkGoapDebugger_HistoryEventKind::PlanFound
-                    : ECkGoapDebugger_HistoryEventKind::PlanFailed;
-                Event.ActionSetHandle  = CurAs.Handle;
-                Event.ActionHandle     = CurAction.Handle;
-                Event.WorldTimeSeconds = InWorldTime;
-                Event.FrameNumber      = InFrame;
-                Event.ActionClassName = CurAction.ClassName;
-                Event.Title = IsPlanFoundTransition
-                    ? FString::Printf(TEXT("Plan found: %s"), *CurAction.ClassName)
-                    : FString::Printf(TEXT("Plan failed: %s"), *CurAction.ClassName);
-
-                if (IsPlanFoundTransition)
-                {
-                    Event.Meta = FString::Printf(TEXT("cost=%.2f, steps=%d"),
-                        CurAction.PlanCost, CurAction.PlanClassNames.Num());
-                }
-
-                Event.SnapshotAtEvent = MakeShared<FCkGoapDebugger_ActionSetInfo>(CurAs);
-                PushHistoryEvent(InEntityHandle, MoveTemp(Event));
-            }
-        }
-
-        // ---- New-shape events: replans (with cause) + world-state changes ------
-        // Walked over the TopLevelPlanners forest. WS changes are deduped by
-        // (key, frame) because sibling planners can share one WorldState.
-        {
-            auto SeenWsChanges = TSet<TPair<FGameplayTag, int64>>{};
-
-            const auto FindActionSetSnapshot =
-                [&InCurrent](const FCk_Handle_Goap_Planner& InTopLevel) -> TSharedPtr<FCkGoapDebugger_ActionSetInfo>
-                {
-                    const auto* Found = InCurrent.ActionSets.FindByPredicate(
-                        [&InTopLevel](const FCkGoapDebugger_ActionSetInfo& In) { return In.Handle == InTopLevel; });
-                    if (Found == nullptr) { return nullptr; }
-                    return MakeShared<FCkGoapDebugger_ActionSetInfo>(*Found);
-                };
-
-            const auto FindPrevPlanner =
-                [InPrev](const FCk_Handle_Goap_Planner& InHandle) -> const FCkGoapDebugger_PlannerInfo*
-                {
-                    if (InPrev == nullptr) { return nullptr; }
-                    auto Walk = [&](auto& InSelf, const TArray<FCkGoapDebugger_PlannerInfo>& InPlanners)
-                        -> const FCkGoapDebugger_PlannerInfo*
-                    {
-                        for (const auto& P : InPlanners)
-                        {
-                            if (P.PlannerHandle == InHandle) { return &P; }
-                            if (const auto* Found = InSelf(InSelf, P.ChildPlanners)) { return Found; }
-                        }
-                        return nullptr;
-                    };
-                    return Walk(Walk, InPrev->TopLevelPlanners);
-                };
-
-            auto EmitForPlanner =
-                [&](auto& InSelf, const FCkGoapDebugger_PlannerInfo& InPlanner,
-                    const FCk_Handle_Goap_Planner& InTopLevelHandle) -> void
-            {
-                const auto* PrevPlanner = FindPrevPlanner(InPlanner.PlannerHandle);
-
-                // Replanned — attempt counter advanced past the previous tick.
-                if (PrevPlanner != nullptr && InPlanner.PlanAttemptCount > PrevPlanner->PlanAttemptCount)
+                if (IsPlanFoundTransition || IsPlanFailedTransition)
                 {
                     auto Event = FCkGoapDebugger_HistoryEvent{};
-                    Event.Kind             = ECkGoapDebugger_HistoryEventKind::Replanned;
-                    Event.ActionSetHandle  = InTopLevelHandle;
+                    Event.Kind = IsPlanFoundTransition
+                        ? ECkGoapDebugger_HistoryEventKind::PlanFound
+                        : ECkGoapDebugger_HistoryEventKind::PlanFailed;
+                    Event.ActionSetHandle  = CurRow.PlannerHandle;
                     Event.WorldTimeSeconds = InWorldTime;
                     Event.FrameNumber      = InFrame;
-                    Event.CauseAtEvent     = InPlanner.LastReplanCause;
-
-                    const auto ChangedCount = InPlanner.LastReplanCause.Get_ChangedKeys().Num();
-                    Event.Title = FString::Printf(TEXT("Replan #%d: %s"),
-                        InPlanner.PlanAttemptCount, *InPlanner.DisplayName);
-                    Event.Meta = ChangedCount > 1
-                        ? FString::Printf(TEXT("%d changes coalesced"), ChangedCount)
+                    Event.ActionClassName  = CurRow.ChainStepClassNames.IsValidIndex(0)
+                        ? CurRow.ChainStepClassNames[0]
                         : FString{};
 
-                    Event.SnapshotAtEvent = FindActionSetSnapshot(InTopLevelHandle);
+                    const auto& EventSubject = NOT Event.ActionClassName.IsEmpty()
+                        ? Event.ActionClassName
+                        : CurRow.DisplayName;
+
+                    Event.Title = IsPlanFoundTransition
+                        ? FString::Printf(TEXT("Plan found: %s"), *EventSubject)
+                        : FString::Printf(TEXT("Plan failed: %s"), *EventSubject);
+
+                    if (IsPlanFoundTransition)
+                    {
+                        Event.Meta = FString::Printf(TEXT("cost=%.2f, steps=%d"),
+                            CurRow.PlanCost, CurRow.ChainStepClassNames.Num());
+                    }
+
+                    Event.SnapshotAtEvent = SnapshotForPlanner(CurRow.PlannerHandle);
                     PushHistoryEvent(InEntityHandle, MoveTemp(Event));
                 }
+            }
 
-                // World-state changes recorded since the previous snapshot frame.
+            // ---- Replanned — attempt counter advanced --------------------------
+            if (PrevRow != nullptr && CurRow.PlanAttemptCount > PrevRow->PlanAttemptCount)
+            {
+                auto Event = FCkGoapDebugger_HistoryEvent{};
+                Event.Kind             = ECkGoapDebugger_HistoryEventKind::Replanned;
+                Event.ActionSetHandle  = CurRow.PlannerHandle;
+                Event.WorldTimeSeconds = InWorldTime;
+                Event.FrameNumber      = InFrame;
+                Event.CauseAtEvent     = CurRow.LastReplanCause;
+
+                const auto ChangedCount = CurRow.LastReplanCause.Get_ChangedKeys().Num();
+                Event.Title = FString::Printf(TEXT("Replan #%d: %s"),
+                    CurRow.PlanAttemptCount, *CurRow.DisplayName);
+                Event.Meta = ChangedCount > 1
+                    ? FString::Printf(TEXT("%d changes coalesced"), ChangedCount)
+                    : FString{};
+
+                Event.SnapshotAtEvent = SnapshotForPlanner(CurRow.PlannerHandle);
+                PushHistoryEvent(InEntityHandle, MoveTemp(Event));
+            }
+
+            // ---- World-state changes since the previous roster frame -----------
+            // Bounded ring read off the resolved WS handle (capacity 32) — NOT
+            // the override-stack key scan BuildWorldStateEntries performs.
+            if (ck::IsValid(CurRow.WorldStateHandle) &&
+                CurRow.WorldStateHandle.Has<ck::FFragment_Goap_WorldState_ChangeLog>())
+            {
                 const auto PrevFrame = (InPrev != nullptr) ? InPrev->FrameNumber : 0;
-                for (const auto& Change : InPlanner.RecentWorldStateChanges)
+                const auto& Changes =
+                    CurRow.WorldStateHandle.Get<ck::FFragment_Goap_WorldState_ChangeLog>().Get_Entries();
+
+                for (const auto& Change : Changes)
                 {
                     if (Change.Get_FrameNumber() <= PrevFrame) { continue; }
 
@@ -1199,7 +1360,7 @@ namespace ck_goap_debugger_data_collector_internal
 
                     auto Event = FCkGoapDebugger_HistoryEvent{};
                     Event.Kind             = ECkGoapDebugger_HistoryEventKind::WorldStateChanged;
-                    Event.ActionSetHandle  = InTopLevelHandle;
+                    Event.ActionSetHandle  = CurRow.PlannerHandle;
                     Event.WorldTimeSeconds = InWorldTime;
                     Event.FrameNumber      = Change.Get_FrameNumber();
                     Event.WorldStateChangeAtEvent = Change;
@@ -1207,16 +1368,10 @@ namespace ck_goap_debugger_data_collector_internal
                         *Change.Get_Key().ToString(),
                         Change.Get_NewValue() ? TEXT("TRUE") : TEXT("FALSE"));
 
-                    Event.SnapshotAtEvent = FindActionSetSnapshot(InTopLevelHandle);
+                    Event.SnapshotAtEvent = SnapshotForPlanner(CurRow.PlannerHandle);
                     PushHistoryEvent(InEntityHandle, MoveTemp(Event));
                 }
-
-                for (const auto& Child : InPlanner.ChildPlanners)
-                { InSelf(InSelf, Child, InTopLevelHandle); }
-            };
-
-            for (const auto& TopLevel : InCurrent.TopLevelPlanners)
-            { EmitForPlanner(EmitForPlanner, TopLevel, TopLevel.PlannerHandle); }
+            }
         }
     }
 } // namespace ck_goap_debugger_data_collector_internal
@@ -1274,94 +1429,82 @@ auto
 
 auto
     FCkGoapDebugger_DataCollector::
-    CollectSnapshots(
-        UWorld* InWorld)
-    -> TArray<FCkGoapDebugger_EntitySnapshot>
+    CollectRoster(
+        UWorld* InWorld,
+        const FCkGoapDebugger_EntitySnapshot* InSelectedFull)
+    -> TArray<FCkGoapDebugger_RosterEntry>
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkGoapDebugger_CollectRoster);
+
     using namespace ck_goap_debugger_data_collector_internal;
 
-    auto Out = TArray<FCkGoapDebugger_EntitySnapshot>{};
+    auto Out = TArray<FCkGoapDebugger_RosterEntry>{};
 
     if (NOT ck::IsValid(InWorld, ck::IsValid_Policy_NullptrOnly{})) { return Out; }
 
     auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
     if (NOT ck::IsValid(TransientEntity)) { return Out; }
 
-    // Snapshot map for this pass — keyed by the entity that owns the Goap root.
-    // We track which entities we saw so the prev-snapshot map can be pruned of
+    // Which entities we saw this pass, so the prev-roster map can be pruned of
     // entries whose entities have been destroyed.
     auto SeenThisPass = TSet<FCk_Handle>{};
 
     // Planner entities registered in SOME owner's record (Create-style children).
     // Collected during the record pass so the Planner-role pass below can tell
-    // an Add-style owner (snapshot it) from a Create-style child (already
-    // covered by its owning entity's snapshot).
+    // an Add-style owner (roster it) from a Create-style child (already covered
+    // by its owning entity's entry).
     auto RecordRegisteredPlanners = TSet<FCk_Handle>{};
 
-    const auto SnapshotOwner = [&Out, &SeenThisPass, InWorld](
-        const FCk_Handle& InOwnerHandle,
-        const FCk_Handle_Goap_Planner& InFirstPlanner)
+    const auto RosterOwner = [&Out, &SeenThisPass, InWorld, InSelectedFull](
+        const FCk_Handle& InOwnerHandle)
     {
-        const auto* PrevSnapshot = GPrevSnapshotByEntity.Find(InOwnerHandle);
+        const auto* PrevEntry = GPrevRosterByEntity.Find(InOwnerHandle);
 
-        auto Snapshot = BuildEntitySnapshot(InOwnerHandle, InFirstPlanner, InWorld, PrevSnapshot);
+        auto Entry = BuildRosterEntry(InOwnerHandle, InWorld);
 
+        // The roster pass is the SINGLE event producer for every agent.
         DetectAndPushEvents(
             InOwnerHandle,
-            Snapshot,
-            PrevSnapshot,
-            Snapshot.WorldTimeSeconds,
-            Snapshot.FrameNumber);
+            Entry,
+            PrevEntry,
+            InSelectedFull,
+            Entry.WorldTimeSeconds,
+            Entry.FrameNumber);
 
         SeenThisPass.Add(InOwnerHandle);
-        GPrevSnapshotByEntity.Add(InOwnerHandle, Snapshot);
+        GPrevRosterByEntity.Add(InOwnerHandle, Entry);
 
-        Out.Add(MoveTemp(Snapshot));
+        Out.Add(MoveTemp(Entry));
     };
 
-    // U11.7-A: Create-style owners — an owner entity holds
-    // FFragment_RecordOfGoapPlanners whose entries are the typesafe
-    // FCk_Handle_Goap_Planner sub-entities. Iterate those owners, build a
-    // snapshot for the owner with its forest of top-level Planners.
+    // Create-style owners — an owner entity holds FFragment_RecordOfGoapPlanners
+    // whose entries are the typesafe FCk_Handle_Goap_Planner sub-entities.
     TransientEntity.View<ck::FFragment_RecordOfGoapPlanners>().ForEach(
-        [&SnapshotOwner, &RecordRegisteredPlanners, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
+        [&RosterOwner, &RecordRegisteredPlanners, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_RecordOfGoapPlanners&)
         {
             const auto OwnerHandle = ck::MakeHandle(InEntity, TransientEntity);
             if (NOT ck::IsValid(OwnerHandle)) { return; }
 
-            // GoapHandle is the first valid Planner on the owner — self-role
-            // first (Add), then record entries (Create) — kept as a legacy
-            // field on the snapshot for widgets that still rely on it as a
-            // stable per-entity identifier. Mirrors BuildEntitySnapshot's
-            // TopLevelPlanners ordering.
-            auto FirstPlannerHandle = UCk_Utils_Goap_Planner_UE::Cast(OwnerHandle);
-
             auto MutableOwner = OwnerHandle;
             ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
                 MutableOwner,
-                [&FirstPlannerHandle, &RecordRegisteredPlanners](FCk_Handle_Goap_Planner InPlanner)
+                [&RecordRegisteredPlanners](FCk_Handle_Goap_Planner InPlanner)
                 {
                     if (NOT ck::IsValid(InPlanner)) { return; }
-
                     RecordRegisteredPlanners.Add(static_cast<FCk_Handle>(InPlanner));
-
-                    if (NOT ck::IsValid(FirstPlannerHandle))
-                    {
-                        FirstPlannerHandle = InPlanner;
-                    }
                 });
 
-            SnapshotOwner(OwnerHandle, FirstPlannerHandle);
+            RosterOwner(OwnerHandle);
         });
 
     // Add-style owners: the Planner role is stamped directly onto the owning
     // entity and the Add path never writes a record entry, so the record view
     // above cannot see these agents (every gym but Survival installs this way).
-    // Walk every Planner-role entity and snapshot the ones that are neither
+    // Walk every Planner-role entity and roster the ones that are neither
     // sub-nodes (Action role => leaf or promoted mid-tier under some Planner)
-    // nor Create-style children (already covered by their owner's snapshot).
+    // nor Create-style children (already covered by their owner's entry).
     TransientEntity.View<ck::FFragment_Goap_Planner_Params>().ForEach(
-        [&SnapshotOwner, &SeenThisPass, &RecordRegisteredPlanners, &TransientEntity](
+        [&RosterOwner, &SeenThisPass, &RecordRegisteredPlanners, &TransientEntity](
             FCk_Entity InEntity, const ck::FFragment_Goap_Planner_Params&)
         {
             const auto OwnerHandle = ck::MakeHandle(InEntity, TransientEntity);
@@ -1371,12 +1514,12 @@ auto
             if (RecordRegisteredPlanners.Contains(OwnerHandle)) { return; }
             if (OwnerHandle.Has<ck::FFragment_Goap_Action_Definition>()) { return; }
 
-            SnapshotOwner(OwnerHandle, UCk_Utils_Goap_Planner_UE::CastChecked(OwnerHandle));
+            RosterOwner(OwnerHandle);
         });
 
     // Prune entries for entities that no longer exist (destroyed since last tick).
     auto KeysToRemove = TArray<FCk_Handle>{};
-    for (const auto& KvPair : GPrevSnapshotByEntity)
+    for (const auto& KvPair : GPrevRosterByEntity)
     {
         if (NOT SeenThisPass.Contains(KvPair.Key))
         {
@@ -1385,7 +1528,7 @@ auto
     }
     for (const auto& Key : KeysToRemove)
     {
-        GPrevSnapshotByEntity.Remove(Key);
+        GPrevRosterByEntity.Remove(Key);
         // History intentionally preserved — user may want to scrub through
         // events for a recently-destroyed entity. PIE teardown clears it.
     }
@@ -1393,6 +1536,50 @@ auto
     return Out;
 }
 
+auto
+    FCkGoapDebugger_DataCollector::
+    CollectFull(
+        UWorld* InWorld,
+        const FCk_Handle& InEntity)
+    -> TOptional<FCkGoapDebugger_EntitySnapshot>
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(CkGoapDebugger_CollectFull);
+
+    using namespace ck_goap_debugger_data_collector_internal;
+
+    if (NOT ck::IsValid(InWorld, ck::IsValid_Policy_NullptrOnly{})) { return {}; }
+    if (NOT ck::IsValid(InEntity)) { return {}; }
+
+    // GoapHandle is the first valid Planner on the owner — self-role first
+    // (Add), then record entries (Create) — kept as a legacy field on the
+    // snapshot for widgets that still rely on it as a stable per-entity
+    // identifier. Mirrors BuildEntitySnapshot's TopLevelPlanners ordering.
+    auto MutableOwner       = InEntity;
+    auto FirstPlannerHandle = UCk_Utils_Goap_Planner_UE::Cast(MutableOwner);
+
+    ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
+        MutableOwner,
+        [&FirstPlannerHandle](FCk_Handle_Goap_Planner InPlanner)
+        {
+            if (NOT ck::IsValid(InPlanner)) { return; }
+            if (NOT ck::IsValid(FirstPlannerHandle)) { FirstPlannerHandle = InPlanner; }
+        });
+
+    if (NOT ck::IsValid(FirstPlannerHandle)) { return {}; }
+
+    // The WS recently-changed markers need the PREVIOUS deep snapshot of this
+    // same entity; a selection change restarts them (markers fade in 30 frames).
+    const auto* PrevSnapshot =
+        (GPrevFullSelected.IsSet() && GPrevFullSelected->EntityHandle == InEntity)
+            ? &GPrevFullSelected.GetValue()
+            : nullptr;
+
+    auto Snapshot = BuildEntitySnapshot(InEntity, FirstPlannerHandle, InWorld, PrevSnapshot);
+
+    GPrevFullSelected = Snapshot;
+
+    return Snapshot;
+}
 // ====================================================================================================================
 // HISTORY
 // ====================================================================================================================

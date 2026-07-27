@@ -20,9 +20,17 @@ namespace ck_goap_debugger_viewmodel_internal
 
     // Cheap hash of the observable view-model state. Used to debounce
     // OnChanged broadcasts.
+    //
+    // NOTE: deliberately does NOT hash any frame counter. The old per-snapshot
+    // FrameNumber combine made this hash change every single tick, so the
+    // debounce never fired and every subscribed pane rebuilt continuously.
+    // Live values (status, satisfaction, override state, trace highlight) are
+    // TAttribute-bound and track without a broadcast; only STRUCTURAL change
+    // needs one, which is what the fields below capture.
     static auto
     HashState(
-        const TArray<FCkGoapDebugger_EntitySnapshot>& InSnapshots,
+        const TArray<FCkGoapDebugger_RosterEntry>& InRoster,
+        const TOptional<FCkGoapDebugger_EntitySnapshot>& InSelectedSnapshot,
         const FCk_Handle& InSelectedEntity,
         const FCk_Handle_Goap_Planner& InSelectedActionSet,
         const FCk_Handle_Goap_Action& InSelectedAction,
@@ -36,29 +44,36 @@ namespace ck_goap_debugger_viewmodel_internal
         Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(InSelectedAction)));
         Hash = HashCombine(Hash, ::GetTypeHash(static_cast<uint8>(InMode)));
         Hash = HashCombine(Hash, ::GetTypeHash(InScrubIndex));
-        Hash = HashCombine(Hash, ::GetTypeHash(InSnapshots.Num()));
+        Hash = HashCombine(Hash, ::GetTypeHash(InRoster.Num()));
 
-        // Per-entity coarse hash — chain length, status hash, frame number.
-        // Keeps Tick cheap while still catching visible changes.
-        for (const auto& Snap : InSnapshots)
+        for (const auto& Entry : InRoster)
         {
-            Hash = HashCombine(Hash, ::GetTypeHash(Snap.EntityHandle));
-            Hash = HashCombine(Hash, ::GetTypeHash(Snap.FrameNumber));
+            Hash = HashCombine(Hash, ::GetTypeHash(Entry.EntityHandle));
+            Hash = HashCombine(Hash, ::GetTypeHash(Entry.Planners.Num()));
+
+            for (const auto& Planner : Entry.Planners)
+            {
+                Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(Planner.PlannerHandle)));
+                Hash = HashCombine(Hash, ::GetTypeHash(static_cast<uint8>(Planner.PlanStatus)));
+                Hash = HashCombine(Hash, ::GetTypeHash(static_cast<uint8>(Planner.EnableToggle)));
+                Hash = HashCombine(Hash, ::GetTypeHash(Planner.PlanCost));
+                Hash = HashCombine(Hash, ::GetTypeHash(Planner.PlanAttemptCount));
+
+                // Unqualified — FString's GetTypeHash is a hidden friend, so
+                // it is only reachable via ADL (::GetTypeHash cannot see it).
+                for (const auto& StepName : Planner.ChainStepClassNames)
+                { Hash = HashCombine(Hash, GetTypeHash(StepName)); }
+            }
+        }
+
+        // Deep tier — only the selected agent has one, so this stays bounded.
+        if (InSelectedSnapshot.IsSet())
+        {
+            const auto& Snap = InSelectedSnapshot.GetValue();
             Hash = HashCombine(Hash, ::GetTypeHash(Snap.ActionSets.Num()));
 
-            for (const auto& As : Snap.ActionSets)
-            {
-                Hash = HashCombine(Hash, ::GetTypeHash(static_cast<FCk_Handle>(As.Handle)));
-                Hash = HashCombine(Hash, ::GetTypeHash(As.ActiveChainHandles.Num()));
-                Hash = HashCombine(Hash, ::GetTypeHash(static_cast<uint8>(As.EnableToggle)));
-                Hash = HashCombine(Hash, ::GetTypeHash(As.Catalog.Num()));
-
-                for (const auto& Action : As.Catalog)
-                {
-                    Hash = HashCombine(Hash, ::GetTypeHash(static_cast<uint8>(Action.PlanStatus)));
-                    Hash = HashCombine(Hash, ::GetTypeHash(Action.PlanAttemptCount));
-                }
-            }
+            for (const auto& Planner : Snap.TopLevelPlanners)
+            { Hash = HashCombine(Hash, ::GetTypeHash(Planner.PlanAttemptCount)); }
         }
 
         return Hash;
@@ -75,42 +90,47 @@ auto
         UWorld* InWorld)
     -> void
 {
-    if (_Mode == EMode::Live)
+    // Deep tier FIRST: the roster pass consumes it to attach rich
+    // SnapshotAtEvent copies for the agent the user is actually watching.
+    // Scrub mode collects identically — UI consumers overlay the selected
+    // history event's SnapshotAtEvent on top (see GetCurrent*).
+    _SelectedSnapshot.Reset();
+    if (ck::IsValid(_SelectedEntity))
     {
-        _AllSnapshots = FCkGoapDebugger_DataCollector::CollectSnapshots(InWorld);
+        _SelectedSnapshot = FCkGoapDebugger_DataCollector::CollectFull(InWorld, _SelectedEntity);
     }
-    else
-    {
-        // Scrub mode: still pull a fresh batch in the background so the
-        // entity picker stays current, but UI consumers render off the
-        // selected history event's SnapshotAtEvent (see GetCurrent*).
-        _AllSnapshots = FCkGoapDebugger_DataCollector::CollectSnapshots(InWorld);
-    }
+
+    _Roster = FCkGoapDebugger_DataCollector::CollectRoster(
+        InWorld, _SelectedSnapshot.GetPtrOrNull());
 
     // ---- Selection validation ---------------------------------------------------
 
-    // Entity: if the selected entity is no longer in the snapshot list,
-    // auto-pick the first available.
+    // Entity: if the selected entity is no longer in the roster, auto-pick the
+    // first available.
     const auto HasSelectedEntity = ck::IsValid(_SelectedEntity);
-    const auto* SelectedSnapshot = HasSelectedEntity
-        ? _AllSnapshots.FindByPredicate(
-              [this](const FCkGoapDebugger_EntitySnapshot& In) { return In.EntityHandle == _SelectedEntity; })
+    const auto* SelectedRosterEntry = HasSelectedEntity
+        ? _Roster.FindByPredicate(
+              [this](const FCkGoapDebugger_RosterEntry& In) { return In.EntityHandle == _SelectedEntity; })
         : nullptr;
 
-    if (SelectedSnapshot == nullptr)
+    if (SelectedRosterEntry == nullptr)
     {
-        if (_AllSnapshots.Num() > 0)
+        if (_Roster.Num() > 0)
         {
-            _SelectedEntity    = _AllSnapshots[0].EntityHandle;
+            _SelectedEntity    = _Roster[0].EntityHandle;
             _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
-            SelectedSnapshot   = &_AllSnapshots[0];
+
+            // Re-collect the deep tier for the NEW selection — otherwise the
+            // Inspector renders a stale (or empty) snapshot for one tick.
+            _SelectedSnapshot = FCkGoapDebugger_DataCollector::CollectFull(InWorld, _SelectedEntity);
         }
         else
         {
             _SelectedEntity    = FCk_Handle{};
             _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
+            _SelectedSnapshot.Reset();
         }
     }
 
@@ -123,31 +143,33 @@ auto
     //      Reset_ForWorldChange) and at least one top-level Planner exists.
     // Runs BEFORE the Planner-validation block below; the validation block
     // no-ops on a valid auto-selected handle.
-    if (NOT ck::IsValid(_SelectedActionSet) && SelectedSnapshot != nullptr)
+    if (NOT ck::IsValid(_SelectedActionSet) && _SelectedSnapshot.IsSet())
     {
-        if (SelectedSnapshot->TopLevelPlanners.Num() > 0)
+        if (_SelectedSnapshot->TopLevelPlanners.Num() > 0)
         {
-            _SelectedActionSet = SelectedSnapshot->TopLevelPlanners[0].PlannerHandle;
+            _SelectedActionSet = _SelectedSnapshot->TopLevelPlanners[0].PlannerHandle;
         }
     }
 
     // Planner: if no longer in the selected entity's snapshot, clear.
     //
     // Walk TopLevelPlanners RECURSIVELY (via the same helper GetPlannerInfoByHandle
-    // uses) so promoted mid-tier sub-Planners validate too. The legacy
-    // ActionSets[] shim is top-level-only — searching it here would clobber any
-    // child-Planner selection on the very next Tick after the user clicks it.
-    if (SelectedSnapshot != nullptr && ck::IsValid(_SelectedActionSet))
+    // uses) so promoted mid-tier sub-Planners validate too. This MUST read the
+    // deep tier: the roster carries top-level Planners only, so validating
+    // against it would clobber any child-Planner selection on the very next
+    // Tick after the user clicks it — the same trap the legacy ActionSets[]
+    // shim posed.
+    if (_SelectedSnapshot.IsSet() && ck::IsValid(_SelectedActionSet))
     {
         const auto* Found = ck_goap_debugger_viewmodel_internal::FindPlannerInfo_Recursive(
-            SelectedSnapshot->TopLevelPlanners, _SelectedActionSet);
+            _SelectedSnapshot->TopLevelPlanners, _SelectedActionSet);
         if (Found == nullptr)
         {
             _SelectedActionSet = FCk_Handle_Goap_Planner{};
             _SelectedAction    = FCk_Handle_Goap_Action{};
         }
     }
-    else if (SelectedSnapshot == nullptr)
+    else if (NOT _SelectedSnapshot.IsSet())
     {
         _SelectedActionSet = FCk_Handle_Goap_Planner{};
         _SelectedAction    = FCk_Handle_Goap_Action{};
@@ -198,7 +220,8 @@ auto
     Reset_ForWorldChange()
     -> void
 {
-    _AllSnapshots.Reset();
+    _Roster.Reset();
+    _SelectedSnapshot.Reset();
     _SelectedEntity    = FCk_Handle{};
     _SelectedActionSet = FCk_Handle_Goap_Planner{};
     _SelectedAction    = FCk_Handle_Goap_Action{};
@@ -266,10 +289,9 @@ auto
     if (NOT ck::IsValid(_SelectedEntity)) { return nullptr; }
 
     // Scrub mode: prefer the SnapshotAtEvent's parent ActionSet — but the
-    // EntitySnapshot itself is always rendered from the live batch (we don't
-    // freeze the entity-level frame counter; UI panels overlay scrub data).
-    return _AllSnapshots.FindByPredicate(
-        [this](const FCkGoapDebugger_EntitySnapshot& In) { return In.EntityHandle == _SelectedEntity; });
+    // EntitySnapshot itself is always rendered from the live deep tier (we
+    // don't freeze the entity-level frame counter; UI panels overlay scrub data).
+    return _SelectedSnapshot.GetPtrOrNull();
 }
 
 auto
@@ -318,10 +340,10 @@ auto
 
 auto
     FCkGoapDebugger_ViewModel::
-    GetAllEntitySnapshots() const
-    -> const TArray<FCkGoapDebugger_EntitySnapshot>&
+    Get_Roster() const
+    -> const TArray<FCkGoapDebugger_RosterEntry>&
 {
-    return _AllSnapshots;
+    return _Roster;
 }
 
 // ====================================================================================================================
@@ -431,7 +453,8 @@ auto
     using namespace ck_goap_debugger_viewmodel_internal;
 
     const auto NewHash = HashState(
-        _AllSnapshots,
+        _Roster,
+        _SelectedSnapshot,
         _SelectedEntity,
         _SelectedActionSet,
         _SelectedAction,

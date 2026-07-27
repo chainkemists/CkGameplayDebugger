@@ -46,6 +46,13 @@ private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& NewSelection) -> void;
     auto OnInspectorFilterChanged(int32 InspectorIndex, const FString& InFilterText) -> void;
 
+    // Panel-level search (distinct from the per-inspector SCkDebuggerWidget_SearchBars,
+    // which filter rows INSIDE an inspector). This pair filters whole inspector SECTIONS
+    // by Get_ComponentName: _PanelFilterString hides non-matching sections outright,
+    // _PanelHighlightString dims them via RenderOpacity instead of hiding them.
+    auto Matches_PanelFilter(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> bool;
+    auto Get_PanelHighlightOpacity(const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> float;
+
     // Owner-chain breadcrumb (root › … › selected) pinned above the sections —
     // rebuilt only on selection change (stable-identity rule).
     auto RebuildBreadcrumb() -> void;
@@ -53,6 +60,9 @@ private:
     TSharedPtr<SScrollBox> ScrollBox;
     TSharedPtr<SBox> _ModeToggleContainer;
     TSharedPtr<SBox> _BreadcrumbContainer;
+    TSharedPtr<class SCkDebug_DualSearchBar> _PanelSearchBar;
+    FString _PanelFilterString;
+    FString _PanelHighlightString;
     TArray<TSharedPtr<ICkDebuggerComponentInspector_Base>> Inspectors;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
 

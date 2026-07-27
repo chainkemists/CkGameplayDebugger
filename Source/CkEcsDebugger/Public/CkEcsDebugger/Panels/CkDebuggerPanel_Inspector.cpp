@@ -7,6 +7,7 @@
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -56,6 +57,44 @@ auto SCkDebuggerPanel_Inspector::Get_CurrentInspectedEntity() const -> FCk_Handl
     return FCk_Handle{};
 }
 
+// Panel-level section filter. Matches on the inspector's component name — the same
+// text that titles its section header — so typing "timer" leaves only the Timer
+// section. Empty query matches everything.
+auto SCkDebuggerPanel_Inspector::Matches_PanelFilter(
+    const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> bool
+{
+    if (_PanelFilterString.IsEmpty())
+    { return true; }
+
+    if (NOT Inspector.IsValid())
+    { return false; }
+
+    return Inspector->Get_ComponentName().ToString().Contains(_PanelFilterString, ESearchCase::IgnoreCase);
+}
+
+// Highlight pass — dim rather than hide. Returns the section's RenderOpacity.
+//
+// NOTE: RenderOpacity is a plain float SLATE argument in this engine
+// (SlateCore SWidget.h:1876 / DeclarativeSyntaxSupport.h:671), NOT a TAttribute,
+// so it cannot be lambda-bound. That is fine here: every change to the highlight
+// query runs RebuildInspectors, so a value computed at build time is always current.
+auto SCkDebuggerPanel_Inspector::Get_PanelHighlightOpacity(
+    const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector) const -> float
+{
+    constexpr auto FullOpacity = 1.0f;
+    constexpr auto DimOpacity  = 0.35f;
+
+    if (_PanelHighlightString.IsEmpty())
+    { return FullOpacity; }
+
+    if (NOT Inspector.IsValid())
+    { return DimOpacity; }
+
+    return Inspector->Get_ComponentName().ToString().Contains(_PanelHighlightString, ESearchCase::IgnoreCase)
+        ? FullOpacity
+        : DimOpacity;
+}
+
 auto SCkDebuggerPanel_Inspector::DeactivateAllInspectors() -> void
 {
     for (const auto& Inspector : Inspectors)
@@ -100,6 +139,29 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
             .AutoHeight()
             [
                 SAssignNew(_ModeToggleContainer, SBox)
+            ]
+
+            // Panel-level section search. Sits ABOVE the sections scroll box and is
+            // independent of the per-inspector search bars built inside each section.
+            + SVerticalBox::Slot()
+            .AutoHeight()
+            .Padding(FCkDebuggerStyle::Padding_Small)
+            [
+                SAssignNew(_PanelSearchBar, SCkDebug_DualSearchBar)
+                .FilterHintText(FText::FromString(TEXT("Filter sections\x2026")))
+                .HighlightHintText(FText::FromString(TEXT("Highlight\x2026")))
+                .OnFilterTextChanged_Lambda([this](const FString& InText)
+                {
+                    if (_PanelFilterString == InText) { return; }
+                    _PanelFilterString = InText;
+                    RebuildInspectors();
+                })
+                .OnHighlightTextChanged_Lambda([this](const FString& InText)
+                {
+                    if (_PanelHighlightString == InText) { return; }
+                    _PanelHighlightString = InText;
+                    RebuildInspectors();
+                })
             ]
 
             + SVerticalBox::Slot()
@@ -512,13 +574,14 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
     };
 
     auto AddSection = [&](const FText& InName, const TSharedRef<SWidget>& InContent,
-        const FSlateBrush* InIconBrush, const FLinearColor& InIconColor)
+        const FSlateBrush* InIconBrush, const FLinearColor& InIconColor, float InRenderOpacity)
     {
         VerticalBox->AddSlot()
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
                 SNew(SCkDebug_InspectorPanel)
+                .RenderOpacity(InRenderOpacity)
                 .Title(InName)
                 .IconBrush(InIconBrush)
                 .IconColor(InIconColor)
@@ -543,6 +606,12 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
         if (NOT Inspector->CanInspect(Entity))
         { continue; }
 
+        // Panel-level section search — hide sections whose inspector name doesn't match.
+        if (NOT Matches_PanelFilter(Inspector))
+        { continue; }
+
+        const auto SectionOpacity = Get_PanelHighlightOpacity(Inspector);
+
         if (Inspector->IsMultiSection())
         {
             for (const auto& Section : Inspector->Get_InspectorSections(Entity))
@@ -550,7 +619,8 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
                 AddSeparator();
                 AddSection(Section.Name, Section.Widget,
                     ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector),
-                    ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector));
+                    ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector),
+                    SectionOpacity);
             }
         }
         else
@@ -560,7 +630,11 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
                 .AutoHeight()
                 .Padding(FCkDebuggerStyle::Padding_Small)
                 [
-                    Build_InspectorSection(Entity, Inspector, Index)
+                    SNew(SBox)
+                    .RenderOpacity(SectionOpacity)
+                    [
+                        Build_InspectorSection(Entity, Inspector, Index)
+                    ]
                 ];
         }
     }
@@ -636,6 +710,10 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByInspector(
         const auto& Inspector = Inspectors[InspectorIdx];
         if (NOT Inspector.IsValid()) { continue; }
 
+        // Panel-level section search — same name test as single-entity mode, applied
+        // here to the OUTER inspector group.
+        if (NOT Matches_PanelFilter(Inspector)) { continue; }
+
         // Collect entities this inspector can handle
         TArray<FCk_Handle> ApplicableEntities;
         for (const auto& Entity : Entities)
@@ -698,6 +776,7 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByInspector(
             .Padding(FCkDebuggerStyle::Padding_Small)
             [
                 SNew(SCkDebug_InspectorPanel)
+                .RenderOpacity(Get_PanelHighlightOpacity(Inspector))
                 .Title(Inspector->Get_ComponentName())
                 .IconBrush(ck_debugger_panel_inspector::Get_InspectorIconBrush(Inspector))
                 .IconColor(ck_debugger_panel_inspector::Get_InspectorIconColor(Inspector))
@@ -736,13 +815,21 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByEntity(
             if (NOT Inspector.IsValid()) { continue; }
             if (NOT Inspector->CanInspect(Entity)) { continue; }
 
+            // Panel-level section search — in entity-grouped mode the inspector
+            // sub-sections are what carry the component name, so filter here.
+            if (NOT Matches_PanelFilter(Inspector)) { continue; }
+
             HasAnyInspector = true;
 
             InnerBox->AddSlot()
                 .AutoHeight()
                 .Padding(FCkDebuggerStyle::Padding_Small)
                 [
-                    Build_EntitySubSection(Entity, Inspector, EntityIdx, InspectorIdx)
+                    SNew(SBox)
+                    .RenderOpacity(Get_PanelHighlightOpacity(Inspector))
+                    [
+                        Build_EntitySubSection(Entity, Inspector, EntityIdx, InspectorIdx)
+                    ]
                 ];
         }
 

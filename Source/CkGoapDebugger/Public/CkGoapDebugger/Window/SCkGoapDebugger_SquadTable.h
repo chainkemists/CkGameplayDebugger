@@ -62,6 +62,10 @@ private:
         TArray<FString> AlertTags;
 
         TSharedPtr<TArray<float>> SparkSamples;
+
+        // Highlight pass — false dims the row's name/chain text without hiding
+        // the row. True whenever the highlight query is empty.
+        bool IsHighlightMatch = true;
     };
     using ItemPtr = TSharedPtr<FSquadRow>;
 
@@ -72,10 +76,16 @@ private:
     FOnCkGoapDebug_SquadInspect _OnInspect;
 
     TSharedPtr<SListView<ItemPtr>> _ListView;
+    TSharedPtr<class SCkDebug_DualSearchBar> _SearchBar;
 
     // Stable row identity by planner handle (list-row contract).
     TMap<FCk_Handle_Goap_Planner, ItemPtr> _RowsByPlanner;
     TArray<ItemPtr> _Visible;
+
+    // Dual search state. Both feed the rebuild hash so a keystroke re-runs
+    // RefreshFromViewModel instead of being swallowed by the early-out.
+    FString _FilterString;
+    FString _HighlightString;
 
     uint32 _LastHash = 0;
 };

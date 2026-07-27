@@ -4,9 +4,12 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
@@ -28,12 +31,21 @@ namespace ck_goap_debugger_squad_table
     constexpr auto Spark_WindowSeconds = 60.0;
     constexpr auto Spark_BinSeconds    = 5.0;
 
+    // Identity debug names arrive dot-separated ("Npc.CrankHank"), so whitespace
+    // parsing alone yielded "NP" for every agent in a town. Reduce to the last
+    // '.'-segment first, then keep the original whitespace / two-letter fallback:
+    //   "Npc.CrankHank" → "CR",  "Npc.Tourist" → "TO",  "Crank Hank" → "CH".
     auto Compute_Initials(const FString& InName) -> FString
     {
+        auto Leaf = InName;
+        auto DotIndex = int32{INDEX_NONE};
+        if (Leaf.FindLastChar(TEXT('.'), DotIndex) && DotIndex < Leaf.Len() - 1)
+        { Leaf = Leaf.RightChop(DotIndex + 1); }
+
         auto Parts = TArray<FString>{};
-        InName.ParseIntoArrayWS(Parts);
+        Leaf.ParseIntoArrayWS(Parts);
         if (Parts.Num() >= 2) { return (Parts[0].Left(1) + Parts.Last().Left(1)).ToUpper(); }
-        return InName.Left(2).ToUpper();
+        return Leaf.Left(2).ToUpper();
     }
 
     auto Get_StatusText(ECk_GoapPlanStatus InStatus, bool InDisabled) -> FString
@@ -77,6 +89,26 @@ namespace ck_goap_debugger_squad_table
         }
         return Names.Num() > 0 ? FString::Join(Names, TEXT(" › ")) : FString(TEXT("\x2014"));
     }
+
+    // Case-insensitive substring match across every column the user can see.
+    // Empty needle matches everything (so an empty Filter shows the full squad
+    // and an empty Highlight dims nothing).
+    auto Matches_Row(
+        const FString& InNeedle,
+        const FString& InAgentName,
+        const FString& InPlannerLabel,
+        const FString& InChainText,
+        const FString& InStatusText,
+        const FString& InEntityIdText) -> bool
+    {
+        if (InNeedle.IsEmpty()) { return true; }
+
+        return InAgentName.Contains(InNeedle, ESearchCase::IgnoreCase)
+            || InPlannerLabel.Contains(InNeedle, ESearchCase::IgnoreCase)
+            || InChainText.Contains(InNeedle, ESearchCase::IgnoreCase)
+            || InStatusText.Contains(InNeedle, ESearchCase::IgnoreCase)
+            || InEntityIdText.Contains(InNeedle, ESearchCase::IgnoreCase);
+    }
 }
 
 // ====================================================================================================================
@@ -99,10 +131,37 @@ auto
             .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
             .Padding(FMargin(CkStyle::SpaceL))
             [
-                SAssignNew(_ListView, SListView<ItemPtr>)
-                    .ListItemsSource(&_Visible)
-                    .SelectionMode(ESelectionMode::None)
-                    .OnGenerateRow(this, &SCkGoapDebugger_SquadTable::OnGenerateRow)
+                SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot()
+                        .AutoHeight()
+                        .Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceS))
+                        [
+                            SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
+                                .FilterHintText(FText::FromString(TEXT("Filter squad\x2026")))
+                                .HighlightHintText(FText::FromString(TEXT("Highlight\x2026")))
+                                .OnFilterTextChanged_Lambda([this](const FString& InText)
+                                {
+                                    if (_FilterString == InText) { return; }
+                                    _FilterString = InText;
+                                    RefreshFromViewModel();
+                                })
+                                .OnHighlightTextChanged_Lambda([this](const FString& InText)
+                                {
+                                    if (_HighlightString == InText) { return; }
+                                    _HighlightString = InText;
+                                    RefreshFromViewModel();
+                                })
+                        ]
+
+                    + SVerticalBox::Slot()
+                        .FillHeight(1.0f)
+                        [
+                            SAssignNew(_ListView, SListView<ItemPtr>)
+                                .ListItemsSource(&_Visible)
+                                .SelectionMode(ESelectionMode::None)
+                                .OnGenerateRow(this, &SCkGoapDebugger_SquadTable::OnGenerateRow)
+                        ]
             ]
     ];
 
@@ -161,6 +220,11 @@ auto
     NewHash = HashCombine(NewHash, GetTypeHash(_ViewModel->GetSelectedActionSet()));
     // Chain names run through the shared name-depth tuner.
     NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->Get_NameDepth()));
+    // Search state participates in the hash so a keystroke re-runs the rebuild
+    // instead of being swallowed by the early-out below. GetTypeHash(FString) is
+    // a hidden friend — reachable only by ADL, so it must stay unqualified.
+    NewHash = HashCombine(NewHash, GetTypeHash(_FilterString));
+    NewHash = HashCombine(NewHash, GetTypeHash(_HighlightString));
 
     if (NewHash == _LastHash) { return; }
     _LastHash = NewHash;
@@ -220,6 +284,26 @@ auto
 
                 if (Planner.PlanStatus == ECk_GoapPlanStatus::CostThresholdReached)
                 { Row->AlertTags.Add(TEXT("threshold")); }
+            }
+
+            // ---- Search pipeline ---------------------------------------------
+            // Filter hides, Highlight dims. Both run over the same visible-column
+            // set, including the entity id exactly as the row's EntityRef pill
+            // renders it (SCkDebug_EntityRef.cpp:95).
+            //
+            // NOTE the planner stays in SeenPlanners above even when filtered out,
+            // so its cached row TSharedPtr survives and comes back with the same
+            // identity when the query is cleared.
+            {
+                const auto StatusText   = Get_StatusText(Row->PlanStatus, Row->IsDisabled);
+                const auto EntityIdText = ck::Format_UE(TEXT("{}"), Row->EntityHandle.Get_Entity());
+
+                if (NOT Matches_Row(_FilterString, Row->AgentName, Row->PlannerLabel,
+                        Row->ChainText, StatusText, EntityIdText))
+                { continue; }
+
+                Row->IsHighlightMatch = Matches_Row(_HighlightString, Row->AgentName,
+                    Row->PlannerLabel, Row->ChainText, StatusText, EntityIdText);
             }
 
             // Replans-per-5s sparkline over the last 60s of this planner's
@@ -342,9 +426,25 @@ auto
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(Row.AgentName))
                                                 .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                                                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
+                                                .ColorAndOpacity(FSlateColor(Row.IsHighlightMatch ? CkStyle::Text() : CkStyle::TextMute()))
                                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                                         ]
+                            ]
+
+                        // Entity ID pill — gives the row an ID display,
+                        // right-click-copy, and click-to-jump into the ECS
+                        // debugger. ShowName(false): the adjacent name column
+                        // already carries the agent name. Safe inside the row
+                        // because the list is SelectionMode::None, so the pill's
+                        // internal button traps no row selection.
+                        + SHorizontalBox::Slot()
+                            .AutoWidth()
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceM, 0.0f))
+                            [
+                                SNew(SCkDebug_EntityRef)
+                                    .Entity(Row.EntityHandle)
+                                    .ShowName(false)
                             ]
 
                         // Planner label
@@ -382,7 +482,7 @@ auto
                                 SNew(STextBlock)
                                     .Text(FText::FromString(Row.ChainText))
                                     .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                                    .ColorAndOpacity(FSlateColor(Row.IsHighlightMatch ? CkStyle::TextDim() : CkStyle::TextMute()))
                                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                             ]
 

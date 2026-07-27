@@ -9,6 +9,8 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
 #include "CkPmg/CkPmg_Utils_FlatShapes.h"
@@ -596,6 +598,12 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonDown(
 	if (ck::IsValid(Best))
 	{
 		_ViewModel->Set_SelectedHandle(Best);
+
+		// The agent list applies sync-bus selections as ESelectInfo::Direct and deliberately
+		// never re-broadcasts those, so a viewport-picked agent would stay invisible to the
+		// ECS / GOAP debuggers. Broadcast here — this IS the user-driven selection. Source name
+		// must stay "CrowdDebugger" so our own AgentListPanel receive side ignores it.
+		ck::DebugSelectionSync::Broadcast(Best, TEXT("CrowdDebugger"));
 	}
 
 	return Reply;

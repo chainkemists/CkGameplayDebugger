@@ -35,6 +35,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkJoltDebugger"),
         TEXT("CkMapDebugger"),
         TEXT("CkDialogDebugger"),
+        TEXT("CkAggroDebugger"),
     };
 
     const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();

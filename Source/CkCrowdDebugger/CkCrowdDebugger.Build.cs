@@ -13,6 +13,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"DeveloperSettings",
 			"InputCore",
 
 			"Slate",
@@ -34,6 +35,7 @@ public class CkCrowdDebugger : CkModuleRules
             "CkEditorTools",
 
 			"CkNavigation",
+			"CkPathNetwork",
 			"CkCrowd",
 			"CkPmg",       // destination-ping ring in the in-world RMB command processor
 		});

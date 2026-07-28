@@ -28,6 +28,8 @@ public:
 	// Flat triangle soup (3 world-space verts per triangle) of the walkable navmesh — the viewport's
 	// base layer. Refreshed on a throttle (navmesh geometry changes rarely).
 	auto Get_NavTriVerts() const -> const TArray<FVector>& { return _NavTriVerts; }
+	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
+	{ return _PathNetworkRibbons; }
 
 	// Current local-player view yaw (degrees) + validity — used to orient the viewport to the camera.
 	auto Get_ViewYawDegrees() const -> float { return _ViewYawDegrees; }
@@ -52,6 +54,7 @@ private:
 	FCkCrowdDebugger_NavmeshStatus _NavmeshStatus;
 
 	TArray<FVector> _NavTriVerts;
+	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
 	double _NavGeomLastPullTime = -1.0;
 
 	float _ViewYawDegrees = 0.0f;

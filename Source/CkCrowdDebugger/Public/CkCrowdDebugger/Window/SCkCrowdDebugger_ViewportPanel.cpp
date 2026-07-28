@@ -1,5 +1,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_ViewportPanel.h"
 
+#include "CkCrowdDebugger/Commands/CkCrowdDebugger_PathNetworkCommand.h"
+#include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -16,6 +18,8 @@
 #include "CkPmg/CkPmg_Utils_FlatShapes.h"
 
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Input/SSlider.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -82,9 +86,41 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(TEXT("wheel zoom · drag pan · LMB select · RMB command · F follow · Home fit")))
+					.Text(FText::FromString(TEXT("wheel zoom · drag pan · LMB select · RMB sidewalk move · F follow · Home fit")))
 					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceS, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(TEXT("PATH")))
+					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SBox)
+					.WidthOverride(72.0f)
+					[
+						SNew(SSlider)
+						.MinValue(0.0f)
+						.MaxValue(1.0f)
+						.ToolTipText(FText::FromString(TEXT("0 disables rendering")))
+						.Value_Lambda([]() -> float
+						{
+							const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
+							return Settings != nullptr ? FMath::Clamp(Settings->PathNetworkOpacity, 0.0f, 1.0f) : 0.0f;
+						})
+						.OnValueChanged_Lambda([](float InOpacity)
+						{
+							auto* Settings = GetMutableDefault<UCkCrowdDebuggerSettings>();
+							if (Settings == nullptr)
+							{ return; }
+
+							Settings->PathNetworkOpacity = FMath::Clamp(InOpacity, 0.0f, 1.0f);
+							Settings->SaveConfig();
+						})
+					]
 				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
@@ -335,6 +371,36 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		FSlateDrawElement::MakeLines(
 			OutDrawElements, RetLayerId + 2, AllottedGeometry.ToPaintGeometry(),
 			Loop, ESlateDrawEffect::None, CkStyle::OverlayOf(CkStyle::BorderStrong(), 0.9f), true, 1.0f);
+	}
+
+	// --- Path-network ribbons (below agents and planned paths) -------------------------------------
+	const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
+	const auto PathNetworkOpacity = Settings != nullptr
+		? FMath::Clamp(Settings->PathNetworkOpacity, 0.0f, 1.0f)
+		: 0.0f;
+	if (PathNetworkOpacity > 0.0f)
+	{
+		const auto RibbonColor = FLinearColor(0.16f, 0.76f, 0.96f, PathNetworkOpacity);
+		const auto& Ribbons = _ViewModel->Get_PathNetworkRibbons();
+		for (const auto& Ribbon : Ribbons)
+		{
+			if (Ribbon.Points.Num() < 2 || Ribbon.HalfWidths.Num() != Ribbon.Points.Num())
+			{ continue; }
+
+			for (auto PointIndex = 0; PointIndex + 1 < Ribbon.Points.Num(); ++PointIndex)
+			{
+				const auto& Start = Ribbon.Points[PointIndex];
+				const auto& End = Ribbon.Points[PointIndex + 1];
+				auto Segment = TArray<FVector2D>{
+					WorldToScreen(Start.X, Start.Y),
+					WorldToScreen(End.X, End.Y)};
+				const auto AverageHalfWidth = (Ribbon.HalfWidths[PointIndex] + Ribbon.HalfWidths[PointIndex + 1]) * 0.5f;
+				const auto Thickness = FMath::Max(1.0f, 2.0f * AverageHalfWidth * static_cast<float>(EffScale));
+				FSlateDrawElement::MakeLines(
+					OutDrawElements, RetLayerId + 2, AllottedGeometry.ToPaintGeometry(),
+					Segment, ESlateDrawEffect::None, RibbonColor, true, Thickness);
+			}
+		}
 	}
 
 	// --- Agents as dots (color by status; selected = bright + larger) ------------------------------
@@ -634,13 +700,12 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonUp(
 			const auto* Sel = _ViewModel->Get_SelectedSnapshot();
 			if (ck::IsValid(Agent) && Sel != nullptr)
 			{
-				if (NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent))
-				{ UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, true, {}); }
-
 				const auto World = ScreenToWorld(Local.X, Local.Y);
-				const auto Destination = FVector(World.X, World.Y, Sel->Position.Z);
-				auto MoveReq = FCk_Request_CrowdAgent_MoveTo(Destination);
-				UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq, {});
+				const auto RawDestination = FVector(World.X, World.Y, Sel->Position.Z);
+				auto Destination = FVector{};
+				if (NOT ck::crowd_debugger::Try_IssueManualMove(
+					Agent, RawDestination, Destination))
+				{ return FReply::Handled(); }
 
 				// Destination acknowledgment ping in the WORLD (transient PMG ring,
 				// self-destroys) — a map command should still read in the viewport.

@@ -21,9 +21,12 @@
 #include "CkNavigation/Nav/CkNav_Fragment.h"
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
+#include "CkPathNetwork/Actor/CkPathNetwork_Actor.h"
+
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
@@ -46,6 +49,7 @@ auto
 	-> void
 {
 	_Agents.Reset();
+	_PathNetworkRibbons.Reset();
 
 	// Reset only the per-tick-sampled fields. Health-check fields are sticky across
 	// ticks (set explicitly by Run_HealthCheckProbe; not derived from the live world).
@@ -191,6 +195,32 @@ auto
 		}
 
 		_NavmeshStatus._Sampled = true;
+	}
+
+	// Copy the authored world-space ribbons from this PIE world. The debugger
+	// snapshot must not retain an actor or ECS handle across refreshes/world teardown.
+	for (TActorIterator<ACk_PathNetwork_UE> It(InWorld); It; ++It)
+	{
+		const auto* NetworkActor = *It;
+		if (NOT IsValid(NetworkActor))
+		{ continue; }
+
+		for (const auto& Ribbon : NetworkActor->Get_WorldRibbons())
+		{
+			const auto& RibbonPoints = Ribbon.Get_Points();
+			if (RibbonPoints.Num() < 2)
+			{ continue; }
+
+			auto Snapshot = FCkCrowdDebugger_PathNetworkRibbonSnapshot{};
+			Snapshot.Points.Reserve(RibbonPoints.Num());
+			Snapshot.HalfWidths.Reserve(RibbonPoints.Num());
+			for (const auto& Point : RibbonPoints)
+			{
+				Snapshot.Points.Add(Point.Get_Location());
+				Snapshot.HalfWidths.Add(Point.Get_HalfWidth());
+			}
+			_PathNetworkRibbons.Add(MoveTemp(Snapshot));
+		}
 	}
 
 	auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);

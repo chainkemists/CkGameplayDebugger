@@ -448,7 +448,7 @@ auto
                                 if (ck::Is_NOT_Valid(PlannerHandle)) { return; }
                                 if (ActionClass == nullptr)          { return; }
                                 auto MutablePlanner = PlannerHandle;
-                                UCk_Utils_Goap_Planner_UE::Request_RemoveAction(MutablePlanner, ActionClass);
+                                UCk_Utils_Goap_Planner_UE::Request_RemoveAction(MutablePlanner, ActionClass, {});
                             })));
                         MenuBuilder.AddMenuEntry(
                             FText::FromString(TEXT("Add action\x2026 (from gameplay code)")),
@@ -958,7 +958,7 @@ auto
     const auto NewCost = FMath::Max(0.1f, InCurrentCost + static_cast<float>(InDelta) * 0.5f);
 
     auto MutablePlanner = InPlanner;
-    UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, InClass, NewCost);
+    UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, InClass, NewCost, {});
 }
 
 // ====================================================================================================================

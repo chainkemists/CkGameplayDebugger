@@ -166,7 +166,7 @@ auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     auto MutableEntity = Entity;
     if (auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity); ck::IsValid(Probe))
     {
-        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable);
+        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable, {});
         LastInspectedEntity = Entity;
 
         if (_OverlapsBox.IsValid())
@@ -202,7 +202,7 @@ auto FCkInspector_Probes::DisableDebugDraw() -> void
         auto Probe = UCk_Utils_Probe_UE::Cast(LastInspectedEntity);
         if (ck::IsValid(Probe))
         {
-            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Disable);
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Disable, {});
         }
     }
     LastInspectedEntity = FCk_Handle();

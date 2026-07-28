@@ -635,12 +635,12 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonUp(
 			if (ck::IsValid(Agent) && Sel != nullptr)
 			{
 				if (NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent))
-				{ UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, true); }
+				{ UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, true, {}); }
 
 				const auto World = ScreenToWorld(Local.X, Local.Y);
 				const auto Destination = FVector(World.X, World.Y, Sel->Position.Z);
 				auto MoveReq = FCk_Request_CrowdAgent_MoveTo(Destination);
-				UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq);
+				UCk_Utils_CrowdAgent_UE::Request_MoveTo(Agent, MoveReq, {});
 
 				// Destination acknowledgment ping in the WORLD (transient PMG ring,
 				// self-destroys) — a map command should still read in the viewport.

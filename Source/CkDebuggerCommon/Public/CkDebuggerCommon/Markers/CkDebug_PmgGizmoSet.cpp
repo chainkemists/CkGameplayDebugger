@@ -79,7 +79,7 @@ auto
                 { continue; }
 
                 UCk_Utils_Transform_UE::Request_SetTransform(Existing->Parts[Index],
-                    FCk_Request_Transform_SetTransform{PartTransform(InTransform, Index % 3, Index >= 3)});
+                    FCk_Request_Transform_SetTransform{PartTransform(InTransform, Index % 3, Index >= 3)}, {});
             }
             Existing->LastTransform = InTransform;
             return;

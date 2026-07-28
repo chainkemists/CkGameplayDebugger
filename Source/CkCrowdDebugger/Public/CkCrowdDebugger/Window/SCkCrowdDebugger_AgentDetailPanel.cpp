@@ -440,7 +440,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride() -> FReply
 	{ return FReply::Handled(); }
 
 	const auto NewOverride = NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent);
-	UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, NewOverride);
+	UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, NewOverride, {});
 	return FReply::Handled();
 }
 

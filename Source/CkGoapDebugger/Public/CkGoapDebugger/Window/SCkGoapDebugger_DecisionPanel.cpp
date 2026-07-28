@@ -862,7 +862,7 @@ auto
     }
 
     auto MutablePlanner = InPlanner;
-    UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, InClass, NewCost);
+    UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, InClass, NewCost, {});
 }
 
 auto
@@ -878,7 +878,7 @@ auto
         if (Target->Value == nullptr)           { continue; }
 
         auto MutablePlanner = Target->Key;
-        UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, Target->Value, Kvp.Value);
+        UCk_Utils_Goap_Planner_UE::Request_SetChildActionCost(MutablePlanner, Target->Value, Kvp.Value, {});
     }
 
     _OriginalCosts.Reset();

@@ -438,7 +438,7 @@ auto
     if (NOT ck::IsValid(_SelectedAction)) { return; }
 
     auto MutableAction = _SelectedAction;
-    UCk_Utils_Goap_Action_UE::Request_Plan(MutableAction);
+    UCk_Utils_Goap_Action_UE::Request_Plan(MutableAction, {});
 }
 
 // ====================================================================================================================

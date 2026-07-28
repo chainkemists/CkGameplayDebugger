@@ -1017,7 +1017,7 @@ auto
                         auto Mutable = PlannerHandle;
                         if (ck::Is_NOT_Valid(Mutable)) { return; }
                         UCk_Utils_Goap_Planner_UE::Request_SetEnableToggle(Mutable,
-                            InNew ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable);
+                            InNew ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable, {});
                     })
             ]));
 
@@ -1040,7 +1040,7 @@ auto
 
                 auto Mutable = PlannerHandle;
                 if (ck::Is_NOT_Valid(Mutable)) { return; }
-                UCk_Utils_Goap_Planner_UE::Request_SetReplanPolicy(Mutable, IndexToPolicy(Index));
+                UCk_Utils_Goap_Planner_UE::Request_SetReplanPolicy(Mutable, IndexToPolicy(Index), {});
             })
             [
                 SNew(STextBlock)
@@ -1053,7 +1053,7 @@ auto
         MakeNumericEditor(FString::Printf(TEXT("%.2f"), InPlanner.MinReplanIntervalSeconds),
             [](FCk_Handle_Goap_Planner& InMutable, float InValue)
             {
-                UCk_Utils_Goap_Planner_UE::Request_SetReplanInterval(InMutable, FMath::Max(0.0f, InValue));
+                UCk_Utils_Goap_Planner_UE::Request_SetReplanInterval(InMutable, FMath::Max(0.0f, InValue), {});
             })));
 
     AddRow(MakeRow(TEXT("Search budget"),
@@ -1062,7 +1062,7 @@ auto
             [](FCk_Handle_Goap_Planner& InMutable, float InValue)
             {
                 UCk_Utils_Goap_Planner_UE::Request_SetSearchBudget(InMutable,
-                    static_cast<int64>(FMath::Max(0.0f, InValue)));
+                    static_cast<int64>(FMath::Max(0.0f, InValue)), {});
             })));
 
     AddRow(MakeRow(TEXT("Cost threshold"),
@@ -1070,7 +1070,7 @@ auto
         MakeNumericEditor(FString::Printf(TEXT("%.1f"), InPlanner.CostThreshold),
             [](FCk_Handle_Goap_Planner& InMutable, float InValue)
             {
-                UCk_Utils_Goap_Planner_UE::Request_SetCostThreshold(InMutable, FMath::Max(0.0f, InValue));
+                UCk_Utils_Goap_Planner_UE::Request_SetCostThreshold(InMutable, FMath::Max(0.0f, InValue), {});
             })));
 
     AddRow(MakeRow(TEXT("Plan on start"),
@@ -1136,11 +1136,11 @@ auto
     };
 
     AddButton(TEXT("Replan now"), TEXT("Request_Plan — force an immediate replan"), true,
-        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_Plan(InMutable); }, PlannerHandle);
+        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_Plan(InMutable, {}); }, PlannerHandle);
     AddButton(TEXT("Cancel"), TEXT("Request_CancelPlan — abort the in-flight search"), false,
-        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_CancelPlan(InMutable); }, PlannerHandle);
+        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_CancelPlan(InMutable, {}); }, PlannerHandle);
     AddButton(TEXT("Reset chain"), TEXT("Request_ResetActiveChain — collapse the chain; it re-extends next frame unless disabled"), false,
-        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_ResetActiveChain(InMutable); }, PlannerHandle);
+        [](FCk_Handle_Goap_Planner& InMutable) { UCk_Utils_Goap_Planner_UE::Request_ResetActiveChain(InMutable, {}); }, PlannerHandle);
 
     Rows->AddSlot()
         .AutoHeight()

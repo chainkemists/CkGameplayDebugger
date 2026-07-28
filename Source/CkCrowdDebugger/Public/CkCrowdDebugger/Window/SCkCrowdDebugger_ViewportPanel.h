@@ -8,7 +8,7 @@ class FCkCrowdDebugger_ViewModel;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-down 2D viewport for the Crowd Debugger. Renders the Recast navmesh polygons as a base layer
-// and overlays the agents + the selected agent's diagnostics (goal, arrival/orbit rings, turn-radius
+// then overlays the path-network ribbons, agents, and selected-agent diagnostics (goal, arrival/orbit rings, turn-radius
 // circle, velocity, planned path). Zoom/pan-able; F frames the selected agent, Home fits the navmesh.
 // World->screen mapping derives its extent from the navmesh bounding box.
 //

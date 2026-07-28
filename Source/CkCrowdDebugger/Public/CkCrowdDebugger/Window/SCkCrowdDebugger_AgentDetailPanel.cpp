@@ -1,5 +1,6 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_AgentDetailPanel.h"
 
+#include "CkCrowdDebugger/Commands/CkCrowdDebugger_PathNetworkCommand.h"
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -440,6 +441,8 @@ auto SCkCrowdDebugger_AgentDetailPanel::Toggle_DebugOverride() -> FReply
 	{ return FReply::Handled(); }
 
 	const auto NewOverride = NOT UCk_Utils_CrowdAgent_UE::Get_HasDebugOverride(Agent);
+	if (NewOverride == false)
+	{ ck::crowd_debugger::ReleaseManualMove(Agent); }
 	UCk_Utils_CrowdAgent_UE::Request_SetDebugOverride(Agent, NewOverride, {});
 	return FReply::Handled();
 }

@@ -60,6 +60,8 @@ public:
 
 	auto Get_NavTriVerts() const -> const TArray<FVector>&
 	{ return _DataCollector.Get_NavTriVerts(); }
+	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
+	{ return _DataCollector.Get_PathNetworkRibbons(); }
 
 	// Viewport camera orientation
 	auto Get_ViewYawDegrees() const -> float { return _DataCollector.Get_ViewYawDegrees(); }

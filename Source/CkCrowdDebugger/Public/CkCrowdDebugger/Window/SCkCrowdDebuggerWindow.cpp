@@ -175,6 +175,22 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
 			[
 				SNew(SCheckBox)
+				.ToolTipText(FText::FromString(TEXT("Draw path-trouble diagnostics in the game world for every affected agent: marker, sidewalk/Unreal-nav status, attempted goal, dashed line, and Euclidean distance.")))
+				.IsChecked_Lambda([]() -> ECheckBoxState
+				{
+					return Get_CVarBool(TEXT("ck.Crowd.DrawPathTrouble")) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				})
+				.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+				{
+					Set_CVarBool(TEXT("ck.Crowd.DrawPathTrouble"), InNewState == ECheckBoxState::Checked);
+				})
+				[
+					SNew(STextBlock).Text(FText::FromString(TEXT("World Trouble")))
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
+			[
+				SNew(SCheckBox)
 				.ToolTipText(FText::FromString(TEXT("Draw a body capsule + forward-facing cone for every crowd agent. Color comes from the agent's debug color (per-agent override or hash-derived stable fallback). PathPending agents tint yellow; Asleep agents desaturate.")))
 				.IsChecked_Lambda([]() -> ECheckBoxState
 				{

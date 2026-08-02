@@ -42,9 +42,20 @@ namespace
 	// Status colour — routed through the shared debugger palette so it matches the viewport dots
 	// and the detail-panel verdict. Failed is red and prominent so a misbehaving agent is the first
 	// thing a dev sees; Idle and the rest stay muted so they don't compete with anomalies.
-	auto StatusColor(ECkCrowdDebugger_AgentStatus InStatus) -> FLinearColor
+	auto StatusColor(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FLinearColor
 	{
-		switch (InStatus)
+		if (InSnapshot.Status == ECkCrowdDebugger_AgentStatus::Replanning)
+		{ return CkStyle::Warn(); }
+
+		if (InSnapshot.HasPathTroubleEvent)
+		{
+			const auto HasNavigationTrouble =
+				InSnapshot.TroubleNavigationStatus == ECk_Nav_PathStatus::Partial
+				|| InSnapshot.TroubleNavigationStatus == ECk_Nav_PathStatus::Failed;
+			return HasNavigationTrouble ? CkStyle::Err() : CkStyle::Warn();
+		}
+
+		switch (InSnapshot.Status)
 		{
 			case ECkCrowdDebugger_AgentStatus::Failed:     return CkStyle::Err();
 			case ECkCrowdDebugger_AgentStatus::Walking:    return CkStyle::Info();
@@ -57,6 +68,17 @@ namespace
 
 	auto StatusLabel(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
 	{
+		if (InSnapshot.Status == ECkCrowdDebugger_AgentStatus::Replanning)
+		{
+			return InSnapshot.HasPathTroubleEvent
+				&& InSnapshot.TroubleNavigationStatus == ECk_Nav_PathStatus::Pending
+				? InSnapshot.PathTroubleSummary
+				: FString(TEXT("UNREAL NAV: Pending"));
+		}
+
+		if (InSnapshot.HasPathTroubleEvent)
+		{ return FString::Printf(TEXT("LAST: %s"), *InSnapshot.PathTroubleSummary); }
+
 		switch (InSnapshot.Status)
 		{
 			case ECkCrowdDebugger_AgentStatus::Failed:
@@ -386,7 +408,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 					const auto Pinned = WeakItem.Pin();
 					if (NOT Pinned.IsValid())
 					{ return FSlateColor(FLinearColor::Gray); }
-					return FSlateColor(StatusColor(Pinned->Status));
+					return FSlateColor(StatusColor(*Pinned));
 				})
 			]
 			]

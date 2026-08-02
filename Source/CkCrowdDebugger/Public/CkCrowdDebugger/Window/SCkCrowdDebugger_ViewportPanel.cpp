@@ -9,6 +9,7 @@
 #include "CkEcs/Handle/CkHandle.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment_Data.h"
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
@@ -19,6 +20,7 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -32,6 +34,7 @@
 #include "Rendering/RenderingCommon.h"
 #include "Rendering/SlateRenderer.h"
 #include "Styling/CoreStyle.h"
+#include "HAL/PlatformTime.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -63,6 +66,8 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 		// Cross-debugger sync resolves to an agent → one-shot re-center on it.
 		_OnFrameRequestedHandle = _ViewModel->OnFrameSelectedAgentRequested.AddSP(
 			SharedThis(this), &SCkCrowdDebugger_ViewportPanel::FrameSelectedAgent);
+		_OnSelectedAgentChangedHandle = _ViewModel->OnSelectedAgentChanged.AddSP(
+			SharedThis(this), &SCkCrowdDebugger_ViewportPanel::OnSelectedAgentChanged);
 	}
 
 	ChildSlot
@@ -122,6 +127,33 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 						})
 					]
 				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(SCheckBox)
+					.ToolTipText(FText::FromString(TEXT("Show the selected agent's retained path-trouble marker, attempted goal, dashed line, status, and Euclidean distance in this viewport.")))
+					.IsChecked_Lambda([]() -> ECheckBoxState
+					{
+						const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
+						return Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay
+							? ECheckBoxState::Checked
+							: ECheckBoxState::Unchecked;
+					})
+					.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+					{
+						auto* Settings = GetMutableDefault<UCkCrowdDebuggerSettings>();
+						if (Settings == nullptr)
+						{ return; }
+
+						Settings->ShowSelectedPathTroubleOverlay = InNewState == ECheckBoxState::Checked;
+						Settings->SaveConfig();
+					})
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(TEXT("Selected Trouble")))
+						.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					]
+				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)
 			[
@@ -139,6 +171,110 @@ SCkCrowdDebugger_ViewportPanel::~SCkCrowdDebugger_ViewportPanel()
 	{
 		_ViewModel->OnFrameSelectedAgentRequested.Remove(_OnFrameRequestedHandle);
 	}
+	if (_ViewModel.IsValid() && _OnSelectedAgentChangedHandle.IsValid())
+	{
+		_ViewModel->OnSelectedAgentChanged.Remove(_OnSelectedAgentChangedHandle);
+	}
+	ClearIntentPathFade();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkCrowdDebugger_ViewportPanel::
+	Tick(
+		const FGeometry& AllottedGeometry,
+		double InCurrentTime,
+		float InDeltaTime)
+	-> void
+{
+	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (NOT _ViewModel.IsValid())
+	{
+		ClearIntentPathFade();
+		return;
+	}
+
+	const auto* Selected = _ViewModel->Get_SelectedSnapshot();
+	if (Selected == nullptr)
+	{
+		ClearIntentPathFade();
+		return;
+	}
+
+	// A current request always wins over retained history from an earlier re-path in the same goal.
+	if (Selected->Status == ECkCrowdDebugger_AgentStatus::Replanning)
+	{
+		_IntentPathFadeAgentPosition = Selected->Position;
+		_IntentPathFadeGoal = Selected->ActiveGoal;
+		const auto IsCurrentSidewalkFallback =
+			Selected->HasPathTroubleEvent
+			&& Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Pending;
+		_IntentPathFadeLabel = IsCurrentSidewalkFallback
+			? Selected->PathTroubleSummary
+			: FString(TEXT("UNREAL NAV: Pending"));
+		_IntentPathFadeColor = IsCurrentSidewalkFallback
+			? FLinearColor(1.0f, 0.35f, 0.05f, 1.0f)
+			: CkStyle::Warn();
+		_IntentPathFadeEventTimeSeconds = -1.0;
+		_IntentPathFadeAlpha = 1.0f;
+		_HasIntentPathFade = true;
+		return;
+	}
+
+	if (Selected->HasPathTroubleEvent)
+	{
+		_IntentPathFadeAgentPosition = Selected->PathTroubleAgentPosition;
+		_IntentPathFadeGoal = Selected->PathTroubleGoal;
+		_IntentPathFadeLabel = Selected->PathTroubleSummary;
+		_IntentPathFadeEventTimeSeconds = Selected->PathTroubleEventTimeSeconds;
+
+		const auto HasNavigationTrouble =
+			Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Partial
+			|| Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Failed;
+		_IntentPathFadeColor = Selected->HadPathNetworkFailure
+			? (HasNavigationTrouble
+				? FLinearColor(1.0f, 0.05f, 0.60f, 1.0f)
+				: FLinearColor(1.0f, 0.35f, 0.05f, 1.0f))
+			: FLinearColor(1.0f, 0.05f, 0.05f, 1.0f);
+
+		const auto EventAge = FPlatformTime::Seconds() - _IntentPathFadeEventTimeSeconds;
+		_IntentPathFadeAlpha = static_cast<float>(FMath::Clamp(
+				1.0 - EventAge / ck::FFragment_CrowdAgent_PathTrouble::FadeDurationSeconds,
+				0.0,
+				1.0));
+		_HasIntentPathFade = _IntentPathFadeAlpha > 0.0f;
+		if (NOT _HasIntentPathFade)
+		{ ClearIntentPathFade(); }
+		return;
+	}
+
+	ClearIntentPathFade();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkCrowdDebugger_ViewportPanel::
+	OnSelectedAgentChanged(FCk_Handle)
+	-> void
+{
+	ClearIntentPathFade();
+}
+
+auto
+	SCkCrowdDebugger_ViewportPanel::
+	ClearIntentPathFade()
+	-> void
+{
+	_IntentPathFadeAgentPosition = FVector::ZeroVector;
+	_IntentPathFadeGoal = FVector::ZeroVector;
+	_IntentPathFadeLabel.Empty();
+	_IntentPathFadeColor = FLinearColor::Red;
+	_IntentPathFadeEventTimeSeconds = -1.0;
+	_IntentPathFadeAlpha = 0.0f;
+	_HasIntentPathFade = false;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -319,6 +455,37 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		FSlateDrawElement::MakeLines(
 			OutDrawElements, InLayer, AllottedGeometry.ToPaintGeometry(),
 			Pts, ESlateDrawEffect::None, InColor, true, 1.5f);
+	};
+
+	const auto DrawDashedScreenLine = [&](
+		const FVector2D& InStart,
+		const FVector2D& InEnd,
+		const FLinearColor& InColor,
+		int32 InLayer,
+		float InThickness)
+	{
+		const auto Delta = InEnd - InStart;
+		const auto Length = Delta.Size();
+		if (Length <= 1.0)
+		{ return; }
+
+		const auto Direction = Delta / Length;
+		constexpr auto BaseDashLengthPx = 8.0;
+		constexpr auto BaseGapLengthPx  = 5.0;
+		constexpr auto MaxDashCount     = 256.0;
+		const auto BasePatternLength = BaseDashLengthPx + BaseGapLengthPx;
+		const auto PatternScale = FMath::Max(1.0, Length / (BasePatternLength * MaxDashCount));
+		const auto DashLengthPx = BaseDashLengthPx * PatternScale;
+		const auto GapLengthPx  = BaseGapLengthPx * PatternScale;
+		for (auto DistancePx = 0.0; DistancePx < Length; DistancePx += DashLengthPx + GapLengthPx)
+		{
+			auto Segment = TArray<FVector2D>{
+				InStart + Direction * DistancePx,
+				InStart + Direction * FMath::Min(DistancePx + DashLengthPx, Length)};
+			FSlateDrawElement::MakeLines(
+				OutDrawElements, InLayer, AllottedGeometry.ToPaintGeometry(),
+				Segment, ESlateDrawEffect::None, InColor, true, InThickness);
+		}
 	};
 
 	const auto* FillBrush = CkStyle::GetFilledBrush();
@@ -507,6 +674,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		const auto Color_Turn    = CkStyle::Info(); // blue
 		const auto Color_Vel     = CkStyle::Warn(); // yellow
 		const auto Color_Path     = FLinearColor(0.48f, 0.64f, 1.0f, 0.9f); // planned-path light blue
+		auto Color_GoalFail = _IntentPathFadeColor;
+		Color_GoalFail.A = _IntentPathFadeAlpha;
 
 		// Planned path — the nav waypoint polyline the agent is following.
 		if (Sel->PlannedPath.Num() >= 2)
@@ -518,6 +687,43 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 			FSlateDrawElement::MakeLines(
 				OutDrawElements, OverlayLayer, AllottedGeometry.ToPaintGeometry(),
 				PathPts, ESlateDrawEffect::None, Color_Path, true, 2.0f);
+		}
+
+		if (_HasIntentPathFade
+			&& (Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay))
+		{
+			const auto AgentScreen = WorldToScreen(
+				_IntentPathFadeAgentPosition.X,
+				_IntentPathFadeAgentPosition.Y);
+			const auto GoalScreen = WorldToScreen(
+				_IntentPathFadeGoal.X,
+				_IntentPathFadeGoal.Y);
+			DrawDashedScreenLine(AgentScreen, GoalScreen, Color_GoalFail, OverlayLayer + 1, 2.0f);
+
+			const auto GoalTL = FVector2f(static_cast<float>(GoalScreen.X) - 4.0f, static_cast<float>(GoalScreen.Y) - 4.0f);
+			FSlateDrawElement::MakeBox(
+				OutDrawElements, OverlayLayer + 2,
+				AllottedGeometry.ToPaintGeometry(FVector2f(8.0f, 8.0f), FSlateLayoutTransform(GoalTL)),
+				FillBrush, ESlateDrawEffect::None, Color_GoalFail);
+
+			const auto LabelPosition = (AgentScreen + GoalScreen) * 0.5 + FVector2D(4.0, -14.0);
+			const auto GoalDistanceCm = FVector::Dist(
+				_IntentPathFadeAgentPosition,
+				_IntentPathFadeGoal);
+			FSlateDrawElement::MakeText(
+				OutDrawElements, OverlayLayer + 2,
+				AllottedGeometry.ToPaintGeometry(
+					FVector2f(360.0f, 28.0f),
+					FSlateLayoutTransform(FVector2f(
+						static_cast<float>(LabelPosition.X),
+						static_cast<float>(LabelPosition.Y)))),
+				FString::Printf(
+					TEXT("%s | %.0f cm (3D)"),
+					*_IntentPathFadeLabel,
+					GoalDistanceCm),
+				FCoreStyle::GetDefaultFontStyle("Bold", 9),
+				ESlateDrawEffect::None,
+				Color_GoalFail);
 		}
 
 		// Goal rings — only while actually heading to a goal.

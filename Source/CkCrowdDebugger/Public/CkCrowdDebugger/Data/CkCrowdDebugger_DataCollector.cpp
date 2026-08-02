@@ -43,6 +43,57 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+namespace
+{
+	auto EnumName(ECk_PathNetwork_RouteFailReason InReason) -> FString
+	{
+		const auto* Enum = StaticEnum<ECk_PathNetwork_RouteFailReason>();
+		return Enum != nullptr
+			? Enum->GetNameStringByValue(static_cast<int64>(InReason))
+			: TEXT("Unknown");
+	}
+
+	auto EnumName(ECk_Nav_PathStatus InStatus) -> FString
+	{
+		const auto* Enum = StaticEnum<ECk_Nav_PathStatus>();
+		return Enum != nullptr
+			? Enum->GetNameStringByValue(static_cast<int64>(InStatus))
+			: TEXT("Unknown");
+	}
+
+	auto EnumName(ECk_Nav_PathFailReason InReason) -> FString
+	{
+		const auto* Enum = StaticEnum<ECk_Nav_PathFailReason>();
+		return Enum != nullptr
+			? Enum->GetNameStringByValue(static_cast<int64>(InReason))
+			: TEXT("Unknown");
+	}
+
+	auto MakePathTroubleSummary(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
+	{
+		if (NOT InSnapshot.HasPathTroubleEvent)
+		{ return {}; }
+
+		if (InSnapshot.HadPathNetworkFailure)
+		{
+			return FString::Printf(
+				TEXT("SIDEWALK: %s -> UNREAL NAV: %s"),
+				*EnumName(InSnapshot.PathNetworkFailReason),
+				*EnumName(InSnapshot.TroubleNavigationStatus));
+		}
+
+		const auto Status = EnumName(InSnapshot.TroubleNavigationStatus);
+		return InSnapshot.TroubleNavigationFailReason == ECk_Nav_PathFailReason::None
+			? FString::Printf(TEXT("UNREAL NAV: %s"), *Status)
+			: FString::Printf(
+				TEXT("UNREAL NAV: %s (%s)"),
+				*Status,
+				*EnumName(InSnapshot.TroubleNavigationFailReason));
+	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto
 	FCkCrowdDebugger_DataCollector::
 	Collect(UWorld* InWorld)
@@ -356,6 +407,20 @@ auto
 	if (InHandle.Has<ck::FFragment_Nav_PathResult>())
 	{
 		Snapshot.PlannedPath = InHandle.Get<ck::FFragment_Nav_PathResult>().Get_Waypoints();
+	}
+	if (InHandle.Has<ck::FFragment_CrowdAgent_PathTrouble>())
+	{
+		const auto& Trouble = InHandle.Get<ck::FFragment_CrowdAgent_PathTrouble>();
+		Snapshot.HasPathTroubleEvent = Trouble.Get_HasEvent();
+		Snapshot.HadPathNetworkFailure = Trouble.Get_HadPathNetworkFailure();
+		Snapshot.UsedNavigationFallback = Trouble.Get_UsedNavigationFallback();
+		Snapshot.PathNetworkFailReason = Trouble.Get_PathNetworkFailReason();
+		Snapshot.TroubleNavigationStatus = Trouble.Get_NavigationStatus();
+		Snapshot.TroubleNavigationFailReason = Trouble.Get_NavigationFailReason();
+		Snapshot.PathTroubleAgentPosition = Trouble.Get_AgentLocation();
+		Snapshot.PathTroubleGoal = Trouble.Get_GoalLocation();
+		Snapshot.PathTroubleEventTimeSeconds = Trouble.Get_EventTimeSeconds();
+		Snapshot.PathTroubleSummary = MakePathTroubleSummary(Snapshot);
 	}
 
 	// Gate 3 — neighbor cache + separation force. The fragments may be absent on agents

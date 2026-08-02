@@ -148,6 +148,46 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Radius"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Radius); }, NumColor) ]
 				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Height"),      [this]{ return FString::Printf(TEXT("%.1f cm"), _Snapshot.Height); }, NumColor) ]
 
+				// ---- Path Trouble ---------------------------------------------------------------
+				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
+				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Last Path Trouble (This Move)"))) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Outcome"), [this]
+				{
+					return _Snapshot.HasPathTroubleEvent ? _Snapshot.PathTroubleSummary : FString(TEXT("—"));
+				}, MathColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Sidewalk"), [this]
+				{
+					if (NOT _Snapshot.HasPathTroubleEvent) { return FString(TEXT("—")); }
+					if (NOT _Snapshot.HadPathNetworkFailure) { return FString(TEXT("Not involved")); }
+					return StaticEnum<ECk_PathNetwork_RouteFailReason>()->GetNameStringByValue(
+						static_cast<int64>(_Snapshot.PathNetworkFailReason));
+				}, TagColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Unreal nav"), [this]
+				{
+					if (NOT _Snapshot.HasPathTroubleEvent) { return FString(TEXT("—")); }
+					const auto Status = StaticEnum<ECk_Nav_PathStatus>()->GetNameStringByValue(
+						static_cast<int64>(_Snapshot.TroubleNavigationStatus));
+					if (_Snapshot.TroubleNavigationFailReason == ECk_Nav_PathFailReason::None)
+					{ return Status; }
+					const auto Reason = StaticEnum<ECk_Nav_PathFailReason>()->GetNameStringByValue(
+						static_cast<int64>(_Snapshot.TroubleNavigationFailReason));
+					return FString::Printf(TEXT("%s (%s)"), *Status, *Reason);
+				}, TagColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Attempt goal"), [this]
+				{
+					return _Snapshot.HasPathTroubleEvent
+						? _Snapshot.PathTroubleGoal.ToCompactString()
+						: FString(TEXT("—"));
+				}, MathColor) ]
+				+ SVerticalBox::Slot().AutoHeight()[ Kv(TEXT("Euclidean dist"), [this]
+				{
+					return _Snapshot.HasPathTroubleEvent
+						? FString::Printf(TEXT("%.0f cm (3D)"), FVector::Dist(
+							_Snapshot.PathTroubleAgentPosition,
+							_Snapshot.PathTroubleGoal))
+						: FString(TEXT("—"));
+				}, NumColor) ]
+
 				// ---- Orbit Diagnosis -------------------------------------------------------------
 				+ SVerticalBox::Slot().AutoHeight().Padding(SectionPad)
 				[ SNew(SCkDebug_SectionHeader).Label(FText::FromString(TEXT("Orbit Diagnosis"))) ]

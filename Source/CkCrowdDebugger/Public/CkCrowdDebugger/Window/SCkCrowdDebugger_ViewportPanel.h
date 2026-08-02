@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkEcs/Handle/CkHandle.h"
+
 #include "Widgets/SCompoundWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -26,6 +28,11 @@ public:
 	auto Construct(const FArguments& InArgs) -> void;
 	virtual ~SCkCrowdDebugger_ViewportPanel() override;
 
+	virtual auto Tick(
+		const FGeometry& AllottedGeometry,
+		double InCurrentTime,
+		float InDeltaTime) -> void override;
+
 	virtual auto OnPaint(
 		const FPaintArgs& Args,
 		const FGeometry& AllottedGeometry,
@@ -51,10 +58,23 @@ private:
 	auto ToScreen(double InX, double InY) const -> FVector2D;
 	auto ScreenToWorld(double InScreenX, double InScreenY) const -> FVector2D;
 	auto FrameSelectedAgent() -> void;
+	auto OnSelectedAgentChanged(FCk_Handle) -> void;
+	auto ClearIntentPathFade() -> void;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
 	FDelegateHandle _OnFrameRequestedHandle;
+	FDelegateHandle _OnSelectedAgentChangedHandle;
+
+	// Value-only history for the selected agent's last pending/failed intent. Never retain the
+	// snapshot or its FCk_Handle here: Slate can outlive PIE and therefore the ECS registry.
+	FVector _IntentPathFadeAgentPosition = FVector::ZeroVector;
+	FVector _IntentPathFadeGoal = FVector::ZeroVector;
+	FString _IntentPathFadeLabel;
+	FLinearColor _IntentPathFadeColor = FLinearColor::Red;
+	double  _IntentPathFadeEventTimeSeconds = -1.0;
+	float   _IntentPathFadeAlpha = 0.0f;
+	bool    _HasIntentPathFade = false;
 
 	// User view: zoom multiplier + screen-space pan offset on top of the auto-fit. Home resets to 1/0.
 	double _Zoom = 1.0;

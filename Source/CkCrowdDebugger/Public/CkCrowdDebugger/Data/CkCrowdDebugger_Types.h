@@ -4,6 +4,8 @@
 
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
+#include "CkPathNetwork/Network/CkPathNetwork_Fragment_Data.h"
+
 #include <CoreMinimal.h>
 #include <GameplayTagContainer.h>
 
@@ -67,6 +69,19 @@ struct FCkCrowdDebugger_AgentSnapshot
 	float                    ActiveArrivalRadius = 0.0f;  // per-active-goal override (valid while Walking)
 	FVector                  ActiveGoal = FVector::ZeroVector;
 	bool                     IsWalking = false;
+
+	// Last path problem in this movement episode. These are flat values copied from CkCrowd's
+	// retained record; Slate never holds a live fragment reference or handle-derived state.
+	bool                     HasPathTroubleEvent = false;
+	bool                     HadPathNetworkFailure = false;
+	bool                     UsedNavigationFallback = false;
+	ECk_PathNetwork_RouteFailReason PathNetworkFailReason = ECk_PathNetwork_RouteFailReason::None;
+	ECk_Nav_PathStatus       TroubleNavigationStatus = ECk_Nav_PathStatus::None;
+	ECk_Nav_PathFailReason   TroubleNavigationFailReason = ECk_Nav_PathFailReason::None;
+	FVector                  PathTroubleAgentPosition = FVector::ZeroVector;
+	FVector                  PathTroubleGoal = FVector::ZeroVector;
+	double                   PathTroubleEventTimeSeconds = -1.0;
+	FString                  PathTroubleSummary;
 
 	// Remaining nav waypoints (world space) — drawn as the planned-path polyline in the viewport.
 	TArray<FVector>          PlannedPath;

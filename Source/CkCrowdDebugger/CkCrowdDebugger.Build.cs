@@ -22,6 +22,8 @@ public class CkCrowdDebugger : CkModuleRules
 			"EditorStyle",
 			"AppFramework",
 			"ToolMenus",
+			"AdvancedPreviewScene",
+			"EditorWidgets",
 
 			"GameplayTags",
 			"NavigationSystem",
@@ -35,6 +37,7 @@ public class CkCrowdDebugger : CkModuleRules
             "CkEditorTools",
 
 			"CkNavigation",
+			"CkVoxelNav",
 			"CkPathNetwork",
 			"CkCrowd",
 			"CkPmg",       // destination-ping ring in the in-world RMB command processor
@@ -43,6 +46,7 @@ public class CkCrowdDebugger : CkModuleRules
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("UnrealEd");
+			PrivateDependencyModuleNames.Add("CkVoxelNavEditor");
 		}
 	}
 }

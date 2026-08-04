@@ -3,6 +3,8 @@
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
+#include "CkVoxelNav/Debug/CkVoxelNav_DebugSnapshot.h"
+
 #include "Widgets/SCompoundWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -14,7 +16,16 @@ class SCkCrowdDebugger_AgentListPanel;
 class SCkCrowdDebugger_AgentDetailPanel;
 class SCkCrowdDebugger_StatsPanel;
 class SCkCrowdDebugger_EventLogPanel;
-class SCkCrowdDebugger_ViewportPanel;
+class SCkCrowdDebugger_3dViewport;
+class UWorld;
+
+enum class ECkCrowdDebugger_VoxelSource : uint8
+{
+	Auto,
+	LivePie,
+	RetainedSnapshot,
+	EditorPreview
+};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -38,6 +49,9 @@ public:
 
 private:
 	auto BuildToolbar() -> TSharedRef<SWidget>;
+	auto Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> void;
+	auto Get_VoxelSnapshotBuildParams() const -> ck::voxelnav::FDebugSnapshotBuildParams;
+	auto Get_VoxelSourceLabel() const -> FText;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
@@ -48,7 +62,21 @@ private:
 	TSharedPtr<SCkCrowdDebugger_AgentDetailPanel>   _AgentDetailPanel;
 	TSharedPtr<SCkCrowdDebugger_StatsPanel>         _StatsPanel;
 	TSharedPtr<SCkCrowdDebugger_EventLogPanel>      _EventLogPanel;
-	TSharedPtr<SCkCrowdDebugger_ViewportPanel>      _ViewportPanel;
+	TSharedPtr<SCkCrowdDebugger_3dViewport>         _ViewportPanel;
+
+	ECkCrowdDebugger_VoxelSource _VoxelSource = ECkCrowdDebugger_VoxelSource::Auto;
+	TOptional<ck::voxelnav::FDebugSnapshot> _RetainedVoxelSnapshot;
+	TSharedPtr<const TArray<ck::voxelnav::FDebugSnapshot>> _LastEditorVoxelPublication;
+	FString _VoxelSourceStatus = TEXT("VoxelNav: waiting for a source");
+	double _NextVoxelRefreshTime = 0.0;
+	bool _VoxelRefreshRequested = true;
+	bool _ShowVoxelVolume = true;
+	bool _ShowVoxelChunks = true;
+	bool _ShowVoxelMergedFree = true;
+	bool _ShowVoxelRawFree = false;
+	bool _ShowVoxelOccupied = false;
+	bool _ShowVoxelPortals = true;
+	bool _ShowVoxelDirtyRepair = true;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

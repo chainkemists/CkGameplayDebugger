@@ -1,6 +1,7 @@
 #include "CkSmDebugger_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphFactory.h"
@@ -52,6 +53,10 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         .SetTooltipText(FText::FromString(TEXT("Opens the CK State Machine Debugger window")))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
 
+    _TabForegroundedHandle = FGlobalTabmanager::Get()->OnTabForegrounded_Subscribe(
+        FOnActiveTabChanged::FDelegate::CreateRaw(
+            this, &FCkSmDebuggerModule::OnTabForegrounded));
+
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkSmDebugger"),
         _DebuggerTabName,
@@ -64,6 +69,14 @@ auto FCkSmDebuggerModule::StartupModule() -> void
 
 auto FCkSmDebuggerModule::ShutdownModule() -> void
 {
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+
+    if (_TabForegroundedHandle.IsValid())
+    {
+        FGlobalTabmanager::Get()->OnTabForegrounded_Unsubscribe(_TabForegroundedHandle);
+        _TabForegroundedHandle.Reset();
+    }
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
@@ -94,6 +107,8 @@ auto FCkSmDebuggerModule::OpenDebugger() -> void
 
 auto FCkSmDebuggerModule::CloseDebugger() -> void
 {
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+
     if (_DebuggerTab.IsValid())
     {
         // Engine shutdown destroys Slate windows BEFORE module unload — by then
@@ -133,6 +148,7 @@ auto FCkSmDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSh
         .Label(FText::FromString(TEXT("CK SM Debugger")))
         .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
         {
+            UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
             _DebuggerWindow.Reset();
             _DebuggerTab.Reset();
         })
@@ -144,6 +160,18 @@ auto FCkSmDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSh
     _DebuggerWindow->Set_OwningTab(_DebuggerTab);
 
     return _DebuggerTab.ToSharedRef();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkSmDebuggerModule::OnTabForegrounded(
+    TSharedPtr<SDockTab> InNewForegroundTab,
+    TSharedPtr<SDockTab>) -> void
+{
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(
+        _DebuggerTab.IsValid()
+        && InNewForegroundTab == _DebuggerTab
+        && _DebuggerTab->IsForeground());
 }
 
 #undef LOCTEXT_NAMESPACE

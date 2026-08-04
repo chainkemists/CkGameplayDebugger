@@ -22,12 +22,16 @@ public:
 
 private:
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+    auto OnTabForegrounded(
+        TSharedPtr<SDockTab> InNewForegroundTab,
+        TSharedPtr<SDockTab>) -> void;
 
     TSharedPtr<SCkSmDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
     uint64 _DebuggerToolRegistrationId = 0;
+    FDelegateHandle _TabForegroundedHandle;
 
     static const FName _DebuggerTabName;
 };

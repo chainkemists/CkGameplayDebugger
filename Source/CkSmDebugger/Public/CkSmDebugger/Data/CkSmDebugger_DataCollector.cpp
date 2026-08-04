@@ -69,6 +69,8 @@ auto
         [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Sm_Current&, const ck::FFragment_Sm_Params&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
+            auto StateMachineHandle = UCk_Utils_StateMachine_UE::CastChecked(Handle);
+            UCk_Utils_StateMachineDebug_UE::BeginDebuggerCapture(StateMachineHandle);
 
             // Skip sub-SMs (their lifetime owner is a task entity)
             auto OwnerHandle = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
@@ -256,6 +258,7 @@ auto
 {
     auto SmInfo = FCkSmDebugger_SmInfo{};
     SmInfo.Handle = UCk_Utils_StateMachine_UE::CastChecked(InSmHandle);
+    UCk_Utils_StateMachineDebug_UE::BeginDebuggerCapture(SmInfo.Handle);
     // FFragment_Sm_Context was removed — the SM fragments now live directly on
     // the game entity, so InSmHandle *is* the owning game entity. Surface it
     // explicitly so UI consumers (e.g. the SM Debugger's toolbar EntityRef)

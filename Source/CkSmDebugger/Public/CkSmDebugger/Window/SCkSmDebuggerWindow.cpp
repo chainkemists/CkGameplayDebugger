@@ -15,6 +15,7 @@
 #include "Styling/AppStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
@@ -256,6 +257,8 @@ namespace
 
 SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
 {
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+
     if (_OnEndPieHandle.IsValid())
     { FEditorDelegates::EndPIE.Remove(_OnEndPieHandle); }
 
@@ -548,7 +551,13 @@ auto
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (_IsTestMode)
-    { return; }
+    {
+        UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+        return;
+    }
+
+    UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(
+        FCkDebuggerRefreshGate::Is_WindowVisible(WindowId));
 
     // Per-window refresh gate — short-circuits when hidden / paused / rate-capped.
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))

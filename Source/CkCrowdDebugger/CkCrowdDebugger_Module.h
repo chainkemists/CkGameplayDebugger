@@ -36,6 +36,7 @@ private:
 	TSharedPtr<SDockTab> _Tab;
 	FDelegateHandle _EnginePreExitHandle;
 	uint64 _DebuggerToolRegistrationId = 0;
+	uint64 _EntityTargetRouteRegistrationId = 0;
 
 	static const FName _TabId;
 };

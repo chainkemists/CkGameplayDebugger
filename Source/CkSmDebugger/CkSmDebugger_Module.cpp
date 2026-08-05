@@ -1,12 +1,16 @@
 #include "CkSmDebugger_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 #include "CkSmDebugger/Graph/CkSmDebugGraphFactory.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
@@ -17,6 +21,19 @@
 #define LOCTEXT_NAMESPACE "FCkSmDebuggerModule"
 
 const FName FCkSmDebuggerModule::_DebuggerTabName = FName("CkSmDebugger");
+
+namespace
+{
+    auto ResolveSmTarget(const FCk_Handle& InSelected) -> FCk_Handle
+    {
+        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
+            [](const FCk_Handle& InCandidate)
+            {
+                return ck::IsValid(InCandidate)
+                    && InCandidate.Has_All<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>();
+            });
+    }
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -65,11 +82,25 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         TEXT("StateMachine"),
         ECkDebuggerToolCategory::Core,
         20});
+
+    _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
+        TEXT("CkSmDebugger"), _DebuggerTabName,
+        [](const FCk_Handle& InEntity) { return ck::IsValid(ResolveSmTarget(InEntity)); },
+        [this](const FCk_Handle& InEntity)
+        {
+            const auto Target = ResolveSmTarget(InEntity);
+            if (NOT ck::IsValid(Target)) { return; }
+            OpenDebugger();
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->TargetEntity(Target); }
+        }});
 }
 
 auto FCkSmDebuggerModule::ShutdownModule() -> void
 {
     UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+
+    FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
+    _EntityTargetRouteRegistrationId = 0;
 
     if (_TabForegroundedHandle.IsValid())
     {

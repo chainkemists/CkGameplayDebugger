@@ -15,10 +15,13 @@
 #include "Styling/AppStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "GraphEditor.h"
 #include "Editor.h"
@@ -451,7 +454,13 @@ auto
 
     ChildSlot
     [
-        SNew(SVerticalBox)
+        SNew(SCkDebug_WindowChrome)
+            .WindowId(WindowId)
+            .ToolTabId(TEXT("CkSmDebugger"))
+            .DisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
+            .Content()
+            [
+                SNew(SVerticalBox)
 
             // Toolbar
             + SVerticalBox::Slot()
@@ -529,6 +538,7 @@ auto
                             ]
                             ]
                 ]
+            ]
     ];
 
     // Bind history selection → detail panel
@@ -626,6 +636,18 @@ auto
     // Refresh SM selector combo
     RefreshSmSelector();
 
+    if (_PendingTarget.IsSet())
+    {
+        const auto Target = _PendingTarget.GetValue();
+        _PendingTarget.Reset();
+        for (const auto& Candidate : _SmSelectorHandles)
+        {
+            if (Candidate.Get_Entity() != Target) { continue; }
+            _ViewModel->Set_SelectedSmHandle(Candidate);
+            break;
+        }
+    }
+
     // Update graph from SmInfo
     auto SmInfo = _ViewModel->Get_CurrentSmInfo();
     if (SmInfo && _Graph)
@@ -718,6 +740,11 @@ auto
 
     // Detail panel: swap content when selection signature changes.
     RefreshDetailContent();
+}
+
+auto SCkSmDebuggerWindow::TargetEntity(const FCk_Handle& InEntity) -> void
+{
+    if (ck::IsValid(InEntity)) { _PendingTarget = InEntity.Get_Entity(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

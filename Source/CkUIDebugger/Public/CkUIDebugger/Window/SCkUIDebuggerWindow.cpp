@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
 #include "CkUI/Layout/CkUI_PrimaryGameLayout.h"
@@ -317,7 +318,13 @@ auto
 
     ChildSlot
     [
-        SNew(SBorder)
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkUIDebugger"))
+        .DisplayName(Get_WindowDisplayName())
+        .Content()
+        [
+            SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
         .BorderBackgroundColor(style::Bg_Medium)
         [
@@ -341,6 +348,7 @@ auto
 
             + SVerticalBox::Slot().AutoHeight().Padding(style::Pad_S)
                 [ _HistoryArea.ToSharedRef() ]
+        ]
         ]
     ];
 }

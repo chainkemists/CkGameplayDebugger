@@ -142,6 +142,9 @@ private:
     FName _CenterTab;
     bool  _NerdMode = false;
 
+    // Entity value only: unlike FCk_Handle this does not retain the PIE registry.
+    TOptional<FCk_Entity> _PendingExternalEntity;
+
     // Editor delegate handles
     FDelegateHandle _OnBeginPieHandle;
     FDelegateHandle _OnEndPieHandle;

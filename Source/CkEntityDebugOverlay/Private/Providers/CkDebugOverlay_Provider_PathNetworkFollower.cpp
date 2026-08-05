@@ -17,6 +17,14 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower,
     "Ck.OnScreenDebugger.Provider.PathNetworkFollower")
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Route,
+    "Ck.OnScreenDebugger.Provider.PathNetworkFollower.Status")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Failure,
+    "Ck.OnScreenDebugger.Provider.PathNetworkFollower.Failure")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Corridor,
+    "Ck.OnScreenDebugger.Provider.PathNetworkFollower.Corridor")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Goal,
+    "Ck.OnScreenDebugger.Provider.PathNetworkFollower.Goal")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_LegacyRoute,
     "Ck.OnScreenDebugger.Provider.PathNetworkFollower.Route")
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -24,7 +32,11 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Rout
 namespace
 {
     FGameplayTag ProviderTag()    { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower; }
-    FGameplayTag FieldTag_Route() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Route; }
+    FGameplayTag FieldTag_Status() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Route; }
+    FGameplayTag FieldTag_Failure() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Failure; }
+    FGameplayTag FieldTag_Corridor() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Corridor; }
+    FGameplayTag FieldTag_Goal() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_Goal; }
+    FGameplayTag FieldTag_LegacyRoute() { return TAG_Ck_OnScreenDebugger_Provider_PathNetworkFollower_LegacyRoute; }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -37,7 +49,9 @@ auto FCk_DebugOverlay_Provider_PathNetworkFollower::Get_ProviderTag() const -> F
 auto FCk_DebugOverlay_Provider_PathNetworkFollower::Get_FieldTags() const -> TArray<FCk_DebugOverlay_FieldDesc>
 {
     return {
-        { FieldTag_Route(), true },
+        { FieldTag_Status(), true }, { FieldTag_Failure(), true },
+        { FieldTag_Corridor(), true }, { FieldTag_Goal(), true },
+        { FieldTag_LegacyRoute(), false },
     };
 }
 
@@ -66,9 +80,6 @@ auto FCk_DebugOverlay_Provider_PathNetworkFollower::Collect(
     Out.ProviderTag  = Get_ProviderTag();
     Out.SortPriority = Get_SortPriority();
 
-    if (NOT Cfg.EnabledFields.HasTagExact(FieldTag_Route()))
-    { return; }
-
     auto MutableEntity  = Entity;
     const auto Follower = UCk_Utils_PathNetworkFollower_UE::CastChecked(MutableEntity);
 
@@ -77,16 +88,32 @@ auto FCk_DebugOverlay_Provider_PathNetworkFollower::Collect(
 
     const auto Result = UCk_Utils_PathNetworkFollower_UE::Get_RouteResult(Follower);
     const auto Status = Result.Get_Status();
+    const auto bLegacyRoute = Cfg.EnabledFields.HasTagExact(FieldTag_LegacyRoute());
 
-    // Row 1 — status
+    if (bLegacyRoute)
     {
-        const auto StatusStr = Status == ECk_PathNetwork_RouteStatus::Failed
-            ? ck::Format_UE(TEXT("Route: {} ({})"), Status, Result.Get_FailReason())
-            : ck::Format_UE(TEXT("Route: {}"), Status);
+        auto LegacyValue = ck::Format_UE(TEXT("{}"), Status);
+        if (Status == ECk_PathNetwork_RouteStatus::Failed)
+        { LegacyValue += ck::Format_UE(TEXT(" ({})"), Result.Get_FailReason()); }
+        else if (Status == ECk_PathNetwork_RouteStatus::Ready)
+        {
+            LegacyValue += ck::Format_UE(TEXT(" / {} wps / {} legs / cost {}"),
+                Result.Get_CompiledWaypoints().Num(), Result.Get_Legs().Num(), FMath::RoundToInt(Result.Get_TotalCost()));
+        }
+        if (Status != ECk_PathNetwork_RouteStatus::None)
+        { LegacyValue += ck::Format_UE(TEXT(" / goal {}"), Result.Get_GoalLocation()); }
+        FCk_DebugOverlay_Row Row; Row.FieldTag = FieldTag_LegacyRoute();
+        Row.Value = FText::FromString(LegacyValue);
+        Row.Severity = Status == ECk_PathNetwork_RouteStatus::Failed ? ECk_DebugOverlay_Severity::Bad : ECk_DebugOverlay_Severity::Normal;
+        Out.Rows.Add(MoveTemp(Row));
+    }
+
+    if (Cfg.EnabledFields.HasTagExact(FieldTag_Status()))
+    {
 
         FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_Route();
-        Row.Value    = FText::FromString(StatusStr);
+        Row.FieldTag = FieldTag_Status();
+        Row.Value    = FText::FromString(ck::Format_UE(TEXT("{}"), Status));
         Row.Severity = Status == ECk_PathNetwork_RouteStatus::Failed
             ? ECk_DebugOverlay_Severity::Warn
             : ECk_DebugOverlay_Severity::Normal;
@@ -94,10 +121,16 @@ auto FCk_DebugOverlay_Provider_PathNetworkFollower::Collect(
     }
 
     // Row 2 — corridor summary (Ready only)
-    if (Status == ECk_PathNetwork_RouteStatus::Ready)
+    if (Status == ECk_PathNetwork_RouteStatus::Failed && Cfg.EnabledFields.HasTagExact(FieldTag_Failure()))
+    {
+        FCk_DebugOverlay_Row Row; Row.FieldTag = FieldTag_Failure();
+        Row.Value = FText::FromString(ck::Format_UE(TEXT("{}"), Result.Get_FailReason()));
+        Row.Severity = ECk_DebugOverlay_Severity::Bad; Out.Rows.Add(MoveTemp(Row));
+    }
+    if (Status == ECk_PathNetwork_RouteStatus::Ready && Cfg.EnabledFields.HasTagExact(FieldTag_Corridor()))
     {
         FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_Route();
+        Row.FieldTag = FieldTag_Corridor();
         Row.Value    = FText::FromString(ck::Format_UE(TEXT("Corridor: {} wps / {} legs / cost {}"),
             Result.Get_CompiledWaypoints().Num(), Result.Get_Legs().Num(),
             FMath::RoundToInt(Result.Get_TotalCost())));
@@ -106,10 +139,10 @@ auto FCk_DebugOverlay_Provider_PathNetworkFollower::Collect(
     }
 
     // Row 3 — goal (any route ever requested)
-    if (Status != ECk_PathNetwork_RouteStatus::None)
+    if (Status != ECk_PathNetwork_RouteStatus::None && Cfg.EnabledFields.HasTagExact(FieldTag_Goal()))
     {
         FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_Route();
+        Row.FieldTag = FieldTag_Goal();
         Row.Value    = FText::FromString(ck::Format_UE(TEXT("Goal: {}"), Result.Get_GoalLocation()));
         Row.Severity = ECk_DebugOverlay_Severity::Normal;
         Out.Rows.Add(MoveTemp(Row));

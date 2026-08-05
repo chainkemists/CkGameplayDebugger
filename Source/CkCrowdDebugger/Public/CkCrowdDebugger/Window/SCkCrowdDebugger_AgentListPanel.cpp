@@ -534,4 +534,22 @@ auto SCkCrowdDebugger_AgentListPanel::OnGlobalSelectionSync(
 	// entity simply isn't a crowd agent).
 }
 
+auto SCkCrowdDebugger_AgentListPanel::SelectEntityExternal(FCk_Entity InEntity) -> void
+{
+	if (NOT _ViewModel.IsValid()) { return; }
+	for (const auto& Item : _ItemSource)
+	{
+		if (NOT Item.IsValid() || Item->Handle.Get_Entity() != InEntity) { continue; }
+		const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+		_ViewModel->Set_SelectedHandle(Item->Handle);
+		if (_ListView.IsValid())
+		{
+			_ListView->SetSelection(Item, ESelectInfo::Direct);
+			_ListView->RequestScrollIntoView(Item);
+		}
+		_ViewModel->Request_FrameSelectedAgent();
+		return;
+	}
+}
+
 // --------------------------------------------------------------------------------------------------------------------

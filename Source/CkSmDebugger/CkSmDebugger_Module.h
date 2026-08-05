@@ -31,6 +31,7 @@ private:
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
 
     uint64 _DebuggerToolRegistrationId = 0;
+    uint64 _EntityTargetRouteRegistrationId = 0;
     FDelegateHandle _TabForegroundedHandle;
 
     static const FName _DebuggerTabName;

@@ -7,6 +7,7 @@
 // GOAP planner utils — lives in CkGoap module (already a dep in Build.cs)
 #include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 #include "CkGoap/Planner/CkGoap_Planner_Fragment_Data.h"
+#include "CkGoap/Action/CkGoap_Action_Fragment_Data.h"
 
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
@@ -27,26 +28,32 @@ UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap,
     "Ck.OnScreenDebugger.Provider.Goap")
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_Goal,
-    "Ck.OnScreenDebugger.Provider.Goap.Goal")
+    "Ck.OnScreenDebugger.Provider.Goap.Status")
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_Action,
-    "Ck.OnScreenDebugger.Provider.Goap.Action")
+    "Ck.OnScreenDebugger.Provider.Goap.Active")
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_Plan,
     "Ck.OnScreenDebugger.Provider.Goap.Plan")
 
 UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_Cost,
     "Ck.OnScreenDebugger.Provider.Goap.Cost")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_LegacyGoal,
+    "Ck.OnScreenDebugger.Provider.Goap.Goal")
+UE_DEFINE_GAMEPLAY_TAG(TAG_Ck_OnScreenDebugger_Provider_Goap_LegacyAction,
+    "Ck.OnScreenDebugger.Provider.Goap.Action")
 
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace
 {
     FGameplayTag ProviderTag()      { return TAG_Ck_OnScreenDebugger_Provider_Goap; }
-    FGameplayTag FieldTag_Goal()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Goal; }
-    FGameplayTag FieldTag_Action()  { return TAG_Ck_OnScreenDebugger_Provider_Goap_Action; }
+    FGameplayTag FieldTag_Status()  { return TAG_Ck_OnScreenDebugger_Provider_Goap_Goal; }
+    FGameplayTag FieldTag_Active()  { return TAG_Ck_OnScreenDebugger_Provider_Goap_Action; }
     FGameplayTag FieldTag_Plan()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Plan; }
     FGameplayTag FieldTag_Cost()    { return TAG_Ck_OnScreenDebugger_Provider_Goap_Cost; }
+    FGameplayTag FieldTag_LegacyGoal() { return TAG_Ck_OnScreenDebugger_Provider_Goap_LegacyGoal; }
+    FGameplayTag FieldTag_LegacyAction() { return TAG_Ck_OnScreenDebugger_Provider_Goap_LegacyAction; }
 
     // Convert ECk_GoapPlanStatus to a short label string.
     auto LabelForStatus(ECk_GoapPlanStatus InStatus) -> FString
@@ -73,10 +80,13 @@ auto FCk_DebugOverlay_Provider_Goap::Get_ProviderTag() const -> FGameplayTag
 auto FCk_DebugOverlay_Provider_Goap::Get_FieldTags() const -> TArray<FCk_DebugOverlay_FieldDesc>
 {
     return {
-        { FieldTag_Goal(),   true  },
-        { FieldTag_Action(), true  },
+        { FieldTag_Status(), true  },
+        { FieldTag_Active(), true  },
         { FieldTag_Plan(),   true  },
         { FieldTag_Cost(),   true  },   // planner cost at a glance — card is the one-screen NPC debugger
+        // Serialized layouts from before the truthful Status/Active rename continue
+        // to resolve, but new defaults do not enable these aliases.
+        { FieldTag_LegacyGoal(), false }, { FieldTag_LegacyAction(), false },
     };
 }
 
@@ -141,43 +151,40 @@ auto FCk_DebugOverlay_Provider_Goap::Collect(
         }
     };
 
-    // --- Goal ---
-    // There is no direct Get_Goal() public string method. The gateway header shows
-    // that goal is accessed via FFragment_Goap_Planner_Params::_Goal (authored conditions).
-    // We surface the plan status as a proxy for "goal pursuit" since we can't
-    // trivially stringify the authored goal conditions from a Utils method.
-    // BATCH-VERIFY: check if UCk_Utils_Goap_Planner_UE::Get_InvalidGoal or similar
-    // returns authored goal as displayable strings. If Get_Goal() exists, use it.
-    if (Cfg.EnabledFields.HasTagExact(FieldTag_Goal()))
+    // Status is deliberately labelled as status: do not present it as a goal.
+    if (Cfg.EnabledFields.HasTagExact(FieldTag_Status()) || Cfg.EnabledFields.HasTagExact(FieldTag_LegacyGoal()))
     {
         FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_Goal();
+        Row.FieldTag = FieldTag_Status();
         Row.Value    = FText::FromString(LabelForStatus(PlanStatus));
         Row.Severity = StatusSeverity(PlanStatus);
         Out.Rows.Add(MoveTemp(Row));
     }
 
-    // --- Action (leaf of active chain) ---
-    if (Cfg.EnabledFields.HasTagExact(FieldTag_Action()))
+    // Active execution is the runtime-safe signal available without the editor debugger.
+    if (Cfg.EnabledFields.HasTagExact(FieldTag_Active()) || Cfg.EnabledFields.HasTagExact(FieldTag_LegacyAction()))
     {
         const TArray<FCk_Handle_Goap_Action> Chain = UCk_Utils_Goap_Planner_UE::Get_ActiveChain(PlannerHandle);
-        FString ActionName = TEXT("(none)");
+        auto ActionName = FString{TEXT("(none)")};
         if (Chain.Num() > 0)
         {
-            // BATCH-VERIFY: FCk_Handle_Goap_Action does NOT carry a class accessor
-            // directly — the class name lives on the fragment. The gateway reads it
-            // from the DataCollector snapshot's Catalog (ClassName string). Without
-            // the DataCollector we'd need to get the Params fragment directly.
-            // For now emit the chain depth count; mark as FLAGGED below.
-            // FLAGGED: replace with actual leaf action class name once we know the
-            // fragment accessor. Possible path:
-            //   Entity(Chain.Last()).Get<ck::FFragment_Goap_Action_Params>().Get_ScriptClass()->GetName()
-            // or similar. Needs confirmation.
-            ActionName = FString::Printf(TEXT("Chain depth: %d"), Chain.Num());
+            const auto& Leaf = Chain.Last();
+            if (ck::IsValid(Leaf) && Leaf.Has<FCk_Fragment_Goap_ActionParamsData>())
+            {
+                const auto ActionClass = Leaf.Get<FCk_Fragment_Goap_ActionParamsData>().Get_ActionClass();
+                ActionName = ck::IsValid(ActionClass) ? ActionClass->GetName() : FString{TEXT("(unnamed action)")};
+            }
+            else
+            {
+                ActionName = TEXT("(invalid active action)");
+            }
+
+            if (Chain.Num() > 1)
+            { ActionName += ck::Format_UE(TEXT(" (depth {})"), Chain.Num()); }
         }
 
         FCk_DebugOverlay_Row Row;
-        Row.FieldTag = FieldTag_Action();
+        Row.FieldTag = FieldTag_Active();
         Row.Value    = FText::FromString(ActionName);
         Row.Severity = ECk_DebugOverlay_Severity::Normal;
         Out.Rows.Add(MoveTemp(Row));

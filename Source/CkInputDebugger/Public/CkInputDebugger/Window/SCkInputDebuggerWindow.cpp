@@ -6,6 +6,7 @@
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
@@ -107,6 +108,8 @@ auto
 
     ChildSlot
     [
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
         .BorderBackgroundColor(style::Bg_Medium)
@@ -152,6 +155,7 @@ auto
                                 [ _ResolvedListBox.ToSharedRef() ]
                         ]
                 ]
+        ]
         ]
     ];
 }

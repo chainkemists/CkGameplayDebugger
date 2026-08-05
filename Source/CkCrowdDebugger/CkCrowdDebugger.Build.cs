@@ -22,7 +22,6 @@ public class CkCrowdDebugger : CkModuleRules
 			"EditorStyle",
 			"AppFramework",
 			"ToolMenus",
-			"AdvancedPreviewScene",
 			"EditorWidgets",
 
 			"GameplayTags",

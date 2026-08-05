@@ -151,6 +151,8 @@ private:
     auto BuildEntityTree() -> void;
     auto BuildHierarchy(const TArray<FCk_Handle>& InEntities) -> void;
     auto DoCreateNode(const FCk_Handle& InEntity) -> TSharedPtr<FCkEntityTreeNode>;
+    /** Re-link current nodes after owner changes without replacing their Slate identities. */
+    auto RebuildHierarchyLinks() -> void;
     auto DoLinkNode(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void;
     auto ApplyCacheDiff(const TArray<FCk_Handle>& InAdded, const TArray<FCk_Handle>& InRemoved) -> void;
     auto RecomputeNodeSignatures() -> void;

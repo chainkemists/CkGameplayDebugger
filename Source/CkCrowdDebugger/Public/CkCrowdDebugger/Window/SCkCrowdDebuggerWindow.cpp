@@ -10,7 +10,10 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkCore/Validation/CkIsValid.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
 #include "CkVoxelNavEditor/Preview/CkVoxelNavPreview_EdMode.h"
@@ -74,6 +77,12 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 	ChildSlot
 	[
+		SNew(SCkDebug_WindowChrome)
+		.WindowId(WindowId)
+		.ToolTabId(TEXT("CkCrowdDebugger"))
+		.DisplayName(FText::FromString(TEXT("CK Crowd Debugger")))
+		.Content()
+		[
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight() [ BuildToolbar() ]
 		+ SVerticalBox::Slot().FillHeight(1.0f)
@@ -98,6 +107,7 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 			[
 				_AgentDetailPanel.ToSharedRef()
 			]
+		]
 		]
 	];
 }
@@ -145,6 +155,18 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 		_VoxelRefreshRequested = false;
 		_NextVoxelRefreshTime = InCurrentTime + 0.25;
 	}
+
+	if (_PendingTarget.IsSet())
+	{
+		const auto Target = _PendingTarget.GetValue();
+		_PendingTarget.Reset();
+		if (_AgentListPanel.IsValid()) { _AgentListPanel->SelectEntityExternal(Target); }
+	}
+}
+
+auto SCkCrowdDebuggerWindow::TargetEntity(const FCk_Handle& InEntity) -> void
+{
+	if (ck::IsValid(InEntity)) { _PendingTarget = InEntity.Get_Entity(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

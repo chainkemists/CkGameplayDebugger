@@ -38,6 +38,7 @@ public:
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
+	auto TargetEntity(const FCk_Handle& InEntity) -> void;
 
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
@@ -79,6 +80,7 @@ private:
 	bool _ShowVoxelPortals = true;
 	bool _ShowVoxelDirtyRepair = true;
 	FDelegateHandle _WorldChangedHandle;
+	TOptional<FCk_Entity> _PendingTarget;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

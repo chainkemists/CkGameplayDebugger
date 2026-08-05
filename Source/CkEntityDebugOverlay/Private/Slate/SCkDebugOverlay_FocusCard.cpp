@@ -6,6 +6,8 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"
+#include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_FocusCardBudget.h"
+#include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -152,13 +154,10 @@ auto
     // tie-break is load-bearing: subtree aggregation emits one section per source for the
     // same provider (equal priorities), and an unstable sort over equal keys reorders the
     // card every tick.
-    auto SortedSections = InModel.Sections;
-    SortedSections.Sort([](const FCk_DebugOverlay_Section& A, const FCk_DebugOverlay_Section& B)
-    {
-        if (A.SortPriority != B.SortPriority)
-        { return A.SortPriority < B.SortPriority; }
-        return A.SourceOrder < B.SourceOrder;
-    });
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto BudgetedModel = ck_debugoverlay::Apply_FocusCardBudget(InModel,
+        { Settings ? Settings->FocusCardMaxRowsPerSection : 4, Settings ? Settings->FocusCardMaxRows : 18 });
+    const auto& SortedSections = BudgetedModel.Sections;
 
     // Derive a stable entity id for the history key.
     // FCk_Entity::Get_EntityNumber() returns the entt entity index (uint32-compatible).
@@ -173,12 +172,17 @@ auto
         FLinearColor Color = FLinearColor::White;
     };
     auto LegendEntries = TArray<FLegendEntry>{};
+    auto InputRowCount = 0;
+    for (const auto& Section : InModel.Sections)
+    { InputRowCount += Section.Rows.Num(); }
+    auto RenderedRowCount = 0;
 
     for (const auto& Section : SortedSections)
     {
+        RenderedRowCount += Section.Rows.Num();
         // A section whose provider contributed no rows renders as a lone chip /
         // blank-looking line — skip it entirely.
-        if (Section.Rows.IsEmpty())
+        if (Section.Rows.IsEmpty() && Section.OmittedRowCount == 0)
         { continue; }
 
         const auto ProviderColor = Get_ProviderColor(Section.ProviderTag);
@@ -330,12 +334,31 @@ auto
                 ];
         }
 
+        if (Section.OmittedRowCount > 0)
+        {
+            SectionRow->AddSlot().VAlign(VAlign_Center).Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS })
+            [ SNew(STextBlock)
+                .Text(FText::FromString(FString::Printf(TEXT("+%d more"), Section.OmittedRowCount)))
+                .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                .ColorAndOpacity(CkStyle::TextMute()) ];
+        }
+
         _ContentBox->AddSlot()
             .AutoHeight()
             .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
             [
                 SectionRow
             ];
+    }
+
+    const auto TotalOmittedRows = FMath::Max(0, InputRowCount - RenderedRowCount);
+    if (TotalOmittedRows > 0)
+    {
+        _ContentBox->AddSlot().AutoHeight().Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
+        [ SNew(STextBlock)
+            .Text(FText::FromString(FString::Printf(TEXT("+%d focus-card rows omitted by budget"), TotalOmittedRows)))
+            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+            .ColorAndOpacity(CkStyle::TextMute()) ];
     }
 
     // ---- Legend — colored abbrev pill + muted expanded name, one pair per provider ----

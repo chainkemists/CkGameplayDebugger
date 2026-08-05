@@ -8,6 +8,7 @@
 #include "CkEqsDebugger/Window/SCkEqsDebugger_TestBreakdownPanel.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -80,6 +81,8 @@ auto
 
     ChildSlot
     [
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkEqsDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        [
         SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{6.0f})
         [
@@ -114,6 +117,7 @@ auto
                     SAssignNew(_TestBreakdownPanel, SCkEqsDebugger_TestBreakdownPanel).ViewModel(_ViewModel)
                 ]
             ]
+        ]
         ]
     ];
 

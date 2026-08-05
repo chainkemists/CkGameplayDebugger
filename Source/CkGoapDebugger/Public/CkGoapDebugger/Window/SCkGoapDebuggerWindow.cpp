@@ -24,6 +24,7 @@
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
@@ -167,7 +168,13 @@ auto
 
     ChildSlot
     [
-        SNew(SBorder)
+        SNew(SCkDebug_WindowChrome)
+            .WindowId(WindowId)
+            .ToolTabId(TEXT("CkGoapDebugger"))
+            .DisplayName(FText::FromString(TEXT("CK GOAP Debugger")))
+            .Content()
+            [
+                SNew(SBorder)
             .BorderImage(CkStyle::GetFilledBrush())
             .BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
             .Padding(FMargin(0.0f))
@@ -218,6 +225,7 @@ auto
                                 + SWidgetSwitcher::Slot() [ InspectorView ]
                                 + SWidgetSwitcher::Slot() [ CatalogView ]
                         ]
+            ]
             ]
     ];
 
@@ -274,7 +282,25 @@ auto
 
     _ViewModel->Tick(World);
 
+    if (_PendingExternalEntity.IsSet())
+    {
+        const auto TargetEntity = _PendingExternalEntity.GetValue();
+        _PendingExternalEntity.Reset();
+        const auto* RosterEntry = _ViewModel->Get_Roster().FindByPredicate(
+            [TargetEntity](const FCkGoapDebugger_RosterEntry& InEntry)
+            { return InEntry.EntityHandle.Get_Entity() == TargetEntity; });
+        if (RosterEntry != nullptr)
+        {
+            _ViewModel->SetSelectedEntity(RosterEntry->EntityHandle);
+            // One extra targeted collection makes the first-open jump complete
+            // in this frame instead of leaving the detail tier one tick behind.
+            _ViewModel->Tick(World);
+        }
+    }
+
     RefreshAgentList();
+    if (_AgentList.IsValid())
+    { _AgentList->RestoreSelectionFromViewModel(); }
 }
 
 // ====================================================================================================================
@@ -1245,17 +1271,9 @@ auto
     if (NOT _ViewModel.IsValid()) { return; }
     if (ck::Is_NOT_Valid(InEntity)) { return; }
 
-    // ViewModel::Tick on the next frame will resolve the entity against the
-    // freshly-collected snapshot batch — if the entity has a Goap root, the
-    // selection sticks; otherwise it auto-picks the first available, which is
-    // the documented behaviour.
-    _ViewModel->SetSelectedEntity(InEntity);
-
-    // Discrete external selection (inspector gateway) — refresh the rows and
-    // stamp the highlight now so it lands without a one-frame delay.
-    RefreshAgentList();
-    if (_AgentList.IsValid())
-    { _AgentList->RestoreSelectionFromViewModel(); }
+    // A just-opened window has no snapshot rows yet. Defer exactly once until
+    // its next collector refresh, then clear the retained PIE handle.
+    _PendingExternalEntity = InEntity.Get_Entity();
 }
 
 // ====================================================================================================================

@@ -13,6 +13,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -176,7 +177,13 @@ auto
 
     ChildSlot
     [
-        SNew(SBorder)
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkObjectPoolingDebugger"))
+        .DisplayName(Get_WindowDisplayName())
+        .Content()
+        [
+            SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
         .BorderBackgroundColor(CkStyle::BgRoot())
         [
@@ -221,6 +228,7 @@ auto
                             [ BuildInspectorRail() ]
                         ]
                 ]
+        ]
         ]
     ];
 

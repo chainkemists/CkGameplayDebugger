@@ -1,15 +1,19 @@
 #pragma once
 
+#include "CkCrowdDebugger/Data/CkCrowdDebugger_Types.h"
+
 #include "CkVoxelNav/Debug/CkVoxelNav_DebugSnapshot.h"
 
 #include "SEditorViewport.h"
 
-class FAdvancedPreviewScene;
+class FPreviewScene;
 class FCkCrowdDebugger_3dViewportClient;
 
+DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_AgentPicked, int32 /*AgentIndex*/);
+
 // --------------------------------------------------------------------------------------------------------------------
-// A deliberately isolated 3D inspection surface. It renders value-only VoxelNav snapshots, never an ECS handle,
-// UWorld, or octree share, so the widget can remain open after PIE has stopped.
+// A deliberately isolated 3D inspection surface. It renders value-only VoxelNav and crowd-agent snapshots, never a
+// UWorld or octree share, so the widget can remain open after PIE has stopped.
 // --------------------------------------------------------------------------------------------------------------------
 
 enum class ECkCrowdDebugger_CameraPreset : uint8
@@ -29,6 +33,7 @@ class SCkCrowdDebugger_3dViewport final : public SEditorViewport
 {
 public:
 	SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}
+		SLATE_EVENT(FOnCkCrowdDebugger_AgentPicked, OnAgentPicked)
 	SLATE_END_ARGS()
 
 	auto Construct(const FArguments& InArgs) -> void;
@@ -36,14 +41,18 @@ public:
 	/** Value-only publication point. Collection stays in CkFoundation / the Crowd view model. */
 	auto Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot& InSnapshot) -> void;
 	auto Clear_VoxelNavSnapshot() -> void;
+	auto Set_AgentSnapshots(
+		const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents,
+		const FCk_Handle& InSelectedHandle) -> void;
 	auto Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset) -> void;
 
 protected:
 	virtual auto MakeEditorViewportClient() -> TSharedRef<FEditorViewportClient> override;
 
 private:
-	TSharedPtr<FAdvancedPreviewScene> _PreviewScene;
+	TSharedPtr<FPreviewScene> _PreviewScene;
 	TSharedPtr<FCkCrowdDebugger_3dViewportClient> _ViewportClient;
+	FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -36,6 +37,11 @@ void FCkCrowdDebuggerModule::StartupModule()
 		TEXT("People"),
 		ECkDebuggerToolCategory::Ai,
 		30});
+
+	// The embedded editor viewport owns editor modes. Release it before Slate and the editor-mode subsystem shut down.
+	_EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+		this,
+		&FCkCrowdDebuggerModule::HandleEnginePreExit);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -45,6 +51,12 @@ void FCkCrowdDebuggerModule::ShutdownModule()
 	FCkDebuggerToolRegistry::Get().Unregister(_TabId, _DebuggerToolRegistrationId);
 	_DebuggerToolRegistrationId = 0;
 
+	if (_EnginePreExitHandle.IsValid())
+	{
+		FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+		_EnginePreExitHandle.Reset();
+	}
+
 	if (FGlobalTabmanager::Get()->HasTabSpawner(_TabId))
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_TabId);
@@ -52,6 +64,14 @@ void FCkCrowdDebuggerModule::ShutdownModule()
 
 	_Window.Reset();
 	_Tab.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkCrowdDebuggerModule::HandleEnginePreExit() -> void
+{
+	_Tab.Reset();
+	_Window.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------

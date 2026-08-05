@@ -104,8 +104,8 @@ UCk_DebugOverlay_Settings::UCk_DebugOverlay_Settings()
             TEXT("Ck.OnScreenDebugger.Provider.PathNetworkFollower"),
             TEXT("Ck.OnScreenDebugger.Provider.Objective"),
             TEXT("Ck.OnScreenDebugger.Provider.InteractTarget"),
-            TEXT("Ck.OnScreenDebugger.Provider.FloatAttributes"),
-            TEXT("Ck.OnScreenDebugger.Provider.IntegerAttributes"),
+            // Attribute families stay available in All.  The AI default is intentionally
+            // signal-first so an attribute flood cannot displace GOAP/navigation diagnostics.
             TEXT("Ck.OnScreenDebugger.Provider.Transform"),
         }));
 

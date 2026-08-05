@@ -461,7 +461,8 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
    with `CkXxxDebugger.Build.cs` (`PublicDependencyModuleNames` includes
    `CkDebuggerCommon`), an `.uplugin` entry with `"Type": "UncookedOnly"`, and
    a `_Module.h/.cpp` that registers any visual node factory / spawns the tab.
-2. **Window + view-model**: own a `SCkXxxDebuggerWindow` and a view-model
+2. **Window + view-model**: own a `SCkXxxDebuggerWindow`, wrap its specialized root in
+   `SCkDebug_WindowChrome`, and own a view-model
    that observes runtime data. Honour `FCkDebuggerRefreshGate::Should_RefreshNow`
    in your `Tick` so the user's per-window refresh setting (Use Global / Hz cap
    / OnlyWhenVisible) is respected.
@@ -485,6 +486,25 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
    identity (see "PIE lifecycle" above). Subscribe to nothing — poll on a 1Hz
    tick gate and react to identity changes.
 
+## Common window chrome and entity targeting
+
+- Every plugin-owned standalone debugger tab uses `SCkDebug_WindowChrome`. It owns the common
+  debugger switcher, body boundary, and status strip; feature toolbars and panels remain inside
+  the `Content` slot. The external Insights Analyzer proxy is the only catalog exception because
+  its window is owned by CkFoundation.
+- Entity-capable debuggers register one generation-token-protected
+  `FCkDebug_EntityTargetRoute` after their tab spawner and unregister it before teardown. The
+  predicate and open callback must resolve the same real target; an open-only route is invalid.
+- Resolve parent/child selections with `DebugSelectionSync::Resolve_ClosestLineageMatch`. It
+  checks exact, ancestor, and descendant entities, excludes sibling branches/transient-root
+  cross-matches, and uses stable entity-id tie-breaking.
+- `SCkDebug_WindowChrome` automatically exposes `Use ECS <id>` only when its tab has a registered
+  route. `SCkDebug_EntityDebuggerLinks` discovers those same routes for ECS inspector `Open In`
+  actions. Common pulls the primary ECS selection on demand and never retains a PIE handle.
+- If a debugger's collector populates after the tab opens, its feature window owns a short-lived
+  pending target and applies it after the first refresh. Clear pending/cached handles before the
+  PIE registry dies.
+
 ## Quick reference — file paths
 
 ```
@@ -492,7 +512,9 @@ CkDebuggerCommon/
 ├── Launcher/
 │   └── CkDebuggerToolRegistry.h      (standalone debugger descriptor catalog + reload-safe token)
 ├── Navigation/
-│   └── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
+│   ├── CkDebug_EntityTarget.h        (feature-owned open-and-target route registry)
+│   ├── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
+│   └── CkDebug_SelectionSync.h       (broadcast, ECS provider, and closest-lineage resolver)
 ├── Search/
 │   └── SCkDebug_DualSearchBar.h      (Filter + Highlight side-by-side)
 ├── Utils/
@@ -512,7 +534,8 @@ CkDebuggerCommon/
 │   ├── SCkDebug_InspectorPanel.h     (collapsible section)
 │   └── SCkDebug_CountBadge.h
 └── Window/
-    └── CkDebuggerRefreshGate.h       (per-window refresh-rate gate)
+    ├── CkDebuggerRefreshGate.h       (per-window refresh-rate gate)
+    └── SCkDebug_WindowChrome.h       (shared switcher/content/status frame)
 ```
 
 Style tokens moved to CkFoundation:

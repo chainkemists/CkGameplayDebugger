@@ -1,10 +1,15 @@
 #include "CkCrowdDebugger_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
@@ -18,6 +23,16 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 const FName FCkCrowdDebuggerModule::_TabId{TEXT("CkCrowdDebugger")};
+
+namespace
+{
+	auto ResolveCrowdTarget(const FCk_Handle& InSelected) -> FCk_Handle
+	{
+		return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
+			[](const FCk_Handle& InCandidate)
+			{ return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_CrowdAgent_Params>(); });
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -43,12 +58,27 @@ void FCkCrowdDebuggerModule::StartupModule()
 	_EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
 		this,
 		&FCkCrowdDebuggerModule::HandleEnginePreExit);
+
+	_EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
+		TEXT("CkCrowdDebugger"), _TabId,
+		[](const FCk_Handle& InEntity) { return ck::IsValid(ResolveCrowdTarget(InEntity)); },
+		[](const FCk_Handle& InEntity)
+		{
+			const auto Target = ResolveCrowdTarget(InEntity);
+			if (NOT ck::IsValid(Target)) { return; }
+			auto& Module = FCkCrowdDebuggerModule::Get();
+			Module.OpenDebugger();
+			if (Module._Window.IsValid()) { Module._Window->TargetEntity(Target); }
+		}});
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 void FCkCrowdDebuggerModule::ShutdownModule()
 {
+	FCkDebug_EntityTargetRegistry::Get().Unregister(_TabId, _EntityTargetRouteRegistrationId);
+	_EntityTargetRouteRegistrationId = 0;
+
 	FCkDebuggerToolRegistry::Get().Unregister(_TabId, _DebuggerToolRegistrationId);
 	_DebuggerToolRegistrationId = 0;
 

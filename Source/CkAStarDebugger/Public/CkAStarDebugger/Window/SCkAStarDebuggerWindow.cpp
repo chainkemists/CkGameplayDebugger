@@ -2,6 +2,7 @@
 #include "CkAStarDebugger/ViewModel/CkAStarDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 #include "CkAStarDebugger/GridView/SCkAStarDebugger_GridView.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_StatsPanel.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
@@ -10,7 +11,9 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -48,7 +51,13 @@ auto
 
     ChildSlot
     [
-        SNew(SVerticalBox)
+        SNew(SCkDebug_WindowChrome)
+            .WindowId(WindowId)
+            .ToolTabId(TEXT("CkAStarDebugger"))
+            .DisplayName(FText::FromString(TEXT("CK A* Debugger")))
+            .Content()
+            [
+                SNew(SVerticalBox)
 
             // Toolbar
             + SVerticalBox::Slot()
@@ -94,6 +103,7 @@ auto
                                         ]
                             ]
                 ]
+            ]
     ];
 }
 
@@ -123,6 +133,21 @@ auto
     _ViewModel->Tick(_CachedWorld, InDeltaTime);
     RefreshEntitySelector();
 
+    if (_PendingTarget.IsSet())
+    {
+        const auto Target = _PendingTarget.GetValue();
+        _PendingTarget.Reset();
+        for (const auto& Candidate : _EntitySelectorHandles)
+        {
+            if (Candidate.Get_Entity() != Target) { continue; }
+            _ViewModel->Set_SelectedEntityHandle(Candidate);
+            const auto SelectedIndex = _EntitySelectorHandles.IndexOfByKey(Candidate);
+            if (_EntitySelectorLabel.IsValid() && _EntitySelectorItems.IsValidIndex(SelectedIndex))
+            { _EntitySelectorLabel->SetText(FText::FromString(*_EntitySelectorItems[SelectedIndex])); }
+            break;
+        }
+    }
+
     auto* Info = _ViewModel->Get_CurrentSearchInfo();
 
     if (Info)
@@ -137,6 +162,11 @@ auto
             _StatusBadgeText->SetColorAndOpacity(StatusColor);
         }
     }
+}
+
+auto SCkAStarDebuggerWindow::TargetEntity(const FCk_Handle& InEntity) -> void
+{
+    if (ck::IsValid(InEntity)) { _PendingTarget = InEntity.Get_Entity(); }
 }
 
 // ====================================================================================================================

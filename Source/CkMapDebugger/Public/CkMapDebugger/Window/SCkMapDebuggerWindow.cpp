@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -746,6 +747,8 @@ auto
 
     ChildSlot
     [
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
         .BorderBackgroundColor(ck_map_debugger::Bg_Medium)
@@ -777,6 +780,7 @@ auto
 
             + SVerticalBox::Slot().AutoHeight()
                 [ StatusBar ]
+        ]
         ]
     ];
 }

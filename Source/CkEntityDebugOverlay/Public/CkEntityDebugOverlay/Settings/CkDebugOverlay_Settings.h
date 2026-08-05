@@ -58,6 +58,12 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="0.5", ClampMax="2.0"))
     float PlateFontScale = 1.0f;
 
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="1", ClampMax="32"))
+    int32 FocusCardMaxRows = 18;
+
+    UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="1", ClampMax="16"))
+    int32 FocusCardMaxRowsPerSection = 4;
+
     // State-machine state-name depth — same rule as the CkSmDebugger graph: show the
     // last N underscore-segments of the state class name ("Ck_SmTest_Complex_State_Chase"
     // → depth 1 → "Chase"). 0 = full (dotted) name.

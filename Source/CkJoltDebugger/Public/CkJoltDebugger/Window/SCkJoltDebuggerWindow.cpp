@@ -4,6 +4,7 @@
 #include "CkCore/Format/CkFormat.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEcs/Handle/CkHandle.h"
@@ -143,6 +144,8 @@ auto
 
     ChildSlot
     [
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
         .BorderBackgroundColor(ck_jolt_debugger::Bg_Medium)
@@ -213,6 +216,7 @@ auto
                         [ MakeStatRow(TEXT("Unique Shapes:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumUniqueShapes) : FText::FromString(TEXT("--")); })) ]
                 ]
+        ]
         ]
     ];
 }

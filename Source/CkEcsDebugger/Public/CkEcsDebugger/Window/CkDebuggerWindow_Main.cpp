@@ -30,6 +30,7 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
@@ -81,7 +82,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 
     ChildSlot
     [
-        SNew(SBorder)
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkEcsDebugger"))
+        .DisplayName(Get_WindowDisplayName())
+        .Content()
+        [
+            SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Dark"))
         .Padding(0.0f)
         [
@@ -140,6 +147,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
                     ]
                 ]
             ]
+        ]
         ]
     ];
 }

@@ -102,7 +102,32 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
         { return; }
 
         Selection->Set_SelectedEntities({ InEntity });
+
+        // Navigator selection arrives as Direct, so the tree does not echo it.
+        // It is still user-driven navigation and must update open sibling tools.
+        ck::DebugSelectionSync::Broadcast(InEntity, TEXT("EcsDebugger"));
     });
+
+    // Common pulls this only on demand. The provider retains no PIE handle; it
+    // returns a fresh copy of the live debugger's primary selection.
+    _PrimaryEcsSelectionProviderRegistrationId = ck::DebugSelectionSync::Register_PrimaryEcsSelectionProvider(
+        [this]() -> FCk_Handle
+        {
+            if (NOT DebuggerWindow.IsValid())
+            { return {}; }
+
+            const auto Selection = DebuggerWindow->Get_SelectionModel();
+            if (NOT Selection.IsValid())
+            { return {}; }
+
+            for (const auto& Candidate : Selection->Get_SelectedEntities())
+            {
+                if (ck::IsValid(Candidate))
+                { return Candidate; }
+            }
+
+            return {};
+        });
 
     // Cross-debugger selection sync (receive side). Unlike the navigator,
     // this NEVER opens the tab or steals focus — it only mirrors selection
@@ -145,6 +170,12 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
     // Drop the navigator first — any subsequent click on a stale SCkDebug_EntityRef
     // becomes a no-op instead of dereferencing a half-torn-down module.
     ck::DebugNav::Register_EntityNavigator(ck::DebugNav::FGotoEntityFn{});
+
+    if (_PrimaryEcsSelectionProviderRegistrationId != 0)
+    {
+        ck::DebugSelectionSync::Unregister_PrimaryEcsSelectionProvider(_PrimaryEcsSelectionProviderRegistrationId);
+        _PrimaryEcsSelectionProviderRegistrationId = 0;
+    }
 
     if (_SelectionSyncHandle.IsValid())
     {

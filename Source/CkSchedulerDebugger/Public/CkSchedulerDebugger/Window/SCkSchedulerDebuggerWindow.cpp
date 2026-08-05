@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "Widgets/Layout/SBorder.h"
@@ -76,7 +77,13 @@ auto
 
 	ChildSlot
 	[
-		SNew(SBorder)
+		SNew(SCkDebug_WindowChrome)
+			.WindowId(WindowId)
+			.ToolTabId(TEXT("CkSchedulerDebugger"))
+			.DisplayName(Get_WindowDisplayName())
+			.Content()
+			[
+				SNew(SBorder)
 			.BorderImage(FCoreStyle::Get().GetBrush("NoBorder"))
 			.ColorAndOpacity(FLinearColor::White)
 			.Padding(0.0f)
@@ -176,6 +183,7 @@ auto
 					[
 						_ContentContainer.ToSharedRef()
 					]
+			]
 			]
 	];
 

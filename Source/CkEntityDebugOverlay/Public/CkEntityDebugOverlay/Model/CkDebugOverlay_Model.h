@@ -32,6 +32,9 @@ struct FCk_DebugOverlay_Section
     UPROPERTY() FText  SourceName;
     UPROPERTY() uint32 SourceEntityId = 0;
     UPROPERTY() int32  SourceOrder = 0;
+    // Rows removed by the pre-render focus-card budget.  Slate renders this
+    // explicitly instead of leaving the user to infer that clipping hid data.
+    UPROPERTY() int32  OmittedRowCount = 0;
 };
 
 USTRUCT()

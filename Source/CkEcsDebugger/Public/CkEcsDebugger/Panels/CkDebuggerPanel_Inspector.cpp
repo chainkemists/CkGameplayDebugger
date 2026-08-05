@@ -8,6 +8,7 @@
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityDebuggerLinks.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -553,6 +554,15 @@ auto SCkDebuggerPanel_Inspector::Format_EntityDisplayName(const FCk_Handle& Enti
 auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto VerticalBox = SNew(SVerticalBox);
+
+    VerticalBox->AddSlot()
+        .AutoHeight()
+        .Padding(FCkDebuggerStyle::Padding_Small)
+        [
+            SNew(SCkDebug_EntityDebuggerLinks)
+            .Entity(Entity)
+            .ExcludeTabId(TEXT("CkEcsDebugger"))
+        ];
 
     auto FirstSection = true;
 

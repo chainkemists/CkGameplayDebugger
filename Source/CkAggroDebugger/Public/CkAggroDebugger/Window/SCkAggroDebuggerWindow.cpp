@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -58,7 +59,13 @@ auto
 {
     ChildSlot
     [
-        SNew(SVerticalBox)
+        SNew(SCkDebug_WindowChrome)
+            .WindowId(WindowId)
+            .ToolTabId(TEXT("CkAggroDebugger"))
+            .DisplayName(FText::FromString(TEXT("CK Aggro Debugger")))
+            .Content()
+            [
+                SNew(SVerticalBox)
         + SVerticalBox::Slot()
         .AutoHeight()
         .Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceXS)
@@ -120,6 +127,7 @@ auto
                 SAssignNew(_OwnerBox, SVerticalBox)
             ]
         ]
+            ]
     ];
 
     Register_WithGate();

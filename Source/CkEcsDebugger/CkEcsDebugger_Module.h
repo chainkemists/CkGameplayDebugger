@@ -32,6 +32,7 @@ private:
 	FDelegateHandle _EnginePreExitHandle;
 	FDelegateHandle _SelectionSyncHandle;
 	uint64 _DebuggerToolRegistrationId = 0;
+	uint64 _PrimaryEcsSelectionProviderRegistrationId = 0;
 
 	static const FName DebuggerTabName;
 };

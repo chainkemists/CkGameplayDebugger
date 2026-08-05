@@ -1,10 +1,15 @@
 #include "CkAStarDebugger_Module.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "CkAStarDebugger/Window/SCkAStarDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+
+#include "CkAStar/CkAStar_Fragment.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -14,6 +19,19 @@
 #define LOCTEXT_NAMESPACE "FCkAStarDebuggerModule"
 
 const FName FCkAStarDebuggerModule::_DebuggerTabName = FName("CkAStarDebugger");
+
+namespace
+{
+    auto ResolveAStarTarget(const FCk_Handle& InSelected) -> FCk_Handle
+    {
+        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
+            [](const FCk_Handle& InCandidate)
+            {
+                return ck::IsValid(InCandidate)
+                    && InCandidate.Has<ck::FFragment_AStar_Debug>();
+            });
+    }
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -58,6 +76,17 @@ auto
         TEXT("Grid"),
         ECkDebuggerToolCategory::Ai,
         10});
+
+    _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
+        TEXT("CkAStarDebugger"), _DebuggerTabName,
+        [](const FCk_Handle& InEntity) { return ck::IsValid(ResolveAStarTarget(InEntity)); },
+        [this](const FCk_Handle& InEntity)
+        {
+            const auto Target = ResolveAStarTarget(InEntity);
+            if (NOT ck::IsValid(Target)) { return; }
+            OpenDebugger();
+            if (_DebuggerWindow.IsValid()) { _DebuggerWindow->TargetEntity(Target); }
+        }});
 }
 
 auto
@@ -65,6 +94,9 @@ auto
     ShutdownModule()
     -> void
 {
+    FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
+    _EntityTargetRouteRegistrationId = 0;
+
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 

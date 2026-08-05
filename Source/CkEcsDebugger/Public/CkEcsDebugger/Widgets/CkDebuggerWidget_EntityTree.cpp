@@ -607,6 +607,11 @@ auto SCkDebuggerWidget_EntityTree::RefreshTree() -> void
             ApplyCacheDiff(WorldModel->Get_LastAdded(), WorldModel->Get_LastRemoved());
         }
 
+        // Lifetime-owner transfer advances the revision while retaining entity
+        // membership. Re-link all survivors so hierarchy and sibling grouping
+        // track it without replacing nodes, selection, or expansion state.
+        RebuildHierarchyLinks();
+
         // Bits may have changed without membership churn (feature added to a live
         // entity also bumps the revision) — recompute classification either way.
         RecomputeNodeSignatures();
@@ -734,6 +739,26 @@ auto SCkDebuggerWidget_EntityTree::BuildHierarchy(const TArray<FCk_Handle>& InEn
     for (const auto& [Entity, Node] : NodeMap)
     {
         DoLinkNode(Node);
+    }
+}
+
+auto SCkDebuggerWidget_EntityTree::RebuildHierarchyLinks() -> void
+{
+    RootNodes.Reset();
+
+    for (const auto& Node : AllNodes)
+    {
+        if (NOT Node.IsValid())
+        { continue; }
+
+        Node->Children.Reset();
+        Node->Parent.Reset();
+    }
+
+    for (const auto& Node : AllNodes)
+    {
+        if (Node.IsValid())
+        { DoLinkNode(Node); }
     }
 }
 
@@ -1685,11 +1710,11 @@ auto SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged(const TArray<FCk_H
 
     IsUpdatingSelection = true;
 
-    // The entity cache refreshes only on world change / manual Refresh, so an externally
+    // The entity cache polls structural changes at a bounded cadence, so an externally
     // selected entity (viewport picker, cross-debugger navigation) may have spawned after
-    // the last rebuild and have no node yet — which silently skipped the highlight/expand/
-    // scroll below. Rebuild once on miss. Re-entrancy from RefreshTree's RestoreSelection
-    // broadcast is blocked by IsUpdatingSelection.
+    // the last poll and have no node yet — which would skip the highlight/expand/scroll
+    // below. Refresh immediately on a miss. Re-entrancy from RefreshTree's
+    // RestoreSelection broadcast is blocked by IsUpdatingSelection.
     {
         auto AnyMissing = false;
         for (const auto& Entity : InNewSelection)

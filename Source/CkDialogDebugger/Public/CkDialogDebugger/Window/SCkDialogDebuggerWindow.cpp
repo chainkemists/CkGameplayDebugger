@@ -3,6 +3,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -34,7 +35,13 @@ auto
 {
     ChildSlot
     [
-        SNew(SVerticalBox)
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(WindowId)
+        .ToolTabId(TEXT("CkDialogDebugger"))
+        .DisplayName(Get_WindowDisplayName())
+        .Content()
+        [
+            SNew(SVerticalBox)
         // Save / Load toolbar — convenience for the Ck_Save / Ck_Load console commands.
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -85,6 +92,7 @@ auto
                 .AutoWrapText(true)
                 .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
             ]
+        ]
         ]
     ];
 

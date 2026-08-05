@@ -40,6 +40,20 @@ itself lives in `CkDebuggerCommon/Navigation/CkDebug_Navigator.h`. See the
 "Entity references" section in `../CkDebuggerCommon/CLAUDE.md` for the full
 pattern.
 
+The ECS module also registers an on-demand primary-selection provider for the common window
+chrome. Explicit navigator selections broadcast once with source `EcsDebugger`, so already-open
+feature debuggers adopt overlay quick-selects without an echo loop. The single-entity inspector
+uses `SCkDebug_EntityDebuggerLinks`; only feature routes whose lineage-aware predicate resolves
+the selected entity are shown.
+
+### Live hierarchy refresh
+
+`SCkDebuggerWidget_EntityTree` polls the world model's structural revision. A revision can advance
+without an added/removed membership diff, especially when `FFragment_LifetimeOwner` is replaced.
+After applying membership changes, refresh therefore clears only node parent/children/root links
+and relinks every surviving node. Do not replace the `TSharedPtr` nodes or fall back to periodic
+`ForceFullRefresh`; selection, expansion, and cached labels depend on stable node identity.
+
 ### Inspector System
 - `ICkDebuggerComponentInspector_Base` — interface with lifecycle: `CanInspect`, `Build_Inspector`, `Tick`, `OnDeactivated`
 - `FCkDebuggerInspectorRegistry` — auto-registration via `CK_REGISTER_DEBUGGER_INSPECTOR` macro

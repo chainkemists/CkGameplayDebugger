@@ -22,6 +22,8 @@ public:
 	// F — frame the selected agent in the ejected editor viewport.
 	virtual auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
 	virtual auto SupportsKeyboardFocus() const -> bool override { return true; }
+	// Applies an already-resolved crowd-agent target and frames its row.
+	auto SelectEntityExternal(FCk_Entity InEntity) -> void;
 
 private:
 	using ItemPtr = TSharedPtr<FCkCrowdDebugger_AgentSnapshot>;

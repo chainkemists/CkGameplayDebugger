@@ -33,6 +33,7 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+    auto TargetEntity(const FCk_Handle& InEntity) -> void;
     auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
     auto SupportsKeyboardFocus() const -> bool override { return true; }
 
@@ -67,6 +68,7 @@ private:
     TArray<TSharedPtr<FString>> _SmSelectorItems;
     TArray<FCk_Handle_StateMachine> _SmSelectorHandles;
     TSharedPtr<STextBlock> _SmSelectorLabel;
+    TOptional<FCk_Entity> _PendingTarget;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;

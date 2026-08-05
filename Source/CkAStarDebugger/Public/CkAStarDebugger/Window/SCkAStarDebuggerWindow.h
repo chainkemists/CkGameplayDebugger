@@ -28,6 +28,7 @@ public:
 
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+    auto TargetEntity(const FCk_Handle& InEntity) -> void;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK A* Debugger")); }
@@ -48,6 +49,10 @@ private:
     TArray<FCk_Handle> _EntitySelectorHandles;
     TSharedPtr<STextBlock> _EntitySelectorLabel;
     TSharedPtr<STextBlock> _StatusBadgeText;
+
+    // One-shot external target consumed immediately after the first refreshed
+    // search-entity list; never retained by the module.
+    TOptional<FCk_Entity> _PendingTarget;
 
     UWorld* _CachedWorld = nullptr;
 };

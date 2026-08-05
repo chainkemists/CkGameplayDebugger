@@ -57,6 +57,13 @@ remain (see Open issues).
   `FCkDebuggerToolDescriptor` after its tab spawner and unregisters it before the spawner. The exact
   census is enforced by `Source/CkDebuggerLauncher/Private/Tests/CkDebuggerLauncherCatalog.spec.cpp`;
   permanent authoring steps live in `Source/CkDebuggerLauncher/CLAUDE.md`.
+- **Standalone window chrome**: every plugin-owned catalog window wraps its specialized root in
+  `SCkDebug_WindowChrome`, which provides the common Debuggers menu and status strip. The external
+  Insights Analyzer proxy is excluded because CkFoundation owns its window.
+- **Entity-aware debugger entry**: a debugger that can select an ECS entity registers an
+  `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common
+  closest-lineage helper. This powers both ECS inspector `Open In` links and the common
+  `Use ECS <id>` status action; do not register a route that only opens a tab.
 - **Legacy submenu/filter/action**: don't — see the Gen-1 status above.
 
 ## Plugin-specific rules
@@ -82,6 +89,9 @@ remain (see Open issues).
   `WorkspaceMenuStructure`/`EditorStyle`/`ToolMenus` ungated (`CkEcsDebugger.Build.cs:20-24`) and
   on `UnrealEd` behind `Target.bBuildEditor` (`:66-72`). Runtime code — game modules, or the three
   Runtime modules here — must never depend on them.
+- **Overlay focus-card capacity**: row budgeting happens in the presentation model before Slate.
+  Respect total/per-section limits, protected AI/navigation provider ordering, and explicit
+  omission summaries; do not solve capacity by increasing the hard clip or hiding overflow.
 
 ## Known open issues (campaign record: `CkFoundation/.claude/reports/`)
 

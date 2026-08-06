@@ -3,9 +3,11 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 
 #if WITH_EDITOR
+#include "Editor.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "WorkspaceMenuStructure.h"
@@ -45,6 +47,11 @@ void FCkDebuggerCommonModule::StartupModule()
 	FCkDebuggerCommonStyle::Initialize();
 
 #if WITH_EDITOR
+	_BeginPieHandle = FEditorDelegates::BeginPIE.AddRaw(
+		this, &FCkDebuggerCommonModule::HandlePieSessionBoundary);
+	_EndPieHandle = FEditorDelegates::EndPIE.AddRaw(
+		this, &FCkDebuggerCommonModule::HandlePieSessionBoundary);
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		GalleryTabName,
 		FOnSpawnTab::CreateRaw(this, &FCkDebuggerCommonModule::OnSpawnGalleryTab))
@@ -57,6 +64,17 @@ void FCkDebuggerCommonModule::StartupModule()
 void FCkDebuggerCommonModule::ShutdownModule()
 {
 #if WITH_EDITOR
+	if (_BeginPieHandle.IsValid())
+	{
+		FEditorDelegates::BeginPIE.Remove(_BeginPieHandle);
+		_BeginPieHandle.Reset();
+	}
+	if (_EndPieHandle.IsValid())
+	{
+		FEditorDelegates::EndPIE.Remove(_EndPieHandle);
+		_EndPieHandle.Reset();
+	}
+
 	if (FGlobalTabmanager::Get()->HasTabSpawner(GalleryTabName))
 	{
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(GalleryTabName);
@@ -67,6 +85,14 @@ void FCkDebuggerCommonModule::ShutdownModule()
 #endif
 
 	FCkDebuggerCommonStyle::Shutdown();
+}
+
+void FCkDebuggerCommonModule::HandlePieSessionBoundary(bool)
+{
+	// Release registry-backed debugger state both before a new session starts
+	// and while the old session is ending. This makes cleanup idempotent and
+	// protects consumers even if they missed a selected-world UI transition.
+	ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Broadcast();
 }
 
 auto FCkDebuggerCommonModule::Get() -> FCkDebuggerCommonModule&

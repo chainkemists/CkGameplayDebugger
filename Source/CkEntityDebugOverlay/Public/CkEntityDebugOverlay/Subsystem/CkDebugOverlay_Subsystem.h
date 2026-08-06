@@ -81,6 +81,7 @@ private:
         UWorld*                                              InWorld,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const TOptional<FVector>&                            InCullOrigin,
+        const TArray<FCk_Handle>&                            InFullDepthRoots,
         TArray<FCk_Handle>&                                  OutHandles,
         TArray<ck_debugoverlay::FCandidate>&                 OutCandidates) -> void;
 
@@ -156,6 +157,11 @@ private:
 
     // Focused candidate's entity number (drawn emphasized). MAX_uint32 = none.
     uint32 _FocusedEntityNum = MAX_uint32;
+    FCk_Handle _FocusedEntity;
+
+    // Last focus emitted by the opt-in continuous sync path. Full handle identity
+    // includes the entity generation, so slot reuse still emits a new selection.
+    FCk_Handle _LastSyncedEntity;
 
     FDelegateHandle _DebugDrawHandle_Game;
     FDelegateHandle _DebugDrawHandle_Editor;

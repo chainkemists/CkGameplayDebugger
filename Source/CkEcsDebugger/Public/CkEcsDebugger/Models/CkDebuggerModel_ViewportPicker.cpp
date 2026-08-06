@@ -843,6 +843,10 @@ auto
     auto Params = FCkDebug_EntityMarkers::FGatherParams{};
     Params.CullOrigin = DoGet_CameraLocation(InWorld);
     Params.CullRadius = _CullRadius;
+    if (ck::IsValid(_FocusEntity))
+    {
+        Params.FullDepthRoots.Add(_FocusEntity);
+    }
 
     if (_IgnoreLocalPawn)
     {

@@ -31,9 +31,18 @@ namespace
     // hops below the registry transient. Tune live: `ck.Debug.EntityMarkers.MaxDepth 0`.
     TAutoConsoleVariable<int32> CVar_EntityMarkers_MaxDepth(
         TEXT("ck.Debug.EntityMarkers.MaxDepth"),
-        -1,
+        0,
         TEXT("Max hierarchy depth for the entity-marker preview (overlay + ECS picker). ")
         TEXT("-1 = unlimited, 0 = top-level only, N = up to N levels deep."),
+        ECVF_Cheat);
+
+    // When enabled, callers may provide a small call-scoped set of focus roots to
+    // expand through every lifetime descendant. The roots themselves remain owned
+    // by the caller; FCkDebug_EntityMarkers never caches FCk_Handle instances.
+    TAutoConsoleVariable<int32> CVar_EntityMarkers_FocusFullDepth(
+        TEXT("ck.Debug.EntityMarkers.FocusFullDepth"),
+        0,
+        TEXT("1 = expand each Gather FullDepthRoot and its lifetime descendants beyond MaxDepth; 0 = obey MaxDepth for all entities."),
         ECVF_Cheat);
 
     // Hard cap on the lifetime-owner walk — guards against ownership cycles.
@@ -73,6 +82,16 @@ namespace ck::DebugMarkers
     {
         return TEXT("ck.Debug.EntityMarkers.MaxDepth");
     }
+
+    auto Get_FocusFullDepth() -> bool
+    {
+        return CVar_EntityMarkers_FocusFullDepth.GetValueOnGameThread() != 0;
+    }
+
+    auto Get_FocusFullDepthCVarName() -> const TCHAR*
+    {
+        return TEXT("ck.Debug.EntityMarkers.FocusFullDepth");
+    }
 }
 
 // ====================================================================================================================
@@ -97,6 +116,21 @@ auto
     const auto MaxDepth     = ck::DebugMarkers::Get_MaxDepth();
     const auto CullRadiusSq = InParams.CullRadius * InParams.CullRadius;
 
+    // Validate roots once for this synchronous Gather call. Do not publish or
+    // retain a partial/mutable root set: invalid roots simply contribute nothing.
+    auto FullDepthRoots = TArray<FCk_Handle>{};
+    if (ck::DebugMarkers::Get_FocusFullDepth())
+    {
+        FullDepthRoots.Reserve(InParams.FullDepthRoots.Num());
+        for (const auto& Root : InParams.FullDepthRoots)
+        {
+            if (ck::Is_NOT_Valid(Root))
+            { continue; }
+
+            FullDepthRoots.Add(Root);
+        }
+    }
+
     TransientEntity.View<ck::FFragment_Transform, CK_IGNORE_PENDING_KILL>().ForEach(
     [&](FCk_Entity InEntity, const ck::FFragment_Transform& InTransform)
     {
@@ -116,7 +150,17 @@ auto
         // Hierarchy depth = lifetime-owner hops to the transient (0 = top-level).
         auto Depth          = 0;
         auto OwnerEntityNum = MAX_uint32;
+        auto IsInFullDepthSubtree = false;
         {
+            for (const auto& Root : FullDepthRoots)
+            {
+                if (Handle == Root)
+                {
+                    IsInFullDepthSubtree = true;
+                    break;
+                }
+            }
+
             auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
             if (ck::IsValid(Owner) && NOT (Owner == TransientEntity))
             {
@@ -125,10 +169,20 @@ auto
             while (ck::IsValid(Owner) && NOT (Owner == TransientEntity) && Depth < MaxDepthWalk)
             {
                 ++Depth;
+
+                for (const auto& Root : FullDepthRoots)
+                {
+                    if (Owner == Root)
+                    {
+                        IsInFullDepthSubtree = true;
+                        break;
+                    }
+                }
+
                 Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Owner);
             }
         }
-        if (MaxDepth >= 0 && Depth > MaxDepth)
+        if (NOT IsInFullDepthSubtree && MaxDepth >= 0 && Depth > MaxDepth)
         { return; }
 
         if (InParams.Filter && NOT InParams.Filter(Handle))

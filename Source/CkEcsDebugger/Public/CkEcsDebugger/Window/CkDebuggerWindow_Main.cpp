@@ -30,6 +30,10 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
@@ -53,6 +57,11 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     ViewportPicker = MakeShared<FCkDebuggerModel_ViewportPicker>();
     ViewportPicker->Construct(SelectionModel, WorldModel);
     FilterModel = MakeShared<FCkDebuggerModel_InspectorFilter>();
+
+    WorldChangedHandle = WorldModel->OnWorldChanged.AddSP(
+        this, &SCkDebuggerWindow_Main::HandleWorldChanged);
+    SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkDebuggerWindow_Main::HandleSessionInvalidated);
 
     // Refresh the toolbar badge strip when the filter selection changes.
     if (FilterModel.IsValid())
@@ -152,6 +161,46 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     ];
 }
 
+SCkDebuggerWindow_Main::~SCkDebuggerWindow_Main()
+{
+    if (WorldModel.IsValid() && WorldChangedHandle.IsValid())
+    { WorldModel->OnWorldChanged.Remove(WorldChangedHandle); }
+
+    if (SessionInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(SessionInvalidatedHandle); }
+}
+
+auto SCkDebuggerWindow_Main::HandleWorldChanged(UWorld*) -> void
+{
+    // Order is load-bearing: stop picker reads first, then broadcast an empty
+    // selection so inspectors/graphs deactivate, then release tree-owned copies.
+    if (ViewportPicker.IsValid())
+    { ViewportPicker->Deactivate(); }
+
+    if (SelectionModel.IsValid())
+    { SelectionModel->Reset_ForWorldChange(); }
+
+    if (EntityListPanel.IsValid())
+    { EntityListPanel->Reset_ForWorldChange(); }
+}
+
+auto SCkDebuggerWindow_Main::HandleSessionInvalidated() -> void
+{
+    if (WorldModel.IsValid())
+    {
+        if (WorldModel->Get_SelectedWorld() != nullptr)
+        {
+            WorldModel->Set_SelectedWorld(nullptr);
+            return;
+        }
+
+        WorldModel->Reset_ForWorldChange();
+        return;
+    }
+
+    HandleWorldChanged(nullptr);
+}
+
 auto SCkDebuggerWindow_Main::Tick(
     const FGeometry& InAllottedGeometry,
     const double InCurrentTime,
@@ -181,6 +230,89 @@ auto SCkDebuggerWindow_Main::Tick(
 
 auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
 {
+    const auto Make_OverlayAction = [](
+        FName InId,
+        FName InIconId,
+        const TCHAR* InLabel,
+        const TCHAR* InCVarName,
+        const TCHAR* InTooltip) -> FCkDebug_IconToggleAction
+    {
+        const auto CVarName = FString{InCVarName};
+        return FCkDebug_IconToggleAction{
+            InId,
+            InIconId,
+            FText::FromString(InLabel),
+            FText::FromString(InTooltip),
+            TAttribute<bool>::CreateLambda([CVarName]() -> bool
+            {
+                const auto* CVar = IConsoleManager::Get().FindConsoleVariable(*CVarName);
+                return CVar != nullptr && CVar->GetInt() != 0;
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([CVarName](bool InIsOn)
+            {
+                if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(*CVarName))
+                { CVar->Set(InIsOn ? 1 : 0, ECVF_SetByConsole); }
+            }),
+            TAttribute<bool>::CreateLambda([CVarName]() -> bool
+            {
+                return IConsoleManager::Get().FindConsoleVariable(*CVarName) != nullptr;
+            })};
+    };
+
+    const auto IconActions = TArray<FCkDebug_IconToggleAction>{
+        Make_OverlayAction(
+            TEXT("EcsOverlayEnabled"), TEXT("World"), TEXT("Overlay enabled"), TEXT("ck.DebugOverlay"),
+            TEXT("Master toggle for the on-screen entity debug overlay (ck.DebugOverlay).\n"
+                 "Available once a PIE session has started.")),
+        Make_OverlayAction(
+            TEXT("EcsNearPlates"), TEXT("Grid"), TEXT("Near plates"), TEXT("ck.DebugOverlay.NearPlates"),
+            TEXT("Ultra-condensed name and feature-badge plates for candidates close to the camera\n"
+                 "(ck.DebugOverlay.NearPlates).")),
+        Make_OverlayAction(
+            TEXT("EcsSyncHovered"), TEXT("Target"), TEXT("Sync hovered entity"),
+            ck::DebugSelectionSync::Get_OverlayFocusSyncCVarName(),
+            TEXT("Continuously sync the on-screen overlay focus into every already-open compatible debugger.\n"
+                 "This never opens or foregrounds a debugger tab.")),
+        Make_OverlayAction(
+            TEXT("EcsFullDepth"), TEXT("Tree"), TEXT("Full depth for focus"),
+            ck::DebugMarkers::Get_FocusFullDepthCVarName(),
+            TEXT("Show the complete lifetime subtree for the current hovered, locked, or pinned entity.\n"
+                 "Unrelated entities still obey Max Depth.")),
+        FCkDebug_IconToggleAction{
+            TEXT("EcsPickerIgnoreSelf"),
+            TEXT("Ghost"),
+            FText::FromString(TEXT("Ignore Self")),
+            FText::FromString(TEXT("Ignore entities that belong to the locally controlled pawn\n"
+                                   "(including attached actors and child ECS entities).\n"
+                                   "Useful to avoid picking your own first-person viewpoint entity.")),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return ViewportPicker.IsValid() && ViewportPicker->Get_IgnoreLocalPawn();
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (ViewportPicker.IsValid())
+                { ViewportPicker->Set_IgnoreLocalPawn(InIsOn); }
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return ViewportPicker.IsValid(); })},
+        FCkDebug_IconToggleAction{
+            TEXT("EcsPickerMeshesFirst"),
+            TEXT("SceneNode"),
+            FText::FromString(TEXT("Meshes First")),
+            FText::FromString(TEXT("Hide the diamond billboards of entities that are pickable by their\n"
+                                   "rendered geometry (ISM-instance- or actor-backed). Diamonds remain only\n"
+                                   "on meshless entities; everything stays pickable.")),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return ViewportPicker.IsValid() && ViewportPicker->Get_MeshesFirst();
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (ViewportPicker.IsValid())
+                { ViewportPicker->Set_MeshesFirst(InIsOn); }
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return ViewportPicker.IsValid(); })}};
+
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
         .Padding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
@@ -256,7 +388,18 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                 ]
             ]
 
-            // ---- Gear button (picker settings popover) ----
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
+            [
+                SNew(SCkDebug_IconToolbar)
+                .Actions(IconActions)
+                .WideDirectCount(6)
+                .CompactDirectCount(3)
+            ]
+
+            // ---- Contextual attribute-filter settings ----
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -271,7 +414,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                 [
                     SNew(SButton)
                     .ButtonColorAndOpacity(CkStyle::Bg2())
-                    .ToolTipText(FText::FromString(TEXT("Picker settings")))
+                    .ToolTipText(FText::FromString(TEXT("Overlay attribute filter settings")))
                     .OnClicked_Lambda([this]() -> FReply
                     {
                         if (PickerSettingsAnchor.IsValid())
@@ -289,7 +432,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                 ]
             ]
 
-            // ---- Overlay button (on-screen overlay controls popover) ----
+            // ---- Contextual overlay layout settings ----
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -311,8 +454,8 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                             : CkStyle::Bg2();
                     })
                     .ToolTipText(FText::FromString(TEXT(
-                        "On-screen entity overlay controls\n"
-                        "(toggle, depth, near plates, plate anchor/width, diamond scale).")))
+                        "On-screen entity overlay layout controls\n"
+                        "(depth, plate anchor/width, diamond scale).")))
                     .OnClicked_Lambda([this]() -> FReply
                     {
                         if (OverlayAnchor.IsValid())
@@ -423,69 +566,6 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
         .Padding(FCkDebuggerStyle::Padding_Medium)
         [
             SNew(SVerticalBox)
-
-            // ---- Ignore Self toggle ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([this]() -> ECheckBoxState
-                {
-                    return ViewportPicker.IsValid() && ViewportPicker->Get_IgnoreLocalPawn()
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
-                })
-                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                {
-                    if (ViewportPicker.IsValid())
-                    {
-                        ViewportPicker->Set_IgnoreLocalPawn(InState == ECheckBoxState::Checked);
-                    }
-                })
-                .ToolTipText(FText::FromString(TEXT(
-                    "Ignore entities that belong to the locally controlled pawn\n"
-                    "(including attached actors and child ECS entities).\n"
-                    "Useful to avoid picking your own first-person viewpoint entity.")))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Ignore Self")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
-            ]
-
-            // ---- Meshes First toggle ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([this]() -> ECheckBoxState
-                {
-                    return ViewportPicker.IsValid() && ViewportPicker->Get_MeshesFirst()
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
-                })
-                .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                {
-                    if (ViewportPicker.IsValid())
-                    {
-                        ViewportPicker->Set_MeshesFirst(InState == ECheckBoxState::Checked);
-                    }
-                })
-                .ToolTipText(FText::FromString(TEXT(
-                    "Hide the diamond billboards of entities that are pickable by their\n"
-                    "rendered geometry (ISM-instance- or actor-backed) — click the mesh\n"
-                    "itself instead; hover outlines its bounds. Diamonds remain only on\n"
-                    "meshless entities. Everything stays pickable.")))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Meshes First")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
-            ]
 
             // ---- Overlay attribute filter (focus-card volume control) ----
             // Persisted on UCk_DebugOverlay_Settings; the overlay's attribute providers
@@ -696,7 +776,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                         {
                             const auto* CVar = IConsoleManager::Get().FindConsoleVariable(
                                 ck::DebugMarkers::Get_MaxDepthCVarName());
-                            return CVar != nullptr ? CVar->GetInt() : -1;
+                            return CVar != nullptr ? CVar->GetInt() : 0;
                         })
                         .OnValueChanged_Lambda([](int32 InValue)
                         {
@@ -744,37 +824,6 @@ namespace
             ];
     }
 
-    auto Make_OverlayCVarToggle(const TCHAR* InLabel, const TCHAR* InCVarName, const TCHAR* InTooltip) -> TSharedRef<SWidget>
-    {
-        const auto CVarName = FString{ InCVarName };
-        return SNew(SCheckBox)
-            .IsEnabled_Lambda([CVarName]() -> bool
-            {
-                return Get_OverlayCVar(*CVarName) != nullptr;
-            })
-            .IsChecked_Lambda([CVarName]() -> ECheckBoxState
-            {
-                const auto* CVar = Get_OverlayCVar(*CVarName);
-                return (CVar != nullptr && CVar->GetInt() != 0)
-                    ? ECheckBoxState::Checked
-                    : ECheckBoxState::Unchecked;
-            })
-            .OnCheckStateChanged_Lambda([CVarName](ECheckBoxState InState)
-            {
-                if (auto* CVar = Get_OverlayCVar(*CVarName))
-                {
-                    CVar->Set(InState == ECheckBoxState::Checked ? 1 : 0, ECVF_SetByConsole);
-                }
-            })
-            .ToolTipText(FText::FromString(InTooltip))
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(InLabel))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-            ];
-    }
-
     auto Make_OverlaySettingSpin(
         const TCHAR* InLabel,
         float InMin, float InMax, float InDelta,
@@ -814,24 +863,6 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
         [
             SNew(SVerticalBox)
 
-            // ---- CVar-backed toggles ----
-            + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
-            [
-                Make_OverlayCVarToggle(
-                    TEXT("Overlay enabled"),
-                    TEXT("ck.DebugOverlay"),
-                    TEXT("Master toggle for the on-screen entity debug overlay (ck.DebugOverlay).\n"
-                         "Available once a PIE session has started."))
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
-            [
-                Make_OverlayCVarToggle(
-                    TEXT("Near plates"),
-                    TEXT("ck.DebugOverlay.NearPlates"),
-                    TEXT("Ultra-condensed name + feature-badge plates for candidates close to the camera\n"
-                         "(ck.DebugOverlay.NearPlates)."))
-            ]
-
             // ---- Max depth (CVar; -1 = unlimited) ----
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
@@ -852,7 +883,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                         .Value_Lambda([]() -> int32
                         {
                             const auto* CVar = Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName());
-                            return CVar != nullptr ? CVar->GetInt() : -1;
+                            return CVar != nullptr ? CVar->GetInt() : 0;
                         })
                         .OnValueChanged_Lambda([](int32 InValue)
                         {

@@ -24,7 +24,10 @@ public:
 
 private:
 	auto OnSpawnGalleryTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
+	auto HandlePieSessionBoundary(bool InIsSimulating) -> void;
 
 	TSharedPtr<SCkDebuggerGallery_Window> _GalleryWindow;
 	TSharedPtr<SDockTab> _GalleryTab;
+	FDelegateHandle _BeginPieHandle;
+	FDelegateHandle _EndPieHandle;
 };

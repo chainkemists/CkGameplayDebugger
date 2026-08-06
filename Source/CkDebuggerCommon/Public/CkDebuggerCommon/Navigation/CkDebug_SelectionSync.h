@@ -38,6 +38,13 @@ namespace ck::DebugSelectionSync
     // the handle is invalid or while a received selection is being applied.
     CKDEBUGGERCOMMON_API auto Broadcast(const FCk_Handle& InSelected, FName InSource) -> void;
 
+    // Session toggle for continuously broadcasting the current on-screen overlay
+    // focus. Receivers only adopt into already-open debugger windows.
+    CKDEBUGGERCOMMON_API auto Get_IsOverlayFocusSyncEnabled() -> bool;
+
+    // Console-variable name of the overlay-focus sync switch (for shared UI bindings).
+    CKDEBUGGERCOMMON_API auto Get_OverlayFocusSyncCVarName() -> const TCHAR*;
+
     // CkEcsDebugger installs a provider so Common widgets can pull the current primary selection without retaining a
     // PIE handle or depending on the ECS debugger model. Registration is generation-token protected for live reload.
     CKDEBUGGERCOMMON_API auto Register_PrimaryEcsSelectionProvider(FGetPrimaryEcsSelection InProvider) -> uint64;

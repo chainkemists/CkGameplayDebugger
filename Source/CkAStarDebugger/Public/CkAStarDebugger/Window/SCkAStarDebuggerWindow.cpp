@@ -10,6 +10,7 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
@@ -41,6 +42,10 @@ auto
 
     _ViewModel = MakeShared<FCkAStarDebugger_ViewModel>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+    _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
+        this, &SCkAStarDebuggerWindow::HandleWorldChanged);
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkAStarDebuggerWindow::HandleSessionInvalidated);
 
     // Layout:
     //   Toolbar (auto-height)
@@ -105,6 +110,46 @@ auto
                 ]
             ]
     ];
+}
+
+SCkAStarDebuggerWindow::~SCkAStarDebuggerWindow()
+{
+    if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
+    { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
+
+    if (_SessionInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
+}
+
+auto SCkAStarDebuggerWindow::HandleWorldChanged(UWorld*) -> void
+{
+    _PendingTarget.Reset();
+    _CachedWorld = nullptr;
+    _EntitySelectorItems.Reset();
+    _EntitySelectorHandles.Reset();
+
+    if (_EntitySelectorLabel.IsValid())
+    { _EntitySelectorLabel->SetText(FText::FromString(TEXT("(no entities)"))); }
+    if (_StatusBadgeText.IsValid())
+    {
+        _StatusBadgeText->SetText(FText::FromString(TEXT("Idle")));
+        _StatusBadgeText->SetColorAndOpacity(FCkAStarDebuggerStyle::Color_Status_Idle);
+    }
+    if (_GridView.IsValid())
+    { _GridView->Reset_ForWorldChange(); }
+    if (_ViewModel.IsValid())
+    { _ViewModel->Reset_ForWorldChange(); }
+}
+
+auto SCkAStarDebuggerWindow::HandleSessionInvalidated() -> void
+{
+    if (_WorldModel.IsValid() && _WorldModel->Get_SelectedWorld() != nullptr)
+    {
+        _WorldModel->Set_SelectedWorld(nullptr);
+        return;
+    }
+
+    HandleWorldChanged(nullptr);
 }
 
 // ====================================================================================================================

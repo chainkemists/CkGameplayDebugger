@@ -215,3 +215,11 @@ auto FCkInspector_InteractTarget::Tick(const FCk_Handle& Entity, float InDeltaTi
         }
     }
 }
+
+// =====================================================================================================================
+
+auto FCkInspector_InteractTarget::OnDeactivated() -> void
+{
+    _TargetStates.Reset();
+    _LastTargetCount = 0;
+}

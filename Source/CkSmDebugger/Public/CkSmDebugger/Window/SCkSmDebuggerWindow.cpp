@@ -19,9 +19,11 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "GraphEditor.h"
 #include "Editor.h"
@@ -33,7 +35,6 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -262,11 +263,11 @@ SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
 {
     UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
 
-    if (_OnEndPieHandle.IsValid())
-    { FEditorDelegates::EndPIE.Remove(_OnEndPieHandle); }
+    if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
+    { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
 
-    if (_OnBeginPieHandle.IsValid())
-    { FEditorDelegates::BeginPIE.Remove(_OnBeginPieHandle); }
+    if (_SessionInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 
     if (_Graph && UObjectInitialized())
     {
@@ -314,6 +315,11 @@ auto
     // signature early-exit would otherwise leave the previous widget in place.
     if (_DetailContentBox.IsValid())
     { _DetailContentBox->SetContent(BuildDetailContent()); }
+}
+
+auto SCkSmDebuggerWindow::HandleWorldChanged(UWorld*) -> void
+{
+    HandleWorldTornDown();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -379,22 +385,17 @@ auto
     _DataCollector = MakeShared<FCkSmDebugger_DataCollector>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
+    _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
+        this, &SCkSmDebuggerWindow::HandleWorldChanged);
+
     // Create the preview pane eagerly so its picker can live in the main toolbar
     // (keeps the preview graph top aligned with the live graph top on the left).
     _PreviewPane = SNew(SCkSmDebugger_PreviewPane);
 
-    // PIE lifecycle — tear down cached world/graph/history on stop so the next PIE session
-    // re-links cleanly without requiring the user to close and reopen the debugger.
-    _OnEndPieHandle = FEditorDelegates::EndPIE.AddLambda([this](bool /*bIsSimulating*/)
-    {
-        HandleWorldTornDown();
-    });
-
-    _OnBeginPieHandle = FEditorDelegates::BeginPIE.AddLambda([this](bool /*bIsSimulating*/)
-    {
-        // Ensure we start the new session from an empty slate — Tick will repopulate.
-        HandleWorldTornDown();
-    });
+    // Common emits on both BeginPIE and EndPIE. The feature keeps ownership of
+    // what must be cleared; Tick repopulates after the new world begins play.
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkSmDebuggerWindow::HandleWorldTornDown);
 
     // Create the debug graph — prevent GC
     _Graph = NewObject<UCkSmDebugGraph>(GetTransientPackage());
@@ -851,6 +852,62 @@ auto
     BuildToolbar()
     -> TSharedRef<SWidget>
 {
+    const auto DisplayActions = TArray<FCkDebug_IconToggleAction>{
+        FCkDebug_IconToggleAction{
+            TEXT("Tasks"),
+            TEXT("StateMachine"),
+            FText::FromString(TEXT("Tasks")),
+            FText::FromString(TEXT("Show task nodes in the state machine graph.")),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return _Graph && _Graph->LayoutParams.ExpandTasks;
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (_Graph)
+                {
+                    _Graph->LayoutParams.ExpandTasks = InIsOn;
+                    _Graph->ForceRebuild();
+                }
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _Graph != nullptr; })},
+        FCkDebug_IconToggleAction{
+            TEXT("CompactLayout"),
+            TEXT("Grid"),
+            FText::FromString(TEXT("Compact Layout")),
+            FText::FromString(TEXT("Use a compact, undirected layout for the state machine graph.")),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return _Graph && _Graph->LayoutParams.UndirectedBFS;
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (_Graph)
+                {
+                    _Graph->LayoutParams.UndirectedBFS = InIsOn;
+                    _Graph->ForceRebuild();
+                }
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _Graph != nullptr; })},
+        FCkDebug_IconToggleAction{
+            TEXT("ShowFrames"),
+            TEXT("Calendar"),
+            NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"),
+            NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
+                "Show timeline labels as frame numbers (on) or seconds (off)."),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return _ViewModel.IsValid() && _ViewModel->Get_ScrubState().ShowFramesOnTimeline;
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (NOT _ViewModel.IsValid()) { return; }
+                auto NewState = _ViewModel->Get_ScrubState();
+                NewState.ShowFramesOnTimeline = InIsOn;
+                _ViewModel->Set_ScrubState(NewState);
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _ViewModel.IsValid(); })}};
+
     return SNew(SHorizontalBox)
 
         // ── World Selector (shared across all CK debuggers) ──────────────
@@ -961,33 +1018,17 @@ auto
                     .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
             ]
 
-        // ── Display: Tasks toggle, Name depth ────────────────────────────
+        // ── Display toggles, Name depth ──────────────────────────────────
 
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(2.0f)
             .VAlign(VAlign_Center)
             [
-                SNew(SCheckBox)
-                    .IsChecked_Lambda([this]()
-                    {
-                        return (_Graph && _Graph->LayoutParams.ExpandTasks)
-                            ? ECheckBoxState::Checked
-                            : ECheckBoxState::Unchecked;
-                    })
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                    {
-                        if (_Graph)
-                        {
-                            _Graph->LayoutParams.ExpandTasks = (InState == ECheckBoxState::Checked);
-                            _Graph->ForceRebuild();
-                        }
-                    })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Tasks")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    ]
+                SNew(SCkDebug_IconToolbar)
+                    .Actions(DisplayActions)
+                    .WideDirectCount(3)
+                    .CompactDirectCount(3)
             ]
 
         // Name depth — the shared cycler widget; depth lives on the graph's
@@ -1129,33 +1170,6 @@ auto
                                                 }
                                                 return FReply::Handled();
                                             })
-                                    ]
-                            ]
-
-                        // Compact toggle
-                        + SVerticalBox::Slot()
-                            .AutoHeight()
-                            .Padding(4.0f, 4.0f, 4.0f, 2.0f)
-                            [
-                                SNew(SCheckBox)
-                                    .IsChecked_Lambda([this]()
-                                    {
-                                        return (_Graph && _Graph->LayoutParams.UndirectedBFS)
-                                            ? ECheckBoxState::Checked
-                                            : ECheckBoxState::Unchecked;
-                                    })
-                                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                                    {
-                                        if (_Graph)
-                                        {
-                                            _Graph->LayoutParams.UndirectedBFS = (InState == ECheckBoxState::Checked);
-                                            _Graph->ForceRebuild();
-                                        }
-                                    })
-                                    [
-                                        SNew(STextBlock)
-                                            .Text(FText::FromString(TEXT("Compact Layout")))
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                     ]
                             ]
 
@@ -1510,9 +1524,6 @@ auto
                     })
             ]
 
-        // (Show Frames toggle moved to the timeline toolbar — it's timeline-only
-        // anyway, and groups with the other timeline-related controls.)
-
         // ── Spacer ───────────────────────────────────────────────────────
 
         + SHorizontalBox::Slot()
@@ -1698,33 +1709,6 @@ auto
         }));
 
     return SNew(SHorizontalBox)
-
-            // Show Frames toggle — always visible (frame labels are useful in Live
-            // mode too); the scrub-only controls below are wrapped in their own
-            // box that collapses when not scrubbing.
-            + SHorizontalBox::Slot()
-                .AutoWidth().Padding(2.0f, 0.0f, 8.0f, 0.0f).VAlign(VAlign_Center)
-                [
-                    SNew(SCheckBox)
-                        .IsChecked_Lambda([this]() -> ECheckBoxState
-                        {
-                            return _ViewModel.IsValid() && _ViewModel->Get_ScrubState().ShowFramesOnTimeline
-                                ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-                        })
-                        .OnCheckStateChanged_Lambda([this](ECheckBoxState InNewState)
-                        {
-                            if (NOT _ViewModel.IsValid()) { return; }
-                            auto NS = _ViewModel->Get_ScrubState();
-                            NS.ShowFramesOnTimeline = (InNewState == ECheckBoxState::Checked);
-                            _ViewModel->Set_ScrubState(NS);
-                        })
-                        .ToolTipText(NSLOCTEXT("CkSmDebugger", "ShowFramesTooltip",
-                            "Show timeline labels as frame numbers (checked) or seconds (unchecked)."))
-                        [
-                            SNew(STextBlock)
-                                .Text(NSLOCTEXT("CkSmDebugger", "ShowFrames", "Show frames"))
-                        ]
-                ]
 
             // To Start — works in either mode; auto-enters Scrub.
             + SHorizontalBox::Slot()

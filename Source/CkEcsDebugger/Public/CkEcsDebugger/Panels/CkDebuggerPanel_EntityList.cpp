@@ -14,6 +14,7 @@
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -63,7 +64,6 @@ auto SCkDebuggerPanel_EntityList::Construct(
             [
                 SNew(SCkDebug_WorldSelector, WorldModel->Get_SelectorModel())
                 .ShowHeaderLabel(true)
-                .OnWorldChanged(this, &SCkDebuggerPanel_EntityList::OnWorldSelectionChanged)
             ]
 
             + SVerticalBox::Slot()
@@ -441,19 +441,14 @@ auto SCkDebuggerPanel_EntityList::DoBuildQuickAccessRows(
     }
 }
 
-auto SCkDebuggerPanel_EntityList::OnWorldSelectionChanged() -> void
+auto SCkDebuggerPanel_EntityList::Reset_ForWorldChange() -> void
 {
-    // World switched (or auto-selected) — the previously-selected entities belong
-    // to the old world and are stale, so clear them and refresh the tree.
-    if (SelectionModel.IsValid())
-    {
-        SelectionModel->Clear_Selection();
-    }
+    RecentEntities.Reset();
 
     if (EntityTree.IsValid())
-    {
-        EntityTree->RefreshTree();
-    }
+    { EntityTree->Reset_ForWorldChange(); }
+
+    RefreshQuickAccessSections();
 }
 
 auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
@@ -528,39 +523,37 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                 .AutoWidth()
                 .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
                 [
-                    SNew(SCheckBox)
-                    .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
-                    .ToolTipText(FText::FromString(TEXT("Fold internal entities (timers, scene nodes, attributes ...) under their owner with a +N chip")))
-                    .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_FoldInternals() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                    SNew(SCkDebug_IconToggle)
+                    .IconId(TEXT("Package"))
+                    .Label(FText::FromString(TEXT("Fold Internals")))
+                    .ToolTip(FText::FromString(TEXT("Fold internal entities (timers, scene nodes, attributes ...) under their owner with a +N chip")))
+                    .IsOn_Lambda([this]() -> bool
+                    {
+                        return EntityTree.IsValid() && EntityTree->Get_FoldInternals();
+                    })
+                    .OnStateChanged_Lambda([this](bool InIsOn)
                     {
                         if (EntityTree.IsValid())
-                        { EntityTree->Set_FoldInternals(InState == ECheckBoxState::Checked); }
+                        { EntityTree->Set_FoldInternals(InIsOn); }
                     })
-                    [
-                        SNew(STextBlock)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                        .Text(FText::FromString(TEXT("Fold")))
-                    ]
                 ]
 
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 [
-                    SNew(SCheckBox)
-                    .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
-                    .ToolTipText(FText::FromString(TEXT("Coalesce runs of same-archetype siblings into one \"Name xN\" row")))
-                    .IsChecked_Lambda([this]() { return EntityTree.IsValid() && EntityTree->Get_GroupSiblings() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                    .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                    SNew(SCkDebug_IconToggle)
+                    .IconId(TEXT("EntityCollection"))
+                    .Label(FText::FromString(TEXT("Group Siblings")))
+                    .ToolTip(FText::FromString(TEXT("Coalesce runs of same-archetype siblings into one \"Name xN\" row")))
+                    .IsOn_Lambda([this]() -> bool
+                    {
+                        return EntityTree.IsValid() && EntityTree->Get_GroupSiblings();
+                    })
+                    .OnStateChanged_Lambda([this](bool InIsOn)
                     {
                         if (EntityTree.IsValid())
-                        { EntityTree->Set_GroupSiblings(InState == ECheckBoxState::Checked); }
+                        { EntityTree->Set_GroupSiblings(InIsOn); }
                     })
-                    [
-                        SNew(STextBlock)
-                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                        .Text(FText::FromString(TEXT("Group")))
-                    ]
                 ]
             ]
         ];

@@ -52,6 +52,7 @@ selectable.
 | An EntityScript class name or gameplay-tag path | `SCkDebug_NameLabel` | **The** name widget — every debugger renders class/tag names through it. Short form selectable, tooltip = full name, tiny »/« button expands/contracts when shortened. `.NameDepth` binds to the debugger's depth tuner; `SCkDebug_NameLabel::Get_ShortName()` is the one canonical shortener for composite strings the widget can't host (crumbs, log lines, graph measurement), `Get_SegmentCount()` feeds a cycler's MaxDepth. Don't use inside `SListView` rows (internal SButton — see click-traps below); use `Get_ShortName` + `STextBlock` there. |
 | A toolbar name-verbosity control | `SCkDebug_NameDepthCycler` | The "Name ◀ value ▶" chrome control (canonical cycle: Full(0) ↔ 1 … MaxDepth). State stays with the owner (view model / graph / window member); widget reports via `OnDepthChanged`. Used by GOAP, SM, UI debuggers — add it to any debugger that renders class/tag names. |
 | A glyph/icon anywhere in a debugger | `SCkDebug_Icon` | **Never drop a bare `SImage` icon into a slot** — that is how icons ship without tooltips. `.Meaning` (what the glyph stands for) becomes the hover tooltip; `.Brush` comes from the owning module's style registry. Click-passive — safe in `SListView` rows. Exception: an icon inside a control that already carries a richer tooltip (filter-chip SCheckBox, launcher tool button) keeps the wrapper's tooltip instead — one surface, one tooltip. |
+| A simple boolean display/debug option | `SCkDebug_IconToggle` or `SCkDebug_IconToolbar` | Keep state and persistence with the feature; bind it through `FCkDebug_IconToggleAction`. Use the toolbar for window-wide settings (six direct actions wide, three compact, labeled overflow); use the individual toggle only when the option is contextual to a local panel. Do not create a feature-local checkbox style or icon registry. |
 | Composite widget that should support right-click → Copy as a unit (group, pill, custom row) | Wrap with `SCkDebug_CopyableContainer` | Pass `.CopyText(...)` with the multi-line clipboard payload. SButton inside the wrapped child still receives left-clicks; right-click bubbles through. |
 | Inspector key/value rows | `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) | Values are already `SEditableText` — automatic. |
 | Standalone history row in a fixed-rebuild panel (plan history rail, transition log strip) | `SCkDebug_HistoryRow` with `.CopyText(...)` | Shares tone, accent, selection styling. **Click-trap warning — do NOT use inside `SListView`/`STreeView`/`STableRow`.** Its body is wrapped in an `SButton` that returns `FReply::Handled()` on every left click, so the parent `STableRow` never sees the selection click and the user cannot select rows. See "List / tree rows" section below for the correct pattern. |
@@ -286,6 +287,19 @@ rebuild pattern.
 
 ## PIE lifecycle — the world identity gotcha
 
+Debugger tabs persist across PIE, but registry-backed `FCk_Handle` values must
+not. Every debugger model, collector, or widget that owns handle copies must
+subscribe its owning window/controller to
+`ck::DebugSessionLifecycle::Get_OnSessionInvalidated()` and synchronously clear
+those copies. Common broadcasts this handle-free signal on BeginPIE and EndPIE;
+feature modules remain responsible for their own state. The shared
+`FCkDebuggerModel_WorldSelector` also clears its selection and broadcasts
+`OnWorldChanged` from `FWorldDelegates::OnWorldCleanup` when its selected world
+starts teardown. Route both that notification and explicit world switches
+through the same feature-owned reset.
+Validity guards are only defensive read boundaries and do not replace this
+ownership reset.
+
 Worlds appear in `GEngine->GetWorldContexts()` **before** `HasBegunPlay()` is
 true; calling `UWorld::GetSubsystem()` on a not-yet-begun world crashes. Always
 guard:
@@ -483,8 +497,10 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
    For node display widgets, `SCkDebug_NodePill` with `.CopyText(...)` is the
    default. Register your `FGraphPanelNodeFactory` in module startup.
 7. **PIE world handling**: if you select between worlds, track them by
-   identity (see "PIE lifecycle" above). Subscribe to nothing — poll on a 1Hz
-   tick gate and react to identity changes.
+   identity (see "PIE lifecycle" above). Poll the available-world list on a
+   bounded tick gate, subscribe to the common session-invalidation signal, and
+   route both session and explicit selected-world changes through the same
+   feature-owned reset.
 
 ## Common window chrome and entity targeting
 
@@ -498,9 +514,12 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 - Resolve parent/child selections with `DebugSelectionSync::Resolve_ClosestLineageMatch`. It
   checks exact, ancestor, and descendant entities, excludes sibling branches/transient-root
   cross-matches, and uses stable entity-id tie-breaking.
-- `SCkDebug_WindowChrome` automatically exposes `Use ECS <id>` only when its tab has a registered
+- `SCkDebug_WindowChrome` automatically exposes `Sync from ECS <id>` only when its tab has a registered
   route. `SCkDebug_EntityDebuggerLinks` discovers those same routes for ECS inspector `Open In`
   actions. Common pulls the primary ECS selection on demand and never retains a PIE handle.
+- `ck.Debug.SelectionSync.OverlayFocus` is the opt-in continuous path for the on-screen overlay.
+  It broadcasts only when the full focused handle changes; receivers update already-open compatible
+  tabs and never open or foreground a debugger.
 - If a debugger's collector populates after the tab opens, its feature window owns a short-lived
   pending target and applies it after the first refresh. Clear pending/cached handles before the
   PIE registry dies.
@@ -522,6 +541,7 @@ CkDebuggerCommon/
 ├── Widgets/
 │   ├── SCkDebug_EntityRef.h          (clickable FCk_Handle pill — navigates to ECS Debugger)
 │   ├── SCkDebug_Icon.h               (THE icon widget — glyph + mandatory Meaning tooltip, click-passive)
+│   ├── SCkDebug_IconToggle.h         (boolean icon action + responsive direct/overflow toolbar)
 │   ├── SCkDebug_NameDepthCycler.h    (toolbar "Name ◀ value ▶" verbosity control)
 │   ├── SCkDebug_NameLabel.h          (THE class-name/tag label — depth-shortened, »/« expand; Get_ShortName/Get_SegmentCount statics)
 │   ├── SCkDebug_SelectableLabel.h    (STextBlock-shape, copyable)

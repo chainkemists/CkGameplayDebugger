@@ -13,7 +13,7 @@ Make entity debugging continuous across the CK debugger suite: the on-screen ove
 2. GOAP and PathNetworkFollower overlay sections show real active-plan/action and route progress/failure context using runtime-safe CkFoundation APIs.
 3. ECS lifetime-owner transfers regroup automatically within the existing refresh interval while preserving row identity, selection, and expansion. Destroyed entities disappear without a manual full refresh.
 4. ECS tree selection, viewport picking, and overlay quick-select update every already-open entity debugger that can resolve the selected lineage, without echo loops.
-5. A common `Use ECS Selection` control targets the current debugger from the ECS primary selection and resolves nested/owned entities through the destination debugger's route.
+5. A common `Sync from ECS` control targets the current debugger from the ECS primary selection and resolves nested/owned entities through the destination debugger's route.
 6. The ECS inspector panel exposes common `Open In` actions for every registered entity-targetable dedicated debugger. Gate-0 destinations are GOAP, Crowd, State Machine, A*, and Aggro.
 7. Every CkGameplayDebugger-owned standalone debugger window uses the shared top-chrome/content/status-frame contract while retaining its feature-specific controls and layout.
 8. The final Development editor build and focused `Debugger` plus `DebugOverlay` suites have no failing-set regression from the recorded baseline; editor-only behavior has an exact manual verification checklist.

@@ -18,7 +18,7 @@ After this gate, every CkGameplayDebugger-owned standalone debugger uses one sha
 
 1. Add `SCkDebug_WindowChrome` with named top, main, and optional status slots plus common separators, padding, and empty-slot collapse.
    -> verify: pure construction/visibility test and Widget Gallery example cover all slot combinations.
-2. Put `Use ECS Selection` in the common status composition only when the current tool has a registered entity-target route; retain caller-provided status content.
+2. Put `Sync from ECS` in the common status composition only when the current tool has a registered entity-target route; retain caller-provided status content.
    -> verify: non-entity tools show no dead control and entity tools show the current ECS id/name state.
 3. Adopt low-risk windows first: ObjectPooling, Map, EQS, Input, Jolt, A*, Crowd, UI, Dialog, and Aggro.
    -> verify: existing controls and footers remain reachable; no duplicate status rows.

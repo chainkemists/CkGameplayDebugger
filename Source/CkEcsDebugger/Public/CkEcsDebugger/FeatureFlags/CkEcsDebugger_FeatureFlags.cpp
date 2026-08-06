@@ -76,7 +76,7 @@ auto
     // detector.
     debug_feature_flags::RegisterFlag<FFragment_LifetimeOwner>(TEXT("_TreeEntity"));
 
-    debug_feature_flags::RegisterFlag<FFragment_Timer_Params>(TEXT("Timer"));
+    debug_feature_flags::RegisterFlag<FFragment_Timer>(TEXT("Timer"));
     // FFragment_Transform is the real pool — FFragment_Transform_Params is a ParamsData
     // ALIAS that is never added to any entity (CkTransform_Utils.cpp adds FFragment_Transform).
     debug_feature_flags::RegisterFlag<FFragment_Transform>(TEXT("Transform"));

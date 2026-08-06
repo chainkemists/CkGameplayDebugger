@@ -34,6 +34,7 @@ public:
 
     auto Get_CachedEntities() const -> const TArray<FCk_Handle>&;
     auto Refresh_EntityCache() -> void;
+    auto Reset_ForWorldChange() -> void;
     auto MarkCacheDirty() -> void;
     auto IsCacheDirty() const -> bool;
 

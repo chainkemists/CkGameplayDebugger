@@ -20,6 +20,13 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCkDebugger_OnWorldChanged, UWorld*);
 class CKDEBUGGERCOMMON_API FCkDebuggerModel_WorldSelector
 {
 public:
+    FCkDebuggerModel_WorldSelector();
+    ~FCkDebuggerModel_WorldSelector();
+    FCkDebuggerModel_WorldSelector(const FCkDebuggerModel_WorldSelector&) = delete;
+    auto operator=(const FCkDebuggerModel_WorldSelector&) -> FCkDebuggerModel_WorldSelector& = delete;
+    FCkDebuggerModel_WorldSelector(FCkDebuggerModel_WorldSelector&&) = delete;
+    auto operator=(FCkDebuggerModel_WorldSelector&&) -> FCkDebuggerModel_WorldSelector& = delete;
+
     auto Set_SelectedWorld(UWorld* InWorld) -> void;
     auto Get_SelectedWorld() const -> UWorld*;
     auto Get_AvailableWorlds() const -> TArray<UWorld*>;
@@ -33,6 +40,8 @@ public:
 
 private:
     auto BroadcastWorldChanged() -> void;
+    auto HandleWorldCleanup(UWorld* InWorld, bool InSessionEnded, bool InCleanupResources) -> void;
 
     TWeakObjectPtr<UWorld> SelectedWorld;
+    FDelegateHandle WorldCleanupHandle;
 };

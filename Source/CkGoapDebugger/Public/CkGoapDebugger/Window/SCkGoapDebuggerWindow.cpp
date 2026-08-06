@@ -25,6 +25,7 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
@@ -75,11 +76,11 @@ const FName SCkGoapDebuggerWindow::CTab_Search   = FName(TEXT("Search"));
 
 SCkGoapDebuggerWindow::~SCkGoapDebuggerWindow()
 {
-    if (_OnEndPieHandle.IsValid())
-    { FEditorDelegates::EndPIE.Remove(_OnEndPieHandle); }
+    if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
+    { _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
 
-    if (_OnBeginPieHandle.IsValid())
-    { FEditorDelegates::BeginPIE.Remove(_OnBeginPieHandle); }
+    if (_SessionInvalidatedHandle.IsValid())
+    { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 }
 
 auto
@@ -88,6 +89,7 @@ auto
     -> void
 {
     _CachedWorld.Reset();
+    FCkGoapDebugger_DataCollector::Reset_ForWorldChange();
 
     // Chrome picker arrays hold FCk_Handle copies — drop them while the
     // registry lives.
@@ -130,6 +132,11 @@ auto
     { _ViewModel->Reset_ForWorldChange(); }
 }
 
+auto SCkGoapDebuggerWindow::HandleWorldChanged(UWorld*) -> void
+{
+    HandleWorldTornDown();
+}
+
 // ====================================================================================================================
 // CONSTRUCT
 // ====================================================================================================================
@@ -145,11 +152,10 @@ auto
     _ViewModel = MakeShared<FCkGoapDebugger_ViewModel>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
-    _OnBeginPieHandle = FEditorDelegates::BeginPIE.AddLambda([this](bool)
-    { HandleWorldTornDown(); });
-
-    _OnEndPieHandle = FEditorDelegates::EndPIE.AddLambda([this](bool)
-    { HandleWorldTornDown(); });
+    _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
+        this, &SCkGoapDebuggerWindow::HandleWorldChanged);
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkGoapDebuggerWindow::HandleWorldTornDown);
 
     _ActiveTab = Tab_Inspector;
     _CenterTab = CTab_Decision;

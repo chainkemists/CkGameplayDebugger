@@ -9,6 +9,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
@@ -20,7 +21,6 @@
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -171,16 +171,13 @@ auto
                                     .AutoWidth()
                                     .VAlign(VAlign_Center)
                                     [
-                                        SNew(SCheckBox)
-                                            .IsChecked_Lambda([this] { return _PauseOnReplan ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                                            .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                                            { _PauseOnReplan = InState == ECheckBoxState::Checked; })
-                                            [
-                                                SNew(STextBlock)
-                                                    .Text(FText::FromString(TEXT("replan")))
-                                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                                            ]
+                                        SNew(SCkDebug_IconToggle)
+                                            .IconId(TEXT("Stopwatch"))
+                                            .Label(FText::FromString(TEXT("Pause on replan")))
+                                            .ToolTip(FText::FromString(TEXT("Pause PIE when a replan occurs.")))
+                                            .IsOn_Lambda([this] { return _PauseOnReplan; })
+                                            .OnStateChanged_Lambda([this](bool InIsOn)
+                                            { _PauseOnReplan = InIsOn; })
                                     ]
 
                                 + SHorizontalBox::Slot()
@@ -188,16 +185,13 @@ auto
                                     .VAlign(VAlign_Center)
                                     .Padding(FMargin(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f))
                                     [
-                                        SNew(SCheckBox)
-                                            .IsChecked_Lambda([this] { return _PauseOnPlanFailed ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-                                            .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                                            { _PauseOnPlanFailed = InState == ECheckBoxState::Checked; })
-                                            [
-                                                SNew(STextBlock)
-                                                    .Text(FText::FromString(TEXT("plan failed")))
-                                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                                            ]
+                                        SNew(SCkDebug_IconToggle)
+                                            .IconId(TEXT("Skull"))
+                                            .Label(FText::FromString(TEXT("Pause on plan failed")))
+                                            .ToolTip(FText::FromString(TEXT("Pause PIE when plan construction fails.")))
+                                            .IsOn_Lambda([this] { return _PauseOnPlanFailed; })
+                                            .OnStateChanged_Lambda([this](bool InIsOn)
+                                            { _PauseOnPlanFailed = InIsOn; })
                                     ]
                         ]
 

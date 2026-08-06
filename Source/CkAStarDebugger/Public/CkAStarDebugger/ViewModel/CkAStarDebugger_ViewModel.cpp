@@ -6,6 +6,19 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto FCkAStarDebugger_ViewModel::Reset_ForWorldChange() -> void
+{
+    _DataCollector.Reset_ForWorldChange();
+    _SelectedEntityHandle = FCk_Handle{};
+    _HasSelectedEntity = false;
+    _SelectedCellIndex = -1;
+
+    OnSearchListChanged.Broadcast(_DataCollector.Get_AllSearchEntities());
+    OnSelectedEntityChanged.Broadcast(_SelectedEntityHandle);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto
     FCkAStarDebugger_ViewModel::
     Tick(

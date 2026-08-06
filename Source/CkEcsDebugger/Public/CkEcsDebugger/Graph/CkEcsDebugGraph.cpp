@@ -27,9 +27,9 @@ auto
         if (_EntityToNode.Num() > 0)
         {
             ClearGraph();
-            _LastBuiltEntity = FCk_Handle();
             return true;
         }
+        _LastBuiltEntity = FCk_Handle{};
         return false;
     }
 
@@ -90,6 +90,7 @@ auto
 
     _EntityToNode.Reset();
     _TopologyHash = 0;
+    _LastBuiltEntity = FCk_Handle{};
 
     SetSuppressNotifications(false);
 }

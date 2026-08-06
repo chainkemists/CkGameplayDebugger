@@ -79,11 +79,12 @@ private:
     TSharedPtr<SCkSmDebugger_PreviewPane> _PreviewPane;
     TSharedPtr<SSplitter> _RootSplitter;
 
-    // Editor delegate handles — unsubscribed in destructor
-    FDelegateHandle _OnEndPieHandle;
-    FDelegateHandle _OnBeginPieHandle;
+    // Common debugger-session boundary — unsubscribed in destructor.
+    FDelegateHandle _SessionInvalidatedHandle;
+    FDelegateHandle _WorldChangedHandle;
 
     auto HandleWorldTornDown() -> void;
+    auto HandleWorldChanged(UWorld* InWorld) -> void;
 
     // Selection — transition selection tracked locally (not in ViewModel)
     int32 _SelectedTransitionIndex = -1;  // index into SmInfo.Transitions, -1 = none

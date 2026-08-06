@@ -22,9 +22,9 @@ class UWorld;
 // Lifetime:
 //   - One process-global instance (singleton, all members are file-static).
 //   - Initialize/Shutdown are called from the module's StartupModule/ShutdownModule.
-//   - PIE BeginPIE/EndPIE clear the prev-roster map, the prev-full-selected
-//     snapshot, and the history maps so handles that were valid in the prior
-//     session don't leak forward.
+//   - World/session invalidation clears the prev-roster map, the
+//     prev-full-selected snapshot, and the history maps so handles that were
+//     valid in the prior registry don't leak forward.
 //
 // Threading: collection runs on the game thread (UI Tick), no async work.
 // ====================================================================================================================
@@ -41,6 +41,9 @@ public:
 
     static auto
     Shutdown() -> void;
+
+    static auto
+    Reset_ForWorldChange() -> void;
 
     // -----------------------------------------------------------------------------------------------------------------
     // Snapshot collection — two tiers.

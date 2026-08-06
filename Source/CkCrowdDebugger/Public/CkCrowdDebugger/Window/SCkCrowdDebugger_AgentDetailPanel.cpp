@@ -495,6 +495,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::OnAgentDataRefreshed(
 {
 	if (InSnapshot == nullptr)
 	{
+		_Snapshot = FCkCrowdDebugger_AgentSnapshot{};
 		_HasSelection = false;
 		return;
 	}

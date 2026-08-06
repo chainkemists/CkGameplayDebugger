@@ -18,6 +18,7 @@ public:
     auto IsMultiSection() const -> bool override { return true; }
     auto Get_InspectorSections(const FCk_Handle& Entity) -> TArray<FInspectorSection> override;
     auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void override;
+    auto OnDeactivated() -> void override;
 
 private:
     auto BuildTargetWidget(const FCk_Handle_InteractTarget& InTarget) -> TSharedRef<SWidget>;

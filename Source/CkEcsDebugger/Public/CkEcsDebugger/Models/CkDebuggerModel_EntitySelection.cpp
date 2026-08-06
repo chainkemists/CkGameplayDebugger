@@ -81,6 +81,17 @@ auto FCkDebuggerModel_EntitySelection::Clear_Selection() -> void
     BroadcastSelectionChanged();
 }
 
+auto FCkDebuggerModel_EntitySelection::Reset_ForWorldChange() -> void
+{
+    SelectedEntities.Reset();
+    SelectedEntitiesSet.Reset();
+    History.Reset();
+    HistoryIndex = INDEX_NONE;
+    IsNavigating = false;
+
+    BroadcastSelectionChanged();
+}
+
 // =====================================================================================================================
 
 auto FCkDebuggerModel_EntitySelection::Get_SelectedEntities() const -> const TArray<FCk_Handle>&

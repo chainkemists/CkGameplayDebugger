@@ -109,6 +109,7 @@ private:
 
     // PIE lifecycle — drop handle-bearing state.
     auto HandleWorldTornDown() -> void;
+    auto HandleWorldChanged(UWorld* InWorld) -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel>   _ViewModel;
@@ -145,9 +146,9 @@ private:
     // Entity value only: unlike FCk_Handle this does not retain the PIE registry.
     TOptional<FCk_Entity> _PendingExternalEntity;
 
-    // Editor delegate handles
-    FDelegateHandle _OnBeginPieHandle;
-    FDelegateHandle _OnEndPieHandle;
+    // Common debugger-session boundary.
+    FDelegateHandle _SessionInvalidatedHandle;
+    FDelegateHandle _WorldChangedHandle;
 };
 
 // ====================================================================================================================

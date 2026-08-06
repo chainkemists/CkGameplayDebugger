@@ -31,7 +31,15 @@ namespace ck_debugoverlay
         for (int32 i = 0; i < Cands.Num(); ++i)
         {
             const float S = Score_Candidate(Cands[i], VP);
-            if (S > BestScore) { BestScore = S; Best = i; }
+            const auto IsScoreTie = Best != INDEX_NONE && FMath::IsNearlyEqual(S, BestScore);
+            const auto PreferDeeperHierarchyCandidate =
+                IsScoreTie && Cands[i].Depth > Cands[Best].Depth;
+
+            if ((S > BestScore && NOT IsScoreTie) || PreferDeeperHierarchyCandidate)
+            {
+                BestScore = S;
+                Best = i;
+            }
         }
 
         return Best;

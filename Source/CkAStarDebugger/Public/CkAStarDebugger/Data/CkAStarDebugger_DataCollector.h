@@ -17,6 +17,8 @@ public:
     Collect(
         UWorld* InWorld) -> void;
 
+    auto Reset_ForWorldChange() -> void;
+
     auto
     Get_AllSearchEntities() const -> const TArray<FCkAStarDebugger_SearchInfo>&;
 

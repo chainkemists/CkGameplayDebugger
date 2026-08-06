@@ -27,6 +27,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    ~SCkAStarDebuggerWindow() override;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto TargetEntity(const FCk_Handle& InEntity) -> void;
 
@@ -36,6 +37,8 @@ public:
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto RefreshEntitySelector() -> void;
+    auto HandleWorldChanged(UWorld* InWorld) -> void;
+    auto HandleSessionInvalidated() -> void;
 
     TSharedPtr<FCkAStarDebugger_ViewModel> _ViewModel;
 
@@ -55,6 +58,8 @@ private:
     TOptional<FCk_Entity> _PendingTarget;
 
     UWorld* _CachedWorld = nullptr;
+    FDelegateHandle _WorldChangedHandle;
+    FDelegateHandle _SessionInvalidatedHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

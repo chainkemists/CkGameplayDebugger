@@ -103,6 +103,9 @@ public:
     /** Drops every node and rebuilds from scratch (re-derives cached names). */
     auto ForceFullRefresh() -> void;
 
+    /** Drop all handles owned by the tree without querying the old registry. */
+    auto Reset_ForWorldChange() -> void;
+
     auto ApplyFilter(const FString& InFilterText) -> void;
     auto ApplyHighlight(const FString& InHighlightText) -> void;
     auto ExpandAll() -> void;

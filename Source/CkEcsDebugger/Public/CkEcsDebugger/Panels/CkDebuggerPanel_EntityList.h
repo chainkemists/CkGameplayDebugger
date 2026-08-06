@@ -31,6 +31,9 @@ public:
     /** Current Filter bar text — archetype cards derive toggled state from it. */
     auto Get_FilterText() const -> FString;
 
+    /** Drop all quick-access and tree handles owned by the previous world. */
+    auto Reset_ForWorldChange() -> void;
+
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;
@@ -53,8 +56,6 @@ private:
     auto OnRefreshClicked() -> FReply;
     auto OnExpandAllClicked() -> FReply;
     auto OnCollapseAllClicked() -> FReply;
-    auto OnWorldSelectionChanged() -> void;
-
     auto Get_EntityCountText() const -> FText;
     auto Get_SelectionCountText() const -> FText;
 

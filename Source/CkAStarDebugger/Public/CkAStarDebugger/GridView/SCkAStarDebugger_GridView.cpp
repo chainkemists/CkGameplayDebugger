@@ -30,6 +30,13 @@ auto
     _SearchInfo = InInfo;
 }
 
+auto SCkAStarDebugger_GridView::Reset_ForWorldChange() -> void
+{
+    _SearchInfo = FCkAStarDebugger_SearchInfo{};
+    _IsPanning = false;
+    Invalidate(EInvalidateWidgetReason::Paint);
+}
+
 auto
     SCkAStarDebugger_GridView::
     ComputeDesiredSize(

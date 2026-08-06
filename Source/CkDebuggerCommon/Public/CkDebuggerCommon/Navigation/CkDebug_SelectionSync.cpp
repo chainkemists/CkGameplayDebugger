@@ -6,6 +6,8 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 
+#include "HAL/IConsoleManager.h"
+
 // ====================================================================================================================
 
 namespace
@@ -15,6 +17,12 @@ namespace
     ck::DebugSelectionSync::FGetPrimaryEcsSelection GPrimaryEcsSelectionProvider_SelectionSync;
     uint64 GPrimaryEcsSelectionRegistrationId_SelectionSync = 0;
     uint64 GNextPrimaryEcsSelectionRegistrationId_SelectionSync = 1;
+
+    TAutoConsoleVariable<int32> CVar_OverlayFocusSync_SelectionSync(
+        TEXT("ck.Debug.SelectionSync.OverlayFocus"),
+        0,
+        TEXT("1 = sync the current on-screen overlay focus into every already-open compatible debugger; 0 = disabled."),
+        ECVF_Cheat);
 
     // Owner-chain walk cap. Real chains are a handful deep; the cap is a
     // corruption backstop, not a tuning knob.
@@ -54,6 +62,16 @@ namespace ck::DebugSelectionSync
         if (ck::Is_NOT_Valid(InSelected))  { return; }
 
         GSelectionDelegate_SelectionSync.Broadcast(InSelected, InSource);
+    }
+
+    auto Get_IsOverlayFocusSyncEnabled() -> bool
+    {
+        return CVar_OverlayFocusSync_SelectionSync.GetValueOnGameThread() != 0;
+    }
+
+    auto Get_OverlayFocusSyncCVarName() -> const TCHAR*
+    {
+        return TEXT("ck.Debug.SelectionSync.OverlayFocus");
     }
 
     auto Register_PrimaryEcsSelectionProvider(FGetPrimaryEcsSelection InProvider) -> uint64

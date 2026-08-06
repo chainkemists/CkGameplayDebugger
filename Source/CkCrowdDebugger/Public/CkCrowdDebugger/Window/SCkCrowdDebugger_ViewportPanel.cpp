@@ -13,6 +13,7 @@
 #include "CkCrowd/Agent/CkCrowdAgent_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
@@ -20,7 +21,6 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
@@ -129,30 +129,24 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
 				[
-					SNew(SCheckBox)
-					.ToolTipText(FText::FromString(TEXT("Show the selected agent's retained path-trouble marker, attempted goal, dashed line, status, and Euclidean distance in this viewport.")))
-					.IsChecked_Lambda([]() -> ECheckBoxState
+					SNew(SCkDebug_IconToggle)
+					.IconId(TEXT("Target"))
+					.Label(FText::FromString(TEXT("Selected Trouble")))
+					.ToolTip(FText::FromString(TEXT("Show the selected agent's retained path-trouble marker, attempted goal, dashed line, status, and Euclidean distance in this viewport.")))
+					.IsOn_Lambda([]()
 					{
 						const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
-						return Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay
-							? ECheckBoxState::Checked
-							: ECheckBoxState::Unchecked;
+						return Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay;
 					})
-					.OnCheckStateChanged_Lambda([](ECheckBoxState InNewState)
+					.OnStateChanged_Lambda([](bool InIsOn)
 					{
 						auto* Settings = GetMutableDefault<UCkCrowdDebuggerSettings>();
 						if (Settings == nullptr)
 						{ return; }
 
-						Settings->ShowSelectedPathTroubleOverlay = InNewState == ECheckBoxState::Checked;
+						Settings->ShowSelectedPathTroubleOverlay = InIsOn;
 						Settings->SaveConfig();
 					})
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("Selected Trouble")))
-						.ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
-					]
 				]
 			]
 			+ SVerticalBox::Slot().FillHeight(1.0f)

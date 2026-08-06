@@ -50,10 +50,12 @@ public:
 
 private:
 	auto BuildToolbar() -> TSharedRef<SWidget>;
+	auto BuildMenuActions() -> TSharedRef<SWidget>;
 	auto Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> void;
 	auto Get_VoxelSnapshotBuildParams() const -> ck::voxelnav::FDebugSnapshotBuildParams;
 	auto Get_VoxelSourceLabel() const -> FText;
 	auto HandleWorldChanged(UWorld* InWorld) -> void;
+	auto HandleSessionInvalidated() -> void;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
@@ -79,8 +81,9 @@ private:
 	bool _ShowVoxelOccupied = false;
 	bool _ShowVoxelPortals = true;
 	bool _ShowVoxelDirtyRepair = true;
-	FDelegateHandle _WorldChangedHandle;
 	TOptional<FCk_Entity> _PendingTarget;
+	FDelegateHandle _WorldChangedHandle;
+	FDelegateHandle _SessionInvalidatedHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

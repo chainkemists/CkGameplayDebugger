@@ -21,6 +21,7 @@ public:
 
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkAStarDebugger_ViewModel> InViewModel) -> void;
     auto SetSearchInfo(const FCkAStarDebugger_SearchInfo& InInfo) -> void;
+    auto Reset_ForWorldChange() -> void;
 
     auto OnPaint(const FPaintArgs& InArgs, const FGeometry& InAllottedGeometry, const FSlateRect& InMyCullingRect, FSlateWindowElementList& InOutDrawElements, int32 InLayerId, const FWidgetStyle& InWidgetStyle, bool InbParentEnabled) const -> int32 override;
     auto ComputeDesiredSize(float InLayoutScaleMultiplier) const -> FVector2D override;

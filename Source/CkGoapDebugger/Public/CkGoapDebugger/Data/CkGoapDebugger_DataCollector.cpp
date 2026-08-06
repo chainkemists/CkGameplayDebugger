@@ -3,6 +3,8 @@
 #include "CkCore/Object/CkObject_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
@@ -20,10 +22,6 @@
 #include "CkGoap/Action/CkGoap_Action_Record_Internal.h"        // FFragment_RecordOfGoapActions + utils
 #include "CkGoap/WorldState/CkGoap_WorldState_Fragment.h"
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
-
-#if WITH_EDITOR
-#include "Editor.h"
-#endif
 
 #include "Engine/World.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
@@ -63,10 +61,7 @@ namespace ck_goap_debugger_data_collector_internal
     // Empty sentinel — returned by GetHistory when the entity has no entries.
     static const TArray<FCkGoapDebugger_HistoryEvent> GEmptyHistory{};
 
-#if WITH_EDITOR
-    static FDelegateHandle GBeginPieHandle;
-    static FDelegateHandle GEndPieHandle;
-#endif
+    static FDelegateHandle GSessionInvalidatedHandle;
 
     // ----------------------------------------------------------------------------------------------------------------
     // Helpers
@@ -1387,17 +1382,10 @@ auto
 {
     using namespace ck_goap_debugger_data_collector_internal;
 
-#if WITH_EDITOR
-    GBeginPieHandle = FEditorDelegates::BeginPIE.AddLambda([](bool /*bIsSimulating*/)
+    GSessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddLambda([]()
     {
         ClearAllCaches();
     });
-
-    GEndPieHandle = FEditorDelegates::EndPIE.AddLambda([](bool /*bIsSimulating*/)
-    {
-        ClearAllCaches();
-    });
-#endif
 }
 
 auto
@@ -1407,20 +1395,18 @@ auto
 {
     using namespace ck_goap_debugger_data_collector_internal;
 
-#if WITH_EDITOR
-    if (GBeginPieHandle.IsValid())
+    if (GSessionInvalidatedHandle.IsValid())
     {
-        FEditorDelegates::BeginPIE.Remove(GBeginPieHandle);
-        GBeginPieHandle.Reset();
+        ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(GSessionInvalidatedHandle);
+        GSessionInvalidatedHandle.Reset();
     }
-    if (GEndPieHandle.IsValid())
-    {
-        FEditorDelegates::EndPIE.Remove(GEndPieHandle);
-        GEndPieHandle.Reset();
-    }
-#endif
 
     ClearAllCaches();
+}
+
+auto FCkGoapDebugger_DataCollector::Reset_ForWorldChange() -> void
+{
+    ck_goap_debugger_data_collector_internal::ClearAllCaches();
 }
 
 // ====================================================================================================================

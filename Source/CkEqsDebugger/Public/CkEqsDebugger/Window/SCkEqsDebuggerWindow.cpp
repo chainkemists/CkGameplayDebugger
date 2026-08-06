@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 
@@ -24,8 +25,6 @@
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Input/SMenuAnchor.h"
 
 #define LOCTEXT_NAMESPACE "SCkEqsDebuggerWindow"
 
@@ -35,31 +34,38 @@ const FName SCkEqsDebuggerWindow::WindowId = FName("CkEqsDebugger");
 
 namespace
 {
-    // One row inside the View-menu popover: a checkbox bound to a UCkEqsDebuggerSettings bool field.
-    // Pointer-to-member-bool keeps the popover construction concise: BuildSettingRow(&UCk...::Show_X, "Label").
-    auto BuildSettingRow(
+    auto MakeOverlayToggle(
+        FName InId,
+        FName InIconId,
         bool UCkEqsDebuggerSettings::* InMember,
-        const FText&                   InLabel) -> TSharedRef<SWidget>
+        const TCHAR* InLabel,
+        const TCHAR* InToolTip,
+        bool InIsMaster = false) -> FCkDebug_IconToggleAction
     {
-        return SNew(SCheckBox)
-            .IsChecked_Lambda([InMember]()
+        return FCkDebug_IconToggleAction{
+            InId,
+            InIconId,
+            FText::FromString(InLabel),
+            FText::FromString(InToolTip),
+            TAttribute<bool>::CreateLambda([InMember]()
             {
-                return UCkEqsDebuggerSettings::Get()->*InMember
-                    ? ECheckBoxState::Checked
-                    : ECheckBoxState::Unchecked;
-            })
-            .OnCheckStateChanged_Lambda([InMember](ECheckBoxState InState)
+                const auto* Settings = UCkEqsDebuggerSettings::Get();
+                return Settings != nullptr && Settings->*InMember;
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([InMember](bool InNewState)
             {
-                auto* Mutable = UCkEqsDebuggerSettings::GetMutable();
-                Mutable->*InMember = (InState == ECheckBoxState::Checked);
-                Mutable->SaveConfig();
-            })
-            [
-                SNew(STextBlock)
-                .Text(InLabel)
-                .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
-                .Margin(FMargin{4.0f, 0.0f, 0.0f, 0.0f})
-            ];
+                auto* Settings = UCkEqsDebuggerSettings::GetMutable();
+                if (Settings == nullptr)
+                { return; }
+
+                Settings->*InMember = InNewState;
+                Settings->SaveConfig();
+            }),
+            TAttribute<bool>::CreateLambda([InIsMaster]()
+            {
+                return InIsMaster || (UCkEqsDebuggerSettings::Get() != nullptr
+                    && UCkEqsDebuggerSettings::Get()->Show_Overlay);
+            })};
     }
 }
 
@@ -192,27 +198,31 @@ auto
             ]
         ]
 
-        // View menu — overlay toggles popover. Anchor + button + popover-builder lambda.
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 6.0f, 0.0f})
+        // In-world overlay toggles. The shared toolbar keeps the highest-frequency actions direct
+        // on wide windows and moves the rest into More on compact windows.
+        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 6.0f, 0.0f})
         [
-            SAssignNew(_ViewMenuAnchor, SMenuAnchor)
-            .Placement(MenuPlacement_BelowAnchor)
-            .OnGetMenuContent(this, &SCkEqsDebuggerWindow::Build_ViewMenuPopover)
-            [
-                SNew(SButton)
-                .ToolTipText(FText::FromString(TEXT("Toggle in-world overlay features (saved per user)")))
-                .OnClicked_Lambda([this]() -> FReply
-                {
-                    if (_ViewMenuAnchor.IsValid())
-                    { _ViewMenuAnchor->SetIsOpen(NOT _ViewMenuAnchor->IsOpen()); }
-                    return FReply::Handled();
-                })
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("View ▾")))   // ▾
-                    .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
-                ]
-            ]
+            SNew(SCkDebug_IconToolbar)
+            .WideDirectCount(6)
+            .CompactDirectCount(3)
+            .Actions(TArray<FCkDebug_IconToggleAction>{
+                MakeOverlayToggle(TEXT("Overlay"), TEXT("World"), &UCkEqsDebuggerSettings::Show_Overlay,
+                    TEXT("Overlay"), TEXT("Master toggle. When off, no spheres / lines / markers are drawn for the selected query."), true),
+                MakeOverlayToggle(TEXT("AllQueries"), TEXT("People"), &UCkEqsDebuggerSettings::Show_AllQueriesAlways,
+                    TEXT("All queries"), TEXT("Show the overlay for every query in the world, not just the selected query.")),
+                MakeOverlayToggle(TEXT("Candidates"), TEXT("Probe"), &UCkEqsDebuggerSettings::Show_AllCandidateSpheres,
+                    TEXT("Candidates"), TEXT("Draw a sphere at every candidate location, color-lerped by final score.")),
+                MakeOverlayToggle(TEXT("Best"), TEXT("Target"), &UCkEqsDebuggerSettings::Show_BestCandidateHighlight,
+                    TEXT("Best pick"), TEXT("Highlight the top-scoring candidate with a larger amber sphere.")),
+                MakeOverlayToggle(TEXT("Failed"), TEXT("Skull"), &UCkEqsDebuggerSettings::Show_FailedCandidates,
+                    TEXT("Failed candidates"), TEXT("Draw filter-failed candidates as muted gray spheres.")),
+                MakeOverlayToggle(TEXT("Querier"), TEXT("Person"), &UCkEqsDebuggerSettings::Show_QuerierMarker,
+                    TEXT("Querier"), TEXT("Draw a small sphere at the querier's location.")),
+                MakeOverlayToggle(TEXT("BestLine"), TEXT("Rail"), &UCkEqsDebuggerSettings::Show_BestLocationLine,
+                    TEXT("Best line"), TEXT("Draw a line from the querier to the best candidate location.")),
+                MakeOverlayToggle(TEXT("GridLines"), TEXT("Grid"), &UCkEqsDebuggerSettings::Show_GridLines,
+                    TEXT("Grid lattice"), TEXT("For SimpleGrid and Grid generators, draw a wireframe lattice connecting cells."))
+            })
         ]
 
         // Separator
@@ -221,8 +231,8 @@ auto
             SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f)
         ]
 
-        // Status text (query count + pause indicator). FillWidth so refresh controls right-align.
-        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
+        // Status text (query count + pause indicator).
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [
             SAssignNew(_StatusLabel, SCkDebug_SelectableLabel)
             .Text(FText::FromString(TEXT("(no PIE world)")))
@@ -233,64 +243,6 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{12.0f, 0.0f, 0.0f, 0.0f})
         [
             SNew(SCkDebugger_RefreshControls).WindowId(WindowId)
-        ];
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkEqsDebuggerWindow::
-    Build_ViewMenuPopover()
-    -> TSharedRef<SWidget>
-{
-    return SNew(SBorder)
-        .Padding(FMargin{8.0f})
-        .BorderBackgroundColor(FCkEqsDebuggerStyle::Color_Panel_Background)
-        [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("In-World Overlay")))
-                .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-            ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_Overlay,                FText::FromString(TEXT("Show overlay (master)"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_AllQueriesAlways,       FText::FromString(TEXT("Show ALL queries (ignore selection)"))) ]
-
-            + SVerticalBox::Slot().AutoHeight()
-            [ SNew(SSeparator).Orientation(Orient_Horizontal).Thickness(1.0f) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_AllCandidateSpheres,    FText::FromString(TEXT("All candidate spheres"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_BestCandidateHighlight, FText::FromString(TEXT("Highlight best pick"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_FailedCandidates,       FText::FromString(TEXT("Show failed candidates"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_QuerierMarker,          FText::FromString(TEXT("Querier marker"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_BestLocationLine,       FText::FromString(TEXT("Querier-to-best line"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 2.0f})
-            [ BuildSettingRow(&UCkEqsDebuggerSettings::Show_GridLines,              FText::FromString(TEXT("Grid lattice (SimpleGrid / Grid)"))) ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 6.0f, 0.0f, 0.0f})
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Sizes editable in Project Settings → Plugins → Ck EQS Debugger")))
-                .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Muted})
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-            ]
         ];
 }
 

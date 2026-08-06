@@ -87,6 +87,22 @@ auto
             OpenDebugger();
             if (_DebuggerWindow.IsValid()) { _DebuggerWindow->TargetEntity(Target); }
         }});
+
+    // Selection sync only adopts into a live window. Unlike the entity-target
+    // route above, it must not create a tab or take foreground focus.
+    _SelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddLambda(
+        [this](const FCk_Handle& InEntity, FName InSource)
+        {
+            if (InSource == TEXT("AStarDebugger")) { return; }
+            if (ck::Is_NOT_Valid(InEntity))          { return; }
+            if (NOT _DebuggerWindow.IsValid())       { return; }
+
+            const auto Target = ResolveAStarTarget(InEntity);
+            if (NOT ck::IsValid(Target)) { return; }
+
+            const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+            _DebuggerWindow->TargetEntity(Target);
+        });
 }
 
 auto
@@ -94,6 +110,12 @@ auto
     ShutdownModule()
     -> void
 {
+    if (_SelectionSyncHandle.IsValid())
+    {
+        ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle);
+        _SelectionSyncHandle.Reset();
+    }
+
     FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
     _EntityTargetRouteRegistrationId = 0;
 

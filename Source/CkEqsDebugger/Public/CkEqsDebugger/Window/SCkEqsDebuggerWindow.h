@@ -16,11 +16,10 @@ class SCkEqsDebugger_QueryList;
 class SCkEqsDebugger_CandidatePanel;
 class SCkEqsDebugger_TestBreakdownPanel;
 class SCkDebug_SelectableLabel;
-class SMenuAnchor;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window. Three-pane layout (QueryList | CandidatePanel | TestBreakdownPanel) under a toolbar
-// with a View menu (overlay toggles), pause button, and refresh-rate controls. Also owns the in-world overlay manager
+// with icon toggles for the overlay, pause button, and refresh-rate controls. Also owns the in-world overlay manager
 // that draws PMG sphere markers + querier marker + best-location line for the selected query.
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -42,7 +41,6 @@ public:
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
-    auto Build_ViewMenuPopover() -> TSharedRef<SWidget>;
 
     auto OnEndPIE(const bool InWasSimulating) -> void;
     auto OnBeginPIE(const bool InIsSimulating) -> void;
@@ -55,7 +53,6 @@ private:
     TSharedPtr<SCkEqsDebugger_TestBreakdownPanel>  _TestBreakdownPanel;
 
     TSharedPtr<SCkDebug_SelectableLabel> _StatusLabel;
-    TSharedPtr<SMenuAnchor>              _ViewMenuAnchor;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     UWorld* _CachedWorld = nullptr;

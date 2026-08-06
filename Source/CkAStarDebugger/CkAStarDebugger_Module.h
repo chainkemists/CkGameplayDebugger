@@ -27,6 +27,7 @@ private:
 
     uint64 _DebuggerToolRegistrationId = 0;
     uint64 _EntityTargetRouteRegistrationId = 0;
+    FDelegateHandle _SelectionSyncHandle;
 
 	static const FName _DebuggerTabName;
 };

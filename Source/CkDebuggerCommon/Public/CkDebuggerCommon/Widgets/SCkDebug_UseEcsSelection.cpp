@@ -30,9 +30,9 @@ auto SCkDebug_UseEcsSelection::Get_Label() const -> FText
 {
     const auto Selection = ck::DebugSelectionSync::Get_PrimaryEcsSelection();
     if (ck::Is_NOT_Valid(Selection))
-    { return FText::FromString(TEXT("Use ECS Selection")); }
+    { return FText::FromString(TEXT("Sync from ECS")); }
 
-    return FText::FromString(ck::Format_UE(TEXT("Use ECS {}"), Selection.Get_Entity()));
+    return FText::FromString(ck::Format_UE(TEXT("Sync from ECS {}"), Selection.Get_Entity()));
 }
 
 auto SCkDebug_UseEcsSelection::Get_Tooltip() const -> FText
@@ -49,7 +49,7 @@ auto SCkDebug_UseEcsSelection::Get_Tooltip() const -> FText
 
     const auto Name = UCk_Utils_Handle_UE::Get_DebugName(Selection);
     return FText::FromString(ck::Format_UE(
-        TEXT("Select the matching entity in this debugger{}"),
+        TEXT("Sync the matching entity in this debugger from the ECS Debugger{}"),
         Name.IsNone() ? FString{} : ck::Format_UE(TEXT(": {}"), Name)));
 }
 

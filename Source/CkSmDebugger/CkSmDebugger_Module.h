@@ -32,6 +32,7 @@ private:
 
     uint64 _DebuggerToolRegistrationId = 0;
     uint64 _EntityTargetRouteRegistrationId = 0;
+    FDelegateHandle _SelectionSyncHandle;
     FDelegateHandle _TabForegroundedHandle;
 
     static const FName _DebuggerTabName;

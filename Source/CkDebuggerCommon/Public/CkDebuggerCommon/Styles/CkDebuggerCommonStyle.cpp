@@ -4,6 +4,8 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Interfaces/IPluginManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/SlateTypes.h"
 #include "Styling/StyleDefaults.h"
@@ -92,6 +94,28 @@ auto
     return Get().GetWidgetStyle<FButtonStyle>(TEXT("CkCommon.FlatButton"));
 }
 
+auto
+    FCkDebuggerCommonStyle::
+    Get_IconToggleStyle()
+    -> const FCheckBoxStyle&
+{
+    return Get().GetWidgetStyle<FCheckBoxStyle>(TEXT("CkCommon.IconToggle"));
+}
+
+auto
+    FCkDebuggerCommonStyle::
+    Get_IconBrush(FName InIconId)
+    -> const FSlateBrush*
+{
+    if (InIconId.IsNone() || NOT StyleInstance.IsValid())
+    { return nullptr; }
+
+    return StyleInstance->GetOptionalBrush(
+        FName{FString{TEXT("CkCommon.Icon.")} + InIconId.ToString()},
+        nullptr,
+        nullptr);
+}
+
 // ====================================================================================================================
 
 auto
@@ -102,10 +126,14 @@ auto
     auto Style = MakeShared<FSlateStyleSet>(GetStyleSetName());
 
     const auto Plugin = IPluginManager::Get().FindPlugin(TEXT("CkDebugger"));
-    CK_ENSURE_IF_NOT(Plugin.IsValid(), TEXT("CkDebugger plugin not found — glow brushes will be missing"))
+    const auto PluginIsValid = Plugin.IsValid();
+    CK_ENSURE_IF_NOT(PluginIsValid, TEXT("CkDebugger plugin not found — common debugger brushes will be missing"))
+    {}
+    if (NOT PluginIsValid)
     { return Style; }
 
     Style->SetContentRoot(Plugin->GetBaseDir() / TEXT("Source/CkDebuggerCommon/Resources"));
+    CreateIconBrushes(Style, Plugin->GetBaseDir());
 
     // ---- Glow halos (white, tint at use site) ----------------------------------------------------------------------
     Style->Set("CkCommon.Glow.Soft", new FSlateBoxBrush(
@@ -125,7 +153,49 @@ auto
         .SetNormalPadding(FMargin{0.0f})
         .SetPressedPadding(FMargin{0.0f}));
 
+    // ---- Icon toggle (toolbar + contextual boolean controls) ------------------------------------------------------
+    Style->Set("CkCommon.IconToggle", FCheckBoxStyle()
+        .SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
+        .SetUncheckedImage(FSlateRoundedBoxBrush{CkStyle::Bg2(), 4.0f, CkStyle::Border(), 1.0f})
+        .SetUncheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::TextMute(), 1.0f})
+        .SetUncheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::TextDim(), 1.0f})
+        .SetCheckedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.30f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetCheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.45f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetCheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.30f), 4.0f, CkStyle::Selection(), 1.0f})
+        .SetForegroundColor(CkStyle::TextDim())
+        .SetHoveredForegroundColor(CkStyle::Text())
+        .SetPressedForegroundColor(CkStyle::Text())
+        .SetCheckedForegroundColor(CkStyle::TextStrong())
+        .SetCheckedHoveredForegroundColor(CkStyle::TextStrong())
+        .SetCheckedPressedForegroundColor(CkStyle::TextStrong())
+        .SetPadding(FMargin{6.0f, 4.0f}));
+
     return Style;
+}
+
+auto
+    FCkDebuggerCommonStyle::
+    CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle, const FString& InPluginBaseDir)
+    -> void
+{
+    const auto RegisterDirectory = [&InStyle](const FString& InDirectory) -> void
+    {
+        auto Files = TArray<FString>{};
+        IFileManager::Get().FindFiles(Files, *(InDirectory / TEXT("*.svg")), true, false);
+        Files.Sort();
+
+        for (const auto& File : Files)
+        {
+            const auto IconId = FPaths::GetBaseFilename(File);
+            InStyle->Set(
+                FName{FString{TEXT("CkCommon.Icon.")} + IconId},
+                new FSlateVectorImageBrush{InDirectory / File, FVector2D{16.0f, 16.0f}});
+        }
+    };
+
+    const auto IconsDirectory = InPluginBaseDir / TEXT("Resources/Icons");
+    RegisterDirectory(IconsDirectory);
+    RegisterDirectory(IconsDirectory / TEXT("General"));
 }
 
 // ====================================================================================================================

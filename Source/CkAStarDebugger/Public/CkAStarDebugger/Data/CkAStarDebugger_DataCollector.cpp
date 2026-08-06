@@ -15,6 +15,16 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto FCkAStarDebugger_DataCollector::Reset_ForWorldChange() -> void
+{
+    _SearchEntities.Reset();
+    _SearchHistory.Reset();
+    _LastKnownStatus.Reset();
+    _Accumulators.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto
     FCkAStarDebugger_DataCollector::
     Collect(

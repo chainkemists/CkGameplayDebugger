@@ -48,6 +48,14 @@ namespace ck::DebugMarkers
 
     // Console-variable name of the shared depth gate (for UI bindings).
     CKDEBUGGERCOMMON_API auto Get_MaxDepthCVarName() -> const TCHAR*;
+
+    // Opt-in session switch for expanding the per-gather FullDepthRoots below.
+    // Consumers own those roots and must pass them on every Gather call; markers
+    // never retain handles across frames.
+    CKDEBUGGERCOMMON_API auto Get_FocusFullDepth() -> bool;
+
+    // Console-variable name of the focus full-depth switch (for UI bindings).
+    CKDEBUGGERCOMMON_API auto Get_FocusFullDepthCVarName() -> const TCHAR*;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -74,6 +82,12 @@ public:
         // CullOrigin are excluded entirely (markers, links, and the entry list).
         TOptional<FVector> CullOrigin;
         float              CullRadius = 0.0f;
+
+        // Optional call-scoped roots whose lifetime subtrees bypass MaxDepth when
+        // ck.Debug.EntityMarkers.FocusFullDepth is enabled. Each root and every
+        // descendant is included; sibling branches still obey MaxDepth. Gather
+        // validates and uses these synchronously only -- it stores no handles.
+        TArray<FCk_Handle> FullDepthRoots;
     };
 
     struct FDrawParams

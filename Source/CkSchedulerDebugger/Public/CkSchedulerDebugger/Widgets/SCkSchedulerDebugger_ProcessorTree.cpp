@@ -13,12 +13,12 @@
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -645,20 +645,20 @@ auto
 												.VAlign(VAlign_Center)
 												.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
 												[
-													SNew(SCheckBox)
-														.IsChecked_Lambda([this]() -> ECheckBoxState
+													SNew(SCkDebug_IconToggle)
+														.IconId(TEXT("Moon"))
+														.Label(FText::FromString(TEXT("Hide idle processors")))
+														.ToolTip(FText::FromString(TEXT("Hide idle processors (zero entity count).")))
+														.IsOn_Lambda([this]()
 														{
-															return _BreakdownHideIdle
-																? ECheckBoxState::Checked
-																: ECheckBoxState::Unchecked;
+															return _BreakdownHideIdle;
 														})
-														.OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+														.OnStateChanged_Lambda([this](bool InIsOn)
 														{
-															_BreakdownHideIdle = (InState == ECheckBoxState::Checked);
+															_BreakdownHideIdle = InIsOn;
 															_LastPumpDataHash = 0;
 															DoOnDataRefreshed();
 														})
-														.ToolTipText(FText::FromString(TEXT("Hide idle processors (zero entity count)")))
 												]
 
 											+ SHorizontalBox::Slot()

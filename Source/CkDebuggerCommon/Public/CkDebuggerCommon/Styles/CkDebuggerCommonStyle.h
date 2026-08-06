@@ -5,6 +5,7 @@
 #include "Styling/SlateStyle.h"
 
 struct FButtonStyle;
+struct FCheckBoxStyle;
 struct FSlateBrush;
 
 // ====================================================================================================================
@@ -32,9 +33,9 @@ public:
     static auto GetStyleSetName() -> FName;
 
     // ----------------------------------------------------------------------------------------------------------------
-    // Brush accessors — nullptr-safe (return the style's default missing brush
-    // if called before Initialize, which is a programming error surfaced
-    // visually rather than a crash).
+    // Brush accessors are lifetime-safe. Fixed common brushes return the
+    // style's missing brush before initialization; named icons return nullptr
+    // so descriptor validation can reject the whole toolbar atomically.
     // ----------------------------------------------------------------------------------------------------------------
 
     // Wide soft halo — card emphasis, active-chain leaf glow.
@@ -47,8 +48,17 @@ public:
     // icon buttons, any "text that clicks" surface.
     static auto Get_FlatButtonStyle() -> const FButtonStyle&;
 
+    // Suite-wide icon toggle surface used by debugger toolbars and contextual
+    // boolean controls. Feature modules bind state; Common owns presentation.
+    static auto Get_IconToggleStyle() -> const FCheckBoxStyle&;
+
+    // Resolves a monochrome debugger glyph from Resources/Icons. The brush is
+    // white and should be tinted through the widget foreground color.
+    static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
+
 private:
     static auto Create() -> TSharedRef<FSlateStyleSet>;
+    static auto CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle, const FString& InPluginBaseDir) -> void;
 
     static TSharedPtr<FSlateStyleSet> StyleInstance;
 };

@@ -13,6 +13,8 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
@@ -49,6 +51,8 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 	_WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
 		this, &SCkCrowdDebuggerWindow::HandleWorldChanged);
+	_SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+		this, &SCkCrowdDebuggerWindow::HandleSessionInvalidated);
 
 	_NavmeshStatusPanel = SNew(SCkCrowdDebugger_NavmeshStatusPanel).ViewModel(_ViewModel);
 	_AgentListPanel     = SNew(SCkCrowdDebugger_AgentListPanel).ViewModel(_ViewModel);
@@ -81,6 +85,10 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		.WindowId(WindowId)
 		.ToolTabId(TEXT("CkCrowdDebugger"))
 		.DisplayName(FText::FromString(TEXT("CK Crowd Debugger")))
+		.MenuActionsContent()
+		[
+			BuildMenuActions()
+		]
 		.Content()
 		[
 		SNew(SVerticalBox)
@@ -112,15 +120,25 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 	];
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
 auto SCkCrowdDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
+	_PendingTarget.Reset();
 	if (_ViewModel.IsValid())
 	{ _ViewModel->Reset_ForWorldChange(); }
 	if (_ViewportPanel.IsValid())
 	{ _ViewportPanel->Clear_VoxelNavSnapshot(); }
 	_VoxelRefreshRequested = true;
+}
+
+auto SCkCrowdDebuggerWindow::HandleSessionInvalidated() -> void
+{
+	if (_WorldModel.IsValid() && _WorldModel->Get_SelectedWorld() != nullptr)
+	{
+		_WorldModel->Set_SelectedWorld(nullptr);
+		return;
+	}
+
+	HandleWorldChanged(nullptr);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -138,6 +156,13 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 	auto* World = _WorldModel->Get_SelectedWorld();
 
 	_ViewModel->Tick(World, InDeltaTime);
+	if (_PendingTarget.IsSet())
+	{
+		const auto Target = _PendingTarget.GetValue();
+		_PendingTarget.Reset();
+		if (_AgentListPanel.IsValid()) { _AgentListPanel->SelectEntityExternal(Target); }
+	}
+
 	if (_ViewportPanel.IsValid())
 	{
 		_ViewportPanel->Set_NavmeshTriangles(
@@ -154,13 +179,6 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 		Refresh_VoxelSnapshot(World);
 		_VoxelRefreshRequested = false;
 		_NextVoxelRefreshTime = InCurrentTime + 0.25;
-	}
-
-	if (_PendingTarget.IsSet())
-	{
-		const auto Target = _PendingTarget.GetValue();
-		_PendingTarget.Reset();
-		if (_AgentListPanel.IsValid()) { _AgentListPanel->SelectEntityExternal(Target); }
 	}
 }
 
@@ -325,6 +343,26 @@ namespace
 		}
 
 		return Combined;
+	}
+
+	auto MakeCVarToggle(
+		FName InId,
+		FName InIconId,
+		const TCHAR* InCVarName,
+		const TCHAR* InLabel,
+		const TCHAR* InToolTip) -> FCkDebug_IconToggleAction
+	{
+		const auto CVarName = FString{InCVarName};
+		return FCkDebug_IconToggleAction{
+			InId,
+			InIconId,
+			FText::FromString(InLabel),
+			FText::FromString(InToolTip),
+			TAttribute<bool>::CreateLambda([CVarName]() { return Get_CVarBool(*CVarName); }),
+			FOnCkDebug_IconToggleChanged::CreateLambda([CVarName](bool InNewState)
+			{
+				Set_CVarBool(*CVarName, InNewState);
+			})};
 	}
 }
 
@@ -716,10 +754,28 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkCrowdDebuggerWindow::BuildMenuActions() -> TSharedRef<SWidget>
+{
+	// CVar-backed state remains live so external console changes repaint without caching.
+	return SNew(SCkDebug_IconToolbar)
+		.Actions(TArray<FCkDebug_IconToggleAction>{
+			MakeCVarToggle(TEXT("Breadcrumbs"), TEXT("Footprint"), TEXT("ck.Crowd.DrawBreadcrumbs"), TEXT("Breadcrumbs"), TEXT("Draw a breadcrumb trail (the agent's actually-traversed path) for every agent that has the recorder feature. The selected agent is always drawn regardless of this toggle.")),
+			MakeCVarToggle(TEXT("PlannedPaths"), TEXT("Target"), TEXT("ck.Crowd.DrawPlannedPaths"), TEXT("Planned paths"), TEXT("Draw the planned-path waypoints for every agent that has a path result. The selected agent is always drawn regardless of this toggle.")),
+			MakeCVarToggle(TEXT("WorldTrouble"), TEXT("Skull"), TEXT("ck.Crowd.DrawPathTrouble"), TEXT("World trouble"), TEXT("Draw path-trouble diagnostics in the game world for every affected agent: marker, sidewalk/Unreal-nav status, attempted goal, dashed line, and Euclidean distance.")),
+			MakeCVarToggle(TEXT("AgentBody"), TEXT("Person"), TEXT("ck.Crowd.Debug.AgentBody"), TEXT("Agent body"), TEXT("Draw a body capsule + forward-facing cone for every crowd agent. Color comes from the agent's debug color (per-agent override or hash-derived stable fallback). PathPending agents tint yellow; Asleep agents desaturate.")),
+			MakeCVarToggle(TEXT("Separation"), TEXT("People"), TEXT("ck.Crowd.Debug"), TEXT("Separation"), TEXT("Draw separation diagnostics for every awake crowd agent: yellow separation-radius circle on the floor, cyan lines to each neighbor in the steering cache, orange arrow showing the active separation force.")),
+			MakeCVarToggle(TEXT("Rings"), TEXT("Ring"), TEXT("ck.Crowd.DrawAgentRings"), TEXT("Rings"), TEXT("Draw the orbit-diagnosis rings for every crowd agent: arrival ring (green) + predicted-orbit ring (red) at the goal, the turn-radius circle (blue) tangent to the agent, and the velocity vector (yellow). The selected agent is always drawn regardless of this toggle."))});
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 {
 	if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
 	{ _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
+
+	if (_SessionInvalidatedHandle.IsValid())
+	{ ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 
 	_ViewModel.Reset();
 }

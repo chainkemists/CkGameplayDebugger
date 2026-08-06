@@ -37,14 +37,16 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
 
     // Forwards to the primary (auto-following) focus card.
-    // bIsLocked: amber ring (focus lock). InCoLocatedIndex/Count: "i/N" header badge when
-    // the focus entity is one of several co-located entities.
+    // bIsLocked: amber ring (focus lock). bIsPinned: cyan ring, which takes precedence.
+    // InCoLocatedIndex/Count: "i/N" header badge when the focus entity is one of several
+    // co-located entities.
     auto Set_FocusCardContent(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
         bool                                bIsLocked        = false,
+        bool                                bIsPinned        = false,
         int32                               InCoLocatedIndex = INDEX_NONE,
         int32                               InCoLocatedCount = 0) -> void;
 

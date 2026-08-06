@@ -654,6 +654,33 @@ auto SCkDebuggerWidget_EntityTree::ForceFullRefresh() -> void
     RefreshTree();
 }
 
+auto SCkDebuggerWidget_EntityTree::Reset_ForWorldChange() -> void
+{
+    IsUpdatingSelection = true;
+    if (TreeView.IsValid())
+    {
+        TreeView->ClearSelection();
+        CollapseAll();
+    }
+    IsUpdatingSelection = false;
+
+    const auto HadPins = NOT PinnedEntities.IsEmpty();
+    PinnedEntities.Reset();
+    RootNodes.Reset();
+    FilteredRootNodes.Reset();
+    AllNodes.Reset();
+    NodeMap.Reset();
+    GroupNodeCache.Reset();
+    MemberToGroup.Reset();
+    NeedsRefresh = true;
+
+    if (TreeView.IsValid())
+    { TreeView->RequestTreeRefresh(); }
+
+    if (HadPins)
+    { OnPinsChanged.Broadcast(); }
+}
+
 auto SCkDebuggerWidget_EntityTree::ApplyFilter(const FString& InFilterText) -> void
 {
     CurrentFilter = InFilterText;

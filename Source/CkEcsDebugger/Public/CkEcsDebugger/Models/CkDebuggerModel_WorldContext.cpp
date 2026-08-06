@@ -123,6 +123,21 @@ auto FCkDebuggerModel_WorldContext::Get_HasStructuralChanges() const -> bool
     return ck::debug_feature_flags::Get_Revision(CachedTransientEntity.Get_RegistryView()) != LastSeenFlagRevision;
 }
 
+auto FCkDebuggerModel_WorldContext::Reset_ForWorldChange() -> void
+{
+    // Never diff or query handles from the previous registry. A new world will
+    // repopulate the cache from scratch on the next refresh.
+    CachedEntities.Reset();
+    CachedEntitySet.Reset();
+    LastAdded.Reset();
+    LastRemoved.Reset();
+    CachedTransientEntity = FCk_Handle{};
+    LastSeenFlagRevision = 0;
+    CacheDirty = true;
+
+    OnWorldChanged.Broadcast(Get_SelectedWorld());
+}
+
 auto FCkDebuggerModel_WorldContext::MarkCacheDirty() -> void
 {
     CacheDirty = true;
@@ -145,8 +160,7 @@ auto FCkDebuggerModel_WorldContext::IsCacheDirty() const -> bool
     return false;
 }
 
-auto FCkDebuggerModel_WorldContext::OnSelectorWorldChanged(UWorld* InWorld) -> void
+auto FCkDebuggerModel_WorldContext::OnSelectorWorldChanged(UWorld*) -> void
 {
-    MarkCacheDirty();
-    OnWorldChanged.Broadcast(InWorld);
+    Reset_ForWorldChange();
 }

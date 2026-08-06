@@ -14,6 +14,13 @@ public:
     auto Toggle_SelectedEntity(const FCk_Handle& InEntity) -> void;
     auto Clear_Selection() -> void;
 
+    /**
+     * Drop every handle owned by this model at a world/session boundary.
+     * Unlike Clear_Selection, this does not make the old selection reachable
+     * through Back history.
+     */
+    auto Reset_ForWorldChange() -> void;
+
     auto Get_SelectedEntities() const -> const TArray<FCk_Handle>&;
     auto Get_PrimarySelection() const -> FCk_Handle;
     auto IsSelected(const FCk_Handle& InEntity) const -> bool;
@@ -28,7 +35,7 @@ public:
     auto CanNavigateBack() const -> bool;
     auto CanNavigateForward() const -> bool;
 
-    /** Clear all history (e.g., on world change). Does not affect current selection. */
+    /** Clear all history. Does not affect current selection. */
     auto ClearHistory() -> void;
 
     FCkDebugger_OnSelectionChanged OnSelectionChanged;

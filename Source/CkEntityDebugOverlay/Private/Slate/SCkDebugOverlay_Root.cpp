@@ -220,14 +220,14 @@ auto
         const FCk_DebugOverlay_History&     InHistory,
         double                              InNow,
         bool                                bIsLocked,
+        bool                                bIsPinned,
         int32                               InCoLocatedIndex,
         int32                               InCoLocatedCount)
     -> void
 {
     if (_FocusCard.IsValid())
     {
-        constexpr auto NotPinned = false;
-        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, NotPinned,
+        _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, bIsPinned,
             InCoLocatedIndex, InCoLocatedCount);
     }
 }

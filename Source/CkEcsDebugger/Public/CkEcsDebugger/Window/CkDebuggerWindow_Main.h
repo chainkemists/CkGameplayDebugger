@@ -23,6 +23,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    ~SCkDebuggerWindow_Main() override;
     auto Tick(const FGeometry& InAllottedGeometry, const double InCurrentTime, const float InDeltaTime) -> void override;
     auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
 
@@ -46,6 +47,8 @@ private:
 
     auto OnPageSelected(int32 InPageIndex) -> void;
     auto RebuildContentArea() -> void;
+    auto HandleWorldChanged(UWorld* InWorld) -> void;
+    auto HandleSessionInvalidated() -> void;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
@@ -63,4 +66,6 @@ private:
     TSharedPtr<SMenuAnchor> FilterAnchor;
     TSharedPtr<SHorizontalBox> FilterBadgeStrip;
     FDelegateHandle FilterChangedHandle;
+    FDelegateHandle WorldChangedHandle;
+    FDelegateHandle SessionInvalidatedHandle;
 };

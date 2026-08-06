@@ -35,6 +35,7 @@
 
 // Double-tap EcsDebuggerFocusKey → open the focused entity in the CK ECS Debugger.
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
@@ -433,6 +434,13 @@ auto
     _Markers.Reset();
     _MarkerSuppressed.Empty();
     _FocusedEntityNum = MAX_uint32;
+    _FocusedEntity = FCk_Handle{};
+    _LastSyncedEntity = FCk_Handle{};
+    _LastLockKeyPressTime = -1.0;
+    _LastEcsFocusKeyPressTime = -1.0;
+    _LastCycleKeyPressTime = -1.0;
+    _LastUnpinAllKeyPressTime = -1.0;
+    _LastHelpKeyPressTime = -1.0;
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
@@ -494,8 +502,20 @@ auto
     // ---- 2. Gather candidates (distance-culled around the viewpoint) ----
     auto CandidateHandles = TArray<FCk_Handle>{};
     auto Candidates       = TArray<ck_debugoverlay::FCandidate>{};
+    auto FullDepthRoots   = TArray<FCk_Handle>{};
+    if (ck::DebugMarkers::Get_FocusFullDepth())
+    {
+        if (ck::IsValid(_FocusedEntity))
+        { FullDepthRoots.Add(_FocusedEntity); }
 
-    Gather_Candidates(World, _Providers, CullOrigin, CandidateHandles, Candidates);
+        for (const auto& PinnedEntity : _PinnedEntities)
+        {
+            if (ck::IsValid(PinnedEntity))
+            { FullDepthRoots.AddUnique(PinnedEntity); }
+        }
+    }
+
+    Gather_Candidates(World, _Providers, CullOrigin, FullDepthRoots, CandidateHandles, Candidates);
     _LastFrameCandidates = CandidateHandles;
 
     // ---- 3. Resolve on-screen flags for all candidates ----
@@ -573,21 +593,25 @@ auto
     {
         const auto Window = Settings->LockDoubleTapWindowSeconds;
 
-        // Edge-detect a double-tap of InKey: true on the second tap within Window. Consumes
-        // the key from the pre-processor each call (one physical press = one detection).
+        // Evaluate every press captured since the previous overlay tick. Using the
+        // input-event timestamps preserves rapid duplicate presses even when a slow
+        // frame queues both taps before the subsystem polls the pre-processor.
         const auto WasDoubleTapped = [&](const FKey& InKey, double& InOutLastPress) -> bool
         {
-            if (NOT _InputProcessor->Consume_WasJustPressed(InKey))
-            { return false; }
-
-            const auto TimeSinceLast = static_cast<float>(Now - InOutLastPress);
-            if (InOutLastPress >= 0.0 && TimeSinceLast <= Window)
+            auto WasDoubleTap = false;
+            for (const auto PressTime : _InputProcessor->Consume_PressTimes(InKey))
             {
-                InOutLastPress = -1.0; // reset so a third tap doesn't immediately re-fire
-                return true;
+                const auto TimeSinceLast = static_cast<float>(PressTime - InOutLastPress);
+                if (InOutLastPress >= 0.0 && TimeSinceLast >= 0.0f && TimeSinceLast <= Window)
+                {
+                    InOutLastPress = -1.0;
+                    WasDoubleTap = true;
+                    continue;
+                }
+
+                InOutLastPress = PressTime;
             }
-            InOutLastPress = Now;
-            return false;
+            return WasDoubleTap;
         };
 
         // Double-tap LockKey (default Left Shift): PIN / UNPIN the focused entity. The
@@ -614,7 +638,7 @@ auto
             }
         }
 
-        // Double-tap UnpinAllKey (default unbound): release every pinned card at once.
+        // Double-tap UnpinAllKey (default Backspace): release every pinned card at once.
         if (WasDoubleTapped(Settings->UnpinAllKey, _LastUnpinAllKeyPressTime))
         {
             if (_PinnedEntities.Num() > 0)
@@ -630,7 +654,7 @@ auto
             _ShowFullLegend = NOT _ShowFullLegend;
         }
 
-        // Double-tap CycleCoLocatedKey (default Left Alt): cycle the focus through the
+        // Double-tap CycleCoLocatedKey (default V): cycle the focus through the
         // co-located cluster. The cluster is the CONNECTED COMPONENT (flood-fill) of entities
         // linked by world-OR-screen proximity, so a chain A-B-C is ONE stable set regardless of
         // which member is focused (fixes "only 2 of 3 cycle"). Sets a soft preference (no lock).
@@ -700,6 +724,20 @@ auto
 
         // Drop any presses we didn't consume so they don't leak into the next tick.
         _InputProcessor->Clear();
+    }
+
+    _FocusedEntity = FocusEntity;
+    if (ck::DebugSelectionSync::Get_IsOverlayFocusSyncEnabled() && ck::IsValid(FocusEntity))
+    {
+        if (NOT (_LastSyncedEntity == FocusEntity))
+        {
+            ck::DebugSelectionSync::Broadcast(FocusEntity, TEXT("EntityDebugOverlay"));
+            _LastSyncedEntity = FocusEntity;
+        }
+    }
+    else
+    {
+        _LastSyncedEntity = FCk_Handle{};
     }
 
     // ---- 6. B2 — marker billboards + parent→child links ----
@@ -812,6 +850,7 @@ auto
         UWorld*                                              InWorld,
         const TArray<TSharedPtr<ICk_DebugOverlay_Provider>>& InProviders,
         const TOptional<FVector>&                            InCullOrigin,
+        const TArray<FCk_Handle>&                            InFullDepthRoots,
         TArray<FCk_Handle>&                                  OutHandles,
         TArray<ck_debugoverlay::FCandidate>&                 OutCandidates)
     -> void
@@ -825,6 +864,7 @@ auto
     // candidate iff at least one provider is willing to serve it. Markers, links, and
     // candidates are therefore the same set — what you see is what you can focus.
     auto GatherParams = FCkDebug_EntityMarkers::FGatherParams{};
+    GatherParams.FullDepthRoots = InFullDepthRoots;
     GatherParams.Filter = [&InProviders](const FCk_Handle& InHandle) -> bool
     {
         for (const auto& Provider : InProviders)
@@ -942,12 +982,18 @@ auto
         }
     }
 
-    _RootWidget->Set_FocusCardContent(
-        InModel, CardStyle, *_History, InNow, _FocusLocked, FocusCoLocIndex, FocusCoLocCount);
-
-    // ---- Pinned cards (item 6): prune destroyed pins, dedupe vs the live focus, build models ----
+    // Prune destroyed pins before deriving the primary card's visual state. When the live
+    // focus is itself pinned, the duplicate pinned card below is intentionally omitted, so
+    // the primary card must carry the cyan pinned ring instead.
     _PinnedEntities.RemoveAll([](const FCk_Handle& InPinned){ return ck::Is_NOT_Valid(InPinned); });
+    const auto FocusIsPinned = ck::IsValid(InModel.Entity) && _PinnedEntities.ContainsByPredicate(
+        [&InModel](const FCk_Handle& InPinned){ return InPinned == InModel.Entity; });
 
+    _RootWidget->Set_FocusCardContent(
+        InModel, CardStyle, *_History, InNow, _FocusLocked, FocusIsPinned,
+        FocusCoLocIndex, FocusCoLocCount);
+
+    // ---- Pinned cards (item 6): dedupe vs the live focus, build models ----
     auto PinnedModels = TArray<FCk_DebugOverlay_EntityModel>{};
     PinnedModels.Reserve(_PinnedEntities.Num());
     for (const auto& Pinned : _PinnedEntities)

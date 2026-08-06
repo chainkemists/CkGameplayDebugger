@@ -1,8 +1,26 @@
 #include "CkDebuggerModel_WorldSelector.h"
 
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+
+// ====================================================================================================================
+
+FCkDebuggerModel_WorldSelector::FCkDebuggerModel_WorldSelector()
+{
+    WorldCleanupHandle = FWorldDelegates::OnWorldCleanup.AddRaw(
+        this, &FCkDebuggerModel_WorldSelector::HandleWorldCleanup);
+}
+
+FCkDebuggerModel_WorldSelector::~FCkDebuggerModel_WorldSelector()
+{
+    if (WorldCleanupHandle.IsValid())
+    {
+        FWorldDelegates::OnWorldCleanup.Remove(WorldCleanupHandle);
+        WorldCleanupHandle.Reset();
+    }
+}
 
 // ====================================================================================================================
 
@@ -63,4 +81,15 @@ auto FCkDebuggerModel_WorldSelector::Ensure_AutoSelect() -> bool
 auto FCkDebuggerModel_WorldSelector::BroadcastWorldChanged() -> void
 {
     OnWorldChanged.Broadcast(Get_SelectedWorld());
+}
+
+auto FCkDebuggerModel_WorldSelector::HandleWorldCleanup(UWorld* InWorld, bool, bool) -> void
+{
+    if (SelectedWorld.Get() != InWorld)
+    { return; }
+
+    // Broadcast while the world still has a stable identity, before any
+    // registry-backed state owned by debugger consumers can outlive it.
+    SelectedWorld.Reset();
+    BroadcastWorldChanged();
 }

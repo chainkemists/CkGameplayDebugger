@@ -370,6 +370,7 @@ auto
         for (const auto& Entry : LegendEntries)
         {
             auto Pair = SNew(SHorizontalBox);
+            const auto LegendPillColor = CkStyle::OverlayOf(Entry.Color, 0.55f);
 
             Pair->AddSlot()
                 .AutoWidth().VAlign(VAlign_Center)
@@ -377,7 +378,7 @@ auto
                 [
                     SNew(SBorder)
                         .BorderImage(CkStyle::GetRoundedBrush())
-                        .BorderBackgroundColor(Entry.Color)
+                        .BorderBackgroundColor(LegendPillColor)
                         .VAlign(VAlign_Center)
                         .Padding(FMargin{ 3.0f, 0.0f })
                         [

@@ -29,6 +29,14 @@ Window (SCkDebuggerWindow_Main)
 - `FCkDebuggerModel_EntitySelection` — selected entities + history for back/forward navigation
 - `FCkDebuggerModel_WorldContext` — selected world, entity cache, world change broadcast
 
+World/session changes are atomic ownership boundaries. The main window routes
+both the common debugger-session invalidation signal and
+`WorldContext::OnWorldChanged` through `Reset_ForWorldChange`: current
+selection, Back/Forward history, picker state, entity-cache handles, tree nodes,
+pins, recents, and inspector state are released before the new world can be
+refreshed. Never use `Clear_Selection()` for this boundary because it records
+the old-world selection in navigation history.
+
 ### Cross-debugger entity navigation hook
 
 `FCkEcsDebuggerModule::StartupModule` registers an
@@ -45,6 +53,12 @@ chrome. Explicit navigator selections broadcast once with source `EcsDebugger`, 
 feature debuggers adopt overlay quick-selects without an echo loop. The single-entity inspector
 uses `SCkDebug_EntityDebuggerLinks`; only feature routes whose lineage-aware predicate resolves
 the selected entity are shown.
+
+The toolbar's On-Screen Overlay popover owns the shared session controls for continuous focused-
+entity sync and full-depth focus expansion. Continuous sync is sourced only by
+`CkEntityDebugOverlay`; ECS viewport-picking retains its explicit click-to-select behavior. Both
+the on-screen overlay and viewport picker pass call-scoped focus roots to the shared marker gather,
+which never retains those handles.
 
 ### Live hierarchy refresh
 

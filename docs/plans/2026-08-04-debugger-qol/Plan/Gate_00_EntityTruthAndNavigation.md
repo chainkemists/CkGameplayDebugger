@@ -20,7 +20,7 @@ After this gate, entity structure and selection remain truthful across ECS, over
    -> verify: unit tests cover register/replace/stale-unregister/order/query and invalid input rejection.
 2. Extend selection sync with a one-way ECS primary-selection provider that stores no handle in Common.
    -> verify: provider registration/clear and invalid selection make the common action disabled/no-op.
-3. Add common `Use ECS Selection` and inspector `Open In` widgets backed by the route registry.
+3. Add common `Sync from ECS` and inspector `Open In` widgets backed by the route registry.
    -> verify: widget availability follows provider/route state; no Common-to-feature dependency is introduced.
 4. Register routes for GOAP, Crowd, State Machine, and A*. Reuse GOAP's `OpenForEntity`; add equivalent feature-owned resolution to the other three. Aggro remains intentionally unregistered because its report has no selected-entity model, and an open-only action would violate the targeting contract.
    -> verify: each route opens/focuses one existing tab and selects the closest lineage-compatible entity.
@@ -36,7 +36,7 @@ After this gate, entity structure and selection remain truthful across ECS, over
 | Pure route/selection tests | generation safety and invalid-input no-op pass | stale callback or duplicate broadcast | stop and fix registry ownership before feature adopters |
 | ECS hierarchy regression | same child node moves from A to B without full rebuild | pointer changes or stale child remains | extract/review relink order; do not add periodic ForceFullRefresh |
 | `[EDITOR-VERIFY]` overlay quick-select | ECS plus already-open entity debuggers select/scroll matching lineage | only ECS moves | trace broadcast source and receiver route; do not add delays |
-| `[EDITOR-VERIFY]` `Use ECS Selection` | current tab adopts nested/owned match and reports no-match cleanly | unrelated same-root entity selected | reject root matching; inspect route-specific lineage candidate set |
+| `[EDITOR-VERIFY]` `Sync from ECS` | current tab adopts nested/owned match and reports no-match cleanly | unrelated same-root entity selected | reject root matching; inspect route-specific lineage candidate set |
 | `[EDITOR-VERIFY]` inspector `Open In` | only capable buttons appear; click opens/focuses and targets | irrelevant buttons appear | tighten feature-owned `CanTarget` predicate |
 
 ## Exit criteria

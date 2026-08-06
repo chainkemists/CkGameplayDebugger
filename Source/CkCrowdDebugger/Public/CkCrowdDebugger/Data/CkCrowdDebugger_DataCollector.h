@@ -14,6 +14,7 @@ class FCkCrowdDebugger_DataCollector
 {
 public:
 	auto Collect(UWorld* InWorld) -> void;
+	auto Reset_ForWorldChange() -> void;
 
 	// Run a synthetic FindPathSync probe (origin → origin+200 in world space) and
 	// stash the result on _NavmeshStatus. Called by the ViewModel from the toolbar
@@ -28,6 +29,7 @@ public:
 	// Flat triangle soup (3 world-space verts per triangle) of the walkable navmesh — the viewport's
 	// base layer. Refreshed on a throttle (navmesh geometry changes rarely).
 	auto Get_NavTriVerts() const -> const TArray<FVector>& { return _NavTriVerts; }
+	auto Get_NavGeometryRevision() const -> uint64 { return _NavGeometryRevision; }
 	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
 	{ return _PathNetworkRibbons; }
 
@@ -56,6 +58,7 @@ private:
 	TArray<FVector> _NavTriVerts;
 	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
 	double _NavGeomLastPullTime = -1.0;
+	uint64 _NavGeometryRevision = 0;
 
 	float _ViewYawDegrees = 0.0f;
 	bool  _ViewYawValid = false;

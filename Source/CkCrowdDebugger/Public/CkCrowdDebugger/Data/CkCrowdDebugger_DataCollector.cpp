@@ -3,6 +3,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/Handle/CkHandle.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
@@ -22,14 +23,18 @@
 #include "CkNavigation/Nav/CkNav_Fragment_Data.h"
 
 #include "CkPathNetwork/Actor/CkPathNetwork_Actor.h"
+#include "CkPathNetwork/Network/CkPathNetwork_Fragment.h"
+#include "CkPathNetwork/Network/CkPathNetwork_Utils.h"
 
 #include "Engine/Engine.h"
+#include "EngineGlobals.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
+#include "HAL/IConsoleManager.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -90,6 +95,22 @@ namespace
 				*Status,
 				*EnumName(InSnapshot.TroubleNavigationFailReason));
 	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkCrowdDebugger_DataCollector::Reset_ForWorldChange() -> void
+{
+	_Agents.Reset();
+	_NavmeshStatus = FCkCrowdDebugger_NavmeshStatus{};
+	_NavTriVerts.Reset();
+	++_NavGeometryRevision;
+	_PathNetworkRibbons.Reset();
+	_NavGeomLastPullTime = -1.0;
+	_ViewYawValid = false;
+	_ViewCameraValid = false;
+	_PlayerPawnValid = false;
+	_PlayerPawnEntity = FCk_Handle{};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -234,29 +255,36 @@ auto
 							{ _NavTriVerts.Add(Geom.MeshVerts[Idx]); }
 						}
 					}
+					++_NavGeometryRevision;
 				}
 			}
 			else
 			{
 				_NavmeshStatus._NavDataClassName = TEXT("(no NavData)");
 				_NavmeshStatus._DefaultFilterValid = false;
+				const auto HadNavGeometryState = NOT _NavTriVerts.IsEmpty() || _NavGeomLastPullTime >= 0.0;
 				_NavTriVerts.Reset();
 				_NavGeomLastPullTime = -1.0;
+				if (HadNavGeometryState)
+				{ ++_NavGeometryRevision; }
 			}
+		}
+		else
+		{
+			const auto HadNavGeometryState = NOT _NavTriVerts.IsEmpty() || _NavGeomLastPullTime >= 0.0;
+			_NavTriVerts.Reset();
+			_NavGeomLastPullTime = -1.0;
+			if (HadNavGeometryState)
+			{ ++_NavGeometryRevision; }
 		}
 
 		_NavmeshStatus._Sampled = true;
 	}
 
-	// Copy the authored world-space ribbons from this PIE world. The debugger
-	// snapshot must not retain an actor or ECS handle across refreshes/world teardown.
-	for (TActorIterator<ACk_PathNetwork_UE> It(InWorld); It; ++It)
+	// Retain only value snapshots across debugger refreshes and world teardown.
+	auto AppendPathNetworkRibbons = [this](const TArray<FCk_PathNetwork_Ribbon>& InRibbons)
 	{
-		const auto* NetworkActor = *It;
-		if (NOT IsValid(NetworkActor))
-		{ continue; }
-
-		for (const auto& Ribbon : NetworkActor->Get_WorldRibbons())
+		for (const auto& Ribbon : InRibbons)
 		{
 			const auto& RibbonPoints = Ribbon.Get_Points();
 			if (RibbonPoints.Num() < 2)
@@ -272,9 +300,81 @@ auto
 			}
 			_PathNetworkRibbons.Add(MoveTemp(Snapshot));
 		}
-	}
+	};
 
 	auto TransientEntity = UCk_Utils_EcsWorld_Subsystem_UE::Get_TransientEntity(InWorld);
+	if (ck::IsValid(TransientEntity))
+	{
+		// Runtime-created networks, including the Path Network gym, have no actor. Authority-side
+		// actor networks are bridged into the same ECS representation at BeginPlay.
+		const auto WorldRibbons = UCk_Utils_PathNetwork_UE::Get_AllRibbonsInWorld(TransientEntity);
+		AppendPathNetworkRibbons(WorldRibbons);
+
+		static const auto* TraceCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.CrowdDebugger.PathNetworkTrace"));
+		if (TraceCVar != nullptr && TraceCVar->GetInt() != 0)
+		{
+			auto QueryEntityCount = 0;
+			TransientEntity.View<
+				ck::FFragment_PathNetwork_Params,
+				ck::FFragment_PathNetwork_Graph,
+				CK_IGNORE_PENDING_KILL>().ForEach(
+				[&QueryEntityCount](
+					FCk_Entity,
+					const ck::FFragment_PathNetwork_Params&,
+					const ck::FFragment_PathNetwork_Graph&)
+				{
+					++QueryEntityCount;
+				});
+
+			auto TotalPointCount = 0;
+			for (const auto& Ribbon : WorldRibbons)
+			{ TotalPointCount += Ribbon.Get_Points().Num(); }
+
+			auto FirstPosition = FVector::ZeroVector;
+			auto LastPosition = FVector::ZeroVector;
+			auto FirstHalfWidth = 0.0f;
+			auto LastHalfWidth = 0.0f;
+			if (WorldRibbons.Num() > 0 && WorldRibbons[0].Get_Points().Num() > 0)
+			{
+				const auto& Points = WorldRibbons[0].Get_Points();
+				FirstPosition = Points[0].Get_Location();
+				LastPosition = Points.Last().Get_Location();
+				FirstHalfWidth = Points[0].Get_HalfWidth();
+				LastHalfWidth = Points.Last().Get_HalfWidth();
+			}
+
+			UE_LOG(
+				LogTemp,
+				Display,
+				TEXT("CkCrowdDebugger.PathNetworkTrace stage=collector frame=%llu world=%s world_ptr=%p transient=%s query_entities=%d query_ribbons=%d query_points=%d first=%s last=%s first_half_width=%.3f last_half_width=%.3f collector_after_ecs=%d"),
+				static_cast<unsigned long long>(GFrameCounter),
+				*InWorld->GetName(),
+				InWorld,
+				*TransientEntity.ToString(),
+				QueryEntityCount,
+				WorldRibbons.Num(),
+				TotalPointCount,
+				*FirstPosition.ToCompactString(),
+				*LastPosition.ToCompactString(),
+				FirstHalfWidth,
+				LastHalfWidth,
+				_PathNetworkRibbons.Num());
+		}
+	}
+
+	// The path-network actor deliberately constructs ECS state on authority only. Preserve the
+	// previous actor-authored debugger view on clients without duplicating authority-side ribbons.
+	for (TActorIterator<ACk_PathNetwork_UE> It(InWorld); It; ++It)
+	{
+		const auto* NetworkActor = *It;
+		if (NOT IsValid(NetworkActor)
+			|| NetworkActor->IsActorBeingDestroyed()
+			|| NetworkActor->HasAuthority())
+		{ continue; }
+
+		AppendPathNetworkRibbons(NetworkActor->Get_WorldRibbons());
+	}
+
 	if (NOT ck::IsValid(TransientEntity))
 	{ return; }
 

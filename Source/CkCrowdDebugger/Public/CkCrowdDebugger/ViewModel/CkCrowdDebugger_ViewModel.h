@@ -33,6 +33,7 @@ class FCkCrowdDebugger_ViewModel
 {
 public:
 	auto Tick(UWorld* InWorld, float InDeltaTime) -> void;
+	auto Reset_ForWorldChange() -> void;
 
 	// Run a synthetic FindPathSync probe via the DataCollector. The world is the
 	// last one passed to Tick; if there isn't one (no PIE / world torn down), the
@@ -60,6 +61,8 @@ public:
 
 	auto Get_NavTriVerts() const -> const TArray<FVector>&
 	{ return _DataCollector.Get_NavTriVerts(); }
+	auto Get_NavGeometryRevision() const -> uint64
+	{ return _DataCollector.Get_NavGeometryRevision(); }
 	auto Get_PathNetworkRibbons() const -> const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&
 	{ return _DataCollector.Get_PathNetworkRibbons(); }
 

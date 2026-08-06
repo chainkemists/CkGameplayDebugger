@@ -1,9 +1,17 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 
+#include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
+
+#include "DynamicMeshBuilder.h"
+#include "EditorModes.h"
 #include "EditorViewportClient.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "EngineGlobals.h"
+#include "HAL/IConsoleManager.h"
 #include "InputCoreTypes.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialRenderProxy.h"
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "PreviewScene.h"
@@ -155,6 +163,47 @@ namespace ck_crowd_debugger_3d_viewport
 			default:                                        return FLinearColor(0.65f, 0.65f, 0.65f, 1.00f);
 		}
 	}
+
+	auto Get_RibbonSegmentLateral(const FVector& InFrom, const FVector& InTo) -> FVector
+	{
+		const auto Tangent = (InTo - InFrom).GetSafeNormal();
+		auto Lateral = FVector::CrossProduct(FVector::UpVector, Tangent).GetSafeNormal();
+		if (Lateral.IsNearlyZero())
+		{ Lateral = FVector::CrossProduct(FVector::ForwardVector, Tangent).GetSafeNormal(); }
+		return Lateral;
+	}
+
+	auto Get_RibbonOffset(
+		const TArray<FVector>& InPoints,
+		int32 InPointIndex,
+		float InHalfWidth) -> FVector
+	{
+		const auto HalfWidth = FMath::Max(InHalfWidth, 0.0f);
+		if (HalfWidth <= UE_SMALL_NUMBER || NOT InPoints.IsValidIndex(InPointIndex))
+		{ return FVector::ZeroVector; }
+
+		const auto Incoming = InPointIndex > 0
+			? Get_RibbonSegmentLateral(InPoints[InPointIndex - 1], InPoints[InPointIndex])
+			: FVector::ZeroVector;
+		const auto Outgoing = InPointIndex + 1 < InPoints.Num()
+			? Get_RibbonSegmentLateral(InPoints[InPointIndex], InPoints[InPointIndex + 1])
+			: FVector::ZeroVector;
+
+		if (Incoming.IsNearlyZero() && Outgoing.IsNearlyZero())
+		{ return FVector::RightVector * HalfWidth; }
+		if (Incoming.IsNearlyZero())
+		{ return Outgoing * HalfWidth; }
+		if (Outgoing.IsNearlyZero())
+		{ return Incoming * HalfWidth; }
+
+		// Average adjacent segment normals for a curve-friendly miter. Bound the join so
+		// acute turns cannot create arbitrarily long spikes in the retained debug mesh.
+		auto Miter = (Incoming + Outgoing).GetSafeNormal();
+		if (Miter.IsNearlyZero())
+		{ Miter = Outgoing; }
+		const auto Denominator = FMath::Max(FMath::Abs(FVector::DotProduct(Miter, Outgoing)), 0.5);
+		return Miter * FMath::Min(HalfWidth / Denominator, HalfWidth * 2.0f);
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -234,6 +283,41 @@ public:
 			}
 		}
 
+		Invalidate();
+	}
+
+	auto Set_NavmeshTriangles(const TArray<FVector>& InNavTriVerts, uint64 InGeometryRevision) -> void
+	{
+		if (_NavmeshGeometryRevision == InGeometryRevision)
+		{ return; }
+
+		_NavmeshGeometryRevision = InGeometryRevision;
+		_NavmeshTriangles = InNavTriVerts;
+		_NavmeshFrameBounds = FBox{ForceInit};
+		for (const auto& Vertex : _NavmeshTriangles)
+		{
+			if (NOT Vertex.ContainsNaN())
+			{ _NavmeshFrameBounds += Vertex; }
+		}
+		Invalidate();
+	}
+
+	auto Set_PathNetworkRibbons(
+		const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void
+	{
+		_PathNetworkRibbons = InRibbons;
+		_PathNetworkFrameBounds = FBox{ForceInit};
+		for (const auto& Ribbon : _PathNetworkRibbons)
+		{
+			if (Ribbon.Points.Num() != Ribbon.HalfWidths.Num())
+			{ continue; }
+
+			for (auto PointIndex = 0; PointIndex < Ribbon.Points.Num(); ++PointIndex)
+			{
+				const auto Extent = FVector{FMath::Max(Ribbon.HalfWidths[PointIndex], 0.0f)};
+				_PathNetworkFrameBounds += FBox{Ribbon.Points[PointIndex] - Extent, Ribbon.Points[PointIndex] + Extent};
+			}
+		}
 		Invalidate();
 	}
 
@@ -335,6 +419,8 @@ public:
 			}
 		}
 
+		DrawNavmesh(InView, InPdi);
+		DrawPathNetworkRibbons(InView, InPdi);
 		DrawAgents(InPdi);
 	}
 
@@ -371,7 +457,9 @@ private:
 	auto Get_AllFrameBounds() const -> FBox
 	{
 		auto Bounds = _VoxelFrameBounds;
+		Bounds += _NavmeshFrameBounds;
 		Bounds += _AgentFrameBounds;
+		Bounds += _PathNetworkFrameBounds;
 		return Bounds;
 	}
 
@@ -416,6 +504,191 @@ private:
 		}
 	}
 
+	auto DrawNavmesh(const FSceneView* InView, FPrimitiveDrawInterface* InPdi) const -> void
+	{
+		if (_NavmeshTriangles.Num() < 3 || InView == nullptr || GEngine == nullptr || GEngine->GeomMaterial == nullptr)
+		{ return; }
+
+		auto MeshBuilder = FDynamicMeshBuilder{InView->GetFeatureLevel()};
+		auto VertexCount = 0;
+		for (auto TriangleStart = 0; TriangleStart + 2 < _NavmeshTriangles.Num(); TriangleStart += 3)
+		{
+			const auto& A = _NavmeshTriangles[TriangleStart];
+			const auto& B = _NavmeshTriangles[TriangleStart + 1];
+			const auto& C = _NavmeshTriangles[TriangleStart + 2];
+			if (A.ContainsNaN() || B.ContainsNaN() || C.ContainsNaN())
+			{ continue; }
+
+			auto Tangent = (B - A).GetSafeNormal();
+			const auto Normal = FVector::CrossProduct(B - A, C - A).GetSafeNormal();
+			if (Normal.IsNearlyZero())
+			{ continue; }
+			if (Tangent.IsNearlyZero())
+			{ Tangent = FVector::ForwardVector; }
+			const auto Bitangent = FVector::CrossProduct(Normal, Tangent).GetSafeNormal();
+
+			const auto VertexBase = VertexCount;
+			MeshBuilder.AddVertex(
+				FVector3f{A}, FVector2f{0.0f, 0.0f}, FVector3f{Tangent}, FVector3f{Bitangent}, FVector3f{Normal}, FColor::White);
+			MeshBuilder.AddVertex(
+				FVector3f{B}, FVector2f{1.0f, 0.0f}, FVector3f{Tangent}, FVector3f{Bitangent}, FVector3f{Normal}, FColor::White);
+			MeshBuilder.AddVertex(
+				FVector3f{C}, FVector2f{0.0f, 1.0f}, FVector3f{Tangent}, FVector3f{Bitangent}, FVector3f{Normal}, FColor::White);
+			MeshBuilder.AddTriangle(VertexBase, VertexBase + 1, VertexBase + 2);
+			VertexCount += 3;
+		}
+
+		if (VertexCount == 0)
+		{ return; }
+
+		const auto NavmeshColor = FLinearColor{0.27f, 0.78f, 0.43f, 0.15f};
+		auto* MaterialProxy = new FDynamicColoredMaterialRenderProxy(
+			GEngine->GeomMaterial->GetRenderProxy(),
+			NavmeshColor);
+		InPdi->RegisterDynamicResource(MaterialProxy);
+		MeshBuilder.Draw(InPdi, FMatrix::Identity, MaterialProxy, SDPG_World, true, false);
+	}
+
+	auto DrawPathNetworkRibbons(const FSceneView* InView, FPrimitiveDrawInterface* InPdi) const -> void
+	{
+		const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
+		const auto Opacity = Settings != nullptr
+			? FMath::Clamp(Settings->PathNetworkOpacity, 0.0f, 1.0f)
+			: 0.0f;
+
+		static const auto* TraceCVar = IConsoleManager::Get().FindConsoleVariable(
+			TEXT("ck.CrowdDebugger.PathNetworkTrace"));
+		static uint64 LastTraceFrame = MAX_uint64;
+		if (TraceCVar != nullptr && TraceCVar->GetInt() != 0 && LastTraceFrame != GFrameCounter)
+		{
+			LastTraceFrame = GFrameCounter;
+			auto FirstStart = FVector::ZeroVector;
+			auto FirstEnd = FVector::ZeroVector;
+			auto FirstStartHalfWidth = 0.0f;
+			auto FirstEndHalfWidth = 0.0f;
+			if (NOT _PathNetworkRibbons.IsEmpty() && _PathNetworkRibbons[0].Points.Num() >= 2)
+			{
+				FirstStart = _PathNetworkRibbons[0].Points[0];
+				FirstEnd = _PathNetworkRibbons[0].Points[1];
+				if (_PathNetworkRibbons[0].HalfWidths.Num() >= 2)
+				{
+					FirstStartHalfWidth = _PathNetworkRibbons[0].HalfWidths[0];
+					FirstEndHalfWidth = _PathNetworkRibbons[0].HalfWidths[1];
+				}
+			}
+
+			UE_LOG(
+				LogTemp,
+				Display,
+				TEXT("CkCrowdDebugger.PathNetworkTrace stage=3d_draw frame=%llu navmesh_triangles=%d ribbons=%d opacity=%.3f first_start=%s first_end=%s first_start_half_width=%.3f first_end_half_width=%.3f"),
+				static_cast<unsigned long long>(GFrameCounter),
+				_NavmeshTriangles.Num() / 3,
+				_PathNetworkRibbons.Num(),
+				Opacity,
+				*FirstStart.ToCompactString(),
+				*FirstEnd.ToCompactString(),
+				FirstStartHalfWidth,
+				FirstEndHalfWidth);
+		}
+
+		if (Opacity <= UE_SMALL_NUMBER || InView == nullptr || GEngine == nullptr || GEngine->GeomMaterial == nullptr)
+		{ return; }
+
+		auto MeshBuilder = FDynamicMeshBuilder{InView->GetFeatureLevel()};
+		auto TriangleCount = 0;
+		auto VertexCount = 0;
+		const auto RibbonColor = FLinearColor{0.16f, 0.76f, 0.96f, Opacity};
+		for (const auto& Ribbon : _PathNetworkRibbons)
+		{
+			if (Ribbon.Points.Num() < 2 || Ribbon.Points.Num() != Ribbon.HalfWidths.Num())
+			{ continue; }
+
+			const auto VertexBase = VertexCount;
+			for (auto PointIndex = 0; PointIndex < Ribbon.Points.Num(); ++PointIndex)
+			{
+				const auto Offset = ck_crowd_debugger_3d_viewport::Get_RibbonOffset(
+					Ribbon.Points,
+					PointIndex,
+					Ribbon.HalfWidths[PointIndex]);
+				auto Tangent = PointIndex + 1 < Ribbon.Points.Num()
+					? (Ribbon.Points[PointIndex + 1] - Ribbon.Points[PointIndex]).GetSafeNormal()
+					: (Ribbon.Points[PointIndex] - Ribbon.Points[PointIndex - 1]).GetSafeNormal();
+				if (Tangent.IsNearlyZero())
+				{ Tangent = FVector::ForwardVector; }
+
+				auto Lateral = Offset.GetSafeNormal();
+				Lateral = (Lateral - Tangent * FVector::DotProduct(Lateral, Tangent)).GetSafeNormal();
+				if (Lateral.IsNearlyZero())
+				{ Lateral = ck_crowd_debugger_3d_viewport::Get_RibbonSegmentLateral(
+					Ribbon.Points[PointIndex], Ribbon.Points[PointIndex] + Tangent); }
+				if (Lateral.IsNearlyZero())
+				{ Lateral = FVector::RightVector; }
+
+				auto Normal = FVector::CrossProduct(Tangent, Lateral).GetSafeNormal();
+				if (Normal.IsNearlyZero())
+				{ Normal = FVector::UpVector; }
+				Lateral = FVector::CrossProduct(Normal, Tangent).GetSafeNormal();
+				const auto UvV = static_cast<float>(PointIndex) / static_cast<float>(Ribbon.Points.Num() - 1);
+				MeshBuilder.AddVertex(
+					FVector3f{Ribbon.Points[PointIndex] - Offset},
+					FVector2f{0.0f, UvV},
+					FVector3f{Tangent},
+					FVector3f{Lateral},
+					FVector3f{Normal},
+					FColor::White);
+				MeshBuilder.AddVertex(
+					FVector3f{Ribbon.Points[PointIndex] + Offset},
+					FVector2f{1.0f, UvV},
+					FVector3f{Tangent},
+					FVector3f{Lateral},
+					FVector3f{Normal},
+					FColor::White);
+				VertexCount += 2;
+			}
+
+			for (auto SegmentIndex = 0; SegmentIndex + 1 < Ribbon.Points.Num(); ++SegmentIndex)
+			{
+				const auto LeftStart = VertexBase + SegmentIndex * 2;
+				const auto RightStart = LeftStart + 1;
+				const auto LeftEnd = LeftStart + 2;
+				const auto RightEnd = LeftStart + 3;
+				MeshBuilder.AddTriangle(LeftStart, RightEnd, RightStart);
+				MeshBuilder.AddTriangle(LeftStart, LeftEnd, RightEnd);
+				TriangleCount += 2;
+
+				const auto StartOffset = ck_crowd_debugger_3d_viewport::Get_RibbonOffset(
+					Ribbon.Points,
+					SegmentIndex,
+					Ribbon.HalfWidths[SegmentIndex]);
+				const auto EndOffset = ck_crowd_debugger_3d_viewport::Get_RibbonOffset(
+					Ribbon.Points,
+					SegmentIndex + 1,
+					Ribbon.HalfWidths[SegmentIndex + 1]);
+				InPdi->DrawTranslucentLine(
+					Ribbon.Points[SegmentIndex] - StartOffset,
+					Ribbon.Points[SegmentIndex + 1] - EndOffset,
+					RibbonColor,
+					SDPG_Foreground,
+					1.5f);
+				InPdi->DrawTranslucentLine(
+					Ribbon.Points[SegmentIndex] + StartOffset,
+					Ribbon.Points[SegmentIndex + 1] + EndOffset,
+					RibbonColor,
+					SDPG_Foreground,
+					1.5f);
+			}
+		}
+
+		if (TriangleCount <= 0)
+		{ return; }
+
+		auto* MaterialProxy = new FDynamicColoredMaterialRenderProxy(
+			GEngine->GeomMaterial->GetRenderProxy(),
+			RibbonColor);
+		InPdi->RegisterDynamicResource(MaterialProxy);
+		MeshBuilder.Draw(InPdi, FMatrix::Identity, MaterialProxy, SDPG_Foreground, true, false);
+	}
+
 	auto DrawLayer(
 		FPrimitiveDrawInterface* InPdi,
 		const ck::voxelnav::FDebugSnapshotLayerOutput& InLayer,
@@ -457,11 +730,16 @@ private:
 	ck::voxelnav::FDebugSnapshot _Snapshot;
 	TArray<ck_crowd_debugger_3d_viewport::FAgentRenderSnapshot> _Agents;
 	TArray<FVector> _SelectedPath;
+	TArray<FVector> _NavmeshTriangles;
+	TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot> _PathNetworkRibbons;
 	FBox _VoxelFrameBounds = FBox{ForceInit};
+	FBox _NavmeshFrameBounds = FBox{ForceInit};
 	FBox _AgentFrameBounds = FBox{ForceInit};
+	FBox _PathNetworkFrameBounds = FBox{ForceInit};
 	FBox _SelectedAgentBounds = FBox{ForceInit};
 	FVector _SelectedAgentPosition = FVector::ZeroVector;
 	FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
+	uint64 _NavmeshGeometryRevision = MAX_uint64;
 	bool _HasSnapshot = false;
 };
 
@@ -505,6 +783,21 @@ auto SCkCrowdDebugger_3dViewport::Set_AgentSnapshots(
 {
 	if (_ViewportClient.IsValid())
 	{ _ViewportClient->Set_AgentSnapshots(InAgents, InSelectedHandle); }
+}
+
+auto SCkCrowdDebugger_3dViewport::Set_NavmeshTriangles(
+	const TArray<FVector>& InNavTriVerts,
+	uint64 InGeometryRevision) -> void
+{
+	if (_ViewportClient.IsValid())
+	{ _ViewportClient->Set_NavmeshTriangles(InNavTriVerts, InGeometryRevision); }
+}
+
+auto SCkCrowdDebugger_3dViewport::Set_PathNetworkRibbons(
+	const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void
+{
+	if (_ViewportClient.IsValid())
+	{ _ViewportClient->Set_PathNetworkRibbons(InRibbons); }
 }
 
 auto SCkCrowdDebugger_3dViewport::Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset) -> void

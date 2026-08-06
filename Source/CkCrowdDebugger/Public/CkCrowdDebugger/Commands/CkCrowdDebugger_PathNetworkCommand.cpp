@@ -97,7 +97,7 @@ namespace ck::crowd_debugger
         if (ck::Is_NOT_Valid(Network) || NOT UCk_Utils_PathNetwork_UE::Get_IsBuilt(Network))
         { return false; }
 
-        auto FollowerParams = FCk_Fragment_PathNetworkFollower_ParamsData{};
+        auto FollowerParams = FCk_PathNetworkFollower_Spec{};
         FollowerParams.Set_Network(Network);
         FollowerParams.Set_OwnerToken(PathNetworkFollowerOwnerToken);
         auto Follower = UCk_Utils_PathNetworkFollower_UE::Add(AgentHandle, FollowerParams);

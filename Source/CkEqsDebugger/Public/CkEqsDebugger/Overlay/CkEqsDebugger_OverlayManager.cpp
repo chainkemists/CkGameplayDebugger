@@ -313,7 +313,7 @@ auto
         // Number of cells per axis = (2*HalfSize / Spacing) + 1. Square grid.
         const auto NumCellsPerAxis = FMath::TruncToInt(2.0f * InQuery.GridHalfSize / InQuery.GridSpaceBetween) + 1;
 
-        auto GridParams = FCk_Fragment_2dGridSystem_ParamsData{
+        auto GridParams = FCk_2dGridSystem_Spec{
             FIntPoint{NumCellsPerAxis, NumCellsPerAxis},
             FVector2D{InQuery.GridSpaceBetween, InQuery.GridSpaceBetween}};
 

@@ -255,7 +255,7 @@ auto
 
     // Create a throwaway SM entity. AutoStart=Disabled so the walker runs without
     // actually entering the initial state — we only want structural discovery.
-    auto PreviewSmParams = FCk_Fragment_StateMachine_ParamsData{TSubclassOf<UCk_SmState_EntityScript>(InitialStateClass)};
+    auto PreviewSmParams = FCk_StateMachine_Spec{TSubclassOf<UCk_SmState_EntityScript>(InitialStateClass)};
     PreviewSmParams.Set_AutoStart(ECk_SmAutoStart::Disabled);
     _PreviewSmHandle = UCk_Utils_StateMachine_UE::Add(TransientOwner, PreviewSmParams);
 

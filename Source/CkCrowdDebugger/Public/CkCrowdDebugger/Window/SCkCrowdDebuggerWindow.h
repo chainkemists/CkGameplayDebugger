@@ -52,6 +52,7 @@ private:
 	auto Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> void;
 	auto Get_VoxelSnapshotBuildParams() const -> ck::voxelnav::FDebugSnapshotBuildParams;
 	auto Get_VoxelSourceLabel() const -> FText;
+	auto HandleWorldChanged(UWorld* InWorld) -> void;
 
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
@@ -77,6 +78,7 @@ private:
 	bool _ShowVoxelOccupied = false;
 	bool _ShowVoxelPortals = true;
 	bool _ShowVoxelDirtyRepair = true;
+	FDelegateHandle _WorldChangedHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

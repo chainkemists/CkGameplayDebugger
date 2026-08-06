@@ -129,7 +129,7 @@ struct FCkCrowdDebugger_NavmeshStatus
 
 // --------------------------------------------------------------------------------------------------------------------
 
-// Flat path-network copy for the Slate viewport. The collector owns only value data
+// Flat path-network copy for the debugger viewport. The collector owns only value data
 // from the selected PIE world; it never retains the actor or ECS network handle.
 struct FCkCrowdDebugger_PathNetworkRibbonSnapshot
 {

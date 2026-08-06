@@ -63,7 +63,7 @@ remain (see Open issues).
 - **Entity-aware debugger entry**: a debugger that can select an ECS entity registers an
   `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common
   closest-lineage helper. This powers both ECS inspector `Open In` links and the common
-  `Use ECS <id>` status action; do not register a route that only opens a tab.
+  `Sync from ECS <id>` status action; do not register a route that only opens a tab.
 - **Legacy submenu/filter/action**: don't — see the Gen-1 status above.
 
 ## Plugin-specific rules

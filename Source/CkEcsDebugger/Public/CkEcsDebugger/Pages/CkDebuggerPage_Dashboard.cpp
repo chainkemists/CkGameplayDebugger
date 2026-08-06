@@ -92,6 +92,15 @@ auto FCkDebuggerPage_Dashboard::Set_IsActive(bool InIsActive) -> void
 
 auto FCkDebuggerPage_Dashboard::Build_Content(const FCkDebuggerPageContext& InContext) -> TSharedRef<SWidget>
 {
+    // The main window builds a fresh content tree whenever this page is reselected. These caches contain widgets
+    // slotted into the previous tree, so retaining them would make the unchanged-key fast path leave the new
+    // containers empty.
+    FamilyCache.Reset();
+    PresentedFamilies.Reset();
+    CardCache.Reset();
+    PresentedCardKeys.Reset();
+    PresentedSingletonKeys.Reset();
+
     WorldModel = InContext.WorldModel;
     RequestEntityFilter = InContext.RequestEntityFilter;
     GetEntityFilter = InContext.GetEntityFilter;

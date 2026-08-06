@@ -12,8 +12,8 @@ class FCkCrowdDebugger_3dViewportClient;
 DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_AgentPicked, int32 /*AgentIndex*/);
 
 // --------------------------------------------------------------------------------------------------------------------
-// A deliberately isolated 3D inspection surface. It renders value-only VoxelNav and crowd-agent snapshots, never a
-// UWorld or octree share, so the widget can remain open after PIE has stopped.
+// A deliberately isolated 3D inspection surface. It renders value-only Unreal navmesh, VoxelNav, path-network, and
+// crowd-agent snapshots, never a UWorld or octree share, so the widget can remain open after PIE has stopped.
 // --------------------------------------------------------------------------------------------------------------------
 
 enum class ECkCrowdDebugger_CameraPreset : uint8
@@ -44,6 +44,9 @@ public:
 	auto Set_AgentSnapshots(
 		const TArray<FCkCrowdDebugger_AgentSnapshot>& InAgents,
 		const FCk_Handle& InSelectedHandle) -> void;
+	auto Set_NavmeshTriangles(const TArray<FVector>& InNavTriVerts, uint64 InGeometryRevision) -> void;
+	auto Set_PathNetworkRibbons(
+		const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
 	auto Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset) -> void;
 
 protected:

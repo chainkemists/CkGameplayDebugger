@@ -44,6 +44,8 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 	_ViewModel = MakeShared<FCkCrowdDebugger_ViewModel>();
 	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+	_WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
+		this, &SCkCrowdDebuggerWindow::HandleWorldChanged);
 
 	_NavmeshStatusPanel = SNew(SCkCrowdDebugger_NavmeshStatusPanel).ViewModel(_ViewModel);
 	_AgentListPanel     = SNew(SCkCrowdDebugger_AgentListPanel).ViewModel(_ViewModel);
@@ -102,6 +104,17 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkCrowdDebuggerWindow::HandleWorldChanged(UWorld*) -> void
+{
+	if (_ViewModel.IsValid())
+	{ _ViewModel->Reset_ForWorldChange(); }
+	if (_ViewportPanel.IsValid())
+	{ _ViewportPanel->Clear_VoxelNavSnapshot(); }
+	_VoxelRefreshRequested = true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void
 {
 	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
@@ -117,9 +130,13 @@ auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCu
 	_ViewModel->Tick(World, InDeltaTime);
 	if (_ViewportPanel.IsValid())
 	{
+		_ViewportPanel->Set_NavmeshTriangles(
+			_ViewModel->Get_NavTriVerts(),
+			_ViewModel->Get_NavGeometryRevision());
 		_ViewportPanel->Set_AgentSnapshots(
 			_ViewModel->Get_AllAgents(),
 			_ViewModel->Get_SelectedHandle());
+		_ViewportPanel->Set_PathNetworkRibbons(_ViewModel->Get_PathNetworkRibbons());
 	}
 
 	if (_VoxelRefreshRequested || InCurrentTime >= _NextVoxelRefreshTime)
@@ -679,6 +696,9 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 
 SCkCrowdDebuggerWindow::~SCkCrowdDebuggerWindow()
 {
+	if (_WorldModel.IsValid() && _WorldChangedHandle.IsValid())
+	{ _WorldModel->OnWorldChanged.Remove(_WorldChangedHandle); }
+
 	_ViewModel.Reset();
 }
 

@@ -13,6 +13,8 @@ public class CkCrowdDebugger : CkModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"RenderCore",
+			"RHI",
 			"DeveloperSettings",
 			"InputCore",
 

@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CoreDelegates.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
@@ -148,6 +149,14 @@ static FAutoConsoleCommand CmdCrowdDebugger(
 		else { Module.ToggleDebugger(); }
 	})
 );
+
+// --------------------------------------------------------------------------------------------------------------------
+
+static TAutoConsoleVariable<int32> CVarCrowdDebuggerPathNetworkTrace(
+	TEXT("ck.CrowdDebugger.PathNetworkTrace"),
+	0,
+	TEXT("Logs same-frame Path Network counts at the Crowd Debugger collector, view model, and active viewport draw stages. 0=off, 1=on."),
+	ECVF_Default);
 
 // --------------------------------------------------------------------------------------------------------------------
 

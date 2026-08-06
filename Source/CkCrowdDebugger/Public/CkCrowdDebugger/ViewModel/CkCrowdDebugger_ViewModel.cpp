@@ -2,7 +2,25 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "EngineGlobals.h"
 #include "HAL/IConsoleManager.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkCrowdDebugger_ViewModel::Reset_ForWorldChange() -> void
+{
+	_DataCollector.Reset_ForWorldChange();
+	_SelectedHandle = FCk_Handle{};
+	_LastWorld.Reset();
+	_LastAgentCount = -1;
+
+	if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.Crowd.SelectedEntityId")))
+	{ CVar->Set(-1, ECVF_SetByConsole); }
+
+	OnAgentListChanged.Broadcast(_DataCollector.Get_AllAgents());
+	OnSelectedAgentChanged.Broadcast(_SelectedHandle);
+	OnAgentDataRefreshed.Broadcast(nullptr);
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -17,6 +35,19 @@ auto
 	{ return; }
 
 	_DataCollector.Collect(InWorld);
+
+	static const auto* PathNetworkTraceCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.CrowdDebugger.PathNetworkTrace"));
+	if (PathNetworkTraceCVar != nullptr && PathNetworkTraceCVar->GetInt() != 0)
+	{
+		UE_LOG(
+			LogTemp,
+			Display,
+			TEXT("CkCrowdDebugger.PathNetworkTrace stage=view_model frame=%llu world=%s world_ptr=%p view_model_ribbons=%d"),
+			static_cast<unsigned long long>(GFrameCounter),
+			IsValid(InWorld) ? *InWorld->GetName() : TEXT("Invalid"),
+			InWorld,
+			Get_PathNetworkRibbons().Num());
+	}
 
 	// Gate 3 — broadcast every frame so the agent-list rows reflect live neighbor counts,
 	// status, etc. The Gate 0 count-change-only gate left per-agent fields stale (n= column

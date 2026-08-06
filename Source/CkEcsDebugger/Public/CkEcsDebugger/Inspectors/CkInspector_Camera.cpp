@@ -96,11 +96,14 @@ namespace ck_inspector_camera
 
     // Fixed-precision components in X/Y/Z order so AddAlignedNumericRow's index-based axis coloring
     // lines up with the axis each number belongs to, and every spatial row shares one column grid.
+    // T_Fragment is the fragment the projector reads from: pose/orientation data lives on
+    // FFragment_Camera_Pov, composition data on FFragment_Camera_Current.
+    template <typename T_Fragment, typename T_Projector>
     static auto Make_Components(
         const FCk_Handle& InCamera,
         int32 InComponentCount,
         const TCHAR* InFormat,
-        TFunction<double(const ck::FFragment_Camera_Current&, int32)> InProjector)
+        T_Projector InProjector)
         -> TArray<TAttribute<FText>>
     {
         auto Components = TArray<TAttribute<FText>>{};
@@ -110,38 +113,40 @@ namespace ck_inspector_camera
         {
             Components.Emplace(TAttribute<FText>::CreateLambda([InCamera, InFormat, InProjector, Index]()
             {
-                if (ck::Is_NOT_Valid(InCamera) || NOT InCamera.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(InCamera) || NOT InCamera.Has<T_Fragment>())
                 { return FText::FromString(TEXT("--")); }
 
                 return FText::FromString(ck::Format_UE(InFormat,
-                    InProjector(InCamera.Get<ck::FFragment_Camera_Current>(), Index)));
+                    InProjector(InCamera.Get<T_Fragment>(), Index)));
             }));
         }
 
         return Components;
     }
 
+    template <typename T_Fragment, typename T_Projector>
     static auto Make_VectorComponents(
         const FCk_Handle& InCamera,
-        TFunction<FVector(const ck::FFragment_Camera_Current&)> InProjector)
+        T_Projector InProjector)
         -> TArray<TAttribute<FText>>
     {
-        return Make_Components(InCamera, 3, TEXT("{:.2f}"),
-            [InProjector](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
-            { return InProjector(InCurrent)[InIndex]; });
+        return Make_Components<T_Fragment>(InCamera, 3, TEXT("{:.2f}"),
+            [InProjector](const T_Fragment& InFragment, int32 InIndex)
+            { return InProjector(InFragment)[InIndex]; });
     }
 
     // Roll=X, Pitch=Y, Yaw=Z — the axis each angle turns about, so the row's coloring agrees with
     // the vector rows above it. Every rotation label states the order.
+    template <typename T_Fragment, typename T_Projector>
     static auto Make_RotatorComponents(
         const FCk_Handle& InCamera,
-        TFunction<FRotator(const ck::FFragment_Camera_Current&)> InProjector)
+        T_Projector InProjector)
         -> TArray<TAttribute<FText>>
     {
-        return Make_Components(InCamera, 3, TEXT("{:.2f}"),
-            [InProjector](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
+        return Make_Components<T_Fragment>(InCamera, 3, TEXT("{:.2f}"),
+            [InProjector](const T_Fragment& InFragment, int32 InIndex)
             {
-                const auto Rotator = InProjector(InCurrent);
+                const auto Rotator = InProjector(InFragment);
                 return FVector{Rotator.Roll, Rotator.Pitch, Rotator.Yaw}[InIndex];
             });
     }
@@ -187,10 +192,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Orientation Intention:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Pov>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention()));
+                    Cam.Get<ck::FFragment_Camera_Pov>().Get_OrientationIntention()));
             },
             CkStyle::Value_Math());
 
@@ -245,13 +250,13 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Offset:")),
-            ck_inspector_camera::Make_VectorComponents(Cam,
+            ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera_Current>(Cam,
                 [](const ck::FFragment_Camera_Current& InCurrent)
                 { return InCurrent.Get_ComposedProfile().Get_Rig().Get_FramingOffset(); }));
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Pitch/Yaw:")),
-            ck_inspector_camera::Make_Components(Cam, 2, TEXT("{:.1f}"),
+            ck_inspector_camera::Make_Components<ck::FFragment_Camera_Current>(Cam, 2, TEXT("{:.1f}"),
                 [](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
                 {
                     const auto& Rig = InCurrent.Get_ComposedProfile().Get_Rig();
@@ -383,10 +388,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
                 FText::FromString(TEXT("Snap Boom Rotation (R,P,Y):")),
                 TAttribute<FRotator>::CreateLambda([Cam]()
                 {
-                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Pov>())
                     { return FRotator::ZeroRotator; }
 
-                    return Cam.Get<ck::FFragment_Camera_Current>().Get_PovState()._BoomArmRotation;
+                    return Cam.Get<ck::FFragment_Camera_Pov>().Get_PovState()._BoomArmRotation;
                 }),
                 [CapturedCamera](const FRotator& InWorldRotation)
                 {
@@ -449,10 +454,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
                 FText::FromString(TEXT("Push Orientation Intention:")),
                 TAttribute<FVector>::CreateLambda([Cam]()
                 {
-                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Pov>())
                     { return FVector::ZeroVector; }
 
-                    return Cam.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention();
+                    return Cam.Get<ck::FFragment_Camera_Pov>().Get_OrientationIntention();
                 }),
                 [CapturedCamera](const FVector& InIntention)
                 {
@@ -470,23 +475,23 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Location:")),
-            ck_inspector_camera::Make_VectorComponents(Cam,
-                [](const ck::FFragment_Camera_Current& InCurrent)
-                { return InCurrent.Get_ViewInfo().Location; }));
+            ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera_Pov>(Cam,
+                [](const ck::FFragment_Camera_Pov& InPov)
+                { return InPov.Get_ViewInfo().Location; }));
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Rotation (R,P,Y):")),
-            ck_inspector_camera::Make_RotatorComponents(Cam,
-                [](const ck::FFragment_Camera_Current& InCurrent)
-                { return InCurrent.Get_ViewInfo().Rotation; }));
+            ck_inspector_camera::Make_RotatorComponents<ck::FFragment_Camera_Pov>(Cam,
+                [](const ck::FFragment_Camera_Pov& InPov)
+                { return InPov.Get_ViewInfo().Rotation; }));
 
         Builder.AddRow(
             FText::FromString(TEXT("FOV:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Pov>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().FOV, TEXT("{:.1f}"));
+                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Pov>().Get_ViewInfo().FOV, TEXT("{:.1f}"));
             },
             CkStyle::Value_Numeric());
     }
@@ -575,18 +580,18 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
         {
             Builder.AddAlignedNumericRow(
                 FText::FromString(InLabel),
-                ck_inspector_camera::Make_VectorComponents(Cam,
-                    [InGet](const ck::FFragment_Camera_Current& InCurrent)
-                    { return InGet(InCurrent.Get_PovState()); }));
+                ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera_Pov>(Cam,
+                    [InGet](const ck::FFragment_Camera_Pov& InPov)
+                    { return InGet(InPov.Get_PovState()); }));
         };
 
         const auto AddPovRotatorRow = [&Builder, Cam](const FString& InLabel, TFunction<FRotator(const ck::camera::FPov_State&)> InGet)
         {
             Builder.AddAlignedNumericRow(
                 FText::FromString(InLabel),
-                ck_inspector_camera::Make_RotatorComponents(Cam,
-                    [InGet](const ck::FFragment_Camera_Current& InCurrent)
-                    { return InGet(InCurrent.Get_PovState()); }));
+                ck_inspector_camera::Make_RotatorComponents<ck::FFragment_Camera_Pov>(Cam,
+                    [InGet](const ck::FFragment_Camera_Pov& InPov)
+                    { return InGet(InPov.Get_PovState()); }));
         };
 
         AddPovRotatorRow(TEXT("Boom Rotation (R,P,Y):"), [](const auto& P) { return P._BoomArmRotation; });
@@ -601,9 +606,9 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Collision Dist:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Pov>())
                 { return FText::FromString(TEXT("--")); }
-                const auto& Distance = Cam.Get<ck::FFragment_Camera_Current>().Get_PovState()._CollisionDistance;
+                const auto& Distance = Cam.Get<ck::FFragment_Camera_Pov>().Get_PovState()._CollisionDistance;
                 return Distance.IsSet()
                     ? FText::FromString(ck::Format_UE(TEXT("{:.1f}"), Distance.GetValue()))
                     : FText::FromString(TEXT("-"));
@@ -720,7 +725,7 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     { return; }
 
     const auto& Current = Entity.Get<ck::FFragment_Camera_Current>();
-    const auto& Pov     = Current.Get_PovState();
+    const auto& Pov     = Entity.Get<ck::FFragment_Camera_Pov>().Get_PovState();
 
     const auto AnchorLocation = Pov._GroupBaseLocation;
     const auto CameraLocation = Pov._CameraTransform.GetLocation();

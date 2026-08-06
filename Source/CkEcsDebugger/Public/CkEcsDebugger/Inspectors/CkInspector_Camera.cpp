@@ -84,7 +84,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention()));
+                    Cam.Get<ck::FFragment_Camera_Pov>().Get_OrientationIntention()));
             },
             CkStyle::Value_Math());
 
@@ -214,7 +214,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Location));
+                    Cam.Get<ck::FFragment_Camera_Pov>().Get_ViewInfo().Location));
             },
             CkStyle::Transform());
 
@@ -225,7 +225,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Rotation));
+                    Cam.Get<ck::FFragment_Camera_Pov>().Get_ViewInfo().Rotation));
             },
             CkStyle::Transform());
 
@@ -235,7 +235,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             {
                 if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().FOV, TEXT("{:.1f}"));
+                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Pov>().Get_ViewInfo().FOV, TEXT("{:.1f}"));
             },
             CkStyle::Value_Numeric());
     }
@@ -339,7 +339,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 {
                     if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
                     { return FText::FromString(TEXT("--")); }
-                    return InGet(Cam.Get<ck::FFragment_Camera_Current>().Get_PovState());
+                    return InGet(Cam.Get<ck::FFragment_Camera_Pov>().Get_PovState());
                 },
                 CkStyle::Transform());
         };
@@ -460,7 +460,7 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     { return; }
 
     const auto& Current = Entity.Get<ck::FFragment_Camera_Current>();
-    const auto& Pov     = Current.Get_PovState();
+    const auto& Pov     = Entity.Get<ck::FFragment_Camera_Pov>().Get_PovState();
 
     const auto AnchorLocation = Pov._GroupBaseLocation;
     const auto CameraLocation = Pov._CameraTransform.GetLocation();

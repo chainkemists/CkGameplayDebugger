@@ -9,6 +9,7 @@ class STextBlock;
 class SVerticalBox;
 class SUniformGridPanel;
 class SBox;
+class FCkEcsDebuggerDashboard_ContentRebuildInvalidatesPresentation;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Overview dashboard (redesign spec §3.6, mockup parity): hero count + live sparkline,
@@ -31,6 +32,8 @@ public:
     auto Set_IsActive(bool InIsActive) -> void override;
 
 private:
+    friend class FCkEcsDebuggerDashboard_ContentRebuildInvalidatesPresentation;
+
     struct FCardEntry
     {
         TSharedPtr<SWidget> CardWidget;

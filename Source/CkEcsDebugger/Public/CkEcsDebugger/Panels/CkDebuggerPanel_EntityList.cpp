@@ -6,7 +6,6 @@
 #include "Widgets/SNullWidget.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
@@ -15,6 +14,7 @@
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -294,16 +294,14 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
             .HAlign(HAlign_Left)
             .Padding(0.0f, 0.0f, 0.0f, 2.0f)
             [
-                SNew(SCheckBox)
-                .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
+                SNew(SCkDebug_ToggleSurface)
                 .ToolTipText(FText::FromString(FString::Printf(TEXT("Show only entities with %s (own or rolled up). Click again to release."), *FeatureId.ToString())))
-                .IsChecked_Lambda([this, CapturedId]()
+                .AccessibleText(FText::FromName(FeatureId))
+                .IsOn_Lambda([this, CapturedId]() -> bool
                 {
-                    return EntityTree.IsValid() && EntityTree->Get_RailIncluded().Contains(CapturedId)
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
+                    return EntityTree.IsValid() && EntityTree->Get_RailIncluded().Contains(CapturedId);
                 })
-                .OnCheckStateChanged_Lambda([this, CapturedId](ECheckBoxState)
+                .OnStateChanged_Lambda([this, CapturedId](bool)
                 {
                     if (EntityTree.IsValid())
                     { EntityTree->Toggle_RailFeature(CapturedId); }

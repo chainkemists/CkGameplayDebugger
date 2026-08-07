@@ -34,24 +34,16 @@ bool FCkDebugIconToolbar_PartitionsAtomically::RunTest(const FString& Parameters
     for (auto Index = 0; Index < 8; ++Index)
     { Actions.Add(MakeAction(FName{*FString::Printf(TEXT("Action%d"), Index)})); }
 
-    auto Wide = FCkDebug_IconToolbarPartition{};
-    TestTrue(TEXT("Wide partition accepts valid actions"),
-        FCkDebug_IconToolbarPartition::TryBuild(Actions, 6, Wide));
-    TestEqual(TEXT("Wide row keeps six direct actions"), Wide.DirectCount, 6);
-    TestEqual(TEXT("Wide row sends two actions to overflow"), Wide.OverflowCount, 2);
-
-    auto Compact = FCkDebug_IconToolbarPartition{};
-    TestTrue(TEXT("Compact partition accepts valid actions"),
-        FCkDebug_IconToolbarPartition::TryBuild(Actions, 3, Compact));
-    TestEqual(TEXT("Compact row keeps three direct actions"), Compact.DirectCount, 3);
-    TestEqual(TEXT("Compact row sends five actions to overflow"), Compact.OverflowCount, 5);
+    auto Layout = FCkDebug_IconToolbarLayout{};
+    TestTrue(TEXT("Direct layout accepts valid actions"),
+        FCkDebug_IconToolbarLayout::TryBuild(Actions, Layout));
+    TestEqual(TEXT("Direct row publishes every action"), Layout.ActionCount, 8);
 
     Actions.Add(MakeAction(TEXT("Action0")));
-    auto Duplicate = FCkDebug_IconToolbarPartition{99, 99};
+    auto Duplicate = FCkDebug_IconToolbarLayout{99};
     TestFalse(TEXT("Duplicate stable ids reject the whole toolbar"),
-        FCkDebug_IconToolbarPartition::TryBuild(Actions, 6, Duplicate));
-    TestEqual(TEXT("Rejected toolbar publishes no direct actions"), Duplicate.DirectCount, 0);
-    TestEqual(TEXT("Rejected toolbar publishes no overflow actions"), Duplicate.OverflowCount, 0);
+        FCkDebug_IconToolbarLayout::TryBuild(Actions, Duplicate));
+    TestEqual(TEXT("Rejected toolbar publishes no actions"), Duplicate.ActionCount, 0);
 
     return true;
 }
@@ -68,24 +60,17 @@ bool FCkDebugIconToolbar_RejectsInvalidDescriptors::RunTest(const FString& Param
     using namespace ck_debug_icon_toolbar_tests;
 
     auto InvalidAction = MakeAction(NAME_None);
-    auto Partition = FCkDebug_IconToolbarPartition{99, 99};
+    auto Layout = FCkDebug_IconToolbarLayout{99};
     TestFalse(TEXT("Missing action id is rejected"),
-        FCkDebug_IconToolbarPartition::TryBuild({InvalidAction}, 6, Partition));
-    TestEqual(TEXT("Invalid descriptor leaves no partial direct layout"), Partition.DirectCount, 0);
-    TestEqual(TEXT("Invalid descriptor leaves no partial overflow layout"), Partition.OverflowCount, 0);
+        FCkDebug_IconToolbarLayout::TryBuild({InvalidAction}, Layout));
+    TestEqual(TEXT("Invalid descriptor leaves no partial layout"), Layout.ActionCount, 0);
 
     auto MissingIconAction = MakeAction(TEXT("MissingIcon"));
     MissingIconAction.IconId = TEXT("DefinitelyMissingCkDebuggerIcon");
-    Partition = {99, 99};
+    Layout = {99};
     TestFalse(TEXT("Missing icon rejects the whole toolbar"),
-        FCkDebug_IconToolbarPartition::TryBuild({MissingIconAction}, 6, Partition));
-    TestEqual(TEXT("Missing icon leaves no partial direct layout"), Partition.DirectCount, 0);
-    TestEqual(TEXT("Missing icon leaves no partial overflow layout"), Partition.OverflowCount, 0);
-
-    auto ValidActions = TArray<FCkDebug_IconToggleAction>{MakeAction(TEXT("Valid"))};
-    TestFalse(TEXT("Non-positive direct limit is rejected"),
-        FCkDebug_IconToolbarPartition::TryBuild(ValidActions, 0, Partition));
-    TestEqual(TEXT("Invalid limit leaves no partial layout"), Partition.DirectCount, 0);
+        FCkDebug_IconToolbarLayout::TryBuild({MissingIconAction}, Layout));
+    TestEqual(TEXT("Missing icon leaves no partial layout"), Layout.ActionCount, 0);
 
     TestNotNull(TEXT("Common icon registry resolves toolbar glyphs"),
         FCkDebuggerCommonStyle::Get_IconBrush(TEXT("Grid")));

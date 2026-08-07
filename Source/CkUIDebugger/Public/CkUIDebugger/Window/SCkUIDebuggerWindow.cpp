@@ -4,6 +4,7 @@
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -322,6 +323,23 @@ auto
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkUIDebugger"))
         .DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToolbar)
+            .Actions({
+                FCkDebug_IconToggleAction{
+                    TEXT("UiActiveLayerOnly"),
+                    TEXT("Target"),
+                    FText::FromString(TEXT("Active Layer Only")),
+                    FText::FromString(TEXT("Show only the layout's active layer.")),
+                    TAttribute<bool>::CreateLambda([this]() { return _ShowActiveLayerOnly; }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
+                    {
+                        _ShowActiveLayerOnly = InIsEnabled;
+                        _IsDirty = true;
+                    })}
+            })
+        ]
         .Content()
         [
             SNew(SBorder)
@@ -713,10 +731,11 @@ auto
     {
         const auto IsActive = ck::IsValid(Slot.Stack) && Slot.Stack->Get_LayerTag() == ActiveTag;
         const auto MatchesFilter = ck::IsValid(Slot.Stack) && DoMatchesFilter(Slot.Stack->Get_LayerTag().ToString());
+        const auto IsVisible = MatchesFilter && (NOT _ShowActiveLayerOnly || IsActive);
 
-        Slot.ExpandableArea->SetVisibility(MatchesFilter ? EVisibility::Visible : EVisibility::Collapsed);
+        Slot.ExpandableArea->SetVisibility(IsVisible ? EVisibility::Visible : EVisibility::Collapsed);
 
-        if (MatchesFilter)
+        if (IsVisible)
         {
             DoUpdateLayerSlot(Slot, IsActive);
         }

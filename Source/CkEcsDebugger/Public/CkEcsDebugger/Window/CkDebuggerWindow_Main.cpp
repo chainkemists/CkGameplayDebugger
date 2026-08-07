@@ -9,7 +9,6 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SSegmentedControl.h"
 #include "Widgets/Input/SSpinBox.h"
@@ -34,6 +33,7 @@
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
@@ -95,6 +95,10 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkEcsDebugger"))
         .DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            Build_MenuActions()
+        ]
         .Content()
         [
             SNew(SBorder)
@@ -228,7 +232,7 @@ auto SCkDebuggerWindow_Main::Tick(
     }
 }
 
-auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
+auto SCkDebuggerWindow_Main::Build_MenuActions() -> TSharedRef<SWidget>
 {
     const auto Make_OverlayAction = [](
         FName InId,
@@ -313,6 +317,12 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
             }),
             TAttribute<bool>::CreateLambda([this]() -> bool { return ViewportPicker.IsValid(); })}};
 
+    return SNew(SCkDebug_IconToolbar)
+        .Actions(IconActions);
+}
+
+auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
+{
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
         .Padding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
@@ -386,17 +396,6 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     })
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                 ]
-            ]
-
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-            [
-                SNew(SCkDebug_IconToolbar)
-                .Actions(IconActions)
-                .WideDirectCount(6)
-                .CompactDirectCount(3)
             ]
 
             // ---- Contextual attribute-filter settings ----
@@ -623,32 +622,27 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
             .AutoHeight()
             .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
             [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([]() -> ECheckBoxState
+                SNew(SCkDebug_IconToggle)
+                .IconId(TEXT("Attribute"))
+                .Label(FText::FromString(TEXT("Exclude listed")))
+                .ToolTip(FText::FromString(TEXT(
+                    "Unchecked: show ONLY attributes matching a pattern.\n"
+                    "Checked: show all EXCEPT matching (deny-list mode).")))
+                .IsOn_Lambda([]() -> bool
                 {
                     const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-                    return Settings != nullptr && Settings->bAttributeFilterIsExclusion
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
+                    return Settings != nullptr && Settings->bAttributeFilterIsExclusion;
                 })
-                .OnCheckStateChanged_Lambda([](ECheckBoxState InState)
+                .OnStateChanged_Lambda([](bool InIsOn)
                 {
                     auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
                     if (Settings == nullptr)
                     { return; }
 
-                    Settings->bAttributeFilterIsExclusion = InState == ECheckBoxState::Checked;
+                    Settings->bAttributeFilterIsExclusion = InIsOn;
                     Settings->SaveConfig();
                 })
-                .ToolTipText(FText::FromString(TEXT(
-                    "Unchecked: show ONLY attributes matching a pattern.\n"
-                    "Checked: show all EXCEPT matching (deny-list mode).")))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Exclude listed")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
+                .ShowLabel(true)
             ]
 
             // ---- Cull Radius spinbox ----
@@ -1079,20 +1073,19 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
             .FillWidth(1.0f)
             .VAlign(VAlign_Center)
             [
-                SNew(SCheckBox)
-                .IsChecked_Lambda([this, EntryID]() -> ECheckBoxState
+                SNew(SCkDebug_ToggleSurface)
+                .IsOn_Lambda([this, EntryID]() -> bool
                 {
-                    return FilterModel.IsValid() && FilterModel->Get_IsSelected(EntryID)
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
+                    return FilterModel.IsValid() && FilterModel->Get_IsSelected(EntryID);
                 })
-                .OnCheckStateChanged_Lambda([this, EntryID](ECheckBoxState InState)
+                .OnStateChanged_Lambda([this, EntryID](bool InIsOn)
                 {
                     if (FilterModel.IsValid())
                     {
-                        FilterModel->Set_Selection(EntryID, InState == ECheckBoxState::Checked);
+                        FilterModel->Set_Selection(EntryID, InIsOn);
                     }
                 })
+                .AccessibleText(DisplayName)
                 [
                     SNew(STextBlock)
                     .Text(DisplayName)
@@ -1105,22 +1098,21 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
             .VAlign(VAlign_Center)
             .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f))
             [
-                SNew(SCheckBox)
+                SNew(SCkDebug_ToggleSurface)
                 .ToolTipText(FText::FromString(TEXT(
                     "Hide — when checked, entities matching this inspector are removed from the\n"
                     "entity tree entirely (not just dimmed). Persists across editor sessions via\n"
                     "Project Settings → CkGameplayDebugger → Ck ECS Debugger.")))
-                .IsChecked_Lambda([this, EntryID]() -> ECheckBoxState
+                .AccessibleText(FText::FromString(TEXT("Hide")))
+                .IsOn_Lambda([this, EntryID]() -> bool
                 {
-                    return FilterModel.IsValid() && FilterModel->Get_IsExcluded(EntryID)
-                        ? ECheckBoxState::Checked
-                        : ECheckBoxState::Unchecked;
+                    return FilterModel.IsValid() && FilterModel->Get_IsExcluded(EntryID);
                 })
-                .OnCheckStateChanged_Lambda([this, EntryID](ECheckBoxState InState)
+                .OnStateChanged_Lambda([this, EntryID](bool InIsOn)
                 {
                     if (FilterModel.IsValid())
                     {
-                        FilterModel->Set_Exclusion(EntryID, InState == ECheckBoxState::Checked);
+                        FilterModel->Set_Exclusion(EntryID, InIsOn);
                     }
                 })
                 [
@@ -1162,55 +1154,23 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
-                    .Padding(FMargin(0.0f, 0.0f, 2.0f, 0.0f))
                     [
-                        SNew(SCheckBox)
-                        .Style(&FCoreStyle::Get().GetWidgetStyle<FCheckBoxStyle>("RadioButton"))
-                        .IsChecked_Lambda([this]() -> ECheckBoxState
+                        SNew(SSegmentedControl<ECk_InspectorFilter_MatchMode>)
+                        .Value_Lambda([this]() -> ECk_InspectorFilter_MatchMode
                         {
-                            return FilterModel.IsValid() && FilterModel->Get_MatchMode() == ECk_InspectorFilter_MatchMode::All
-                                ? ECheckBoxState::Checked
-                                : ECheckBoxState::Unchecked;
+                            return FilterModel.IsValid()
+                                ? FilterModel->Get_MatchMode()
+                                : ECk_InspectorFilter_MatchMode::All;
                         })
-                        .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+                        .OnValueChanged_Lambda([this](ECk_InspectorFilter_MatchMode InMatchMode)
                         {
-                            if (FilterModel.IsValid() && InState == ECheckBoxState::Checked)
-                            {
-                                FilterModel->Set_MatchMode(ECk_InspectorFilter_MatchMode::All);
-                            }
+                            if (FilterModel.IsValid())
+                            { FilterModel->Set_MatchMode(InMatchMode); }
                         })
-                        [
-                            SNew(STextBlock)
+                        + SSegmentedControl<ECk_InspectorFilter_MatchMode>::Slot(ECk_InspectorFilter_MatchMode::All)
                             .Text(FText::FromString(TEXT("All")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                        ]
-                    ]
-                    + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(SCheckBox)
-                        .Style(&FCoreStyle::Get().GetWidgetStyle<FCheckBoxStyle>("RadioButton"))
-                        .IsChecked_Lambda([this]() -> ECheckBoxState
-                        {
-                            return FilterModel.IsValid() && FilterModel->Get_MatchMode() == ECk_InspectorFilter_MatchMode::Any
-                                ? ECheckBoxState::Checked
-                                : ECheckBoxState::Unchecked;
-                        })
-                        .OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
-                        {
-                            if (FilterModel.IsValid() && InState == ECheckBoxState::Checked)
-                            {
-                                FilterModel->Set_MatchMode(ECk_InspectorFilter_MatchMode::Any);
-                            }
-                        })
-                        [
-                            SNew(STextBlock)
+                        + SSegmentedControl<ECk_InspectorFilter_MatchMode>::Slot(ECk_InspectorFilter_MatchMode::Any)
                             .Text(FText::FromString(TEXT("Any")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                        ]
                     ]
                     + SHorizontalBox::Slot()
                     .FillWidth(1.0f)

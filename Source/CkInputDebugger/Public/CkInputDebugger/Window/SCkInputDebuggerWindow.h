@@ -52,6 +52,7 @@ struct FCkInputDebugger_ActionSlot
     TSharedPtr<STextBlock> ValueText;
     TSharedPtr<STextBlock> TriggerText;
     FString                SearchText;
+    ECkInputDebugger_ActionActivity Activity = ECkInputDebugger_ActionActivity::NoInstance;
 };
 
 // ====================================================================================================================
@@ -128,6 +129,7 @@ private:
     FString _LastSignature;
     FString _FilterString;
     FString _HighlightString;
+    bool    _ShowActiveActionsOnly = false;
 };
 
 // ====================================================================================================================

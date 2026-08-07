@@ -1,6 +1,6 @@
 # Gate 03 - Insights Analyzer ownership
 
-> **Status:** Review remediation implemented; post-rebase automation and editor acceptance pending
+> **Status:** Post-rebase automation verified; editor acceptance pending
 > **Depends on:** Gate 02 implementation verified; editor acceptance remains pending
 > **Estimate:** 1 day, entered 2026-08-05
 
@@ -21,7 +21,7 @@ After this gate, the Insights Analyzer opens as a normal CkGameplayDebugger-owne
 2. Add the UncookedOnly `CkInsightsDebugger` module, move the analyzer tab/chart Slate sources into it, wrap the tab in `SCkDebug_WindowChrome`, and render `Show all` through `SCkDebug_IconToggle`.
 3. Preserve tab ID `CkInsightsAnalyzerTab`; self-register its launcher descriptor from `CkInsightsDebugger` and remove the launcher's proxy ownership.
 4. Update the exact catalog test to assert the analyzer descriptor owner and refresh permanent module/launcher doctrine.
-5. Cancel the async ticker and pending trace session explicitly when the tab is destroyed; keep `CkInsightsDebugger` free of unused ECS coupling.
+5. Cancel the async ticker and pending trace session explicitly when the tab is destroyed; declare `CkEcs` explicitly because `CkModuleRules` selects its shared PCH and PCH-emitted validity bindings require the implementation module at link time.
 
 ## Expected observations and branches
 

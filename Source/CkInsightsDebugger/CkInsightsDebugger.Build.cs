@@ -19,6 +19,9 @@ public class CkInsightsDebugger : CkModuleRules
 
             "CkCore",
             "CkDebuggerCommon",
+            // CkModuleRules selects the shared CkEcs PCH for CK modules; list its
+            // implementation module explicitly so PCH-emitted symbols link here.
+            "CkEcs",
             "CkEditorTools",
             "CkInsightsAnalyzer",
         });

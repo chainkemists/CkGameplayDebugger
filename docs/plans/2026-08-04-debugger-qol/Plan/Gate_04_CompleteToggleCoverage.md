@@ -1,6 +1,6 @@
 # Gate 04 - Complete toggle coverage
 
-> **Status:** Review remediation implemented; post-rebase automation and renewed editor acceptance pending
+> **Status:** Post-rebase automation verified; renewed editor acceptance pending
 > **Depends on:** Gate 03 implementation verified; editor acceptance remains pending
 > **Estimate:** 2 days, entered 2026-08-05
 
@@ -55,5 +55,6 @@ After this gate, every debugger in the launcher exposes at least one useful one-
 - Live verification then showed that the fill-width title still pushed actions to the far right. The final shared order is auto-width title, auto-width direct actions, fill-width spacer, and right-edge Debuggers.
 - Final adjacent-actions Development Editor build succeeded; the full `Debugger` pattern passed 18/18, failed 0, skipped 0, contaminated 0 in 40s in `Saved/Logs/DebuggerAdjacentMenuActions-Final-20260805.log`. The rebuilt Common binary is newer than source and every fresh diagnostic scan count is zero.
 - 2026-08-07 review found that an auto-width nine-action EQS row could exceed a narrow header and clip. The action surface now fills the width between title and Debuggers and uses a width-aware wrap box, retaining direct access without overflow.
-- Four newer Crowd navigation controls introduced after the original census now use `SCkDebug_ToggleSurface`, restoring the zero-feature-local-`SCheckBox` invariant. Final post-rebase automation and renewed editor row 15 remain pending.
+- Four newer Crowd navigation controls introduced after the original census now use `SCkDebug_ToggleSurface`, restoring the zero-feature-local-`SCheckBox` invariant.
+- Post-rebase UnrealToolbox Development Editor build succeeded in `Saved/Logs/DebuggerQoL-Final-DependencyFix-20260807.log`. The focused serial `Ck.Debugger` rerun passed 18/18 with zero failures, contamination, ensures, script errors, linker errors, or asset-registry write collisions in `Saved/Logs/DebuggerQoL-Final-Serial-20260807.log`.
 - Renewed live visual state and ECS contextual interaction remain `[EDITOR-VERIFY]` row 15.

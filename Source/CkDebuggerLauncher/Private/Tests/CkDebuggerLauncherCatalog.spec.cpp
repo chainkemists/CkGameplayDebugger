@@ -67,6 +67,22 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TestNotNull(*BrushMessage,
             FCkDebuggerLauncherStyle::Get_IconBrush(Tool.Get_IconId()));
 
+        if (TabId == TEXT("CkInsightsAnalyzerTab"))
+        {
+            TestEqual(TEXT("Insights Analyzer descriptor is owned by its debugger module"),
+                Tool.Get_OwnerModule(), FName{TEXT("CkInsightsDebugger")});
+            TestEqual(TEXT("Insights Analyzer descriptor keeps its display name"),
+                Tool.Get_DisplayName().ToString(), FString{TEXT("Insights Analyzer")});
+            TestEqual(TEXT("Insights Analyzer descriptor keeps its tooltip"),
+                Tool.Get_Tooltip().ToString(), FString{TEXT("Open .utrace files and analyze frame performance")});
+            TestEqual(TEXT("Insights Analyzer descriptor keeps its icon"),
+                Tool.Get_IconId(), FName{TEXT("Hourglass")});
+            TestEqual(TEXT("Insights Analyzer descriptor stays in the Tools category"),
+                Tool.Get_Category(), ECkDebuggerToolCategory::Tools);
+            TestEqual(TEXT("Insights Analyzer descriptor keeps its launcher order"),
+                Tool.Get_SortOrder(), 10);
+        }
+
         const auto OrderSlot = ck::Format_UE(
             TEXT("{}:{}"),
             static_cast<uint8>(Tool.Get_Category()),

@@ -5,8 +5,6 @@
 #include "Styles/CkDebuggerLauncherStyle.h"
 #include "Window/SCkDebuggerLauncher.h"
 
-#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
-
 #include "Framework/Docking/TabManager.h"
 #include "Textures/SlateIcon.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -16,7 +14,6 @@
 #define LOCTEXT_NAMESPACE "FCkDebuggerLauncherModule"
 
 const FName FCkDebuggerLauncherModule::LauncherTabName = FName{TEXT("CkDebuggerLauncher")};
-const FName FCkDebuggerLauncherModule::InsightsAnalyzerTabName = FName{TEXT("CkInsightsAnalyzerTab")};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -55,23 +52,10 @@ auto FCkDebuggerLauncherModule::StartupModule() -> void
             TEXT("CkDebuggerLauncher.Icon.Bug")})
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
 
-    // The Insights Analyzer tab spawner is owned by CkFoundation's CkInsightsAnalyzer module, which
-    // cannot depend on CkDebuggerCommon (plugin cycle) — the launcher registers its descriptor by proxy.
-    _InsightsAnalyzerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
-        TEXT("CkDebuggerLauncher"),
-        InsightsAnalyzerTabName,
-        LOCTEXT("InsightsAnalyzerDisplayName", "Insights Analyzer"),
-        LOCTEXT("InsightsAnalyzerTooltip", "Open .utrace files and analyze frame performance"),
-        TEXT("Hourglass"),
-        ECkDebuggerToolCategory::Tools,
-        10});
 }
 
 auto FCkDebuggerLauncherModule::ShutdownModule() -> void
 {
-    FCkDebuggerToolRegistry::Get().Unregister(InsightsAnalyzerTabName, _InsightsAnalyzerToolRegistrationId);
-    _InsightsAnalyzerToolRegistrationId = 0;
-
     CloseLauncher();
 
     if (FGlobalTabmanager::Get()->HasTabSpawner(LauncherTabName))

@@ -10,10 +10,11 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **16-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 13 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
-  `CkUIDebugger`, `CkSchedulerDebugger`, `CkAStarDebugger`, `CkGoapDebugger`, `CkCrowdDebugger`,
-  `CkEqsDebugger`, `CkInputDebugger`, `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`,
+- **19-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 16 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
+  `CkDialogDebugger`, `CkAggroDebugger`, `CkUIDebugger`, `CkSchedulerDebugger`, `CkAStarDebugger`,
+  `CkGoapDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
+  `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
   `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
   (`CkDebugger.uplugin:160-164`). The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
@@ -28,7 +29,7 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 10 feature debugger modules + `CkDebuggerLauncher` | UncookedOnly | Slate editor-tab debuggers on the shared `CkDebuggerCommon` widget base, plus the dockable discovery/launch rail (tabs under the Tools main menu → Developer Tools category; engine 5.7.4 `WorkspaceMenuStructureModule.cpp:184-185`). Flagship: `CkEcsDebugger` — entity tree, auto-registered inspectors, viewport picker; console toggle `ck.EcsDebugger` (`Source/CkEcsDebugger/CkEcsDebugger_Module.cpp:25-27`). | **Extend when you need an editor tool.** |
+| 2 (2025→) | 15 feature debugger modules + `CkDebuggerLauncher` | UncookedOnly | Slate editor-tab debuggers on the shared `CkDebuggerCommon` widget base, plus the dockable discovery/launch rail (tabs under the Tools main menu → Developer Tools category; engine 5.7.4 `WorkspaceMenuStructureModule.cpp:184-185`). Flagship: `CkEcsDebugger` — entity tree, auto-registered inspectors, viewport picker; console toggle `ck.EcsDebugger` (`Source/CkEcsDebugger/CkEcsDebugger_Module.cpp:25-27`). | **Extend when you need an editor tool.** |
 | 3 (2026, current flagship) | `CkEntityDebugOverlay` | Runtime | In-game on-screen overlay: `ULocalPlayerSubsystem` (`Subsystem/CkDebugOverlay_Subsystem.h:48`), self-registering providers, focus card + world pills + diamond markers. Compiled under `WITH_CK_DEBUG_OVERLAY`, non-Shipping only (`CkEntityDebugOverlay.Build.cs:36-39`); driven by `ck.DebugOverlay*` cvars/commands (`Subsystem/CkDebugOverlay_Subsystem.cpp:159-213`). | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces
@@ -58,8 +59,10 @@ remain (see Open issues).
   census is enforced by `Source/CkDebuggerLauncher/Private/Tests/CkDebuggerLauncherCatalog.spec.cpp`;
   permanent authoring steps live in `Source/CkDebuggerLauncher/CLAUDE.md`.
 - **Standalone window chrome**: every plugin-owned catalog window wraps its specialized root in
-  `SCkDebug_WindowChrome`, which provides the common Debuggers menu and status strip. The external
-  Insights Analyzer proxy is excluded because CkFoundation owns its window.
+  `SCkDebug_WindowChrome`, which provides the common title, inline icon-action area, Debuggers menu,
+  and status strip. Every catalog tool contributes at least one useful boolean action through that
+  shared area. This includes `CkInsightsDebugger`; CkFoundation retains only its UI-free
+  trace-analysis dependency.
 - **Entity-aware debugger entry**: a debugger that can select an ECS entity registers an
   `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common
   closest-lineage helper. This powers both ECS inspector `Open In` links and the common
@@ -106,9 +109,9 @@ remain (see Open issues).
 
 Facts above verified against code on **2026-07-14** (launcher branch based on `7fd41c8`). Re-verify with:
 
-- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **15** = 14 modules + the
+- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **20** = 19 modules + the
   CkFoundation entry in the `Plugins` dependency array), or count modules only:
-  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 14); read the
+  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 19); read the
   `"Type"` fields.
 - Registration macros: `rg -n 'define CK_REGISTER_DEBUG_OVERLAY_PROVIDER' Source/CkEntityDebugOverlay` · `rg -n 'define CK_REGISTER_DEBUGGER_INSPECTOR' Source/CkEcsDebugger`.
 - Settings Config attributes: `rg -n 'UCLASS\(Config' Source/CkEntityDebugOverlay/Public/CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h`.

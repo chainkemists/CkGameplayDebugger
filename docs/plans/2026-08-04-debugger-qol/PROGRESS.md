@@ -2,10 +2,10 @@
 
 ## Current state
 
-**As of 2026-08-05 (root `7850d85`, debugger `f28fd88`):** all three implementation gates and the follow-up automation boundaries are verified and committed; live editor acceptance remains pending.
-**Baseline being diffed against:** Development editor build succeeded; `Debugger` 12/12 and `DebugOverlay` 7/7, both with an empty failing set. Snapshot: `D:/Repos/CkPlugins/_scratch/baseline_debugger_qol_20260804-1622.md`.
-**Next action:** run the `[EDITOR-VERIFY]` matrix below in a representative NPC gym/PIE session, including the pinned-card, nested-hover, and legend rows, then record the observed pass/fail result for each row.
-**Blocked on:** nothing.
+**As of 2026-08-07:** independent review remediation is implemented for Gates 03 and 04; post-rebase automation and renewed editor acceptance remain pending.
+**Baseline being diffed against:** today's `Ck.Debugger` build stopped before tests because the checkout paired a 25-commit-behind CkFoundation tip with a CkTests dependency on `CkEntityVisualizer`. Exact inherited evidence is in `Saved/Logs/Baseline-DebuggerQoL-20260807-053052.md`; the older 18/18 run remains historical evidence only.
+**Next action:** commit the reviewed ownership boundaries, rebase affected plugins onto refreshed `origin/dev`, and run the broad `Ck.Debugger` gate on coherent tips.
+**Blocked on:** no external blocker; editor-only visual and interaction verification remains after automation.
 
 ## Decision log
 
@@ -20,8 +20,71 @@
 | 2026-08-04 | Expand focused marker subtrees through call-scoped roots. | The shared marker gather can reveal hovered, locked, and pinned descendants without retaining PIE handles or making unrelated branches unlimited. | A non-lifetime hierarchy must participate. |
 | 2026-08-05 | Prefer the deeper candidate only when hierarchy gaze scores tie. | Full-depth parents and descendants commonly share a transform; preserving the existing heuristic for non-ties avoids broad focus changes while making the visible nested entity selectable. | Live PIE shows near-co-located, non-tied descendants still cannot be aimed reliably. |
 | 2026-08-05 | Invalidate handle-owning debugger state at a common session boundary, while keeping reset ownership feature-local. | Tabs outlive PIE registries; a handle-free Common broadcast gives every debugger the same teardown moment without centralizing feature state or masking stale reads with guards. | A debugger owns no registry-backed state across worlds. |
+| 2026-08-05 | Split Insights Analyzer at the UI/core boundary. | CkFoundation owns trace analysis/reporting and the commandlet; CkGameplayDebugger owns editor debugger presentation and shared chrome. | Insights must remain available in projects that deliberately omit CkGameplayDebugger. |
+| 2026-08-05 | Give every launcher debugger an inline common-menu action surface. | A shared frame without accessible feature actions satisfies visual framing but not the requested one-click workflow. | A debugger genuinely has no meaningful boolean inspection lens after its feature surface changes. |
+| 2026-08-05 | Keep ECS contextual filters contextual while replacing their raw checkbox presentation. | Inspector tokens, cards, and All/Any or density choices are not debugger-wide state; promoting them would overload the global bar. | A contextual control becomes globally meaningful across every ECS page. |
+| 2026-08-05 | Keep the title and direct action row auto-width and adjacent; flexible width belongs after the actions. | Editor acceptance showed that action-first ordering shifted titles, while a flexible title slot pushed the corrected action row to the far right. | Never for debugger menu actions; a separate non-menu component may adopt another policy with explicit evidence. |
+| 2026-08-07 | Give the direct action surface the remaining header width and wrap at narrow widths. | An auto-width nine-action EQS row has no clipping or overflow policy; wrapping preserves one-click visibility while keeping the title anchored and Debuggers at the right edge. | A measured minimum tab width proves every supported action census always fits one row. |
 
 ## Dated entries
+
+### 2026-08-05 - Complete toggle coverage baseline and design
+
+- Confirmed: all 15 launcher windows use `SCkDebug_WindowChrome`, but only Insights currently passes the chrome's toolbar slot; existing feature icon toolbars remain inside bespoke body toolbars.
+- Confirmed: ECS contains nine direct `SCheckBox` construction sites: one boolean mode, two inspector-token controls, two All/Any radio controls, two archetype cards, one feature-rail chip, and one grid-density radio family.
+- Locked: add an inline common menu-action slot, give every launcher debugger at least one state-backed icon action, replace ECS rich toggles through a common content-bearing toggle surface, and use `SSegmentedControl` for short exclusive choices.
+- Selected low-risk actions backed by existing state: ECS overlay/picker actions; SM display actions; Map enabled POIs; Dialog active cooldowns; A* capture pause; GOAP pause-on events; Crowd world diagnostics; EQS overlay lenses; Aggro engaged owners; Scheduler freeze capture; Object Pooling pools in use; Jolt debug draw; UI active layer; Input active actions; Insights show all.
+- Baseline snapshot: `D:/Repos/CkPlugins/_scratch/baseline_debugger_toggle_coverage_20260805-183231.md`. A fresh broad run was blocked because Toolbox PID 44476 owns the editor log; no competing editor was launched.
+
+### 2026-08-05 - Complete toggle coverage implementation and verification
+
+- Added `MenuActionsContent` to the common window chrome and constrained it to the remaining top-bar width so `SCkDebug_IconToolbar` can switch to its compact overflow layout. Every one of the 15 launcher windows supplies this slot.
+- Migrated existing ECS, State Machine, A*, GOAP, Crowd, EQS, Scheduler, and Insights booleans into the common bar. Added default-off presentation lenses to Map, Dialog, Aggro, Object Pooling, UI, and Input, plus CVar-backed Jolt draw/velocity actions.
+- Replaced ECS's nine raw checkbox construction sites with shared icon toggles, `SCkDebug_ToggleSurface` for rich contextual cards/chips, and engine segmented controls for All/Any plus 2-6 columns. Final feature-local raw-checkbox file count is zero.
+- An independent adversarial review found Scheduler's combined frozen/history state could remain on after one off click. The final handler clears both state dimensions; no other concrete integration finding remained.
+- Final UnrealToolbox Development Editor build succeeded; all touched module binaries are newer than their latest source. The full `Debugger` pattern passed 18/18, failed 0, skipped 0, contaminated 0 in `Saved/Logs/DebuggerToggleCoverage-Final-20260805.log`.
+- `git diff --check` and the 15/15 action/static census passed. Visual placement, overflow, live toggle state, and contextual interaction remain editor-only acceptance row 15.
+
+### 2026-08-05 - Common action-bar visual correction
+
+- Editor acceptance failed: `MenuActionsContent` was right-aligned inside the flexible header slot, and `SCkDebug_IconToolbar` interpreted that constrained width as a compact state. ECS visibly showed three actions plus a `•••` menu containing the remaining actions.
+- Corrected the shared contract rather than individual windows: `MenuActionsContent` is now the first auto-width header slot, the title consumes the remaining width, and the Debuggers switcher stays at the right edge.
+- Removed responsive partitions and the overflow menu from the canonical icon toolbar. All action descriptors now validate atomically into one direct row, including ECS, Crowd, and EQS, which previously supplied per-window direct-count limits.
+- The final Development Editor rebuild succeeded and all six touched module binaries are newer than their latest source. A clean post-build `Debugger` run passed 18/18, failed 0, skipped 0, contaminated 0 in `Saved/Logs/DebuggerDirectMenuActions-TestOnly-20260805.log`.
+- The first combined build/test invocation discovered the pre-build toolbar test name and retried once after the stable test path was restored. Its final rollup was green, but the clean post-build test-only log above is the authoritative automation evidence.
+- The first correction's screenshot remains red visual baseline evidence: action-first ordering made the title shift between debuggers because each action row has a different width.
+- Corrected the shared slot order again to title, direct actions, then Debuggers. The title remains the flexible ellipsizing slot, so the action row stays fully visible without moving the title's left edge.
+- The final Development Editor build succeeded; the full `Debugger` pattern passed 18/18, failed 0, skipped 0, contaminated 0 in 39s in `Saved/Logs/DebuggerTitleThenActions-Final-20260805.log`. The fresh log contains no ensure, script-error, automation-error, no-match, compiler, linker, fatal, or failed-result markers.
+- Renewed editor acceptance exposed a second placement defect: the title's `FillWidth` slot consumed the header and pushed the action row against the right-edge Debuggers menu.
+- Corrected the shared geometry to auto-width title, auto-width direct actions, flexible spacer, then Debuggers. The title and actions now stay adjacent while only the spacer expands.
+- The final Development Editor build succeeded; the full `Debugger` pattern passed 18/18, failed 0, skipped 0, contaminated 0 in 40s in `Saved/Logs/DebuggerAdjacentMenuActions-Final-20260805.log`. `CkDebuggerCommon` is newer than the corrected source, and every fresh diagnostic scan count is zero.
+- Renewed live placement and interaction acceptance is still pending.
+
+### 2026-08-05 - Insights Analyzer migration baseline
+
+- Ran: fresh-boot UnrealToolbox `Ck.DebuggerLauncher` baseline -> 2/2 passed, 0 failed in 26s (`Saved/Logs/InsightsAnalyzerMigration-Baseline-20260805.log`).
+- Confirmed: the current catalog contains one `CkInsightsAnalyzerTab` descriptor and a registered spawner before the ownership move.
+- Confirmed: Foundation's only current dirt is unrelated untracked documentation; there is no overlap under `Source/CkInsightsAnalyzer` or `CkFoundation.uplugin`.
+- Locked: retain `CkInsightsAnalyzerTab`, retain `-run=CkInsightsAnalyzer`, and make the new `CkInsightsDebugger` module the sole tab-spawner and descriptor owner.
+- Confirmed by the final build: Foundation can drop every Slate/editor UI dependency after moving the tab and chart sources.
+
+### 2026-08-07 - Independent review remediation
+
+- Captured a fresh baseline before edits. Project generation succeeded, then the build stopped at the inherited checkout mismatch `Could not find definition for module 'CkEntityVisualizer'`; tests did not run.
+- Review found implicit close-during-load cleanup in Insights. `SCkInsightsAnalyzerTab` now cancels its ticker and pending trace session in its destructor, `CkInsightsDebugger` drops an unused `CkEcs` dependency, and the launcher catalog asserts the descriptor's exact public contract.
+- Review found that the all-direct action row could clip nine EQS actions at narrow widths. The title remains left-anchored, the action surface fills the remaining width and wraps, and the Debuggers control remains right-anchored.
+- Four Crowd navigation controls added after the original Gate 04 census now use `SCkDebug_ToggleSurface`; the feature-local raw-checkbox invariant is restored. The unrelated Crowd path-network `OnPaint` trace remains excluded for its owning investigation.
+- Post-rebase build/test evidence and editor matrix rows 14-15 remain pending; do not treat this entry as an acceptance claim.
+
+### 2026-08-05 - Insights Analyzer ownership migration
+
+- Moved the analyzer tab and frame chart into the new UncookedOnly `CkInsightsDebugger` module. The user-facing tab ID remains `CkInsightsAnalyzerTab`, preserving saved layouts and launcher discovery.
+- `CkInsightsDebugger` now owns the Nomad spawner and launcher descriptor, wraps the analyzer in `SCkDebug_WindowChrome`, and presents `Show all` through `SCkDebug_IconToggle`. The launcher's temporary proxy registration was removed.
+- CkFoundation's `CkInsightsAnalyzer` now contains only trace parsing, reports/JSON, logging, and the existing `-run=CkInsightsAnalyzer` commandlet contract; its Build.cs has no Slate, input, editor-style, tab, or workspace-menu dependencies.
+- Final Development Editor build succeeded and the baseline-comparable `Ck.DebuggerLauncher` suite passed 2/2 with zero failures in 32s: `Saved/Logs/InsightsAnalyzerMigration-BuildTest-20260805.log`.
+- Fresh diagnostics contained no fatal errors, ensures, AngelScript errors, linker/compiler failures, or errors naming the moved modules. The existing `CkAutoTest_Base.as` shadow warning and unrelated startup/cache warnings remain inherited.
+- `git diff --check` passed for both changed plugins. An independent read-only adversarial review found no migration defects across dependency direction, registration/teardown ordering, saved tab compatibility, weak-ticker lifetime, shared chrome/toggle integration, or commandlet compatibility.
+- Live Analyzer chrome, icon state, file-dialog cancellation, and close-during-load behavior remain editor-only verification.
 
 ### 2026-08-04 - Research and baseline
 
@@ -102,7 +165,7 @@
 | `[EDITOR-VERIFY]` 3 | Select an ECS entity, then click the common `Sync from ECS <id>` status action in GOAP, Crowd, A*, and State Machine. Repeat with a nested feature entity and an unsupported sibling. | Exact matches win, otherwise the nearest ancestor/descendant wins deterministically; unrelated siblings are never selected; unsupported routes remain disabled/absent. | Pending |
 | `[EDITOR-VERIFY]` 4 | Keep ECS open while spawning, destroying, and transferring a child from owner A to owner B. Do not press Refresh. | Spawned entities appear, destroyed entities disappear, and the same child row regroups under B at the next bounded refresh while surviving selection/expansion remains stable. | Pending |
 | `[EDITOR-VERIFY]` 5 | Use the AI overlay preset on an attribute-heavy NPC and inspect GOAP/navigation failure and active-plan cases. | The card renders no more than 18 total rows and four per section; GOAP/Crowd/PathNetwork/A* sections outrank generic attributes; omission summaries are exact; GOAP and path rows describe actionable status/active/plan/cost/failure/corridor/goal data. | Pending |
-| `[EDITOR-VERIFY]` 6 | Open ECS, State Machine, UI, Scheduler, A*, GOAP, Crowd, EQS, Input, Object Pooling, Jolt, Map, Dialog, and Aggro. Exercise the `Debuggers` menu and narrow-dock each tab. | All 14 tabs share the title/menu/content/status frame, retain feature controls, and stay reachable when narrow. Only registered entity-target tools show the ECS adoption action. | Pending |
+| `[EDITOR-VERIFY]` 6 | Open ECS, State Machine, UI, Scheduler, A*, GOAP, Crowd, EQS, Input, Object Pooling, Jolt, Map, Dialog, Aggro, and Insights Analyzer. Exercise the `Debuggers` menu and narrow-dock each tab. | All 15 tabs share the title/menu/content/status frame, retain feature controls, and stay reachable when narrow. Only registered entity-target tools show the ECS adoption action. | Pending |
 | `[EDITOR-VERIFY]` 7 | With ECS, Crowd, GOAP, A*, and State Machine open, select and pin an entity, use Back/Forward at least once, then move gyms or stop/restart PIE and repeat one ECS adoption action. | ECS selection/history/pins clear before the old registry dies; Crowd/A* release their selected/cache state; no invalid-registry `FFragment_LifetimeOwner` ensure storm occurs; the next action uses only the new world's selection. | Pending |
 | `[EDITOR-VERIFY]` 8 | In the ECS toolbar's On-Screen Overlay popover, enable `Sync hovered entity`, then aim the overlay at top-level and nested NPC entities with ECS, GOAP, Crowd, A*, and State Machine already open. | Every compatible open debugger adopts the closest lineage match once per focus change; closed tabs stay closed. | Pending |
 | `[EDITOR-VERIFY]` 9 | Leave Max Depth at its default 0, enable `Full depth for focus`, then hover, lock, and pin an entity with nested descendants. | Only top-level markers are shown globally; the hovered/locked/pinned entity's complete subtree is shown, while unrelated deep branches remain hidden. | Pending |
@@ -110,6 +173,8 @@
 | `[EDITOR-VERIFY]` 11 | Pin entity A, aim at B, then aim back at A; repeat while A is focus-locked, then unpin A while it remains focused. | A has one cyan-outlined card in both primary and secondary positions, never duplicates; cyan wins over amber while pinned, and unpin restores amber or no ring as appropriate. | Pending |
 | `[EDITOR-VERIFY]` 12 | With Max Depth 0 and `Full depth for focus` enabled, pin a root whose parent/child markers share a transform, then aim at the expanded hierarchy and exercise the co-located cycle. | The visible deeper candidate can become focus rather than the parent winning permanently by gather order; unrelated hidden descendants remain ineligible. | Pending |
 | `[EDITOR-VERIFY]` 13 | Compare a top-left focus-card legend with its normal provider chips and with the same provider's in-world near plate. | Only the legend pill backgrounds are visibly muted; legend text is unchanged, and normal card chips plus in-world pills/plates retain full saturation. | Pending |
+| `[EDITOR-VERIFY]` 14 | Open the Launcher and click Insights Analyzer twice. Toggle `Show all`, open and cancel the `.utrace` picker, then close the tab during and after loading a trace. | One saved-layout-compatible `CkInsightsAnalyzerTab` opens and then focuses; common Debuggers/status chrome is present; the Tree icon visibly toggles; cancellation and teardown are safe. | Pending |
+| `[EDITOR-VERIFY]` 15 | Open every launcher debugger and exercise its common-bar actions: ECS overlays/picker; State Machine Tasks/Compact/Frames; Map enabled POIs; Dialog active cooldowns; A* pause; GOAP pause-on-replan/failure; Crowd diagnostics; EQS pause/overlays; Aggro engaged owners; Scheduler freeze; Object Pooling in-use pools; Jolt draw/velocity; UI active layer; Input active actions; Insights Show all. Then exercise ECS inspector selection/hide, All/Any, attribute exclusion, feature chips, archetype cards, and 2-6 columns. | Every title starts at the same left edge and is followed immediately by its directly visible menu actions; no `•••` or action dropdown appears at normal and narrow widths. Each action is one-click, visibly reflects live state, and has no duplicate feature-toolbar control. Flexible space separates the action row from the right-edge Debuggers menu. ECS contextual controls retain their original state owner and behavior; no raw checkbox presentation remains. | Pending |
 
 ## Open items
 
@@ -118,5 +183,7 @@
 | Gate 00 | Implementation verified; editor acceptance pending | Run matrix rows 1-4 and 7. |
 | Gate 01 | Implementation verified; editor acceptance pending | Run matrix rows 5, 9, and 11-13. |
 | Gate 02 | Implementation verified; editor acceptance pending | Run matrix rows 6-7. |
+| Gate 03 | Implementation verified; editor acceptance pending | Run matrix rows 6 and 14. |
+| Gate 04 | Implementation verified; renewed editor acceptance pending | Rerun matrix row 15. |
 
 **Rule:** do not convert the editor-acceptance boundary into a completion claim while any matrix row remains pending.

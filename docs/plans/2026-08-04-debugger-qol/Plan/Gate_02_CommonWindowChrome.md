@@ -25,7 +25,7 @@ After this gate, every CkGameplayDebugger-owned standalone debugger uses one sha
 4. Adopt structured windows last: ECS, Scheduler, State Machine, and GOAP.
    -> verify: picker/popovers, stats/tab tiers, timeline toolbar locality, and Mission Control strips remain structurally unchanged inside the common frame.
 5. Update the launcher catalog/window authoring docs so new standalone debuggers must use the shared frame.
-   -> verify: catalog count remains exact and docs name the exception for the external Insights Analyzer proxy.
+   -> verify: catalog count remains exact and docs record the then-external Insights Analyzer proxy. Gate 03 supersedes that temporary exception.
 
 ## Expected observations and branches
 
@@ -38,7 +38,7 @@ After this gate, every CkGameplayDebugger-owned standalone debugger uses one sha
 
 ## Exit criteria
 
-- [x] Every plugin-owned catalog window uses the common frame; external proxy exclusion documented.
+- [x] Every plugin-owned catalog window used the common frame; the then-external proxy exclusion was documented and is superseded by Gate 03.
 - [x] Development editor build and both baseline test slices pass after final edit.
 - [x] Fresh logs contain no new ensures or diagnostics naming touched files.
 - [x] Full `[EDITOR-VERIFY]` matrix is supplied with exact clicks and expected observations.

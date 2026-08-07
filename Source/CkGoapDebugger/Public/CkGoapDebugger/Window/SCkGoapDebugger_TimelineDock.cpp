@@ -9,7 +9,6 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
@@ -88,6 +87,8 @@ auto
     -> void
 {
     _ViewModel = InArgs._ViewModel;
+    _PauseOnReplan = InArgs._PauseOnReplan;
+    _PauseOnPlanFailed = InArgs._PauseOnPlanFailed;
 
     ChildSlot
     [
@@ -123,7 +124,7 @@ auto
                                     this, &SCkGoapDebugger_TimelineDock::HandleScrubTo))
                         ]
 
-                    // Controls — jump-to-replan buttons + pause-on checkboxes.
+                    // Controls — jump-to-replan buttons. Pause-on actions live in the common menu bar.
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         .Padding(FMargin(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceS))
@@ -155,44 +156,6 @@ auto
                                             ]
                                     ]
 
-                                + SHorizontalBox::Slot()
-                                    .AutoWidth()
-                                    .VAlign(VAlign_Center)
-                                    .Padding(FMargin(CkStyle::SpaceM, 0.0f, CkStyle::SpaceS, 0.0f))
-                                    [
-                                        SNew(STextBlock)
-                                            .Text(FText::FromString(TEXT("Pause on:")))
-                                            .ToolTipText(FText::FromString(TEXT("Debugger halts PIE when the event fires — catch the exact frame")))
-                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                                            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-                                    ]
-
-                                + SHorizontalBox::Slot()
-                                    .AutoWidth()
-                                    .VAlign(VAlign_Center)
-                                    [
-                                        SNew(SCkDebug_IconToggle)
-                                            .IconId(TEXT("Stopwatch"))
-                                            .Label(FText::FromString(TEXT("Pause on replan")))
-                                            .ToolTip(FText::FromString(TEXT("Pause PIE when a replan occurs.")))
-                                            .IsOn_Lambda([this] { return _PauseOnReplan; })
-                                            .OnStateChanged_Lambda([this](bool InIsOn)
-                                            { _PauseOnReplan = InIsOn; })
-                                    ]
-
-                                + SHorizontalBox::Slot()
-                                    .AutoWidth()
-                                    .VAlign(VAlign_Center)
-                                    .Padding(FMargin(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f))
-                                    [
-                                        SNew(SCkDebug_IconToggle)
-                                            .IconId(TEXT("Skull"))
-                                            .Label(FText::FromString(TEXT("Pause on plan failed")))
-                                            .ToolTip(FText::FromString(TEXT("Pause PIE when plan construction fails.")))
-                                            .IsOn_Lambda([this] { return _PauseOnPlanFailed; })
-                                            .OnStateChanged_Lambda([this](bool InIsOn)
-                                            { _PauseOnPlanFailed = InIsOn; })
-                                    ]
                         ]
 
                     // Diff card | event log.
@@ -730,15 +693,17 @@ auto
     const auto FirstNew = _SeenEventCount;
     _SeenEventCount = InHistory.Num();
 
-    if (NOT _PauseOnReplan && NOT _PauseOnPlanFailed) { return; }
+    const auto PauseOnReplan = _PauseOnReplan.Get(false);
+    const auto PauseOnPlanFailed = _PauseOnPlanFailed.Get(false);
+    if (NOT PauseOnReplan && NOT PauseOnPlanFailed) { return; }
     if (NOT _ViewModel.IsValid() || _ViewModel->GetMode() != FCkGoapDebugger_ViewModel::EMode::Live) { return; }
 
     for (auto Index = FirstNew; Index < InHistory.Num(); ++Index)
     {
         const auto& Event = InHistory[Index];
         const auto Match =
-            (_PauseOnReplan && Event.Kind == ECkGoapDebugger_HistoryEventKind::Replanned) ||
-            (_PauseOnPlanFailed && Event.Kind == ECkGoapDebugger_HistoryEventKind::PlanFailed);
+            (PauseOnReplan && Event.Kind == ECkGoapDebugger_HistoryEventKind::Replanned) ||
+            (PauseOnPlanFailed && Event.Kind == ECkGoapDebugger_HistoryEventKind::PlanFailed);
 
         if (NOT Match) { continue; }
 

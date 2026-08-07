@@ -20,6 +20,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 
+#include "HAL/IConsoleManager.h"
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
@@ -28,6 +29,8 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
+
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Local style + helpers (module-unique namespace name — unity builds concatenate TUs).
@@ -82,6 +85,20 @@ namespace ck_jolt_debugger
             case NM_Client:          return TEXT("Client");
             case NM_Standalone:      return TEXT("Standalone");
             default:                 return TEXT("Unknown");
+        }
+    }
+
+    static auto GetDebugCVarBool(const TCHAR* InName) -> bool
+    {
+        const auto* CVar = IConsoleManager::Get().FindConsoleVariable(InName);
+        return CVar != nullptr && CVar->GetInt() != 0;
+    }
+
+    static auto SetDebugCVarBool(const TCHAR* InName, const bool InEnabled) -> void
+    {
+        if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(InName))
+        {
+            CVar->Set(InEnabled ? 1 : 0, ECVF_SetByConsole);
         }
     }
 }
@@ -144,7 +161,44 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger")).DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToolbar)
+            .Actions({
+                FCkDebug_IconToggleAction{
+                    TEXT("JoltDebugDraw"),
+                    TEXT("Cube"),
+                    FText::FromString(TEXT("Debug Draw")),
+                    FText::FromString(TEXT("Draw Jolt physics bodies in the selected world.")),
+                    TAttribute<bool>::CreateLambda([]()
+                    {
+                        return ck_jolt_debugger::GetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Enabled"));
+                    }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([](const bool InIsEnabled)
+                    {
+                        ck_jolt_debugger::SetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Enabled"), InIsEnabled);
+                    })},
+                FCkDebug_IconToggleAction{
+                    TEXT("JoltVelocityVectors"),
+                    TEXT("ArrowProjectile"),
+                    FText::FromString(TEXT("Velocity Vectors")),
+                    FText::FromString(TEXT("Draw linear-velocity vectors for active Jolt bodies.")),
+                    TAttribute<bool>::CreateLambda([]()
+                    {
+                        return ck_jolt_debugger::GetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Velocity"));
+                    }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([](const bool InIsEnabled)
+                    {
+                        ck_jolt_debugger::SetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Velocity"), InIsEnabled);
+                    }),
+                    TAttribute<bool>::CreateLambda([]()
+                    {
+                        return ck_jolt_debugger::GetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Enabled"));
+                    })}
+            })
+        ]
+        .Content()
         [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))

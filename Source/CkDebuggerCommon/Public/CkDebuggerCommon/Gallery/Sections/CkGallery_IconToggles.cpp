@@ -54,7 +54,7 @@ public:
     virtual auto Get_Name() const -> FText override { return FText::FromString(TEXT("Icon Toggles")); }
     virtual auto Get_Description() const -> FText override
     {
-        return FText::FromString(TEXT("Canonical boolean action, responsive toolbar, and labeled overflow menu."));
+        return FText::FromString(TEXT("Canonical boolean action and always-visible direct toolbar."));
     }
     virtual auto Get_SortPriority() const -> int32 override { return 5; }
 
@@ -125,7 +125,7 @@ public:
             .AutoHeight()
             .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
             [
-                Caption(TEXT("Wide toolbar — six direct actions, two in More"))
+                Caption(TEXT("Toolbar — all eight actions remain directly visible"))
             ]
 
             + SVerticalBox::Slot()
@@ -137,7 +137,6 @@ public:
                 [
                     SNew(SCkDebug_IconToolbar)
                     .Actions(MakeToolbarActions())
-                    .CompactWidthThreshold(360.0f)
                 ]
             ]
 
@@ -145,7 +144,7 @@ public:
             .AutoHeight()
             .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
             [
-                Caption(TEXT("Compact toolbar — three direct actions, five in More"))
+                Caption(TEXT("Narrow container — direct actions keep their desired width"))
             ]
 
             + SVerticalBox::Slot()
@@ -156,7 +155,6 @@ public:
                 [
                     SNew(SCkDebug_IconToolbar)
                     .Actions(MakeToolbarActions())
-                    .CompactWidthThreshold(360.0f)
                 ]
             ];
     }

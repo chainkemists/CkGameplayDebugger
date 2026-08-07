@@ -108,37 +108,6 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
         FLinearColor::White, 3.0f));
 
-    // Toggle chips (Fold/Group toolbar toggles + feature rail). Own style, not an
-    // FAppStyle name: engine style names drift across versions and a missing name
-    // silently yields a default grey checkbox.
-    InStyle->Set("CkDebugger.ToggleChip", FCheckBoxStyle()
-        .SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
-        .SetUncheckedImage(FSlateRoundedBoxBrush{CkStyle::Bg2(), 4.0f, CkStyle::Border(), 1.0f})
-        .SetUncheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::Border(), 1.0f})
-        .SetUncheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::Border(), 1.0f})
-        .SetCheckedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.30f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetCheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.45f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetCheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.30f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetForegroundColor(CkStyle::TextDim())
-        .SetHoveredForegroundColor(CkStyle::Text())
-        .SetPressedForegroundColor(CkStyle::Text())
-        .SetCheckedForegroundColor(CkStyle::TextStrong())
-        .SetCheckedHoveredForegroundColor(CkStyle::TextStrong())
-        .SetCheckedPressedForegroundColor(CkStyle::TextStrong())
-        .SetPadding(FMargin{6.0f, 3.0f}));
-
-    // Toggleable cards (Archetypes page): rounded, accent outline on hover, accent
-    // fill while toggled into the filter. Content padding lives in the style.
-    InStyle->Set("CkDebugger.CardToggle", FCheckBoxStyle()
-        .SetCheckBoxType(ESlateCheckBoxType::ToggleButton)
-        .SetUncheckedImage(FSlateRoundedBoxBrush{CkStyle::Bg1(), 4.0f, CkStyle::Border(), 1.0f})
-        .SetUncheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Hover(), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetUncheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Bg2(), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetCheckedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.18f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetCheckedHoveredImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.28f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetCheckedPressedImage(FSlateRoundedBoxBrush{CkStyle::Selection().CopyWithNewOpacity(0.18f), 4.0f, CkStyle::Selection(), 1.0f})
-        .SetPadding(FMargin{Padding_Medium}));
-
     // Tintable icon backdrop for cards — white so BorderBackgroundColor carries the tint.
     InStyle->Set("CkDebugger.Card.IconWell", new FSlateRoundedBoxBrush(
         FLinearColor::White, 4.0f));

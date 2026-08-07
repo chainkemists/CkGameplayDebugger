@@ -41,6 +41,7 @@ public:
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildMenuActions() -> TSharedRef<SWidget>;
 
     auto OnEndPIE(const bool InWasSimulating) -> void;
     auto OnBeginPIE(const bool InIsSimulating) -> void;

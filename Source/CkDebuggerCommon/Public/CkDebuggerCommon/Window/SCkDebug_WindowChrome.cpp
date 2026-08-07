@@ -35,9 +35,11 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
     _DisplayName = InArgs._DisplayName;
     _StatusText = InArgs._StatusText;
 
+    const auto MenuActions = InArgs._MenuActionsContent.Widget;
     const auto Toolbar = InArgs._ToolbarContent.Widget;
     const auto Content = InArgs._Content.Widget;
     const auto Status = InArgs._StatusContent.Widget;
+    const auto HasMenuActions = MenuActions != SNullWidget::NullWidget;
     const auto HasToolbar = Toolbar != SNullWidget::NullWidget;
     const auto HasStatusWidget = Status != SNullWidget::NullWidget;
     const auto EffectiveStatus = HasStatusWidget
@@ -67,13 +69,28 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                         [
                             SNew(SHorizontalBox)
                             + SHorizontalBox::Slot()
-                            .FillWidth(1.0f)
+                            .AutoWidth()
+                            .HAlign(HAlign_Left)
                             .VAlign(VAlign_Center)
+                            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                             [
                                 SNew(STextBlock)
                                     .Text(_DisplayName)
                                     .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
                                     .ColorAndOpacity(CkStyle::TextStrong())
+                                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+                            ]
+                            + SHorizontalBox::Slot()
+                            .FillWidth(1.0f)
+                            .HAlign(HAlign_Fill)
+                            .VAlign(VAlign_Center)
+                            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                            [
+                                SNew(SBox)
+                                    .Visibility(HasMenuActions ? EVisibility::Visible : EVisibility::Collapsed)
+                                    [
+                                        MenuActions
+                                    ]
                             ]
                             + SHorizontalBox::Slot()
                             .AutoWidth()

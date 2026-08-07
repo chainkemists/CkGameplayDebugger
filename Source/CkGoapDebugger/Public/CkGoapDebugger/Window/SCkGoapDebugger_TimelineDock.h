@@ -38,6 +38,8 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_TimelineDock : public SCompoundWidget
 public:
     SLATE_BEGIN_ARGS(SCkGoapDebugger_TimelineDock) {}
         SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
+        SLATE_ATTRIBUTE(bool, PauseOnReplan)
+        SLATE_ATTRIBUTE(bool, PauseOnPlanFailed)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -67,8 +69,8 @@ private:
     TSharedPtr<SBox>           _DiffHost;
     TSharedPtr<SVerticalBox>   _EventLog;
 
-    bool _PauseOnReplan     = false;
-    bool _PauseOnPlanFailed = false;
+    TAttribute<bool> _PauseOnReplan;
+    TAttribute<bool> _PauseOnPlanFailed;
 
     // High-water mark for pause-on detection (events at/below are old).
     int32 _SeenEventCount = 0;

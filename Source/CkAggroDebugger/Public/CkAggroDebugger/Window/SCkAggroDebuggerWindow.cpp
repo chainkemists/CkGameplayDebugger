@@ -5,6 +5,7 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -63,6 +64,20 @@ auto
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkAggroDebugger"))
             .DisplayName(FText::FromString(TEXT("CK Aggro Debugger")))
+            .MenuActionsContent()
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(TEXT("Target"))
+                .Label(FText::FromString(TEXT("Engaged owners only")))
+                .ToolTip(FText::FromString(TEXT("Show only owners with an active tracked target.")))
+                .IsOn_Lambda([this]() { return _ShowEngagedOwnersOnly; })
+                .OnStateChanged_Lambda([this](const bool InEngagedOnly)
+                {
+                    if (_ShowEngagedOwnersOnly == InEngagedOnly) { return; }
+                    _ShowEngagedOwnersOnly = InEngagedOnly;
+                    _LastSignature.Reset();
+                })
+            ]
             .Content()
             [
                 SNew(SVerticalBox)
@@ -217,6 +232,11 @@ auto
     return false;
 }
 
+auto SCkAggroDebuggerWindow::DoPassesEngagedFilter(const FCkAggroDebugger_OwnerInfo& InOwner) const -> bool
+{
+    return NOT _ShowEngagedOwnersOnly || ck::IsValid(InOwner.ActiveTrackedEntity);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -296,10 +316,11 @@ auto
     // frame, and including them would rebuild the tree every frame — the exact failure this split exists to avoid.
     auto Signature = FString{};
     Signature.Append(_FilterString);
+    Signature.Append(_ShowEngagedOwnersOnly ? TEXT("|engaged") : TEXT("|all"));
 
     for (const auto& Owner : _Collector.Get_Snapshot().Owners)
     {
-        if (NOT DoPassesFilter(Owner))
+        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
         { continue; }
 
         Signature.Appendf(TEXT("|%s>"), *Owner.OwnerName);
@@ -429,7 +450,7 @@ auto
 
     for (const auto& Owner : _Collector.Get_Snapshot().Owners)
     {
-        if (NOT DoPassesFilter(Owner))
+        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
         { continue; }
 
         AnyOwners = true;
@@ -538,7 +559,7 @@ auto
 
     for (const auto& Owner : Snapshot.Owners)
     {
-        if (NOT DoPassesFilter(Owner))
+        if (NOT DoPassesFilter(Owner) || NOT DoPassesEngagedFilter(Owner))
         { continue; }
 
         if (_OwnerSlots.IsValidIndex(OwnerSlotIndex))

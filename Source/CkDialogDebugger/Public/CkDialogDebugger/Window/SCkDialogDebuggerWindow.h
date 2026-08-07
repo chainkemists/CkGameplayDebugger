@@ -108,6 +108,7 @@ private:
 
     FString                         _FilterString;
     FString                         _HighlightString;
+    bool                            _ShowActiveCooldownsOnly = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

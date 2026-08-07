@@ -36,6 +36,7 @@ public:
     auto Get_FilterModel() const -> TSharedPtr<FCkDebuggerModel_InspectorFilter>;
 
 private:
+    auto Build_MenuActions() -> TSharedRef<SWidget>;
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_PickerSettingsPopover() -> TSharedRef<SWidget>;
     auto Build_OverlayPopover() -> TSharedRef<SWidget>;

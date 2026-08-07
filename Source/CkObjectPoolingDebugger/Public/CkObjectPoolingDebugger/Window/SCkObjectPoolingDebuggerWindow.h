@@ -146,6 +146,7 @@ private:
 
     ESortColumn _SortColumn = ESortColumn::InUse;
     bool        _SortAscending = false;
+    bool        _ShowInUseOnly = false;
 
     FString _LastSignature;
     int32   _NumPinnedUnique = 0;

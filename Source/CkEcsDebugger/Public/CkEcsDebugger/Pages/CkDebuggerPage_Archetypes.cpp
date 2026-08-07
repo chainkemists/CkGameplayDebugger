@@ -2,6 +2,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
@@ -11,7 +12,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
-#include "Widgets/Input/SCheckBox.h"
+#include "Widgets/Input/SSegmentedControl.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -56,32 +57,16 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
     RequestEntityFilter = InContext.RequestEntityFilter;
     GetEntityFilter = InContext.GetEntityFilter;
 
-    // Column-density chips (2..6) — radio semantics against the persisted setting.
-    auto ColumnChips = SNew(SHorizontalBox);
-    for (auto Columns = 2; Columns <= 6; ++Columns)
-    {
-        ColumnChips->AddSlot()
-        .AutoWidth()
-        .Padding(2.0f, 0.0f, 0.0f, 0.0f)
-        [
-            SNew(SCheckBox)
-            .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.ToggleChip"))
-            .ToolTipText(FText::FromString(FString::Printf(TEXT("%d card columns"), Columns)))
-            .IsChecked_Lambda([Columns]()
-            {
-                return Get_GridColumns() == Columns ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-            })
-            .OnCheckStateChanged_Lambda([this, Columns](ECheckBoxState)
-            {
-                Set_GridColumns(Columns);
-            })
-            [
-                SNew(STextBlock)
-                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                .Text(FText::AsNumber(Columns))
-            ]
-        ];
-    }
+    // Column-density selection (2..6) retains the persisted grid-density setting.
+    const auto ColumnChips =
+        SNew(SSegmentedControl<int32>)
+        .Value_Lambda([]() -> int32 { return Get_GridColumns(); })
+        .OnValueChanged_Lambda([this](int32 InColumns) { Set_GridColumns(InColumns); })
+        + SSegmentedControl<int32>::Slot(2).Text(FText::AsNumber(2))
+        + SSegmentedControl<int32>::Slot(3).Text(FText::AsNumber(3))
+        + SSegmentedControl<int32>::Slot(4).Text(FText::AsNumber(4))
+        + SSegmentedControl<int32>::Slot(5).Text(FText::AsNumber(5))
+        + SSegmentedControl<int32>::Slot(6).Text(FText::AsNumber(6));
 
     const auto Content =
         SNew(SVerticalBox)
@@ -375,19 +360,17 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
     const auto TokenLower = FilterToken.ToLower();
 
     OutEntry.CardWidget =
-        SNew(SCheckBox)
-        .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.CardToggle"))
+        SNew(SCkDebug_ToggleSurface)
         .ToolTipText(FText::FromString(FString::Printf(
             TEXT("Toggle arch:%s in the entity tree filter. Toggle several cards to see them together."), *FilterToken)))
-        .IsChecked_Lambda([this, TokenLower]()
+        .AccessibleText(FText::FromString(FString::Printf(TEXT("Archetype filter %s"), *FilterToken)))
+        .IsOn_Lambda([this, TokenLower]() -> bool
         {
-            return ActiveArchTokens.Contains(TokenLower)
-                ? ECheckBoxState::Checked
-                : ECheckBoxState::Unchecked;
+            return ActiveArchTokens.Contains(TokenLower);
         })
-        .OnCheckStateChanged_Lambda([this, FilterToken](ECheckBoxState InState)
+        .OnStateChanged_Lambda([this, FilterToken](bool InIsOn)
         {
-            Toggle_ArchFilterToken(FilterToken, InState == ECheckBoxState::Checked);
+            Toggle_ArchFilterToken(FilterToken, InIsOn);
         })
         [
             // Width comes from the uniform grid cell (panel width / column count).

@@ -5,6 +5,7 @@
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
@@ -747,7 +748,22 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger")).DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Target"))
+            .Label(FText::FromString(TEXT("Enabled POIs only")))
+            .ToolTip(FText::FromString(TEXT("Hide disabled POIs from the list; the map snapshot remains unchanged.")))
+            .IsOn_Lambda([this]() { return _ShowEnabledPoisOnly; })
+            .OnStateChanged_Lambda([this](const bool InEnabledOnly)
+            {
+                if (_ShowEnabledPoisOnly == InEnabledOnly) { return; }
+                _ShowEnabledPoisOnly = InEnabledOnly;
+                DoRefreshRowItems();
+            })
+        ]
+        .Content()
         [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
@@ -1072,13 +1088,26 @@ auto
 
     for (const auto& Row : _AllRows)
     {
-        const auto PassesFilter = _FilterString.IsEmpty() || Row->Name.Contains(_FilterString);
+        const auto PassesFilter = (_FilterString.IsEmpty() || Row->Name.Contains(_FilterString))
+            && (NOT _ShowEnabledPoisOnly || Row->Enabled);
 
         if (PassesFilter)
         { NewVisible.Add(Row); }
     }
 
-    const auto VisibleChanged = NewVisible.Num() != _VisibleRows.Num() || SetChanged;
+    auto VisibleChanged = NewVisible.Num() != _VisibleRows.Num() || SetChanged;
+
+    if (NOT VisibleChanged)
+    {
+        for (auto Index = 0; Index < NewVisible.Num(); ++Index)
+        {
+            if (NewVisible[Index] != _VisibleRows[Index])
+            {
+                VisibleChanged = true;
+                break;
+            }
+        }
+    }
     _VisibleRows = MoveTemp(NewVisible);
 
     if (VisibleChanged && _PoiList.IsValid())

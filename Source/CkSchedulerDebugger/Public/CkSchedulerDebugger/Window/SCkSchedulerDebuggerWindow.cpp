@@ -5,6 +5,7 @@
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -81,6 +82,10 @@ auto
 			.WindowId(WindowId)
 			.ToolTabId(TEXT("CkSchedulerDebugger"))
 			.DisplayName(Get_WindowDisplayName())
+			.MenuActionsContent()
+			[
+				DoBuildMenuActions()
+			]
 			.Content()
 			[
 				SNew(SBorder)
@@ -188,6 +193,39 @@ auto
 	];
 
 	DoSwitchToPage(0);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoBuildMenuActions()
+	-> TSharedRef<SWidget>
+{
+	return SNew(SCkDebug_IconToggle)
+		.IconId(TEXT("Snowflake"))
+		.Label(FText::FromString(TEXT("Freeze capture")))
+		.ToolTip(FText::FromString(TEXT("Freeze scheduler capture. Turning this off while inspecting history returns to live capture.")))
+		.IsOn_Lambda([this]() -> bool
+		{
+			return _ViewModel.IsValid()
+				&& (_ViewModel->Get_IsFrozen() || _ViewModel->Get_SelectedFrameOffset() > 0);
+		})
+		.OnStateChanged_Lambda([this](bool InIsOn)
+		{
+			if (NOT _ViewModel.IsValid()) { return; }
+
+			if (InIsOn)
+			{
+				_ViewModel->Set_IsFrozen(true);
+			}
+			else
+			{
+				if (_ViewModel->Get_SelectedFrameOffset() > 0)
+				{ _ViewModel->Set_SelectedFrameOffset(0); }
+				_ViewModel->Set_IsFrozen(false);
+			}
+		});
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -305,36 +343,6 @@ auto
 										})
 										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 								]
-						]
-				]
-
-			+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]() -> FReply
-						{
-							if (_ViewModel->Get_SelectedFrameOffset() > 0)
-							{
-								// If on a historical frame, resume = return to live
-								_ViewModel->Set_SelectedFrameOffset(0);
-							}
-							else
-							{
-								_ViewModel->Set_IsFrozen(NOT _ViewModel->Get_IsFrozen());
-							}
-							return FReply::Handled();
-						})
-						[
-							SNew(STextBlock)
-								.Text_Lambda([this]() -> FText
-								{
-									return _ViewModel->Get_IsFrozen()
-										? FText::FromString(TEXT("Resume"))
-										: FText::FromString(TEXT("Freeze"));
-								})
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 						]
 				]
 

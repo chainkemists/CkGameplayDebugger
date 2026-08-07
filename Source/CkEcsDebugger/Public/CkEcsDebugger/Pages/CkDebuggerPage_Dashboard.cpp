@@ -3,6 +3,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
@@ -15,7 +16,6 @@
 #include "Styling/CoreStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SNullWidget.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -555,24 +555,22 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
     const auto TokenLower = FilterToken.ToLower();
 
     OutEntry.CardWidget =
-        SNew(SCheckBox)
-        .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FCheckBoxStyle>("CkDebugger.CardToggle"))
+        SNew(SCkDebug_ToggleSurface)
         .ToolTipText(FText::FromString(FString::Printf(
             TEXT("Toggle arch:%s in the entity tree filter."), *FilterToken)))
-        .IsChecked_Lambda([this, TokenLower]()
+        .AccessibleText(FText::FromString(FString::Printf(TEXT("Archetype filter %s"), *FilterToken)))
+        .IsOn_Lambda([this, TokenLower]() -> bool
         {
-            return ActiveArchTokens.Contains(TokenLower)
-                ? ECheckBoxState::Checked
-                : ECheckBoxState::Unchecked;
+            return ActiveArchTokens.Contains(TokenLower);
         })
-        .OnCheckStateChanged_Lambda([this, FilterToken](ECheckBoxState InState)
+        .OnStateChanged_Lambda([this, FilterToken](bool InIsOn)
         {
             if (NOT RequestEntityFilter)
             { return; }
 
             RequestEntityFilter(ck::ecs_debugger_query::Toggle_ArchToken(
                 GetEntityFilter ? GetEntityFilter() : FString{},
-                FilterToken, InState == ECheckBoxState::Checked));
+                FilterToken, InIsOn));
             LastSeenFilterText.Reset();
         })
         [

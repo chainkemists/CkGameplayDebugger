@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -36,6 +37,20 @@ auto
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Hourglass"))
+            .Label(FText::FromString(TEXT("Active cooldowns only")))
+            .ToolTip(FText::FromString(TEXT("Show only cooldowns still withholding a line, including forever cooldowns.")))
+            .IsOn_Lambda([this]() { return _ShowActiveCooldownsOnly; })
+            .OnStateChanged_Lambda([this](const bool InActiveOnly)
+            {
+                if (_ShowActiveCooldownsOnly == InActiveOnly) { return; }
+                _ShowActiveCooldownsOnly = InActiveOnly;
+                _LastCooldownSignature.Reset();
+            })
+        ]
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkDialogDebugger"))
         .DisplayName(Get_WindowDisplayName())
@@ -270,15 +285,26 @@ auto
     // The filter participates because it decides which emitters produce rows at all.
     auto Signature = FString{};
     Signature.Append(_FilterString);
+    Signature.Append(_ShowActiveCooldownsOnly ? TEXT("|active") : TEXT("|all"));
 
     for (const auto& Emitter : _Collector.Get_Snapshot().Emitters)
     {
         if (Emitter.Cooldowns.IsEmpty())
         { continue; }
 
+        const auto HasVisibleCooldown = Emitter.Cooldowns.ContainsByPredicate([this](const FCkDialogDebugger_CooldownInfo& InCooldown)
+        {
+            return NOT _ShowActiveCooldownsOnly || InCooldown.IsForever || InCooldown.RemainingSeconds > 0.0f;
+        });
+        if (NOT HasVisibleCooldown)
+        { continue; }
+
         Signature.Appendf(TEXT("|%s>"), *Emitter.DebugName);
         for (const auto& Cooldown : Emitter.Cooldowns)
-        { Signature.Appendf(TEXT("%s,"), *Cooldown.LineID.ToString()); }
+        {
+            if (NOT _ShowActiveCooldownsOnly || Cooldown.IsForever || Cooldown.RemainingSeconds > 0.0f)
+            { Signature.Appendf(TEXT("%s,"), *Cooldown.LineID.ToString()); }
+        }
     }
 
     return Signature;
@@ -371,6 +397,13 @@ auto
         if (NOT DoPassesFilter(Emitter.DebugName) && NOT DoPassesFilter(Emitter.EmitterTags.ToStringSimple()))
         { continue; }
 
+        const auto HasVisibleCooldown = Emitter.Cooldowns.ContainsByPredicate([this](const FCkDialogDebugger_CooldownInfo& InCooldown)
+        {
+            return NOT _ShowActiveCooldownsOnly || InCooldown.IsForever || InCooldown.RemainingSeconds > 0.0f;
+        });
+        if (NOT HasVisibleCooldown)
+        { continue; }
+
         AnyRows = true;
 
         _CooldownBox->AddSlot()
@@ -385,6 +418,8 @@ auto
 
         for (const auto& Cooldown : Emitter.Cooldowns)
         {
+            if (_ShowActiveCooldownsOnly && NOT Cooldown.IsForever && Cooldown.RemainingSeconds <= 0.0f)
+            { continue; }
             auto Slot = FCkDialogDebugger_CooldownSlot{};
             const auto Row = DoMake_CooldownRow(Cooldown, Slot);
             _CooldownSlots.Emplace(Slot);
@@ -432,6 +467,8 @@ auto
 
         for (const auto& Cooldown : Emitter.Cooldowns)
         {
+            if (_ShowActiveCooldownsOnly && NOT Cooldown.IsForever && Cooldown.RemainingSeconds <= 0.0f)
+            { continue; }
             if (NOT _CooldownSlots.IsValidIndex(SlotIndex))
             { break; }
 

@@ -14,6 +14,7 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
@@ -22,7 +23,6 @@
 #include "CkVoxelNavEditor/Preview/CkVoxelNavPreview_EditorSubsystem.h"
 
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/Images/SImage.h"
@@ -216,15 +216,15 @@ namespace
 
 	auto Make_CVarToggle(const FCrowdDebugger_ToggleDefinition& InDefinition) -> TSharedRef<SWidget>
 	{
-		return SNew(SCheckBox)
+		return SNew(SCkDebug_ToggleSurface)
 			.ToolTipText(FText::FromString(InDefinition._Tooltip))
-			.IsChecked_Lambda([Definition = InDefinition]() -> ECheckBoxState
+			.IsOn_Lambda([Definition = InDefinition]() -> bool
 			{
-				return Get_CVarBool(Definition._CVar) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				return Get_CVarBool(Definition._CVar);
 			})
-			.OnCheckStateChanged_Lambda([Definition = InDefinition](ECheckBoxState InNewState)
+			.OnStateChanged_Lambda([Definition = InDefinition](bool InIsOn)
 			{
-				Set_CVarBool(Definition._CVar, InNewState == ECheckBoxState::Checked);
+				Set_CVarBool(Definition._CVar, InIsOn);
 			})
 			[
 				SNew(STextBlock).Text(FText::FromString(InDefinition._Label))
@@ -499,13 +499,13 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 
 	const auto MakeVoxelToggle = [this](const TCHAR* InLabel, const TCHAR* InTooltip, bool* InValue) -> TSharedRef<SWidget>
 	{
-		return SNew(SCheckBox)
+		return SNew(SCkDebug_ToggleSurface)
 			.ToolTipText(FText::FromString(InTooltip))
-			.IsChecked_Lambda([InValue]() -> ECheckBoxState
-			{ return *InValue ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-			.OnCheckStateChanged_Lambda([this, InValue](ECheckBoxState InState)
+			.IsOn_Lambda([InValue]() -> bool
+			{ return *InValue; })
+			.OnStateChanged_Lambda([this, InValue](bool InIsOn)
 			{
-				*InValue = InState == ECheckBoxState::Checked;
+				*InValue = InIsOn;
 				_VoxelRefreshRequested = true;
 			})
 			[ SNew(STextBlock).Text(FText::FromString(InLabel)) ];
@@ -565,18 +565,15 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 		[ MakeVoxelToggle(TEXT("Dirty / Repair Bounds"), TEXT("Show pending and active local-repair regions."), &_ShowVoxelDirtyRepair) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 2.0f)
 		[
-			SNew(SCheckBox)
+			SNew(SCkDebug_ToggleSurface)
 			.ToolTipText(FText::FromString(TEXT("Draw the exact cooked-Jolt VoxelNav snapshot directly in every Level Editor viewport outside PIE.")))
-			.IsChecked_Lambda([]() -> ECheckBoxState
+			.IsOn_Lambda([]() -> bool
 			{
-				return UCk_VoxelNavPreview_EdMode::Get_IsLevelOverlayEnabled()
-					? ECheckBoxState::Checked
-					: ECheckBoxState::Unchecked;
+				return UCk_VoxelNavPreview_EdMode::Get_IsLevelOverlayEnabled();
 			})
-			.OnCheckStateChanged_Lambda([this](ECheckBoxState InState)
+			.OnStateChanged_Lambda([this](bool InIsOn)
 			{
-				const auto Enable = InState == ECheckBoxState::Checked;
-				if (UCk_VoxelNavPreview_EdMode::Set_LevelOverlayEnabled(Enable))
+				if (UCk_VoxelNavPreview_EdMode::Set_LevelOverlayEnabled(InIsOn))
 				{ _VoxelRefreshRequested = true; }
 			})
 			[
@@ -645,18 +642,18 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 8.0f)
 		[
-			SNew(SCheckBox)
+			SNew(SCkDebug_ToggleSurface)
 			.ToolTipText(FText::FromString(TEXT("Show the selected agent's retained path-trouble overlay in the Crowd Debugger viewport.")))
-			.IsChecked_Lambda([]() -> ECheckBoxState
+			.IsOn_Lambda([]() -> bool
 			{
 				const auto* Settings = GetDefault<UCkCrowdDebuggerSettings>();
-				return Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+				return Settings == nullptr || Settings->ShowSelectedPathTroubleOverlay;
 			})
-			.OnCheckStateChanged_Lambda([](ECheckBoxState InState)
+			.OnStateChanged_Lambda([](bool InIsOn)
 			{
 				auto* Settings = GetMutableDefault<UCkCrowdDebuggerSettings>();
 				if (Settings != nullptr)
-				{ Settings->ShowSelectedPathTroubleOverlay = InState == ECheckBoxState::Checked; Settings->SaveConfig(); }
+				{ Settings->ShowSelectedPathTroubleOverlay = InIsOn; Settings->SaveConfig(); }
 			})
 			[
 				SNew(STextBlock).Text(FText::FromString(TEXT("Selected Trouble")))
@@ -751,8 +748,6 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			]
 		];
 }
-
-// --------------------------------------------------------------------------------------------------------------------
 
 auto SCkCrowdDebuggerWindow::BuildMenuActions() -> TSharedRef<SWidget>
 {

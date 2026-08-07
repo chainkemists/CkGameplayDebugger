@@ -27,6 +27,7 @@ public:
 	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Scheduler Debugger")); }
 
 private:
+	auto DoBuildMenuActions() -> TSharedRef<SWidget>;
 	auto DoBuildTopBar() -> TSharedRef<SWidget>;
 	auto DoBuildStatsBar() -> TSharedRef<SWidget>;
 	auto DoBuildTabBar() -> TSharedRef<SWidget>;

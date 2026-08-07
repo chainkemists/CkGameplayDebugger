@@ -100,6 +100,8 @@ private:
     DoPassesFilter(
         const FCkAggroDebugger_OwnerInfo& InOwner) const -> bool;
 
+    auto DoPassesEngagedFilter(const FCkAggroDebugger_OwnerInfo& InOwner) const -> bool;
+
     auto
     DoGet_PieWorld() const -> UWorld*;
 
@@ -131,6 +133,7 @@ private:
     FString _LastSignature;
     FString _FilterString;
     FString _HighlightString;
+    bool _ShowEngagedOwnersOnly = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

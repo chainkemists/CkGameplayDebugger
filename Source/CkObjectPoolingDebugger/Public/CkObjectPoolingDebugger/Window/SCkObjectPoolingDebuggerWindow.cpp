@@ -11,6 +11,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -181,6 +182,23 @@ auto
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkObjectPoolingDebugger"))
         .DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToolbar)
+            .Actions({
+                FCkDebug_IconToggleAction{
+                    TEXT("PoolsInUseOnly"),
+                    TEXT("Hourglass"),
+                    FText::FromString(TEXT("In Use Only")),
+                    FText::FromString(TEXT("Show only pools with one or more borrowed instances.")),
+                    TAttribute<bool>::CreateLambda([this]() { return _ShowInUseOnly; }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
+                    {
+                        _ShowInUseOnly = InIsEnabled;
+                        DoRefresh_VisibleItems();
+                    })}
+            })
+        ]
         .Content()
         [
             SNew(SBorder)
@@ -999,7 +1017,7 @@ auto
     _VisibleItems.Reset(_Items.Num());
     for (const auto& Item : _Items)
     {
-        if (Matches(*Item, _FilterText))
+        if (Matches(*Item, _FilterText) && (NOT _ShowInUseOnly || Item->NumInUse > 0))
         { _VisibleItems.Emplace(Item); }
     }
 

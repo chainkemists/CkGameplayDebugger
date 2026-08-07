@@ -3,8 +3,6 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
-class SWidgetSwitcher;
-
 // ====================================================================================================================
 
 DECLARE_DELEGATE_OneParam(FOnCkDebug_IconToggleChanged, bool /* NewState */);
@@ -35,17 +33,15 @@ struct CKDEBUGGERCOMMON_API FCkDebug_IconToggleAction
     TAttribute<bool> IsEnabled = true;
 };
 
-// Pure, testable result used by the responsive toolbar. Invalid, missing-icon,
+// Pure, testable result used by the direct-action toolbar. Invalid, missing-icon,
 // or duplicate descriptors reject the whole layout so no partial bar ships.
-struct CKDEBUGGERCOMMON_API FCkDebug_IconToolbarPartition
+struct CKDEBUGGERCOMMON_API FCkDebug_IconToolbarLayout
 {
-    int32 DirectCount = 0;
-    int32 OverflowCount = 0;
+    int32 ActionCount = 0;
 
     static auto TryBuild(
         const TArray<FCkDebug_IconToggleAction>& InActions,
-        int32 InDirectLimit,
-        FCkDebug_IconToolbarPartition& OutPartition)
+        FCkDebug_IconToolbarLayout& OutLayout)
         -> bool;
 };
 
@@ -83,39 +79,23 @@ private:
 
 // ====================================================================================================================
 
-// Shared direct-action row with a labeled overflow menu. Wide and compact
-// widget trees are built once; Tick only selects the appropriate prebuilt row.
+// Shared debugger menu row. Every action remains directly visible; the row
+// uses its allotted width and wraps instead of clipping or hiding actions.
 class CKDEBUGGERCOMMON_API SCkDebug_IconToolbar : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebug_IconToolbar)
-        : _WideDirectCount(6)
-        , _CompactDirectCount(3)
-        , _CompactWidthThreshold(360.0f)
     {}
         SLATE_ARGUMENT(TArray<FCkDebug_IconToggleAction>, Actions)
-        SLATE_ARGUMENT(int32, WideDirectCount)
-        SLATE_ARGUMENT(int32, CompactDirectCount)
-        SLATE_ARGUMENT(float, CompactWidthThreshold)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
 
-    virtual auto Tick(
-        const FGeometry& InAllottedGeometry,
-        const double InCurrentTime,
-        const float InDeltaTime)
-        -> void override;
-
 private:
-    auto Build_Row(int32 InDirectCount) -> TSharedRef<SWidget>;
-    auto Build_Overflow(int32 InDirectCount) -> TSharedRef<SWidget>;
-    auto Build_Action(const FCkDebug_IconToggleAction& InAction, bool InShowLabel) const -> TSharedRef<SWidget>;
+    auto Build_Row() -> TSharedRef<SWidget>;
+    auto Build_Action(const FCkDebug_IconToggleAction& InAction) const -> TSharedRef<SWidget>;
 
     TArray<FCkDebug_IconToggleAction> _Actions;
-    TSharedPtr<SWidgetSwitcher> _LayoutSwitcher;
-    float _CompactWidthThreshold = 360.0f;
-    bool _IsCompact = false;
 };
 
 // ====================================================================================================================

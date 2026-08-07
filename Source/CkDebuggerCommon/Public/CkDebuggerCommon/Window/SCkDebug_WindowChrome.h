@@ -25,6 +25,7 @@ public:
         SLATE_ARGUMENT(FName, ToolTabId)
         SLATE_ATTRIBUTE(FText, DisplayName)
         SLATE_ATTRIBUTE(FText, StatusText)
+        SLATE_NAMED_SLOT(FArguments, MenuActionsContent)
         SLATE_NAMED_SLOT(FArguments, ToolbarContent)
         SLATE_NAMED_SLOT(FArguments, Content)
         SLATE_NAMED_SLOT(FArguments, StatusContent)

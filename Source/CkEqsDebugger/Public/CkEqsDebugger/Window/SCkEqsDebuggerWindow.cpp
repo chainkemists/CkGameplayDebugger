@@ -87,7 +87,15 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkEqsDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        SNew(SCkDebug_WindowChrome)
+        .WindowId(Get_WindowId())
+        .ToolTabId(TEXT("CkEqsDebugger"))
+        .DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            BuildMenuActions()
+        ]
+        .Content()
         [
         SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{6.0f})
@@ -148,6 +156,48 @@ SCkEqsDebuggerWindow::~SCkEqsDebuggerWindow()
 
 auto
     SCkEqsDebuggerWindow::
+    BuildMenuActions()
+    -> TSharedRef<SWidget>
+{
+    auto Actions = TArray<FCkDebug_IconToggleAction>{
+        FCkDebug_IconToggleAction{
+            TEXT("PauseCapture"),
+            TEXT("Snowflake"),
+            FText::FromString(TEXT("Pause capture")),
+            FText::FromString(TEXT("Pause or resume the EQS data collector without pausing gameplay.")),
+            TAttribute<bool>::CreateLambda([this]() -> bool
+            {
+                return _ViewModel.IsValid() && _ViewModel->Get_Paused();
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+            {
+                if (_ViewModel.IsValid())
+                { _ViewModel->Set_Paused(InIsOn); }
+            }),
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _ViewModel.IsValid(); })},
+        MakeOverlayToggle(TEXT("Overlay"), TEXT("World"), &UCkEqsDebuggerSettings::Show_Overlay,
+            TEXT("Overlay"), TEXT("Master toggle. When off, no spheres / lines / markers are drawn for the selected query."), true),
+        MakeOverlayToggle(TEXT("AllQueries"), TEXT("People"), &UCkEqsDebuggerSettings::Show_AllQueriesAlways,
+            TEXT("All queries"), TEXT("Show the overlay for every query in the world, not just the selected query.")),
+        MakeOverlayToggle(TEXT("Candidates"), TEXT("Probe"), &UCkEqsDebuggerSettings::Show_AllCandidateSpheres,
+            TEXT("Candidates"), TEXT("Draw a sphere at every candidate location, color-lerped by final score.")),
+        MakeOverlayToggle(TEXT("Best"), TEXT("Target"), &UCkEqsDebuggerSettings::Show_BestCandidateHighlight,
+            TEXT("Best pick"), TEXT("Highlight the top-scoring candidate with a larger amber sphere.")),
+        MakeOverlayToggle(TEXT("Failed"), TEXT("Skull"), &UCkEqsDebuggerSettings::Show_FailedCandidates,
+            TEXT("Failed candidates"), TEXT("Draw filter-failed candidates as muted gray spheres.")),
+        MakeOverlayToggle(TEXT("Querier"), TEXT("Person"), &UCkEqsDebuggerSettings::Show_QuerierMarker,
+            TEXT("Querier"), TEXT("Draw a small sphere at the querier's location.")),
+        MakeOverlayToggle(TEXT("BestLine"), TEXT("Rail"), &UCkEqsDebuggerSettings::Show_BestLocationLine,
+            TEXT("Best line"), TEXT("Draw a line from the querier to the best candidate location.")),
+        MakeOverlayToggle(TEXT("GridLines"), TEXT("Grid"), &UCkEqsDebuggerSettings::Show_GridLines,
+            TEXT("Grid lattice"), TEXT("For SimpleGrid and Grid generators, draw a wireframe lattice connecting cells."))};
+
+    return SNew(SCkDebug_IconToolbar)
+        .Actions(MoveTemp(Actions));
+}
+
+auto
+    SCkEqsDebuggerWindow::
     BuildToolbar()
     -> TSharedRef<SWidget>
 {
@@ -167,62 +217,6 @@ auto
         [
             SNew(SCkDebug_WorldSelector, _WorldModel)
             .ShowHeaderLabel(false)
-        ]
-
-        // Pause toggle — flips ViewModel._IsPaused on click. Color-tinted when paused so it's obvious.
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 6.0f, 0.0f})
-        [
-            SNew(SButton)
-            .ToolTipText(FText::FromString(TEXT("Pause / resume the data collector")))
-            .ButtonColorAndOpacity_Lambda([this]() -> FSlateColor
-            {
-                return _ViewModel.IsValid() && _ViewModel->Get_Paused()
-                    ? FSlateColor{FCkEqsDebuggerStyle::Color_Status_Cancelled}
-                    : FSlateColor{FCkEqsDebuggerStyle::Color_Panel_Background};
-            })
-            .OnClicked_Lambda([this]() -> FReply
-            {
-                if (_ViewModel.IsValid())
-                { _ViewModel->Set_Paused(NOT _ViewModel->Get_Paused()); }
-                return FReply::Handled();
-            })
-            [
-                SNew(STextBlock)
-                .Text_Lambda([this]() -> FText
-                {
-                    return _ViewModel.IsValid() && _ViewModel->Get_Paused()
-                        ? FText::FromString(TEXT("Resume"))
-                        : FText::FromString(TEXT("Pause"));
-                })
-                .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
-            ]
-        ]
-
-        // In-world overlay toggles. The shared toolbar keeps the highest-frequency actions direct
-        // on wide windows and moves the rest into More on compact windows.
-        + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 6.0f, 0.0f})
-        [
-            SNew(SCkDebug_IconToolbar)
-            .WideDirectCount(6)
-            .CompactDirectCount(3)
-            .Actions(TArray<FCkDebug_IconToggleAction>{
-                MakeOverlayToggle(TEXT("Overlay"), TEXT("World"), &UCkEqsDebuggerSettings::Show_Overlay,
-                    TEXT("Overlay"), TEXT("Master toggle. When off, no spheres / lines / markers are drawn for the selected query."), true),
-                MakeOverlayToggle(TEXT("AllQueries"), TEXT("People"), &UCkEqsDebuggerSettings::Show_AllQueriesAlways,
-                    TEXT("All queries"), TEXT("Show the overlay for every query in the world, not just the selected query.")),
-                MakeOverlayToggle(TEXT("Candidates"), TEXT("Probe"), &UCkEqsDebuggerSettings::Show_AllCandidateSpheres,
-                    TEXT("Candidates"), TEXT("Draw a sphere at every candidate location, color-lerped by final score.")),
-                MakeOverlayToggle(TEXT("Best"), TEXT("Target"), &UCkEqsDebuggerSettings::Show_BestCandidateHighlight,
-                    TEXT("Best pick"), TEXT("Highlight the top-scoring candidate with a larger amber sphere.")),
-                MakeOverlayToggle(TEXT("Failed"), TEXT("Skull"), &UCkEqsDebuggerSettings::Show_FailedCandidates,
-                    TEXT("Failed candidates"), TEXT("Draw filter-failed candidates as muted gray spheres.")),
-                MakeOverlayToggle(TEXT("Querier"), TEXT("Person"), &UCkEqsDebuggerSettings::Show_QuerierMarker,
-                    TEXT("Querier"), TEXT("Draw a small sphere at the querier's location.")),
-                MakeOverlayToggle(TEXT("BestLine"), TEXT("Rail"), &UCkEqsDebuggerSettings::Show_BestLocationLine,
-                    TEXT("Best line"), TEXT("Draw a line from the querier to the best candidate location.")),
-                MakeOverlayToggle(TEXT("GridLines"), TEXT("Grid"), &UCkEqsDebuggerSettings::Show_GridLines,
-                    TEXT("Grid lattice"), TEXT("For SimpleGrid and Grid generators, draw a wireframe lattice connecting cells."))
-            })
         ]
 
         // Separator

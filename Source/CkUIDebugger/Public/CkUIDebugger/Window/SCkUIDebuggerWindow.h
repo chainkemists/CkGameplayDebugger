@@ -136,6 +136,7 @@ private:
     FString _SearchFilter;
     bool _IsDirty = true;
     bool _StructureDirty = true;
+    bool _ShowActiveLayerOnly = false;
 
     // Display-name verbosity for widget class names + layer tags (0 = full).
     int32 _NameDepth = 1;

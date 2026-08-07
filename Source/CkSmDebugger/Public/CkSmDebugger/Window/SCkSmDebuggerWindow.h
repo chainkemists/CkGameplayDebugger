@@ -42,6 +42,7 @@ public:
 
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildMenuActions() -> TSharedRef<SWidget>;
     auto BuildTimelineToolbar() -> TSharedRef<SWidget>;
     auto BuildDetailPanel() -> TSharedRef<SWidget>;
     auto BuildDetailContent() -> TSharedRef<SWidget>;

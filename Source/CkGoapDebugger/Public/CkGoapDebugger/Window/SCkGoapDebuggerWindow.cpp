@@ -28,6 +28,7 @@
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -178,6 +179,10 @@ auto
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkGoapDebugger"))
             .DisplayName(FText::FromString(TEXT("CK GOAP Debugger")))
+            .MenuActionsContent()
+            [
+                BuildMenuActions()
+            ]
             .Content()
             [
                 SNew(SBorder)
@@ -1146,6 +1151,8 @@ auto
             [
                 SAssignNew(_TimelineDock, SCkGoapDebugger_TimelineDock)
                     .ViewModel(_ViewModel)
+                    .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
+                    .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
             ]
     ;
 }
@@ -1280,6 +1287,35 @@ auto
     // A just-opened window has no snapshot rows yet. Defer exactly once until
     // its next collector refresh, then clear the retained PIE handle.
     _PendingExternalEntity = InEntity.Get_Entity();
+}
+
+auto
+    SCkGoapDebuggerWindow::
+    BuildMenuActions()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SCkDebug_IconToolbar)
+        .Actions(TArray<FCkDebug_IconToggleAction>{
+            FCkDebug_IconToggleAction{
+                TEXT("PauseOnReplan"),
+                TEXT("Stopwatch"),
+                FText::FromString(TEXT("Pause on replan")),
+                FText::FromString(TEXT("Pause PIE when a GOAP replan occurs.")),
+                TAttribute<bool>::CreateLambda([this]() -> bool { return _PauseOnReplan; }),
+                FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+                {
+                    _PauseOnReplan = InIsOn;
+                })},
+            FCkDebug_IconToggleAction{
+                TEXT("PauseOnPlanFailed"),
+                TEXT("Skull"),
+                FText::FromString(TEXT("Pause on plan failed")),
+                FText::FromString(TEXT("Pause PIE when GOAP plan construction fails.")),
+                TAttribute<bool>::CreateLambda([this]() -> bool { return _PauseOnPlanFailed; }),
+                FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
+                {
+                    _PauseOnPlanFailed = InIsOn;
+                })}});
 }
 
 // ====================================================================================================================

@@ -37,8 +37,6 @@
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 
-#include "Widgets/Input/SCheckBox.h"
-
 namespace ck_debugger_entity_tree
 {
     // Shorthand into the shared presentation metadata (also used by the rail + Overview).

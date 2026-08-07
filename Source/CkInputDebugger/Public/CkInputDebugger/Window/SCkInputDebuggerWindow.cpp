@@ -9,6 +9,7 @@
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -108,7 +109,25 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger")).DisplayName(Get_WindowDisplayName()).Content()
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger")).DisplayName(Get_WindowDisplayName())
+        .MenuActionsContent()
+        [
+            SNew(SCkDebug_IconToolbar)
+            .Actions({
+                FCkDebug_IconToggleAction{
+                    TEXT("InputActiveActionsOnly"),
+                    TEXT("Input"),
+                    FText::FromString(TEXT("Active Actions Only")),
+                    FText::FromString(TEXT("Show only resolved actions that are active or ongoing.")),
+                    TAttribute<bool>::CreateLambda([this]() { return _ShowActiveActionsOnly; }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
+                    {
+                        _ShowActiveActionsOnly = InIsEnabled;
+                        ApplyFilterAndHighlight();
+                    })}
+            })
+        ]
+        .Content()
         [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
@@ -692,6 +711,7 @@ auto
     {
         const auto* Action = Slot.Action.Get();
         const auto State = FCkInputDebugger_Snapshot::Gather_LiveActionState(Subsystem, Action);
+        Slot.Activity = State.Activity;
 
         if (Slot.ValueText.IsValid())
         {
@@ -762,7 +782,11 @@ auto
     {
         if (Slot.Root.IsValid())
         {
-            Slot.Root->SetVisibility(MatchesFilter(Slot.SearchText) ? EVisibility::Visible : EVisibility::Collapsed);
+            const auto IsActive = Slot.Activity == ECkInputDebugger_ActionActivity::Active
+                || Slot.Activity == ECkInputDebugger_ActionActivity::Ongoing;
+            const auto IsVisible = MatchesFilter(Slot.SearchText)
+                && (NOT _ShowActiveActionsOnly || IsActive);
+            Slot.Root->SetVisibility(IsVisible ? EVisibility::Visible : EVisibility::Collapsed);
         }
 
         if (Slot.NameText.IsValid())

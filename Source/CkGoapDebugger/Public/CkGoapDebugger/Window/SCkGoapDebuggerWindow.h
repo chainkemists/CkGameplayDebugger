@@ -89,6 +89,7 @@ private:
     // -----------------------------------------------------------------------------------------------------------------
 
     auto BuildChromeBar() -> TSharedRef<SWidget>;
+    auto BuildMenuActions() -> TSharedRef<SWidget>;
     auto BuildNerdStrip() -> TSharedRef<SWidget>;
     auto BuildAlertStrip() -> TSharedRef<SWidget>;
     auto BuildTopTabs()   -> TSharedRef<SWidget>;
@@ -142,6 +143,8 @@ private:
     FName _ActiveTab;
     FName _CenterTab;
     bool  _NerdMode = false;
+    bool  _PauseOnReplan = false;
+    bool  _PauseOnPlanFailed = false;
 
     // Entity value only: unlike FCk_Handle this does not retain the PIE registry.
     TOptional<FCk_Entity> _PendingExternalEntity;

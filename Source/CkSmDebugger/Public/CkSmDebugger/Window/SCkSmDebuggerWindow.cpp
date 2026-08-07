@@ -456,10 +456,14 @@ auto
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
-            .WindowId(WindowId)
-            .ToolTabId(TEXT("CkSmDebugger"))
-            .DisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
-            .Content()
+             .WindowId(WindowId)
+             .ToolTabId(TEXT("CkSmDebugger"))
+             .DisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
+             .MenuActionsContent()
+             [
+                 BuildMenuActions()
+             ]
+             .Content()
             [
                 SNew(SVerticalBox)
 
@@ -849,7 +853,7 @@ auto
 
 auto
     SCkSmDebuggerWindow::
-    BuildToolbar()
+    BuildMenuActions()
     -> TSharedRef<SWidget>
 {
     const auto DisplayActions = TArray<FCkDebug_IconToggleAction>{
@@ -907,6 +911,16 @@ auto
                 _ViewModel->Set_ScrubState(NewState);
             }),
             TAttribute<bool>::CreateLambda([this]() -> bool { return _ViewModel.IsValid(); })}};
+
+    return SNew(SCkDebug_IconToolbar)
+        .Actions(DisplayActions);
+}
+
+auto
+    SCkSmDebuggerWindow::
+    BuildToolbar()
+    -> TSharedRef<SWidget>
+{
 
     return SNew(SHorizontalBox)
 
@@ -1016,19 +1030,6 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("|")))
                     .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
-            ]
-
-        // ── Display toggles, Name depth ──────────────────────────────────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SCkDebug_IconToolbar)
-                    .Actions(DisplayActions)
-                    .WideDirectCount(3)
-                    .CompactDirectCount(3)
             ]
 
         // Name depth — the shared cycler widget; depth lives on the graph's

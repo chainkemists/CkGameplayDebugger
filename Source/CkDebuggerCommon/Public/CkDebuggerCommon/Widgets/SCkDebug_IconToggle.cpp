@@ -6,14 +6,11 @@
 
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SCheckBox.h"
-#include "Widgets/Input/SComboButton.h"
-#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Styling/AppStyle.h"
 
 #define LOCTEXT_NAMESPACE "SCkDebug_IconToggle"
 
@@ -52,17 +49,13 @@ auto
 }
 
 auto
-    FCkDebug_IconToolbarPartition::
+    FCkDebug_IconToolbarLayout::
     TryBuild(
         const TArray<FCkDebug_IconToggleAction>& InActions,
-        int32 InDirectLimit,
-        FCkDebug_IconToolbarPartition& OutPartition)
+        FCkDebug_IconToolbarLayout& OutLayout)
     -> bool
 {
-    OutPartition = {};
-
-    if (InDirectLimit <= 0)
-    { return false; }
+    OutLayout = {};
 
     auto SeenIds = TSet<FName>{};
     SeenIds.Reserve(InActions.Num());
@@ -75,8 +68,7 @@ auto
         SeenIds.Add(Action.Id);
     }
 
-    OutPartition.DirectCount = FMath::Min(InActions.Num(), InDirectLimit);
-    OutPartition.OverflowCount = InActions.Num() - OutPartition.DirectCount;
+    OutLayout.ActionCount = InActions.Num();
     return true;
 }
 
@@ -181,16 +173,8 @@ auto
     Construct(const FArguments& InArgs)
     -> void
 {
-    auto WidePartition = FCkDebug_IconToolbarPartition{};
-    auto CompactPartition = FCkDebug_IconToolbarPartition{};
-    const auto WideIsValid = FCkDebug_IconToolbarPartition::TryBuild(
-        InArgs._Actions, InArgs._WideDirectCount, WidePartition);
-    const auto CompactIsValid = FCkDebug_IconToolbarPartition::TryBuild(
-        InArgs._Actions, InArgs._CompactDirectCount, CompactPartition);
-    const auto LayoutIsValid = WideIsValid
-        && CompactIsValid
-        && InArgs._CompactDirectCount <= InArgs._WideDirectCount
-        && InArgs._CompactWidthThreshold > 0.0f;
+    auto Layout = FCkDebug_IconToolbarLayout{};
+    const auto LayoutIsValid = FCkDebug_IconToolbarLayout::TryBuild(InArgs._Actions, Layout);
 
     CK_ENSURE_IF_NOT(LayoutIsValid, TEXT("Invalid common debugger icon toolbar configuration"))
     {}
@@ -201,82 +185,27 @@ auto
     }
 
     _Actions = InArgs._Actions;
-    _CompactWidthThreshold = InArgs._CompactWidthThreshold;
 
     ChildSlot
     [
-        SAssignNew(_LayoutSwitcher, SWidgetSwitcher)
-        .WidgetIndex(0)
-
-        + SWidgetSwitcher::Slot()
-        [
-            Build_Row(WidePartition.DirectCount)
-        ]
-
-        + SWidgetSwitcher::Slot()
-        [
-            Build_Row(CompactPartition.DirectCount)
-        ]
+        Build_Row()
     ];
 }
 
 auto
     SCkDebug_IconToolbar::
-    Tick(
-        const FGeometry& InAllottedGeometry,
-        const double InCurrentTime,
-        const float InDeltaTime)
-    -> void
-{
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
-
-    const auto IsCompactNow = InAllottedGeometry.GetLocalSize().X < _CompactWidthThreshold;
-    if (IsCompactNow != _IsCompact && _LayoutSwitcher.IsValid())
-    {
-        _IsCompact = IsCompactNow;
-        _LayoutSwitcher->SetActiveWidgetIndex(_IsCompact ? 1 : 0);
-    }
-}
-
-auto
-    SCkDebug_IconToolbar::
-    Build_Row(int32 InDirectCount)
+    Build_Row()
     -> TSharedRef<SWidget>
 {
-    auto Row = SNew(SHorizontalBox);
-    for (auto Index = 0; Index < InDirectCount; ++Index)
+    auto Row = SNew(SWrapBox)
+        .UseAllottedSize(true);
+    for (const auto& Action : _Actions)
     {
         Row->AddSlot()
-        .AutoWidth()
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
         [
-            Build_Action(_Actions[Index], false)
-        ];
-    }
-
-    if (InDirectCount < _Actions.Num())
-    {
-        Row->AddSlot()
-        .AutoWidth()
-        .VAlign(VAlign_Center)
-        [
-            SNew(SComboButton)
-            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-            .ContentPadding(FMargin{CkStyle::SpaceS, 4.0f})
-            .HasDownArrow(false)
-            .ToolTipText(LOCTEXT("MoreTooltip", "More display options"))
-            .OnGetMenuContent_Lambda([this, InDirectCount]()
-            {
-                return Build_Overflow(InDirectCount);
-            })
-            .ButtonContent()
-            [
-                SNew(STextBlock)
-                .Text(LOCTEXT("MoreGlyph", "•••"))
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
-                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-            ]
+            Build_Action(Action)
         ];
     }
 
@@ -285,36 +214,7 @@ auto
 
 auto
     SCkDebug_IconToolbar::
-    Build_Overflow(int32 InDirectCount)
-    -> TSharedRef<SWidget>
-{
-    auto Column = SNew(SVerticalBox);
-    for (auto Index = InDirectCount; Index < _Actions.Num(); ++Index)
-    {
-        Column->AddSlot()
-        .AutoHeight()
-        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
-        [
-            Build_Action(_Actions[Index], true)
-        ];
-    }
-
-    return SNew(SBorder)
-        .BorderImage(CkStyle::GetRoundedBrush())
-        .BorderBackgroundColor(CkStyle::Bg1())
-        .Padding(CkStyle::SpaceS)
-        [
-            SNew(SBox)
-            .MinDesiredWidth(220.0f)
-            [
-                Column
-            ]
-        ];
-}
-
-auto
-    SCkDebug_IconToolbar::
-    Build_Action(const FCkDebug_IconToggleAction& InAction, bool InShowLabel) const
+    Build_Action(const FCkDebug_IconToggleAction& InAction) const
     -> TSharedRef<SWidget>
 {
     return SNew(SCkDebug_IconToggle)
@@ -324,7 +224,7 @@ auto
         .IsOn(InAction.IsOn)
         .OnStateChanged(InAction.OnStateChanged)
         .IsEnabled(InAction.IsEnabled)
-        .ShowLabel(InShowLabel);
+        .ShowLabel(false);
 }
 
 // ====================================================================================================================

@@ -9,6 +9,7 @@
 #include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -20,7 +21,6 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 
 #include "Engine/Engine.h"
@@ -60,6 +60,18 @@ auto
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkAStarDebugger"))
             .DisplayName(FText::FromString(TEXT("CK A* Debugger")))
+            .MenuActionsContent()
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(TEXT("Hourglass"))
+                .Label(FText::FromString(TEXT("Pause capture")))
+                .ToolTip(FText::FromString(TEXT("Freeze A* debugger capture; gameplay continues running.")))
+                .IsOn_Lambda([this]() { return _ViewModel.IsValid() && _ViewModel->Get_Paused(); })
+                .OnStateChanged_Lambda([this](const bool InPaused)
+                {
+                    if (_ViewModel.IsValid()) { _ViewModel->Set_Paused(InPaused); }
+                })
+            ]
             .Content()
             [
                 SNew(SVerticalBox)
@@ -312,28 +324,6 @@ auto
         // Spacer
         + SHorizontalBox::Slot()
             .FillWidth(1.0f)
-
-        // Pause button
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(4.0f, 0.0f)
-            [
-                SNew(SButton)
-                    .Text_Lambda([this]() -> FText
-                    {
-                        auto IsPaused = _ViewModel.IsValid() && _ViewModel->Get_Paused();
-                        return FText::FromString(IsPaused ? TEXT("Resume") : TEXT("Pause"));
-                    })
-                    .OnClicked_Lambda([this]() -> FReply
-                    {
-                        if (_ViewModel.IsValid())
-                        {
-                            _ViewModel->Set_Paused(NOT _ViewModel->Get_Paused());
-                        }
-                        return FReply::Handled();
-                    })
-            ]
 
         // Refresh-mode + rate-cap controls
         + SHorizontalBox::Slot()

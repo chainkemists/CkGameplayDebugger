@@ -17,6 +17,8 @@ Make entity debugging continuous across the CK debugger suite: the on-screen ove
 6. The ECS inspector panel exposes common `Open In` actions for every registered entity-targetable dedicated debugger. Gate-0 destinations are GOAP, Crowd, State Machine, A*, and Aggro.
 7. Every CkGameplayDebugger-owned standalone debugger window uses the shared top-chrome/content/status-frame contract while retaining its feature-specific controls and layout.
 8. The final Development editor build and focused `Debugger` plus `DebugOverlay` suites have no failing-set regression from the recorded baseline; editor-only behavior has an exact manual verification checklist.
+9. The Insights Analyzer editor tab is owned by CkGameplayDebugger, uses the shared debugger chrome and icon-toggle language, and retains its existing tab ID and commandlet compatibility while CkFoundation keeps only UI-free analysis/reporting code.
+10. Every launcher debugger exposes at least one useful boolean action as a shared icon toggle in the common menu bar; feature modules construct no raw checkbox controls, including ECS contextual filters.
 
 ## Constraints and locked decisions
 
@@ -30,15 +32,17 @@ Make entity debugging continuous across the CK debugger suite: the on-screen ove
 | Overlay overflow | Budget the model before rendering and summarize omissions | The overlay is hit-test-invisible, so scrolling cannot be operated; raw Slate clipping hides the most useful state. |
 | AI priority | GOAP, Crowd, A*, and PathNetworkFollower outrank generic attribute volume | AI/navigation triage is the overlay's primary operational job. |
 | Window consistency | Shared structural chrome with named top, content, and status slots | Standardizes placement and styling without flattening GOAP/ECS/SM specialized controls. |
-| External tool | CkFoundation-owned Insights Analyzer is excluded | Its launcher entry is a proxy; making it depend on debugger common would create a plugin cycle. |
+| Insights ownership (revised 2026-08-05) | CkFoundation keeps trace analysis, reports, and the commandlet; `CkInsightsDebugger` owns the Slate tab and launcher descriptor | Restores the debug-data/UI boundary without introducing a Foundation-to-debugger dependency. This supersedes the original external-proxy exception. |
+| Toggle presentation (revised 2026-08-05) | Common chrome owns an inline menu-action slot; Common owns icon toggles and rich toggle surfaces; short exclusive choices use the engine segmented control | Makes every debugger's high-frequency options one-click and visually consistent without promoting contextual ECS filters into global state. |
 
 ## Non-goals
 
 - Do not modify the legacy UE GameplayDebugger generation.
-- Do not redesign every feature debugger's internal panels or interaction model.
+- Do not redesign feature data collection or interaction models beyond small presentation filters backed by already-collected debugger state.
 - Do not add runtime gameplay state to CkGameplayDebugger or make CkFoundation depend on debugger modules.
 - Do not change or suppress inherited SQLite, AngelScript-shadowing, cvar-discovery, or third-party build warnings as part of this campaign.
 - Do not publish, commit, or stage unrelated CkFoundation campaign files.
+- Do not rename the `CkInsightsAnalyzerTab` tab ID or the `CkInsightsAnalyzer` commandlet/module contract.
 
 ## Reading list
 

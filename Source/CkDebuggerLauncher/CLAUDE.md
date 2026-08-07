@@ -20,9 +20,8 @@
 | Interface | UI Layer, Enhanced Input |
 | Tools | Insights Analyzer |
 
-The Insights Analyzer descriptor is registered by the launcher module itself (by proxy): its tab
-spawner lives in CkFoundation's `CkInsightsAnalyzer` module, which cannot depend on
-`CkDebuggerCommon` without a plugin cycle.
+`CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
+The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.
 
 ## Adding another standalone debugger
 

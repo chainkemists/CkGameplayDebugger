@@ -156,6 +156,15 @@
 - Added `Ck.EcsDebugger.Dashboard.ContentRebuildInvalidatesPresentation`; the final Development Editor build succeeded and the focused ECS debugger gate passed 7/7 in `Saved/Logs/EcsOverviewTabReentry-FinalRerun-20260805.log`.
 - The fix was committed as `f28fd88`; the live Overview -> Graph -> Overview visual round-trip remains editor-only verification.
 
+### 2026-08-07 - Review, rebase, and final automated verification
+
+- Independent review found a narrow-dock clipping risk in the all-direct action row, four newer Crowd raw-checkbox controls, implicit Insights loading teardown, under-specified launcher coverage, and unused ECS styles. The action row now wraps within the available chrome width, Crowd uses the common toggle surface, Insights cancels pending loading from its destructor, the launcher test pins the exact descriptor contract, and the unused styles are removed.
+- Rebased the seven-commit debugger campaign onto `origin/dev` while preserving both upstream Crowd navigation invalidation and campaign session/selection invalidation. The Foundation analyzer-core boundary rebased separately onto its current `origin/dev`.
+- The first uninterrupted final build exposed `CkInsightsDebugger` linker failures for `ck::registry_table::TryResolve` and `FCk_Handle::IsValid`. Root cause was the shared `CkEcs` PCH selected by `CkModuleRules`; the UI module now declares `CkEcs` explicitly, matching the existing launcher-module contract.
+- UnrealToolbox Development Editor build then succeeded and the focused parallel `Ck.Debugger` suite passed 18/18 in `Saved/Logs/DebuggerQoL-Final-DependencyFix-20260807.log`. Parallel startup produced only shared asset-registry cache write collisions, so the same suite was rerun serially for a clean diagnostic boundary.
+- Final serial `Ck.Debugger` verification passed 18/18, failed 0, skipped 0, contaminated 0 in `Saved/Logs/DebuggerQoL-Final-Serial-20260807.log`; fresh scans found zero ensures, script errors, automation failures, linker errors, fatal errors, or asset-registry write errors.
+- Static verification reports zero feature-local raw-checkbox construction/include files and zero references to the removed unused styles. Editor acceptance rows 6, 14, and 15 remain pending and are not claimed by automation.
+
 ## Editor acceptance matrix
 
 | ID | Exact action | Expected observation | Status |

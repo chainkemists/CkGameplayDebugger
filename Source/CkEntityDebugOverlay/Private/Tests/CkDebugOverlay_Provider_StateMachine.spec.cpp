@@ -95,7 +95,7 @@ bool FCkDebugOverlay_Provider_StateMachine_CurrentStateWithoutDebugCache::RunTes
     Registry.SetContext<ck::FCtx_TransientEntity>(ck::FCtx_TransientEntity{TransientEntityId});
 
     auto StateMachine = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(Registry);
-    StateMachine.Add<ck::FFragment_Sm_Current>(
+    StateMachine.Add<ck::FFragment_Sm>(
         ECk_SmRunStatus::Running,
         FCk_Handle_SmState{},
         UCk_SmState_EntityScript::StaticClass());

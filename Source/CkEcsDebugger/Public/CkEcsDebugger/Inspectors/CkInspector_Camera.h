@@ -4,7 +4,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 // Inspector for the ECS Camera feature (CkCamera/Camera). Lights up for the director entity
-// (FFragment_Camera_Current) and for any selected layer child entity (FFragment_CameraLayer_*).
+// (FFragment_Camera) and for any selected layer child entity (FFragment_CameraLayer_*).
 //
 // Sections: Director (intention / dominant / composed-profile summary / final ViewInfo), Layer Stack
 // (one live row per record entry with a blend-weight bar; the persistent base layer is marked), POV pipeline

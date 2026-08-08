@@ -1219,8 +1219,8 @@ auto
             { ++Snapshot->Pois[*Index].VisibleOnCount; }
         };
 
-        TransientEntity.View<ck::FFragment_Minimap_Params, ck::FFragment_Minimap_Current>().ForEach(
-            [&](FCk_Entity InEntity, const ck::FFragment_Minimap_Params&, const ck::FFragment_Minimap_Current&)
+        TransientEntity.View<ck::FFragment_Minimap_Params, ck::FFragment_Minimap>().ForEach(
+            [&](FCk_Entity InEntity, const ck::FFragment_Minimap_Params&, const ck::FFragment_Minimap&)
             {
                 auto Handle = ck::MakeHandle(InEntity, TransientEntity);
                 auto MinimapHandle = UCk_Utils_Minimap_UE::Cast(Handle);
@@ -1246,8 +1246,8 @@ auto
                 Snapshot->Minimaps.Add(MoveTemp(Info));
             });
 
-        TransientEntity.View<ck::FFragment_Compass_Params, ck::FFragment_Compass_Current>().ForEach(
-            [&](FCk_Entity InEntity, const ck::FFragment_Compass_Params&, const ck::FFragment_Compass_Current&)
+        TransientEntity.View<ck::FFragment_Compass_Params, ck::FFragment_Compass>().ForEach(
+            [&](FCk_Entity InEntity, const ck::FFragment_Compass_Params&, const ck::FFragment_Compass&)
             {
                 auto Handle = ck::MakeHandle(InEntity, TransientEntity);
                 auto CompassHandle = UCk_Utils_Compass_UE::Cast(Handle);
@@ -1281,8 +1281,8 @@ auto
                 Snapshot->Compasses.Add(MoveTemp(Info));
             });
 
-        TransientEntity.View<ck::FFragment_FogOfWar_Params, ck::FFragment_FogOfWar_Current>().ForEach(
-            [&](FCk_Entity InEntity, const ck::FFragment_FogOfWar_Params& InParams, const ck::FFragment_FogOfWar_Current& InCurrent)
+        TransientEntity.View<ck::FFragment_FogOfWar_Params, ck::FFragment_FogOfWar>().ForEach(
+            [&](FCk_Entity InEntity, const ck::FFragment_FogOfWar_Params& InParams, const ck::FFragment_FogOfWar& InFogOfWar)
             {
                 auto Handle = ck::MakeHandle(InEntity, TransientEntity);
                 const auto FogHandle = UCk_Utils_FogOfWar_UE::Cast(Handle);
@@ -1294,8 +1294,8 @@ auto
                 Info.Handle = Handle;
                 Info.Bounds = InParams.Get_Bounds();
                 Info.CellSize = InParams.Get_CellSize();
-                Info.CellCounts = InCurrent.Get_CellCounts();
-                Info.Explored = InCurrent.Get_Explored();
+                Info.CellCounts = InFogOfWar.Get_CellCounts();
+                Info.Explored = InFogOfWar.Get_Explored();
                 Info.ExploredFraction = UCk_Utils_FogOfWar_UE::Get_ExploredFraction(FogHandle);
 
                 Snapshot->Fogs.Add(MoveTemp(Info));

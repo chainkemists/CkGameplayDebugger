@@ -70,8 +70,8 @@ auto
     if (ck::Is_NOT_Valid(TransientEntity))
     { return; }
 
-    TransientEntity.View<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>().ForEach(
-        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Sm_Current&, const ck::FFragment_Sm_Params&)
+    TransientEntity.View<ck::FFragment_Sm, ck::FFragment_Sm_Params>().ForEach(
+        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Sm&, const ck::FFragment_Sm_Params&)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
             auto StateMachineHandle = UCk_Utils_StateMachine_UE::CastChecked(Handle);
@@ -80,7 +80,7 @@ auto
             // Skip sub-SMs (their lifetime owner is a task entity)
             auto OwnerHandle = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
 
-            if (ck::IsValid(OwnerHandle) && OwnerHandle.Has<ck::FFragment_SmTask_Current>())
+            if (ck::IsValid(OwnerHandle) && OwnerHandle.Has<ck::FFragment_SmTask>())
             { return; }
 
             _StateMachines.Add(CollectStateMachine(Handle));
@@ -326,7 +326,7 @@ auto
     // don't have to know about that detail.
     SmInfo.GameEntity = InSmHandle;
 
-    const auto& Current = InSmHandle.Get<ck::FFragment_Sm_Current>();
+    const auto& Current = InSmHandle.Get<ck::FFragment_Sm>();
     SmInfo.RunStatus = Current.Get_RunStatus();
     SmInfo.CurrentStateClass = Current.Get_CurrentStateClass();
     SmInfo.IsTransitionQueued = InSmHandle.Has<ck::FTag_Sm_TransitionQueued>();
@@ -1279,10 +1279,10 @@ auto
 
             for (const auto& CondHandle : TransChildren)
             {
-                if (NOT CondHandle.Has<ck::FFragment_SmCondition_Current>())
+                if (NOT CondHandle.Has<ck::FFragment_SmCondition>())
                 { continue; }
 
-                const auto& CondCurrent = CondHandle.Get<ck::FFragment_SmCondition_Current>();
+                const auto& CondCurrent = CondHandle.Get<ck::FFragment_SmCondition>();
                 const auto CondResult = CondCurrent.Get_Result();
 
                 ++TotalCount;
@@ -1305,11 +1305,11 @@ auto
             MatchingTransition->SatisfiedCount = SatisfiedCount;
             MatchingTransition->AreAllConditionsSatisfied = (TotalCount > 0 && SatisfiedCount == TotalCount);
 
-            // Read authoritative transition result from FFragment_SmTransition_Current
-            if (ChildHandle.Has<ck::FFragment_SmTransition_Current>())
+            // Read authoritative transition result from FFragment_SmTransition
+            if (ChildHandle.Has<ck::FFragment_SmTransition>())
             {
                 MatchingTransition->TransitionResult =
-                    ChildHandle.Get<ck::FFragment_SmTransition_Current>().Get_Result();
+                    ChildHandle.Get<ck::FFragment_SmTransition>().Get_Result();
             }
             else
             {
@@ -1365,7 +1365,7 @@ auto
         }
 
         // Overlay live task results
-        if (ChildHandle.Has<ck::FFragment_SmTask_Current>())
+        if (ChildHandle.Has<ck::FFragment_SmTask>())
         {
             if (InOutSmInfo.States.IsValidIndex(InCurrentStateIndex))
             {
@@ -1374,7 +1374,7 @@ auto
                 if (TaskIndex < CurrentState.Tasks.Num())
                 {
                     CurrentState.Tasks[TaskIndex].Handle = ChildHandle;
-                    CurrentState.Tasks[TaskIndex].LastResult = ChildHandle.Get<ck::FFragment_SmTask_Current>().Get_LastResult();
+                    CurrentState.Tasks[TaskIndex].LastResult = ChildHandle.Get<ck::FFragment_SmTask>().Get_LastResult();
                 }
             }
 

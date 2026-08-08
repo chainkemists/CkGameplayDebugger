@@ -50,26 +50,26 @@ namespace ck_inspector_physics
     {
         if (ck::Is_NOT_Valid(InEntity)) { return 0; }
         uint8 Result = 0;
-        if (InEntity.Has<ck::FFragment_Velocity_Current>()) { Result |= VelocityBit; }
-        if (InEntity.Has<ck::FFragment_Acceleration_Current>()) { Result |= AccelerationBit; }
-        if (InEntity.Has<ck::FFragment_PredictedVelocity_Current>()) { Result |= PredictedVelocityBit; }
-        if (InEntity.Has<ck::FFragment_EulerIntegrator_Current>()) { Result |= EulerIntegratorBit; }
+        if (InEntity.Has<ck::FFragment_Velocity>()) { Result |= VelocityBit; }
+        if (InEntity.Has<ck::FFragment_Acceleration>()) { Result |= AccelerationBit; }
+        if (InEntity.Has<ck::FFragment_PredictedVelocity>()) { Result |= PredictedVelocityBit; }
+        if (InEntity.Has<ck::FFragment_EulerIntegrator>()) { Result |= EulerIntegratorBit; }
         return Result;
     }
 
     auto Get_Vector(const FCk_Handle& InEntity, const FString& InKind) -> FVector
     {
         if (ck::Is_NOT_Valid(InEntity)) { return FVector::ZeroVector; }
-        if (InKind == TEXT("velocity") && InEntity.Has<ck::FFragment_Velocity_Current>())
-        { return InEntity.Get<ck::FFragment_Velocity_Current>().Get_CurrentVelocity(); }
-        if (InKind == TEXT("acceleration") && InEntity.Has<ck::FFragment_Acceleration_Current>())
-        { return InEntity.Get<ck::FFragment_Acceleration_Current>().Get_CurrentAcceleration(); }
-        if (InKind == TEXT("predicted-velocity") && InEntity.Has<ck::FFragment_PredictedVelocity_Current>())
-        { return InEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_CurrentVelocity(); }
-        if (InKind == TEXT("predicted-location") && InEntity.Has<ck::FFragment_PredictedVelocity_Current>())
-        { return InEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_PreviousLocation(); }
-        if (InKind == TEXT("distance-offset") && InEntity.Has<ck::FFragment_EulerIntegrator_Current>())
-        { return InEntity.Get<ck::FFragment_EulerIntegrator_Current>().Get_DistanceOffset(); }
+        if (InKind == TEXT("velocity") && InEntity.Has<ck::FFragment_Velocity>())
+        { return InEntity.Get<ck::FFragment_Velocity>().Get_CurrentVelocity(); }
+        if (InKind == TEXT("acceleration") && InEntity.Has<ck::FFragment_Acceleration>())
+        { return InEntity.Get<ck::FFragment_Acceleration>().Get_CurrentAcceleration(); }
+        if (InKind == TEXT("predicted-velocity") && InEntity.Has<ck::FFragment_PredictedVelocity>())
+        { return InEntity.Get<ck::FFragment_PredictedVelocity>().Get_CurrentVelocity(); }
+        if (InKind == TEXT("predicted-location") && InEntity.Has<ck::FFragment_PredictedVelocity>())
+        { return InEntity.Get<ck::FFragment_PredictedVelocity>().Get_PreviousLocation(); }
+        if (InKind == TEXT("distance-offset") && InEntity.Has<ck::FFragment_EulerIntegrator>())
+        { return InEntity.Get<ck::FFragment_EulerIntegrator>().Get_DistanceOffset(); }
         return FVector::ZeroVector;
     }
 
@@ -128,7 +128,7 @@ auto FCkInspector_Physics::Build_NativeBody(const FCk_Handle& Entity) -> TShared
     Builder.SetEditGuard(Get_EditGuard());
     const auto CapturedEntity = Entity;
 
-    if (Entity.Has<ck::FFragment_Velocity_Current>())
+    if (Entity.Has<ck::FFragment_Velocity>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Velocity")));
         Builder.AddAlignedNumericRow(FText::FromString(TEXT("Current:")),
@@ -155,7 +155,7 @@ auto FCkInspector_Physics::Build_NativeBody(const FCk_Handle& Entity) -> TShared
         }
     }
 
-    if (Entity.Has<ck::FFragment_Acceleration_Current>())
+    if (Entity.Has<ck::FFragment_Acceleration>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Acceleration")));
         Builder.AddAlignedNumericRow(FText::FromString(TEXT("Current:")),
@@ -179,7 +179,7 @@ auto FCkInspector_Physics::Build_NativeBody(const FCk_Handle& Entity) -> TShared
         }
     }
 
-    if (Entity.Has<ck::FFragment_PredictedVelocity_Current>())
+    if (Entity.Has<ck::FFragment_PredictedVelocity>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Predicted Velocity")));
         Builder.AddAlignedNumericRow(FText::FromString(TEXT("Velocity:")),
@@ -192,14 +192,14 @@ auto FCkInspector_Physics::Build_NativeBody(const FCk_Handle& Entity) -> TShared
         Builder.AddRow(FText::FromString(TEXT("Prev DeltaTime:")), [CapturedEntity](const FCk_Handle&)
         {
             if (ck::Is_NOT_Valid(CapturedEntity)
-                || NOT CapturedEntity.Has<ck::FFragment_PredictedVelocity_Current>())
+                || NOT CapturedEntity.Has<ck::FFragment_PredictedVelocity>())
             { return FText::FromString(TEXT("--")); }
             return FText::FromString(FString::Printf(TEXT("%.3f s"),
-                CapturedEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_PreviousDeltaTime().Get_Seconds()));
+                CapturedEntity.Get<ck::FFragment_PredictedVelocity>().Get_PreviousDeltaTime().Get_Seconds()));
         }, CkStyle::Value_Numeric());
     }
 
-    if (Entity.Has<ck::FFragment_EulerIntegrator_Current>())
+    if (Entity.Has<ck::FFragment_EulerIntegrator>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Euler Integrator")));
         Builder.AddAlignedNumericRow(FText::FromString(TEXT("Distance Offset:")),
@@ -257,22 +257,22 @@ auto SCkInspector_PhysicsAuthored::Get_IsAvailable() const -> bool
 
 auto SCkInspector_PhysicsAuthored::Get_HasVelocity() const -> bool
 {
-    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_Velocity_Current>();
+    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_Velocity>();
 }
 
 auto SCkInspector_PhysicsAuthored::Get_HasAcceleration() const -> bool
 {
-    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_Acceleration_Current>();
+    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_Acceleration>();
 }
 
 auto SCkInspector_PhysicsAuthored::Get_HasPredictedVelocity() const -> bool
 {
-    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_PredictedVelocity_Current>();
+    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_PredictedVelocity>();
 }
 
 auto SCkInspector_PhysicsAuthored::Get_HasEulerIntegrator() const -> bool
 {
-    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_EulerIntegrator_Current>();
+    return _Active && ck::IsValid(_Entity) && _Entity.Has<ck::FFragment_EulerIntegrator>();
 }
 
 auto SCkInspector_PhysicsAuthored::Get_CanOverrideVelocity() const -> bool
@@ -348,7 +348,7 @@ auto SCkInspector_PhysicsAuthored::Get_PreviousDeltaTimeText() const -> FString
 {
     if (NOT Get_HasPredictedVelocity()) { return TEXT("--"); }
     return FString::Printf(TEXT("%.3f s"),
-        _Entity.Get<ck::FFragment_PredictedVelocity_Current>().Get_PreviousDeltaTime().Get_Seconds());
+        _Entity.Get<ck::FFragment_PredictedVelocity>().Get_PreviousDeltaTime().Get_Seconds());
 }
 
 auto SCkInspector_PhysicsAuthored::Commit_Velocity(const FVector& InValue) -> void

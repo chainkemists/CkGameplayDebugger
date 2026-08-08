@@ -61,7 +61,7 @@ namespace ck_inspector_shapes
         OutSphere = UCk_Utils_ShapeSphere_UE::Cast(MutableEntity);
         return ck::IsValid(OutSphere)
             && OutSphere.Has<ck::FFragment_ShapeSphere_Params>()
-            && OutSphere.Has<ck::FFragment_ShapeSphere_Current>();
+            && OutSphere.Has<ck::FFragment_ShapeSphere>();
     }
 
     auto TryGetBox(const FCk_Handle& InEntity, FCk_Handle_ShapeBox& OutBox) -> bool
@@ -72,7 +72,7 @@ namespace ck_inspector_shapes
         OutBox = UCk_Utils_ShapeBox_UE::Cast(MutableEntity);
         return ck::IsValid(OutBox)
             && OutBox.Has<ck::FFragment_ShapeBox_Params>()
-            && OutBox.Has<ck::FFragment_ShapeBox_Current>();
+            && OutBox.Has<ck::FFragment_ShapeBox>();
     }
 
     auto TryGetCapsule(const FCk_Handle& InEntity, FCk_Handle_ShapeCapsule& OutCapsule) -> bool
@@ -83,7 +83,7 @@ namespace ck_inspector_shapes
         OutCapsule = UCk_Utils_ShapeCapsule_UE::Cast(MutableEntity);
         return ck::IsValid(OutCapsule)
             && OutCapsule.Has<ck::FFragment_ShapeCapsule_Params>()
-            && OutCapsule.Has<ck::FFragment_ShapeCapsule_Current>();
+            && OutCapsule.Has<ck::FFragment_ShapeCapsule>();
     }
 
     auto TryGetCylinder(const FCk_Handle& InEntity, FCk_Handle_ShapeCylinder& OutCylinder) -> bool
@@ -94,7 +94,7 @@ namespace ck_inspector_shapes
         OutCylinder = UCk_Utils_ShapeCylinder_UE::Cast(MutableEntity);
         return ck::IsValid(OutCylinder)
             && OutCylinder.Has<ck::FFragment_ShapeCylinder_Params>()
-            && OutCylinder.Has<ck::FFragment_ShapeCylinder_Current>();
+            && OutCylinder.Has<ck::FFragment_ShapeCylinder>();
     }
 
     auto GetLocalGate(const FCk_Handle& InEntity, const bool bFeatureAvailable) -> FCk_DebugRequest_GateVerdict
@@ -565,7 +565,7 @@ auto FCkInspector_Shapes::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     auto MutableEntity = Entity;
 
     // ---- Sphere ----
-    if (Entity.Has<ck::FFragment_ShapeSphere_Current>())
+    if (Entity.Has<ck::FFragment_ShapeSphere>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Sphere")));
 
@@ -590,7 +590,7 @@ auto FCkInspector_Shapes::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     }
 
     // ---- Box ----
-    if (Entity.Has<ck::FFragment_ShapeBox_Current>())
+    if (Entity.Has<ck::FFragment_ShapeBox>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Box")));
 
@@ -635,7 +635,7 @@ auto FCkInspector_Shapes::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     }
 
     // ---- Capsule ----
-    if (Entity.Has<ck::FFragment_ShapeCapsule_Current>())
+    if (Entity.Has<ck::FFragment_ShapeCapsule>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Capsule")));
 
@@ -681,7 +681,7 @@ auto FCkInspector_Shapes::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     }
 
     // ---- Cylinder ----
-    if (Entity.Has<ck::FFragment_ShapeCylinder_Current>())
+    if (Entity.Has<ck::FFragment_ShapeCylinder>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Cylinder")));
 

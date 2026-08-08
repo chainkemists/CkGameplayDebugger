@@ -2,6 +2,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 
 #include "Misc/AutomationTest.h"
+#include "Layout/ArrangedChildren.h"
+#include "Layout/Geometry.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -44,6 +46,39 @@ bool FCkDebugIconToolbar_PartitionsAtomically::RunTest(const FString& Parameters
     TestFalse(TEXT("Duplicate stable ids reject the whole toolbar"),
         FCkDebug_IconToolbarLayout::TryBuild(Actions, Duplicate));
     TestEqual(TEXT("Rejected toolbar publishes no actions"), Duplicate.ActionCount, 0);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebugIconToggle_DoesNotFillSurplusWidth,
+    "Ck.DebuggerCommon.IconToolbar.ToggleDoesNotFillSurplusWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebugIconToggle_DoesNotFillSurplusWidth::RunTest(const FString& Parameters)
+{
+    auto Toggle = SNew(SCkDebug_IconToggle)
+        .IconId(TEXT("Grid"))
+        .Label(FText::FromString(TEXT("Test toggle")))
+        .IsOn(false)
+        .OnStateChanged(FOnCkDebug_IconToggleChanged::CreateLambda([](bool) {}));
+
+    Toggle->SlatePrepass();
+    const auto DesiredWidth = Toggle->GetDesiredSize().X;
+    auto Arranged = FArrangedChildren{EVisibility::Visible};
+    Toggle->ArrangeChildren(
+        FGeometry::MakeRoot(FVector2D{320.0f, 32.0f}, FSlateLayoutTransform{}),
+        Arranged);
+
+    TestEqual(TEXT("Toggle arranges one checkbox"), Arranged.Num(), 1);
+    if (Arranged.Num() == 1)
+    {
+        TestTrue(
+            TEXT("Checkbox keeps its desired width in a wide action slot"),
+            Arranged[0].Geometry.GetLocalSize().X <= DesiredWidth + KINDA_SMALL_NUMBER);
+    }
 
     return true;
 }

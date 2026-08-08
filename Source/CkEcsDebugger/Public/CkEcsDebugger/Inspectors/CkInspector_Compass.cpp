@@ -105,7 +105,8 @@ namespace ck_inspector_compass
     {
         auto Compass = FCk_Handle_Compass{};
         if (NOT TryGetCompass(InEntity, Compass)) { return TEXT("--"); }
-        const FGameplayTagQuery& Filter = Compass.Get<ck::FFragment_Compass_Params>().Get_CategoryFilter();
+        // The state fragment, not Params: the filter is request-mutable, so the authored copy is stale.
+        const FGameplayTagQuery& Filter = Compass.Get<ck::FFragment_Compass_Current>().Get_CategoryFilter();
         return Filter.IsEmpty() ? TEXT("(accepts all)") : Filter.GetDescription();
     }
 

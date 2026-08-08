@@ -23,7 +23,7 @@ namespace ck_inspector_resolver
 {
     auto HasCurrent(const FCk_Handle& InEntity) -> bool
     {
-        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_ResolverDataBundle_Current>();
+        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_ResolverDataBundle>();
     }
 
     auto HasPending(const FCk_Handle& InEntity) -> bool
@@ -41,13 +41,13 @@ namespace ck_inspector_resolver
     auto Get_PhaseIndex(const FCk_Handle& InEntity) -> int32
     {
         if (NOT HasCurrent(InEntity)) { return INDEX_NONE; }
-        return InEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_CurrentPhaseIndex();
+        return InEntity.Get<ck::FFragment_ResolverDataBundle>().Get_CurrentPhaseIndex();
     }
 
     auto BuildFinalValueText(const FCk_Handle& InEntity) -> FString
     {
         if (NOT HasCurrent(InEntity)) { return TEXT("--"); }
-        const float Value = InEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_FinalValue();
+        const float Value = InEntity.Get<ck::FFragment_ResolverDataBundle>().Get_FinalValue();
         return FString::Printf(TEXT("%.3f"), Value);
     }
 
@@ -72,7 +72,7 @@ namespace ck_inspector_resolver
     {
         if (NOT HasCurrent(InEntity)) { return TEXT("--"); }
         const FGameplayTagContainer& Tags =
-            InEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_MetadataTags();
+            InEntity.Get<ck::FFragment_ResolverDataBundle>().Get_MetadataTags();
         return Tags.IsEmpty() ? TEXT("(none)") : Tags.ToString();
     }
 

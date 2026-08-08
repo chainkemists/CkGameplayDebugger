@@ -113,7 +113,7 @@ namespace ck_inspector_interaction_resolver
         if (NOT TryGetResolver(InEntity, Resolver))
         { return TEXT("--"); }
         auto Names = TArray<FString>{};
-        for (const FGameplayTag& Intent : Resolver.Get<ck::FFragment_InteractionResolver_Current>().Get_ActiveIntents())
+        for (const FGameplayTag& Intent : Resolver.Get<ck::FFragment_InteractionResolver>().Get_ActiveIntents())
         { Names.Add(Intent.IsValid() ? Intent.GetTagName().ToString() : TEXT("?")); }
         return Names.IsEmpty() ? TEXT("None") : FString::Join(Names, TEXT(", "));
     }
@@ -284,7 +284,7 @@ auto SCkInspector_InteractionResolverAuthored::Refresh_Collections() -> bool
 
         auto Available = TArray<FCk_Handle>{};
         for (const FCk_Handle_InteractTarget& Target :
-            Resolver.Get<ck::FFragment_InteractionResolver_Current>().Get_AvailableTargets())
+            Resolver.Get<ck::FFragment_InteractionResolver>().Get_AvailableTargets())
         { if (ck::IsValid(Target)) { Available.Add(Target); } }
         for (const FCk_Handle& Target : Available)
         {
@@ -369,7 +369,7 @@ auto SCkInspector_InteractionResolverAuthored::Navigate_AvailableTarget(const FS
     auto Resolver = FCk_Handle_InteractionResolver{};
     if (NOT ck_inspector_interaction_resolver::TryGetResolver(_Entity, Resolver)) { return; }
     for (const FCk_Handle_InteractTarget& Current :
-        Resolver.Get<ck::FFragment_InteractionResolver_Current>().Get_AvailableTargets())
+        Resolver.Get<ck::FFragment_InteractionResolver>().Get_AvailableTargets())
     {
         if (Current == *Expected
             && ck_inspector_interaction_resolver::GetHandleKey(TEXT("available"), Current) == InStableKey)
@@ -601,14 +601,14 @@ auto FCkInspector_InteractionResolver::Build_NativeBody(const FCk_Handle& Entity
     {
         auto Current = FCk_Handle_InteractionResolver{};
         if (NOT TryGetResolver(Entity, Current)) { return CkStyle::None(); }
-        return Current.Get<ck::FFragment_InteractionResolver_Current>().Get_ActiveIntents().IsEmpty()
+        return Current.Get<ck::FFragment_InteractionResolver>().Get_ActiveIntents().IsEmpty()
             ? CkStyle::TextDim() : CkStyle::Status_Active();
     });
     auto AvailableHandles = TArray<FCk_Handle>{};
     if (TryGetResolver(Entity, Resolver))
     {
         for (const FCk_Handle_InteractTarget& Target :
-            Resolver.Get<ck::FFragment_InteractionResolver_Current>().Get_AvailableTargets())
+            Resolver.Get<ck::FFragment_InteractionResolver>().Get_AvailableTargets())
         { if (ck::IsValid(Target)) { AvailableHandles.Add(Target); } }
     }
     Builder.AddWidgetRow(FText::FromString(TEXT("Available Targets:")),

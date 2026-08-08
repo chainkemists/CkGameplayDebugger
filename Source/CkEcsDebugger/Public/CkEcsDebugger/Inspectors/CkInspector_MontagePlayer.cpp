@@ -37,21 +37,21 @@ auto IsDestroying(const FCk_Handle &InEntity) -> bool
 
 auto HasCurrent(const FCk_Handle &InEntity) -> bool
 {
-    return NOT IsDestroying(InEntity) && InEntity.Has<ck::FFragment_MontagePlayer_Current>();
+    return NOT IsDestroying(InEntity) && InEntity.Has<ck::FFragment_MontagePlayer>();
 }
 
 auto TryGetMontagePlayer(const FCk_Handle &InEntity, FCk_Handle_MontagePlayer &OutPlayer) -> bool
 {
     OutPlayer = {};
     if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_MontagePlayer_Params>() ||
-        NOT InEntity.Has<ck::FFragment_MontagePlayer_Current>())
+        NOT InEntity.Has<ck::FFragment_MontagePlayer>())
     {
         return false;
     }
     auto Mutable = InEntity;
     OutPlayer = UCk_Utils_MontagePlayer_UE::Cast(Mutable);
     return ck::IsValid(OutPlayer) && OutPlayer.Has<ck::FFragment_MontagePlayer_Params>() &&
-           OutPlayer.Has<ck::FFragment_MontagePlayer_Current>();
+           OutPlayer.Has<ck::FFragment_MontagePlayer>();
 }
 
 auto GetRequestGate(const FCk_Handle &InEntity) -> FCk_DebugRequest_GateVerdict
@@ -106,7 +106,7 @@ auto GetPlayback(const FCk_Handle &InEntity, float &OutLength) -> float
     {
         return 0.0f;
     }
-    const auto &Current = InEntity.Get<ck::FFragment_MontagePlayer_Current>();
+    const auto &Current = InEntity.Get<ck::FFragment_MontagePlayer>();
     const UAnimMontage *Montage = Current.Get_ActiveMontage().Get();
     const UAnimInstance *AnimInstance = Current.Get_LastSeenAnimInstance().Get();
     if (ck::Is_NOT_Valid(Montage, ck::IsValid_Policy_NullptrOnly{}) ||
@@ -158,21 +158,21 @@ auto SCkInspector_MontagePlayerAuthored::Get_HasControls() const -> bool
 auto SCkInspector_MontagePlayerAuthored::Get_StateText() const -> FString
 {
     return Get_IsAvailable() ? ck_inspector_montage_player::GetStateText(
-                                   _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_Kind())
+                                   _Entity.Get<ck::FFragment_MontagePlayer>().Get_State().Get_Kind())
                              : TEXT("--");
 }
 
 auto SCkInspector_MontagePlayerAuthored::Get_StateForeground() const -> FLinearColor
 {
     return Get_IsAvailable() ? CkStyle::GetToneColor(ck_inspector_montage_player::GetTone(
-                                   _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_Kind()))
+                                   _Entity.Get<ck::FFragment_MontagePlayer>().Get_State().Get_Kind()))
                              : FLinearColor::Transparent;
 }
 
 auto SCkInspector_MontagePlayerAuthored::Get_StateBackground() const -> FLinearColor
 {
     return Get_IsAvailable() ? CkStyle::GetToneDimColor(ck_inspector_montage_player::GetTone(
-                                   _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_Kind()))
+                                   _Entity.Get<ck::FFragment_MontagePlayer>().Get_State().Get_Kind()))
                              : FLinearColor::Transparent;
 }
 
@@ -182,7 +182,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_ActiveMontageText() const -> FStrin
     {
         return TEXT("--");
     }
-    const TWeakObjectPtr<UAnimMontage> Montage = _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_ActiveMontage();
+    const TWeakObjectPtr<UAnimMontage> Montage = _Entity.Get<ck::FFragment_MontagePlayer>().Get_ActiveMontage();
     return Montage.IsValid() ? Montage->GetFName().ToString() : TEXT("(none)");
 }
 
@@ -190,7 +190,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_ActiveMontageColor() const -> FLine
 {
     if (NOT Get_IsAvailable())
     { return CkStyle::None(); }
-    return _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_ActiveMontage().IsValid()
+    return _Entity.Get<ck::FFragment_MontagePlayer>().Get_ActiveMontage().IsValid()
         ? CkStyle::Value_Object()
         : CkStyle::TextMute();
 }
@@ -213,7 +213,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_AnimInstanceText() const -> FString
 {
     if (NOT Get_IsAvailable())
     { return TEXT("--"); }
-    return _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_LastSeenAnimInstance().IsValid()
+    return _Entity.Get<ck::FFragment_MontagePlayer>().Get_LastSeenAnimInstance().IsValid()
         ? TEXT("Valid")
         : TEXT("Invalid");
 }
@@ -222,7 +222,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_AnimInstanceColor() const -> FLinea
 {
     if (NOT Get_IsAvailable())
     { return CkStyle::None(); }
-    return _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_LastSeenAnimInstance().IsValid()
+    return _Entity.Get<ck::FFragment_MontagePlayer>().Get_LastSeenAnimInstance().IsValid()
         ? CkStyle::Ok()
         : CkStyle::Err();
 }
@@ -231,7 +231,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_PlayRateText() const -> FString
 {
     return Get_IsAvailable()
                ? ck::Format_UE(TEXT("{:.2f}"),
-                               _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_PlayRate())
+                               _Entity.Get<ck::FFragment_MontagePlayer>().Get_State().Get_PlayRate())
                : TEXT("--");
 }
 
@@ -239,7 +239,7 @@ auto SCkInspector_MontagePlayerAuthored::Get_CatchUpRemainingText() const -> FSt
 {
     return Get_IsAvailable()
                ? ck::Format_UE(TEXT("{:.3f} s"),
-                               _Entity.Get<ck::FFragment_MontagePlayer_Current>().Get_CatchUpRemaining().Get_Seconds())
+                               _Entity.Get<ck::FFragment_MontagePlayer>().Get_CatchUpRemaining().Get_Seconds())
                : TEXT("--");
 }
 
@@ -737,7 +737,7 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
             {
                 return ck_inspector_montage_player::HasCurrent(Captured)
                            ? FText::FromString(ck_inspector_montage_player::GetStateText(
-                                 Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_Kind()))
+                                 Captured.Get<ck::FFragment_MontagePlayer>().Get_State().Get_Kind()))
                            : FText::FromString(TEXT("--"));
             }),
         TAttribute<ECk_Tone>::CreateLambda(
@@ -745,7 +745,7 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
             {
                 return ck_inspector_montage_player::HasCurrent(Captured)
                            ? ck_inspector_montage_player::GetTone(
-                                 Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_Kind())
+                                 Captured.Get<ck::FFragment_MontagePlayer>().Get_State().Get_Kind())
                            : ECk_Tone::Neutral;
             }));
     Builder.AddConditionalRow(
@@ -754,14 +754,14 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
         {
             if (NOT ck_inspector_montage_player::HasCurrent(Captured))
             { return FText::FromString(TEXT("--")); }
-            const auto Montage = Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_ActiveMontage();
+            const auto Montage = Captured.Get<ck::FFragment_MontagePlayer>().Get_ActiveMontage();
             return Montage.IsValid() ? FText::FromName(Montage->GetFName()) : FText::FromString(TEXT("(none)"));
         },
         [Captured](const FCk_Handle &) -> FLinearColor
         {
             if (NOT ck_inspector_montage_player::HasCurrent(Captured))
             { return CkStyle::None(); }
-            return Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_ActiveMontage().IsValid()
+            return Captured.Get<ck::FFragment_MontagePlayer>().Get_ActiveMontage().IsValid()
                 ? CkStyle::Value_Object()
                 : CkStyle::TextMute();
         });
@@ -790,14 +790,14 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
             if (NOT ck_inspector_montage_player::HasCurrent(Captured))
             { return FText::FromString(TEXT("--")); }
             return FText::FromString(
-                Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_LastSeenAnimInstance().IsValid()
+                Captured.Get<ck::FFragment_MontagePlayer>().Get_LastSeenAnimInstance().IsValid()
                     ? TEXT("Valid") : TEXT("Invalid"));
         },
         [Captured](const FCk_Handle &) -> FLinearColor
         {
             if (NOT ck_inspector_montage_player::HasCurrent(Captured))
             { return CkStyle::None(); }
-            return Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_LastSeenAnimInstance().IsValid()
+            return Captured.Get<ck::FFragment_MontagePlayer>().Get_LastSeenAnimInstance().IsValid()
                 ? CkStyle::Ok()
                 : CkStyle::Err();
         });
@@ -808,7 +808,7 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
             return ck_inspector_montage_player::HasCurrent(Captured)
                        ? FText::FromString(ck::Format_UE(
                              TEXT("{:.2f}"),
-                             Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_State().Get_PlayRate()))
+                             Captured.Get<ck::FFragment_MontagePlayer>().Get_State().Get_PlayRate()))
                        : FText::FromString(TEXT("--"));
         },
         CkStyle::Value_Numeric());
@@ -819,7 +819,7 @@ auto FCkInspector_MontagePlayer::Build_NativeBody(const FCk_Handle &Entity) -> T
             return ck_inspector_montage_player::HasCurrent(Captured)
                        ? FText::FromString(ck::Format_UE(
                              TEXT("{:.3f} s"),
-                             Captured.Get<ck::FFragment_MontagePlayer_Current>().Get_CatchUpRemaining().Get_Seconds()))
+                             Captured.Get<ck::FFragment_MontagePlayer>().Get_CatchUpRemaining().Get_Seconds()))
                        : FText::FromString(TEXT("--"));
         },
         CkStyle::Value_Numeric());

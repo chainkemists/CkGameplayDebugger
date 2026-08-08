@@ -129,10 +129,10 @@ namespace ck_inspector_state_machine
     auto HasInspectableFragments(const FCk_Handle& InEntity) -> bool
     {
         return NOT IsDestroying(InEntity) && InEntity.Has_Any<
-            ck::FFragment_Sm_Current, ck::FFragment_Sm_Debug, ck::FFragment_SmState_Params,
-            ck::FFragment_SmTask_Current, ck::FFragment_SmTask_Params,
-            ck::FFragment_SmTransition_Current, ck::FFragment_SmTransition_Params,
-            ck::FFragment_SmCondition_Current, ck::FFragment_SmCondition_Params>();
+            ck::FFragment_Sm, ck::FFragment_Sm_Debug, ck::FFragment_SmState_Params,
+            ck::FFragment_SmTask, ck::FFragment_SmTask_Params,
+            ck::FFragment_SmTransition, ck::FFragment_SmTransition_Params,
+            ck::FFragment_SmCondition, ck::FFragment_SmCondition_Params>();
     }
 
     auto RouteKey(const FCk_Handle& InEntity) -> FString
@@ -147,7 +147,7 @@ namespace ck_inspector_state_machine
     auto TryGetStateMachine(const FCk_Handle& InEntity, FCk_Handle_StateMachine& OutStateMachine) -> bool
     {
         OutStateMachine = {};
-        if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_Sm_Current>()
+        if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_Sm>()
             || NOT InEntity.Has<ck::FFragment_Sm_Params>())
         { return false; }
         if (ck::Is_NOT_Valid(InEntity.Get<ck::FFragment_Sm_Params>().Get_InitialStateClass()))
@@ -185,7 +185,7 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
     Builder.SetEditGuard(Get_EditGuard());
 
     // ---- State Machine root entity ----
-    if (Entity.Has<ck::FFragment_Sm_Current>())
+    if (Entity.Has<ck::FFragment_Sm>())
     {
         Builder.AddHeader(FText::FromString(TEXT("State Machine")));
 
@@ -195,16 +195,16 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
             FText::FromString(TEXT("Status:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Status = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus();
+                const auto Status = CapturedEntity.Get<ck::FFragment_Sm>().Get_RunStatus();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Status));
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm>())
                 { return ECk_Tone::Neutral; }
-                return Format_RunStatus_Tone(CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus());
+                return Format_RunStatus_Tone(CapturedEntity.Get<ck::FFragment_Sm>().Get_RunStatus());
             }));
 
         // The current state is the single most-read value in this inspector — Info-toned pill so it
@@ -213,16 +213,16 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
             FText::FromString(TEXT("Current State:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm>())
                 { return FText::FromString(TEXT("--")); }
-                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
+                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm>().Get_CurrentStateClass();
                 return FText::FromString(Format_Sm_ClassName(StateClass));
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm>())
                 { return ECk_Tone::Neutral; }
-                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
+                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm>().Get_CurrentStateClass();
                 return StateClass != nullptr ? ECk_Tone::Info : ECk_Tone::Neutral;
             }));
 
@@ -453,7 +453,7 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
     }
 
     // ---- Task entity ----
-    if (Entity.Has_Any<ck::FFragment_SmTask_Current, ck::FFragment_SmTask_Params>())
+    if (Entity.Has_Any<ck::FFragment_SmTask, ck::FFragment_SmTask_Params>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Task")));
 
@@ -468,23 +468,23 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
                 CkStyle::Value_Object());
         }
 
-        if (Entity.Has<ck::FFragment_SmTask_Current>())
+        if (Entity.Has<ck::FFragment_SmTask>())
         {
             const auto CapturedEntity = Entity;
             Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
                 TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask>())
                     { return FText::FromString(TEXT("--")); }
-                    const auto Result = CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult();
+                    const auto Result = CapturedEntity.Get<ck::FFragment_SmTask>().Get_LastResult();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
                 }),
                 TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask>())
                     { return ECk_Tone::Neutral; }
-                    return Format_TaskResult_Tone(CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult());
+                    return Format_TaskResult_Tone(CapturedEntity.Get<ck::FFragment_SmTask>().Get_LastResult());
                 }));
         }
 
@@ -515,7 +515,7 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
     }
 
     // ---- Transition entity ----
-    if (Entity.Has_Any<ck::FFragment_SmTransition_Current, ck::FFragment_SmTransition_Params>())
+    if (Entity.Has_Any<ck::FFragment_SmTransition, ck::FFragment_SmTransition_Params>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Transition")));
 
@@ -529,29 +529,29 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
                 CkStyle::Value_Object());
         }
 
-        if (Entity.Has<ck::FFragment_SmTransition_Current>())
+        if (Entity.Has<ck::FFragment_SmTransition>())
         {
             const auto CapturedEntity = Entity;
             Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
                 TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition>())
                     { return FText::FromString(TEXT("--")); }
-                    const auto Result = CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result();
+                    const auto Result = CapturedEntity.Get<ck::FFragment_SmTransition>().Get_Result();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
                 }),
                 TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition>())
                     { return ECk_Tone::Neutral; }
-                    return Format_TransitionResult_Tone(CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result());
+                    return Format_TransitionResult_Tone(CapturedEntity.Get<ck::FFragment_SmTransition>().Get_Result());
                 }));
         }
     }
 
     // ---- Condition entity ----
-    if (Entity.Has_Any<ck::FFragment_SmCondition_Current, ck::FFragment_SmCondition_Params>())
+    if (Entity.Has_Any<ck::FFragment_SmCondition, ck::FFragment_SmCondition_Params>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Condition")));
 
@@ -565,23 +565,23 @@ auto FCkInspector_StateMachine::Build_NativeBody(const FCk_Handle& Entity) const
                 CkStyle::Value_Object());
         }
 
-        if (Entity.Has<ck::FFragment_SmCondition_Current>())
+        if (Entity.Has<ck::FFragment_SmCondition>())
         {
             const auto CapturedEntity = Entity;
             Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
                 TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition>())
                     { return FText::FromString(TEXT("--")); }
-                    const auto Result = CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result();
+                    const auto Result = CapturedEntity.Get<ck::FFragment_SmCondition>().Get_Result();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
                 }),
                 TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition>())
                     { return ECk_Tone::Neutral; }
-                    return Format_ConditionResult_Tone(CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result());
+                    return Format_ConditionResult_Tone(CapturedEntity.Get<ck::FFragment_SmCondition>().Get_Result());
                 }));
         }
     }
@@ -648,10 +648,10 @@ auto SCkInspector_StateMachineAuthored::Get_Text(const FString& InKey) const -> 
     using namespace ck_inspector_state_machine;
     if (NOT Get_IsAvailable())
     { return InKey == TEXT("sub-sm-id") || InKey == TEXT("sub-sm-name") ? FString{} : FString{TEXT("--")}; }
-    if (InKey == TEXT("status") && _Entity.Has<ck::FFragment_Sm_Current>())
-    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Sm_Current>().Get_RunStatus()); }
-    if (InKey == TEXT("current-state") && _Entity.Has<ck::FFragment_Sm_Current>())
-    { return Format_Sm_ClassName(_Entity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass()); }
+    if (InKey == TEXT("status") && _Entity.Has<ck::FFragment_Sm>())
+    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Sm>().Get_RunStatus()); }
+    if (InKey == TEXT("current-state") && _Entity.Has<ck::FFragment_Sm>())
+    { return Format_Sm_ClassName(_Entity.Get<ck::FFragment_Sm>().Get_CurrentStateClass()); }
     if (_Entity.Has<ck::FFragment_Sm_PendingTransition>())
     {
         const auto& Pending = _Entity.Get<ck::FFragment_Sm_PendingTransition>();
@@ -682,8 +682,8 @@ auto SCkInspector_StateMachineAuthored::Get_Text(const FString& InKey) const -> 
     }
     if (InKey == TEXT("task-class") && _Entity.Has<ck::FFragment_SmTask_Params>())
     { return Format_Sm_ClassName(_Entity.Get<ck::FFragment_SmTask_Params>().Get_ScriptClass()); }
-    if (InKey == TEXT("task-result") && _Entity.Has<ck::FFragment_SmTask_Current>())
-    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmTask_Current>().Get_LastResult()); }
+    if (InKey == TEXT("task-result") && _Entity.Has<ck::FFragment_SmTask>())
+    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmTask>().Get_LastResult()); }
     if (InKey == TEXT("sub-sm-id") || InKey == TEXT("sub-sm-name"))
     {
         const auto SubStateMachine = Get_SubStateMachine();
@@ -696,12 +696,12 @@ auto SCkInspector_StateMachineAuthored::Get_Text(const FString& InKey) const -> 
     }
     if (InKey == TEXT("transition-target") && _Entity.Has<ck::FFragment_SmTransition_Params>())
     { return Format_Sm_ClassName(_Entity.Get<ck::FFragment_SmTransition_Params>().Get_TargetStateClass()); }
-    if (InKey == TEXT("transition-result") && _Entity.Has<ck::FFragment_SmTransition_Current>())
-    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmTransition_Current>().Get_Result()); }
+    if (InKey == TEXT("transition-result") && _Entity.Has<ck::FFragment_SmTransition>())
+    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmTransition>().Get_Result()); }
     if (InKey == TEXT("condition-class") && _Entity.Has<ck::FFragment_SmCondition_Params>())
     { return Format_Sm_ClassName(_Entity.Get<ck::FFragment_SmCondition_Params>().Get_ScriptClass()); }
-    if (InKey == TEXT("condition-result") && _Entity.Has<ck::FFragment_SmCondition_Current>())
-    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmCondition_Current>().Get_Result()); }
+    if (InKey == TEXT("condition-result") && _Entity.Has<ck::FFragment_SmCondition>())
+    { return ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_SmCondition>().Get_Result()); }
     return TEXT("--");
 }
 
@@ -710,7 +710,7 @@ auto SCkInspector_StateMachineAuthored::Get_Bool(const FString& InKey) const -> 
     if (NOT Get_IsAvailable())
     { return false; }
     if (InKey == TEXT("root"))
-    { return _Entity.Has<ck::FFragment_Sm_Current>(); }
+    { return _Entity.Has<ck::FFragment_Sm>(); }
     if (InKey == TEXT("controls-visible"))
     { return Get_Bool(TEXT("root")) && ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()); }
     if (InKey == TEXT("pending"))
@@ -736,25 +736,25 @@ auto SCkInspector_StateMachineAuthored::Get_Bool(const FString& InKey) const -> 
             && NOT _Entity.Get<ck::FFragment_SmState_Hierarchy>().Get_Hierarchy().IsEmpty();
     }
     if (InKey == TEXT("task"))
-    { return _Entity.Has_Any<ck::FFragment_SmTask_Params, ck::FFragment_SmTask_Current>(); }
+    { return _Entity.Has_Any<ck::FFragment_SmTask_Params, ck::FFragment_SmTask>(); }
     if (InKey == TEXT("task-class"))
     { return _Entity.Has<ck::FFragment_SmTask_Params>(); }
     if (InKey == TEXT("task-result"))
-    { return _Entity.Has<ck::FFragment_SmTask_Current>(); }
+    { return _Entity.Has<ck::FFragment_SmTask>(); }
     if (InKey == TEXT("sub-sm"))
     { return Get_Bool(TEXT("task")) && _Entity.Has<ck::FFragment_SmTask_SubStateMachine>(); }
     if (InKey == TEXT("transition"))
-    { return _Entity.Has_Any<ck::FFragment_SmTransition_Params, ck::FFragment_SmTransition_Current>(); }
+    { return _Entity.Has_Any<ck::FFragment_SmTransition_Params, ck::FFragment_SmTransition>(); }
     if (InKey == TEXT("transition-target"))
     { return _Entity.Has<ck::FFragment_SmTransition_Params>(); }
     if (InKey == TEXT("transition-result"))
-    { return _Entity.Has<ck::FFragment_SmTransition_Current>(); }
+    { return _Entity.Has<ck::FFragment_SmTransition>(); }
     if (InKey == TEXT("condition"))
-    { return _Entity.Has_Any<ck::FFragment_SmCondition_Params, ck::FFragment_SmCondition_Current>(); }
+    { return _Entity.Has_Any<ck::FFragment_SmCondition_Params, ck::FFragment_SmCondition>(); }
     if (InKey == TEXT("condition-class"))
     { return _Entity.Has<ck::FFragment_SmCondition_Params>(); }
     if (InKey == TEXT("condition-result"))
-    { return _Entity.Has<ck::FFragment_SmCondition_Current>(); }
+    { return _Entity.Has<ck::FFragment_SmCondition>(); }
     return false;
 }
 
@@ -763,16 +763,16 @@ auto SCkInspector_StateMachineAuthored::Get_Tone(const FString& InKey) const -> 
     using namespace ck_inspector_state_machine;
     if (NOT Get_IsAvailable())
     { return ECk_Tone::Neutral; }
-    if (InKey == TEXT("status") && _Entity.Has<ck::FFragment_Sm_Current>())
-    { return Format_RunStatus_Tone(_Entity.Get<ck::FFragment_Sm_Current>().Get_RunStatus()); }
-    if (InKey == TEXT("current-state") && _Entity.Has<ck::FFragment_Sm_Current>())
-    { return _Entity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass() != nullptr ? ECk_Tone::Info : ECk_Tone::Neutral; }
-    if (InKey == TEXT("task-result") && _Entity.Has<ck::FFragment_SmTask_Current>())
-    { return Format_TaskResult_Tone(_Entity.Get<ck::FFragment_SmTask_Current>().Get_LastResult()); }
-    if (InKey == TEXT("transition-result") && _Entity.Has<ck::FFragment_SmTransition_Current>())
-    { return Format_TransitionResult_Tone(_Entity.Get<ck::FFragment_SmTransition_Current>().Get_Result()); }
-    if (InKey == TEXT("condition-result") && _Entity.Has<ck::FFragment_SmCondition_Current>())
-    { return Format_ConditionResult_Tone(_Entity.Get<ck::FFragment_SmCondition_Current>().Get_Result()); }
+    if (InKey == TEXT("status") && _Entity.Has<ck::FFragment_Sm>())
+    { return Format_RunStatus_Tone(_Entity.Get<ck::FFragment_Sm>().Get_RunStatus()); }
+    if (InKey == TEXT("current-state") && _Entity.Has<ck::FFragment_Sm>())
+    { return _Entity.Get<ck::FFragment_Sm>().Get_CurrentStateClass() != nullptr ? ECk_Tone::Info : ECk_Tone::Neutral; }
+    if (InKey == TEXT("task-result") && _Entity.Has<ck::FFragment_SmTask>())
+    { return Format_TaskResult_Tone(_Entity.Get<ck::FFragment_SmTask>().Get_LastResult()); }
+    if (InKey == TEXT("transition-result") && _Entity.Has<ck::FFragment_SmTransition>())
+    { return Format_TransitionResult_Tone(_Entity.Get<ck::FFragment_SmTransition>().Get_Result()); }
+    if (InKey == TEXT("condition-result") && _Entity.Has<ck::FFragment_SmCondition>())
+    { return Format_ConditionResult_Tone(_Entity.Get<ck::FFragment_SmCondition>().Get_Result()); }
     return ECk_Tone::Neutral;
 }
 

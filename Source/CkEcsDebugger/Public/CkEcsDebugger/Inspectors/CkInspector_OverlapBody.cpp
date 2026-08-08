@@ -465,8 +465,8 @@ auto FCkInspector_OverlapBody::CanInspect(const FCk_Handle& Entity) const -> boo
     { return false; }
 
     return Entity.Has_Any<
-        ck::FFragment_Marker_Current,
-        ck::FFragment_Sensor_Current>();
+        ck::FFragment_Marker,
+        ck::FFragment_Sensor>();
 }
 
 // =====================================================================================================================
@@ -478,7 +478,7 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
     auto MutableEntity = Entity;
 
     // ---- Marker ----
-    if (Entity.Has<ck::FFragment_Marker_Current>())
+    if (Entity.Has<ck::FFragment_Marker>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Marker")));
 
@@ -492,9 +492,9 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
             FText::FromString(TEXT("Enabled:")),
             TAttribute<bool>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker>())
                 { return false; }
-                return CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable() == ECk_EnableDisable::Enable;
+                return CapturedEntity.Get<ck::FFragment_Marker>().Get_EnableDisable() == ECk_EnableDisable::Enable;
             }),
             [CapturedMarker](bool InIsEnabled)
             {
@@ -510,39 +510,39 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
             FText::FromString(TEXT("State:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker>())
                 { return FText::FromString(TEXT("--")); }
-                const auto State = CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable();
+                const auto State = CapturedEntity.Get<ck::FFragment_Marker>().Get_EnableDisable();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker>())
                 { return ECk_Tone::Neutral; }
                 return ck_inspector_overlapbody::Get_EnableDisableTone(
-                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable());
+                    CapturedEntity.Get<ck::FFragment_Marker>().Get_EnableDisable());
             }));
 
         Builder.AddStatusPillRow(
             FText::FromString(TEXT("Shape:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker>())
                 { return FText::FromString(TEXT("--")); }
                 return ck_inspector_overlapbody::Make_ShapeText(
-                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker().IsValid());
+                    CapturedEntity.Get<ck::FFragment_Marker>().Get_Marker().IsValid());
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker>())
                 { return ECk_Tone::Neutral; }
                 return ck_inspector_overlapbody::Get_ShapeTone(
-                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker().IsValid());
+                    CapturedEntity.Get<ck::FFragment_Marker>().Get_Marker().IsValid());
             }));
     }
 
     // ---- Sensor ----
-    if (Entity.Has<ck::FFragment_Sensor_Current>())
+    if (Entity.Has<ck::FFragment_Sensor>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Sensor")));
 
@@ -553,9 +553,9 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
             FText::FromString(TEXT("Enabled:")),
             TAttribute<bool>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return false; }
-                return CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable() == ECk_EnableDisable::Enable;
+                return CapturedEntity.Get<ck::FFragment_Sensor>().Get_EnableDisable() == ECk_EnableDisable::Enable;
             }),
             [CapturedSensor](bool InIsEnabled)
             {
@@ -571,43 +571,43 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
             FText::FromString(TEXT("State:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return FText::FromString(TEXT("--")); }
-                const auto State = CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable();
+                const auto State = CapturedEntity.Get<ck::FFragment_Sensor>().Get_EnableDisable();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return ECk_Tone::Neutral; }
                 return ck_inspector_overlapbody::Get_EnableDisableTone(
-                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable());
+                    CapturedEntity.Get<ck::FFragment_Sensor>().Get_EnableDisable());
             }));
 
         Builder.AddStatusPillRow(
             FText::FromString(TEXT("Shape:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return FText::FromString(TEXT("--")); }
                 return ck_inspector_overlapbody::Make_ShapeText(
-                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid());
+                    CapturedEntity.Get<ck::FFragment_Sensor>().Get_Sensor().IsValid());
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return ECk_Tone::Neutral; }
                 return ck_inspector_overlapbody::Get_ShapeTone(
-                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid());
+                    CapturedEntity.Get<ck::FFragment_Sensor>().Get_Sensor().IsValid());
             }));
 
         Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Marker Overlaps:")),
             TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return 0; }
-                return CapturedEntity.Get<ck::FFragment_Sensor_Current>()
+                return CapturedEntity.Get<ck::FFragment_Sensor>()
                     .Get_CurrentMarkerOverlaps().Get_Overlaps().Num();
             }),
             ECk_Tone::Info);
@@ -616,9 +616,9 @@ auto FCkInspector_OverlapBody::Build_NativeBody(const FCk_Handle& Entity) const 
             FText::FromString(TEXT("Non-Marker Overlaps:")),
             TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor>())
                 { return 0; }
-                return CapturedEntity.Get<ck::FFragment_Sensor_Current>()
+                return CapturedEntity.Get<ck::FFragment_Sensor>()
                     .Get_CurrentNonMarkerOverlaps().Get_Overlaps().Num();
             }),
             ECk_Tone::Info);

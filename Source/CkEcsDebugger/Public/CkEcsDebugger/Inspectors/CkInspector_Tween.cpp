@@ -53,10 +53,10 @@ namespace ck_inspector_tween
 
     static auto Get_CurrentTimeSeconds(const FCk_Handle& InEntity) -> float
     {
-        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_Tween_Current>())
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_Tween>())
         { return 0.0f; }
 
-        return InEntity.Get<ck::FFragment_Tween_Current>().Get_CurrentTime();
+        return InEntity.Get<ck::FFragment_Tween>().Get_CurrentTime();
     }
 
     auto TryGetTween(const FCk_Handle& InEntity, FCk_Handle_Tween& OutTween) -> bool
@@ -66,12 +66,12 @@ namespace ck_inspector_tween
         auto MutableEntity = InEntity;
         OutTween = UCk_Utils_Tween_UE::Cast(MutableEntity);
         return ck::IsValid(OutTween) && OutTween.Has<ck::FFragment_Tween_Params>()
-            && OutTween.Has<ck::FFragment_Tween_Current>();
+            && OutTween.Has<ck::FFragment_Tween>();
     }
 
     auto HasCurrent(const FCk_Handle& InEntity) -> bool
     {
-        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Tween_Current>()
+        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_Tween>()
             && NOT InEntity.Has_Any<ck::FTag_DestroyEntity_Initiate, ck::FTag_DestroyEntity_EndPlay,
                 ck::FTag_DestroyEntity_Teardown, ck::FTag_DestroyEntity_Await, ck::FTag_DestroyEntity_Finalize>();
     }
@@ -109,17 +109,17 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
         FText::FromString(TEXT("State:")),
         TAttribute<FText>::CreateLambda([CapturedEntity]()
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return FText::FromString(TEXT("--")); }
-            const auto State = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_State();
+            const auto State = CapturedEntity.Get<ck::FFragment_Tween>().Get_State();
             return FText::FromString(ck::Format_UE(TEXT("{}"), State));
         }),
         TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return ECk_Tone::Neutral; }
             return ck_inspector_tween::Get_StateTone(
-                CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_State());
+                CapturedEntity.Get<ck::FFragment_Tween>().Get_State());
         }));
 
     // The Params duration is fixed for the tween's life, so the row shape can be chosen once here;
@@ -139,7 +139,7 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
             ECk_Tone::Accent,
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{:.4f} / {:.4f}s"),
                     ck_inspector_tween::Get_CurrentTimeSeconds(CapturedEntity),
@@ -152,9 +152,9 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Time:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
                 { return FText::FromString(TEXT("--")); }
-                const auto T = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_CurrentTime();
+                const auto T = CapturedEntity.Get<ck::FFragment_Tween>().Get_CurrentTime();
                 return FText::FromString(FString::Printf(TEXT("%.4f"), T));
             },
             CkStyle::Value_Numeric());
@@ -164,9 +164,9 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
         FText::FromString(TEXT("Loop:")),
         [CapturedEntity](const FCk_Handle&)
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return FText::FromString(TEXT("--")); }
-            const auto Loop = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_CurrentLoop();
+            const auto Loop = CapturedEntity.Get<ck::FFragment_Tween>().Get_CurrentLoop();
             return FText::FromString(ck::Format_UE(TEXT("{}"), Loop));
         },
         CkStyle::Value_Numeric());
@@ -175,16 +175,16 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
         FText::FromString(TEXT("Reversed:")),
         [CapturedEntity](const FCk_Handle&)
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return FText::FromString(TEXT("--")); }
-            const auto IsReversed = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_IsReversed();
+            const auto IsReversed = CapturedEntity.Get<ck::FFragment_Tween>().Get_IsReversed();
             return FText::FromString(IsReversed ? TEXT("Yes") : TEXT("No"));
         },
         [CapturedEntity](const FCk_Handle&) -> FLinearColor
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return CkStyle::None(); }
-            const auto IsReversed = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_IsReversed();
+            const auto IsReversed = CapturedEntity.Get<ck::FFragment_Tween>().Get_IsReversed();
             return IsReversed ? CkStyle::Status_Active() : CkStyle::Value_Bool_False();
         });
 
@@ -192,9 +192,9 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
         FText::FromString(TEXT("Time Multiplier:")),
         [CapturedEntity](const FCk_Handle&)
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
             { return FText::FromString(TEXT("--")); }
-            const auto Multiplier = CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_TimeMultiplier();
+            const auto Multiplier = CapturedEntity.Get<ck::FFragment_Tween>().Get_TimeMultiplier();
             return FText::FromString(FString::Printf(TEXT("%.3f"), Multiplier));
         },
         CkStyle::Value_Numeric());
@@ -299,10 +299,10 @@ auto FCkInspector_Tween::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRe
             FText::FromString(TEXT("Set Time Multiplier:")),
             TAttribute<float>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween>())
                 { return 1.0f; }
 
-                return CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_TimeMultiplier();
+                return CapturedEntity.Get<ck::FFragment_Tween>().Get_TimeMultiplier();
             }),
             [CapturedTween](float InMultiplier)
             {
@@ -374,27 +374,27 @@ auto SCkInspector_TweenAuthored::Get_RequestDisabledReason() const -> FString
 
 auto SCkInspector_TweenAuthored::Get_StateText() const -> FString
 {
-    return Get_IsAvailable() ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Tween_Current>().Get_State()) : TEXT("--");
+    return Get_IsAvailable() ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Tween>().Get_State()) : TEXT("--");
 }
 
 auto SCkInspector_TweenAuthored::Get_StateForeground() const -> FLinearColor
 {
     return Get_IsAvailable()
-        ? CkStyle::GetToneColor(ck_inspector_tween::Get_StateTone(_Entity.Get<ck::FFragment_Tween_Current>().Get_State()))
+        ? CkStyle::GetToneColor(ck_inspector_tween::Get_StateTone(_Entity.Get<ck::FFragment_Tween>().Get_State()))
         : CkStyle::None();
 }
 
 auto SCkInspector_TweenAuthored::Get_StateBackground() const -> FLinearColor
 {
     return Get_IsAvailable()
-        ? CkStyle::GetToneDimColor(ck_inspector_tween::Get_StateTone(_Entity.Get<ck::FFragment_Tween_Current>().Get_State()))
+        ? CkStyle::GetToneDimColor(ck_inspector_tween::Get_StateTone(_Entity.Get<ck::FFragment_Tween>().Get_State()))
         : CkStyle::None();
 }
 
 auto SCkInspector_TweenAuthored::Get_TimeText() const -> FString
 {
     if (NOT Get_IsAvailable()) { return TEXT("--"); }
-    const float Current = _Entity.Get<ck::FFragment_Tween_Current>().Get_CurrentTime();
+    const float Current = _Entity.Get<ck::FFragment_Tween>().Get_CurrentTime();
     if (NOT _Entity.Has<ck::FFragment_Tween_Params>()) { return FString::Printf(TEXT("%.4f"), Current); }
     const float Duration = _Entity.Get<ck::FFragment_Tween_Params>().Get_Duration();
     return Duration > 0.0f ? ck::Format_UE(TEXT("{:.4f} / {:.4f}s"), Current, Duration)
@@ -406,29 +406,29 @@ auto SCkInspector_TweenAuthored::Get_TimeFraction() const -> float
     auto Tween = FCk_Handle_Tween{};
     if (NOT ck_inspector_tween::TryGetTween(_Entity, Tween)) { return 0.0f; }
     const float Duration = Tween.Get<ck::FFragment_Tween_Params>().Get_Duration();
-    return Duration > 0.0f ? FMath::Clamp(Tween.Get<ck::FFragment_Tween_Current>().Get_CurrentTime() / Duration, 0.0f, 1.0f) : 0.0f;
+    return Duration > 0.0f ? FMath::Clamp(Tween.Get<ck::FFragment_Tween>().Get_CurrentTime() / Duration, 0.0f, 1.0f) : 0.0f;
 }
 
 auto SCkInspector_TweenAuthored::Get_LoopText() const -> FString
 {
-    return Get_IsAvailable() ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Tween_Current>().Get_CurrentLoop()) : TEXT("--");
+    return Get_IsAvailable() ? ck::Format_UE(TEXT("{}"), _Entity.Get<ck::FFragment_Tween>().Get_CurrentLoop()) : TEXT("--");
 }
 
 auto SCkInspector_TweenAuthored::Get_ReversedText() const -> FString
 {
-    return Get_IsAvailable() ? (_Entity.Get<ck::FFragment_Tween_Current>().Get_IsReversed() ? TEXT("Yes") : TEXT("No")) : TEXT("--");
+    return Get_IsAvailable() ? (_Entity.Get<ck::FFragment_Tween>().Get_IsReversed() ? TEXT("Yes") : TEXT("No")) : TEXT("--");
 }
 
 auto SCkInspector_TweenAuthored::Get_ReversedColor() const -> FLinearColor
 {
     if (NOT Get_IsAvailable()) { return CkStyle::None(); }
-    return _Entity.Get<ck::FFragment_Tween_Current>().Get_IsReversed()
+    return _Entity.Get<ck::FFragment_Tween>().Get_IsReversed()
         ? CkStyle::Status_Active() : CkStyle::Value_Bool_False();
 }
 
 auto SCkInspector_TweenAuthored::Get_MultiplierText() const -> FString
 {
-    return Get_IsAvailable() ? ck::Format_UE(TEXT("{:.3f}"), _Entity.Get<ck::FFragment_Tween_Current>().Get_TimeMultiplier()) : TEXT("--");
+    return Get_IsAvailable() ? ck::Format_UE(TEXT("{:.3f}"), _Entity.Get<ck::FFragment_Tween>().Get_TimeMultiplier()) : TEXT("--");
 }
 
 auto SCkInspector_TweenAuthored::Get_NextTweenText() const -> FString
@@ -606,7 +606,7 @@ auto SCkInspector_TweenAuthored::Release() -> void
 auto FCkInspector_Tween::Get_StructureMask(const FCk_Handle& Entity) const -> uint8
 {
     if (ck::Is_NOT_Valid(Entity)) { return 0; }
-    return (Entity.Has<ck::FFragment_Tween_Params>() ? 1 : 0) | (Entity.Has<ck::FFragment_Tween_Current>() ? 2 : 0)
+    return (Entity.Has<ck::FFragment_Tween_Params>() ? 1 : 0) | (Entity.Has<ck::FFragment_Tween>() ? 2 : 0)
         | (Entity.Has<ck::FFragment_Tween_Chain>() ? 4 : 0);
 }
 

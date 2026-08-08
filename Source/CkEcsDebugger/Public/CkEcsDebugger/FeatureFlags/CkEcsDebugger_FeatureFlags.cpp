@@ -80,15 +80,15 @@ auto
     // FFragment_Transform is the real pool — FFragment_Transform_Params is a ParamsData
     // ALIAS that is never added to any entity (CkTransform_Utils.cpp adds FFragment_Transform).
     debug_feature_flags::RegisterFlag<FFragment_Transform>(TEXT("Transform"));
-    debug_feature_flags::RegisterFlag<FFragment_SceneNode_Current>(TEXT("SceneNode"));
+    debug_feature_flags::RegisterFlag<FFragment_SceneNode>(TEXT("SceneNode"));
     debug_feature_flags::RegisterFlag<FFragment_Probe_Params>(TEXT("Probe"));
-    debug_feature_flags::RegisterFlag<FFragment_FloatAttribute_Current>(TEXT("FloatAttribute"));
-    debug_feature_flags::RegisterFlag<FFragment_ByteAttribute_Current>(TEXT("ByteAttribute"));
-    debug_feature_flags::RegisterFlag<FFragment_IntegerAttribute_Current>(TEXT("IntegerAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_FloatAttribute>(TEXT("FloatAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_ByteAttribute>(TEXT("ByteAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_IntegerAttribute>(TEXT("IntegerAttribute"));
     // Same TUtils_Attribute<_Current> machinery as Float/Byte/Integer — parity carries over.
-    debug_feature_flags::RegisterFlag<FFragment_VectorAttribute_Current>(TEXT("VectorAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_VectorAttribute>(TEXT("VectorAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_Sm_Params>(TEXT("StateMachine"));
-    debug_feature_flags::RegisterFlag<FFragment_Aggro_Current>(TEXT("Aggro"));
+    debug_feature_flags::RegisterFlag<FFragment_Aggro>(TEXT("Aggro"));
     debug_feature_flags::RegisterFlag<FFragment_GameplayLabel>(TEXT("Label"));
     debug_feature_flags::RegisterFlag<FFragment_InteractionResolver_Params>(TEXT("InteractionResolver"));
     debug_feature_flags::RegisterFlag<FFragment_AudioTrack_Params>(TEXT("AudioTrack"));
@@ -96,17 +96,17 @@ auto
     // Second batch (rail coverage) — each keyed on the feature's canonical always-present
     // fragment; drives rail/badges/queries. Inspector fast-path wiring (Get_FeatureFlagId)
     // stays unwired for these until parity is individually verified.
-    debug_feature_flags::RegisterFlag<FFragment_Objective_Current>(TEXT("Objective"));
+    debug_feature_flags::RegisterFlag<FFragment_Objective>(TEXT("Objective"));
     // "VfxCue", not "Vfx": CkVfx's cue coordinator and CkFx's leaf Niagara wrapper are
     // distinct live features — the leaf owns the plain name below.
-    debug_feature_flags::RegisterFlag<FFragment_VfxCue_Current>(TEXT("VfxCue"));
+    debug_feature_flags::RegisterFlag<FFragment_VfxCue>(TEXT("VfxCue"));
     debug_feature_flags::RegisterFlag<FFragment_Camera_Params>(TEXT("Camera"));
-    debug_feature_flags::RegisterFlag<FFragment_Goap_Planner_Current>(TEXT("Goap"));
+    debug_feature_flags::RegisterFlag<FFragment_Goap_Planner>(TEXT("Goap"));
     debug_feature_flags::RegisterFlag<FFragment_EqsQuery_State>(TEXT("Eqs"));
-    debug_feature_flags::RegisterFlag<FFragment_IsmProxy_Current>(TEXT("IsmProxy"));
-    debug_feature_flags::RegisterFlag<FFragment_IskmProxy_Current>(TEXT("IskmProxy"));
-    debug_feature_flags::RegisterFlag<FFragment_OwningActor_Current>(TEXT("ActorBridge"));
-    debug_feature_flags::RegisterFlag<FFragment_Tween_Current>(TEXT("Tween"));
+    debug_feature_flags::RegisterFlag<FFragment_IsmProxy>(TEXT("IsmProxy"));
+    debug_feature_flags::RegisterFlag<FFragment_IskmProxy>(TEXT("IskmProxy"));
+    debug_feature_flags::RegisterFlag<FFragment_OwningActor>(TEXT("ActorBridge"));
+    debug_feature_flags::RegisterFlag<FFragment_Tween>(TEXT("Tween"));
     debug_feature_flags::RegisterFlag<FFragment_EntityCollection_Params>(TEXT("EntityCollection"));
 
     // Third batch (full-inventory audit, 2026-07-11): every CkFoundation feature whose
@@ -130,8 +130,8 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_UnrealComponent_Params>(TEXT("UnrealComponent"));
     debug_feature_flags::RegisterFlag<FFragment_SaveKey>(TEXT("Snapshot"));
     debug_feature_flags::RegisterFlag<FFragment_TagSet>(TEXT("TagSet"));
-    debug_feature_flags::RegisterFlag<FFragment_EntityTag_Current>(TEXT("EntityTag"));
-    debug_feature_flags::RegisterFlag<FFragment_RotatorAttribute_Current>(TEXT("RotatorAttribute"));
+    debug_feature_flags::RegisterFlag<FFragment_EntityTag>(TEXT("EntityTag"));
+    debug_feature_flags::RegisterFlag<FFragment_RotatorAttribute>(TEXT("RotatorAttribute"));
     debug_feature_flags::RegisterFlag<FFragment_CrowdAgent_Params>(TEXT("CrowdAgent"));
     debug_feature_flags::RegisterFlag<FFragment_2dGridSystem_Params>(TEXT("Grid"));
     debug_feature_flags::RegisterFlag<FFragment_Marker_Params>(TEXT("Marker"));

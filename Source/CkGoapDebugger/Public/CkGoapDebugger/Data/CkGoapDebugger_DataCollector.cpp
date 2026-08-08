@@ -481,9 +481,9 @@ namespace ck_goap_debugger_data_collector_internal
         }
 
         // ---- Enable + activation ----------------------------------------------------
-        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner_Current>())
+        if (InPlannerHandle.Has<ck::FFragment_Goap_Planner>())
         {
-            const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner_Current>();
+            const auto& Current = InPlannerHandle.Get<ck::FFragment_Goap_Planner>();
             Info.EnableToggle = Current.Get_EnableToggle();
             Info.HasUnconditionalFallback = Current.Get_HasUnconditionalFallback();
 
@@ -779,9 +779,9 @@ namespace ck_goap_debugger_data_collector_internal
         // PR-B.1b Stage 5: _RootAction is gone; RootActionHandle stays invalid
         // (the field is preserved on FCkGoapDebugger_ActionSetInfo for now to
         // avoid breaking downstream widget consumers).
-        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner_Current>())
+        if (InActionSetHandle.Has<ck::FFragment_Goap_Planner>())
         {
-            const auto& Current = InActionSetHandle.Get<ck::FFragment_Goap_Planner_Current>();
+            const auto& Current = InActionSetHandle.Get<ck::FFragment_Goap_Planner>();
             Info.EnableToggle    = Current.Get_EnableToggle();
 
             for (const auto& Cycle : Current.Get_DependencyCycles())
@@ -994,9 +994,9 @@ namespace ck_goap_debugger_data_collector_internal
         }
         Row.DisplayName = DisplayNameFromPlannerTag(Row.PlannerTag);
 
-        if (InPlanner.Has<ck::FFragment_Goap_Planner_Current>())
+        if (InPlanner.Has<ck::FFragment_Goap_Planner>())
         {
-            const auto& Current = InPlanner.Get<ck::FFragment_Goap_Planner_Current>();
+            const auto& Current = InPlanner.Get<ck::FFragment_Goap_Planner>();
             Row.EnableToggle             = Current.Get_EnableToggle();
             Row.HasUnconditionalFallback = Current.Get_HasUnconditionalFallback();
         }

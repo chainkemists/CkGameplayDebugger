@@ -71,7 +71,7 @@ namespace ck_inspector_camera
     {
         OutCamera = {};
         if (IsDestroying(InEntity)
-            || NOT InEntity.Has_All<ck::FFragment_Camera_Params, ck::FFragment_Camera_Current>()
+            || NOT InEntity.Has_All<ck::FFragment_Camera_Params, ck::FFragment_Camera>()
             || (bNeedsOrientation && NOT InEntity.Has<ck::FFragment_Camera_OrientationControl>()))
         { return false; }
         auto Mutable = InEntity;
@@ -97,7 +97,7 @@ namespace ck_inspector_camera
     // Fixed-precision components in X/Y/Z order so AddAlignedNumericRow's index-based axis coloring
     // lines up with the axis each number belongs to, and every spatial row shares one column grid.
     // T_Fragment is the fragment the projector reads from: pose/orientation data lives on
-    // FFragment_Camera_Pov, composition data on FFragment_Camera_Current.
+    // FFragment_Camera_Pov, composition data on FFragment_Camera.
     template <typename T_Fragment, typename T_Projector>
     static auto Make_Components(
         const FCk_Handle& InCamera,
@@ -166,7 +166,7 @@ auto FCkInspector_Camera::CanInspect(const FCk_Handle& Entity) const -> bool
 
     return Entity.Has_Any<
         ck::FFragment_Camera_Params,
-        ck::FFragment_Camera_Current,
+        ck::FFragment_Camera,
         ck::FFragment_CameraLayer_Params,
         ck::FFragment_CameraLayer_Blend>();
 }
@@ -184,7 +184,7 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     const auto Cam = Entity;
 
     // ---- Director ----
-    if (Entity.Has<ck::FFragment_Camera_Current>())
+    if (Entity.Has<ck::FFragment_Camera>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Gameplay Camera")));
 
@@ -203,10 +203,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Dominant Modifier:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
                 return FText::FromString(DoFmt_ClassName(
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_DominantLayerClass().Get()));
+                    Cam.Get<ck::FFragment_Camera>().Get_DominantLayerClass().Get()));
             },
             CkStyle::Value_Object());
 
@@ -214,9 +214,9 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Dominant Look-At:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                const auto& LookAt = Cam.Get<ck::FFragment_Camera_Current>().Get_DominantLookAt();
+                const auto& LookAt = Cam.Get<ck::FFragment_Camera>().Get_DominantLookAt();
                 return FText::FromString(LookAt.IsSet()
                     ? ck::Format_UE(TEXT("{}"), LookAt.GetValue())
                     : FString(TEXT("(none)")));
@@ -230,9 +230,9 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("FOV:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>()
+                return DoFmt_Float(Cam.Get<ck::FFragment_Camera>()
                     .Get_ComposedProfile().Get_Sensor().Get_FOV(), TEXT("{:.1f}"));
             },
             CkStyle::Value_Numeric());
@@ -241,23 +241,23 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Boom Length:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Float(Cam.Get<ck::FFragment_Camera_Current>()
+                return DoFmt_Float(Cam.Get<ck::FFragment_Camera>()
                     .Get_ComposedProfile().Get_Rig().Get_BoomArmLength(), TEXT("{:.0f}"));
             },
             CkStyle::Value_Numeric());
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Offset:")),
-            ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera_Current>(Cam,
-                [](const ck::FFragment_Camera_Current& InCurrent)
+            ck_inspector_camera::Make_VectorComponents<ck::FFragment_Camera>(Cam,
+                [](const ck::FFragment_Camera& InCurrent)
                 { return InCurrent.Get_ComposedProfile().Get_Rig().Get_FramingOffset(); }));
 
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Pitch/Yaw:")),
-            ck_inspector_camera::Make_Components<ck::FFragment_Camera_Current>(Cam, 2, TEXT("{:.1f}"),
-                [](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
+            ck_inspector_camera::Make_Components<ck::FFragment_Camera>(Cam, 2, TEXT("{:.1f}"),
+                [](const ck::FFragment_Camera& InCurrent, int32 InIndex)
                 {
                     const auto& Rig = InCurrent.Get_ComposedProfile().Get_Rig();
                     return InIndex == 0 ? Rig.Get_FramingPitch() : Rig.Get_FramingYaw();
@@ -267,45 +267,45 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             FText::FromString(TEXT("Orientation Control:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasOrientationControl());
+                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasOrientationControl());
             },
             [Cam](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return CkStyle::None(); }
-                return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasOrientationControl());
+                return DoColor_Flag(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasOrientationControl());
             });
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Auto-Reorient:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasAutoReorient());
+                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasAutoReorient());
             },
             [Cam](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return CkStyle::None(); }
-                return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasAutoReorient());
+                return DoColor_Flag(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasAutoReorient());
             });
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Collision:")),
             [Cam](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return FText::FromString(TEXT("--")); }
-                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasCollision());
+                return DoFmt_Bool(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasCollision());
             },
             [Cam](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                 { return CkStyle::None(); }
-                return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasCollision());
+                return DoColor_Flag(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_HasCollision());
             });
 
         // ---- Live controls ----
@@ -338,10 +338,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
                     FText::FromString(InLabel),
                     TAttribute<bool>::CreateLambda([Cam, InGet]()
                     {
-                        if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                        if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera>())
                         { return false; }
 
-                        return InGet(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile());
+                        return InGet(Cam.Get<ck::FFragment_Camera>().Get_ComposedProfile());
                     }),
                     [CapturedCamera, InSet](bool InIsEnabled)
                     {
@@ -408,10 +408,10 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
             const auto Read_YawLimits = [Cam]() -> FCk_FloatRange
             {
                 if (ck::Is_NOT_Valid(Cam)
-                    || NOT Cam.Has_All<ck::FFragment_Camera_Current, ck::FFragment_Camera_OrientationControl>())
+                    || NOT Cam.Has_All<ck::FFragment_Camera, ck::FFragment_Camera_OrientationControl>())
                 { return FCk_FloatRange{}; }
 
-                return Cam.Get<ck::FFragment_Camera_Current>()
+                return Cam.Get<ck::FFragment_Camera>()
                     .Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
             };
 
@@ -497,7 +497,7 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     }
 
     // ---- Layer stack (one live row per record entry, with a blend-weight bar; the persistent base layer is marked) ----
-    if (Entity.Has<ck::FFragment_Camera_Current>())
+    if (Entity.Has<ck::FFragment_Camera>())
     {
         auto MutableEntity = Entity;
         auto Layers        = TArray<FCk_Handle_CameraLayer>{};
@@ -572,7 +572,7 @@ auto FCkInspector_Camera::Build_NativeBody(const FCk_Handle& Entity) const -> TS
     }
 
     // ---- POV pipeline intermediates ----
-    if (Entity.Has<ck::FFragment_Camera_Current>())
+    if (Entity.Has<ck::FFragment_Camera>())
     {
         Builder.AddHeader(FText::FromString(TEXT("POV Pipeline")));
 
@@ -699,7 +699,7 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     _AuthoredInstances.RemoveAll([](const TWeakPtr<SCkInspector_CameraAuthored>& InInstance)
     { return NOT InInstance.IsValid() || InInstance.Pin()->Is_Inert(); });
 
-    if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_Camera_Current>())
+    if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_Camera>())
     { return; }
 
     // Rebuild the stack section when the live modifier count changes (modifiers are added / pruned over time).
@@ -724,7 +724,7 @@ auto FCkInspector_Camera::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     if (ck::Is_NOT_Valid(EntityWorld))
     { return; }
 
-    const auto& Current = Entity.Get<ck::FFragment_Camera_Current>();
+    const auto& Current = Entity.Get<ck::FFragment_Camera>();
     const auto& Pov     = Entity.Get<ck::FFragment_Camera_Pov>().Get_PovState();
 
     const auto AnchorLocation = Pov._GroupBaseLocation;
@@ -772,7 +772,7 @@ SCkInspector_CameraAuthored::~SCkInspector_CameraAuthored()
 { Release(); }
 
 auto SCkInspector_CameraAuthored::Get_IsAvailable() const -> bool
-{ return _Active && NOT ck_inspector_camera::IsDestroying(_Entity) && _Entity.Has<ck::FFragment_Camera_Current>(); }
+{ return _Active && NOT ck_inspector_camera::IsDestroying(_Entity) && _Entity.Has<ck::FFragment_Camera>(); }
 
 auto SCkInspector_CameraAuthored::Get_IsLayerAvailable() const -> bool
 {
@@ -831,7 +831,7 @@ auto SCkInspector_CameraAuthored::Get_Text(const FString& InKey) const -> FStrin
         }
     }
     if (NOT Get_IsAvailable()) { return TEXT("--"); }
-    const auto& Current = _Entity.Get<ck::FFragment_Camera_Current>();
+    const auto& Current = _Entity.Get<ck::FFragment_Camera>();
     const auto& Profile = Current.Get_ComposedProfile();
     const auto& Pov = Current.Get_PovState();
     const auto FormatVector = [](const FVector& V) { return FString::Printf(TEXT("%.2f  %.2f  %.2f"), V.X, V.Y, V.Z); };
@@ -863,7 +863,7 @@ auto SCkInspector_CameraAuthored::Get_Text(const FString& InKey) const -> FStrin
 auto SCkInspector_CameraAuthored::Get_Bool(const FString& InKey) const -> bool
 {
     if (NOT Get_IsAvailable()) { return false; }
-    const auto& Profile = _Entity.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile();
+    const auto& Profile = _Entity.Get<ck::FFragment_Camera>().Get_ComposedProfile();
     if (InKey == TEXT("fixed-boom")) return Profile.Get_Rig().Get_UseFixedBoomRotation();
     if (InKey == TEXT("aspect")) return Profile.Get_Sensor().Get_ConstrainAspectRatio();
     if (InKey == TEXT("orientation-control")) return Profile.Get_HasOrientationControl();
@@ -876,7 +876,7 @@ auto SCkInspector_CameraAuthored::Get_Bool(const FString& InKey) const -> bool
 auto SCkInspector_CameraAuthored::Get_Number(const FString& InKey) const -> float
 {
     if (NOT Get_IsAvailable()) { return 0.0f; }
-    const auto& Current = _Entity.Get<ck::FFragment_Camera_Current>();
+    const auto& Current = _Entity.Get<ck::FFragment_Camera>();
     const auto& Boom = Current.Get_PovState()._BoomArmRotation;
     if (InKey == TEXT("yaw-min")) return Current.Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits().Get_Min();
     if (InKey == TEXT("yaw-max")) return Current.Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits().Get_Max();
@@ -1044,7 +1044,7 @@ auto SCkInspector_CameraAuthored::Commit_BoomRotation(const FRotator& InRotation
 auto SCkInspector_CameraAuthored::Commit_BoomComponent(const FString& InKey, const float InValue) -> void
 {
     if (NOT Get_IsAvailable()) { return; }
-    auto Rotation = _Entity.Get<ck::FFragment_Camera_Current>().Get_PovState()._BoomArmRotation;
+    auto Rotation = _Entity.Get<ck::FFragment_Camera>().Get_PovState()._BoomArmRotation;
     if (InKey == TEXT("boom-roll")) Rotation.Roll = InValue;
     else if (InKey == TEXT("boom-pitch")) Rotation.Pitch = InValue;
     else Rotation.Yaw = InValue;
@@ -1056,7 +1056,7 @@ auto SCkInspector_CameraAuthored::Commit_YawMin(const float InValue) -> void
     auto Camera = FCk_Handle_Camera{};
     if (NOT _Active || NOT ck_inspector_camera::TryGetCamera(_Entity, Camera, true)
         || NOT ck::DebugRequestGate::Evaluate(_Entity, ECk_DebugRequest_Requirement::CosmeticOnly).IsEnabled) { return; }
-    const auto Limits = _Entity.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
+    const auto Limits = _Entity.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
     UCk_Utils_Camera_UE::Request_Set_OrientationYawLimits(Camera, InValue, Limits.Get_Max(), {});
 }
 
@@ -1065,7 +1065,7 @@ auto SCkInspector_CameraAuthored::Commit_YawMax(const float InValue) -> void
     auto Camera = FCk_Handle_Camera{};
     if (NOT _Active || NOT ck_inspector_camera::TryGetCamera(_Entity, Camera, true)
         || NOT ck::DebugRequestGate::Evaluate(_Entity, ECk_DebugRequest_Requirement::CosmeticOnly).IsEnabled) { return; }
-    const auto Limits = _Entity.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
+    const auto Limits = _Entity.Get<ck::FFragment_Camera>().Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
     UCk_Utils_Camera_UE::Request_Set_OrientationYawLimits(Camera, Limits.Get_Min(), InValue, {});
 }
 
@@ -1080,7 +1080,7 @@ auto SCkInspector_CameraAuthored::Commit_OrientationIntention(const FVector& InV
 auto SCkInspector_CameraAuthored::Commit_OrientationComponent(const FString& InKey, const float InValue) -> void
 {
     if (NOT Get_IsAvailable()) { return; }
-    auto Intention = _Entity.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention();
+    auto Intention = _Entity.Get<ck::FFragment_Camera>().Get_OrientationIntention();
     if (InKey == TEXT("intention-x")) Intention.X = InValue;
     else if (InKey == TEXT("intention-y")) Intention.Y = InValue;
     else Intention.Z = InValue;
@@ -1124,7 +1124,7 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         if (FCkInspector_DiffMarkScope::Is_LabelMarked(Label))
         { DiffLabels.Add(Label); }
     }
-    if (Entity.Has<ck::FFragment_Camera_Current>())
+    if (Entity.Has<ck::FFragment_Camera>())
     {
         auto Mutable = Entity;
         ck::FUtils_RecordOfCameraLayers::ForEach_ValidEntry(Mutable, [&DiffLabels](const FCk_Handle_CameraLayer InLayer)

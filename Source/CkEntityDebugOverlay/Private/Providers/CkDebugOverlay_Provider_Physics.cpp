@@ -52,18 +52,18 @@ auto FCk_DebugOverlay_Provider_Physics::Get_FieldTags() const -> TArray<FCk_Debu
 
 // --------------------------------------------------------------------------------------------------------------------
 // CanProvide — mirrors FCkInspector_Physics::CanInspect:
-//   Entity.Has_Any<FFragment_Velocity_Current, FFragment_Acceleration_Current,
-//                  FFragment_EulerIntegrator_Current, FFragment_PredictedVelocity_Current>()
+//   Entity.Has_Any<FFragment_Velocity, FFragment_Acceleration,
+//                  FFragment_EulerIntegrator, FFragment_PredictedVelocity>()
 // --------------------------------------------------------------------------------------------------------------------
 
 auto FCk_DebugOverlay_Provider_Physics::CanProvide(const FCk_Handle& Entity) const -> bool
 {
     if (ck::Is_NOT_Valid(Entity)) { return false; }
     return Entity.Has_Any<
-        ck::FFragment_Velocity_Current,
-        ck::FFragment_Acceleration_Current,
-        ck::FFragment_EulerIntegrator_Current,
-        ck::FFragment_PredictedVelocity_Current>();
+        ck::FFragment_Velocity,
+        ck::FFragment_Acceleration,
+        ck::FFragment_EulerIntegrator,
+        ck::FFragment_PredictedVelocity>();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -73,18 +73,18 @@ auto FCk_DebugOverlay_Provider_Physics::CanProvide(const FCk_Handle& Entity) con
 // The CkPhysics inspector shows Velocity, Acceleration, Predicted Velocity,
 // and Euler Integrator distance offset — none of these is a "movement mode"
 // enum. We map:
-//   Velocity      → FFragment_Velocity_Current::Get_CurrentVelocity() (FVector)
+//   Velocity      → FFragment_Velocity::Get_CurrentVelocity() (FVector)
 //   MovementMode  → derived: speed magnitude and "Moving"/"Idle" heuristic,
 //                   since there is no discrete movement-mode enum in the fragments.
 //
 // BATCH-VERIFY: confirm whether a discrete movement mode fragment exists in
-// CkPhysics (e.g. FFragment_MovementMode_Current). If so, replace the
+// CkPhysics (e.g. FFragment_MovementMode). If so, replace the
 // heuristic below with a direct enum read.
 //
 // BATCH-VERIFY fragment accessors (all confirmed from CkInspector_Physics.cpp):
-//   FFragment_Velocity_Current::Get_CurrentVelocity()       → FVector
-//   FFragment_PredictedVelocity_Current::Get_CurrentVelocity() → FVector
-//   FFragment_EulerIntegrator_Current::Get_DistanceOffset() → FVector
+//   FFragment_Velocity::Get_CurrentVelocity()       → FVector
+//   FFragment_PredictedVelocity::Get_CurrentVelocity() → FVector
+//   FFragment_EulerIntegrator::Get_DistanceOffset() → FVector
 // --------------------------------------------------------------------------------------------------------------------
 
 auto FCk_DebugOverlay_Provider_Physics::Collect(
@@ -95,19 +95,19 @@ auto FCk_DebugOverlay_Provider_Physics::Collect(
     Out.ProviderTag  = Get_ProviderTag();
     Out.SortPriority = Get_SortPriority();
 
-    // Resolve the best velocity source (prefer FFragment_Velocity_Current, fall
-    // back to FFragment_PredictedVelocity_Current).
+    // Resolve the best velocity source (prefer FFragment_Velocity, fall
+    // back to FFragment_PredictedVelocity).
     FVector Velocity       = FVector::ZeroVector;
     bool    bHasVelocity   = false;
 
-    if (Entity.Has<ck::FFragment_Velocity_Current>())
+    if (Entity.Has<ck::FFragment_Velocity>())
     {
-        Velocity     = Entity.Get<ck::FFragment_Velocity_Current>().Get_CurrentVelocity();
+        Velocity     = Entity.Get<ck::FFragment_Velocity>().Get_CurrentVelocity();
         bHasVelocity = true;
     }
-    else if (Entity.Has<ck::FFragment_PredictedVelocity_Current>())
+    else if (Entity.Has<ck::FFragment_PredictedVelocity>())
     {
-        Velocity     = Entity.Get<ck::FFragment_PredictedVelocity_Current>().Get_CurrentVelocity();
+        Velocity     = Entity.Get<ck::FFragment_PredictedVelocity>().Get_CurrentVelocity();
         bHasVelocity = true;
     }
 
@@ -131,9 +131,9 @@ auto FCk_DebugOverlay_Provider_Physics::Collect(
             ModeStr = (Speed > 10.0f) ? FString::Printf(TEXT("Moving (%.0fcm/s)"), Speed)
                                       : FString(TEXT("Idle"));
         }
-        else if (Entity.Has<ck::FFragment_EulerIntegrator_Current>())
+        else if (Entity.Has<ck::FFragment_EulerIntegrator>())
         {
-            const FVector Offset = Entity.Get<ck::FFragment_EulerIntegrator_Current>().Get_DistanceOffset();
+            const FVector Offset = Entity.Get<ck::FFragment_EulerIntegrator>().Get_DistanceOffset();
             ModeStr = FString::Printf(TEXT("Integrating (%.0f)"), Offset.Size());
         }
         else
@@ -160,10 +160,10 @@ auto FCk_DebugOverlay_Provider_Physics::Get_CompactToken(
     if (ck::Is_NOT_Valid(Entity)) { return {}; }
 
     FVector Vel = FVector::ZeroVector;
-    if (Entity.Has<ck::FFragment_Velocity_Current>())
-        Vel = Entity.Get<ck::FFragment_Velocity_Current>().Get_CurrentVelocity();
-    else if (Entity.Has<ck::FFragment_PredictedVelocity_Current>())
-        Vel = Entity.Get<ck::FFragment_PredictedVelocity_Current>().Get_CurrentVelocity();
+    if (Entity.Has<ck::FFragment_Velocity>())
+        Vel = Entity.Get<ck::FFragment_Velocity>().Get_CurrentVelocity();
+    else if (Entity.Has<ck::FFragment_PredictedVelocity>())
+        Vel = Entity.Get<ck::FFragment_PredictedVelocity>().Get_CurrentVelocity();
 
     const float Speed = Vel.Size2D();
     return FString::Printf(TEXT("Phys:%.0fcm/s"), Speed);

@@ -49,7 +49,7 @@ namespace ck_inspector_aggro
         OutOwner = {};
         if (IsDestroying(InEntity) || NOT UCk_Utils_Aggro_UE::Has(InEntity))
         { return false; }
-        if (NOT InEntity.Has<ck::FFragment_Aggro_Current>())
+        if (NOT InEntity.Has<ck::FFragment_Aggro>())
         { return false; }
         if (NOT InEntity.Has<ck::FFragment_Aggro_TargetMap>())
         { return false; }
@@ -176,7 +176,7 @@ auto FCkInspector_Aggro::CanInspect(const FCk_Handle& Entity) const -> bool
     { return false; }
 
     return Entity.Has_Any<
-        ck::FFragment_Aggro_Current,
+        ck::FFragment_Aggro,
         ck::FFragment_AggroTarget_Score>();
 }
 
@@ -204,10 +204,10 @@ auto FCkInspector_Aggro::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             SNew(SCkDebug_EntityRef)
                 .Entity_Lambda([CapturedEntity]() -> FCk_Handle
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro_Current>())
+                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Aggro>())
                     { return {}; }
 
-                    const auto Active = CapturedEntity.Get<ck::FFragment_Aggro_Current>().Get_ActiveTarget();
+                    const auto Active = CapturedEntity.Get<ck::FFragment_Aggro>().Get_ActiveTarget();
 
                     if (ck::Is_NOT_Valid(Active))
                     { return {}; }
@@ -534,7 +534,7 @@ auto SCkInspector_AggroAuthored::Get_OwnerActiveTrackedEntity() const -> FCk_Han
     if (NOT _Active || NOT ck_inspector_aggro::TryGetOwner(_Entity, Owner))
     { return {}; }
 
-    const FCk_Handle Active = Owner.Get<ck::FFragment_Aggro_Current>().Get_ActiveTarget();
+    const FCk_Handle Active = Owner.Get<ck::FFragment_Aggro>().Get_ActiveTarget();
     auto Target = FCk_Handle_AggroTarget{};
     return ck_inspector_aggro::TryGetTarget(Active, Target)
         ? ck::UAggroTarget_TrackedEntity_Utils::Get_StoredEntity(Target)

@@ -353,8 +353,8 @@ auto
 
 	{
 	TRACE_CPUPROFILER_EVENT_SCOPE(CkCrowdDbg_SampleAllAgents);
-	TransientEntity.View<ck::FFragment_CrowdAgent_Params>().ForEach(
-		[this, &TransientEntity, &InSelectedAgent](FCk_Entity InEntity, const ck::FFragment_CrowdAgent_Params&)
+	TransientEntity.View<ck::FFragment_CrowdAgent_Tunables>().ForEach(
+		[this, &TransientEntity, &InSelectedAgent](FCk_Entity InEntity, const ck::FFragment_CrowdAgent_Tunables&)
 		{
 			auto Handle = ck::MakeHandle(InEntity, TransientEntity);
 			SampleAgent(Handle, InSelectedAgent);
@@ -534,9 +534,9 @@ auto
 			UCk_Utils_Handle_UE::Get_DebugName(Snapshot.OwnerHandle).ToString());
 	}
 
-	if (InHandle.Has<ck::FFragment_CrowdAgent_Params>())
+	if (InHandle.Has<ck::FFragment_CrowdAgent_Tunables>())
 	{
-		const auto& Params = InHandle.Get<ck::FFragment_CrowdAgent_Params>();
+		const auto& Params = InHandle.Get<ck::FFragment_CrowdAgent_Tunables>();
 		Snapshot.Tags = Params.Get_Tags();
 		Snapshot.Radius = Params.Get_Radius();
 		Snapshot.Height = Params.Get_Height();

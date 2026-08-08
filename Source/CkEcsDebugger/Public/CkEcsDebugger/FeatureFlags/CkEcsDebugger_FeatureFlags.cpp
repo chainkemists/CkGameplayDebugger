@@ -132,7 +132,7 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_TagSet>(TEXT("TagSet"));
     debug_feature_flags::RegisterFlag<FFragment_EntityTag>(TEXT("EntityTag"));
     debug_feature_flags::RegisterFlag<FFragment_RotatorAttribute>(TEXT("RotatorAttribute"));
-    debug_feature_flags::RegisterFlag<FFragment_CrowdAgent_Params>(TEXT("CrowdAgent"));
+    debug_feature_flags::RegisterFlag<FFragment_CrowdAgent_Tunables>(TEXT("CrowdAgent"));
     debug_feature_flags::RegisterFlag<FFragment_2dGridSystem_Params>(TEXT("Grid"));
     debug_feature_flags::RegisterFlag<FFragment_Marker_Params>(TEXT("Marker"));
     debug_feature_flags::RegisterFlag<FFragment_Sensor_Params>(TEXT("Sensor"));
@@ -150,7 +150,7 @@ auto
     debug_feature_flags::RegisterFlag<FFragment_ResolverTarget_Params>(TEXT("ResolverTarget"));
     debug_feature_flags::RegisterFlag<FFragment_GeometryCollection_Params>(TEXT("GeometryCollection"));
     debug_feature_flags::RegisterFlag<FFragment_AnimPlan_Params>(TEXT("AnimPlan"));
-    debug_feature_flags::RegisterFlag<FFragment_MontagePlayer_Params>(TEXT("MontagePlayer"));
+    debug_feature_flags::RegisterFlag<FFragment_MontagePlayer_SkeletalMesh>(TEXT("MontagePlayer"));
     debug_feature_flags::RegisterFlag<FFragment_VatProxy_Params>(TEXT("VatProxy"));
     debug_feature_flags::RegisterFlag<FFragment_RenderTarget_Params>(TEXT("RenderTarget"));
     debug_feature_flags::RegisterFlag<FFragment_WorldSpaceWidget_Params>(TEXT("WorldSpaceWidget"));

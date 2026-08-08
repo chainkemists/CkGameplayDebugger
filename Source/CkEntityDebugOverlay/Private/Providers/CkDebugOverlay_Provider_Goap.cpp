@@ -169,9 +169,9 @@ auto FCk_DebugOverlay_Provider_Goap::Collect(
         if (Chain.Num() > 0)
         {
             const auto& Leaf = Chain.Last();
-            if (ck::IsValid(Leaf) && Leaf.Has<FCk_Fragment_Goap_ActionParamsData>())
+            if (ck::IsValid(Leaf) && Leaf.Has<FCk_Goap_Action_Spec>())
             {
-                const auto ActionClass = Leaf.Get<FCk_Fragment_Goap_ActionParamsData>().Get_ActionClass();
+                const auto ActionClass = Leaf.Get<FCk_Goap_Action_Spec>().Get_ActionClass();
                 ActionName = ck::IsValid(ActionClass) ? ActionClass->GetName() : FString{TEXT("(unnamed action)")};
             }
             else

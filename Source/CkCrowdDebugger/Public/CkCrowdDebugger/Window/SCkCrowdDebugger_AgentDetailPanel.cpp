@@ -450,10 +450,10 @@ auto SCkCrowdDebugger_AgentDetailPanel::WriteSelectedParams() -> void
 	if (ck::Is_NOT_Valid(Handle))
 	{ return; }
 
-	if (NOT Handle.Has<ck::FFragment_CrowdAgent_Params>())
+	if (NOT Handle.Has<ck::FFragment_CrowdAgent_Tunables>())
 	{ return; }
 
-	auto& Params = Handle.Get<ck::FFragment_CrowdAgent_Params>();
+	auto& Params = Handle.Get<ck::FFragment_CrowdAgent_Tunables>();
 	Params.Set_MaxSpeed(_Tuner_MaxSpeed);
 	Params.Set_MaxTurnRate(_Tuner_MaxTurnRate);
 	Params.Set_MaxAcceleration(_Tuner_MaxAcceleration);

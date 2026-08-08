@@ -4,6 +4,8 @@ public class CkInsightsDebugger : CkModuleRules
 {
     public CkInsightsDebugger(ReadOnlyTargetRules Target) : base(Target)
     {
+        PrivateIncludePaths.Add(ModuleDirectory);
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "ApplicationCore",
@@ -14,6 +16,7 @@ public class CkInsightsDebugger : CkModuleRules
             "InputCore",
             "Slate",
             "SlateCore",
+            "TraceLog",
             "TraceServices",
             "WorkspaceMenuStructure",
 
@@ -24,6 +27,12 @@ public class CkInsightsDebugger : CkModuleRules
             "CkEcs",
             "CkEditorTools",
             "CkInsightsAnalyzer",
+        });
+
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+            "CkProfile",
+            "UnrealEd",
         });
     }
 }

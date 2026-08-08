@@ -102,9 +102,9 @@ auto
     Info.TotalTimeMicroseconds = Debug.Get_TimeThisFrameMicroseconds();
     Info.TotalIterations = Info.ClosedSetSize;
 
-    if (InEntityHandle.Has<ck::FFragment_AStar_Params>())
+    if (InEntityHandle.Has<ck::FFragment_AStar_Tunables>())
     {
-        const auto& Params = InEntityHandle.Get<ck::FFragment_AStar_Params>();
+        const auto& Params = InEntityHandle.Get<ck::FFragment_AStar_Tunables>();
         Info.BudgetMicroseconds = Params.Get_BudgetMicroseconds();
         Info.CostThreshold = Params.Get_CostThreshold();
     }

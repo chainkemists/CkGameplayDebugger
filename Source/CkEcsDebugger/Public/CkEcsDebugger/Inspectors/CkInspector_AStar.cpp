@@ -28,7 +28,7 @@ namespace ck_inspector_astar
 
     auto HasParams(const FCk_Handle& InEntity) -> bool
     {
-        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_AStar_Params>();
+        return ck::IsValid(InEntity) && InEntity.Has<ck::FFragment_AStar_Tunables>();
     }
 
     auto HasAny(const FCk_Handle& InEntity) -> bool
@@ -104,21 +104,21 @@ namespace ck_inspector_astar
     auto BuildBudgetText(const FCk_Handle& InEntity) -> FString
     {
         if (NOT HasParams(InEntity)) { return TEXT("--"); }
-        const int64 BudgetUs = InEntity.Get<ck::FFragment_AStar_Params>().Get_BudgetMicroseconds();
+        const int64 BudgetUs = InEntity.Get<ck::FFragment_AStar_Tunables>().Get_BudgetMicroseconds();
         return BudgetUs == 0 ? TEXT("0 (unbounded)") : LexToString(BudgetUs);
     }
 
     auto BuildMaxIterationsText(const FCk_Handle& InEntity) -> FString
     {
         if (NOT HasParams(InEntity)) { return TEXT("--"); }
-        const int32 MaxIterations = InEntity.Get<ck::FFragment_AStar_Params>().Get_MaxIterationsPerTick();
+        const int32 MaxIterations = InEntity.Get<ck::FFragment_AStar_Tunables>().Get_MaxIterationsPerTick();
         return MaxIterations == 0 ? TEXT("0 (unbounded)") : LexToString(MaxIterations);
     }
 
     auto BuildCostThresholdText(const FCk_Handle& InEntity) -> FString
     {
         if (NOT HasParams(InEntity)) { return TEXT("--"); }
-        const float CostThreshold = InEntity.Get<ck::FFragment_AStar_Params>().Get_CostThreshold();
+        const float CostThreshold = InEntity.Get<ck::FFragment_AStar_Tunables>().Get_CostThreshold();
         return CostThreshold > 0.0f ? FString::Printf(TEXT("%.3f"), CostThreshold) : TEXT("0 (disabled)");
     }
 

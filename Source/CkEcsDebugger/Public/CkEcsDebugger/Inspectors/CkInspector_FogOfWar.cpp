@@ -45,7 +45,7 @@ namespace ck_inspector_fog_of_war
         OutFog = UCk_Utils_FogOfWar_UE::Cast(Mutable);
         return ck::IsValid(OutFog)
             && InEntity.Has<ck::FFragment_FogOfWar_Params>()
-            && InEntity.Has<ck::FFragment_FogOfWar_Current>();
+            && InEntity.Has<ck::FFragment_FogOfWar>();
     }
 
     auto DiffColor(const bool bDiffMarked) -> FLinearColor
@@ -264,7 +264,7 @@ auto FCkInspector_FogOfWar::Build_NativeBody(const FCk_Handle& Entity) const -> 
         {
             auto Fog = FCk_Handle_FogOfWar{};
             return ck_inspector_fog_of_war::TryGet(CapturedEntity, Fog)
-                ? Fog.Get<ck::FFragment_FogOfWar_Current>().Get_Revealers().Num() : 0;
+                ? Fog.Get<ck::FFragment_FogOfWar>().Get_Revealers().Num() : 0;
         }),
         ECk_Tone::Info);
 
@@ -366,7 +366,7 @@ auto SCkInspector_FogOfWarAuthored::Release() -> void
 
 auto FCkInspector_FogOfWar::Get_StructureMask(const FCk_Handle& Entity) const -> uint8
 {
-    return ck::IsValid(Entity) ? (Entity.Has<ck::FFragment_FogOfWar_Params>() ? 1 : 0) | (Entity.Has<ck::FFragment_FogOfWar_Current>() ? 2 : 0) : 0;
+    return ck::IsValid(Entity) ? (Entity.Has<ck::FFragment_FogOfWar_Params>() ? 1 : 0) | (Entity.Has<ck::FFragment_FogOfWar>() ? 2 : 0) : 0;
 }
 
 auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
@@ -488,7 +488,7 @@ auto SCkInspector_FogOfWarAuthored::Get_RevealersText() const -> FString
 {
     auto Fog = FCk_Handle_FogOfWar{};
     return ck_inspector_fog_of_war::TryGet(_Entity, Fog)
-        ? FString::FromInt(Fog.Get<ck::FFragment_FogOfWar_Current>().Get_Revealers().Num()) : TEXT("--");
+        ? FString::FromInt(Fog.Get<ck::FFragment_FogOfWar>().Get_Revealers().Num()) : TEXT("--");
 }
 
 auto SCkInspector_FogOfWarAuthored::Get_ParamsRadiusText() const -> FString

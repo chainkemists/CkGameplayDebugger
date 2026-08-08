@@ -38,7 +38,7 @@ namespace ck_inspector_vfx
     auto TryGetCue(const FCk_Handle& InEntity, FCk_Handle_VfxCue& OutCue) -> bool
     {
         OutCue = {};
-        if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_VfxCue_Current>())
+        if (IsDestroying(InEntity) || NOT InEntity.Has<ck::FFragment_VfxCue>())
         { return false; }
         auto MutableEntity = InEntity;
         OutCue = UCk_Utils_VfxCue_UE::Cast(MutableEntity);
@@ -54,7 +54,7 @@ namespace ck_inspector_vfx
         if (ck::Is_NOT_Valid(World))
         { return 0.0f; }
         const auto TimeResult = UCk_Utils_Time_UE::Get_WorldTime(FCk_Utils_Time_GetWorldTime_Params{World});
-        const auto StartTime = Cue.Get<ck::FFragment_VfxCue_Current>().Get_EffectStartTime();
+        const auto StartTime = Cue.Get<ck::FFragment_VfxCue>().Get_EffectStartTime();
         return FMath::Max(0.0f,
             static_cast<float>((TimeResult.Get_WorldTime().Get_Time() - StartTime).Get_Seconds()));
     }
@@ -63,7 +63,7 @@ namespace ck_inspector_vfx
     {
         auto Cue = FCk_Handle_VfxCue{};
         return TryGetCue(InEntity, Cue)
-            ? static_cast<float>(Cue.Get<ck::FFragment_VfxCue_Current>().Get_EffectDuration().Get_Seconds())
+            ? static_cast<float>(Cue.Get<ck::FFragment_VfxCue>().Get_EffectDuration().Get_Seconds())
             : 0.0f;
     }
 
@@ -74,7 +74,7 @@ namespace ck_inspector_vfx
         { return ECk_Tone::Neutral; }
         if (Cue.Has<ck::FTag_VfxCue_IsPlaying>())
         { return ECk_Tone::Ok; }
-        return Cue.Get<ck::FFragment_VfxCue_Current>().Get_HasFiredFinished()
+        return Cue.Get<ck::FFragment_VfxCue>().Get_HasFiredFinished()
             ? ECk_Tone::Info : ECk_Tone::Neutral;
     }
 
@@ -123,7 +123,7 @@ auto SCkInspector_VfxAuthored::Get_ComponentText() const -> FString
     auto Cue = FCk_Handle_VfxCue{};
     if (NOT _Active || NOT ck_inspector_vfx::TryGetCue(_Entity, Cue))
     { return TEXT("--"); }
-    const auto* const Component = Cue.Get<ck::FFragment_VfxCue_Current>().Get_NiagaraComponent().Get();
+    const auto* const Component = Cue.Get<ck::FFragment_VfxCue>().Get_NiagaraComponent().Get();
     return ck::IsValid(Component, ck::IsValid_Policy_NullptrOnly{}) ? TEXT("Valid") : TEXT("None");
 }
 
@@ -132,7 +132,7 @@ auto SCkInspector_VfxAuthored::Get_ComponentColor() const -> FLinearColor
     auto Cue = FCk_Handle_VfxCue{};
     if (NOT _Active || NOT ck_inspector_vfx::TryGetCue(_Entity, Cue))
     { return CkStyle::None(); }
-    const auto* const Component = Cue.Get<ck::FFragment_VfxCue_Current>().Get_NiagaraComponent().Get();
+    const auto* const Component = Cue.Get<ck::FFragment_VfxCue>().Get_NiagaraComponent().Get();
     return ck::IsValid(Component, ck::IsValid_Policy_NullptrOnly{})
         ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
 }
@@ -141,7 +141,7 @@ auto SCkInspector_VfxAuthored::Get_StartTimeText() const -> FString
 {
     auto Cue = FCk_Handle_VfxCue{};
     return _Active && ck_inspector_vfx::TryGetCue(_Entity, Cue)
-        ? ck::Format_UE(TEXT("{}"), Cue.Get<ck::FFragment_VfxCue_Current>().Get_EffectStartTime())
+        ? ck::Format_UE(TEXT("{}"), Cue.Get<ck::FFragment_VfxCue>().Get_EffectStartTime())
         : TEXT("--");
 }
 
@@ -169,7 +169,7 @@ auto SCkInspector_VfxAuthored::Get_DurationText() const -> FString
     auto Cue = FCk_Handle_VfxCue{};
     if (NOT _Active || NOT ck_inspector_vfx::TryGetCue(_Entity, Cue))
     { return TEXT("--"); }
-    const auto Duration = Cue.Get<ck::FFragment_VfxCue_Current>().Get_EffectDuration();
+    const auto Duration = Cue.Get<ck::FFragment_VfxCue>().Get_EffectDuration();
     return Duration.Get_Seconds() < 0.0 ? TEXT("Infinite") : ck::Format_UE(TEXT("{}"), Duration);
 }
 
@@ -180,7 +180,7 @@ auto SCkInspector_VfxAuthored::Get_StateText() const -> FString
     { return TEXT("--"); }
     if (Cue.Has<ck::FTag_VfxCue_IsPlaying>())
     { return TEXT("Playing"); }
-    return Cue.Get<ck::FFragment_VfxCue_Current>().Get_HasFiredFinished() ? TEXT("Finished") : TEXT("Idle");
+    return Cue.Get<ck::FFragment_VfxCue>().Get_HasFiredFinished() ? TEXT("Finished") : TEXT("Idle");
 }
 
 auto SCkInspector_VfxAuthored::Get_StateForeground() const -> FLinearColor
@@ -393,7 +393,7 @@ auto FCkInspector_Vfx::Build_NativeBody(const FCk_Handle& Entity) const -> TShar
             auto CurrentCue = FCk_Handle_VfxCue{};
             if (NOT ck_inspector_vfx::TryGetCue(CapturedEntity, CurrentCue))
             { return FText::FromString(TEXT("--")); }
-            const auto* Component = CurrentCue.Get<ck::FFragment_VfxCue_Current>().Get_NiagaraComponent().Get();
+            const auto* Component = CurrentCue.Get<ck::FFragment_VfxCue>().Get_NiagaraComponent().Get();
             return FText::FromString(ck::IsValid(Component, ck::IsValid_Policy_NullptrOnly{})
                 ? TEXT("Valid") : TEXT("None"));
         },
@@ -402,7 +402,7 @@ auto FCkInspector_Vfx::Build_NativeBody(const FCk_Handle& Entity) const -> TShar
             auto CurrentCue = FCk_Handle_VfxCue{};
             if (NOT ck_inspector_vfx::TryGetCue(CapturedEntity, CurrentCue))
             { return CkStyle::None(); }
-            const auto* Component = CurrentCue.Get<ck::FFragment_VfxCue_Current>().Get_NiagaraComponent().Get();
+            const auto* Component = CurrentCue.Get<ck::FFragment_VfxCue>().Get_NiagaraComponent().Get();
             return ck::IsValid(Component, ck::IsValid_Policy_NullptrOnly{})
                 ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
         });
@@ -411,7 +411,7 @@ auto FCkInspector_Vfx::Build_NativeBody(const FCk_Handle& Entity) const -> TShar
         {
             auto CurrentCue = FCk_Handle_VfxCue{};
             return FText::FromString(ck_inspector_vfx::TryGetCue(CapturedEntity, CurrentCue)
-                ? ck::Format_UE(TEXT("{}"), CurrentCue.Get<ck::FFragment_VfxCue_Current>().Get_EffectStartTime())
+                ? ck::Format_UE(TEXT("{}"), CurrentCue.Get<ck::FFragment_VfxCue>().Get_EffectStartTime())
                 : TEXT("--"));
         }, CkStyle::Value_Numeric());
     if (ck_inspector_vfx::Get_DurationSeconds(Entity) > 0.0f)
@@ -438,7 +438,7 @@ auto FCkInspector_Vfx::Build_NativeBody(const FCk_Handle& Entity) const -> TShar
                 auto CurrentCue = FCk_Handle_VfxCue{};
                 if (NOT ck_inspector_vfx::TryGetCue(CapturedEntity, CurrentCue))
                 { return FText::FromString(TEXT("--")); }
-                const auto Duration = CurrentCue.Get<ck::FFragment_VfxCue_Current>().Get_EffectDuration();
+                const auto Duration = CurrentCue.Get<ck::FFragment_VfxCue>().Get_EffectDuration();
                 return FText::FromString(Duration.Get_Seconds() < 0.0
                     ? FString{TEXT("Infinite")} : ck::Format_UE(TEXT("{}"), Duration));
             }, CkStyle::Value_Numeric());
@@ -451,7 +451,7 @@ auto FCkInspector_Vfx::Build_NativeBody(const FCk_Handle& Entity) const -> TShar
             { return FText::FromString(TEXT("--")); }
             if (CurrentCue.Has<ck::FTag_VfxCue_IsPlaying>())
             { return FText::FromString(TEXT("Playing")); }
-            return FText::FromString(CurrentCue.Get<ck::FFragment_VfxCue_Current>().Get_HasFiredFinished()
+            return FText::FromString(CurrentCue.Get<ck::FFragment_VfxCue>().Get_HasFiredFinished()
                 ? TEXT("Finished") : TEXT("Idle"));
         }), TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
         { return ck_inspector_vfx::Get_StateTone(CapturedEntity); }));

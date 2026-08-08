@@ -33,10 +33,10 @@ namespace ck_inspector_ui
         const FCk_Handle& InEntity)
         -> bool
     {
-        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Current>())
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget>())
         { return false; }
 
-        const auto* WrapperPtr = InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_WrapperWidget().Get();
+        const auto* WrapperPtr = InEntity.Get<ck::FFragment_WorldSpaceWidget>().Get_WrapperWidget().Get();
         return ck::IsValid(WrapperPtr);
     }
 
@@ -44,10 +44,10 @@ namespace ck_inspector_ui
         const FCk_Handle& InEntity)
         -> bool
     {
-        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Current>())
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget>())
         { return false; }
 
-        const auto* ResolvedPlayer = InEntity.Get<ck::FFragment_WorldSpaceWidget_Current>().Get_ResolvedOwningPlayer();
+        const auto* ResolvedPlayer = InEntity.Get<ck::FFragment_WorldSpaceWidget>().Get_ResolvedOwningPlayer();
         return ck::IsValid(ResolvedPlayer);
     }
 
@@ -200,7 +200,7 @@ namespace ck_inspector_ui
     {
         OutWidget = {};
         if (Is_Destroying(InEntity)
-            || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Current>()
+            || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget>()
             || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Params>())
         { return false; }
         auto Mutable = InEntity;
@@ -251,7 +251,7 @@ auto FCkInspector_UI::CanInspect(const FCk_Handle& Entity) const -> bool
     if (ck_inspector_ui::Is_Destroying(Entity))
     { return false; }
 
-    return Entity.Has<ck::FFragment_WorldSpaceWidget_Current>();
+    return Entity.Has<ck::FFragment_WorldSpaceWidget>();
 }
 
 // =====================================================================================================================
@@ -559,7 +559,7 @@ SCkInspector_UIAuthored::~SCkInspector_UIAuthored()
 auto SCkInspector_UIAuthored::Get_IsAvailable() const -> bool
 {
     return _Active && NOT ck_inspector_ui::Is_Destroying(_Entity)
-        && _Entity.Has<ck::FFragment_WorldSpaceWidget_Current>();
+        && _Entity.Has<ck::FFragment_WorldSpaceWidget>();
 }
 
 auto SCkInspector_UIAuthored::Get_HasControls() const -> bool

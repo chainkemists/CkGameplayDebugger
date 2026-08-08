@@ -519,9 +519,9 @@ auto FCkInspector_Jolt::Build_NativeBody(const FCk_Handle& Entity) -> TSharedRef
             FText::FromString(TEXT("Body Id:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_JoltBody_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_JoltBody>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Raw = CapturedEntity.Get<ck::FFragment_JoltBody_Current>().Get_BodyId().GetIndexAndSequenceNumber();
+                const auto Raw = CapturedEntity.Get<ck::FFragment_JoltBody>().Get_BodyId().GetIndexAndSequenceNumber();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Raw));
             },
             CkStyle::Value_Numeric());

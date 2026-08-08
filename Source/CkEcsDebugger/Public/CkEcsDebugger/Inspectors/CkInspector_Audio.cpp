@@ -109,8 +109,8 @@ auto FCkInspector_Audio::CanInspect(const FCk_Handle& Entity) const -> bool
     { return false; }
 
     return Entity.Has_Any<
-        ck::FFragment_AudioTrack_Current,
-        ck::FFragment_AudioDirector_Current>();
+        ck::FFragment_AudioTrack,
+        ck::FFragment_AudioDirector>();
 }
 
 // =====================================================================================================================
@@ -123,7 +123,7 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
     { return Builder.Build(Entity); }
 
     // ---- Audio Track ----
-    if (Entity.Has<ck::FFragment_AudioTrack_Current>())
+    if (Entity.Has<ck::FFragment_AudioTrack>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Track")));
 
@@ -133,33 +133,33 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("State:")),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return FText::FromString(TEXT("--")); }
-                const auto State = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_State();
+                const auto State = CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_State();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
             }),
             TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return ECk_Tone::Neutral; }
                 return ck_inspector_audio::Get_TrackStateTone(
-                    CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_State());
+                    CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_State());
             }));
 
         Builder.AddMeterRow(
             FText::FromString(TEXT("Volume (cur → target):")),
             TAttribute<float>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return 0.0f; }
-                return CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_CurrentVolume();
+                return CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_CurrentVolume();
             }),
             ECk_Tone::Accent,
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return FText::FromString(TEXT("--")); }
-                const auto& Current = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>();
+                const auto& Current = CapturedEntity.Get<ck::FFragment_AudioTrack>();
                 return FText::FromString(ck::Format_UE(TEXT("{:.3f} → {:.3f}"),
                     Current.Get_CurrentVolume(), Current.Get_TargetVolume()));
             }));
@@ -168,9 +168,9 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("Fade Speed:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Speed = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_FadeSpeed();
+                const auto Speed = CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_FadeSpeed();
                 return FText::FromString(FString::Printf(TEXT("%.3f"), Speed));
             },
             CkStyle::Value_Numeric());
@@ -181,16 +181,16 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("Playback:")),
             TAttribute<float>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return 0.0f; }
-                return CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent();
+                return CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_PlaybackPercent();
             }),
             ECk_Tone::Info,
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Pct = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent();
+                const auto Pct = CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_PlaybackPercent();
                 return FText::FromString(ck::Format_UE(TEXT("{:.1f}%"), Pct * 100.0f));
             }));
 
@@ -198,21 +198,21 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("Virtualized:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return FText::FromString(TEXT("--")); }
-                const auto IsVirt = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_IsVirtualized();
+                const auto IsVirt = CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_IsVirtualized();
                 return FText::FromString(IsVirt ? TEXT("Yes") : TEXT("No"));
             },
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack>())
                 { return CkStyle::None(); }
-                const auto IsVirt = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_IsVirtualized();
+                const auto IsVirt = CapturedEntity.Get<ck::FFragment_AudioTrack>().Get_IsVirtualized();
                 return IsVirt ? CkStyle::Warn() : CkStyle::Value_Bool_False();
             });
 
         // ---- Track verbs ----
-        // The inspected entity IS the track here (FFragment_AudioTrack_Current lives on it), so the
+        // The inspected entity IS the track here (FFragment_AudioTrack lives on it), so the
         // controls address it directly. LocalOk: audio playback is driven wherever the audio device
         // is; there is no authority gate on these requests.
         auto CapturedTrack = FCk_Handle_AudioTrack{};
@@ -303,7 +303,7 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
     }
 
     // ---- Audio Director ----
-    if (Entity.Has<ck::FFragment_AudioDirector_Current>())
+    if (Entity.Has<ck::FFragment_AudioDirector>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Director")));
 
@@ -313,9 +313,9 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("Active Tracks:")),
             TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector>())
                 { return 0; }
-                return CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_ActiveTracks().Num();
+                return CapturedEntity.Get<ck::FFragment_AudioDirector>().Get_ActiveTracks().Num();
             }),
             ECk_Tone::Info);
 
@@ -323,9 +323,9 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("Highest Priority:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Priority = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_CurrentHighestPriority();
+                const auto Priority = CapturedEntity.Get<ck::FFragment_AudioDirector>().Get_CurrentHighestPriority();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Priority));
             },
             CkStyle::Value_Numeric());
@@ -334,16 +334,16 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
             FText::FromString(TEXT("All Tracks Finished:")),
             [CapturedEntity](const FCk_Handle&)
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Fired = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_HasFiredAllTracksFinished();
+                const auto Fired = CapturedEntity.Get<ck::FFragment_AudioDirector>().Get_HasFiredAllTracksFinished();
                 return FText::FromString(Fired ? TEXT("Yes") : TEXT("No"));
             },
             [CapturedEntity](const FCk_Handle&) -> FLinearColor
             {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector>())
                 { return CkStyle::None(); }
-                const auto Fired = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_HasFiredAllTracksFinished();
+                const auto Fired = CapturedEntity.Get<ck::FFragment_AudioDirector>().Get_HasFiredAllTracksFinished();
                 return Fired ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
             });
 
@@ -375,7 +375,7 @@ auto FCkInspector_Audio::Build_NativeBody(const FCk_Handle& Entity) const -> TSh
         }
 
         // Track name list
-        const auto& TracksByName = Entity.Get<ck::FFragment_AudioDirector_Current>().Get_TracksByName();
+        const auto& TracksByName = Entity.Get<ck::FFragment_AudioDirector>().Get_TracksByName();
         if (NOT TracksByName.IsEmpty())
         {
             Builder.AddHeader(FText::FromString(ck::Format_UE(TEXT("Tracks ({})"), TracksByName.Num())));

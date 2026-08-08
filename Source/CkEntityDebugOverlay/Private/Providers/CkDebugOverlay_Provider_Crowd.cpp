@@ -113,8 +113,8 @@ auto FCk_DebugOverlay_Provider_Crowd::Collect(
         Entity.Has<ck::FFragment_CrowdAgent_DesiredVelocity>())
     {
         const auto Velocity = Entity.Get<ck::FFragment_CrowdAgent_DesiredVelocity>().Get_Velocity();
-        const auto MaxSpeed = Entity.Has<ck::FFragment_CrowdAgent_Params>()
-            ? Entity.Get<ck::FFragment_CrowdAgent_Params>().Get_MaxSpeed()
+        const auto MaxSpeed = Entity.Has<ck::FFragment_CrowdAgent_Tunables>()
+            ? Entity.Get<ck::FFragment_CrowdAgent_Tunables>().Get_MaxSpeed()
             : 0.0f;
 
         FCk_DebugOverlay_Row Row;

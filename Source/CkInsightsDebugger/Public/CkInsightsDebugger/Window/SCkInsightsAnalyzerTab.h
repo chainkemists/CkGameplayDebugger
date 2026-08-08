@@ -92,6 +92,9 @@ private:
     /** Close the current session and start async-opening the given trace. Shared by the file dialog
      *  and the Recent menu. By-value: bound as a delegate payload, which decays reference types. */
     auto DoOpenTracePath(FString TracePath) -> void;
+    auto DoQueueAutoOpenTrace(FString TracePath, FGuid TraceGuid) -> void;
+    auto DoOnAutoOpenTraceTick(float DeltaTime) -> bool;
+    auto DoCancelAutoOpenTrace() -> void;
     auto DoOnAnalyzeWorstClicked() -> FReply;
     auto DoOnCopyToClipboardClicked() -> FReply;
     auto DoOnExportJsonClicked() -> FReply;
@@ -186,7 +189,12 @@ private:
     // DoStartAsyncOpen; the ticker polls for completion.
     ELoadingState _LoadingState = ELoadingState::Idle;
     FTSTicker::FDelegateHandle _LoadingTickerHandle;
+    FTSTicker::FDelegateHandle _AutoOpenTickerHandle;
     FString _PendingTracePath;
+    FString _PendingAutoOpenTracePath;
+    FGuid _PendingAutoOpenTraceGuid;
+    bool _PendingAutoOpenWriterFinalized = false;
+    double _AutoOpenDeadlineSeconds = 0.0;
     TSharedPtr<FCk_TraceSession> _PendingSession;
     uint64 _TotalFrameCount = 0;
     uint64 _LoadedFrameCount = 0;

@@ -131,6 +131,8 @@ auto
     }
 
     ChildSlot
+    .HAlign(HAlign_Left)
+    .VAlign(VAlign_Center)
     [
         SNew(SCheckBox)
         .Style(&FCkDebuggerCommonStyle::Get_IconToggleStyle())

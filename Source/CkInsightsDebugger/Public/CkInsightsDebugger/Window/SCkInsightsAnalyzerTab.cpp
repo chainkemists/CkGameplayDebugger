@@ -1,5 +1,7 @@
 #include "CkInsightsDebugger/Window/SCkInsightsAnalyzerTab.h"
 
+#include "CkInsightsDebugger_Module.h"
+
 #include "CkInsightsAnalyzer/Core/CkFrameAnalyzer.h"
 #include "CkInsightsAnalyzer/Core/CkTimerCategorizer.h"
 #include "CkInsightsAnalyzer/Report/CkJsonReport.h"
@@ -14,12 +16,15 @@
 
 #include <DesktopPlatformModule.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
+#include <HAL/FileManager.h>
 #include <HAL/PlatformApplicationMisc.h>
+#include <HAL/PlatformTime.h>
 #include <Misc/FileHelper.h>
 #include <Styling/AppStyle.h>
 #include <Styling/CoreStyle.h>
 #include <Widgets/Images/SImage.h>
 #include <Widgets/Input/SComboButton.h>
+#include <Widgets/Input/SSpinBox.h>
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SExpandableArea.h>
@@ -470,6 +475,7 @@ auto
 
 SCkInsightsAnalyzerTab::~SCkInsightsAnalyzerTab()
 {
+    DoCancelAutoOpenTrace();
     DoCancelLoading();
 }
 
@@ -482,14 +488,213 @@ auto
     DoCreateMenuActions()
     -> TSharedRef<SWidget>
 {
-    return SNew(SCkDebug_IconToggle)
-        .IconId(TEXT("Tree"))
-        .Label(FText::FromString(TEXT("Show all")))
-        .IsOn(this, &SCkInsightsAnalyzerTab::DoGet_ShowAllChildren)
-        .OnStateChanged(this, &SCkInsightsAnalyzerTab::DoOnShowAllChildrenChanged)
-        .ToolTip(FText::FromString(TEXT(
+    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
+    auto Actions = TArray<FCkDebug_IconToggleAction>{};
+
+    Actions.Add(FCkDebug_IconToggleAction{
+        TEXT("TraceCapture"),
+        TEXT("Radio"),
+        FText::FromString(TEXT("Trace capture")),
+        FText::FromString(TEXT(
+            "Start or stop a file trace in Saved/Profiling. The analyzer only stops captures it started and "
+            "automatically opens the completed capture.")),
+        TAttribute<bool>::CreateLambda([Capture]() { return Capture->Get_Snapshot().bIsTracing; }),
+        FOnCkDebug_IconToggleChanged::CreateLambda([this, Capture](bool InEnabled)
+        {
+            auto Error = FString{};
+            auto StoppedTracePath = FString{};
+            auto StoppedTraceGuid = FGuid{};
+            if (NOT Capture->TrySet_Tracing(InEnabled, Error, &StoppedTracePath, &StoppedTraceGuid))
+            {
+                DoSetStatus(Error, ECk_Tone::Err);
+                return;
+            }
+
+            if (InEnabled)
+            {
+                const auto Snapshot = Capture->Get_Snapshot();
+                const auto Destination = Snapshot.Destination.IsEmpty()
+                    ? FString{TEXT("Saved/Profiling")}
+                    : Snapshot.Destination;
+                DoSetStatus(FString::Printf(TEXT("Trace recording started: %s"), *Destination), ECk_Tone::Ok);
+            }
+            else
+            {
+                DoQueueAutoOpenTrace(MoveTemp(StoppedTracePath), StoppedTraceGuid);
+            }
+        }),
+        TAttribute<bool>::CreateLambda([this, Capture]()
+        {
+            return NOT _AutoOpenTickerHandle.IsValid() && Capture->Can_ToggleTracing();
+        })});
+
+    Actions.Add(FCkDebug_IconToggleAction{
+        TEXT("NamedEvents"),
+        TEXT("Mic"),
+        FText::FromString(TEXT("Named events")),
+        FText::FromString(TEXT("Globally enable or disable stat-backed named CPU events while profiling.")),
+        TAttribute<bool>::CreateLambda([Capture]() { return Capture->Get_NamedEventsEnabled(); }),
+        FOnCkDebug_IconToggleChanged::CreateLambda([this, Capture](bool InEnabled)
+        {
+            auto Error = FString{};
+            if (NOT Capture->TrySet_NamedEventsEnabled(InEnabled, Error))
+            {
+                DoSetStatus(Error, ECk_Tone::Err);
+                return;
+            }
+
+            DoSetStatus(
+                InEnabled ? TEXT("Named events enabled.") : TEXT("Named events disabled."),
+                ECk_Tone::Ok);
+        })});
+
+    const auto AddStatProfile = [this, &Actions, Capture](
+        ECkInsightsStatProfile InProfile,
+        FName InId,
+        FName InIcon,
+        const TCHAR* InLabel,
+        const TCHAR* InToolTip)
+    {
+        Actions.Add(FCkDebug_IconToggleAction{
+            InId,
+            InIcon,
+            FText::FromString(InLabel),
+            FText::FromString(InToolTip),
+            TAttribute<bool>::CreateLambda([Capture, InProfile]()
+            {
+                return Capture->Get_StatProfileEnabled(InProfile);
+            }),
+            FOnCkDebug_IconToggleChanged::CreateLambda(
+                [this, Capture, InProfile, Label = FString{InLabel}](bool InEnabled)
+            {
+                auto Error = FString{};
+                if (NOT Capture->TrySet_StatProfileEnabled(InProfile, InEnabled, Error))
+                {
+                    DoSetStatus(Error, ECk_Tone::Err);
+                    return;
+                }
+
+                DoSetStatus(
+                    FString::Printf(
+                        TEXT("%s %s for the active viewport and trace collection."),
+                        *Label,
+                        InEnabled ? TEXT("enabled") : TEXT("disabled")),
+                    ECk_Tone::Ok);
+            })});
+    };
+
+    AddStatProfile(
+        ECkInsightsStatProfile::CkProcessors,
+        TEXT("CkProcessorStats"),
+        TEXT("Chip"),
+        TEXT("CK processor stats"),
+        TEXT("Run stat CkProcessors and stat CkProcessors_Details for the active viewport."));
+    AddStatProfile(
+        ECkInsightsStatProfile::CkScheduler,
+        TEXT("CkSchedulerStats"),
+        TEXT("Timer"),
+        TEXT("CK scheduler stats"),
+        TEXT("Run stat CkScheduler for the active viewport."));
+    AddStatProfile(
+        ECkInsightsStatProfile::Script,
+        TEXT("ScriptStats"),
+        TEXT("Scroll"),
+        TEXT("Script stats"),
+        TEXT("Run stat CkScript for the active viewport."));
+    AddStatProfile(
+        ECkInsightsStatProfile::UObjects,
+        TEXT("UObjectStats"),
+        TEXT("Package"),
+        TEXT("UObject stats"),
+        TEXT("Run stat UObjects for the active viewport."));
+    AddStatProfile(
+        ECkInsightsStatProfile::Rhi,
+        TEXT("RhiStats"),
+        TEXT("Gear"),
+        TEXT("RHI stats"),
+        TEXT("Run stat RHI for the active viewport."));
+    AddStatProfile(
+        ECkInsightsStatProfile::Rendering,
+        TEXT("RenderingStats"),
+        TEXT("Monitor"),
+        TEXT("Rendering stats"),
+        TEXT("Run stat SceneRendering and the render-thread stat groups for the active viewport."));
+
+    Actions.Add(FCkDebug_IconToggleAction{
+        TEXT("ShowAllChildren"),
+        TEXT("Tree"),
+        FText::FromString(TEXT("Show all")),
+        FText::FromString(TEXT(
             "Show every child in the hot-path tree instead of folding small ones into "
-            "'(+N below threshold)' rows. Tree depth still follows the Depth preset.")));
+            "'(+N below threshold)' rows. Tree depth still follows the Depth preset.")),
+        TAttribute<bool>::CreateLambda([this]() { return DoGet_ShowAllChildren(); }),
+        FOnCkDebug_IconToggleChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnShowAllChildrenChanged)});
+
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .FillWidth(1.0f)
+        .HAlign(HAlign_Fill)
+        [
+            SNew(SCkDebug_IconToolbar)
+            .Actions(MoveTemp(Actions))
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("Max/group")))
+                .Font(ck_insights_analyzer_tab::SmallFont())
+                .ColorAndOpacity(CkStyle::TextDim())
+                .ToolTipText(FText::FromString(TEXT(
+                    "Maximum stat rows drawn for each enabled stat group (stats.MaxPerGroup).")))
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SBox)
+                .WidthOverride(64.0f)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(1)
+                    .MinSliderValue(1)
+                    .MaxSliderValue(250)
+                    .Delta(5)
+                    .Value_Lambda([Capture]()
+                    {
+                        return Capture->Get_StatMaxPerGroup().Get(25);
+                    })
+                    .IsEnabled_Lambda([Capture]()
+                    {
+                        return Capture->Get_StatMaxPerGroup().IsSet();
+                    })
+                    .OnValueCommitted_Lambda([this, Capture](int32 InValue, ETextCommit::Type)
+                    {
+                        auto Error = FString{};
+                        if (NOT Capture->TrySet_StatMaxPerGroup(InValue, Error))
+                        {
+                            DoSetStatus(Error, ECk_Tone::Err);
+                            return;
+                        }
+
+                        DoSetStatus(
+                            FString::Printf(TEXT("stats.MaxPerGroup set to %d."), InValue),
+                            ECk_Tone::Ok);
+                    })
+                ]
+            ]
+        ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1376,6 +1581,92 @@ auto
     DoClearResults();
 
     DoStartAsyncOpen(TracePath);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoQueueAutoOpenTrace(FString TracePath, FGuid TraceGuid)
+    -> void
+{
+    const auto PathIsValid = NOT TracePath.IsEmpty();
+    CK_ENSURE_IF_NOT(PathIsValid, TEXT("A stopped Insights Analyzer file capture must provide its path"))
+    {}
+    if (NOT PathIsValid)
+    {
+        DoSetStatus(TEXT("Trace stopped, but Unreal did not return the capture path."), ECk_Tone::Err);
+        return;
+    }
+
+    DoCancelAutoOpenTrace();
+    _PendingAutoOpenTracePath = MoveTemp(TracePath);
+    _PendingAutoOpenTraceGuid = TraceGuid;
+    _PendingAutoOpenWriterFinalized = false;
+    _AutoOpenDeadlineSeconds = FPlatformTime::Seconds() + 30.0;
+    DoSetStatus(TEXT("Trace stopped. Finalizing and opening the capture..."), ECk_Tone::Ok);
+    _AutoOpenTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnAutoOpenTraceTick),
+        0.1f);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnAutoOpenTraceTick(float)
+    -> bool
+{
+    auto& Capture = FCkInsightsDebuggerModule::Get().Get_CaptureController();
+    if (NOT _PendingAutoOpenWriterFinalized)
+    {
+        _PendingAutoOpenWriterFinalized = Capture.IsTraceWriterFinalized(_PendingAutoOpenTraceGuid);
+        if (NOT _PendingAutoOpenWriterFinalized)
+        {
+            if (FPlatformTime::Seconds() < _AutoOpenDeadlineSeconds)
+            { return true; }
+
+            _AutoOpenTickerHandle.Reset();
+            _PendingAutoOpenTracePath.Reset();
+            _PendingAutoOpenTraceGuid.Invalidate();
+            _PendingAutoOpenWriterFinalized = false;
+            _AutoOpenDeadlineSeconds = 0.0;
+            DoSetStatus(TEXT("Timed out waiting for the trace writer to finish."), ECk_Tone::Err);
+            return false;
+        }
+    }
+
+    if (DoIsLoading())
+    { return true; }
+
+    const auto TracePath = MoveTemp(_PendingAutoOpenTracePath);
+    _PendingAutoOpenTracePath.Reset();
+    _PendingAutoOpenTraceGuid.Invalidate();
+    _PendingAutoOpenWriterFinalized = false;
+    _AutoOpenDeadlineSeconds = 0.0;
+    _AutoOpenTickerHandle.Reset();
+
+    const auto TraceExists = IFileManager::Get().FileSize(*TracePath) > 0;
+    CK_ENSURE_IF_NOT(TraceExists, TEXT("Stopped trace is missing or empty: [{}]"), TracePath)
+    {}
+    if (NOT TraceExists)
+    {
+        DoSetStatus(TEXT("The stopped trace file is missing or empty."), ECk_Tone::Err);
+        return false;
+    }
+
+    DoOpenTracePath(TracePath);
+    return false;
+}
+
+auto SCkInsightsAnalyzerTab::DoCancelAutoOpenTrace() -> void
+{
+    if (_AutoOpenTickerHandle.IsValid())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(_AutoOpenTickerHandle);
+        _AutoOpenTickerHandle.Reset();
+    }
+
+    _PendingAutoOpenTracePath.Reset();
+    _PendingAutoOpenTraceGuid.Invalidate();
+    _PendingAutoOpenWriterFinalized = false;
+    _AutoOpenDeadlineSeconds = 0.0;
 }
 
 auto

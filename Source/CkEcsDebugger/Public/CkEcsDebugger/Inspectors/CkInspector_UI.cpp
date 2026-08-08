@@ -2,7 +2,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkUI/WorldSpaceWidget/CkWorldSpaceWidget_Fragment.h"
+#include "CkWorldSpaceWidget/CkWorldSpaceWidget_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"

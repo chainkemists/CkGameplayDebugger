@@ -81,6 +81,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkVariables",
             "CkVat",
             "CkVfx",
+            "CkWorldSpaceWidget",
         });
 
         if (Target.bBuildEditor)

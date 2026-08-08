@@ -50,7 +50,7 @@
 #include "CkTagSet/CkTagSet_Fragment.h"
 #include "CkTimer/CkTimer_Fragment.h"
 #include "CkTween/CkTween_Fragment.h"
-#include "CkUI/WorldSpaceWidget/CkWorldSpaceWidget_Fragment.h"
+#include "CkWorldSpaceWidget/CkWorldSpaceWidget_Fragment.h"
 #include "CkUnrealComponent/CkUnrealComponent_Fragment.h"
 #include "CkVat/Proxy/CkVatProxy_Fragment.h"
 #include "CkVfx/Cue/CkVfxCue_Fragment.h"

@@ -219,7 +219,7 @@ struct FCkGoapDebugger_PlannerInfo
     // Opt-out: when AllowPlanFailed=true, a PlanFailed status is intentional
     // (the Planner explicitly tolerates "no plan possible"). Sourced from
     // FFragment_Goap_Planner_Params::Get_AllowPlanFailed.
-    // HasUnconditionalFallback is a cached bool on FFragment_Goap_Planner_Current —
+    // HasUnconditionalFallback is a cached bool on FFragment_Goap_Planner —
     // true when the Planner has at least one Action with empty preconditions
     // (an always-applicable fallback). Surfaced for tooltip / future polish.
     bool                                       AllowPlanFailed         = false;
@@ -260,7 +260,7 @@ struct FCkGoapDebugger_PlannerInfo
 // Retained so the existing Slate widgets keep rendering. Each top-level
 // Planner produces ONE ActionSetInfo synthesized from its PlannerInfo:
 //   - Handle           = Planner handle (cast to Planner typesafe).
-//   - RootActionHandle = Planner's root Action handle (FFragment_Goap_Planner_Current::_RootAction).
+//   - RootActionHandle = Planner's root Action handle (FFragment_Goap_Planner::_RootAction).
 //   - Catalog          = every Action registered under the Planner (recursively).
 //   - ActiveChainHandles = Get_ActiveChain output (Plan[0] walk).
 //

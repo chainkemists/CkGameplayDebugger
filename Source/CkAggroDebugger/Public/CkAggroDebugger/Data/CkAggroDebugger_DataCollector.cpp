@@ -49,8 +49,8 @@ auto
 
     _Snapshot.HasWorld = true;
 
-    TransientEntity.View<ck::FFragment_Aggro_Current>().ForEach(
-        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Aggro_Current& InCurrent)
+    TransientEntity.View<ck::FFragment_Aggro>().ForEach(
+        [this, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_Aggro& InAggro)
         {
             auto Handle = ck::MakeHandle(InEntity, TransientEntity);
             if (ck::Is_NOT_Valid(Handle))
@@ -75,8 +75,8 @@ auto
                 ? UCk_Utils_Handle_UE::Get_DebugName(Info.ActiveTrackedEntity).ToString()
                 : FString{};
 
-            Info.SecondsSinceSwitch      = static_cast<float>((Now - InCurrent.Get_LastSwitchTime()).Get_Seconds());
-            Info.SecondsActiveTargetHeld = static_cast<float>((Now - InCurrent.Get_ActiveTargetStartTime()).Get_Seconds());
+            Info.SecondsSinceSwitch      = static_cast<float>((Now - InAggro.Get_LastSwitchTime()).Get_Seconds());
+            Info.SecondsActiveTargetHeld = static_cast<float>((Now - InAggro.Get_ActiveTargetStartTime()).Get_Seconds());
 
             if (Handle.Has<ck::FFragment_Aggro_SelectionParams>())
             {

@@ -1106,8 +1106,8 @@ auto
 
     if (ck::IsValid(TransientEntity))
     {
-        TransientEntity.View<ck::FFragment_JoltBody_Current>().ForEach(
-            [&Stats, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_JoltBody_Current&)
+        TransientEntity.View<ck::FFragment_JoltBody>().ForEach(
+            [&Stats, &TransientEntity](FCk_Entity InEntity, const ck::FFragment_JoltBody&)
             {
                 ++Stats.NumBodies;
 
@@ -1121,14 +1121,14 @@ auto
                 else if (Handle.Has<ck::FTag_JoltBody_MotionType_Static>())    { ++Stats.NumStatic; }
             });
 
-        TransientEntity.View<ck::FFragment_JoltCharacter_Current>().ForEach(
-            [&Stats](FCk_Entity, const ck::FFragment_JoltCharacter_Current&)
+        TransientEntity.View<ck::FFragment_JoltCharacter>().ForEach(
+            [&Stats](FCk_Entity, const ck::FFragment_JoltCharacter&)
             {
                 ++Stats.NumCharacters;
             });
 
-        TransientEntity.View<ck::FFragment_JoltStaticActor_Current>().ForEach(
-            [&Stats](FCk_Entity, const ck::FFragment_JoltStaticActor_Current&)
+        TransientEntity.View<ck::FFragment_JoltStaticActor>().ForEach(
+            [&Stats](FCk_Entity, const ck::FFragment_JoltStaticActor&)
             {
                 ++Stats.NumStaticActors;
             });

@@ -96,7 +96,7 @@ namespace
         TSet<uint32>&         InOutVisited,
         TArray<FSmChainNode>& OutChain) -> void
     {
-        if (ck::Is_NOT_Valid(InSm) || NOT InSm.Has<ck::FFragment_Sm_Current>())
+        if (ck::Is_NOT_Valid(InSm) || NOT InSm.Has<ck::FFragment_Sm>())
         { return; }
 
         const auto EntityNum = static_cast<uint32>(InSm.Get_Entity().Get_EntityNumber());
@@ -104,7 +104,7 @@ namespace
         { return; }
         InOutVisited.Add(EntityNum);
 
-        const auto& Current    = InSm.Get<ck::FFragment_Sm_Current>();
+        const auto& Current    = InSm.Get<ck::FFragment_Sm>();
         // Get_CurrentStateClass() returns a TSubclassOf<UCk_SmState_EntityScript> — also the
         // key type of the cached-states map, so it is used directly as the lookup key below.
         const auto  StateClass = Current.Get_CurrentStateClass();
@@ -162,7 +162,7 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_FieldTags() const -> TArray<FCk
 //
 // The inspector accepts ANY SM entity (state machine root, state, task,
 // transition, or condition). For the overlay's focused view we restrict to
-// the SM root: entities that carry FFragment_Sm_Current (the fragment that
+// the SM root: entities that carry FFragment_Sm (the fragment that
 // holds RunStatus + CurrentStateClass). This is the most useful "headline"
 // fragment for an NPC state machine entry.
 //
@@ -176,15 +176,15 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_FieldTags() const -> TArray<FCk
 auto FCk_DebugOverlay_Provider_StateMachine::CanProvide(const FCk_Handle& Entity) const -> bool
 {
     if (ck::Is_NOT_Valid(Entity)) { return false; }
-    return Entity.Has<ck::FFragment_Sm_Current>();
+    return Entity.Has<ck::FFragment_Sm>();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 // Collect
 //
 // BATCH-VERIFY:
-//   FFragment_Sm_Current::Get_CurrentStateClass()  — returns const UClass*.
-//   FFragment_Sm_Current::Get_RunStatus()          — returns ECk_SmRunStatus.
+//   FFragment_Sm::Get_CurrentStateClass()  — returns const UClass*.
+//   FFragment_Sm::Get_RunStatus()          — returns ECk_SmRunStatus.
 //   FFragment_Sm_Debug::Get_History()              — returns const TArray<FCk_SmDebug_HistoryEntry>&.
 //   FCk_SmDebug_HistoryEntry::ToStateName          — FString field, verified from inspector body.
 //   All confirmed present in CkInspector_StateMachine.cpp source read.
@@ -198,7 +198,7 @@ auto FCk_DebugOverlay_Provider_StateMachine::Collect(
     Out.ProviderTag  = Get_ProviderTag();
     Out.SortPriority = Get_SortPriority();
 
-    if (NOT Entity.Has<ck::FFragment_Sm_Current>()) { return; }
+    if (NOT Entity.Has<ck::FFragment_Sm>()) { return; }
 
     // --- State (recursive: top-level + every active sub-state-machine) ---
     if (Cfg.EnabledFields.HasTagExact(FieldTag_State()))
@@ -319,8 +319,8 @@ auto FCk_DebugOverlay_Provider_StateMachine::Get_CompactToken(
     const FCk_Handle&                      Entity,
     const FCk_DebugOverlay_ProviderConfig& /*Cfg*/) const -> FString
 {
-    if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_Sm_Current>()) { return {}; }
-    const UClass* StateClass = Entity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
+    if (ck::Is_NOT_Valid(Entity) || NOT Entity.Has<ck::FFragment_Sm>()) { return {}; }
+    const UClass* StateClass = Entity.Get<ck::FFragment_Sm>().Get_CurrentStateClass();
     const FString StateName  = Format_Sm_ClassName(StateClass);
     return FString::Printf(TEXT("SM:%s"), *StateName);
 }

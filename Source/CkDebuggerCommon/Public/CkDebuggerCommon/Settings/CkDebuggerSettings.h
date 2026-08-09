@@ -39,6 +39,15 @@ public:
 	TArray<FString> EntityNameStripPatterns;
 
 	// ----------------------------------------------------------------------------------------------------------------
+	// HIERARCHY
+	// ----------------------------------------------------------------------------------------------------------------
+
+	UPROPERTY(config, EditAnywhere, Category = "Hierarchy",
+		meta = (DisplayName = "Actor Relay Depth Transparency",
+			ToolTip = "Treat entities owned by an ActorRelay as if the relay were not there. The ECS entity tree hoists relay children up to top level (revealable per-relay), and the on-screen overlay's depth counting skips relay hops, so relay-owned entities stay focusable and markered at the default ck.Debug.EntityMarkers.MaxDepth. Turn off to see literal lifetime nesting."))
+	bool bActorRelayDepthTransparency = true;
+
+	// ----------------------------------------------------------------------------------------------------------------
 	// ACCESSORS
 	// ----------------------------------------------------------------------------------------------------------------
 

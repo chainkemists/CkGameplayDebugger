@@ -19,6 +19,7 @@ public class CkDebuggerCommon : CkModuleRules
             "AppFramework",
 
             // For UCk_Plugin_UserSettings_UE base class.
+            "CkActorRelay", // ACk_ActorRelay_UE check behind the shared depth-transparency predicate
             "CkCore",
             "CkEcs",       // FCk_Handle in SCkDebug_EntityRef + the cross-debugger entity navigator
             "CkEcsExt",    // FFragment_Transform view in the shared entity-marker preview

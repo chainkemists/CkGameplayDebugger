@@ -81,12 +81,19 @@ public:
      * position). InFraction is clamped to 0..1 by the widget. InValueText, when set, renders the
      * number beside the bar and is what the value filter matches; otherwise the fraction is
      * matched as a percentage.
+     *
+     * InTone is an attribute, so a threshold tone (Info → Warn → Err as a budget fills) follows the
+     * data without a rebuild; a plain ECk_Tone still binds as a constant.
+     *
+     * When InOnClicked is bound the LABEL becomes the click target, exactly as in AddClickableRow —
+     * the meter itself stays click-passive.
      */
     auto AddMeterRow(
         const FText& InLabel,
         TAttribute<float> InFraction,
-        ECk_Tone InTone = ECk_Tone::Accent,
-        TAttribute<FText> InValueText = TAttribute<FText>{}) -> FCkInspectorWidgetBuilder&;
+        TAttribute<ECk_Tone> InTone = ECk_Tone::Accent,
+        TAttribute<FText> InValueText = TAttribute<FText>{},
+        FOnClicked InOnClicked = nullptr) -> FCkInspectorWidgetBuilder&;
 
     /**
      * Recent history of a scalar (velocity, rate) as a sparkline.
@@ -100,15 +107,32 @@ public:
     auto AddSparklineRow(
         const FText& InLabel,
         TAttribute<float> InSample,
-        ECk_Tone InTone = ECk_Tone::Accent,
+        TAttribute<ECk_Tone> InTone = ECk_Tone::Accent,
         TAttribute<FText> InValueText = TAttribute<FText>{},
         int32 InHistoryLength = 48) -> FCkInspectorWidgetBuilder&;
 
-    /** Single-word live state (NetRole, SM state, enabled/disabled) as a toned pill. */
+    /**
+     * Single-word live state (NetRole, SM state, enabled/disabled) as a toned pill.
+     * InOnClicked follows the AddMeterRow contract — label clicks, pill stays passive.
+     */
     auto AddStatusPillRow(
         const FText& InLabel,
         TAttribute<FText> InText,
-        TAttribute<ECk_Tone> InTone) -> FCkInspectorWidgetBuilder&;
+        TAttribute<ECk_Tone> InTone,
+        FOnClicked InOnClicked = nullptr) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * A live count as a badge (collection sizes, pending-op counts, body/track counts). InSuffix is
+     * the fixed unit label beside the number ("nodes", "legs"); leave it empty for a bare count.
+     * The tone is fixed: a count carries no threshold of its own, so nothing here decides that 0 is
+     * a defect. InOnClicked follows the AddMeterRow contract — label clicks, badge stays passive.
+     */
+    auto AddCountBadgeRow(
+        const FText& InLabel,
+        TAttribute<int32> InCount,
+        ECk_Tone InTone = ECk_Tone::Neutral,
+        const FText& InSuffix = FText::GetEmpty(),
+        FOnClicked InOnClicked = nullptr) -> FCkInspectorWidgetBuilder&;
 
     /**
      * Tag / feature lists as a chip wrap-box, composed through the ChipStyle axis.
@@ -137,10 +161,20 @@ public:
         const FText& InLabel,
         const TArray<TAttribute<FText>>& InComponents) -> FCkInspectorWidgetBuilder&;
 
-    /** Place a pre-built widget directly in the value column, next to a plain label. */
+    /**
+     * Place a pre-built widget directly in the value column, next to a plain label.
+     * A widget row has no ValueGetter, so it only participates in VALUE search when the caller
+     * supplies InFilterValueGetter — the text the widget is showing (an entity id, a name).
+     * Without it the row filters on its label alone.
+     */
     auto AddWidgetRow(
         const FText& InLabel,
         TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&;
+
+    auto AddWidgetRow(
+        const FText& InLabel,
+        TSharedRef<SWidget> InWidget,
+        FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&;
 
     /**
      * Same as AddClickableRow, but the value column hosts an arbitrary widget instead of dynamic text.
@@ -150,6 +184,12 @@ public:
         const FText& InLabel,
         TSharedRef<SWidget> InValueWidget,
         FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&;
+
+    auto AddClickableWidgetRow(
+        const FText& InLabel,
+        TSharedRef<SWidget> InValueWidget,
+        FOnClicked InOnClicked,
+        FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&;
 
     /**
      * Build a clickable entity badge wrap-box. Each handle becomes an
@@ -196,6 +236,12 @@ public:
 
     static auto Join_NumericComponents(const TArray<FText>& InComponents) -> FText;
 
+    /**
+     * Badge text for a count. Grouped ("1,024") so four- and five-digit counts stay readable; a
+     * negative count is a caller bug and renders verbatim rather than being clamped away.
+     */
+    static auto Format_Count(int32 InCount) -> FText;
+
 private:
     struct FRowDefinition
     {
@@ -211,7 +257,8 @@ private:
     auto DoAddWidgetValueRow(
         const FText& InLabel,
         TSharedRef<SWidget> InValueWidget,
-        FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&;
+        FFilterValueGetter InFilterValueGetter,
+        FOnClicked InOnClicked = nullptr) -> FCkInspectorWidgetBuilder&;
 
     TArray<FRowDefinition> Rows;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;

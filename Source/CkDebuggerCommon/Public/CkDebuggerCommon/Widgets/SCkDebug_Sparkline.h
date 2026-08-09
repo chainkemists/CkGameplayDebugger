@@ -37,7 +37,9 @@ public:
         // primary line and this line is filled with BandColor at BandFillOpacity.
         SLATE_ARGUMENT(TSharedPtr<TArray<float>>, BandSamples)
 
-        SLATE_ARGUMENT(FLinearColor, Color)
+        // Attribute-bound so a tone that depends on live data (over-budget, saturated) re-colors
+        // the line without rebuilding the row.
+        SLATE_ATTRIBUTE(FLinearColor, Color)
         SLATE_ARGUMENT(FLinearColor, BandColor)
 
         // 0 = line only; > 0 = gradient area fill under the primary line (this alpha at the line,
@@ -71,7 +73,7 @@ private:
     TSharedPtr<TArray<float>> _Samples;
     TSharedPtr<TArray<float>> _BandSamples;
 
-    FLinearColor _Color = FLinearColor::White;
+    TAttribute<FLinearColor> _Color = FLinearColor::White;
     FLinearColor _BandColor = FLinearColor::White;
     float _FillOpacity = 0.0f;
     float _BandFillOpacity = 0.18f;

@@ -8,6 +8,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
@@ -198,15 +199,15 @@ auto FCkInspectorWidgetBuilder::AddWidgetRow(
     const FText& InLabel,
     TSharedRef<SWidget> InWidget) -> FCkInspectorWidgetBuilder&
 {
-    Rows.Add(FRowDefinition{
-        InLabel,
-        nullptr,
-        nullptr,
-        nullptr,
-        InWidget.ToSharedPtr(),
-        false
-    });
-    return *this;
+    return DoAddWidgetValueRow(InLabel, InWidget, nullptr, nullptr);
+}
+
+auto FCkInspectorWidgetBuilder::AddWidgetRow(
+    const FText& InLabel,
+    TSharedRef<SWidget> InWidget,
+    FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&
+{
+    return DoAddWidgetValueRow(InLabel, InWidget, MoveTemp(InFilterValueGetter), nullptr);
 }
 
 auto FCkInspectorWidgetBuilder::AddClickableWidgetRow(
@@ -214,15 +215,16 @@ auto FCkInspectorWidgetBuilder::AddClickableWidgetRow(
     TSharedRef<SWidget> InValueWidget,
     FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
 {
-    Rows.Add(FRowDefinition{
-        InLabel,
-        nullptr,
-        nullptr,
-        MoveTemp(InOnClicked),
-        InValueWidget.ToSharedPtr(),
-        false
-    });
-    return *this;
+    return DoAddWidgetValueRow(InLabel, InValueWidget, nullptr, MoveTemp(InOnClicked));
+}
+
+auto FCkInspectorWidgetBuilder::AddClickableWidgetRow(
+    const FText& InLabel,
+    TSharedRef<SWidget> InValueWidget,
+    FOnClicked InOnClicked,
+    FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&
+{
+    return DoAddWidgetValueRow(InLabel, InValueWidget, MoveTemp(InFilterValueGetter), MoveTemp(InOnClicked));
 }
 
 auto FCkInspectorWidgetBuilder::MakeBadgeBox(
@@ -274,14 +276,15 @@ auto FCkInspectorWidgetBuilder::AddHeader(const FText& InHeaderText) -> FCkInspe
 auto FCkInspectorWidgetBuilder::DoAddWidgetValueRow(
     const FText& InLabel,
     TSharedRef<SWidget> InValueWidget,
-    FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&
+    FFilterValueGetter InFilterValueGetter,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
 {
     Rows.Add(FRowDefinition
     {
         InLabel,
         nullptr,
         nullptr,
-        nullptr,
+        MoveTemp(InOnClicked),
         InValueWidget.ToSharedPtr(),
         false,
         MoveTemp(InFilterValueGetter)
@@ -293,8 +296,9 @@ auto FCkInspectorWidgetBuilder::DoAddWidgetValueRow(
 auto FCkInspectorWidgetBuilder::AddMeterRow(
     const FText& InLabel,
     TAttribute<float> InFraction,
-    ECk_Tone InTone,
-    TAttribute<FText> InValueText) -> FCkInspectorWidgetBuilder&
+    TAttribute<ECk_Tone> InTone,
+    TAttribute<FText> InValueText,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
 {
     namespace builder = ck_inspector_widget_builder;
 
@@ -308,7 +312,7 @@ auto FCkInspectorWidgetBuilder::AddMeterRow(
             [
                 SNew(SCkDebug_MeterBar)
                 .Fraction(InFraction)
-                .FillColor_Lambda([InTone]() { return CkStyle::GetToneColor(InTone); })
+                .FillColor_Lambda([InTone]() { return CkStyle::GetToneColor(InTone.Get()); })
                 .DesiredSize(FVector2D{builder::MeterWidth, builder::MeterHeight})
             ]
         ];
@@ -325,13 +329,13 @@ auto FCkInspectorWidgetBuilder::AddMeterRow(
             builder::Make_NumericText(Text, CkStyle::Text())
         ];
 
-    return DoAddWidgetValueRow(InLabel, Value, [Text]() { return Text.Get().ToString(); });
+    return DoAddWidgetValueRow(InLabel, Value, [Text]() { return Text.Get().ToString(); }, MoveTemp(InOnClicked));
 }
 
 auto FCkInspectorWidgetBuilder::AddSparklineRow(
     const FText& InLabel,
     TAttribute<float> InSample,
-    ECk_Tone InTone,
+    TAttribute<ECk_Tone> InTone,
     TAttribute<FText> InValueText,
     int32 InHistoryLength) -> FCkInspectorWidgetBuilder&
 {
@@ -355,7 +359,7 @@ auto FCkInspectorWidgetBuilder::AddSparklineRow(
         [
             SNew(SCkDebug_Sparkline)
             .Samples(Samples)
-            .Color(CkStyle::GetToneColor(InTone))
+            .Color_Lambda([InTone]() { return CkStyle::GetToneColor(InTone.Get()); })
             .DesiredSize(FVector2D{builder::SparklineWidth, builder::SparklineHeight})
         ]
         + SHorizontalBox::Slot()
@@ -379,13 +383,45 @@ auto FCkInspectorWidgetBuilder::AddSparklineRow(
 auto FCkInspectorWidgetBuilder::AddStatusPillRow(
     const FText& InLabel,
     TAttribute<FText> InText,
-    TAttribute<ECk_Tone> InTone) -> FCkInspectorWidgetBuilder&
+    TAttribute<ECk_Tone> InTone,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
 {
+    // SCkDebug_StatusPill is visual-only (no internal button), so it never eats the click that the
+    // label button owns.
     auto Value = SNew(SCkDebug_StatusPill)
         .Text(InText)
         .Tone(InTone);
 
-    return DoAddWidgetValueRow(InLabel, Value, [InText]() { return InText.Get().ToString(); });
+    return DoAddWidgetValueRow(InLabel, Value, [InText]() { return InText.Get().ToString(); }, MoveTemp(InOnClicked));
+}
+
+auto FCkInspectorWidgetBuilder::AddCountBadgeRow(
+    const FText& InLabel,
+    TAttribute<int32> InCount,
+    ECk_Tone InTone,
+    const FText& InSuffix,
+    FOnClicked InOnClicked) -> FCkInspectorWidgetBuilder&
+{
+    const auto ToneColor = CkStyle::GetToneColor(InTone);
+
+    const auto Text = TAttribute<FText>::Create([InCount]() { return Format_Count(InCount.Get()); });
+
+    auto Value = SNew(SCkDebug_CountBadge)
+        .ValueText(Text)
+        .SuffixText(InSuffix)
+        .ValueColor(ToneColor)
+        .SuffixColor(CkStyle::TextDim())
+        .BorderColor(ToneColor.CopyWithNewOpacity(0.4f));
+
+    const auto Suffix = InSuffix;
+
+    return DoAddWidgetValueRow(InLabel, Value, [Text, Suffix]()
+    {
+        return Suffix.IsEmpty()
+            ? Text.Get().ToString()
+            : Text.Get().ToString() + TEXT(" ") + Suffix.ToString();
+    },
+    MoveTemp(InOnClicked));
 }
 
 auto FCkInspectorWidgetBuilder::AddChipsRow(
@@ -541,6 +577,16 @@ auto FCkInspectorWidgetBuilder::Get_AxisColor(int32 InComponentIndex) -> FLinear
         case 2:  return CkStyle::AxisZ();
         default: return CkStyle::Text();
     }
+}
+
+auto FCkInspectorWidgetBuilder::Format_Count(int32 InCount) -> FText
+{
+    auto Options = FNumberFormattingOptions{};
+    Options.SetUseGrouping(true);
+    Options.SetMinimumFractionalDigits(0);
+    Options.SetMaximumFractionalDigits(0);
+
+    return FText::AsNumber(InCount, &Options);
 }
 
 auto FCkInspectorWidgetBuilder::Join_NumericComponents(const TArray<FText>& InComponents) -> FText

@@ -9,6 +9,11 @@ class SBox;
 class SScrollBox;
 class SCkDebuggerWidget_SearchBar;
 
+namespace ck_debugger_panel_inspector
+{
+    auto Should_TickInspector(bool InCanInspect, bool InWantsTickWhenNotInspectable) -> bool;
+}
+
 enum class ECkInspectorDisplayMode : uint8
 {
     GroupByInspector,

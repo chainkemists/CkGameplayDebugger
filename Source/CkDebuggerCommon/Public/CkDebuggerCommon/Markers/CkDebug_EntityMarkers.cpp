@@ -13,6 +13,8 @@
 // exclusion every marker would receive its own marker next tick).
 #include "CkPmg/CkPmg_Fragment.h"
 
+#include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
+
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -148,6 +150,7 @@ auto
         { return; }
 
         // Hierarchy depth = lifetime-owner hops to the transient (0 = top-level).
+        // Depth-transparent owners (ActorRelays) are walked through without counting.
         auto Depth          = 0;
         auto OwnerEntityNum = MAX_uint32;
         auto IsInFullDepthSubtree = false;
@@ -166,9 +169,16 @@ auto
             {
                 OwnerEntityNum = static_cast<uint32>(Owner.Get_Entity().Get_EntityNumber());
             }
-            while (ck::IsValid(Owner) && NOT (Owner == TransientEntity) && Depth < MaxDepthWalk)
+            // The iteration count — NOT Depth — bounds the walk: a depth-transparent
+            // owner advances the chain without incrementing Depth, so Depth can no
+            // longer double as the cycle guard.
+            auto WalkIterations = 0;
+            while (ck::IsValid(Owner) && NOT (Owner == TransientEntity) && WalkIterations < MaxDepthWalk)
             {
-                ++Depth;
+                ++WalkIterations;
+
+                if (NOT ck::DebugDepthTransparency::Get_IsTransparentOwner(Owner))
+                { ++Depth; }
 
                 for (const auto& Root : FullDepthRoots)
                 {

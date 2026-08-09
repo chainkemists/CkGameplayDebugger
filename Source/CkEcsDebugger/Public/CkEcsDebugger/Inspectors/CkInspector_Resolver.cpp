@@ -15,6 +15,32 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Resolver)
 
 // =====================================================================================================================
 
+namespace ck_inspector_resolver
+{
+    auto Get_PhaseCount(
+        const FCk_Handle& InEntity)
+        -> int32
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_ResolverDataBundle_Params>())
+        { return 0; }
+
+        return InEntity.Get<ck::FFragment_ResolverDataBundle_Params>().Get_Params().Get_Phases().Num();
+    }
+
+    // INDEX_NONE until the bundle enters its first phase.
+    auto Get_PhaseIndex(
+        const FCk_Handle& InEntity)
+        -> int32
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_ResolverDataBundle_Current>())
+        { return INDEX_NONE; }
+
+        return InEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_CurrentPhaseIndex();
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Resolver::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Resolver"));
@@ -50,16 +76,31 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
         },
         CkStyle::Value_Numeric());
 
-    Builder.AddRow(
+    // Ordinal, not the raw index the row used to print: "3 / 4" is how far through the configured phase list the
+    // bundle has resolved.
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Phase:")),
-        [CapturedEntity](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedEntity]()
         {
-            if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_ResolverDataBundle_Current>())
-            { return FText::FromString(TEXT("--")); }
-            const auto Phase = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_Current>().Get_CurrentPhaseIndex();
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Phase));
-        },
-        CkStyle::Value_Numeric());
+            const auto PhaseCount = ck_inspector_resolver::Get_PhaseCount(CapturedEntity);
+            const auto PhaseIndex = ck_inspector_resolver::Get_PhaseIndex(CapturedEntity);
+
+            if (PhaseCount <= 0 || PhaseIndex < 0)
+            { return 0.0f; }
+
+            return static_cast<float>(PhaseIndex + 1) / static_cast<float>(PhaseCount);
+        }),
+        ECk_Tone::Accent,
+        TAttribute<FText>::CreateLambda([CapturedEntity]()
+        {
+            const auto PhaseCount = ck_inspector_resolver::Get_PhaseCount(CapturedEntity);
+            const auto PhaseIndex = ck_inspector_resolver::Get_PhaseIndex(CapturedEntity);
+
+            if (PhaseIndex < 0)
+            { return FText::FromString(ck::Format_UE(TEXT("-- / {}"), PhaseCount)); }
+
+            return FText::FromString(ck::Format_UE(TEXT("{} / {}"), PhaseIndex + 1, PhaseCount));
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Metadata Tags:")),

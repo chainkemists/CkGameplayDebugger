@@ -13,6 +13,11 @@ struct FCk_DebugOverlay_Row
     UPROPERTY() FText        Value;
     UPROPERTY() ECk_DebugOverlay_Severity Severity = ECk_DebugOverlay_Severity::Normal;
     UPROPERTY() TArray<FText> ExplicitHistory;
+
+    // How many identical rows (same FieldTag + Value, same provider) this row stands for
+    // after the pre-budget merge pass. 1 = never merged. The card renders a muted "xN"
+    // suffix when > 1 instead of repeating the row once per lifetime descendant.
+    UPROPERTY() int32 MergedCount = 1;
 };
 
 USTRUCT()

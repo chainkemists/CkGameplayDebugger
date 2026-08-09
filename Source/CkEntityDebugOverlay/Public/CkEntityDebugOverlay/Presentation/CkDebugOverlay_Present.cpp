@@ -211,7 +211,71 @@ auto
         CollectInto(Provider, Config);
     }
 
-    return OutModel;
+    // ---- Pre-budget cleanup (strip value-less rows, collapse subtree duplicates) ----
+    // Runs here so the focus-card budget downstream only ever rations rows the card draws.
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    return Prepare_FocusCardModel(OutModel, Settings == nullptr || Settings->bMergeDuplicateRows);
+}
+
+// ====================================================================================================================
+
+auto
+    ck_debugoverlay::
+    Prepare_FocusCardModel(
+        const FCk_DebugOverlay_EntityModel& InModel,
+        bool                                InMergeDuplicateRows)
+    -> FCk_DebugOverlay_EntityModel
+{
+    auto Result = InModel;
+
+    // ---- 1. Rows with nothing to render never reach the budget ----
+    // Mirrors the card's render-time skip exactly (Value AND ExplicitHistory both empty);
+    // providers emit these as placeholders for absent data.
+    for (auto& Section : Result.Sections)
+    {
+        Section.Rows.RemoveAll([](const FCk_DebugOverlay_Row& InRow)
+        { return InRow.Value.IsEmpty() && InRow.ExplicitHistory.IsEmpty(); });
+    }
+
+    // ---- 2. Collapse rows identical by (FieldTag, Value) within a provider ----
+    if (InMergeDuplicateRows)
+    {
+        // Key = provider | field | value. The first two components are gameplay-tag strings
+        // (no '|'), so the composition is unambiguous even when a value contains one.
+        // Payload = { SectionIndex, RowIndex } of the surviving row.
+        auto Survivors = TMap<FString, FIntPoint>{};
+
+        for (auto SectionIdx = 0; SectionIdx < Result.Sections.Num(); ++SectionIdx)
+        {
+            auto&      Section     = Result.Sections[SectionIdx];
+            const auto ProviderKey = Section.ProviderTag.ToString();
+
+            for (auto RowIdx = 0; RowIdx < Section.Rows.Num(); /* advanced below */)
+            {
+                const auto& Row = Section.Rows[RowIdx];
+                const auto  Key = FString::Printf(TEXT("%s|%s|%s"),
+                    *ProviderKey, *Row.FieldTag.ToString(), *Row.Value.ToString());
+
+                if (const auto* Survivor = Survivors.Find(Key))
+                {
+                    // Survivors are always at a LOWER index in this same section (or in an
+                    // earlier one), so removing here never invalidates a recorded position.
+                    ++Result.Sections[Survivor->X].Rows[Survivor->Y].MergedCount;
+                    Section.Rows.RemoveAt(RowIdx);
+                    continue;
+                }
+
+                Survivors.Add(Key, FIntPoint{ SectionIdx, RowIdx });
+                ++RowIdx;
+            }
+        }
+    }
+
+    // A section with no rows renders as a lone provider chip on a blank line.
+    Result.Sections.RemoveAll([](const FCk_DebugOverlay_Section& InSection)
+    { return InSection.Rows.IsEmpty(); });
+
+    return Result;
 }
 
 // ====================================================================================================================

@@ -35,6 +35,20 @@ namespace ck_debugoverlay
         FCk_DebugOverlay_History*                            InHistory,
         double                                               InNow) -> FCk_DebugOverlay_EntityModel;
 
+    // Pure pre-budget cleanup of a freshly collected model. Build_EntityModel applies this
+    // before handing the model on, so the focus-card budget spends its slots on rows the card
+    // will actually draw:
+    //   1. rows with nothing to render (no Value AND no ExplicitHistory) are dropped — Slate
+    //      already skipped them at render time, but only AFTER they had consumed a budget slot;
+    //   2. when InMergeDuplicateRows, rows identical by (FieldTag, Value) within one provider
+    //      collapse into the FIRST section that carried them, bumping that row's MergedCount
+    //      (subtree aggregation emits the same row once per lifetime descendant). The survivor
+    //      stays in its original section, so its history bucket (SourceEntityId) is unchanged.
+    // Sections left empty by either step are dropped.
+    CKENTITYDEBUGOVERLAY_API auto Prepare_FocusCardModel(
+        const FCk_DebugOverlay_EntityModel& InModel,
+        bool                                InMergeDuplicateRows) -> FCk_DebugOverlay_EntityModel;
+
     // Build distance-scaled world tags / near-plates for the on-screen candidates
     // (B1 — scale/fade/cull + near-plate badges + co-located de-overlap). Returns
     // empty when InPC is null or InIsEjected (PC projection reflects a frozen camera).

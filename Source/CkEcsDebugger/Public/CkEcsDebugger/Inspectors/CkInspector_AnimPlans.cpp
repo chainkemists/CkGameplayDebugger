@@ -9,12 +9,12 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_AnimPlans)
-
-static const FLinearColor Color_AnimPlan = FLinearColor(0.85f, 0.55f, 0.95f);
 
 auto FCkInspector_AnimPlans::Get_ComponentName() const -> FText
 {
@@ -72,7 +72,7 @@ auto FCkInspector_AnimPlans::BuildAnimPlanGrid(const FCk_Handle& Entity, const F
 
                 return FText::FromString(ck::Format_UE(TEXT("{} | {}"), ClusterStr, StateStr));
             },
-            Color_AnimPlan,
+            CkStyle::Value_Tag(),
             [WeakSelectionModel, AnimPlanHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(AnimPlanHandle))

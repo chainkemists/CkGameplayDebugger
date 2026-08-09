@@ -7,13 +7,41 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Engine/StaticMesh.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_IsmProxy)
 
-static const FLinearColor Color_Mesh     = FLinearColor(0.55f, 0.78f, 0.95f);
-static const FLinearColor Color_Mobility = FLinearColor(0.85f, 0.75f, 0.55f);
-static const FLinearColor Color_Offset   = FLinearColor(0.75f, 0.85f, 0.55f);
+// =====================================================================================================================
+
+namespace ck_inspector_ism_proxy
+{
+    // Three fixed-precision components in X/Y/Z order so AddAlignedNumericRow's index-based axis
+    // coloring lines up with the axis each number belongs to.
+    static auto Make_AxisComponents(
+        const FCk_Handle_IsmProxy& InProxy,
+        const TCHAR* InFormat,
+        TFunction<FVector(const FCk_Handle_IsmProxy&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InProxy, InFormat, InProjector, Axis]()
+            {
+                if (ck::Is_NOT_Valid(InProxy))
+                { return FText::FromString(TEXT("--")); }
+
+                return FText::FromString(ck::Format_UE(InFormat, InProjector(InProxy)[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+}
 
 // =====================================================================================================================
 
@@ -56,7 +84,7 @@ auto FCkInspector_IsmProxy::BuildIsmProxyGrid(const FCk_Handle& Entity) -> TShar
             if (NOT ck::IsValid(Mesh)) { return FText::FromString(TEXT("None")); }
             return FText::FromString(Mesh->GetName());
         },
-        Color_Mesh);
+        CkStyle::Value_Object());
 
     // Mobility
     Builder.AddRow(
@@ -73,40 +101,30 @@ auto FCkInspector_IsmProxy::BuildIsmProxyGrid(const FCk_Handle& Entity) -> TShar
                 default:                       return FText::FromString(TEXT("Unknown"));
             }
         },
-        Color_Mobility);
+        CkStyle::Value_Enum());
 
-    // Location offset
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Location Offset:")),
-        [CapturedProxy](const FCk_Handle& E)
-        {
-            if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
-            const auto Offset = UCk_Utils_IsmProxy_UE::Get_LocalLocationOffset(CapturedProxy);
-            return FText::FromString(ck::Format_UE(TEXT("X:{:.1f}, Y:{:.1f}, Z:{:.1f}"), Offset.X, Offset.Y, Offset.Z));
-        },
-        Color_Offset);
+        ck_inspector_ism_proxy::Make_AxisComponents(CapturedProxy, TEXT("{:.1f}"),
+            [](const FCk_Handle_IsmProxy& InProxy)
+            { return UCk_Utils_IsmProxy_UE::Get_LocalLocationOffset(InProxy); }));
 
-    // Rotation offset
-    Builder.AddRow(
-        FText::FromString(TEXT("Rotation Offset:")),
-        [CapturedProxy](const FCk_Handle& E)
-        {
-            if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
-            const auto Rotation = UCk_Utils_IsmProxy_UE::Get_LocalRotationOffset(CapturedProxy);
-            return FText::FromString(ck::Format_UE(TEXT("P:{:.2f}, Y:{:.2f}, R:{:.2f}"), Rotation.Pitch, Rotation.Yaw, Rotation.Roll));
-        },
-        Color_Offset);
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Rotation Offset (R,P,Y):")),
+        ck_inspector_ism_proxy::Make_AxisComponents(CapturedProxy, TEXT("{:.2f}"),
+            [](const FCk_Handle_IsmProxy& InProxy)
+            {
+                // Reordered to the axis each angle turns about (Roll=X, Pitch=Y, Yaw=Z) so the
+                // row's X/Y/Z coloring agrees with every other axis row. The label states the order.
+                const auto Rotation = UCk_Utils_IsmProxy_UE::Get_LocalRotationOffset(InProxy);
+                return FVector{Rotation.Roll, Rotation.Pitch, Rotation.Yaw};
+            }));
 
-    // Scale multiplier
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Scale Multiplier:")),
-        [CapturedProxy](const FCk_Handle& E)
-        {
-            if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
-            const auto Scale = UCk_Utils_IsmProxy_UE::Get_ScaleMultiplier(CapturedProxy);
-            return FText::FromString(ck::Format_UE(TEXT("X:{:.2f}, Y:{:.2f}, Z:{:.2f}"), Scale.X, Scale.Y, Scale.Z));
-        },
-        Color_Offset);
+        ck_inspector_ism_proxy::Make_AxisComponents(CapturedProxy, TEXT("{:.2f}"),
+            [](const FCk_Handle_IsmProxy& InProxy)
+            { return UCk_Utils_IsmProxy_UE::Get_ScaleMultiplier(InProxy); }));
 
     return Builder.Build(Entity, FString());
 }

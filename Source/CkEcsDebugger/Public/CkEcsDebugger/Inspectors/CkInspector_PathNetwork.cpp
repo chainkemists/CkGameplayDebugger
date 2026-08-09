@@ -37,20 +37,19 @@ auto FCkInspector_PathNetwork::Build_Inspector(const FCk_Handle& Entity) -> TSha
 
     const auto CapturedNetwork = NetworkHandle;
 
-    Builder.AddConditionalRow(
+    // An unbuilt network routes nothing, so "No" warns rather than reading as a neutral mode.
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Built:")),
-        [CapturedNetwork](const FCk_Handle&)
+        TAttribute<FText>::CreateLambda([CapturedNetwork]()
         {
             if (ck::Is_NOT_Valid(CapturedNetwork)) { return FText::FromString(TEXT("--")); }
             return FText::FromString(UCk_Utils_PathNetwork_UE::Get_IsBuilt(CapturedNetwork) ? TEXT("Yes") : TEXT("No"));
-        },
-        [CapturedNetwork](const FCk_Handle&) -> FLinearColor
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedNetwork]()
         {
-            if (ck::Is_NOT_Valid(CapturedNetwork)) { return CkStyle::None(); }
-            return UCk_Utils_PathNetwork_UE::Get_IsBuilt(CapturedNetwork)
-                ? CkStyle::Status_Active()
-                : CkStyle::Value_Enum();
-        });
+            if (ck::Is_NOT_Valid(CapturedNetwork)) { return ECk_Tone::Neutral; }
+            return UCk_Utils_PathNetwork_UE::Get_IsBuilt(CapturedNetwork) ? ECk_Tone::Ok : ECk_Tone::Warn;
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Nodes:")),

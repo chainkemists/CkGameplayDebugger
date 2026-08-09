@@ -21,6 +21,61 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Jolt)
 
 // =====================================================================================================================
 
+namespace ck_inspector_jolt
+{
+    // Motion type is a simulation CLASS, not a health state: Static is the inert default, Kinematic
+    // is externally driven, Dynamic is the one the solver actually integrates.
+    static auto Get_MotionTone(ECk_MotionType InMotionType) -> ECk_Tone
+    {
+        switch (InMotionType)
+        {
+            case ECk_MotionType::Kinematic: return ECk_Tone::Info;
+            case ECk_MotionType::Dynamic:   return ECk_Tone::Accent;
+            default:                        return ECk_Tone::Neutral;
+        }
+    }
+
+    static auto Get_SleepTone(ECk_Jolt_SleepState InSleepState) -> ECk_Tone
+    {
+        return InSleepState == ECk_Jolt_SleepState::Awake ? ECk_Tone::Ok : ECk_Tone::Neutral;
+    }
+
+    // NotSupported means the character will fall through what it is touching — an error, not a warning.
+    static auto Get_GroundTone(ECk_JoltCharacter_GroundState InGroundState) -> ECk_Tone
+    {
+        switch (InGroundState)
+        {
+            case ECk_JoltCharacter_GroundState::OnGround:      return ECk_Tone::Ok;
+            case ECk_JoltCharacter_GroundState::OnSteepSlope:  return ECk_Tone::Warn;
+            case ECk_JoltCharacter_GroundState::InAir:         return ECk_Tone::Info;
+            case ECk_JoltCharacter_GroundState::NotSupported:  return ECk_Tone::Err;
+            default:                                           return ECk_Tone::Neutral;
+        }
+    }
+
+    // Three fixed-precision components in X/Y/Z order — same 3 decimals FVector::ToString printed —
+    // so the row's axis coloring lines up with the Transform inspector.
+    static auto Make_AxisComponents(
+        TFunction<FVector()> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InProjector, Axis]()
+            {
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), InProjector()[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Jolt::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Jolt"));
@@ -62,41 +117,67 @@ auto FCkInspector_Jolt::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<
             },
             CkStyle::Value_Numeric());
 
-        Builder.AddRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Motion Type:")),
-            [CapturedBody](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedBody]()
             {
                 if (ck::Is_NOT_Valid(CapturedBody)) { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_JoltBody_UE::Get_MotionType(CapturedBody)));
-            },
-            CkStyle::Value_Tag());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedBody]()
+            {
+                if (ck::Is_NOT_Valid(CapturedBody)) { return ECk_Tone::Neutral; }
+                return ck_inspector_jolt::Get_MotionTone(UCk_Utils_JoltBody_UE::Get_MotionType(CapturedBody));
+            }));
 
-        Builder.AddRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Sleep State:")),
-            [CapturedBody](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedBody]()
             {
                 if (ck::Is_NOT_Valid(CapturedBody)) { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_JoltBody_UE::Get_SleepState(CapturedBody)));
-            },
-            CkStyle::Value_Tag());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedBody]()
+            {
+                if (ck::Is_NOT_Valid(CapturedBody)) { return ECk_Tone::Neutral; }
+                return ck_inspector_jolt::Get_SleepTone(UCk_Utils_JoltBody_UE::Get_SleepState(CapturedBody));
+            }));
 
-        Builder.AddRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Body Added:")),
-            [CapturedBody](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedBody]()
             {
                 if (ck::Is_NOT_Valid(CapturedBody)) { return FText::FromString(TEXT("--")); }
                 return FText::FromString(UCk_Utils_JoltBody_UE::Get_IsBodyAdded(CapturedBody) ? TEXT("Yes") : TEXT("No"));
-            },
-            CkStyle::Value_Tag());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedBody]()
+            {
+                if (ck::Is_NOT_Valid(CapturedBody)) { return ECk_Tone::Neutral; }
+                // A body that never made it into the Jolt world simulates nothing — that is a defect, not a mode.
+                return UCk_Utils_JoltBody_UE::Get_IsBodyAdded(CapturedBody) ? ECk_Tone::Ok : ECk_Tone::Warn;
+            }));
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Linear Velocity:")),
-            [CapturedBody](const FCk_Handle&)
+            ck_inspector_jolt::Make_AxisComponents([CapturedBody]() -> FVector
+            {
+                if (ck::Is_NOT_Valid(CapturedBody)) { return FVector::ZeroVector; }
+                return UCk_Utils_JoltBody_UE::Get_LinearVelocity(CapturedBody);
+            }));
+
+        Builder.AddSparklineRow(
+            FText::FromString(TEXT("Linear Speed:")),
+            TAttribute<float>::CreateLambda([CapturedBody]()
+            {
+                if (ck::Is_NOT_Valid(CapturedBody)) { return 0.0f; }
+                return static_cast<float>(UCk_Utils_JoltBody_UE::Get_LinearVelocity(CapturedBody).Size());
+            }),
+            ECk_Tone::Accent,
+            TAttribute<FText>::CreateLambda([CapturedBody]()
             {
                 if (ck::Is_NOT_Valid(CapturedBody)) { return FText::FromString(TEXT("--")); }
-                return FText::FromString(UCk_Utils_JoltBody_UE::Get_LinearVelocity(CapturedBody).ToString());
-            },
-            CkStyle::Value_Math());
+                return FText::FromString(ck::Format_UE(TEXT("{:.2f}"), UCk_Utils_JoltBody_UE::Get_LinearVelocity(CapturedBody).Size()));
+            }));
     }
 
     // ---- JoltCharacter ----
@@ -107,32 +188,34 @@ auto FCkInspector_Jolt::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<
         auto       MutableEntity     = Entity;
         const auto CapturedCharacter = UCk_Utils_JoltCharacter_UE::CastChecked(MutableEntity);
 
-        Builder.AddRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Ground State:")),
-            [CapturedCharacter](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedCharacter]()
             {
                 if (ck::Is_NOT_Valid(CapturedCharacter)) { return FText::FromString(TEXT("--")); }
                 return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_JoltCharacter_UE::Get_GroundState(CapturedCharacter)));
-            },
-            CkStyle::Value_Tag());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedCharacter]()
+            {
+                if (ck::Is_NOT_Valid(CapturedCharacter)) { return ECk_Tone::Neutral; }
+                return ck_inspector_jolt::Get_GroundTone(UCk_Utils_JoltCharacter_UE::Get_GroundState(CapturedCharacter));
+            }));
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Ground Normal:")),
-            [CapturedCharacter](const FCk_Handle&)
+            ck_inspector_jolt::Make_AxisComponents([CapturedCharacter]() -> FVector
             {
-                if (ck::Is_NOT_Valid(CapturedCharacter)) { return FText::FromString(TEXT("--")); }
-                return FText::FromString(UCk_Utils_JoltCharacter_UE::Get_GroundNormal(CapturedCharacter).ToString());
-            },
-            CkStyle::Value_Math());
+                if (ck::Is_NOT_Valid(CapturedCharacter)) { return FVector::ZeroVector; }
+                return UCk_Utils_JoltCharacter_UE::Get_GroundNormal(CapturedCharacter);
+            }));
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Ground Velocity:")),
-            [CapturedCharacter](const FCk_Handle&)
+            ck_inspector_jolt::Make_AxisComponents([CapturedCharacter]() -> FVector
             {
-                if (ck::Is_NOT_Valid(CapturedCharacter)) { return FText::FromString(TEXT("--")); }
-                return FText::FromString(UCk_Utils_JoltCharacter_UE::Get_GroundVelocity(CapturedCharacter).ToString());
-            },
-            CkStyle::Value_Math());
+                if (ck::Is_NOT_Valid(CapturedCharacter)) { return FVector::ZeroVector; }
+                return UCk_Utils_JoltCharacter_UE::Get_GroundVelocity(CapturedCharacter);
+            }));
     }
 
     // ---- JoltStaticActor ----

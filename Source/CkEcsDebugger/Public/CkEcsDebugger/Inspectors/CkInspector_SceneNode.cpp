@@ -21,7 +21,7 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_SceneNode)
 
 // ====================================================================================================
 
-namespace
+namespace ck_inspector_scenenode
 {
     auto Get_LayerIndex(const FCk_Handle& E) -> int32
     {
@@ -65,6 +65,68 @@ namespace
 
         return Out;
     }
+
+    auto Get_RelativeTransform(const FCk_Handle& InEntity) -> FTransform
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT UCk_Utils_SceneNode_UE::Has(InEntity))
+        { return FTransform::Identity; }
+
+        auto Mut = InEntity;
+        const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
+        if (ck::Is_NOT_Valid(Node))
+        { return FTransform::Identity; }
+
+        return UCk_Utils_SceneNode_UE::Get_Offset(Node);
+    }
+
+    auto Get_WorldTransform(const FCk_Handle& InEntity) -> FTransform
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT UCk_Utils_Transform_UE::Has(InEntity))
+        { return FTransform::Identity; }
+
+        return UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(InEntity);
+    }
+
+    // Three fixed-precision components in X/Y/Z order, matching the Transform inspector so the two
+    // surfaces read the same and the axis coloring means the same thing on both.
+    auto Make_AxisComponents(
+        const FCk_Handle& InEntity,
+        TFunction<FTransform(const FCk_Handle&)> InSource,
+        TFunction<FVector(const FTransform&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InEntity, InSource, InProjector, Axis]()
+            {
+                const auto Value = InProjector(InSource(InEntity));
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), Value[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+
+    auto Get_Location(const FTransform& InTransform) -> FVector
+    {
+        return InTransform.GetLocation();
+    }
+
+    // Euler degrees reordered to the axis each angle turns about (Roll=X, Pitch=Y, Yaw=Z) so the
+    // row's X/Y/Z coloring is truthful. The label states the order.
+    auto Get_RollPitchYaw(const FTransform& InTransform) -> FVector
+    {
+        const auto Rotator = InTransform.GetRotation().Rotator();
+        return FVector{Rotator.Roll, Rotator.Pitch, Rotator.Yaw};
+    }
+
+    auto Get_Scale(const FTransform& InTransform) -> FVector
+    {
+        return InTransform.GetScale3D();
+    }
 }
 
 // ====================================================================================================
@@ -81,7 +143,11 @@ auto FCkInspector_SceneNode::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
+    namespace inspector = ck_inspector_scenenode;
+
     auto Builder = FCkInspectorWidgetBuilder();
+
+    const auto CapturedEntity = Entity;
 
     // ----- Parent entity (clickable) -----
     const auto ParentHandle = [&]() -> FCk_Handle
@@ -101,112 +167,71 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
             .ShowName(true));
 
     // ----- Layer -----
-    Builder.AddConditionalRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Layer:")),
-        [](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedEntity]()
         {
-            const auto Idx = Get_LayerIndex(E);
+            if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::FromString(TEXT("—")); }
+            const auto Idx = inspector::Get_LayerIndex(CapturedEntity);
             if (Idx == INDEX_NONE) { return FText::FromString(TEXT("—")); }
             return FText::FromString(ck::Format_UE(TEXT("Layer {}"), Idx));
-        },
-        [](const FCk_Handle& E)
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
         {
-            return Get_LayerIndex(E) == INDEX_NONE ? CkStyle::None() : CkStyle::Text();
-        });
+            if (ck::Is_NOT_Valid(CapturedEntity)) { return ECk_Tone::Neutral; }
+            return inspector::Get_LayerIndex(CapturedEntity) == INDEX_NONE ? ECk_Tone::Neutral : ECk_Tone::Info;
+        }));
 
     // ----- Dirty this frame -----
-    Builder.AddConditionalRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Dirty This Frame:")),
-        [](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedEntity]()
         {
-            return FText::FromString(E.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
+            if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::FromString(TEXT("--")); }
+            return FText::FromString(CapturedEntity.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
                 ? TEXT("Yes") : TEXT("No"));
-        },
-        [](const FCk_Handle& E)
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
         {
-            return E.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
-                ? CkStyle::State_Enabled() : CkStyle::None();
-        });
+            if (ck::Is_NOT_Valid(CapturedEntity)) { return ECk_Tone::Neutral; }
+            return CapturedEntity.Has<ck::FTag_SceneNode_RelativeTransformUpdated>()
+                ? ECk_Tone::Accent : ECk_Tone::Neutral;
+        }));
 
     // ----- Relative transform -----
     Builder.AddHeader(FText::FromString(TEXT("Relative Transform")));
 
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Location:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
-            auto Mut = E;
-            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetLocation()));
-        },
-        CkStyle::Transform());
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_RelativeTransform, &inspector::Get_Location));
 
-    Builder.AddRow(
-        FText::FromString(TEXT("Rotation:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
-            auto Mut = E;
-            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetRotation().Rotator()));
-        },
-        CkStyle::Transform());
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Rotation (R,P,Y):")),
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_RelativeTransform, &inspector::Get_RollPitchYaw));
 
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Scale:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_SceneNode_UE::Has(E)) { return FText::GetEmpty(); }
-            auto Mut = E;
-            const auto Node = UCk_Utils_SceneNode_UE::Cast(Mut);
-            if (ck::Is_NOT_Valid(Node)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_SceneNode_UE::Get_Offset(Node).GetScale3D()));
-        },
-        CkStyle::Transform());
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_RelativeTransform, &inspector::Get_Scale));
 
     // ----- Resolved world transform -----
     Builder.AddHeader(FText::FromString(TEXT("Resolved World Transform")));
 
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Location:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
-        },
-        CkStyle::Transform());
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_WorldTransform, &inspector::Get_Location));
 
-    Builder.AddRow(
-        FText::FromString(TEXT("Rotation:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
-        },
-        CkStyle::Transform());
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Rotation (R,P,Y):")),
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_WorldTransform, &inspector::Get_RollPitchYaw));
 
-    Builder.AddRow(
+    Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Scale:")),
-        [](const FCk_Handle& E)
-        {
-            if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
-        },
-        CkStyle::Transform());
+        inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_WorldTransform, &inspector::Get_Scale));
 
     // ----- Siblings -----
     Builder.AddHeader(FText::FromString(TEXT("Siblings (under Parent)")));
 
-    const auto Siblings = Gather_Siblings(Entity);
+    const auto Siblings = inspector::Gather_Siblings(Entity);
     _LastSiblingCount = Siblings.Num();
     _SiblingsBox = FCkInspectorWidgetBuilder::MakeBadgeBox(Siblings);
     Builder.AddWidgetRow(FText::FromString(TEXT("Nodes:")), _SiblingsBox.ToSharedRef());
@@ -226,7 +251,7 @@ auto FCkInspector_SceneNode::Tick(const FCk_Handle& Entity, float InDeltaTime) -
     // Keep sibling badges in sync when SceneNodes come and go.
     if (_SiblingsBox.IsValid())
     {
-        const auto Siblings = Gather_Siblings(Entity);
+        const auto Siblings = ck_inspector_scenenode::Gather_Siblings(Entity);
         if (Siblings.Num() != _LastSiblingCount)
         {
             _LastSiblingCount = Siblings.Num();

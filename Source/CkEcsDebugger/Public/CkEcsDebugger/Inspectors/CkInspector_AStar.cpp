@@ -15,6 +15,25 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_AStar)
 
 // =====================================================================================================================
 
+namespace ck_inspector_astar
+{
+    // CostThresholdReached is a bounded stop, not a failure — the search ran out of budget the
+    // caller set, so it warns rather than errors.
+    static auto Get_SearchStatusTone(ECk_AStarSearchStatus InStatus) -> ECk_Tone
+    {
+        switch (InStatus)
+        {
+            case ECk_AStarSearchStatus::InProgress:           return ECk_Tone::Info;
+            case ECk_AStarSearchStatus::Complete:             return ECk_Tone::Ok;
+            case ECk_AStarSearchStatus::Failed:               return ECk_Tone::Err;
+            case ECk_AStarSearchStatus::CostThresholdReached: return ECk_Tone::Warn;
+            default:                                          return ECk_Tone::Neutral;
+        }
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_AStar::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("A*"));
@@ -41,21 +60,22 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Status:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
                 { return FText::FromString(TEXT("--")); }
                 const auto Status = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_SearchStatus();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Status));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
-                { return CkStyle::None(); }
-                return CkStyle::Value_Enum();
-            });
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_astar::Get_SearchStatusTone(
+                    CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_SearchStatus());
+            }));
 
         Builder.AddRow(
             FText::FromString(TEXT("Open Set:")),
@@ -101,16 +121,24 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             },
             CkStyle::Value_Numeric());
 
-        Builder.AddRow(
+        // The fragment stores 0..100 (CkAStar_Processor.h computes it as a percentage); the meter
+        // wants a 0..1 fraction and clamps overrun itself.
+        Builder.AddMeterRow(
             FText::FromString(TEXT("Budget Used:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<float>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
+                { return 0.0f; }
+                return CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_BudgetUsagePercent() / 100.0f;
+            }),
+            ECk_Tone::Accent,
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
                 { return FText::FromString(TEXT("--")); }
                 const auto Pct = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_BudgetUsagePercent();
                 return FText::FromString(FString::Printf(TEXT("%.1f%%"), Pct));
-            },
-            CkStyle::Value_Numeric());
+            }));
     }
 
     // ---- Configuration ----

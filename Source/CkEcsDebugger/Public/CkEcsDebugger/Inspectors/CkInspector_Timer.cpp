@@ -12,11 +12,6 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Notifications/SProgressBar.h"
-#include "Widgets/SOverlay.h"
-#include "Widgets/Text/STextBlock.h"
-
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Timer)
 
 // =====================================================================================================================
@@ -41,56 +36,18 @@ namespace ck_inspector_timer
         return FMath::Clamp(static_cast<float>(Chrono.Get_TimeElapsed().Get_Milliseconds() / GoalMs), 0.0f, 1.0f);
     }
 
-    // A live bar with the percentage overlaid, matching FCkInspector_Aggro's row-bar idiom so the two inspectors read
-    // the same way. Attribute-bound throughout: the inspector's Tick is a no-op, so the bar has to pull its own value
-    // each paint rather than being pushed one.
-    auto MakeProgressBar(
+    // The meter's tone is fixed at compose time, so it cannot dim while the timer is paused — a full-brightness bar
+    // that is not advancing reads as a live timer. This pill carries that signal instead, and states the reason.
+    auto Get_StateTone(
         const FCk_Handle_Timer& InTimer)
-        -> TSharedRef<SWidget>
+        -> ECk_Tone
     {
-        return SNew(SBox)
-            .HeightOverride(16.0f)
-            .MinDesiredWidth(140.0f)
-            [
-                SNew(SOverlay)
-                + SOverlay::Slot()
-                [
-                    SNew(SProgressBar)
-                    .Percent_Lambda([InTimer]() -> TOptional<float>
-                    {
-                        return Get_Progress(InTimer);
-                    })
-                    .FillColorAndOpacity_Lambda([InTimer]() -> FSlateColor
-                    {
-                        if (ck::Is_NOT_Valid(InTimer))
-                        { return FSlateColor(CkStyle::TextMute()); }
+        if (ck::Is_NOT_Valid(InTimer))
+        { return ECk_Tone::Neutral; }
 
-                        if (UCk_Utils_Timer_UE::Get_CurrentTimerValue(InTimer).Get_IsDone())
-                        { return FSlateColor(CkStyle::Ok()); }
-
-                        // Dim while paused/stopped — a full-brightness bar that is not advancing reads as a live
-                        // timer, which is the single most misleading thing this row could show.
-                        return FSlateColor(UCk_Utils_Timer_UE::Get_CurrentState(InTimer) == ECk_Timer_State::Running
-                            ? CkStyle::Accent()
-                            : CkStyle::TextDim());
-                    })
-                ]
-                + SOverlay::Slot()
-                .HAlign(HAlign_Center)
-                .VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Font(CkStyle::MonoFont(8))
-                    .Text_Lambda([InTimer]() -> FText
-                    {
-                        if (ck::Is_NOT_Valid(InTimer))
-                        { return FText::FromString(TEXT("--")); }
-
-                        return FText::FromString(FString::Printf(TEXT("%.1f%%"), Get_Progress(InTimer) * 100.0f));
-                    })
-                    .ColorAndOpacity(FSlateColor(FLinearColor::White))
-                ]
-            ];
+        return UCk_Utils_Timer_UE::Get_CurrentState(InTimer) == ECk_Timer_State::Running
+            ? ECk_Tone::Accent
+            : ECk_Tone::Neutral;
     }
 }
 
@@ -154,21 +111,18 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
 
     // ---- Live state ----
 
-    Builder.AddConditionalRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("State:")),
-        [CapturedTimer](const FCk_Handle&)
+        TAttribute<FText>::CreateLambda([CapturedTimer]()
         {
             if (ck::Is_NOT_Valid(CapturedTimer)) { return FText::FromString(TEXT("--")); }
             const auto State = UCk_Utils_Timer_UE::Get_CurrentState(CapturedTimer);
             return FText::FromString(ck::Format_UE(TEXT("{}"), State));
-        },
-        [CapturedTimer](const FCk_Handle&) -> FLinearColor
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedTimer]()
         {
-            if (ck::Is_NOT_Valid(CapturedTimer)) { return CkStyle::None(); }
-            return UCk_Utils_Timer_UE::Get_CurrentState(CapturedTimer) == ECk_Timer_State::Running
-                ? CkStyle::Status_Active()
-                : CkStyle::Value_Enum();
-        });
+            return ck_inspector_timer::Get_StateTone(CapturedTimer);
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Goal:")),
@@ -180,15 +134,19 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
         },
         CkStyle::Value_Numeric());
 
-    Builder.AddRow(
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Elapsed:")),
-        [CapturedTimer](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedTimer]()
+        {
+            return ck_inspector_timer::Get_Progress(CapturedTimer);
+        }),
+        ECk_Tone::Accent,
+        TAttribute<FText>::CreateLambda([CapturedTimer]()
         {
             if (ck::Is_NOT_Valid(CapturedTimer)) { return FText::FromString(TEXT("--")); }
             const auto Chrono = UCk_Utils_Timer_UE::Get_CurrentTimerValue(CapturedTimer);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Chrono.Get_TimeElapsed()));
-        },
-        CkStyle::Value_Numeric());
+            return FText::FromString(ck::Format_UE(TEXT("{} / {}"), Chrono.Get_TimeElapsed(), Chrono.Get_GoalValue()));
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Remaining:")),
@@ -199,10 +157,6 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             return FText::FromString(ck::Format_UE(TEXT("{}"), Chrono.Get_TimeRemaining()));
         },
         CkStyle::Value_Numeric());
-
-    Builder.AddWidgetRow(
-        FText::FromString(TEXT("Progress:")),
-        ck_inspector_timer::MakeProgressBar(TimerHandle));
 
     Builder.AddConditionalRow(
         FText::FromString(TEXT("Done:")),

@@ -62,4 +62,15 @@ namespace ck::ecs_debugger_classification
         const TArray<uint64>& InOwnBits,
         const TArray<int32>& InOwnerIndex,
         const FClassificationTable& InTable) -> TArray<TMap<FName, int32>>;
+
+    // Depth transparency (design 2026-08-09): rewrite a LITERAL owner-index array so every
+    // owner flagged transparent is looked THROUGH — each entry becomes its nearest
+    // non-transparent owner, INDEX_NONE when the walk runs off the top. Feeding the result
+    // to ComputeRollups makes a relay child's effective owner the relay's own owner, so
+    // internals beneath a relay child roll up to that child instead of vanishing behind the
+    // relay. Pure: the tree supplies the flags from the shared relay predicate, specs supply
+    // synthetic ones. Cycles through transparent owners resolve to INDEX_NONE, never hang.
+    CKECSDEBUGGER_API auto Apply_TransparentOwnerPassThrough(
+        const TArray<int32>& InOwnerIndex,
+        const TArray<bool>& InIsTransparentOwner) -> TArray<int32>;
 }

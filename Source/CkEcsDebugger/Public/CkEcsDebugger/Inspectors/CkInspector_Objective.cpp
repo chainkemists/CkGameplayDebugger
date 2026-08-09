@@ -5,12 +5,28 @@
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Objective)
 
-static const FLinearColor Color_MetaData = FLinearColor(0.85f, 0.75f, 0.55f);
+// =====================================================================================================================
+
+namespace ck_inspector_objective
+{
+    auto Get_StatusTone(
+        ECk_ObjectiveStatus InStatus)
+        -> ECk_Tone
+    {
+        switch (InStatus)
+        {
+            case ECk_ObjectiveStatus::NotStarted: return ECk_Tone::Neutral;
+            case ECk_ObjectiveStatus::Active:     return ECk_Tone::Accent;
+            case ECk_ObjectiveStatus::Completed:  return ECk_Tone::Ok;
+            case ECk_ObjectiveStatus::Failed:     return ECk_Tone::Err;
+            default:                              return ECk_Tone::Neutral;
+        }
+    }
+}
 
 // =====================================================================================================================
 
@@ -72,19 +88,19 @@ auto FCkInspector_Objective::BuildObjectiveGrid(const FCk_Handle& Entity) -> TSh
     }
 
     // Status (live-updating via TAttribute)
-    Builder.AddConditionalRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Status:")),
-        [CapturedObjective](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedObjective]()
         {
             if (ck::Is_NOT_Valid(CapturedObjective)) { return FText::FromString(TEXT("--")); }
             const auto Status = UCk_Utils_Objective_UE::Get_Status(CapturedObjective);
             return FText::FromString(ck::Format_UE(TEXT("{}"), Status));
-        },
-        [CapturedObjective](const FCk_Handle& E) -> FLinearColor
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedObjective]()
         {
-            if (ck::Is_NOT_Valid(CapturedObjective)) { return CkStyle::None(); }
-            return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
-        });
+            if (ck::Is_NOT_Valid(CapturedObjective)) { return ECk_Tone::Neutral; }
+            return ck_inspector_objective::Get_StatusTone(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
+        }));
 
     return Builder.Build(Entity, FString());
 }

@@ -17,6 +17,13 @@ public:
     virtual auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void = 0;
 
     /**
+     * Allows a rendered inspector to receive one or more cleanup ticks after its normal
+     * CanInspect predicate becomes false. The default remains fail-closed: inspectors
+     * that do not explicitly opt in are never ticked for an inapplicable entity.
+     */
+    virtual auto Wants_TickWhenNotInspectable(const FCk_Handle& Entity) const -> bool { return false; }
+
+    /**
      * Icon + accent color identifying this inspector's feature across the debugger —
      * entity-tree badge strips, the feature rail, and inspector section headers all
      * render the same glyph/color (one icon language; redesign spec §2.4).

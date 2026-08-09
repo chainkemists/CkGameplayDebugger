@@ -43,13 +43,11 @@ private:
     auto Build_FeatureRail(bool InRightFlank) -> TSharedRef<SWidget>;
     auto Build_QueryHelpButton() -> TSharedRef<SWidget>;
 
-    /** Pinned + Recent quick-access sections (Phase 3) — rebuilt on change, not bound. */
+    /** Pinned quick-access section (Phase 3) — rebuilt on change, not bound. */
     auto RefreshQuickAccessSections() -> void;
     auto DoBuildQuickAccessRows(
         const TArray<FCk_Handle>& InEntities,
         const TSharedPtr<SVerticalBox>& InContainer) -> void;
-
-    auto HandleSelectionChanged(const TArray<FCk_Handle>& InSelection) -> void;
 
     auto OnFilterTextChanged(const FString& InText) -> void;
     auto OnHighlightTextChanged(const FString& InText) -> void;
@@ -62,12 +60,9 @@ private:
     TSharedPtr<SCkDebug_DualSearchBar> SearchBar;
     TSharedPtr<SCkDebuggerWidget_EntityTree> EntityTree;
     TSharedPtr<SVerticalBox> PinnedSectionBox;
-    TSharedPtr<SVerticalBox> RecentSectionBox;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
 
-    /** Last selections, most recent first, deduped, capped. */
-    TArray<FCk_Handle> RecentEntities;
     FDelegateHandle PinsChangedHandle;
 };

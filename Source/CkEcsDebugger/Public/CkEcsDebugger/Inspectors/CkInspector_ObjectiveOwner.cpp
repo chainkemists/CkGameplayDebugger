@@ -7,7 +7,6 @@
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ObjectiveOwner)
@@ -34,6 +33,26 @@ namespace ck_inspector_objective_owner
         }
 
         return Count;
+    }
+
+    // Objectives carry no per-objective progress value, so the row is a pill, not a meter — the
+    // status IS the whole payload.
+    auto Get_StatusTone(
+        FCk_Handle_Objective InObjective)
+        -> ECk_Tone
+    {
+        if (ck::Is_NOT_Valid(InObjective))
+        { return ECk_Tone::Neutral; }
+
+        switch (UCk_Utils_Objective_UE::Get_Status(InObjective))
+        {
+            case ECk_ObjectiveStatus::NotStarted: return ECk_Tone::Neutral;
+            case ECk_ObjectiveStatus::Active:     return ECk_Tone::Info;
+            case ECk_ObjectiveStatus::Completed:  return ECk_Tone::Ok;
+            case ECk_ObjectiveStatus::Failed:     return ECk_Tone::Err;
+        }
+
+        return ECk_Tone::Neutral;
     }
 }
 
@@ -104,19 +123,18 @@ auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const
         const auto CapturedObjective = ObjectiveHandle;
         const auto ObjectiveAsEntity = FCk_Handle(ObjectiveHandle);
 
-        Builder.AddClickableRow(
+        Builder.AddStatusPillRow(
             FText::FromString(Name.ToString()),
-            [CapturedObjective](const FCk_Handle& E) -> FText
+            TAttribute<FText>::CreateLambda([CapturedObjective]()
             {
                 if (ck::Is_NOT_Valid(CapturedObjective)) { return FText::FromString(TEXT("--")); }
                 const auto Status = UCk_Utils_Objective_UE::Get_Status(CapturedObjective);
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Status));
-            },
-            [CapturedObjective](const FCk_Handle& E) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedObjective]()
             {
-                if (ck::Is_NOT_Valid(CapturedObjective)) { return CkStyle::None(); }
-                return FCkDebuggerStyle::Get_ObjectiveStatusColor(UCk_Utils_Objective_UE::Get_Status(CapturedObjective));
-            },
+                return ck_inspector_objective_owner::Get_StatusTone(CapturedObjective);
+            }),
             [WeakSelectionModel, ObjectiveAsEntity]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(ObjectiveAsEntity))

@@ -70,28 +70,28 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
         CkStyle::Value_Object());
 
     // Sequences count
-    Builder.AddRow(
-        FText::FromString(TEXT("Sequences (count):")),
-        [CapturedRenderer](const FCk_Handle& E)
+    Builder.AddCountBadgeRow(
+        FText::FromString(TEXT("Sequences:")),
+        TAttribute<int32>::CreateLambda([CapturedRenderer]()
         {
-            if (ck::Is_NOT_Valid(CapturedRenderer)) { return FText::FromString(TEXT("--")); }
+            if (ck::Is_NOT_Valid(CapturedRenderer)) { return 0; }
             const auto* Collection = UCk_Utils_IskmRenderer_UE::Get_AnimCollection(CapturedRenderer);
-            if (NOT ck::IsValid(Collection, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(FString::FromInt(Collection->Get_Sequences().Num()));
-        },
-        CkStyle::Value_Numeric());
+            if (NOT ck::IsValid(Collection, ck::IsValid_Policy_NullptrOnly{})) { return 0; }
+            return Collection->Get_Sequences().Num();
+        }),
+        ECk_Tone::Info);
 
     // Submeshes count
-    Builder.AddRow(
-        FText::FromString(TEXT("Submeshes (count):")),
-        [CapturedRenderer](const FCk_Handle& E)
+    Builder.AddCountBadgeRow(
+        FText::FromString(TEXT("Submeshes:")),
+        TAttribute<int32>::CreateLambda([CapturedRenderer]()
         {
-            if (ck::Is_NOT_Valid(CapturedRenderer)) { return FText::FromString(TEXT("--")); }
+            if (ck::Is_NOT_Valid(CapturedRenderer)) { return 0; }
             const auto* Data = UCk_Utils_IskmRenderer_UE::Get_RendererData(CapturedRenderer);
-            if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(FString::FromInt(Data->Get_Submeshes().Num()));
-        },
-        CkStyle::Value_Numeric());
+            if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return 0; }
+            return Data->Get_Submeshes().Num();
+        }),
+        ECk_Tone::Info);
 
     // Default AnimInstance class
     Builder.AddRow(
@@ -108,16 +108,16 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
         CkStyle::Value_Object());
 
     // Custom Data Slots count
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Custom Data Slots:")),
-        [CapturedRenderer](const FCk_Handle& E)
+        TAttribute<int32>::CreateLambda([CapturedRenderer]()
         {
-            if (ck::Is_NOT_Valid(CapturedRenderer)) { return FText::FromString(TEXT("--")); }
+            if (ck::Is_NOT_Valid(CapturedRenderer)) { return 0; }
             const auto* Data = UCk_Utils_IskmRenderer_UE::Get_RendererData(CapturedRenderer);
-            if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(FString::FromInt(Data->Get_NumCustomDataFloat()));
-        },
-        CkStyle::Value_Numeric());
+            if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return 0; }
+            return Data->Get_NumCustomDataFloat();
+        }),
+        ECk_Tone::Info);
 
     return Builder.Build(Entity, FString());
 }

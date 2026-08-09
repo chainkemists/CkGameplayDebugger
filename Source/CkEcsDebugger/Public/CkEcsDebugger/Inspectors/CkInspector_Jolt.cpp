@@ -235,14 +235,14 @@ auto FCkInspector_Jolt::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<
             },
             CkStyle::Value_Object());
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Num Bodies:")),
-            [CapturedStaticActor](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedStaticActor]()
             {
-                if (ck::Is_NOT_Valid(CapturedStaticActor)) { return FText::FromString(TEXT("--")); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_JoltStaticActor_UE::Get_NumBodies(CapturedStaticActor)));
-            },
-            CkStyle::Value_Numeric());
+                if (ck::Is_NOT_Valid(CapturedStaticActor)) { return 0; }
+                return UCk_Utils_JoltStaticActor_UE::Get_NumBodies(CapturedStaticActor);
+            }),
+            ECk_Tone::Info);
     }
 
     return Builder.Build(Entity);

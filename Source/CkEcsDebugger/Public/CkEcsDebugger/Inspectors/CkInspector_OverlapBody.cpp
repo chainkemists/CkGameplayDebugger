@@ -141,29 +141,27 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
                     CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid());
             }));
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Marker Overlaps:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Count = CapturedEntity.Get<ck::FFragment_Sensor_Current>()
+                { return 0; }
+                return CapturedEntity.Get<ck::FFragment_Sensor_Current>()
                     .Get_CurrentMarkerOverlaps().Get_Overlaps().Num();
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
-            },
-            CkStyle::Value_Numeric());
+            }),
+            ECk_Tone::Info);
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Non-Marker Overlaps:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Count = CapturedEntity.Get<ck::FFragment_Sensor_Current>()
+                { return 0; }
+                return CapturedEntity.Get<ck::FFragment_Sensor_Current>()
                     .Get_CurrentNonMarkerOverlaps().Get_Overlaps().Num();
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
-            },
-            CkStyle::Value_Numeric());
+            }),
+            ECk_Tone::Info);
     }
 
     return Builder.Build(Entity);

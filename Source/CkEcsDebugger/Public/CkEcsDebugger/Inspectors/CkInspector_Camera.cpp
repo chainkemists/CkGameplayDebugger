@@ -18,9 +18,6 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/Notifications/SProgressBar.h"
-
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Camera)
 
 // =====================================================================================================================
@@ -317,51 +314,43 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                     { LabelStr += FString::Printf(TEXT(" [p%d]"), Params.Get_Priority()); }
                 }
 
-                // Color the weight bar + readout by state: base = info-blue, exiting = warn, active = green, pending = muted.
-                const auto ColorOf = [Lyr, IsDefault]() -> FLinearColor
+                // Tone the weight meter + readout by state: base = info, exiting = warn,
+                // active = ok, pending = neutral. Live, so a layer blending out re-tones itself
+                // without the inspector rebuilding.
+                const auto ToneOf = TAttribute<ECk_Tone>::CreateLambda([Lyr, IsDefault]() -> ECk_Tone
                 {
                     if (ck::Is_NOT_Valid(Lyr))
-                    { return CkStyle::None(); }
+                    { return ECk_Tone::Neutral; }
                     if (IsDefault)
-                    { return CkStyle::Info(); }
+                    { return ECk_Tone::Info; }
                     if (Lyr.Has<ck::FFragment_CameraLayer_Blend>() && Lyr.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f)
-                    { return CkStyle::Warn(); }
+                    { return ECk_Tone::Warn; }
                     if (Lyr.Has<ck::FTag_CameraLayer_Active>())
-                    { return CkStyle::Status_Active(); }
-                    return CkStyle::TextMute();
-                };
+                    { return ECk_Tone::Ok; }
+                    return ECk_Tone::Neutral;
+                });
 
-                auto Row = SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
-                    [
-                        SNew(SProgressBar)
-                        .Percent_Lambda([Lyr]() -> TOptional<float>
-                        {
-                            if (ck::Is_NOT_Valid(Lyr) || NOT Lyr.Has<ck::FFragment_CameraLayer_Blend>())
-                            { return 0.0f; }
-                            return FMath::Clamp(Lyr.Get<ck::FFragment_CameraLayer_Blend>().Get_Alpha(), 0.0f, 1.0f);
-                        })
-                        .FillColorAndOpacity_Lambda([ColorOf]() -> FSlateColor { return ColorOf(); })
-                    ]
-                    + SHorizontalBox::Slot().AutoWidth().Padding(6.0f, 0.0f, 0.0f, 0.0f).VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                        .ColorAndOpacity_Lambda([ColorOf]() -> FSlateColor { return ColorOf(); })
-                        .Text_Lambda([Lyr]() -> FText
-                        {
-                            if (ck::Is_NOT_Valid(Lyr) || NOT Lyr.Has<ck::FFragment_CameraLayer_Blend>())
-                            { return FText::FromString(TEXT("--")); }
-                            const auto& Blend   = Lyr.Get<ck::FFragment_CameraLayer_Blend>();
-                            const auto  Alpha   = Blend.Get_Alpha();
-                            const auto  bExiting = Blend.Get_TargetAlpha() <= 0.0f;
-                            const auto* State   = bExiting                               ? TEXT(" exit")
-                                                : Lyr.Has<ck::FTag_CameraLayer_Active>() ? TEXT("")
-                                                :                                          TEXT(" pend");
-                            return FText::FromString(FString::Printf(TEXT("%.2f%s"), Alpha, State));
-                        })
-                    ];
-
-                Builder.AddWidgetRow(FText::FromString(LabelStr), Row);
+                Builder.AddMeterRow(
+                    FText::FromString(LabelStr),
+                    TAttribute<float>::CreateLambda([Lyr]()
+                    {
+                        if (ck::Is_NOT_Valid(Lyr) || NOT Lyr.Has<ck::FFragment_CameraLayer_Blend>())
+                        { return 0.0f; }
+                        return Lyr.Get<ck::FFragment_CameraLayer_Blend>().Get_Alpha();
+                    }),
+                    ToneOf,
+                    TAttribute<FText>::CreateLambda([Lyr]() -> FText
+                    {
+                        if (ck::Is_NOT_Valid(Lyr) || NOT Lyr.Has<ck::FFragment_CameraLayer_Blend>())
+                        { return FText::FromString(TEXT("--")); }
+                        const auto& Blend    = Lyr.Get<ck::FFragment_CameraLayer_Blend>();
+                        const auto  Alpha    = Blend.Get_Alpha();
+                        const auto  bExiting = Blend.Get_TargetAlpha() <= 0.0f;
+                        const auto* State    = bExiting                               ? TEXT(" exit")
+                                             : Lyr.Has<ck::FTag_CameraLayer_Active>() ? TEXT("")
+                                             :                                          TEXT(" pend");
+                        return FText::FromString(FString::Printf(TEXT("%.2f%s"), Alpha, State));
+                    }));
             }
         }
     }

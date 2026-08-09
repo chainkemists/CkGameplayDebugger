@@ -33,7 +33,7 @@ World/session changes are atomic ownership boundaries. The main window routes
 both the common debugger-session invalidation signal and
 `WorldContext::OnWorldChanged` through `Reset_ForWorldChange`: current
 selection, Back/Forward history, picker state, entity-cache handles, tree nodes,
-pins, recents, and inspector state are released before the new world can be
+pins, and inspector state are released before the new world can be
 refreshed. Never use `Clear_Selection()` for this boundary because it records
 the old-world selection in navigation history.
 

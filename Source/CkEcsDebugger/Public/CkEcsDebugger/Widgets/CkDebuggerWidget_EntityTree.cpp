@@ -13,6 +13,8 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 
@@ -43,6 +45,28 @@ namespace ck_debugger_entity_tree
     using ck::ecs_debugger_feature_visuals::Get_FeatureVisuals;
     using ck::ecs_debugger_feature_visuals::Get_BadgeFeatures;
     constexpr auto MaxBadges = ck::ecs_debugger_feature_visuals::MaxBadges;
+
+    // RowDensity applies as a DELTA on this surface's own base padding, not as an absolute.
+    // The surfaces deliberately disagree on absolute spacing (the on-screen overlay card is
+    // far denser than this tree); only the offset between density options is the axis'
+    // business. Comfortable is the axis default, so the delta is zero and the tree renders
+    // exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
+    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 
     // Feature-token table for the query grammar: flag ids + wired inspectors' display
     // names, both prefix-matchable (spec §3.5). Built once — registration is startup-only.
@@ -217,10 +241,15 @@ public:
             ];
         }
 
+        // STableRow::Padding is a TAttribute, so RowDensity lands live on every existing row
+        // — no revision poll, no tree rebuild, no loss of node pointer identity.
         STableRow<TSharedPtr<FCkEntityTreeNode>>::Construct(
             STableRow<TSharedPtr<FCkEntityTreeNode>>::FArguments()
             .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
-            .Padding(FMargin(FCkDebuggerStyle::Padding_Small))
+            .Padding(TAttribute<FMargin>::CreateLambda([]()
+            {
+                return ck_debugger_entity_tree::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small});
+            }))
             .ShowSelection(true)
             .Content()
             [

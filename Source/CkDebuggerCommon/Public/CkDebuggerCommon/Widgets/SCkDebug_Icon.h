@@ -34,7 +34,10 @@ public:
         // exists to prevent.
         SLATE_ATTRIBUTE(FText, Meaning)
         SLATE_ATTRIBUTE(FSlateColor, ColorAndOpacity)
-        // Optional square size override (e.g. 14 for rail chips, 16 default).
+        // Optional square size override (e.g. 14 for rail chips, 16 default). Whatever is
+        // set here is the BASE size: the IconSize axis scales it (Medium 16 = x1.0, Small
+        // 12 = x0.75, Large 20 = x1.25) live, via attribute, so a Style Lab flip resizes
+        // every existing glyph without any call site changing.
         SLATE_ARGUMENT(TOptional<FVector2D>, Size)
     SLATE_END_ARGS()
 

@@ -5,6 +5,10 @@
 // ====================================================================================================================
 // Small rounded pill badge with a numeric/text value and an optional suffix label.
 // Examples: "5 pre", "$3", "priority 10". No data binding — pass finished strings.
+//
+// The BadgeStyle axis drives the chrome, live via attributes: Solid (default) is ring + fill
+// as shipped, Hollow keeps the ring and drops the fill, CountOnly drops both and leaves the
+// bare toned value/suffix. The colors stay caller-supplied — the axis is colorless.
 // ====================================================================================================================
 
 class CKDEBUGGERCOMMON_API SCkDebug_CountBadge : public SCompoundWidget

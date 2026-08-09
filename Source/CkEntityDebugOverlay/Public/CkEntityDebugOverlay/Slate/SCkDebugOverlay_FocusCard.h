@@ -59,7 +59,14 @@ public:
     // Legend rows for the sections that Set_Model actually draws, one entry per unique
     // provider (SectionCount records how many of its sections contributed). Sections the
     // render loop skips — no rows and no omission summary — contribute nothing.
+    // This is the LegendMode::Deduped builder (the default).
     static auto Build_LegendEntries(
+        const TArray<FCk_DebugOverlay_Section>& InSections) -> TArray<FCk_DebugOverlay_LegendEntry>;
+
+    // The LegendMode::PerSection builder: one entry per RENDERED SECTION, no dedup, so a
+    // provider that contributed three sections is listed three times (SectionCount stays 1).
+    // Skips exactly the same sections the render loop and the deduped builder skip.
+    static auto Build_LegendEntries_PerSection(
         const TArray<FCk_DebugOverlay_Section>& InSections) -> TArray<FCk_DebugOverlay_LegendEntry>;
 
     // Width the section wrap-boxes wrap at. MUST be the card's inner content width:

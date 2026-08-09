@@ -112,6 +112,9 @@ auto
     const auto Marker = _MarkerValue.Get(TOptional<float>{});
     const auto HasBand = _BandSamples.IsValid() && _BandSamples->Num() == Values.Num();
 
+    // One resolve per paint — the line, the area fill and the end dot must never disagree.
+    const auto LineColor = _Color.Get();
+
     auto MinValue = Values[0];
     auto MaxValue = Values[0];
     for (const auto& Value : Values)
@@ -175,13 +178,13 @@ auto
         { Baseline.Emplace(Point.X, Size.Y); }
 
         ck_debug_sparkline::MakeFill(OutDrawElements, ++Layer, InAllottedGeometry,
-            Points, Baseline, _Color, _FillOpacity, 0.0f);
+            Points, Baseline, LineColor, _FillOpacity, 0.0f);
     }
 
     constexpr auto Antialias = true;
     FSlateDrawElement::MakeLines(
         OutDrawElements, ++Layer, InAllottedGeometry.ToPaintGeometry(),
-        Points, ESlateDrawEffect::None, _Color, Antialias, 1.5f);
+        Points, ESlateDrawEffect::None, LineColor, Antialias, 1.5f);
 
     // dashed marker line (e.g. high-water mark)
     if (Marker.IsSet())
@@ -213,7 +216,7 @@ auto
                 FSlateLayoutTransform(FVector2f(End - FVector2D(DotRadius, DotRadius)))),
             FCoreStyle::Get().GetBrush("WhiteBrush"),
             ESlateDrawEffect::None,
-            _Color);
+            LineColor);
     }
 
     return Layer + 1;

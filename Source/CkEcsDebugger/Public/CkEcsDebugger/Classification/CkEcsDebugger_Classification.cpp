@@ -145,3 +145,80 @@ auto
 
     return Result;
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::ecs_debugger_classification::
+    Apply_TransparentOwnerPassThrough(
+        const TArray<int32>& InOwnerIndex,
+        const TArray<bool>& InIsTransparentOwner)
+    -> TArray<int32>
+{
+    const auto Num = InOwnerIndex.Num();
+
+    auto Result = InOwnerIndex;
+
+    CK_ENSURE_IF_NOT(InIsTransparentOwner.Num() == Num,
+        TEXT("Apply_TransparentOwnerPassThrough: owners [{}] and transparency [{}] arrays must be parallel"),
+        Num, InIsTransparentOwner.Num())
+    { return Result; }
+
+    // Nothing transparent — the literal graph IS the effective graph. The steady state
+    // whenever the user's transparency setting is off.
+    if (NOT InIsTransparentOwner.Contains(true))
+    { return Result; }
+
+    // Same memo-with-path-compression shape as ComputeRollups' nearest-primary walk:
+    // Resolved[i] = i's nearest NON-transparent owner. InProgress marks the active walk so
+    // an owner cycle answers "no owner" instead of looping.
+    constexpr auto Unvisited  = int32{-2};
+    constexpr auto InProgress = int32{-3};
+    constexpr auto NoOwner    = int32{INDEX_NONE};
+
+    auto Resolved = TArray<int32>{};
+    Resolved.Init(Unvisited, Num);
+
+    const auto ResolveOwner = [&](int32 InNode) -> int32
+    {
+        auto Path = TArray<int32>{};
+        auto Cursor = InNode;
+        auto Answer = NoOwner;
+
+        while (true)
+        {
+            const auto Owner = InOwnerIndex[Cursor];
+
+            if (Owner < 0 || Owner >= Num)
+            { break; }
+
+            if (NOT InIsTransparentOwner[Owner])
+            { Answer = Owner; break; }
+
+            if (Resolved[Owner] == InProgress)
+            { break; }   // owner cycle through transparent owners
+
+            if (Resolved[Owner] != Unvisited)
+            { Answer = Resolved[Owner]; break; }
+
+            Resolved[Owner] = InProgress;
+            Path.Add(Owner);
+            Cursor = Owner;
+        }
+
+        for (const auto PathNode : Path)
+        { Resolved[PathNode] = Answer; }
+
+        Resolved[InNode] = Answer;
+        return Answer;
+    };
+
+    for (auto Index = 0; Index < Num; ++Index)
+    {
+        Result[Index] = Resolved[Index] == Unvisited || Resolved[Index] == InProgress
+            ? ResolveOwner(Index)
+            : Resolved[Index];
+    }
+
+    return Result;
+}

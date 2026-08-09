@@ -48,6 +48,19 @@ struct FCkEntityTreeNode
     FString GroupBaseName;
     TArray<TSharedPtr<FCkEntityTreeNode>> PresentedChildren;
 
+    /**
+     * Depth transparency (design 2026-08-09). True when this node's LITERAL lifetime owner
+     * is a depth-transparent ActorRelay the user has not revealed — the node links to the
+     * roots instead of nesting, and RelayOwner keeps the literal owner for the row
+     * affordance and the reveal action. Linking only: the node is never duplicated or
+     * recreated, so selection/expansion survive a reveal toggle (UI contract §4).
+     */
+    bool HoistedFromRelay = false;
+    FCk_Handle RelayOwner;
+
+    /** On a relay node: how many of its children are currently hoisted away (0 = none). */
+    int32 HoistedChildCount = 0;
+
     /** Per-owner ⊞-chip override: true = show this owner's internals despite folding. */
     bool UnfoldInternalsOverride = false;
 
@@ -134,6 +147,13 @@ public:
     /** ⊞-chip click: reveal/re-fold one owner's internals. */
     auto ToggleUnfoldOverride(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void;
 
+    // ---- Relay depth transparency (P2) --------------------------------------
+    // Per-relay escape hatch out of the hoisting default. Revealing is presentation only:
+    // it re-nests the relay's children without touching classification or rollups.
+
+    auto Get_IsRelayRevealed(const FCk_Handle& InRelay) const -> bool;
+    auto Set_RelayRevealed(const TArray<FCk_Handle>& InRelays, bool InRevealed) -> void;
+
     // ---- Feature rail (Phase 3) --------------------------------------------
     // Included features compose with the query: entity passes when it carries ANY
     // included feature (own ∪ rollup). Empty set = rail off.
@@ -219,4 +239,11 @@ private:
 
     TSet<FName> RailIncluded;
     TArray<FCk_Handle> PinnedEntities;
+
+    /**
+     * Relays the user asked to see nested. Holds registry handles, so it MUST NOT outlive
+     * the PIE session — cleared in Reset_ForWorldChange, which the main window drives from
+     * both OnWorldChanged and the common session-invalidation signal (EndPIE).
+     */
+    TSet<FCk_Handle> RevealedRelays;
 };

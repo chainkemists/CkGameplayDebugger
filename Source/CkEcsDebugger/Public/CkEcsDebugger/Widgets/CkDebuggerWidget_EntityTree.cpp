@@ -9,6 +9,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/AppStyle.h"
 
+#include "CkDebuggerCommon/Classification/CkDebug_DepthTransparency.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
@@ -183,6 +184,46 @@ public:
             .HighlightText(this, &SCkDebuggerEntityTreeRow::Get_HighlightText)
         ];
 
+        // "via relay" chip — this row's literal lifetime owner is a depth-transparent
+        // ActorRelay we looked through. Purely visual (SBorder/SBox/STextBlock), so the
+        // row still selects; the reveal action lives in the row context menu instead of an
+        // inline click target (STableRow click-trap contract).
+        if (Node.IsValid() && NOT IsGroup)
+        {
+            RowContent->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SBox)
+                .Visibility(this, &SCkDebuggerEntityTreeRow::Get_ViaRelayChipVisibility)
+                .ToolTipText(FText::FromString(TEXT(
+                    "Hoisted out of its ActorRelay owner. Right-click > Reveal relay nesting to see it nested.")))
+                [
+                    ck::debug_axes::Make_Chip(
+                        UCkDebuggerStyleSettings::Get_Selection(),
+                        FText::FromString(TEXT("via relay")),
+                        ECk_Tone::Neutral)
+                ]
+            ];
+
+            // Relay's own row: compact annotation of what it is currently hiding, plus the
+            // muted treatment applied in Get_NodeTextColor.
+            RowContent->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Visibility(this, &SCkDebuggerEntityTreeRow::Get_RelayAnnotationVisibility)
+                .Text(this, &SCkDebuggerEntityTreeRow::Get_RelayAnnotationText)
+                .ColorAndOpacity(CkStyle::TextMute())
+                .ToolTipText(FText::FromString(TEXT(
+                    "This ActorRelay's children are shown at top level. Right-click > Reveal relay nesting to nest them back.")))
+            ];
+        }
+
         // ⊞ chip — folded-internals count; bounded click target per the STableRow
         // contract (only the chip traps the click, the row still selects elsewhere).
         RowContent->AddSlot()
@@ -319,6 +360,29 @@ private:
         }
 
         return CkStyle::TextDim();
+    }
+
+    auto Get_ViaRelayChipVisibility() const -> EVisibility
+    {
+        return Node.IsValid() && Node->HoistedFromRelay
+            ? EVisibility::Visible
+            : EVisibility::Collapsed;
+    }
+
+    auto Get_RelayAnnotationVisibility() const -> EVisibility
+    {
+        return Node.IsValid() && Node->HoistedChildCount > 0
+            ? EVisibility::Visible
+            : EVisibility::Collapsed;
+    }
+
+    auto Get_RelayAnnotationText() const -> FText
+    {
+        if (NOT Node.IsValid())
+        { return FText::GetEmpty(); }
+
+        // ASCII on purpose — decorated glyphs render as tofu boxes in the editor font.
+        return FText::FromString(ck::Format_UE(TEXT("via ActorRelay - {} hoisted"), Node->HoistedChildCount));
     }
 
     auto Get_FoldChipVisibility() const -> EVisibility
@@ -460,6 +524,11 @@ private:
 
         if (SelectionModel.IsValid() && SelectionModel->IsSelected(Node->Entity))
         { return CkStyle::TextStrong(); }
+
+        // A relay whose children were hoisted away is plumbing on this surface — mute it so
+        // the eye lands on the first-class rows it used to hide.
+        if (Node->HoistedChildCount > 0)
+        { return CkStyle::TextMute(); }
 
         return CkStyle::Text();
     }
@@ -699,6 +768,8 @@ auto SCkDebuggerWidget_EntityTree::Reset_ForWorldChange() -> void
     NodeMap.Reset();
     GroupNodeCache.Reset();
     MemberToGroup.Reset();
+    // Registry handles — must not outlive the session that produced them.
+    RevealedRelays.Reset();
     NeedsRefresh = true;
 
     if (TreeView.IsValid())
@@ -807,6 +878,7 @@ auto SCkDebuggerWidget_EntityTree::RebuildHierarchyLinks() -> void
 
         Node->Children.Reset();
         Node->Parent.Reset();
+        Node->HoistedChildCount = 0;
     }
 
     for (const auto& Node : AllNodes)
@@ -835,6 +907,9 @@ auto SCkDebuggerWidget_EntityTree::DoLinkNode(const TSharedPtr<FCkEntityTreeNode
 {
     const auto& Entity = InNode->Entity;
 
+    InNode->HoistedFromRelay = false;
+    InNode->RelayOwner = FCk_Handle{};
+
     if (NOT Entity.Has<ck::FFragment_LifetimeOwner>())
     {
         RootNodes.Add(InNode);
@@ -845,6 +920,24 @@ auto SCkDebuggerWidget_EntityTree::DoLinkNode(const TSharedPtr<FCkEntityTreeNode
 
     if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(LifetimeOwner))
     {
+        RootNodes.Add(InNode);
+        return;
+    }
+
+    // Depth transparency: an ActorRelay is plumbing, not a conceptual parent, so its
+    // children read as depth 0 — they link to the roots unless the user revealed that
+    // specific relay. LINKING only; the node keeps its TSharedPtr identity either way.
+    if (ck::DebugDepthTransparency::Get_IsTransparentOwner(LifetimeOwner)
+        && NOT RevealedRelays.Contains(LifetimeOwner))
+    {
+        InNode->HoistedFromRelay = true;
+        InNode->RelayOwner = LifetimeOwner;
+
+        // The relay's own row reads "N hoisted" off this count. Reset happens in the
+        // unlink pass of RebuildHierarchyLinks, which every refresh runs before relinking.
+        if (const auto RelayNode = NodeMap.Find(LifetimeOwner))
+        { ++(*RelayNode)->HoistedChildCount; }
+
         RootNodes.Add(InNode);
         return;
     }
@@ -942,10 +1035,28 @@ auto SCkDebuggerWidget_EntityTree::RecomputeNodeSignatures() -> void
     for (auto Index = 0; Index < Num; ++Index)
     { IndexOf.Add(AllNodes[Index].Get(), Index); }
 
+    // The LITERAL lifetime owner, read from the entity rather than from Node->Parent:
+    // hoisted nodes have no parent link, but they still have a literal owner, and rollups
+    // must not depend on how the tree chose to draw them.
+    const auto Get_LiteralOwnerNode = [this](const FCk_Handle& InEntity) -> const FCkEntityTreeNode*
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_LifetimeOwner>())
+        { return nullptr; }
+
+        const auto& LifetimeOwner = InEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+        if (UCk_Utils_EntityLifetime_UE::Get_IsTransientEntity(LifetimeOwner))
+        { return nullptr; }
+
+        const auto* OwnerNode = NodeMap.Find(LifetimeOwner);
+        return OwnerNode != nullptr ? OwnerNode->Get() : nullptr;
+    };
+
     auto Bits = TArray<uint64>{};
     Bits.Reserve(Num);
     auto OwnerIndex = TArray<int32>{};
     OwnerIndex.Reserve(Num);
+    auto IsTransparentOwner = TArray<bool>{};
+    IsTransparentOwner.Reserve(Num);
 
     for (const auto& Node : AllNodes)
     {
@@ -954,12 +1065,21 @@ auto SCkDebuggerWidget_EntityTree::RecomputeNodeSignatures() -> void
             : uint64{0};
         Bits.Add(NodeBits);
 
-        const auto Parent = Node->Parent.Pin();
-        const auto* ParentIndex = Parent.IsValid() ? IndexOf.Find(Parent.Get()) : nullptr;
-        OwnerIndex.Add(ParentIndex != nullptr ? *ParentIndex : int32{INDEX_NONE});
+        const auto* OwnerNode = Get_LiteralOwnerNode(Node->Entity);
+        const auto* OwnerNodeIndex = OwnerNode != nullptr ? IndexOf.Find(OwnerNode) : nullptr;
+        OwnerIndex.Add(OwnerNodeIndex != nullptr ? *OwnerNodeIndex : int32{INDEX_NONE});
+
+        IsTransparentOwner.Add(ck::DebugDepthTransparency::Get_IsTransparentOwner(Node->Entity));
     }
 
-    auto Rollups = ck::ecs_debugger_classification::ComputeRollups(Bits, OwnerIndex, Table);
+    // Depth transparency: relays are looked THROUGH before the rollup walk, so a relay
+    // child's effective owner is the relay's own owner and internals under that child roll
+    // up to the child. Keyed off the shared predicate, NOT off RevealedRelays — revealing a
+    // relay is a drawing choice and must not move counts.
+    const auto EffectiveOwnerIndex = ck::ecs_debugger_classification::Apply_TransparentOwnerPassThrough(
+        OwnerIndex, IsTransparentOwner);
+
+    auto Rollups = ck::ecs_debugger_classification::ComputeRollups(Bits, EffectiveOwnerIndex, Table);
 
     for (auto Index = 0; Index < Num; ++Index)
     {
@@ -1283,6 +1403,59 @@ auto SCkDebuggerWidget_EntityTree::ToggleUnfoldOverride(const TSharedPtr<FCkEnti
 
         TreeView->RequestTreeRefresh();
     }
+}
+
+auto SCkDebuggerWidget_EntityTree::Get_IsRelayRevealed(const FCk_Handle& InRelay) const -> bool
+{
+    return RevealedRelays.Contains(InRelay);
+}
+
+auto SCkDebuggerWidget_EntityTree::Set_RelayRevealed(
+    const TArray<FCk_Handle>& InRelays,
+    bool InRevealed) -> void
+{
+    auto AnyChanged = false;
+
+    for (const auto& Relay : InRelays)
+    {
+        if (ck::Is_NOT_Valid(Relay))
+        { continue; }
+
+        if (InRevealed)
+        {
+            auto AlreadyRevealed = false;
+            RevealedRelays.Add(Relay, &AlreadyRevealed);
+            AnyChanged |= NOT AlreadyRevealed;
+        }
+        else
+        {
+            AnyChanged |= RevealedRelays.Remove(Relay) > 0;
+        }
+    }
+
+    if (NOT AnyChanged)
+    { return; }
+
+    // Re-link only: nodes, selection, and expansion state all survive. Classification is
+    // deliberately NOT recomputed — the rollup pass-through ignores reveal state.
+    RebuildHierarchyLinks();
+    ApplyFilterToNodes();
+    UpdateFilteredRootNodes();
+
+    if (NOT TreeView.IsValid())
+    { return; }
+
+    // Re-nesting only helps when the relay row is open.
+    if (InRevealed)
+    {
+        for (const auto& Relay : InRelays)
+        {
+            if (const auto RelayNode = NodeMap.Find(Relay))
+            { TreeView->SetItemExpansion(*RelayNode, true); }
+        }
+    }
+
+    TreeView->RequestTreeRefresh();
 }
 
 auto SCkDebuggerWidget_EntityTree::Toggle_RailFeature(FName InFeatureId) -> void
@@ -1693,6 +1866,56 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
 
             MenuBuilder.AddMenuSeparator();
         }
+    }
+
+    // Relay depth transparency: per-relay escape hatch out of the hoisting default. A
+    // menu entry rather than an inline row widget — an extra click target inside the row
+    // would trap the selection click (STableRow contract).
+    {
+        auto RelaysToReveal = TArray<FCk_Handle>{};
+        auto RelaysToHide = TArray<FCk_Handle>{};
+
+        for (const auto& Node : SelectedNodes)
+        {
+            if (NOT Node.IsValid() || Node->IsGroupNode)
+            { continue; }
+
+            if (Node->HoistedFromRelay && ck::IsValid(Node->RelayOwner))
+            { RelaysToReveal.AddUnique(Node->RelayOwner); }
+            else if (Node->HoistedChildCount > 0)
+            { RelaysToReveal.AddUnique(Node->Entity); }
+            else if (Get_IsRelayRevealed(Node->Entity))
+            { RelaysToHide.AddUnique(Node->Entity); }
+        }
+
+        if (NOT RelaysToReveal.IsEmpty())
+        {
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(TEXT("Reveal relay nesting")),
+                FText::FromString(TEXT("Nest this ActorRelay's children back under it instead of hoisting them to the top level")),
+                FSlateIcon(),
+                FUIAction(FExecuteAction::CreateLambda([this, RelaysToReveal]()
+                {
+                    Set_RelayRevealed(RelaysToReveal, true);
+                }))
+            );
+        }
+
+        if (NOT RelaysToHide.IsEmpty())
+        {
+            MenuBuilder.AddMenuEntry(
+                FText::FromString(TEXT("Hide relay nesting")),
+                FText::FromString(TEXT("Hoist this ActorRelay's children back to the top level")),
+                FSlateIcon(),
+                FUIAction(FExecuteAction::CreateLambda([this, RelaysToHide]()
+                {
+                    Set_RelayRevealed(RelaysToHide, false);
+                }))
+            );
+        }
+
+        if (NOT RelaysToReveal.IsEmpty() || NOT RelaysToHide.IsEmpty())
+        { MenuBuilder.AddMenuSeparator(); }
     }
 
     // Focus in viewport — ejected/simulate only; hidden while possessed (the

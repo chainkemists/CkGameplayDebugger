@@ -18,8 +18,6 @@
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Probes)
 
-static const FLinearColor Color_Probe = FLinearColor(0.0f, 0.8f, 1.0f);
-
 // =====================================================================================================================
 
 auto FCkInspector_Probes::Get_ComponentName() const -> FText
@@ -50,34 +48,32 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
         return Builder.Build(Entity);
     }
 
+    const auto CapturedProbe = Probe;
+
     const auto ProbeName = UCk_Utils_Probe_UE::Get_Name(Probe);
     const auto ProbeNameStr = ProbeName.IsValid() ? ProbeName.GetTagName().ToString() : TEXT("Unnamed");
 
-    // Name
+    // Name — a gameplay tag, so it takes the shared tag value role.
     Builder.AddRow(
         FText::FromString(TEXT("Name:")),
         [ProbeNameStr](const FCk_Handle& E) { return FText::FromString(ProbeNameStr); },
-        Color_Probe);
+        CkStyle::Value_Tag());
 
     // Enabled/Disabled state
-    Builder.AddConditionalRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("State:")),
-        [](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedProbe]()
         {
-            auto MutableE = E;
-            const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
-            if (ck::Is_NOT_Valid(P)) { return FText::GetEmpty(); }
-            const auto State = UCk_Utils_Probe_UE::Get_IsEnabledDisabled(P);
+            if (ck::Is_NOT_Valid(CapturedProbe)) { return FText::GetEmpty(); }
+            const auto State = UCk_Utils_Probe_UE::Get_IsEnabledDisabled(CapturedProbe);
             return FText::FromString(State == ECk_EnableDisable::Enable ? TEXT("Enabled") : TEXT("Disabled"));
-        },
-        [](const FCk_Handle& E)
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedProbe]()
         {
-            auto MutableE = E;
-            const auto P = UCk_Utils_Probe_UE::Cast(MutableE);
-            if (ck::Is_NOT_Valid(P)) { return CkStyle::None(); }
-            return UCk_Utils_Probe_UE::Get_IsEnabledDisabled(P) == ECk_EnableDisable::Enable
-                ? CkStyle::State_Enabled() : CkStyle::State_Disabled();
-        });
+            if (ck::Is_NOT_Valid(CapturedProbe)) { return ECk_Tone::Neutral; }
+            return UCk_Utils_Probe_UE::Get_IsEnabledDisabled(CapturedProbe) == ECk_EnableDisable::Enable
+                ? ECk_Tone::Ok : ECk_Tone::Neutral;
+        }));
 
     // Overlaps — live badge box stored for in-place updates
     {

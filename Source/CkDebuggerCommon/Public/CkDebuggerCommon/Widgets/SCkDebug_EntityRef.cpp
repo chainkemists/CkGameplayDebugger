@@ -7,11 +7,34 @@
 
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "Styling/CoreStyle.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
+
+// ====================================================================================================================
+
+namespace ck_debug_entityref
+{
+    // Chip geometry — only HashTintedChip draws anything; every other option keeps the
+    // border transparent at zero padding, which is layout-identical to the bare text block.
+    constexpr auto ChipPaddingX = CkStyle::SpaceS;
+    constexpr auto ChipPaddingY = 1.0f;
+
+    // Same hash -> HSV idiom the overlay uses for provider hues (SCkDebugOverlay_FocusCard::
+    // Get_ProviderColor): fixed saturation/value so every entity lands on a readable,
+    // mutually-distinct hue that is stable for the life of the id.
+    auto Get_HashTint(const FCk_Handle& InEntity) -> FLinearColor
+    {
+        const auto Id  = static_cast<uint32>(InEntity.Get_Entity().Get_ID());
+        const auto Hue = static_cast<uint8>(GetTypeHash(Id) % 256);
+        return FLinearColor::MakeFromHSV8(Hue, 150, 205);
+    }
+}
 
 // ====================================================================================================================
 
@@ -28,13 +51,22 @@ auto
         ? InArgs._Font
         : TAttribute<FSlateFontInfo>(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()));
 
+    // The chip frame exists unconditionally and is driven entirely by attributes, so the
+    // EntityIdStyle axis applies live without ever rebuilding this widget. Under every
+    // option but HashTintedChip it is a transparent, zero-padding no-op.
     ChildSlot
     [
-        SNew(STextBlock)
-        .Text(this, &SCkDebug_EntityRef::Get_DisplayText)
-        .Font(MonoFont)
-        .ColorAndOpacity(this, &SCkDebug_EntityRef::Get_TextColor)
-        .ToolTipText(this, &SCkDebug_EntityRef::Get_Tooltip)
+        SNew(SBorder)
+        .BorderImage(CkStyle::GetRoundedBrush_Small())
+        .BorderBackgroundColor(this, &SCkDebug_EntityRef::Get_ChipColor)
+        .Padding(this, &SCkDebug_EntityRef::Get_ChipPadding)
+        [
+            SNew(STextBlock)
+            .Text(this, &SCkDebug_EntityRef::Get_DisplayText)
+            .Font(MonoFont)
+            .ColorAndOpacity(this, &SCkDebug_EntityRef::Get_TextColor)
+            .ToolTipText(this, &SCkDebug_EntityRef::Get_Tooltip)
+        ]
     ];
 }
 
@@ -94,17 +126,20 @@ auto
 
     const auto IdText = ck::Format_UE(TEXT("{}"), Entity.Get_Entity());
 
+    // ShowName(false) sites deliberately feed an empty name: every EntityIdStyle option
+    // degrades to the bare id when there is no name, which is exactly the old behaviour.
+    auto CleanName = FString{};
+
     if (_ShowName)
     {
         const auto Name = UCk_Utils_Handle_UE::Get_DebugName(Entity);
         if (NOT Name.IsNone())
-        {
-            const auto CleanName = ck::DebugNameClean::Get_CleanName(Name.ToString());
-            return FText::FromString(ck::Format_UE(TEXT("{} | {}"), CleanName, IdText));
-        }
+        { CleanName = ck::DebugNameClean::Get_CleanName(Name.ToString()); }
     }
 
-    return FText::FromString(IdText);
+    // Re-read per frame — the axis applies live with no rebuild and no invalidation.
+    return ck::debug_axes::Make_EntityIdText(
+        UCkDebuggerStyleSettings::Get_Selection(), CleanName, IdText);
 }
 
 auto
@@ -112,10 +147,50 @@ auto
     Get_TextColor() const
     -> FSlateColor
 {
-    if (ck::Is_NOT_Valid(_Entity.Get()))
+    const auto Entity = _Entity.Get();
+
+    if (ck::Is_NOT_Valid(Entity))
     { return FSlateColor(CkStyle::None()); }
 
+    if (Is_HashTinted())
+    { return FSlateColor(ck_debug_entityref::Get_HashTint(Entity)); }
+
     return FSlateColor(CkStyle::EntityId());
+}
+
+auto
+    SCkDebug_EntityRef::
+    Get_ChipColor() const
+    -> FSlateColor
+{
+    const auto Entity = _Entity.Get();
+
+    if (ck::Is_NOT_Valid(Entity) || NOT Is_HashTinted())
+    { return FSlateColor(FLinearColor::Transparent); }
+
+    // Dim fill behind the bright text — a composition choice, never an alpha wrapper
+    // around the styled child.
+    return FSlateColor(CkStyle::OverlayOf(ck_debug_entityref::Get_HashTint(Entity), 0.18f));
+}
+
+auto
+    SCkDebug_EntityRef::
+    Get_ChipPadding() const
+    -> FMargin
+{
+    if (NOT Is_HashTinted())
+    { return FMargin{0.0f}; }
+
+    return FMargin{ck_debug_entityref::ChipPaddingX, ck_debug_entityref::ChipPaddingY};
+}
+
+auto
+    SCkDebug_EntityRef::
+    Is_HashTinted() const
+    -> bool
+{
+    return UCkDebuggerStyleSettings::Get_Selection().EntityIdStyle
+        == ECkDebugAxis_EntityIdStyle::HashTintedChip;
 }
 
 auto

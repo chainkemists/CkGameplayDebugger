@@ -26,6 +26,11 @@ class STextBlock;
 //   and right-click → copy still works.
 // - The Entity argument is a SLATE_ATTRIBUTE so callers can bind a lambda for
 //   dynamic values (matches the rest of the inspector widget builders).
+// - Text composition follows the EntityIdStyle axis (ck::debug_axes::Make_EntityIdText),
+//   re-read every frame so a Style Lab flip lands live on every existing pill.
+//   HashTintedChip additionally tints the text from a stable hash of the entity id and
+//   fills a small rounded chip behind it; every other option leaves the chip transparent
+//   at zero padding, which is layout-identical to the plain text block.
 // ====================================================================================================================
 
 class CKDEBUGGERCOMMON_API SCkDebug_EntityRef : public SCompoundWidget
@@ -55,8 +60,11 @@ public:
 private:
     auto Get_DisplayText() const -> FText;
     auto Get_TextColor() const -> FSlateColor;
+    auto Get_ChipColor() const -> FSlateColor;
+    auto Get_ChipPadding() const -> FMargin;
     auto Get_Tooltip() const -> FText;
     auto Is_Clickable() const -> bool;
+    auto Is_HashTinted() const -> bool;
 
     TAttribute<FCk_Handle> _Entity;
     bool _ShowName = false;

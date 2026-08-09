@@ -6,6 +6,8 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -15,6 +17,33 @@
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+
+namespace ck_inspector_widget_builder
+{
+    // RowDensity as a DELTA on the builder's own base padding — same rule as the entity tree
+    // (see CkDebuggerWidget_EntityTree.cpp): the absolute metric belongs to the surface, the
+    // offset between options belongs to the axis. Comfortable => zero delta => today's rows.
+    //
+    // Slot padding is a TAttribute, which matters here more than anywhere: the inspector
+    // panel's Tick policy forbids rebuilding widget structure, so a revision-poll rebuild was
+    // never an option for this surface (CkDebuggerPanel_Inspector.cpp, POLICY comment).
+    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
+}
 
 auto FCkInspectorWidgetBuilder::SetSelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> FCkInspectorWidgetBuilder&
 {
@@ -276,7 +305,10 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
 
         Column->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 1.0f)
+            .Padding(TAttribute<FMargin>::CreateLambda([]()
+            {
+                return ck_inspector_widget_builder::Apply_RowDensity(FMargin{0.0f, 1.0f});
+            }))
             [
                 RowWidget
             ];

@@ -206,6 +206,26 @@ bool FCkDebugOverlay_FocusCardLegend_Test::RunTest(const FString&)
     for (const auto& Entry : Entries)
     { TestFalse(TEXT("legend abbrev is never empty"), Entry.Abbrev.IsEmpty()); }
 
+    // (f) LegendMode::PerSection — one entry per RENDERED SECTION, no dedup, but the same
+    // draws-nothing skip. Fed the identical section list so the two modes stay comparable.
+    const auto PerSection = SCkDebugOverlay_FocusCard::Build_LegendEntries_PerSection(Sections);
+
+    TestEqual(TEXT("per-section legend lists every rendered section"), PerSection.Num(), 4);
+    TestEqual(TEXT("per-section legend skips the section that draws nothing"),
+        PerSection.Num(), Sections.Num() - 1);
+
+    for (const auto& Entry : PerSection)
+    {
+        TestFalse(TEXT("per-section abbrev is never empty"), Entry.Abbrev.IsEmpty());
+        // Nothing is aggregated in this mode, so the xN annotation must never render.
+        TestEqual(TEXT("per-section entries never aggregate"), Entry.SectionCount, 1);
+    }
+
+    TestEqual(TEXT("per-section keeps section order"), PerSection[0].FullName, FString(TEXT("Label")));
+    TestEqual(TEXT("per-section repeats the repeated provider"), PerSection[2].FullName, FString(TEXT("Label")));
+    TestEqual(TEXT("per-section keeps the single-section provider last"),
+        PerSection[3].FullName, FString(TEXT("Team")));
+
     return true;
 }
 

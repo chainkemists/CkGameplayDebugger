@@ -10,6 +10,8 @@
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
@@ -30,6 +32,223 @@ namespace FocusCard_Constants
 
     // Flash window in seconds
     constexpr auto FlashDurationSec = 0.4;
+}
+
+// ====================================================================================================================
+// STYLE AXES — the card's local renderers.
+//
+// The card rebuilds every slot on every Set_Model, so it needs no attribute plumbing and no
+// revision poll: reading the selection here IS live apply.
+//
+// These deliberately do NOT call the ck::debug_axes::Make_* renderers, and the reason is the
+// same in all three cases: those helpers bake a fixed CkStyle font and take an ECk_Tone, while
+// this card (a) scales every font by the user's PlateFontScale and (b) colors chips from the
+// per-provider HASHED hue, which is not a tone and cannot be reconstructed from one. Routing
+// through them would silently drop font scaling and collapse the provider color coding the
+// legend pairs against. The OPTION enums remain the single source of truth; only the widget
+// construction is local. See the U3 report for the library gap this records.
+// ====================================================================================================================
+
+namespace ck_debugoverlay_focuscard
+{
+    // Dark ink for text sitting on a saturated provider fill.
+    constexpr auto ChipInk = FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f };
+
+    auto Get_Selection() -> const FCkDebuggerStyleSelection&
+    {
+        return UCkDebuggerStyleSettings::Get_Selection();
+    }
+
+    // RowDensity as a DELTA on the card's own base spacing, never as an absolute: the card is
+    // deliberately denser than the editor tree, and Get_RowPadding's absolutes would blow that
+    // compactness apart. Comfortable => zero delta => the card as shipped.
+    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
+
+    // ProviderChipStyle. Tint is the pill exactly as the card shipped.
+    auto Make_ProviderChip(
+        const FText&        InText,
+        const FLinearColor& InProviderColor,
+        int32               InFontSize) -> TSharedRef<SWidget>
+    {
+        const auto Make_Pill = [&](const FLinearColor& InFill, const FLinearColor& InInk) -> TSharedRef<SWidget>
+        {
+            return SNew(SBorder)
+                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderBackgroundColor(InFill)
+                .VAlign(VAlign_Center)
+                .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
+                [
+                    SNew(STextBlock)
+                        .Text(InText)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                        .ColorAndOpacity(InInk)
+                ];
+        };
+
+        switch (Get_Selection().ProviderChipStyle)
+        {
+            case ECkDebugAxis_ProviderChipStyle::Tint:
+                return Make_Pill(InProviderColor, ChipInk);
+
+            case ECkDebugAxis_ProviderChipStyle::Solid:
+                return Make_Pill(InProviderColor, CkStyle::TextStrong());
+
+            // The card's provider label is ALREADY the abbreviation, so this option is the
+            // pill-less reading of it rather than a second truncation.
+            case ECkDebugAxis_ProviderChipStyle::AbbrevOnly:
+                return SNew(STextBlock)
+                    .Text(InText)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                    .ColorAndOpacity(InProviderColor);
+        }
+
+        return Make_Pill(InProviderColor, ChipInk);
+    }
+
+    // ChipStyle, for the field chips. Tint is the chip exactly as the card shipped.
+    auto Make_FieldChip(
+        const TSharedRef<SWidget>& InContent,
+        const FLinearColor&        InProviderColor) -> TSharedRef<SWidget>
+    {
+        const auto Padding = FMargin{ CkStyle::SpaceS, 1.0f };
+
+        const auto Make_Filled = [&](const FLinearColor& InFill) -> TSharedRef<SWidget>
+        {
+            return SNew(SBorder)
+                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderBackgroundColor(InFill)
+                .VAlign(VAlign_Center)
+                .Padding(Padding)
+                [
+                    InContent
+                ];
+        };
+
+        switch (Get_Selection().ChipStyle)
+        {
+            case ECkDebugAxis_ChipStyle::Tint:
+                return Make_Filled(CkStyle::OverlayOf(InProviderColor, 0.18f));
+
+            case ECkDebugAxis_ChipStyle::Solid:
+                return Make_Filled(CkStyle::OverlayOf(InProviderColor, 0.75f));
+
+            case ECkDebugAxis_ChipStyle::Outline:
+                return SNew(SBorder)
+                    .BorderImage(CkStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(InProviderColor)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ 1.0f })
+                    [
+                        SNew(SBorder)
+                            .BorderImage(CkStyle::GetRoundedBrush())
+                            .BorderBackgroundColor(CkStyle::Bg2())
+                            .VAlign(VAlign_Center)
+                            .Padding(Padding)
+                            [
+                                InContent
+                            ]
+                    ];
+
+            case ECkDebugAxis_ChipStyle::TextOnly:
+                return InContent;
+        }
+
+        return Make_Filled(CkStyle::OverlayOf(InProviderColor, 0.18f));
+    }
+
+    // BadgeStyle, for the merged-row count badge.
+    auto Make_Badge(const FText& InText, int32 InFontSize) -> TSharedRef<SWidget>
+    {
+        const auto Tone = CkStyle::GetToneColor(ECk_Tone::Neutral);
+
+        const auto Make_Label = [&](const FLinearColor& InInk) -> TSharedRef<SWidget>
+        {
+            return SNew(STextBlock)
+                .Text(InText)
+                .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                .ColorAndOpacity(InInk);
+        };
+
+        switch (Get_Selection().BadgeStyle)
+        {
+            case ECkDebugAxis_BadgeStyle::Solid:
+                return SNew(SBorder)
+                    .BorderImage(CkStyle::GetRoundedBrush_Small())
+                    .BorderBackgroundColor(Tone)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
+                    [
+                        Make_Label(CkStyle::TextStrong())
+                    ];
+
+            case ECkDebugAxis_BadgeStyle::Hollow:
+                return SNew(SBorder)
+                    .BorderImage(CkStyle::GetRoundedBrush_Small())
+                    .BorderBackgroundColor(Tone)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ 1.0f })
+                    [
+                        SNew(SBorder)
+                            .BorderImage(CkStyle::GetRoundedBrush_Small())
+                            .BorderBackgroundColor(CkStyle::Bg2())
+                            .VAlign(VAlign_Center)
+                            .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
+                            [
+                                Make_Label(Tone)
+                            ]
+                    ];
+
+            case ECkDebugAxis_BadgeStyle::CountOnly:
+                return Make_Label(Tone);
+        }
+
+        return Make_Label(Tone);
+    }
+
+    // MergeCountDisplay. SuffixText reproduces the card's muted-italic xN exactly, including
+    // the font scaling the library helper cannot express. Null = render no slot at all.
+    auto Make_MergeCount(int32 InCount, int32 InFontSize) -> TSharedPtr<SWidget>
+    {
+        if (InCount <= 1)
+        { return nullptr; }
+
+        switch (Get_Selection().MergeCountDisplay)
+        {
+            // "x" here is MULTIPLICATION SIGN (U+00D7), same literal-UTF-8 convention as
+            // FocusCard_Constants::BreadcrumbSeparator.
+            case ECkDebugAxis_MergeCountDisplay::SuffixText:
+                return SNew(STextBlock)
+                    .Text(FText::FromString(FString::Printf(TEXT("×%d"), InCount)))
+                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", InFontSize))
+                    .ColorAndOpacity(CkStyle::TextMute());
+
+            case ECkDebugAxis_MergeCountDisplay::CountBadge:
+                return Make_Badge(FText::AsNumber(InCount), InFontSize);
+
+            case ECkDebugAxis_MergeCountDisplay::Hidden:
+                return nullptr;
+        }
+
+        return SNew(STextBlock)
+            .Text(FText::FromString(FString::Printf(TEXT("×%d"), InCount)))
+            .Font(FCoreStyle::GetDefaultFontStyle("Italic", InFontSize))
+            .ColorAndOpacity(CkStyle::TextMute());
+    }
 }
 
 // ====================================================================================================================
@@ -144,7 +363,8 @@ auto
 
     _ContentBox->AddSlot()
         .AutoHeight()
-        .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
+        .Padding(ck_debugoverlay_focuscard::Apply_RowDensity(
+            FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
         [
             HeaderRow
         ];
@@ -163,9 +383,20 @@ auto
     // FCk_Entity::Get_EntityNumber() returns the entt entity index (uint32-compatible).
     const auto EntityId = static_cast<uint32>(InModel.Entity.Get_Entity().Get_EntityNumber());
 
-    // Legend entries for the providers actually rendered — one per PROVIDER, however many
-    // sections it contributed (subtree aggregation repeats a provider once per source).
-    const auto LegendEntries = Build_LegendEntries(SortedSections);
+    // LegendMode. Deduped (the default) keeps P0's one-entry-per-PROVIDER strip; PerSection
+    // restores the pre-P0 reading where every rendered section gets its own entry; Off skips
+    // the strip entirely and builds nothing.
+    const auto& Selection = ck_debugoverlay_focuscard::Get_Selection();
+
+    const auto LegendEntries = [&]() -> TArray<FCk_DebugOverlay_LegendEntry>
+    {
+        if (NOT ck::debug_axes::Legend_IsVisible(Selection))
+        { return {}; }
+
+        return ck::debug_axes::Legend_IsDeduped(Selection)
+            ? Build_LegendEntries(SortedSections)
+            : Build_LegendEntries_PerSection(SortedSections);
+    }();
 
     auto InputRowCount = 0;
     for (const auto& Section : InModel.Sections)
@@ -194,22 +425,13 @@ auto
         auto SectionRow = SNew(SWrapBox)
             .PreferredSize(_WrapWidth);
 
-        // Provider chip — solid provider-colored pill with dark text.
+        // Provider chip — ProviderChipStyle axis; Tint is the shipped provider-colored pill.
         SectionRow->AddSlot()
             .VAlign(VAlign_Center)
             .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, CkStyle::SpaceXS })
             [
-                SNew(SBorder)
-                    .BorderImage(CkStyle::GetRoundedBrush())
-                    .BorderBackgroundColor(ProviderColor)
-                    .VAlign(VAlign_Center)
-                    .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
-                    [
-                        SNew(STextBlock)
-                            .Text(ProviderName)
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
-                            .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
-                    ]
+                ck_debugoverlay_focuscard::Make_ProviderChip(
+                    ProviderName, ProviderColor, ScaledFont(CkStyle::FontSizeMicro()))
             ];
 
         // Source chip — dim sub-entity name when the section came from a descendant
@@ -227,8 +449,8 @@ auto
                 ];
         }
 
-        // Field chips share a provider-tinted background + key color.
-        const auto FieldChipTint = CkStyle::OverlayOf(ProviderColor, 0.18f);
+        // Field chips share a provider-derived key color; the chip's own fill is the
+        // ChipStyle axis' business (Make_FieldChip below).
         const auto FieldKeyColor = CkStyle::OverlayOf(ProviderColor, 0.95f);
 
         for (const auto& Row : Section.Rows)
@@ -313,20 +535,18 @@ auto
                 ];
 
             // Merge multiplier — this row stands for N identical rows across the lifetime
-            // subtree. Same muted/italic treatment as the "+N more" overflow line, so it
-            // reads as annotation rather than data.
-            if (Row.MergedCount > 1)
+            // subtree. MergeCountDisplay axis; SuffixText keeps the muted/italic treatment
+            // shared with the "+N more" overflow line, so it reads as annotation not data.
+            // Null means the axis renders nothing — skip the slot rather than pad an empty one.
+            if (const auto MergeCount = ck_debugoverlay_focuscard::Make_MergeCount(
+                    Row.MergedCount, ScaledFont(CkStyle::FontSizeMicro()));
+                MergeCount.IsValid())
             {
                 ChipInner->AddSlot()
                     .AutoWidth().VAlign(VAlign_Center)
                     .Padding(FMargin{ CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f })
                     [
-                        SNew(STextBlock)
-                            // "×" = MULTIPLICATION SIGN (U+00D7), same literal-UTF-8 convention
-                            // as BreadcrumbSeparator above.
-                            .Text(FText::FromString(FString::Printf(TEXT("×%d"), Row.MergedCount)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
-                            .ColorAndOpacity(CkStyle::TextMute())
+                        MergeCount.ToSharedRef()
                     ];
             }
 
@@ -334,14 +554,7 @@ auto
                 .VAlign(VAlign_Center)
                 .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS })
                 [
-                    SNew(SBorder)
-                        .BorderImage(CkStyle::GetRoundedBrush())
-                        .BorderBackgroundColor(FieldChipTint)
-                        .VAlign(VAlign_Center)
-                        .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
-                        [
-                            ChipInner
-                        ]
+                    ck_debugoverlay_focuscard::Make_FieldChip(ChipInner, ProviderColor)
                 ];
         }
 
@@ -356,7 +569,8 @@ auto
 
         _ContentBox->AddSlot()
             .AutoHeight()
-            .Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
+            .Padding(ck_debugoverlay_focuscard::Apply_RowDensity(
+                FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
             [
                 SectionRow
             ];
@@ -472,6 +686,37 @@ auto
         const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(Section.ProviderTag);
 
         IndexOf.Add(Section.ProviderTag, Entries.Num());
+        Entries.Add(FCk_DebugOverlay_LegendEntry{
+            ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
+            ProviderLeaf,
+            Get_ProviderColor(Section.ProviderTag),
+            1 });
+    }
+
+    return Entries;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDebugOverlay_FocusCard::
+    Build_LegendEntries_PerSection(
+        const TArray<FCk_DebugOverlay_Section>& InSections)
+    -> TArray<FCk_DebugOverlay_LegendEntry>
+{
+    auto Entries = TArray<FCk_DebugOverlay_LegendEntry>{};
+
+    for (const auto& Section : InSections)
+    {
+        // Same skip as the render loop and as the deduped builder — a section that draws
+        // nothing must not claim a legend slot under any LegendMode.
+        if (Section.Rows.IsEmpty() && Section.OmittedRowCount == 0)
+        { continue; }
+
+        const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(Section.ProviderTag);
+
+        // SectionCount stays 1 by construction: with one entry per section there is nothing
+        // to count, so the xN annotation never renders in this mode.
         Entries.Add(FCk_DebugOverlay_LegendEntry{
             ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
             ProviderLeaf,

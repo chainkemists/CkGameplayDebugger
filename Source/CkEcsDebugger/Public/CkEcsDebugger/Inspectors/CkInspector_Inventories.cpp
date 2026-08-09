@@ -1,13 +1,18 @@
 #include "CkInspector_Inventories.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkEcs/Entity/CkEntity.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkInventory/Inventory/CkInventory_Utils.h"
+#include "CkInventory/Inventory/DataOnly/CkInventory_DataOnly_Utils.h"
 #include "CkInventory/Item/CkItem_Utils.h"
 #include "CkInventory/Item/CkItem_Definition.h"
+#include "CkInventory/ItemTrait/Stackable/CkItemTrait_Stackable_Utils.h"
 
 #include "CkGrid/2dGridSystem/Grid/Ck2dGridSystem_Utils.h"
 #include "CkGrid/2dGridSystem/Cell/Ck2dGridCell_Utils.h"
+
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -32,44 +37,117 @@ FCkInspector_Inventories::~FCkInspector_Inventories()
     Close_AllSpatialGridPopups();
 }
 
-static constexpr FLinearColor Color_InventoryName = FLinearColor(0.55f, 0.78f, 0.95f);
-static constexpr FLinearColor Color_InventoryType = FLinearColor(0.75f, 0.75f, 0.75f);
-static constexpr FLinearColor Color_ItemName = FLinearColor(0.85f, 0.75f, 0.55f);
-static constexpr FLinearColor Color_DetachedItem = FLinearColor(0.95f, 0.45f, 0.25f);
-static constexpr FLinearColor Color_PendingRemovalItem = FLinearColor(0.75f, 0.65f, 0.45f);
+// =====================================================================================================================
 
-// ---- Distinct item colors (tetris-like palette) ----
-// 20 visually distinct hues with consistent saturation/brightness. Ordered so that
-// adjacent indices are far apart on the color wheel — this helps when the hash-into-palette
-// produces near-neighbor collisions for typical small inventories.
-
-static const TArray<FLinearColor> ItemColors =
+namespace ck_inspector_inventories
 {
-    FLinearColor(0.20f, 0.60f, 0.85f),  // Blue
-    FLinearColor(0.85f, 0.45f, 0.20f),  // Orange
-    FLinearColor(0.30f, 0.75f, 0.40f),  // Green
-    FLinearColor(0.80f, 0.30f, 0.35f),  // Red
-    FLinearColor(0.65f, 0.45f, 0.80f),  // Purple
-    FLinearColor(0.85f, 0.75f, 0.25f),  // Yellow
-    FLinearColor(0.40f, 0.80f, 0.80f),  // Cyan
-    FLinearColor(0.85f, 0.50f, 0.65f),  // Pink
-    FLinearColor(0.50f, 0.85f, 0.30f),  // Lime
-    FLinearColor(0.90f, 0.55f, 0.30f),  // Amber
-    FLinearColor(0.35f, 0.50f, 0.90f),  // Indigo
-    FLinearColor(0.85f, 0.30f, 0.60f),  // Magenta
-    FLinearColor(0.25f, 0.80f, 0.60f),  // Teal
-    FLinearColor(0.90f, 0.65f, 0.20f),  // Gold
-    FLinearColor(0.55f, 0.75f, 0.95f),  // Sky
-    FLinearColor(0.75f, 0.35f, 0.20f),  // Rust
-    FLinearColor(0.60f, 0.85f, 0.70f),  // Mint
-    FLinearColor(0.80f, 0.60f, 0.90f),  // Lavender
-    FLinearColor(0.50f, 0.35f, 0.25f),  // Brown
-    FLinearColor(0.95f, 0.85f, 0.60f),  // Cream
-};
+    // ---- Palette ----
+    // This file used to own a private 20-color "tetris" palette plus six loose literals. Every one of them
+    // now resolves through CkStyle roles or a documented derivation:
+    //
+    //   Color_InventoryName -> CkStyle::Info()      spatial inventory header (the tier that owns a grid)
+    //   Color_InventoryType -> CkStyle::TextDim()   data-only inventory header (the quieter tier)
+    //   Color_ItemName      -> (dropped)            it tinted an always-empty value cell; item rows now
+    //                                               carry a stack pill in that cell instead
+    //   ItemColors[20]      -> Get_ItemTint()       hash -> HSV, the SAME idiom as
+    //                                               SCkDebug_EntityRef's Get_HashTint and the overlay's
+    //                                               provider hues, so an occupied grid cell and that item's
+    //                                               entity pill land on the same hue — and 256 hues retire
+    //                                               the old palette's near-neighbour-collision caveat
+    //   Color_CellEmpty     -> CkStyle::Bg3()       lightest background tier: an empty, usable cell
+    //   Color_CellDisabled  -> CkStyle::Bg1()       a tier darker: an unusable cell (border matches fill)
+    //   Color_CellBorder    -> CkStyle::Border()
+    //   Color_DetachedItem       -> CkStyle::Error() a lifetime child that is NOT an inventory member
+    //   Color_PendingRemovalItem -> CkStyle::Warn()  an item mid-destruction, still listed for diagnosis
+    //
+    // Occupied-cell borders stay a derivation of the item tint, held at half brightness.
+    constexpr auto ItemBorderDim = 0.5f;
 
-static constexpr FLinearColor Color_CellEmpty    = FLinearColor(0.12f, 0.12f, 0.12f);
-static constexpr FLinearColor Color_CellDisabled = FLinearColor(0.06f, 0.06f, 0.06f);
-static constexpr FLinearColor Color_CellBorder   = FLinearColor(0.25f, 0.25f, 0.25f);
+    auto Get_ItemTint(
+        const FCk_Handle& InItem)
+        -> FLinearColor
+    {
+        const auto Id  = static_cast<uint32>(InItem.Get_Entity().Get_ID());
+        const auto Hue = static_cast<uint8>(GetTypeHash(Id) % 256);
+        return FLinearColor::MakeFromHSV8(Hue, 150, 205);
+    }
+
+    // ---- Spatial cell occupancy ----
+
+    struct FCellOccupancy
+    {
+        int32 Occupied = 0;
+        int32 Active   = 0;
+    };
+
+    // Occupancy is an O(W*H) walk, so the meter's fraction and its value text share one ROW-OWNED cache
+    // refreshed at most once per engine frame (Slate evaluates a row's attributes several times per frame:
+    // desired-size pass, then paint). The cache dies with the row — nothing for OnDeactivated to release.
+    struct FCellOccupancyCache
+    {
+        FCellOccupancy Value;
+        uint64         Frame = TNumericLimits<uint64>::Max();
+    };
+
+    auto Get_CellOccupancy(
+        const FCk_Handle_Inventory_Spatial& InInventory,
+        const TSharedRef<FCellOccupancyCache>& InCache)
+        -> FCellOccupancy
+    {
+        if (InCache->Frame == GFrameCounter)
+        { return InCache->Value; }
+
+        InCache->Frame = GFrameCounter;
+        InCache->Value = FCellOccupancy{};
+
+        if (ck::Is_NOT_Valid(InInventory))
+        { return InCache->Value; }
+
+        const auto GridHandle = UCk_Utils_Inventory_Spatial_UE::Get_Grid(InInventory);
+
+        if (ck::Is_NOT_Valid(GridHandle))
+        { return InCache->Value; }
+
+        UCk_Utils_2dGridSystem_UE::ForEach_Cell(GridHandle, ECk_2dGridSystem_CellFilter::OnlyActiveCells,
+            [&InCache](FCk_Handle_2dGridCell InCell)
+            {
+                ++InCache->Value.Active;
+
+                if (ck::IsValid(ck::TUtils_InventorySlot_ItemRef::Get_StoredEntity(InCell)))
+                { ++InCache->Value.Occupied; }
+            });
+
+        return InCache->Value;
+    }
+
+    // ---- Item stack pill ----
+    // Only stackable items get a pill — a "x1" on every unique item would be noise. Full stacks read Warn
+    // because that is the actionable fact when debugging a failed insert; partial stacks read Info.
+
+    auto Get_StackPillText(
+        const FCk_Handle_Item& InItem)
+        -> FText
+    {
+        if (ck::Is_NOT_Valid(InItem))
+        { return FText::GetEmpty(); }
+
+        const auto Count = UCk_Utils_ItemTrait_Stackable_UE::Get_StackCount(InItem);
+
+        return UCk_Utils_ItemTrait_Stackable_UE::Get_HasMaxStackSize(InItem)
+            ? FText::FromString(ck::Format_UE(TEXT("{} / {}"), Count, UCk_Utils_ItemTrait_Stackable_UE::Get_MaxStackSize(InItem)))
+            : FText::FromString(ck::Format_UE(TEXT("\u00D7{}"), Count));
+    }
+
+    auto Get_StackPillTone(
+        const FCk_Handle_Item& InItem)
+        -> ECk_Tone
+    {
+        if (ck::Is_NOT_Valid(InItem))
+        { return ECk_Tone::Neutral; }
+
+        return UCk_Utils_ItemTrait_Stackable_UE::Get_IsStackFull(InItem) ? ECk_Tone::Warn : ECk_Tone::Info;
+    }
+}
 
 // =====================================================================================================================
 
@@ -288,7 +366,7 @@ auto FCkInspector_Inventories::PopulateInventoryGrid(
 
         const auto TypeStr     = IsSpatial ? TEXT("Spatial") : TEXT("DataOnly");
         const auto HeaderLabel = FText::FromString(ck::Format_UE(TEXT("{} ({})"), InventoryHandle.ToString(), TypeStr));
-        const auto HeaderColor = IsSpatial ? Color_InventoryName : Color_InventoryType;
+        const auto HeaderColor = IsSpatial ? CkStyle::Info() : CkStyle::TextDim();
 
         const auto SelectInventoryClick = [WeakSelectionModel, InventoryHandle]()
         {
@@ -347,6 +425,30 @@ auto FCkInspector_Inventories::PopulateInventoryGrid(
                 ];
 
             Builder.AddClickableWidgetRow(HeaderLabel, ValueRow, SelectInventoryClick);
+
+            // Cell occupancy is the bounded quantity a spatial inventory actually has — item COUNT says
+            // nothing about how full the grid is once footprints differ.
+            if (ck::IsValid(SpatialHandle))
+            {
+                const auto CapturedSpatial = SpatialHandle;
+                const auto Cache = MakeShared<ck_inspector_inventories::FCellOccupancyCache>();
+
+                Builder.AddMeterRow(
+                    FText::FromString(TEXT("  Cells:")),
+                    TAttribute<float>::CreateLambda([CapturedSpatial, Cache]() -> float
+                    {
+                        const auto Occupancy = ck_inspector_inventories::Get_CellOccupancy(CapturedSpatial, Cache);
+                        return Occupancy.Active > 0
+                            ? static_cast<float>(Occupancy.Occupied) / static_cast<float>(Occupancy.Active)
+                            : 0.0f;
+                    }),
+                    ECk_Tone::Accent,
+                    TAttribute<FText>::CreateLambda([CapturedSpatial, Cache]() -> FText
+                    {
+                        const auto Occupancy = ck_inspector_inventories::Get_CellOccupancy(CapturedSpatial, Cache);
+                        return FText::FromString(ck::Format_UE(TEXT("{} / {}"), Occupancy.Occupied, Occupancy.Active));
+                    }));
+            }
         }
         else
         {
@@ -358,6 +460,34 @@ auto FCkInspector_Inventories::PopulateInventoryGrid(
                 },
                 HeaderColor,
                 SelectInventoryClick);
+
+            // A data-only inventory is only meter-able when it declares a bound; unbounded ones keep the
+            // plain count above. Boundedness is config, so the choice is made once at compose time.
+            auto MutableInvHandle = InventoryHandle;
+            const auto DataOnlyHandle = UCk_Utils_Inventory_DataOnly_UE::Cast(MutableInvHandle);
+            const auto BoundMax = ck::IsValid(DataOnlyHandle)
+                ? UCk_Utils_Inventory_DataOnly_UE::Get_BoundMax(DataOnlyHandle)
+                : TOptional<int32>{};
+
+            if (BoundMax.IsSet() && BoundMax.GetValue() > 0)
+            {
+                const auto Bound = BoundMax.GetValue();
+
+                Builder.AddMeterRow(
+                    FText::FromString(TEXT("  Capacity:")),
+                    TAttribute<float>::CreateLambda([CapturedInventory, Bound]() -> float
+                    {
+                        if (ck::Is_NOT_Valid(CapturedInventory)) { return 0.0f; }
+                        return static_cast<float>(UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory)) / static_cast<float>(Bound);
+                    }),
+                    ECk_Tone::Accent,
+                    TAttribute<FText>::CreateLambda([CapturedInventory, Bound]() -> FText
+                    {
+                        if (ck::Is_NOT_Valid(CapturedInventory)) { return FText::FromString(TEXT("--")); }
+                        return FText::FromString(ck::Format_UE(TEXT("{} / {}"),
+                            UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory), Bound));
+                    }));
+            }
         }
 
         Host->AddSlot()
@@ -407,16 +537,36 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
             ? Definition->Get_CoreInfo().Get_Name().ToString()
             : ItemHandle.ToString();
         const auto ItemEntity = FCk_Handle{ItemHandle};
+        const auto ItemLabel  = FText::FromString(ck::Format_UE(TEXT("  {}"), ItemName));
 
-        Builder.AddClickableRow(
-            FText::FromString(ck::Format_UE(TEXT("  {}"), ItemName)),
-            [](const FCk_Handle& E) { return FText::GetEmpty(); },
-            Color_ItemName,
-            [WeakSelectionModel, ItemEntity]()
+        const auto SelectItemClick = [WeakSelectionModel, ItemEntity]()
+        {
+            if (WeakSelectionModel.IsValid() && ck::IsValid(ItemEntity))
             {
-                if (WeakSelectionModel.IsValid() && ck::IsValid(ItemEntity))
-                { WeakSelectionModel->Set_SelectedEntities({ ItemEntity }); }
-            });
+                WeakSelectionModel->Set_SelectedEntities({ ItemEntity });
+            }
+        };
+
+        if (UCk_Utils_ItemTrait_Stackable_UE::Get_IsStackable(ItemHandle))
+        {
+            const auto CapturedItem = ItemHandle;
+
+            Builder.AddClickableWidgetRow(
+                ItemLabel,
+                SNew(SCkDebug_StatusPill)
+                    .Text_Lambda([CapturedItem]() { return ck_inspector_inventories::Get_StackPillText(CapturedItem); })
+                    .Tone_Lambda([CapturedItem]() { return ck_inspector_inventories::Get_StackPillTone(CapturedItem); })
+                    .ShowDot(false),
+                SelectItemClick);
+        }
+        else
+        {
+            Builder.AddClickableRow(
+                ItemLabel,
+                [](const FCk_Handle& E) { return FText::GetEmpty(); },
+                CkStyle::Text(),
+                SelectItemClick);
+        }
     }
 
     for (const auto& PendingItemEntity : ck_inspector_inventories::Get_PendingRemovalLifetimeOwnedItems(Inventory))
@@ -437,7 +587,7 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
             {
                 return FText::FromString(TEXT("entity is being destroyed"));
             },
-            Color_PendingRemovalItem,
+            CkStyle::Warn(),
             [WeakSelectionModel, PendingItemEntity]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(PendingItemEntity))
@@ -463,7 +613,7 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
             {
                 return FText::FromString(TEXT("not an inventory member"));
             },
-            Color_DetachedItem,
+            CkStyle::Error(),
             [WeakSelectionModel, DetachedItemEntity]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(DetachedItemEntity))
@@ -481,8 +631,7 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
 // =====================================================================================================================
 
 static auto BuildGridPanel(
-    const FCk_Handle_2dGridSystem& InGridHandle,
-    const TMap<FCk_Handle, int32>& InItemColorMap) -> TSharedRef<SGridPanel>
+    const FCk_Handle_2dGridSystem& InGridHandle) -> TSharedRef<SGridPanel>
 {
     const auto Dims = UCk_Utils_2dGridSystem_UE::Get_Dimensions(InGridHandle);
     constexpr auto CellSize = 22.0f;
@@ -494,16 +643,16 @@ static auto BuildGridPanel(
         for (auto X = 0; X < Dims.X; ++X)
         {
             auto CellHandle = UCk_Utils_2dGridSystem_UE::Get_CellAt(InGridHandle, FIntPoint{X, Y});
-            auto CellColor = Color_CellEmpty;
+            auto CellColor = CkStyle::Bg3();
             auto TooltipText = FString::Printf(TEXT("(%d, %d)"), X, Y);
-            auto BorderColor = Color_CellBorder;
+            auto BorderColor = CkStyle::Border();
 
             if (ck::IsValid(CellHandle))
             {
                 if (UCk_Utils_2dGridCell_UE::Get_IsDisabled(CellHandle))
                 {
-                    CellColor = Color_CellDisabled;
-                    BorderColor = Color_CellDisabled;
+                    CellColor = CkStyle::Bg1();
+                    BorderColor = CkStyle::Bg1();
                     TooltipText += TEXT(" [Disabled]");
                 }
                 else if (ck::TUtils_InventorySlot_ItemRef::Has(CellHandle))
@@ -511,10 +660,8 @@ static auto BuildGridPanel(
                     auto StoredItem = ck::TUtils_InventorySlot_ItemRef::Get_StoredEntity(CellHandle);
                     if (ck::IsValid(StoredItem))
                     {
-                        const auto* Index = InItemColorMap.Find(StoredItem);
-                        const auto ItemIdx = Index ? *Index : 0;
-                        CellColor = ItemColors[ItemIdx % ItemColors.Num()];
-                        BorderColor = CellColor * 0.5f;
+                        CellColor = ck_inspector_inventories::Get_ItemTint(StoredItem);
+                        BorderColor = CellColor * ck_inspector_inventories::ItemBorderDim;
                         BorderColor.A = 1.0f;
 
                         if (const auto* Def = UCk_Utils_Item_UE::Get_Definition(StoredItem))
@@ -551,29 +698,6 @@ static auto BuildGridPanel(
 
 // =====================================================================================================================
 
-static auto BuildItemColorMap(const FCk_Handle_Inventory& InInventory) -> TMap<FCk_Handle, int32>
-{
-    const auto Items = UCk_Utils_Inventory_UE::Get_Items(InInventory);
-
-    // Derive each item's color index from the handle's hash so the color stays stable across
-    // refreshes — moving, adding, or removing other items doesn't recolor existing entries.
-    auto ItemColorMap = TMap<FCk_Handle, int32>{};
-
-    for (const auto& ItemHandle : Items)
-    {
-        if (ck::Is_NOT_Valid(ItemHandle))
-        { continue; }
-
-        const auto Hash = GetTypeHash(ItemHandle);
-        const auto ColorIndex = static_cast<int32>(Hash % static_cast<uint32>(ItemColors.Num()));
-        ItemColorMap.Add(ItemHandle, ColorIndex);
-    }
-
-    return ItemColorMap;
-}
-
-// =====================================================================================================================
-
 auto FCkInspector_Inventories::Build_SpatialGridContent(const FCk_Handle& InInventoryHandle) -> TSharedRef<SWidget>
 {
     auto MutableHandle = InInventoryHandle;
@@ -585,9 +709,9 @@ auto FCkInspector_Inventories::Build_SpatialGridContent(const FCk_Handle& InInve
     if (ck::Is_NOT_Valid(GridHandle))
     { return SNullWidget::NullWidget; }
 
-    const auto Inventory = UCk_Utils_Inventory_UE::CastChecked(MutableHandle);
-    const auto ItemColorMap = BuildItemColorMap(Inventory);
-    return BuildGridPanel(GridHandle, ItemColorMap);
+    // Each occupied cell takes its tint straight from the stored item's handle hash, so the color is stable
+    // across refreshes without a precomputed map — moving or removing other items never recolors an entry.
+    return BuildGridPanel(GridHandle);
 }
 
 // =====================================================================================================================

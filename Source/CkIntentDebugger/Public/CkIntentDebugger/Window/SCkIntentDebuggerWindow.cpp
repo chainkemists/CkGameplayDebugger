@@ -1,0 +1,505 @@
+#include "CkIntentDebugger/Window/SCkIntentDebuggerWindow.h"
+
+#include "CkIntentDebugger/CkIntentDebugger_Module.h"
+
+#include "CkIntentDebugger/ViewModel/CkIntentDebugger_ViewModel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_KeyStatePanel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_LayerStackPanel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_NearMissPanel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_ResolutionPanel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_TimelineDock.h"
+
+#include "CkCore/Format/CkFormat.h"
+#include "CkCore/Validation/CkIsValid.h"
+
+#include "CkInput/CkInputLayer_Utils.h"
+#include "CkInput/CkInputSource_Utils.h"
+
+#include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
+#include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "Framework/Docking/TabManager.h"
+#include "Styling/AppStyle.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/Text/STextBlock.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_intent_debugger_window
+{
+    constexpr auto PadS = 4.0f;
+    constexpr auto PadM = 8.0f;
+
+    const auto TabId_KeyState = FName{TEXT("KeyState")};
+    const auto TabId_Resolution = FName{TEXT("Resolution")};
+    const auto TabId_NearMiss = FName{TEXT("NearMiss")};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+const FName SCkIntentDebuggerWindow::WindowId = FName(TEXT("IntentDebugger"));
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Construct(
+        const FArguments& InArgs)
+    -> void
+{
+    Register_WithGate();
+
+    _ViewModel = MakeShared<FCkIntentDebugger_ViewModel>();
+    _ActiveTabId = ck_intent_debugger_window::TabId_KeyState;
+
+    _ViewModelChangedHandle = _ViewModel->OnChanged.AddSP(
+        this, &SCkIntentDebuggerWindow::HandleViewModelChanged);
+
+    ChildSlot
+    [
+        SNew(SCkDebug_WindowChrome)
+            .WindowId(Get_WindowId())
+            .ToolTabId(TEXT("CkIntentDebugger"))
+            .DisplayName(Get_WindowDisplayName())
+            .StatusText_Lambda([this]() { return Get_StatusText(); })
+            .ToolbarContent()
+            [
+                Build_Toolbar()
+            ]
+            .Content()
+            [
+                Build_Body()
+            ]
+    ];
+}
+
+SCkIntentDebuggerWindow::
+    ~SCkIntentDebuggerWindow()
+{
+    if (_ViewModel.IsValid() && _ViewModelChangedHandle.IsValid())
+    {
+        _ViewModel->OnChanged.Remove(_ViewModelChangedHandle);
+        _ViewModelChangedHandle.Reset();
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Build_Toolbar()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SBorder)
+        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+        .BorderBackgroundColor(CkStyle::Bg1())
+        .Padding(FMargin{ck_intent_debugger_window::PadS})
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(ck_intent_debugger_window::PadS, 0.0f)
+            [
+                SNew(SCkDebug_WorldSelector, _ViewModel->Get_WorldModel())
+                    .ShowHeaderLabel(false)
+            ]
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(ck_intent_debugger_window::PadM, 0.0f, ck_intent_debugger_window::PadS, 0.0f)
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(TEXT("Source:")))
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(CkStyle::TextDim())
+            ]
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+            [
+                SAssignNew(_SourceSelectorBox, SHorizontalBox)
+            ]
+
+            + SHorizontalBox::Slot().FillWidth(1.0f)
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(ck_intent_debugger_window::PadM, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(SCkDebugger_RefreshControls)
+                    .WindowId(SCkIntentDebuggerWindow::WindowId)
+            ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Build_Body()
+    -> TSharedRef<SWidget>
+{
+    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
+
+    Tabs.Add(FCkDebug_UnderlineTabDesc{
+        ck_intent_debugger_window::TabId_KeyState, FText::FromString(TEXT("Key / State"))});
+
+    Tabs.Add(FCkDebug_UnderlineTabDesc{
+        ck_intent_debugger_window::TabId_Resolution, FText::FromString(TEXT("Resolution table"))});
+
+    auto NearMissTab = FCkDebug_UnderlineTabDesc{
+        ck_intent_debugger_window::TabId_NearMiss, FText::FromString(TEXT("Near misses"))};
+
+    NearMissTab.CountText = TAttribute<FText>::CreateLambda([this]()
+    {
+        const auto* Layer = _ViewModel.IsValid() ? _ViewModel->TryGet_SelectedLayer() : nullptr;
+        return Layer != nullptr && NOT Layer->ScanDiagnostics.IsEmpty()
+            ? FText::AsNumber(Layer->ScanDiagnostics.Num())
+            : FText::GetEmpty();
+    });
+
+    NearMissTab.ShowWarnDot = TAttribute<bool>::CreateLambda([this]()
+    {
+        return _ViewModel.IsValid() && NOT _ViewModel->Get_Snapshot().ScanDiagnosticsEnabled;
+    });
+
+    Tabs.Add(MoveTemp(NearMissTab));
+
+    return SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+
+        + SSplitter::Slot().Value(0.32f)
+        [
+            SNew(SBorder)
+                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+                .BorderBackgroundColor(CkStyle::Bg2())
+            [
+                SNew(SVerticalBox)
+
+                + SVerticalBox::Slot().AutoHeight()
+                [
+                    SNew(SCkDebug_SectionHeader)
+                        .Label(FText::FromString(TEXT("Layer stack")))
+                        .SubText(FText::FromString(TEXT("top-down · first Consume wins")))
+                        .Underline(true)
+                ]
+
+                + SVerticalBox::Slot().FillHeight(1.0f)
+                [
+                    SAssignNew(_LayerStackPanel, SCkIntentDebugger_LayerStackPanel)
+                        .ViewModel(_ViewModel)
+                ]
+            ]
+        ]
+
+        + SSplitter::Slot().Value(0.68f)
+        [
+            SNew(SVerticalBox)
+
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                SAssignNew(_TimelineDock, SCkIntentDebugger_TimelineDock)
+                    .ViewModel(_ViewModel)
+            ]
+
+            + SVerticalBox::Slot().AutoHeight().Padding(ck_intent_debugger_window::PadM, 0.0f)
+            [
+                SNew(SCkDebug_UnderlineTabs)
+                    .Tabs(Tabs)
+                    .ActiveTabId_Lambda([this]() { return _ActiveTabId; })
+                    .OnTabSelected_Lambda([this](FName InTabId)
+                    {
+                        _ActiveTabId = InTabId;
+
+                        if (NOT _DetailSwitcher.IsValid())
+                        { return; }
+
+                        if (InTabId == ck_intent_debugger_window::TabId_Resolution)
+                        { _DetailSwitcher->SetActiveWidgetIndex(1); }
+                        else if (InTabId == ck_intent_debugger_window::TabId_NearMiss)
+                        { _DetailSwitcher->SetActiveWidgetIndex(2); }
+                        else
+                        { _DetailSwitcher->SetActiveWidgetIndex(0); }
+                    })
+            ]
+
+            + SVerticalBox::Slot().FillHeight(1.0f)
+            [
+                SAssignNew(_DetailSwitcher, SWidgetSwitcher)
+
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(_KeyStatePanel, SCkIntentDebugger_KeyStatePanel)
+                        .ViewModel(_ViewModel)
+                ]
+
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(_ResolutionPanel, SCkIntentDebugger_ResolutionPanel)
+                        .ViewModel(_ViewModel)
+                ]
+
+                + SWidgetSwitcher::Slot()
+                [
+                    SAssignNew(_NearMissPanel, SCkIntentDebugger_NearMissPanel)
+                        .ViewModel(_ViewModel)
+                ]
+            ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Tick(
+        const FGeometry& InAllottedGeometry,
+        double InCurrentTime,
+        float InDeltaTime)
+    -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+    { return; }
+
+    if (NOT _ViewModel.IsValid())
+    { return; }
+
+    _ViewModel->Tick();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    OpenForEntity(
+        const FCk_Handle& InEntity)
+    -> void
+{
+    if (ck::Is_NOT_Valid(InEntity))
+    { return; }
+
+    auto Entity = InEntity;
+
+    auto LocalPlayerIndex = static_cast<int32>(INDEX_NONE);
+    auto LayerPriority = MIN_int32;
+
+    if (const auto Layer = UCk_Utils_InputLayer_UE::Cast(Entity);
+        ck::IsValid(Layer))
+    {
+        LayerPriority = UCk_Utils_InputLayer_UE::Get_Priority(Layer);
+
+        const auto Source = UCk_Utils_InputLayer_UE::Get_InputSource(Layer);
+        if (ck::IsValid(Source))
+        { LocalPlayerIndex = UCk_Utils_InputSource_UE::Get_LocalPlayerIndex(Source); }
+    }
+    else if (const auto Source = UCk_Utils_InputSource_UE::Cast(Entity);
+             ck::IsValid(Source))
+    {
+        LocalPlayerIndex = UCk_Utils_InputSource_UE::Get_LocalPlayerIndex(Source);
+    }
+
+    if (LocalPlayerIndex == INDEX_NONE)
+    { return; }
+
+    // The module's OnSpawnDebuggerTab is what creates the live window and stores it, so this MUST run before we
+    // ask the module for the window pointer.
+    FGlobalTabmanager::Get()->TryInvokeTab(FCkIntentDebuggerModule::Get_TabName());
+
+    const auto Window = FCkIntentDebuggerModule::Get().Get_DebuggerWindow();
+    if (NOT Window.IsValid())
+    { return; }
+
+    Window->Set_PendingTarget(LocalPlayerIndex, LayerPriority);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Set_PendingTarget(
+        int32 InLocalPlayerIndex,
+        int32 InLayerPriority)
+    -> void
+{
+    _PendingLocalPlayerIndex = InLocalPlayerIndex;
+    _PendingLayerPriority = InLayerPriority;
+    _HasPendingTarget = true;
+
+    DoApply_PendingTarget();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    DoApply_PendingTarget()
+    -> void
+{
+    if (NOT _HasPendingTarget || NOT _ViewModel.IsValid())
+    { return; }
+
+    const auto& Sources = _ViewModel->Get_Snapshot().Sources;
+
+    auto SourceIndex = static_cast<int32>(INDEX_NONE);
+    for (auto Index = 0; Index < Sources.Num(); ++Index)
+    {
+        if (Sources[Index].LocalPlayerIndex != _PendingLocalPlayerIndex)
+        { continue; }
+
+        SourceIndex = Index;
+        break;
+    }
+
+    // The collector may not have run yet on a just-opened tab. Keep waiting rather than dropping the request.
+    if (SourceIndex == INDEX_NONE)
+    { return; }
+
+    const auto WantedLayerPriority = _PendingLayerPriority;
+
+    // Resolved against the snapshot BEFORE any setter runs — a setter broadcasts, and reading a snapshot
+    // reference across a broadcast is how a dangling read starts.
+    auto HasWantedLayer = false;
+    for (const auto& Layer : Sources[SourceIndex].Layers)
+    {
+        if (Layer.Priority != WantedLayerPriority)
+        { continue; }
+
+        HasWantedLayer = true;
+        break;
+    }
+
+    // Cleared BEFORE the setters, because each one broadcasts OnChanged straight back into this function.
+    _HasPendingTarget = false;
+    _PendingLocalPlayerIndex = INDEX_NONE;
+    _PendingLayerPriority = MIN_int32;
+
+    _ViewModel->Set_SelectedSourceIndex(SourceIndex);
+
+    if (HasWantedLayer)
+    { _ViewModel->Set_SelectedLayerPriority(WantedLayerPriority); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    HandleViewModelChanged()
+    -> void
+{
+    DoApply_PendingTarget();
+
+    Refresh_SourceSelector();
+
+    if (_LayerStackPanel.IsValid())
+    { _LayerStackPanel->RefreshFromViewModel(); }
+
+    if (_TimelineDock.IsValid())
+    { _TimelineDock->RefreshFromViewModel(); }
+
+    if (_ResolutionPanel.IsValid())
+    { _ResolutionPanel->RefreshFromViewModel(); }
+
+    if (_NearMissPanel.IsValid())
+    { _NearMissPanel->RefreshFromViewModel(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Refresh_SourceSelector()
+    -> void
+{
+    if (NOT _SourceSelectorBox.IsValid() || NOT _ViewModel.IsValid())
+    { return; }
+
+    const auto Count = _ViewModel->Get_Snapshot().Sources.Num();
+    if (Count == _LastSourceCount)
+    { return; }
+
+    _LastSourceCount = Count;
+    _SourceSelectorBox->ClearChildren();
+
+    if (Count == 0)
+    {
+        _SourceSelectorBox->AddSlot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(STextBlock)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(CkStyle::TextMute())
+                .Text(FText::FromString(TEXT("none")))
+        ];
+
+        return;
+    }
+
+    for (auto Index = 0; Index < Count; ++Index)
+    {
+        const auto Label = _ViewModel->Get_Snapshot().Sources[Index].Label;
+
+        _SourceSelectorBox->AddSlot().AutoWidth().VAlign(VAlign_Center)
+            .Padding(ck_intent_debugger_window::PadS, 0.0f)
+        [
+            SNew(SButton)
+                .Text(FText::FromString(Label))
+                .OnClicked_Lambda([this, Index]()
+                {
+                    _ViewModel->Set_SelectedSourceIndex(Index);
+                    return FReply::Handled();
+                })
+                .ButtonColorAndOpacity_Lambda([this, Index]()
+                {
+                    return FSlateColor{_ViewModel->Get_SelectedSourceIndex() == Index
+                        ? CkStyle::Selection()
+                        : CkStyle::Bg3()};
+                })
+        ];
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
+    Get_StatusText() const
+    -> FText
+{
+    if (NOT _ViewModel.IsValid())
+    { return FText::GetEmpty(); }
+
+    const auto& Snapshot = _ViewModel->Get_Snapshot();
+
+    if (NOT Snapshot.HasWorld)
+    { return FText::FromString(TEXT("No running world. Start PIE to record intents.")); }
+
+    const auto* Source = _ViewModel->TryGet_SelectedSource();
+    if (Source == nullptr)
+    { return FText::FromString(TEXT("No input source. The subsystem creates one once the local player has a controller.")); }
+
+    if (NOT Source->HasSampler)
+    {
+        return FText::FromString(TEXT(
+            "Input source has no IntentSampler — no frame record is being written on this source."));
+    }
+
+    return FText::FromString(ck::Format_UE(
+        TEXT("{} · {} frame(s) of {} · {} layer(s) · scan diagnostics {}"),
+        Source->Label,
+        Source->FrameCount,
+        Source->RingCapacity,
+        Source->Layers.Num(),
+        Snapshot.ScanDiagnosticsEnabled ? TEXT("ON") : TEXT("OFF")));
+}
+
+// --------------------------------------------------------------------------------------------------------------------

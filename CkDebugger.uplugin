@@ -147,6 +147,16 @@
 			]
 		},
 		{
+			"Name": "CkIntentDebugger",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkObjectPoolingDebugger",
 			"Type": "UncookedOnly",
 			"LoadingPhase": "Default",

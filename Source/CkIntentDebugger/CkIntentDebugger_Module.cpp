@@ -1,0 +1,236 @@
+#include "CkIntentDebugger_Module.h"
+
+#include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Validation/CkIsValid.h"
+
+#include "CkIntentDebugger/Window/SCkIntentDebuggerWindow.h"
+
+#include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+
+#include "CkInput/CkInputLayer_Utils.h"
+#include "CkInput/CkInputSource_Utils.h"
+
+#include "Framework/Docking/TabManager.h"
+#include "Widgets/Docking/SDockTab.h"
+#include "WorkspaceMenuStructure.h"
+#include "WorkspaceMenuStructureModule.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+#define LOCTEXT_NAMESPACE "FCkIntentDebuggerModule"
+
+const FName FCkIntentDebuggerModule::_DebuggerTabName = FName("CkIntentDebugger");
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_intent_debugger_module
+{
+    // Both halves of what this debugger shows are entities: the input SOURCE owns the frame record and the button
+    // map, and each LAYER owns its captures and (maybe) a matcher. Either one is a legitimate target, and the
+    // window derives the other from it.
+    auto
+        Is_IntentDebuggerEntity(
+            const FCk_Handle& InCandidate)
+        -> bool
+    {
+        if (ck::Is_NOT_Valid(InCandidate))
+        { return false; }
+
+        return UCk_Utils_InputLayer_UE::Has(InCandidate) || UCk_Utils_InputSource_UE::Has(InCandidate);
+    }
+
+    auto
+        Resolve_IntentTarget(
+            const FCk_Handle& InSelected)
+        -> FCk_Handle
+    {
+        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
+            [](const FCk_Handle& InCandidate) { return Is_IntentDebuggerEntity(InCandidate); });
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+static FAutoConsoleCommand CmdIntentDebugger(
+    TEXT("ck.IntentDebugger"),
+    TEXT("Opens (1) or closes (0) the CK Intent Debugger. Usage: ck.IntentDebugger [0/1]"),
+    FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& InArgs)
+    {
+        auto& Module = FCkIntentDebuggerModule::Get();
+
+        if (InArgs.IsEmpty())
+        {
+            Module.ToggleDebugger();
+            return;
+        }
+
+        const auto Value = FCString::Atoi(*InArgs[0]);
+
+        if (Value == 1) { Module.OpenDebugger(); }
+        else if (Value == 0) { Module.CloseDebugger(); }
+        else { Module.ToggleDebugger(); }
+    })
+);
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkIntentDebuggerModule::
+    StartupModule()
+    -> void
+{
+    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+        _DebuggerTabName,
+        FOnSpawnTab::CreateRaw(this, &FCkIntentDebuggerModule::OnSpawnDebuggerTab))
+        .SetDisplayName(FText::FromString(TEXT("CK Intent Debugger")))
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK Intent Debugger window")))
+        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+
+    _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
+        TEXT("CkIntentDebugger"),
+        _DebuggerTabName,
+        FText::FromString(TEXT("CK Intent Debugger")),
+        FText::FromString(TEXT("Inspect the frame record, layer stack, resolution tables, and near-missed intents")),
+        TEXT("Crosshair"),
+        ECkDebuggerToolCategory::Interface,
+        30});
+
+    _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
+        TEXT("CkIntentDebugger"), _DebuggerTabName,
+        [](const FCk_Handle& InEntity)
+        { return ck::IsValid(ck_intent_debugger_module::Resolve_IntentTarget(InEntity)); },
+        [](const FCk_Handle& InEntity)
+        { SCkIntentDebuggerWindow::OpenForEntity(ck_intent_debugger_module::Resolve_IntentTarget(InEntity)); }});
+
+    // The window and its ViewModel hold FCk_Handle values. By ShutdownModule the registry's shared state is already
+    // freed and ~FCk_Handle would release a dangling reference — so the tree goes down here, while it is still alive.
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
+        this, &FCkIntentDebuggerModule::HandleEnginePreExit);
+}
+
+auto
+    FCkIntentDebuggerModule::
+    ShutdownModule()
+    -> void
+{
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
+
+    FCkDebug_EntityTargetRegistry::Get().Unregister(_DebuggerTabName, _EntityTargetRouteRegistrationId);
+    _EntityTargetRouteRegistrationId = 0;
+
+    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    _DebuggerToolRegistrationId = 0;
+
+    if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
+    {
+        FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
+    }
+
+    _DebuggerWindow.Reset();
+    _DebuggerTab.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkIntentDebuggerModule::
+    Get()
+    -> FCkIntentDebuggerModule&
+{
+    return FModuleManager::GetModuleChecked<FCkIntentDebuggerModule>("CkIntentDebugger");
+}
+
+auto
+    FCkIntentDebuggerModule::
+    OpenDebugger()
+    -> void
+{
+    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+}
+
+auto
+    FCkIntentDebuggerModule::
+    CloseDebugger()
+    -> void
+{
+    if (_DebuggerTab.IsValid())
+    {
+        // Engine shutdown destroys Slate windows BEFORE module unload — by then the tab's TSharedFromThis backing
+        // is gone and RequestCloseTab -> SharedThis(this) trips the AsShared check. Just drop the ref on exit.
+        if (NOT IsEngineExitRequested())
+        { _DebuggerTab->RequestCloseTab(); }
+
+        _DebuggerTab.Reset();
+    }
+
+    _DebuggerWindow.Reset();
+}
+
+auto
+    FCkIntentDebuggerModule::
+    ToggleDebugger()
+    -> void
+{
+    if (IsDebuggerOpen())
+    { CloseDebugger(); }
+    else
+    { OpenDebugger(); }
+}
+
+auto
+    FCkIntentDebuggerModule::
+    IsDebuggerOpen() const
+    -> bool
+{
+    return _DebuggerWindow.IsValid() && _DebuggerTab.IsValid();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkIntentDebuggerModule::
+    HandleEnginePreExit()
+    -> void
+{
+    // Deliberately no RequestCloseTab: the editor's window teardown runs before UEngine::PreExit, so the tab's
+    // weak-self can already be cleared. Dropping the refs is what releases the handle-bearing tree in time.
+    _DebuggerTab.Reset();
+    _DebuggerWindow.Reset();
+}
+
+auto
+    FCkIntentDebuggerModule::
+    OnSpawnDebuggerTab(
+        const FSpawnTabArgs& InArgs)
+    -> TSharedRef<SDockTab>
+{
+    _DebuggerWindow = SNew(SCkIntentDebuggerWindow);
+
+    _DebuggerTab = SNew(SDockTab)
+        .TabRole(ETabRole::NomadTab)
+        .Label(FText::FromString(TEXT("CK Intent")))
+        .OnTabClosed_Lambda([this](TSharedRef<SDockTab>)
+        {
+            _DebuggerWindow.Reset();
+            _DebuggerTab.Reset();
+        })
+        [
+            _DebuggerWindow.ToSharedRef()
+        ];
+
+    _DebuggerWindow->Set_OwningTab(_DebuggerTab);
+
+    return _DebuggerTab.ToSharedRef();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+#undef LOCTEXT_NAMESPACE
+
+IMPLEMENT_MODULE(FCkIntentDebuggerModule, CkIntentDebugger)

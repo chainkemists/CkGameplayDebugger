@@ -19,7 +19,44 @@
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_ProbeTraces)
 
-static const FLinearColor Color_Trace = FLinearColor(0.6f, 0.4f, 1.0f);
+// =====================================================================================================================
+
+namespace ck_inspector_probetraces
+{
+    static auto Get_DirectionAndLength(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity))
+        { return FVector::ZeroVector; }
+
+        if (InEntity.Has<ck::FFragment_ProbeTrace_RayCast>())
+        { return InEntity.Get<ck::FFragment_ProbeTrace_RayCast>().Get_DirectionAndLength(); }
+
+        if (InEntity.Has<ck::FFragment_ProbeTrace_ShapeCast>())
+        { return InEntity.Get<ck::FFragment_ProbeTrace_ShapeCast>().Get_DirectionAndLength(); }
+
+        return FVector::ZeroVector;
+    }
+
+    // Three fixed-precision components in X/Y/Z order — same 3 decimals FVector::ToString printed —
+    // so the direction row's axis coloring lines up with the Transform inspector.
+    static auto Make_AxisComponents(
+        const FCk_Handle& InEntity)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InEntity, Axis]()
+            {
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), Get_DirectionAndLength(InEntity)[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+}
 
 // =====================================================================================================================
 
@@ -60,32 +97,13 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
         {
             return FText::FromString(IsRayCast ? TEXT("RayCast") : TEXT("ShapeCast"));
         },
-        Color_Trace);
+        CkStyle::Value_Enum());
 
     // ---- Direction
 
-    if (IsRayCast)
-    {
-        Builder.AddRow(
-            FText::FromString(TEXT("Direction:")),
-            [](const FCk_Handle& E)
-            {
-                const auto& Settings = E.Get<ck::FFragment_ProbeTrace_RayCast>();
-                return FText::FromString(Settings.Get_DirectionAndLength().ToString());
-            },
-            CkStyle::State_Config());
-    }
-    else
-    {
-        Builder.AddRow(
-            FText::FromString(TEXT("Direction:")),
-            [](const FCk_Handle& E)
-            {
-                const auto& Settings = E.Get<ck::FFragment_ProbeTrace_ShapeCast>();
-                return FText::FromString(Settings.Get_DirectionAndLength().ToString());
-            },
-            CkStyle::State_Config());
-    }
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Direction:")),
+        ck_inspector_probetraces::Make_AxisComponents(Entity));
 
     // ---- Trace Policy
 

@@ -18,6 +18,97 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Physics)
 
 // =====================================================================================================================
 
+namespace ck_inspector_physics
+{
+    // The handle is captured by value in every row attribute (rows are released on rebuild /
+    // OnDeactivated), so each read re-validates before touching the registry — the physics
+    // fragments are written every tick and the previous snapshot-at-build rows never moved.
+    static auto Get_Velocity(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_Velocity_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_Velocity_Current>().Get_CurrentVelocity();
+    }
+
+    static auto Get_Acceleration(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_Acceleration_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_Acceleration_Current>().Get_CurrentAcceleration();
+    }
+
+    static auto Get_PredictedVelocity(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_PredictedVelocity_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_CurrentVelocity();
+    }
+
+    static auto Get_PredictedPreviousLocation(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_PredictedVelocity_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_PreviousLocation();
+    }
+
+    static auto Get_DistanceOffset(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_EulerIntegrator_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_EulerIntegrator_Current>().Get_DistanceOffset();
+    }
+
+    // Three fixed-precision components in X/Y/Z order — same 3 decimals FVector::ToString printed —
+    // so AddAlignedNumericRow's index-based axis coloring lines up with the Transform inspector.
+    static auto Make_AxisComponents(
+        const FCk_Handle& InEntity,
+        TFunction<FVector(const FCk_Handle&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InEntity, InProjector, Axis]()
+            {
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), InProjector(InEntity)[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+
+    static auto Make_SpeedText(
+        const FCk_Handle& InEntity,
+        TFunction<FVector(const FCk_Handle&)> InProjector)
+        -> TAttribute<FText>
+    {
+        return TAttribute<FText>::CreateLambda([InEntity, InProjector]()
+        {
+            return FText::FromString(ck::Format_UE(TEXT("{:.2f}"), InProjector(InEntity).Size()));
+        });
+    }
+
+    static auto Make_SpeedSample(
+        const FCk_Handle& InEntity,
+        TFunction<FVector(const FCk_Handle&)> InProjector)
+        -> TAttribute<float>
+    {
+        return TAttribute<float>::CreateLambda([InEntity, InProjector]()
+        {
+            return static_cast<float>(InProjector(InEntity).Size());
+        });
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Physics::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Physics"));
@@ -39,20 +130,26 @@ auto FCkInspector_Physics::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
+    namespace inspector = ck_inspector_physics;
+
     auto Builder = FCkInspectorWidgetBuilder();
+
+    const auto CapturedEntity = Entity;
 
     // ---- Velocity ----
     if (Entity.Has<ck::FFragment_Velocity_Current>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Velocity")));
 
-        const auto Velocity = Entity.Get<ck::FFragment_Velocity_Current>().Get_CurrentVelocity();
-
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Current:")),
-            [Velocity](const FCk_Handle&)
-            { return FText::FromString(Velocity.ToString()); },
-            CkStyle::Value_Math());
+            inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_Velocity));
+
+        Builder.AddSparklineRow(
+            FText::FromString(TEXT("Speed:")),
+            inspector::Make_SpeedSample(CapturedEntity, &inspector::Get_Velocity),
+            ECk_Tone::Accent,
+            inspector::Make_SpeedText(CapturedEntity, &inspector::Get_Velocity));
     }
 
     // ---- Acceleration ----
@@ -60,13 +157,9 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
     {
         Builder.AddHeader(FText::FromString(TEXT("Acceleration")));
 
-        const auto Accel = Entity.Get<ck::FFragment_Acceleration_Current>().Get_CurrentAcceleration();
-
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Current:")),
-            [Accel](const FCk_Handle&)
-            { return FText::FromString(Accel.ToString()); },
-            CkStyle::Value_Math());
+            inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_Acceleration));
     }
 
     // ---- Predicted Velocity ----
@@ -74,27 +167,30 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
     {
         Builder.AddHeader(FText::FromString(TEXT("Predicted Velocity")));
 
-        const auto& Frag       = Entity.Get<ck::FFragment_PredictedVelocity_Current>();
-        const auto  PrevLoc    = Frag.Get_PreviousLocation();
-        const auto  CurVel     = Frag.Get_CurrentVelocity();
-        const auto  DeltaTime  = Frag.Get_PreviousDeltaTime();
-
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Velocity:")),
-            [CurVel](const FCk_Handle&)
-            { return FText::FromString(CurVel.ToString()); },
-            CkStyle::Value_Math());
+            inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_PredictedVelocity));
 
-        Builder.AddRow(
+        Builder.AddSparklineRow(
+            FText::FromString(TEXT("Speed:")),
+            inspector::Make_SpeedSample(CapturedEntity, &inspector::Get_PredictedVelocity),
+            ECk_Tone::Info,
+            inspector::Make_SpeedText(CapturedEntity, &inspector::Get_PredictedVelocity));
+
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Prev Location:")),
-            [PrevLoc](const FCk_Handle&)
-            { return FText::FromString(PrevLoc.ToString()); },
-            CkStyle::Value_Math());
+            inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_PredictedPreviousLocation));
 
         Builder.AddRow(
             FText::FromString(TEXT("Prev DeltaTime:")),
-            [DeltaTime](const FCk_Handle&)
-            { return FText::FromString(FString::Printf(TEXT("%.3f s"), DeltaTime.Get_Seconds())); },
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_PredictedVelocity_Current>())
+                { return FText::FromString(TEXT("--")); }
+
+                const auto DeltaTime = CapturedEntity.Get<ck::FFragment_PredictedVelocity_Current>().Get_PreviousDeltaTime();
+                return FText::FromString(FString::Printf(TEXT("%.3f s"), DeltaTime.Get_Seconds()));
+            },
             CkStyle::Value_Numeric());
     }
 
@@ -103,13 +199,9 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
     {
         Builder.AddHeader(FText::FromString(TEXT("Euler Integrator")));
 
-        const auto Offset = Entity.Get<ck::FFragment_EulerIntegrator_Current>().Get_DistanceOffset();
-
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Distance Offset:")),
-            [Offset](const FCk_Handle&)
-            { return FText::FromString(Offset.ToString()); },
-            CkStyle::Value_Math());
+            inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_DistanceOffset));
     }
 
     return Builder.Build(Entity);

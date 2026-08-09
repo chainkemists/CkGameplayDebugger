@@ -16,13 +16,22 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_OverlapBody)
 
 // =====================================================================================================================
 
-namespace
+namespace ck_inspector_overlapbody
 {
-    auto Format_EnableDisable_Color(ECk_EnableDisable InState) -> FLinearColor
+    static auto Get_EnableDisableTone(ECk_EnableDisable InState) -> ECk_Tone
     {
-        return InState == ECk_EnableDisable::Enable
-            ? CkStyle::Value_Bool_True()
-            : CkStyle::TextMute();
+        return InState == ECk_EnableDisable::Enable ? ECk_Tone::Ok : ECk_Tone::Neutral;
+    }
+
+    // A marker/sensor without a backing shape overlaps nothing — a defect, not a configuration.
+    static auto Get_ShapeTone(bool InIsValid) -> ECk_Tone
+    {
+        return InIsValid ? ECk_Tone::Ok : ECk_Tone::Err;
+    }
+
+    static auto Make_ShapeText(bool InIsValid) -> FText
+    {
+        return FText::FromString(InIsValid ? TEXT("Valid") : TEXT("None"));
     }
 }
 
@@ -56,38 +65,39 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const auto State = CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
-                { return CkStyle::None(); }
-                return Format_EnableDisable_Color(CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable());
-            });
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_overlapbody::Get_EnableDisableTone(
+                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable());
+            }));
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Shape:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
                 { return FText::FromString(TEXT("--")); }
-                const auto& Marker = CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker();
-                return FText::FromString(Marker.IsValid() ? TEXT("Valid") : TEXT("None"));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+                return ck_inspector_overlapbody::Make_ShapeText(
+                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker().IsValid());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
-                { return CkStyle::None(); }
-                const auto& Marker = CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker();
-                return Marker.IsValid() ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
-            });
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_overlapbody::Get_ShapeTone(
+                    CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_Marker().IsValid());
+            }));
     }
 
     // ---- Sensor ----
@@ -97,38 +107,39 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const auto State = CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return CkStyle::None(); }
-                return Format_EnableDisable_Color(CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable());
-            });
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_overlapbody::Get_EnableDisableTone(
+                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable());
+            }));
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Shape:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
                 { return FText::FromString(TEXT("--")); }
-                const auto& Sensor = CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor();
-                return FText::FromString(Sensor.IsValid() ? TEXT("Valid") : TEXT("None"));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+                return ck_inspector_overlapbody::Make_ShapeText(
+                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
-                { return CkStyle::None(); }
-                const auto& Sensor = CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor();
-                return Sensor.IsValid() ? CkStyle::Value_Bool_True() : CkStyle::Value_Bool_False();
-            });
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_overlapbody::Get_ShapeTone(
+                    CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_Sensor().IsValid());
+            }));
 
         Builder.AddRow(
             FText::FromString(TEXT("Marker Overlaps:")),

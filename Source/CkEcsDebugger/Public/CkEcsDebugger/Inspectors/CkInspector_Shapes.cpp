@@ -18,6 +18,41 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Shapes)
 
 // =====================================================================================================================
 
+namespace ck_inspector_shapes
+{
+    // Three fixed-precision components in X/Y/Z order — same 3 decimals FVector::ToString printed —
+    // so the extents row's axis coloring lines up with the Transform inspector. The handle is
+    // captured by value and re-validated per read, like every other live inspector row.
+    static auto Make_AxisComponents(
+        const FCk_Handle& InEntity,
+        TFunction<FVector(const FCk_Handle&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InEntity, InProjector, Axis]()
+            {
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), InProjector(InEntity)[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+
+    static auto Get_BoxHalfExtents(const FCk_Handle& InEntity) -> FVector
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_ShapeBox_Current>())
+        { return FVector::ZeroVector; }
+
+        return InEntity.Get<ck::FFragment_ShapeBox_Current>().Get_Dimensions().Get_HalfExtents();
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Shapes::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Shapes"));
@@ -61,15 +96,12 @@ auto FCkInspector_Shapes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
     {
         Builder.AddHeader(FText::FromString(TEXT("Box")));
 
-        const auto& Dims       = Entity.Get<ck::FFragment_ShapeBox_Current>().Get_Dimensions();
-        const auto  HalfExtent = Dims.Get_HalfExtents();
-        const auto  ConvexR    = Dims.Get_ConvexRadius();
+        const auto& Dims    = Entity.Get<ck::FFragment_ShapeBox_Current>().Get_Dimensions();
+        const auto  ConvexR = Dims.Get_ConvexRadius();
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Half Extents:")),
-            [HalfExtent](const FCk_Handle&)
-            { return FText::FromString(HalfExtent.ToString()); },
-            CkStyle::Value_Math());
+            ck_inspector_shapes::Make_AxisComponents(Entity, &ck_inspector_shapes::Get_BoxHalfExtents));
 
         Builder.AddRow(
             FText::FromString(TEXT("Convex Radius:")),

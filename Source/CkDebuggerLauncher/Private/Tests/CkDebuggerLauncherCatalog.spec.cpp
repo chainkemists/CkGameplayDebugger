@@ -33,6 +33,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkCrowdDebugger"),
         TEXT("CkEqsDebugger"),
         TEXT("CkInputDebugger"),
+        TEXT("CkIntentDebugger"),
         TEXT("CkObjectPoolingDebugger"),
         TEXT("CkInsightsAnalyzerTab"),
         TEXT("CkJoltDebugger"),

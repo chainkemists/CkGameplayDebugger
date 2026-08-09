@@ -18,7 +18,7 @@
 | Core | ECS, State Machine, Map |
 | AI | A*, GOAP, Crowd, EQS |
 | Systems | Scheduler, Object Pooling, Jolt Physics |
-| Interface | UI Layer, Enhanced Input |
+| Interface | UI Layer, Enhanced Input, Intent |
 | Tools | Insights Analyzer |
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.

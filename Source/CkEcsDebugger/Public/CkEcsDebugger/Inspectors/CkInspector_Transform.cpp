@@ -6,6 +6,7 @@
 #include "CkEcsExt/Transform/CkTransform_Utils.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_ViewportView.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -14,8 +15,49 @@
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Transform)
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_inspector_transform
+{
+    // Live read of the inspected entity's transform. The handle is captured by value in every row
+    // attribute (the inspector pattern — rows are released on rebuild / OnDeactivated), so each
+    // read re-validates before touching the registry and falls back to identity otherwise.
+    static auto Get_CurrentTransform(
+        const FCk_Handle& InEntity)
+        -> FTransform
+    {
+        if (ck::Is_NOT_Valid(InEntity) || NOT UCk_Utils_Transform_UE::Has(InEntity))
+        { return FTransform::Identity; }
+
+        return UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(InEntity);
+    }
+
+    // Three fixed-precision components in X/Y/Z order, so AddAlignedNumericRow's index-based axis
+    // coloring lines up with the orientation cube's axis edges.
+    static auto Make_AxisComponents(
+        const FCk_Handle& InEntity,
+        TFunction<FVector(const FTransform&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(3);
+
+        for (auto Axis = 0; Axis < 3; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InEntity, InProjector, Axis]()
+            {
+                const auto Value = InProjector(Get_CurrentTransform(InEntity));
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), Value[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto FCkInspector_Transform::Get_ComponentName() const -> FText
 {
@@ -29,31 +71,39 @@ auto FCkInspector_Transform::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_Transform::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
+    const auto CapturedEntity = Entity;
+
     return FCkInspectorWidgetBuilder()
-        .AddRow(
+        .AddAlignedNumericRow(
             FText::FromString(TEXT("Location:")),
-            [](const FCk_Handle& E)
-            {
-                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetLocation()));
-            },
-            CkStyle::Transform())
-        .AddRow(
-            FText::FromString(TEXT("Rotation:")),
-            [](const FCk_Handle& E)
-            {
-                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetRotation().Rotator()));
-            },
-            CkStyle::Transform())
-        .AddRow(
+            ck_inspector_transform::Make_AxisComponents(CapturedEntity,
+                [](const FTransform& InTransform) { return InTransform.GetLocation(); }))
+        .AddAlignedNumericRow(
+            FText::FromString(TEXT("Rotation (R,P,Y):")),
+            ck_inspector_transform::Make_AxisComponents(CapturedEntity,
+                [](const FTransform& InTransform)
+                {
+                    // Euler degrees, same values FRotator printed before — reordered to the axis
+                    // each angle turns about (Roll=X, Pitch=Y, Yaw=Z) so the row's X/Y/Z coloring
+                    // agrees with the cube's axis edges. The label states the order.
+                    const auto Rotator = InTransform.GetRotation().Rotator();
+                    return FVector{Rotator.Roll, Rotator.Pitch, Rotator.Yaw};
+                }))
+        .AddAlignedNumericRow(
             FText::FromString(TEXT("Scale:")),
-            [](const FCk_Handle& E)
-            {
-                if (NOT UCk_Utils_Transform_UE::Has(E)) { return FText::GetEmpty(); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Transform_TypeUnsafe_UE::Get_EntityCurrentTransform(E).GetScale3D()));
-            },
-            CkStyle::Transform())
+            ck_inspector_transform::Make_AxisComponents(CapturedEntity,
+                [](const FTransform& InTransform) { return InTransform.GetScale3D(); }))
+        .AddWidgetRow(
+            FText::FromString(TEXT("Orientation:")),
+            SNew(SCkDebug_OrientationCube)
+                .Rotation_Lambda([CapturedEntity]()
+                {
+                    return ck_inspector_transform::Get_CurrentTransform(CapturedEntity).GetRotation();
+                })
+                .Scale_Lambda([CapturedEntity]()
+                {
+                    return ck_inspector_transform::Get_CurrentTransform(CapturedEntity).GetScale3D();
+                }))
         .Build(Entity);
 }
 

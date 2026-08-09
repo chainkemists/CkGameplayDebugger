@@ -163,15 +163,10 @@ auto
     // FCk_Entity::Get_EntityNumber() returns the entt entity index (uint32-compatible).
     const auto EntityId = static_cast<uint32>(InModel.Entity.Get_Entity().Get_EntityNumber());
 
-    // Legend entries collected for the providers actually rendered:
-    // colored abbrev pill + muted expanded name.
-    struct FLegendEntry
-    {
-        FString      Abbrev;
-        FString      FullName;
-        FLinearColor Color = FLinearColor::White;
-    };
-    auto LegendEntries = TArray<FLegendEntry>{};
+    // Legend entries for the providers actually rendered — one per PROVIDER, however many
+    // sections it contributed (subtree aggregation repeats a provider once per source).
+    const auto LegendEntries = Build_LegendEntries(SortedSections);
+
     auto InputRowCount = 0;
     for (const auto& Section : InModel.Sections)
     { InputRowCount += Section.Rows.Num(); }
@@ -189,8 +184,6 @@ auto
         const auto ProviderLeaf  = ck_debugoverlay::Get_LeafName(Section.ProviderTag);
         const auto ProviderAbbr  = ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf);
         const auto ProviderName  = FText::FromString(ProviderAbbr);
-
-        LegendEntries.Add(FLegendEntry{ ProviderAbbr, ProviderLeaf, ProviderColor });
 
         // One color-grouped flow line per section:
         //   [PROVIDER]  [KEY value]  [KEY trail‹ value] ...
@@ -319,6 +312,24 @@ auto
                         .ColorAndOpacity(ValueColor)
                 ];
 
+            // Merge multiplier — this row stands for N identical rows across the lifetime
+            // subtree. Same muted/italic treatment as the "+N more" overflow line, so it
+            // reads as annotation rather than data.
+            if (Row.MergedCount > 1)
+            {
+                ChipInner->AddSlot()
+                    .AutoWidth().VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f })
+                    [
+                        SNew(STextBlock)
+                            // "×" = MULTIPLICATION SIGN (U+00D7), same literal-UTF-8 convention
+                            // as BreadcrumbSeparator above.
+                            .Text(FText::FromString(FString::Printf(TEXT("×%d"), Row.MergedCount)))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                            .ColorAndOpacity(CkStyle::TextMute())
+                    ];
+            }
+
             SectionRow->AddSlot()
                 .VAlign(VAlign_Center)
                 .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS })
@@ -398,6 +409,21 @@ auto
                         .ColorAndOpacity(CkStyle::TextMute())
                 ];
 
+            // Same "×N" annotation as a merged row: how many sections this provider owns
+            // (one per contributing sub-entity), now that the legend lists it only once.
+            if (Entry.SectionCount > 1)
+            {
+                Pair->AddSlot()
+                    .AutoWidth().VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f })
+                    [
+                        SNew(STextBlock)
+                            .Text(FText::FromString(FString::Printf(TEXT("×%d"), Entry.SectionCount)))
+                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                            .ColorAndOpacity(CkStyle::TextMute())
+                    ];
+            }
+
             LegendRow->AddSlot()
                 .VAlign(VAlign_Center)
                 .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceM, 0.0f })
@@ -413,6 +439,47 @@ auto
                 LegendRow
             ];
     }
+}
+
+// ====================================================================================================================
+
+auto
+    SCkDebugOverlay_FocusCard::
+    Build_LegendEntries(
+        const TArray<FCk_DebugOverlay_Section>& InSections)
+    -> TArray<FCk_DebugOverlay_LegendEntry>
+{
+    auto Entries = TArray<FCk_DebugOverlay_LegendEntry>{};
+
+    // ProviderTag -> index into Entries. Subtree aggregation emits one section per
+    // (provider × source), so an un-deduped legend repeated "[LABL] Label" once per
+    // lifetime descendant.
+    auto IndexOf = TMap<FGameplayTag, int32>{};
+
+    for (const auto& Section : InSections)
+    {
+        // Must match the render loop's skip exactly — a section that draws nothing
+        // must not claim a legend slot.
+        if (Section.Rows.IsEmpty() && Section.OmittedRowCount == 0)
+        { continue; }
+
+        if (const auto* Existing = IndexOf.Find(Section.ProviderTag))
+        {
+            ++Entries[*Existing].SectionCount;
+            continue;
+        }
+
+        const auto ProviderLeaf = ck_debugoverlay::Get_LeafName(Section.ProviderTag);
+
+        IndexOf.Add(Section.ProviderTag, Entries.Num());
+        Entries.Add(FCk_DebugOverlay_LegendEntry{
+            ck_debugoverlay::Get_ProviderAbbrev(ProviderLeaf),
+            ProviderLeaf,
+            Get_ProviderColor(Section.ProviderTag),
+            1 });
+    }
+
+    return Entries;
 }
 
 // ====================================================================================================================

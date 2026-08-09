@@ -96,19 +96,12 @@ auto SCkDebuggerPanel_EntityList::Construct(
                 ]
             ]
 
-            // Pinned + Recent quick-access sections (Phase 3) — hidden while empty.
+            // Pinned quick-access section (Phase 3) — hidden while empty.
             + SVerticalBox::Slot()
             .AutoHeight()
             .Padding(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
                 SAssignNew(PinnedSectionBox, SVerticalBox)
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
-            [
-                SAssignNew(RecentSectionBox, SVerticalBox)
             ]
 
             + SVerticalBox::Slot()
@@ -155,19 +148,14 @@ auto SCkDebuggerPanel_EntityList::Construct(
         ]
     ];
 
-    // Quick-access wiring: pins change → rebuild sections; selection change → track
-    // recents. AddSP self-cleans with this panel; the pins handle is removed in ~.
+    // Quick-access wiring: pins change → rebuild the section. The pins handle is
+    // removed in ~.
     PinsChangedHandle = EntityTree->OnPinsChanged.AddLambda(
         [WeakSelf = TWeakPtr<SCkDebuggerPanel_EntityList>(SharedThis(this))]()
         {
             if (const auto Pinned = WeakSelf.Pin())
             { Pinned->RefreshQuickAccessSections(); }
         });
-
-    if (SelectionModel.IsValid())
-    {
-        SelectionModel->OnSelectionChanged.AddSP(this, &SCkDebuggerPanel_EntityList::HandleSelectionChanged);
-    }
 }
 
 auto SCkDebuggerPanel_EntityList::Set_FilterText(const FString& InText) -> void
@@ -183,21 +171,6 @@ auto SCkDebuggerPanel_EntityList::Set_FilterText(const FString& InText) -> void
 auto SCkDebuggerPanel_EntityList::Get_FilterText() const -> FString
 {
     return SearchBar.IsValid() ? SearchBar->Get_FilterText() : FString{};
-}
-
-auto SCkDebuggerPanel_EntityList::HandleSelectionChanged(const TArray<FCk_Handle>& InSelection) -> void
-{
-    if (InSelection.IsEmpty() || ck::Is_NOT_Valid(InSelection[0]))
-    { return; }
-
-    constexpr auto MaxRecent = 5;
-
-    RecentEntities.Remove(InSelection[0]);
-    RecentEntities.Insert(InSelection[0], 0);
-    if (RecentEntities.Num() > MaxRecent)
-    { RecentEntities.SetNum(MaxRecent); }
-
-    RefreshQuickAccessSections();
 }
 
 auto SCkDebuggerPanel_EntityList::Build_QueryHelpButton() -> TSharedRef<SWidget>
@@ -327,14 +300,10 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
 
 auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void
 {
-    if (NOT PinnedSectionBox.IsValid() || NOT RecentSectionBox.IsValid())
+    if (NOT PinnedSectionBox.IsValid())
     { return; }
 
     PinnedSectionBox->ClearChildren();
-    RecentSectionBox->ClearChildren();
-
-    // Prune dead handles (PIE end) as we render.
-    RecentEntities.RemoveAll([](const FCk_Handle& InEntity) { return ck::Is_NOT_Valid(InEntity); });
 
     const auto BuildSection = [this](
         const TCHAR* InTitle,
@@ -388,7 +357,6 @@ auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void
     };
 
     BuildSection(TEXT("Pinned"), EntityTree.IsValid() ? EntityTree->Get_PinnedEntities() : TArray<FCk_Handle>{}, PinnedSectionBox);
-    BuildSection(TEXT("Recent"), RecentEntities, RecentSectionBox);
 }
 
 auto SCkDebuggerPanel_EntityList::DoBuildQuickAccessRows(
@@ -441,8 +409,6 @@ auto SCkDebuggerPanel_EntityList::DoBuildQuickAccessRows(
 
 auto SCkDebuggerPanel_EntityList::Reset_ForWorldChange() -> void
 {
-    RecentEntities.Reset();
-
     if (EntityTree.IsValid())
     { EntityTree->Reset_ForWorldChange(); }
 

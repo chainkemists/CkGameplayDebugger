@@ -9,12 +9,12 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Widgets/Layout/SGridPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityCollections)
-
-static const FLinearColor Color_Collection = FLinearColor(0.95f, 0.75f, 0.4f);
 
 auto FCkInspector_EntityCollections::Get_ComponentName() const -> FText
 {
@@ -63,7 +63,9 @@ auto FCkInspector_EntityCollections::BuildCollectionGrid(const FCk_Handle& Entit
                 const auto Count = UCk_Utils_EntityCollection_UE::Get_NumEntitiesInCollection(Collection);
                 return FText::FromString(ck::Format_UE(TEXT("{} entities"), Count));
             },
-            Color_Collection,
+            // The value IS a count, so it takes the numeric value role — the old amber literal only encoded
+            // "this is a collection", which the row's label already says.
+            CkStyle::Value_Numeric(),
             [WeakSelectionModel, CollectionHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(CollectionHandle))

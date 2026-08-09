@@ -83,16 +83,25 @@ auto FCkInspector_Compass::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         },
         CkStyle::Value_Numeric());
 
-    Builder.AddRow(
+    // Entries against MaxEntries is the one genuinely bounded quantity here — heading and arc are angles, and a
+    // fill bar would read them as magnitudes.
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Entries:")),
-        [CapturedCompass](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedCompass]() -> float
+        {
+            if (ck::Is_NOT_Valid(CapturedCompass)) { return 0.0f; }
+            const auto MaxEntries = CapturedCompass.Get<ck::FFragment_Compass_Params>().Get_MaxEntries();
+            if (MaxEntries <= 0) { return 0.0f; }
+            return static_cast<float>(UCk_Utils_Compass_UE::Get_Entries(CapturedCompass).Num()) / static_cast<float>(MaxEntries);
+        }),
+        ECk_Tone::Accent,
+        TAttribute<FText>::CreateLambda([CapturedCompass]() -> FText
         {
             if (ck::Is_NOT_Valid(CapturedCompass)) { return FText::FromString(TEXT("--")); }
             const auto& Params = CapturedCompass.Get<ck::FFragment_Compass_Params>();
             return FText::FromString(ck::Format_UE(TEXT("{} / {}"),
                 UCk_Utils_Compass_UE::Get_Entries(CapturedCompass).Num(), Params.Get_MaxEntries()));
-        },
-        CkStyle::Value_Numeric());
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Filter:")),

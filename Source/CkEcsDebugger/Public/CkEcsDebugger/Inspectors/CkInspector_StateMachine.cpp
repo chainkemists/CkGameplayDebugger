@@ -14,6 +14,7 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -395,18 +396,26 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         if (Entity.Has<ck::FFragment_SmTask_SubStateMachine>())
         {
             const auto CapturedEntity = Entity;
-            Builder.AddRow(
+
+            // The sub-SM is an entity, so it gets the entity pill rather than a formatted string —
+            // clicking it navigates. EntityRef renders "None" on an invalid handle by itself.
+            const auto Get_SubSm = [CapturedEntity]() -> FCk_Handle
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_SubStateMachine>())
+                { return FCk_Handle{}; }
+                return CapturedEntity.Get<ck::FFragment_SmTask_SubStateMachine>().Get_SubStateMachineHandle();
+            };
+
+            Builder.AddWidgetRow(
                 FText::FromString(TEXT("Sub SM:")),
-                [CapturedEntity](const FCk_Handle&)
+                SNew(SCkDebug_EntityRef)
+                    .Entity_Lambda(Get_SubSm)
+                    .ShowName(true),
+                [Get_SubSm]()
                 {
-                    if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_SubStateMachine>())
-                    { return FText::FromString(TEXT("--")); }
-                    const auto SubSm = CapturedEntity.Get<ck::FFragment_SmTask_SubStateMachine>().Get_SubStateMachineHandle();
-                    return FText::FromString(ck::IsValid(SubSm)
-                        ? ck::Format_UE(TEXT("[{}]"), SubSm)
-                        : FString(TEXT("(None)")));
-                },
-                CkStyle::Value_Handle());
+                    const auto SubSm = Get_SubSm();
+                    return ck::IsValid(SubSm) ? ck::Format_UE(TEXT("{}"), SubSm) : FString{};
+                });
         }
     }
 

@@ -126,15 +126,14 @@ auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TShared
         ck_inspector_fog_of_war::Make_BoundsComponents(CapturedFog,
             [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_HalfExtents(); }));
 
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Revealers:")),
-        [CapturedFog](const FCk_Handle&)
+        TAttribute<int32>::CreateLambda([CapturedFog]()
         {
-            if (ck::Is_NOT_Valid(CapturedFog)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"),
-                CapturedFog.Get<ck::FFragment_FogOfWar_Current>().Get_Revealers().Num()));
-        },
-        CkStyle::Value_Numeric());
+            if (ck::Is_NOT_Valid(CapturedFog)) { return 0; }
+            return CapturedFog.Get<ck::FFragment_FogOfWar_Current>().Get_Revealers().Num();
+        }),
+        ECk_Tone::Info);
 
     Builder.AddRow(
         FText::FromString(TEXT("Reveal Radius:")),

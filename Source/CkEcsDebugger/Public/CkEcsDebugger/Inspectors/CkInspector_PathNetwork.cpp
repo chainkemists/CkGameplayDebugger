@@ -51,23 +51,23 @@ auto FCkInspector_PathNetwork::Build_Inspector(const FCk_Handle& Entity) -> TSha
             return UCk_Utils_PathNetwork_UE::Get_IsBuilt(CapturedNetwork) ? ECk_Tone::Ok : ECk_Tone::Warn;
         }));
 
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Nodes:")),
-        [CapturedNetwork](const FCk_Handle&)
+        TAttribute<int32>::CreateLambda([CapturedNetwork]()
         {
-            if (ck::Is_NOT_Valid(CapturedNetwork)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_PathNetwork_UE::Get_NumNodes(CapturedNetwork)));
-        },
-        CkStyle::Value_Numeric());
+            if (ck::Is_NOT_Valid(CapturedNetwork)) { return 0; }
+            return UCk_Utils_PathNetwork_UE::Get_NumNodes(CapturedNetwork);
+        }),
+        ECk_Tone::Info);
 
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Edges:")),
-        [CapturedNetwork](const FCk_Handle&)
+        TAttribute<int32>::CreateLambda([CapturedNetwork]()
         {
-            if (ck::Is_NOT_Valid(CapturedNetwork)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_PathNetwork_UE::Get_NumEdges(CapturedNetwork)));
-        },
-        CkStyle::Value_Numeric());
+            if (ck::Is_NOT_Valid(CapturedNetwork)) { return 0; }
+            return UCk_Utils_PathNetwork_UE::Get_NumEdges(CapturedNetwork);
+        }),
+        ECk_Tone::Info);
 
     Builder.AddRow(
         FText::FromString(TEXT("Build Epoch:")),

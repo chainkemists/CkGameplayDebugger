@@ -130,25 +130,23 @@ auto FCkInspector_PathNetworkFollower::Build_Inspector(const FCk_Handle& Entity)
 
     // ---- Corridor shape ----
 
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Legs:")),
-        [CapturedFollower](const FCk_Handle&)
+        TAttribute<int32>::CreateLambda([CapturedFollower]()
         {
-            if (ck::Is_NOT_Valid(CapturedFollower)) { return FText::FromString(TEXT("--")); }
-            const auto Result = UCk_Utils_PathNetworkFollower_UE::Get_RouteResult(CapturedFollower);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Result.Get_Legs().Num()));
-        },
-        CkStyle::Value_Numeric());
+            if (ck::Is_NOT_Valid(CapturedFollower)) { return 0; }
+            return UCk_Utils_PathNetworkFollower_UE::Get_RouteResult(CapturedFollower).Get_Legs().Num();
+        }),
+        ECk_Tone::Info);
 
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Waypoints:")),
-        [CapturedFollower](const FCk_Handle&)
+        TAttribute<int32>::CreateLambda([CapturedFollower]()
         {
-            if (ck::Is_NOT_Valid(CapturedFollower)) { return FText::FromString(TEXT("--")); }
-            const auto Result = UCk_Utils_PathNetworkFollower_UE::Get_RouteResult(CapturedFollower);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Result.Get_CompiledWaypoints().Num()));
-        },
-        CkStyle::Value_Numeric());
+            if (ck::Is_NOT_Valid(CapturedFollower)) { return 0; }
+            return UCk_Utils_PathNetworkFollower_UE::Get_RouteResult(CapturedFollower).Get_CompiledWaypoints().Num();
+        }),
+        ECk_Tone::Info);
 
     Builder.AddRow(
         FText::FromString(TEXT("Total Cost:")),

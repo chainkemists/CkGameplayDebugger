@@ -15,6 +15,49 @@
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_IntegerAttributes)
 
+namespace ck_inspector_integer_attributes
+{
+    // A meter only means something when BOTH bounds exist: the fill is current-in-range, so an
+    // attribute floored at 20 reads empty at 20 rather than two-thirds full. Max-only and unbounded
+    // attributes keep the plain text row — there is no range to fill.
+    auto Get_Fraction(FCk_Handle_IntegerAttribute InAttribute) -> float
+    {
+        if (ck::Is_NOT_Valid(InAttribute)) { return 0.0f; }
+
+        const auto MinValue = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Min);
+        const auto MaxValue = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Max);
+        const auto Current  = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Current);
+
+        const auto Range = MaxValue - MinValue;
+        if (Range == 0) { return 0.0f; }
+
+        return static_cast<float>(Current - MinValue) / static_cast<float>(Range);
+    }
+
+    // Base and pre-clamp only appear when they DISAGREE with the final value — otherwise every row
+    // would carry two redundant numbers.
+    auto Get_Annotations(FCk_Handle_IntegerAttribute InAttribute) -> FString
+    {
+        if (ck::Is_NOT_Valid(InAttribute)) { return FString{}; }
+
+        const auto Final = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(InAttribute, ECk_MinMaxCurrent::Current);
+        const auto Base  = UCk_Utils_IntegerAttribute_UE::Get_BaseValue(InAttribute, ECk_MinMaxCurrent::Current);
+
+        auto Result = FString{};
+
+        if (Base != Final)
+        { Result += ck::Format_UE(TEXT(" (Base: {})"), Base); }
+
+        const auto PreClamp = UCk_Utils_IntegerAttribute_UE::Get_PreClampFinalValue(InAttribute);
+        if (PreClamp > Final)
+        { Result += ck::Format_UE(TEXT(" (preclamp max: {})"), PreClamp); }
+        else if (PreClamp < Final)
+        { Result += ck::Format_UE(TEXT(" (preclamp min: {})"), PreClamp); }
+
+        return Result;
+    }
+}
+
 auto FCkInspector_IntegerAttributes::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Integer Attributes"));
@@ -55,52 +98,66 @@ auto FCkInspector_IntegerAttributes::BuildAttributeGrid(const FCk_Handle& Entity
 
         const auto AttributeHandle = FCk_Handle(InAttribute);
 
-        Builder.AddClickableRow(
-            FText::FromString(AttributeName),
-            [CapturedTag, HasMin, HasMax](const FCk_Handle& E)
-            {
-                auto MutableE = E;
-                const auto Attr = UCk_Utils_IntegerAttribute_UE::TryGet(MutableE, CapturedTag);
-                if (ck::Is_NOT_Valid(Attr)) { return FText::GetEmpty(); }
-
-                const auto Final = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Current);
-                const auto Base = UCk_Utils_IntegerAttribute_UE::Get_BaseValue(Attr, ECk_MinMaxCurrent::Current);
-
-                auto Result = ck::Format_UE(TEXT("{}"), Final);
-
-                if (Base != Final)
-                {
-                    Result += ck::Format_UE(TEXT(" (Base: {})"), Base);
-                }
-
-                if (HasMin && HasMax)
-                {
-                    const auto MinVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Min);
-                    const auto MaxVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Max);
-                    Result += ck::Format_UE(TEXT("  [{}..{}]"), MinVal, MaxVal);
-                }
-                else if (HasMax)
-                {
-                    const auto MaxVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Max);
-                    Result += ck::Format_UE(TEXT("  / {}"), MaxVal);
-                }
-
-                const auto PreClamp = UCk_Utils_IntegerAttribute_UE::Get_PreClampFinalValue(Attr);
-                if (PreClamp > Final)
-                { Result += ck::Format_UE(TEXT(" (preclamp max: {})"), PreClamp); }
-                else if (PreClamp < Final)
-                { Result += ck::Format_UE(TEXT(" (preclamp min: {})"), PreClamp); }
-
-                return FText::FromString(Result);
-            },
-            CkStyle::Attribute(),
+        const auto OnClicked = FCkInspectorWidgetBuilder::FOnClicked{
             [WeakSelectionModel, AttributeHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(AttributeHandle))
                 {
                     WeakSelectionModel->Set_SelectedEntities({ AttributeHandle });
                 }
-            });
+            }};
+
+        if (HasMin && HasMax)
+        {
+            const auto CapturedAttribute = InAttribute;
+
+            Builder.AddMeterRow(
+                FText::FromString(AttributeName),
+                TAttribute<float>::CreateLambda([CapturedAttribute]()
+                {
+                    return ck_inspector_integer_attributes::Get_Fraction(CapturedAttribute);
+                }),
+                ECk_Tone::Accent,
+                TAttribute<FText>::CreateLambda([CapturedAttribute]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedAttribute)) { return FText::FromString(TEXT("--")); }
+
+                    const auto Current  = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(CapturedAttribute, ECk_MinMaxCurrent::Current);
+                    const auto MaxValue = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(CapturedAttribute, ECk_MinMaxCurrent::Max);
+
+                    return FText::FromString(
+                        ck::Format_UE(TEXT("{} / {}"), Current, MaxValue)
+                        + ck_inspector_integer_attributes::Get_Annotations(CapturedAttribute));
+                }),
+                OnClicked);
+
+            return;
+        }
+
+        Builder.AddClickableRow(
+            FText::FromString(AttributeName),
+            [CapturedTag, HasMax](const FCk_Handle& E)
+            {
+                auto MutableE = E;
+                const auto Attr = UCk_Utils_IntegerAttribute_UE::TryGet(MutableE, CapturedTag);
+                if (ck::Is_NOT_Valid(Attr)) { return FText::GetEmpty(); }
+
+                const auto Final = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Current);
+
+                auto Result = ck::Format_UE(TEXT("{}"), Final);
+
+                if (HasMax)
+                {
+                    const auto MaxVal = UCk_Utils_IntegerAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Max);
+                    Result += ck::Format_UE(TEXT("  / {}"), MaxVal);
+                }
+
+                Result += ck_inspector_integer_attributes::Get_Annotations(Attr);
+
+                return FText::FromString(Result);
+            },
+            CkStyle::Attribute(),
+            OnClicked);
     });
 
     return Builder.Build(Entity, InFilter);

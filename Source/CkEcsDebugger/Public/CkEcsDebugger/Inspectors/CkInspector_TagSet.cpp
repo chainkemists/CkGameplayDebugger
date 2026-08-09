@@ -50,10 +50,11 @@ auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FStrin
 
     // Tag count header
     const auto NumTags = UCk_Utils_TagSet_UE::Get_NumTags(TagSetHandle);
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Count:")),
-        [NumTags](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), NumTags)); },
-        CkStyle::Value_Numeric());
+        NumTags,
+        ECk_Tone::Info,
+        FText::FromString(TEXT("tags")));
 
     // The set as chips instead of one tick/cross row per tag. Those rows were never a live view of
     // the set: they were built from this same Get_Tags snapshot, so a tag ADDED after the build was

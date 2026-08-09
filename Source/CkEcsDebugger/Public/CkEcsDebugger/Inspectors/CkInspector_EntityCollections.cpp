@@ -50,22 +50,20 @@ auto FCkInspector_EntityCollections::BuildCollectionGrid(const FCk_Handle& Entit
             : TEXT("Unnamed");
 
         const auto CollectionHandle = FCk_Handle(InCollection);
-        const auto CapturedTag = CollectionTag;
 
-        Builder.AddClickableRow(
+        const auto CapturedCollection = InCollection;
+
+        // The value IS a count, so it takes the count badge — the old amber literal only encoded
+        // "this is a collection", which the row's label already says.
+        Builder.AddCountBadgeRow(
             FText::FromString(CollectionName),
-            [CapturedTag](const FCk_Handle& E)
+            TAttribute<int32>::CreateLambda([CapturedCollection]()
             {
-                auto MutableE = E;
-                const auto Collection = UCk_Utils_EntityCollection_UE::TryGet_EntityCollection(MutableE, CapturedTag);
-                if (ck::Is_NOT_Valid(Collection)) { return FText::GetEmpty(); }
-
-                const auto Count = UCk_Utils_EntityCollection_UE::Get_NumEntitiesInCollection(Collection);
-                return FText::FromString(ck::Format_UE(TEXT("{} entities"), Count));
-            },
-            // The value IS a count, so it takes the numeric value role — the old amber literal only encoded
-            // "this is a collection", which the row's label already says.
-            CkStyle::Value_Numeric(),
+                if (ck::Is_NOT_Valid(CapturedCollection)) { return 0; }
+                return UCk_Utils_EntityCollection_UE::Get_NumEntitiesInCollection(CapturedCollection);
+            }),
+            ECk_Tone::Info,
+            FText::FromString(TEXT("entities")),
             [WeakSelectionModel, CollectionHandle]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(CollectionHandle))

@@ -31,6 +31,11 @@
 
 namespace ck_debugger_panel_inspector
 {
+    auto Should_TickInspector(bool InCanInspect, bool InWantsTickWhenNotInspectable) -> bool
+    {
+        return InCanInspect || InWantsTickWhenNotInspectable;
+    }
+
     // Feature glyph + accent for an inspector's section header (the debugger-wide
     // icon language). Nullptr brush = inspector declared no glyph; header unchanged.
     static auto Get_InspectorIconBrush(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> const FSlateBrush*
@@ -221,7 +226,10 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
         for (const auto& Inspector : Inspectors)
         {
             if (NOT Inspector.IsValid()) { continue; }
-            if (NOT Inspector->CanInspect(Entity)) { continue; }
+            if (NOT ck_debugger_panel_inspector::Should_TickInspector(
+                Inspector->CanInspect(Entity),
+                Inspector->Wants_TickWhenNotInspectable(Entity)))
+            { continue; }
 
             Inspector->Tick(Entity, InDeltaTime);
 

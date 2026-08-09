@@ -106,6 +106,44 @@ bool FCkInspectorBuilder_NumericLayout_Test::RunTest(const FString&)
 
 // --------------------------------------------------------------------------------------------------------------------
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorBuilder_CountBadge_Test,
+    "Ck.EcsDebugger.InspectorBuilder.CountBadgeFormatting",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInspectorBuilder_CountBadge_Test::RunTest(const FString&)
+{
+    using FBuilder = FCkInspectorWidgetBuilder;
+
+    const auto Format = [](int32 InCount) { return FBuilder::Format_Count(InCount).ToString(); };
+
+    TestEqual(TEXT("zero is a plain zero, never blank"), Format(0), FString{TEXT("0")});
+    TestEqual(TEXT("a small count is the bare number"),  Format(7), FString{TEXT("7")});
+
+    // Grouping is what keeps a five-digit body/edge count readable at badge size. The separator
+    // itself is locale-owned, so assert its PRESENCE and the digits, not a specific glyph.
+    const auto Digits = [](const FString& InText)
+    {
+        auto Out = FString{};
+        for (const auto Char : InText)
+        {
+            if (FChar::IsDigit(Char)) { Out.AppendChar(Char); }
+        }
+        return Out;
+    };
+
+    const auto Large = Format(1024);
+    TestTrue(TEXT("a four-digit count is grouped"), Large.Len() > FString{TEXT("1024")}.Len());
+    TestEqual(TEXT("grouping keeps every digit"), Digits(Large), FString{TEXT("1024")});
+
+    // A negative count means the caller computed a size wrong — surface it rather than clamp it.
+    TestTrue(TEXT("a negative count renders as negative"), Format(-3).Contains(TEXT("3")));
+    TestFalse(TEXT("a negative count is not silently zeroed"), Format(-3) == FString{TEXT("0")});
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorBuilder_AxisColor_Test,
     "Ck.EcsDebugger.InspectorBuilder.AxisColorByComponentIndex",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

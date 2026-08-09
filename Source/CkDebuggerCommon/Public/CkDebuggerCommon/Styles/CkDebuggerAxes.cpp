@@ -1,0 +1,484 @@
+#include "CkDebuggerAxes.h"
+
+#include "CkCore/Format/CkFormat.h"
+
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+
+// ====================================================================================================================
+
+namespace ck_debugger_axes
+{
+    constexpr auto ChipPaddingX  = CkStyle::SpaceM;
+    constexpr auto ChipPaddingY  = CkStyle::SpaceXS;
+    constexpr auto BadgePaddingX = CkStyle::SpaceS;
+    constexpr auto BadgePaddingY = 1.0f;
+    constexpr auto BorderWidth   = 1.0f;
+
+    // Matches the tree fold affordance's existing button content padding, so the Chip option
+    // keeps the current geometry when the tree starts composing through this function.
+    constexpr auto FoldChipPaddingX = CkStyle::SpaceXS;
+
+    constexpr auto AbbrevLength = 3;
+
+    // --------------------------------------------------------------------------------------------------------------
+
+    auto Make_Label(const FText& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(STextBlock)
+            .Text(InText)
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(FSlateColor{InColor});
+    }
+
+    // Single rounded box: one fill, no border ring.
+    auto Make_FilledBox(
+        const FSlateBrush* InBrush,
+        const FLinearColor& InFill,
+        const FMargin& InPadding,
+        TSharedRef<SWidget> InContent) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(InBrush)
+            .BorderBackgroundColor(FSlateColor{InFill})
+            .Padding(InPadding)
+            [
+                InContent
+            ];
+    }
+
+    // Nested rounded boxes: outer tint reads as the border ring, inner fill is the body.
+    auto Make_RingedBox(
+        const FSlateBrush* InBrush,
+        const FLinearColor& InRing,
+        const FLinearColor& InFill,
+        const FMargin& InPadding,
+        TSharedRef<SWidget> InContent) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(InBrush)
+            .BorderBackgroundColor(FSlateColor{InRing})
+            .Padding(FMargin{BorderWidth})
+            [
+                Make_FilledBox(InBrush, InFill, InPadding, InContent)
+            ];
+    }
+
+    // The look the entity tree ships today: a dim label in a bounded, lightly padded target.
+    auto Make_FoldChipBody(const FText& InText) -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .VAlign(VAlign_Center)
+            .Padding(FMargin{FoldChipPaddingX, 0.0f})
+            [
+                Make_Label(InText, CkStyle::TextDim())
+            ];
+    }
+
+    auto Get_Abbreviation(const FText& InText) -> FText
+    {
+        return FText::FromString(InText.ToString().Left(AbbrevLength).ToUpper());
+    }
+}
+
+// ====================================================================================================================
+// RENDER
+
+auto
+    ck::debug_axes::
+    Make_Chip(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FText& InText,
+        ECk_Tone InTone)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_debugger_axes;
+
+    const auto Tone    = CkStyle::GetToneColor(InTone);
+    const auto ToneDim = CkStyle::GetToneDimColor(InTone);
+    const auto Padding = FMargin{ChipPaddingX, ChipPaddingY};
+
+    switch (InSelection.ChipStyle)
+    {
+        case ECkDebugAxis_ChipStyle::Tint:
+            return Make_FilledBox(CkStyle::GetRoundedBrush(), ToneDim, Padding, Make_Label(InText, Tone));
+
+        case ECkDebugAxis_ChipStyle::Solid:
+            return Make_FilledBox(CkStyle::GetRoundedBrush(), Tone, Padding, Make_Label(InText, CkStyle::TextStrong()));
+
+        case ECkDebugAxis_ChipStyle::Outline:
+            return Make_RingedBox(CkStyle::GetRoundedBrush(), Tone, CkStyle::Bg2(), Padding, Make_Label(InText, Tone));
+
+        case ECkDebugAxis_ChipStyle::TextOnly:
+            return Make_Label(InText, Tone);
+    }
+
+    return Make_FilledBox(CkStyle::GetRoundedBrush(), ToneDim, Padding, Make_Label(InText, Tone));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_Badge(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FText& InText,
+        ECk_Tone InTone)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_debugger_axes;
+
+    const auto Tone    = CkStyle::GetToneColor(InTone);
+    const auto Padding = FMargin{BadgePaddingX, BadgePaddingY};
+
+    switch (InSelection.BadgeStyle)
+    {
+        case ECkDebugAxis_BadgeStyle::Solid:
+            return Make_FilledBox(
+                CkStyle::GetRoundedBrush_Small(), Tone, Padding, Make_Label(InText, CkStyle::TextStrong()));
+
+        case ECkDebugAxis_BadgeStyle::Hollow:
+            return Make_RingedBox(
+                CkStyle::GetRoundedBrush_Small(), Tone, CkStyle::Bg2(), Padding, Make_Label(InText, Tone));
+
+        case ECkDebugAxis_BadgeStyle::CountOnly:
+            return Make_Label(InText, Tone);
+    }
+
+    return Make_FilledBox(CkStyle::GetRoundedBrush_Small(), Tone, Padding, Make_Label(InText, CkStyle::TextStrong()));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_FoldChip(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FText& InText,
+        ECk_Tone InTone)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_debugger_axes;
+
+    switch (InSelection.FoldChipStyle)
+    {
+        case ECkDebugAxis_FoldChipStyle::Chip:
+            return Make_FoldChipBody(InText);
+
+        case ECkDebugAxis_FoldChipStyle::Text:
+            return Make_Label(InText, CkStyle::GetToneColor(InTone));
+
+        case ECkDebugAxis_FoldChipStyle::Minimal:
+            return SNew(STextBlock)
+                .Text(InText)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextMute()});
+    }
+
+    return Make_FoldChipBody(InText);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_ProviderChip(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FText& InText,
+        ECk_Tone InTone)
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_debugger_axes;
+
+    const auto Tone    = CkStyle::GetToneColor(InTone);
+    const auto ToneDim = CkStyle::GetToneDimColor(InTone);
+    const auto Padding = FMargin{BadgePaddingX, BadgePaddingY};
+
+    switch (InSelection.ProviderChipStyle)
+    {
+        case ECkDebugAxis_ProviderChipStyle::Tint:
+            return Make_FilledBox(CkStyle::GetRoundedBrush_Small(), ToneDim, Padding, Make_Label(InText, Tone));
+
+        case ECkDebugAxis_ProviderChipStyle::Solid:
+            return Make_FilledBox(
+                CkStyle::GetRoundedBrush_Small(), Tone, Padding, Make_Label(InText, CkStyle::TextStrong()));
+
+        case ECkDebugAxis_ProviderChipStyle::AbbrevOnly:
+            return Make_Label(Get_Abbreviation(InText), Tone);
+    }
+
+    return Make_FilledBox(CkStyle::GetRoundedBrush_Small(), ToneDim, Padding, Make_Label(InText, Tone));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_SectionHeader(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FText& InText,
+        ECk_Tone InTone)
+    -> TSharedRef<SWidget>
+{
+    const auto Tone = CkStyle::GetToneColor(InTone);
+
+    switch (InSelection.SectionHeaderStyle)
+    {
+        case ECkDebugAxis_SectionHeaderStyle::Uppercase:
+            return SNew(STextBlock)
+                .Text(InText)
+                .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                .ColorAndOpacity(FSlateColor{Tone})
+                .TransformPolicy(ETextTransformPolicy::ToUpper);
+
+        case ECkDebugAxis_SectionHeaderStyle::Mixed:
+            return SNew(STextBlock)
+                .Text(InText)
+                .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                .ColorAndOpacity(FSlateColor{Tone});
+
+        case ECkDebugAxis_SectionHeaderStyle::Minimal:
+            return SNew(STextBlock)
+                .Text(InText)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextMute()});
+    }
+
+    return SNew(STextBlock)
+        .Text(InText)
+        .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+        .ColorAndOpacity(FSlateColor{Tone})
+        .TransformPolicy(ETextTransformPolicy::ToUpper);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_EntityIdText(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FString& InCleanName,
+        const FString& InIdText)
+    -> FText
+{
+    // A nameless entity has nothing to show but its id — the name-bearing options degrade to it
+    // rather than rendering a lone separator.
+    const auto NameAndId = InCleanName.IsEmpty()
+        ? InIdText
+        : ck::Format_UE(TEXT("{} | {}"), InCleanName, InIdText);
+
+    const auto NameOrId = InCleanName.IsEmpty() ? InIdText : InCleanName;
+
+    switch (InSelection.EntityIdStyle)
+    {
+        case ECkDebugAxis_EntityIdStyle::NameAndId:
+            return FText::FromString(NameAndId);
+
+        case ECkDebugAxis_EntityIdStyle::CompactId:
+            return FText::FromString(InIdText);
+
+        case ECkDebugAxis_EntityIdStyle::NameOnly:
+            return FText::FromString(NameOrId);
+
+        // The hash tint is a widget-level concern; the text stays the full identifier so the chip
+        // remains readable without relying on color alone.
+        case ECkDebugAxis_EntityIdStyle::HashTintedChip:
+            return FText::FromString(NameAndId);
+    }
+
+    return FText::FromString(NameAndId);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_MergeCount(
+        const FCkDebuggerStyleSelection& InSelection,
+        int32 InCount)
+    -> TSharedPtr<SWidget>
+{
+    using namespace ck_debugger_axes;
+
+    if (InCount <= 1)
+    { return nullptr; }
+
+    switch (InSelection.MergeCountDisplay)
+    {
+        // "×" = MULTIPLICATION SIGN (U+00D7), matching the overlay focus card's existing literal.
+        case ECkDebugAxis_MergeCountDisplay::SuffixText:
+            return Make_Label(FText::FromString(ck::Format_UE(TEXT("×{}"), InCount)), CkStyle::TextMute());
+
+        case ECkDebugAxis_MergeCountDisplay::CountBadge:
+            return Make_Badge(InSelection, FText::AsNumber(InCount), ECk_Tone::Neutral);
+
+        case ECkDebugAxis_MergeCountDisplay::Hidden:
+            return nullptr;
+    }
+
+    return Make_Label(FText::FromString(ck::Format_UE(TEXT("×{}"), InCount)), CkStyle::TextMute());
+}
+
+// ====================================================================================================================
+// METRICS
+
+auto
+    ck::debug_axes::
+    Get_RowPadding(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> FMargin
+{
+    switch (InSelection.RowDensity)
+    {
+        case ECkDebugAxis_RowDensity::Comfortable: return FMargin{CkStyle::SpaceM, CkStyle::SpaceXS};
+        case ECkDebugAxis_RowDensity::Compact:     return FMargin{CkStyle::SpaceS, 0.0f};
+        case ECkDebugAxis_RowDensity::Airy:        return FMargin{CkStyle::SpaceL, CkStyle::SpaceS};
+    }
+
+    return FMargin{CkStyle::SpaceM, CkStyle::SpaceXS};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_IconSize(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> float
+{
+    switch (InSelection.IconSize)
+    {
+        case ECkDebugAxis_IconSize::Medium: return 16.0f;
+        case ECkDebugAxis_IconSize::Small:  return 12.0f;
+        case ECkDebugAxis_IconSize::Large:  return 20.0f;
+    }
+
+    return 16.0f;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_SeparatorThickness(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> float
+{
+    switch (InSelection.SeparatorWeight)
+    {
+        case ECkDebugAxis_SeparatorWeight::Hairline: return 1.0f;
+        case ECkDebugAxis_SeparatorWeight::None:     return 0.0f;
+        case ECkDebugAxis_SeparatorWeight::Standard: return 2.0f;
+        case ECkDebugAxis_SeparatorWeight::Heavy:    return 3.0f;
+    }
+
+    return 1.0f;
+}
+
+// ====================================================================================================================
+// PREDICATES
+
+auto
+    ck::debug_axes::
+    Legend_IsVisible(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.LegendMode != ECkDebugAxis_LegendMode::Off;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Legend_IsDeduped(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.LegendMode == ECkDebugAxis_LegendMode::Deduped;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Values_UseAlignedColumns(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.ValueAlignment == ECkDebugAxis_ValueAlignment::AlignedColumns;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Values_AlignRight(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.ValueAlignment == ECkDebugAxis_ValueAlignment::Right;
+}
+
+// ====================================================================================================================
+// PROFILES
+
+auto
+    ck::debug_axes::
+    Get_StyleProfiles()
+    -> const TArray<FCkDebuggerStyleProfile>&
+{
+    static const auto Profiles = []() -> TArray<FCkDebuggerStyleProfile>
+    {
+        auto Result = TArray<FCkDebuggerStyleProfile>{};
+
+        Result.Add(FCkDebuggerStyleProfile{
+            TEXT("Classic"),
+            TEXT("Every axis at its default — the look the debuggers shipped with."),
+            FCkDebuggerStyleSelection{}});
+
+        auto Dense = FCkDebuggerStyleSelection{};
+        Dense.RowDensity        = ECkDebugAxis_RowDensity::Compact;
+        Dense.EntityIdStyle     = ECkDebugAxis_EntityIdStyle::CompactId;
+        Dense.BadgeStyle        = ECkDebugAxis_BadgeStyle::CountOnly;
+        Dense.SeparatorWeight   = ECkDebugAxis_SeparatorWeight::None;
+        Dense.IconSize          = ECkDebugAxis_IconSize::Small;
+        Dense.MergeCountDisplay = ECkDebugAxis_MergeCountDisplay::Hidden;
+
+        Result.Add(FCkDebuggerStyleProfile{
+            TEXT("Dense"),
+            TEXT("Maximum rows on screen: tight padding, id-only entity refs, no separators."),
+            Dense});
+
+        auto Presentation = FCkDebuggerStyleSelection{};
+        Presentation.RowDensity      = ECkDebugAxis_RowDensity::Airy;
+        Presentation.EntityIdStyle   = ECkDebugAxis_EntityIdStyle::NameOnly;
+        Presentation.ChipStyle       = ECkDebugAxis_ChipStyle::Solid;
+        Presentation.SeparatorWeight = ECkDebugAxis_SeparatorWeight::Standard;
+        Presentation.IconSize        = ECkDebugAxis_IconSize::Large;
+
+        Result.Add(FCkDebuggerStyleProfile{
+            TEXT("Presentation"),
+            TEXT("Readable from across the room: loose rows, names over ids, solid chips, large icons."),
+            Presentation});
+
+        auto MinimalInk = FCkDebuggerStyleSelection{};
+        MinimalInk.ChipStyle         = ECkDebugAxis_ChipStyle::TextOnly;
+        MinimalInk.BadgeStyle        = ECkDebugAxis_BadgeStyle::Hollow;
+        MinimalInk.SeparatorWeight   = ECkDebugAxis_SeparatorWeight::Hairline;
+        MinimalInk.ProviderChipStyle = ECkDebugAxis_ProviderChipStyle::AbbrevOnly;
+        MinimalInk.LegendMode        = ECkDebugAxis_LegendMode::Off;
+
+        Result.Add(FCkDebuggerStyleProfile{
+            TEXT("Minimal ink"),
+            TEXT("Content over chrome: no chip fills, hollow badges, abbreviated providers, no legend."),
+            MinimalInk});
+
+        return Result;
+    }();
+
+    return Profiles;
+}
+
+// ====================================================================================================================

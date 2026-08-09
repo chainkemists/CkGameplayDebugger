@@ -127,9 +127,21 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
 
     // ---- Capacity ----
 
-    Builder.AddRow(
+    // Active-out-of-configured is genuinely bounded, so it reads as a meter.
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Channels:")),
-        [CapturedActor](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedActor]() -> float
+        {
+            auto* A = CapturedActor.Get();
+            if (A == nullptr) { return 0.0f; }
+            const auto Subsystem = A->Get_GroupSubsystem();
+            if (NOT Subsystem.IsValid()) { return 0.0f; }
+            const auto Configured = Subsystem->Get_ChannelCount();
+            if (Configured <= 0) { return 0.0f; }
+            return static_cast<float>(Subsystem->Get_ChannelCount_Active()) / static_cast<float>(Configured);
+        }),
+        ECk_Tone::Accent,
+        TAttribute<FText>::CreateLambda([CapturedActor]() -> FText
         {
             auto* A = CapturedActor.Get();
             if (A == nullptr) { return FText::FromString(TEXT("--")); }
@@ -138,8 +150,7 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
             return FText::FromString(ck::Format_UE(TEXT("{} active / {} configured"),
                 Subsystem->Get_ChannelCount_Active(),
                 Subsystem->Get_ChannelCount()));
-        },
-        CkStyle::Value_Numeric());
+        }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Max Entities/Ch:")),
@@ -158,15 +169,41 @@ auto FCkInspector_ActorRelay::Build_Inspector(const FCk_Handle& Entity) -> TShar
 
     // ---- Live channel occupancy ----
 
-    Builder.AddRow(
-        FText::FromString(TEXT("Entities On Channel:")),
-        [CapturedEntity](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::FromString(TEXT("--")); }
-            const auto Dependents = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(CapturedEntity);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Dependents.Num()));
-        },
-        CkStyle::Value_Numeric());
+    // Occupancy is meter-able only when the group declares a per-channel cap; an uncapped channel has no
+    // denominator, so it stays a plain count. The cap is config, so the choice is made once at compose time.
+    const auto GroupSubsystem = RelayActor->Get_GroupSubsystem();
+    const auto MaxPerChannel  = GroupSubsystem.IsValid() ? GroupSubsystem->Get_MaxEntitiesPerChannel() : -1;
+
+    if (MaxPerChannel > 0)
+    {
+        Builder.AddMeterRow(
+            FText::FromString(TEXT("Entities On Channel:")),
+            TAttribute<float>::CreateLambda([CapturedEntity, MaxPerChannel]() -> float
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return 0.0f; }
+                const auto Dependents = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(CapturedEntity);
+                return static_cast<float>(Dependents.Num()) / static_cast<float>(MaxPerChannel);
+            }),
+            ECk_Tone::Accent,
+            TAttribute<FText>::CreateLambda([CapturedEntity, MaxPerChannel]() -> FText
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::FromString(TEXT("--")); }
+                const auto Dependents = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(CapturedEntity);
+                return FText::FromString(ck::Format_UE(TEXT("{} / {}"), Dependents.Num(), MaxPerChannel));
+            }));
+    }
+    else
+    {
+        Builder.AddRow(
+            FText::FromString(TEXT("Entities On Channel:")),
+            [CapturedEntity](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::FromString(TEXT("--")); }
+                const auto Dependents = UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(CapturedEntity);
+                return FText::FromString(ck::Format_UE(TEXT("{}"), Dependents.Num()));
+            },
+            CkStyle::Value_Numeric());
+    }
 
     return Builder.Build(Entity, FString());
 }

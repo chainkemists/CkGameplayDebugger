@@ -79,23 +79,21 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
         },
         CkStyle::Value_Tag());
 
-    // Enabled
-    Builder.AddConditionalRow(
+    // Enabled — the one live single-word state on a target.
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Enabled:")),
-        [CapturedTarget](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedTarget]() -> FText
         {
             if (ck::Is_NOT_Valid(CapturedTarget)) { return FText::FromString(TEXT("--")); }
-            const auto Enabled = UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget);
-            return FText::FromString(ck::Format_UE(TEXT("{}"), Enabled));
-        },
-        [CapturedTarget](const FCk_Handle& E) -> FLinearColor
+            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget)));
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedTarget]() -> ECk_Tone
         {
-            if (ck::Is_NOT_Valid(CapturedTarget)) { return CkStyle::None(); }
-            const auto Enabled = UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget);
-            return Enabled == ECk_EnableDisable::Enable
-                ? CkStyle::Status_Active()
-                : CkStyle::Status_Failed();
-        });
+            if (ck::Is_NOT_Valid(CapturedTarget)) { return ECk_Tone::Neutral; }
+            return UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget) == ECk_EnableDisable::Enable
+                ? ECk_Tone::Ok
+                : ECk_Tone::Err;
+        }));
 
     // Completion Policy
     Builder.AddRow(

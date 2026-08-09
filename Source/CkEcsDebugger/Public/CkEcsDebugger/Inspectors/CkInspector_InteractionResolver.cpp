@@ -66,20 +66,30 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         const auto IntentName = Intent.IsValid() ? Intent.GetTagName().ToString() : TEXT("Unknown Intent");
         Builder.AddHeader(FText::FromString(IntentName));
 
-        // Channels
+        // Channels — plain tags off the params, i.e. static config, so the chips row's compose-time snapshot
+        // is exactly right here (unlike Active Intents below, which changes every frame).
         const auto& Channels = Mapping.Get_Channels();
-        auto ChannelsStr = FString{};
-        for (auto i = 0; i < Channels.Num(); i++)
+        auto ChannelChips = TArray<FCkInspector_Chip>{};
+        for (const auto& Channel : Channels)
         {
-            if (i > 0) { ChannelsStr += TEXT(", "); }
-            ChannelsStr += Channels[i].IsValid() ? Channels[i].GetTagName().ToString() : TEXT("None");
+            ChannelChips.Add(FCkInspector_Chip
+            {
+                FText::FromString(Channel.IsValid() ? Channel.GetTagName().ToString() : TEXT("None")),
+                Channel.IsValid() ? ECk_Tone::Neutral : ECk_Tone::Warn
+            });
         }
-        if (ChannelsStr.IsEmpty()) { ChannelsStr = TEXT("None"); }
 
-        Builder.AddRow(
-            FText::FromString(TEXT("Channels:")),
-            [ChannelsStr](const FCk_Handle& E) { return FText::FromString(ChannelsStr); },
-            CkStyle::Value_Tag());
+        if (ChannelChips.IsEmpty())
+        {
+            Builder.AddRow(
+                FText::FromString(TEXT("Channels:")),
+                [](const FCk_Handle& E) { return FText::FromString(TEXT("None")); },
+                CkStyle::TextDim());
+        }
+        else
+        {
+            Builder.AddChipsRow(FText::FromString(TEXT("Channels:")), ChannelChips);
+        }
 
         // Distance Sorting
         const auto DistanceSorting = Mapping.Get_DistanceSorting();

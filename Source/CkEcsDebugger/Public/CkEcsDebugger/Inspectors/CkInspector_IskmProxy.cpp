@@ -9,16 +9,42 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequenceBase.h"
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_IskmProxy)
 
-static const FLinearColor Color_PoseSource = FLinearColor(0.55f, 0.78f, 0.95f);
-static const FLinearColor Color_Anim       = FLinearColor(0.85f, 0.75f, 0.55f);
-static const FLinearColor Color_State      = FLinearColor(0.95f, 0.65f, 0.65f);
-static const FLinearColor Color_Data       = FLinearColor(0.65f, 0.90f, 0.65f);
+// =====================================================================================================================
+
+namespace ck_inspector_iskm_proxy
+{
+    static auto Get_PoseSourceText(ECk_IskmProxy_PoseSource InPoseSource) -> FText
+    {
+        switch (InPoseSource)
+        {
+            case ECk_IskmProxy_PoseSource::Sequence: return FText::FromString(TEXT("Sequence"));
+            case ECk_IskmProxy_PoseSource::AnimBP:   return FText::FromString(TEXT("AnimBP"));
+            case ECk_IskmProxy_PoseSource::Ragdoll:  return FText::FromString(TEXT("Ragdoll"));
+            default:                                 return FText::FromString(TEXT("Unknown"));
+        }
+    }
+
+    // Ragdoll is the one pose source that means "physics took over" — warn tone; the two
+    // authored sources are informational.
+    static auto Get_PoseSourceTone(ECk_IskmProxy_PoseSource InPoseSource) -> ECk_Tone
+    {
+        switch (InPoseSource)
+        {
+            case ECk_IskmProxy_PoseSource::Sequence: return ECk_Tone::Info;
+            case ECk_IskmProxy_PoseSource::AnimBP:   return ECk_Tone::Accent;
+            case ECk_IskmProxy_PoseSource::Ragdoll:  return ECk_Tone::Warn;
+            default:                                 return ECk_Tone::Neutral;
+        }
+    }
+}
 
 // =====================================================================================================================
 
@@ -52,22 +78,18 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
 
     const auto CapturedProxy = ProxyHandle;
 
-    // Pose Source
-    Builder.AddRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Pose Source:")),
-        [CapturedProxy](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedProxy]()
         {
             if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
-            const auto PoseSource = UCk_Utils_IskmProxy_UE::Get_PoseSource(CapturedProxy);
-            switch (PoseSource)
-            {
-                case ECk_IskmProxy_PoseSource::Sequence: return FText::FromString(TEXT("Sequence"));
-                case ECk_IskmProxy_PoseSource::AnimBP:   return FText::FromString(TEXT("AnimBP"));
-                case ECk_IskmProxy_PoseSource::Ragdoll:  return FText::FromString(TEXT("Ragdoll"));
-                default:                                 return FText::FromString(TEXT("Unknown"));
-            }
-        },
-        Color_PoseSource);
+            return ck_inspector_iskm_proxy::Get_PoseSourceText(UCk_Utils_IskmProxy_UE::Get_PoseSource(CapturedProxy));
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedProxy]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy)) { return ECk_Tone::Neutral; }
+            return ck_inspector_iskm_proxy::Get_PoseSourceTone(UCk_Utils_IskmProxy_UE::Get_PoseSource(CapturedProxy));
+        }));
 
     // Playing Animation
     Builder.AddRow(
@@ -79,19 +101,25 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             if (NOT ck::IsValid(Sequence, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("None")); }
             return FText::FromString(Sequence->GetName());
         },
-        Color_Anim);
+        CkStyle::Value_Object());
 
-    // Play Time / Length
-    Builder.AddRow(
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Play Time / Length:")),
-        [CapturedProxy](const FCk_Handle& E)
+        TAttribute<float>::CreateLambda([CapturedProxy]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy)) { return 0.0f; }
+            const auto Length = UCk_Utils_IskmProxy_UE::Get_PlayLength(CapturedProxy);
+            if (Length <= 0.0f) { return 0.0f; }
+            return UCk_Utils_IskmProxy_UE::Get_PlayTime(CapturedProxy) / Length;
+        }),
+        ECk_Tone::Accent,
+        TAttribute<FText>::CreateLambda([CapturedProxy]()
         {
             if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
             const auto Time   = UCk_Utils_IskmProxy_UE::Get_PlayTime(CapturedProxy);
             const auto Length = UCk_Utils_IskmProxy_UE::Get_PlayLength(CapturedProxy);
             return FText::FromString(ck::Format_UE(TEXT("{:.2f} / {:.2f}s"), Time, Length));
-        },
-        Color_Anim);
+        }));
 
     // AnimInstance Class
     Builder.AddRow(
@@ -103,7 +131,7 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             if (NOT ck::IsValid(Instance, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("(none — Sequence mode)")); }
             return FText::FromString(Instance->GetClass()->GetName());
         },
-        Color_PoseSource);
+        CkStyle::Value_Object());
 
     // Active Montage
     Builder.AddRow(
@@ -115,18 +143,24 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             if (NOT ck::IsValid(Montage, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("None")); }
             return FText::FromString(Montage->GetName());
         },
-        Color_Anim);
+        CkStyle::Value_Object());
 
-    // Ragdolling
-    Builder.AddRow(
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Ragdolling:")),
-        [CapturedProxy](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedProxy]()
         {
             if (ck::Is_NOT_Valid(CapturedProxy)) { return FText::FromString(TEXT("--")); }
-            const auto IsRagdolling = UCk_Utils_IskmProxy_UE::Get_IsRagdolling(CapturedProxy);
-            return FText::FromString(IsRagdolling ? TEXT("Yes") : TEXT("No"));
-        },
-        Color_State);
+            return FText::FromString(UCk_Utils_IskmProxy_UE::Get_IsRagdolling(CapturedProxy)
+                ? TEXT("Yes")
+                : TEXT("No"));
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedProxy]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy)) { return ECk_Tone::Neutral; }
+            return UCk_Utils_IskmProxy_UE::Get_IsRagdolling(CapturedProxy)
+                ? ECk_Tone::Warn
+                : ECk_Tone::Neutral;
+        }));
 
     // Attached Submeshes
     Builder.AddRow(
@@ -137,7 +171,7 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             const auto Count = UCk_Utils_IskmProxy_UE::Get_NumAttachedSubmeshes(CapturedProxy);
             return FText::FromString(FString::FromInt(Count));
         },
-        Color_Data);
+        CkStyle::Value_Numeric());
 
     // Custom Data Slot 0
     Builder.AddRow(
@@ -148,7 +182,7 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             const auto Value = UCk_Utils_IskmProxy_UE::Get_CustomDataFloat(CapturedProxy, 0);
             return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), Value));
         },
-        Color_Data);
+        CkStyle::Value_Numeric());
 
     return Builder.Build(Entity, FString());
 }

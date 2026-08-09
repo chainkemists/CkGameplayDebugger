@@ -9,11 +9,9 @@
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 
-CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_IskmRenderer)
+#include "CkEditorTools/Style/CkStyle.h"
 
-static const FLinearColor Color_Asset = FLinearColor(0.55f, 0.78f, 0.95f);
-static const FLinearColor Color_Count = FLinearColor(0.65f, 0.90f, 0.65f);
-static const FLinearColor Color_Class = FLinearColor(0.80f, 0.65f, 0.95f);
+CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_IskmRenderer)
 
 // =====================================================================================================================
 
@@ -57,7 +55,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("None")); }
             return FText::FromString(Data->GetName());
         },
-        Color_Asset);
+        CkStyle::Value_Object());
 
     // AnimCollection asset name
     Builder.AddRow(
@@ -69,7 +67,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (NOT ck::IsValid(Collection, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("None")); }
             return FText::FromString(Collection->GetName());
         },
-        Color_Asset);
+        CkStyle::Value_Object());
 
     // Sequences count
     Builder.AddRow(
@@ -81,7 +79,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (NOT ck::IsValid(Collection, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
             return FText::FromString(FString::FromInt(Collection->Get_Sequences().Num()));
         },
-        Color_Count);
+        CkStyle::Value_Numeric());
 
     // Submeshes count
     Builder.AddRow(
@@ -93,7 +91,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
             return FText::FromString(FString::FromInt(Data->Get_Submeshes().Num()));
         },
-        Color_Count);
+        CkStyle::Value_Numeric());
 
     // Default AnimInstance class
     Builder.AddRow(
@@ -107,7 +105,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (ClassRef.IsNull()) { return FText::FromString(TEXT("(IskmNotify fallback)")); }
             return FText::FromString(ClassRef.GetAssetName());
         },
-        Color_Class);
+        CkStyle::Value_Object());
 
     // Custom Data Slots count
     Builder.AddRow(
@@ -119,7 +117,7 @@ auto FCkInspector_IskmRenderer::BuildIskmRendererGrid(const FCk_Handle& Entity) 
             if (NOT ck::IsValid(Data, ck::IsValid_Policy_NullptrOnly{})) { return FText::FromString(TEXT("--")); }
             return FText::FromString(FString::FromInt(Data->Get_NumCustomDataFloat()));
         },
-        Color_Count);
+        CkStyle::Value_Numeric());
 
     return Builder.Build(Entity, FString());
 }

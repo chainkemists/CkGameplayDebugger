@@ -47,6 +47,63 @@ static auto DoColor_Flag(bool InValue) -> FLinearColor
 
 // =====================================================================================================================
 
+namespace ck_inspector_camera
+{
+    // Fixed-precision components in X/Y/Z order so AddAlignedNumericRow's index-based axis coloring
+    // lines up with the axis each number belongs to, and every spatial row shares one column grid.
+    static auto Make_Components(
+        const FCk_Handle& InCamera,
+        int32 InComponentCount,
+        const TCHAR* InFormat,
+        TFunction<double(const ck::FFragment_Camera_Current&, int32)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(InComponentCount);
+
+        for (auto Index = 0; Index < InComponentCount; ++Index)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InCamera, InFormat, InProjector, Index]()
+            {
+                if (ck::Is_NOT_Valid(InCamera) || NOT InCamera.Has<ck::FFragment_Camera_Current>())
+                { return FText::FromString(TEXT("--")); }
+
+                return FText::FromString(ck::Format_UE(InFormat,
+                    InProjector(InCamera.Get<ck::FFragment_Camera_Current>(), Index)));
+            }));
+        }
+
+        return Components;
+    }
+
+    static auto Make_VectorComponents(
+        const FCk_Handle& InCamera,
+        TFunction<FVector(const ck::FFragment_Camera_Current&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        return Make_Components(InCamera, 3, TEXT("{:.2f}"),
+            [InProjector](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
+            { return InProjector(InCurrent)[InIndex]; });
+    }
+
+    // Roll=X, Pitch=Y, Yaw=Z — the axis each angle turns about, so the row's coloring agrees with
+    // the vector rows above it. Every rotation label states the order.
+    static auto Make_RotatorComponents(
+        const FCk_Handle& InCamera,
+        TFunction<FRotator(const ck::FFragment_Camera_Current&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        return Make_Components(InCamera, 3, TEXT("{:.2f}"),
+            [InProjector](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
+            {
+                const auto Rotator = InProjector(InCurrent);
+                return FVector{Rotator.Roll, Rotator.Pitch, Rotator.Yaw}[InIndex];
+            });
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Camera::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Gameplay Camera"));
@@ -137,27 +194,20 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
             },
             CkStyle::Value_Numeric());
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Offset:")),
-            [Cam](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return FText::FromString(TEXT("--")); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Cam.Get<ck::FFragment_Camera_Current>()
-                    .Get_ComposedProfile().Get_Rig().Get_FramingOffset()));
-            },
-            CkStyle::Value_Math());
+            ck_inspector_camera::Make_VectorComponents(Cam,
+                [](const ck::FFragment_Camera_Current& InCurrent)
+                { return InCurrent.Get_ComposedProfile().Get_Rig().Get_FramingOffset(); }));
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Framing Pitch/Yaw:")),
-            [Cam](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto& Rig = Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_Rig();
-                return FText::FromString(FString::Printf(TEXT("%.1f / %.1f"), Rig.Get_FramingPitch(), Rig.Get_FramingYaw()));
-            },
-            CkStyle::Value_Numeric());
+            ck_inspector_camera::Make_Components(Cam, 2, TEXT("{:.1f}"),
+                [](const ck::FFragment_Camera_Current& InCurrent, int32 InIndex)
+                {
+                    const auto& Rig = InCurrent.Get_ComposedProfile().Get_Rig();
+                    return InIndex == 0 ? Rig.Get_FramingPitch() : Rig.Get_FramingYaw();
+                }));
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Orientation Control:")),
@@ -207,27 +257,17 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
         // ---- Resolved view info ----
         Builder.AddHeader(FText::FromString(TEXT("View Info (resolved)")));
 
-        Builder.AddRow(
+        Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Location:")),
-            [Cam](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return FText::FromString(TEXT("--")); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Location));
-            },
-            CkStyle::Transform());
+            ck_inspector_camera::Make_VectorComponents(Cam,
+                [](const ck::FFragment_Camera_Current& InCurrent)
+                { return InCurrent.Get_ViewInfo().Location; }));
 
-        Builder.AddRow(
-            FText::FromString(TEXT("Rotation:")),
-            [Cam](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                { return FText::FromString(TEXT("--")); }
-                return FText::FromString(ck::Format_UE(TEXT("{}"),
-                    Cam.Get<ck::FFragment_Camera_Current>().Get_ViewInfo().Rotation));
-            },
-            CkStyle::Transform());
+        Builder.AddAlignedNumericRow(
+            FText::FromString(TEXT("Rotation (R,P,Y):")),
+            ck_inspector_camera::Make_RotatorComponents(Cam,
+                [](const ck::FFragment_Camera_Current& InCurrent)
+                { return InCurrent.Get_ViewInfo().Rotation; }));
 
         Builder.AddRow(
             FText::FromString(TEXT("FOV:")),
@@ -331,29 +371,44 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
     {
         Builder.AddHeader(FText::FromString(TEXT("POV Pipeline")));
 
-        const auto AddPovRow = [&Builder, Cam](const FString& InLabel, TFunction<FText(const ck::camera::FPov_State&)> InGet)
+        const auto AddPovVectorRow = [&Builder, Cam](const FString& InLabel, TFunction<FVector(const ck::camera::FPov_State&)> InGet)
         {
-            Builder.AddRow(
+            Builder.AddAlignedNumericRow(
                 FText::FromString(InLabel),
-                [Cam, InGet](const FCk_Handle&)
-                {
-                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
-                    { return FText::FromString(TEXT("--")); }
-                    return InGet(Cam.Get<ck::FFragment_Camera_Current>().Get_PovState());
-                },
-                CkStyle::Transform());
+                ck_inspector_camera::Make_VectorComponents(Cam,
+                    [InGet](const ck::FFragment_Camera_Current& InCurrent)
+                    { return InGet(InCurrent.Get_PovState()); }));
         };
 
-        AddPovRow(TEXT("Boom Rotation:"),  [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._BoomArmRotation)); });
-        AddPovRow(TEXT("Group-Base Loc:"), [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._GroupBaseLocation)); });
-        AddPovRow(TEXT("Look-At Loc:"),    [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._LookAtLocation)); });
-        AddPovRow(TEXT("Boom-End Loc:"),   [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._BoomArmEndTransform.GetLocation())); });
-        AddPovRow(TEXT("Framing Loc:"),    [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._FramingTransform.GetLocation())); });
-        AddPovRow(TEXT("Camera Loc:"),     [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._CameraTransform.GetLocation())); });
-        AddPovRow(TEXT("Collision Dist:"), [](const auto& P) { return P._CollisionDistance.IsSet()
-            ? FText::FromString(FString::Printf(TEXT("%.1f"), P._CollisionDistance.GetValue()))
-            : FText::FromString(TEXT("-")); });
-        AddPovRow(TEXT("Noise:"),          [](const auto& P) { return FText::FromString(ck::Format_UE(TEXT("{}"), P._NoiseRotator)); });
+        const auto AddPovRotatorRow = [&Builder, Cam](const FString& InLabel, TFunction<FRotator(const ck::camera::FPov_State&)> InGet)
+        {
+            Builder.AddAlignedNumericRow(
+                FText::FromString(InLabel),
+                ck_inspector_camera::Make_RotatorComponents(Cam,
+                    [InGet](const ck::FFragment_Camera_Current& InCurrent)
+                    { return InGet(InCurrent.Get_PovState()); }));
+        };
+
+        AddPovRotatorRow(TEXT("Boom Rotation (R,P,Y):"), [](const auto& P) { return P._BoomArmRotation; });
+        AddPovVectorRow (TEXT("Group-Base Loc:"),        [](const auto& P) { return P._GroupBaseLocation; });
+        AddPovVectorRow (TEXT("Look-At Loc:"),           [](const auto& P) { return P._LookAtLocation; });
+        AddPovVectorRow (TEXT("Boom-End Loc:"),          [](const auto& P) { return P._BoomArmEndTransform.GetLocation(); });
+        AddPovVectorRow (TEXT("Framing Loc:"),           [](const auto& P) { return P._FramingTransform.GetLocation(); });
+        AddPovVectorRow (TEXT("Camera Loc:"),            [](const auto& P) { return P._CameraTransform.GetLocation(); });
+        AddPovRotatorRow(TEXT("Noise (R,P,Y):"),         [](const auto& P) { return P._NoiseRotator; });
+
+        Builder.AddRow(
+            FText::FromString(TEXT("Collision Dist:")),
+            [Cam](const FCk_Handle&)
+            {
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                { return FText::FromString(TEXT("--")); }
+                const auto& Distance = Cam.Get<ck::FFragment_Camera_Current>().Get_PovState()._CollisionDistance;
+                return Distance.IsSet()
+                    ? FText::FromString(ck::Format_UE(TEXT("{:.1f}"), Distance.GetValue()))
+                    : FText::FromString(TEXT("-"));
+            },
+            CkStyle::Value_Numeric());
     }
 
     // ---- Modifier detail (when a modifier child entity is selected) ----
@@ -381,21 +436,23 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
 
         if (Entity.Has<ck::FFragment_CameraLayer_Blend>())
         {
-            Builder.AddRow(FText::FromString(TEXT("Alpha:")),
-                [Cam](const FCk_Handle&)
+            Builder.AddMeterRow(
+                FText::FromString(TEXT("Alpha (cur → target):")),
+                TAttribute<float>::CreateLambda([Cam]()
+                {
+                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
+                    { return 0.0f; }
+                    return Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_Alpha();
+                }),
+                ECk_Tone::Accent,
+                TAttribute<FText>::CreateLambda([Cam]()
                 {
                     if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
                     { return FText::FromString(TEXT("--")); }
-                    return DoFmt_Float(Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_Alpha(), TEXT("{:.2f}"));
-                }, CkStyle::Value_Numeric());
-
-            Builder.AddRow(FText::FromString(TEXT("Target Alpha:")),
-                [Cam](const FCk_Handle&)
-                {
-                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_CameraLayer_Blend>())
-                    { return FText::FromString(TEXT("--")); }
-                    return DoFmt_Float(Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha(), TEXT("{:.2f}"));
-                }, CkStyle::Value_Numeric());
+                    const auto& Blend = Cam.Get<ck::FFragment_CameraLayer_Blend>();
+                    return FText::FromString(ck::Format_UE(TEXT("{:.2f} → {:.2f}"),
+                        Blend.Get_Alpha(), Blend.Get_TargetAlpha()));
+                }));
 
             Builder.AddRow(FText::FromString(TEXT("Blend Rate:")),
                 [Cam](const FCk_Handle&)
@@ -406,25 +463,25 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 }, CkStyle::Value_Numeric());
         }
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),
-            [Cam](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([Cam]()
             {
                 if (ck::Is_NOT_Valid(Cam))
                 { return FText::FromString(TEXT("--")); }
-                const auto bExiting = Cam.Has<ck::FFragment_CameraLayer_Blend>() && Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f;
-                if (bExiting)                               { return FText::FromString(TEXT("Exiting")); }
+                const auto IsExiting = Cam.Has<ck::FFragment_CameraLayer_Blend>() && Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f;
+                if (IsExiting)                              { return FText::FromString(TEXT("Exiting")); }
                 if (Cam.Has<ck::FTag_CameraLayer_Active>()) { return FText::FromString(TEXT("Active")); }
                 return FText::FromString(TEXT("Pending"));
-            },
-            [Cam](const FCk_Handle&) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([Cam]()
             {
-                if (ck::Is_NOT_Valid(Cam))                  { return CkStyle::None(); }
-                const auto bExiting = Cam.Has<ck::FFragment_CameraLayer_Blend>() && Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f;
-                if (bExiting)                               { return CkStyle::Warn(); }
-                if (Cam.Has<ck::FTag_CameraLayer_Active>()) { return CkStyle::Status_Active(); }
-                return CkStyle::TextMute();
-            });
+                if (ck::Is_NOT_Valid(Cam))                  { return ECk_Tone::Neutral; }
+                const auto IsExiting = Cam.Has<ck::FFragment_CameraLayer_Blend>() && Cam.Get<ck::FFragment_CameraLayer_Blend>().Get_TargetAlpha() <= 0.0f;
+                if (IsExiting)                              { return ECk_Tone::Warn; }
+                if (Cam.Has<ck::FTag_CameraLayer_Active>()) { return ECk_Tone::Ok; }
+                return ECk_Tone::Neutral;
+            }));
     }
 
     return Builder.Build(Entity);

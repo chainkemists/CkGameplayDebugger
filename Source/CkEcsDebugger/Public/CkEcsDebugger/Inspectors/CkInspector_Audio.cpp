@@ -16,6 +16,25 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_Audio)
 
 // =====================================================================================================================
 
+namespace ck_inspector_audio
+{
+    // Audible = Ok, in-transit = Info, held = Warn, silent = Neutral.
+    static auto Get_TrackStateTone(ECk_AudioTrack_State InState) -> ECk_Tone
+    {
+        switch (InState)
+        {
+            case ECk_AudioTrack_State::Playing:    return ECk_Tone::Ok;
+            case ECk_AudioTrack_State::FadingIn:   return ECk_Tone::Info;
+            case ECk_AudioTrack_State::FadingOut:  return ECk_Tone::Info;
+            case ECk_AudioTrack_State::Paused:     return ECk_Tone::Warn;
+            case ECk_AudioTrack_State::Stopped:    return ECk_Tone::Neutral;
+            default:                               return ECk_Tone::Neutral;
+        }
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_Audio::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Audio"));
@@ -44,38 +63,40 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const auto State = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_State();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), State));
-            },
-            CkStyle::Value_Enum());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                { return ECk_Tone::Neutral; }
+                return ck_inspector_audio::Get_TrackStateTone(
+                    CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_State());
+            }));
 
-        Builder.AddRow(
-            FText::FromString(TEXT("Volume (cur):")),
-            [CapturedEntity](const FCk_Handle&)
+        Builder.AddMeterRow(
+            FText::FromString(TEXT("Volume (cur → target):")),
+            TAttribute<float>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                { return 0.0f; }
+                return CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_CurrentVolume();
+            }),
+            ECk_Tone::Accent,
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
                 { return FText::FromString(TEXT("--")); }
-                const auto Vol = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_CurrentVolume();
-                return FText::FromString(FString::Printf(TEXT("%.3f"), Vol));
-            },
-            CkStyle::Value_Numeric());
-
-        Builder.AddRow(
-            FText::FromString(TEXT("Volume (target):")),
-            [CapturedEntity](const FCk_Handle&)
-            {
-                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Vol = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_TargetVolume();
-                return FText::FromString(FString::Printf(TEXT("%.3f"), Vol));
-            },
-            CkStyle::Value_Numeric());
+                const auto& Current = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>();
+                return FText::FromString(ck::Format_UE(TEXT("{:.3f} → {:.3f}"),
+                    Current.Get_CurrentVolume(), Current.Get_TargetVolume()));
+            }));
 
         Builder.AddRow(
             FText::FromString(TEXT("Fade Speed:")),
@@ -88,16 +109,24 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             },
             CkStyle::Value_Numeric());
 
-        Builder.AddRow(
+        // Get_PlaybackPercent is a 0..1 fraction despite the name (the CkAudio debug draw scales it
+        // by 100 to display) — the previous row printed the raw fraction with a % sign.
+        Builder.AddMeterRow(
             FText::FromString(TEXT("Playback:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<float>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
+                { return 0.0f; }
+                return CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent();
+            }),
+            ECk_Tone::Info,
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioTrack_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const auto Pct = CapturedEntity.Get<ck::FFragment_AudioTrack_Current>().Get_PlaybackPercent();
-                return FText::FromString(FString::Printf(TEXT("%.1f%%"), Pct));
-            },
-            CkStyle::Value_Numeric());
+                return FText::FromString(ck::Format_UE(TEXT("{:.1f}%"), Pct * 100.0f));
+            }));
 
         Builder.AddConditionalRow(
             FText::FromString(TEXT("Virtualized:")),

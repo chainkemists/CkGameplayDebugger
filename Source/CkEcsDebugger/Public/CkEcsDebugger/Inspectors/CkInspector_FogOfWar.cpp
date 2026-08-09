@@ -15,6 +15,36 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_FogOfWar)
 
 // =====================================================================================================================
 
+namespace ck_inspector_fog_of_war
+{
+    // Bounds are planar — two components, so AddAlignedNumericRow colors them X/Y and the
+    // Center / Half-Extents rows line up column-for-column.
+    static auto Make_BoundsComponents(
+        const FCk_Handle_FogOfWar& InFog,
+        TFunction<FVector2D(const FCk_Fragment_FogOfWar_ParamsData&)> InProjector)
+        -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(2);
+
+        for (auto Axis = 0; Axis < 2; ++Axis)
+        {
+            Components.Emplace(TAttribute<FText>::CreateLambda([InFog, InProjector, Axis]()
+            {
+                if (ck::Is_NOT_Valid(InFog))
+                { return FText::FromString(TEXT("--")); }
+
+                const auto Value = InProjector(InFog.Get<ck::FFragment_FogOfWar_Params>());
+                return FText::FromString(ck::Format_UE(TEXT("{:.0f}"), Value[Axis]));
+            }));
+        }
+
+        return Components;
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_FogOfWar::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Fog Of War"));
@@ -65,9 +95,15 @@ auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TShared
                 : CkStyle::Value_Bool_False();
         });
 
-    Builder.AddRow(
+    Builder.AddMeterRow(
         FText::FromString(TEXT("Explored:")),
-        [CapturedFog](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedFog]()
+        {
+            if (ck::Is_NOT_Valid(CapturedFog)) { return 0.0f; }
+            return UCk_Utils_FogOfWar_UE::Get_ExploredFraction(CapturedFog);
+        }),
+        ECk_Tone::Info,
+        TAttribute<FText>::CreateLambda([CapturedFog]()
         {
             if (ck::Is_NOT_Valid(CapturedFog)) { return FText::FromString(TEXT("--")); }
 
@@ -78,20 +114,17 @@ auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TShared
             return FText::FromString(ck::Format_UE(TEXT("{:.1f}%  ({} / {})"),
                 ExploredFraction * 100.0f,
                 FMath::RoundToInt32(ExploredFraction * static_cast<float>(TotalCells)), TotalCells));
-        },
-        CkStyle::Value_Numeric());
+        }));
 
-    Builder.AddRow(
-        FText::FromString(TEXT("Bounds:")),
-        [CapturedFog](const FCk_Handle&)
-        {
-            if (ck::Is_NOT_Valid(CapturedFog)) { return FText::FromString(TEXT("--")); }
-            const auto& Bounds = CapturedFog.Get<ck::FFragment_FogOfWar_Params>().Get_Bounds();
-            return FText::FromString(ck::Format_UE(TEXT("C({:.0f}, {:.0f})  HE({:.0f}, {:.0f})"),
-                Bounds.Get_Center().X, Bounds.Get_Center().Y,
-                Bounds.Get_HalfExtents().X, Bounds.Get_HalfExtents().Y));
-        },
-        CkStyle::Value_Numeric());
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Bounds Center:")),
+        ck_inspector_fog_of_war::Make_BoundsComponents(CapturedFog,
+            [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_Center(); }));
+
+    Builder.AddAlignedNumericRow(
+        FText::FromString(TEXT("Bounds Half-Extents:")),
+        ck_inspector_fog_of_war::Make_BoundsComponents(CapturedFog,
+            [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_HalfExtents(); }));
 
     Builder.AddRow(
         FText::FromString(TEXT("Revealers:")),

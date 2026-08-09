@@ -131,7 +131,20 @@ auto FCkInspector_AStar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 { return 0.0f; }
                 return CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_BudgetUsagePercent() / 100.0f;
             }),
-            ECk_Tone::Accent,
+            // The tone IS the alarm: a query eating 80% of its frame budget is worth noticing before
+            // it starts spilling across frames at 100%.
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())
+                { return ECk_Tone::Info; }
+
+                const auto Fraction = CapturedEntity.Get<ck::FFragment_AStar_Debug>().Get_BudgetUsagePercent() / 100.0f;
+
+                if (Fraction >= 1.0f) { return ECk_Tone::Err; }
+                if (Fraction >= 0.8f) { return ECk_Tone::Warn; }
+
+                return ECk_Tone::Info;
+            }),
             TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AStar_Debug>())

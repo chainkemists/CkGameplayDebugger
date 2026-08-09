@@ -120,27 +120,25 @@ auto FCkInspector_Resolver::Build_Inspector(const FCk_Handle& Entity) -> TShared
     {
         Builder.AddHeader(FText::FromString(TEXT("Pending")));
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Modifier Ops:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_ResolverDataBundle_PendingOperations>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Count = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingModifiersOperations().Num();
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
-            },
-            CkStyle::Value_Numeric());
+                { return 0; }
+                return CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingModifiersOperations().Num();
+            }),
+            ECk_Tone::Info);
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Metadata Ops:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_ResolverDataBundle_PendingOperations>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Count = CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingMetadataOperations().Num();
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
-            },
-            CkStyle::Value_Numeric());
+                { return 0; }
+                return CapturedEntity.Get<ck::FFragment_ResolverDataBundle_PendingOperations>().Get_PendingMetadataOperations().Num();
+            }),
+            ECk_Tone::Info);
     }
 
     return Builder.Build(Entity);

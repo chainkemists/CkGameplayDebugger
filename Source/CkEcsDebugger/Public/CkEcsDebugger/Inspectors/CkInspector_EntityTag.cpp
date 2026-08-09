@@ -52,10 +52,11 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
     const auto GtRoots   = UCk_Utils_EntityTag_UE::Get_AllTagsAsContainer(Entity);
 
     // Header — FName tag count
-    Builder.AddRow(
+    Builder.AddCountBadgeRow(
         FText::FromString(TEXT("FName Tag Count:")),
-        [N = Tags.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-        CkStyle::Value_Numeric());
+        Tags.Num(),
+        ECk_Tone::Info,
+        FText::FromString(TEXT("tags")));
 
     // The flattened FName set as chips. Same snapshot semantics as the rows they replace — the
     // previous per-tag ✓/✗ was checked against this very Get_AllTags snapshot, so it could only

@@ -153,16 +153,15 @@ auto FCkInspector_Audio::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddRow(
+        Builder.AddCountBadgeRow(
             FText::FromString(TEXT("Active Tracks:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<int32>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_AudioDirector_Current>())
-                { return FText::FromString(TEXT("--")); }
-                const auto Count = CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_ActiveTracks().Num();
-                return FText::FromString(ck::Format_UE(TEXT("{}"), Count));
-            },
-            CkStyle::Value_Numeric());
+                { return 0; }
+                return CapturedEntity.Get<ck::FFragment_AudioDirector_Current>().Get_ActiveTracks().Num();
+            }),
+            ECk_Tone::Info);
 
         Builder.AddRow(
             FText::FromString(TEXT("Highest Priority:")),

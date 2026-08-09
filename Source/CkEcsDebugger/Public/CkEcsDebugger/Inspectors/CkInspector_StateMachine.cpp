@@ -30,47 +30,54 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_StateMachine)
 
 namespace
 {
-    auto Format_RunStatus_Color(ECk_SmRunStatus InStatus) -> FLinearColor
+    // One lane + the timeline's own 8px top pad and 18px axis band — enough to read the markers
+    // without the History section swallowing the inspector.
+    constexpr auto SmTimelineHeight = 60.0f;
+
+    // Tones replace the previous per-result FLinearColor mapping now that these values render as
+    // status pills. Running is Accent (the "live" tone the pill widget was built for) rather than
+    // Ok, so a running SM reads as *active* and only Succeeded/Pass read as *good*.
+    auto Format_RunStatus_Tone(ECk_SmRunStatus InStatus) -> ECk_Tone
     {
         switch (InStatus)
         {
-            case ECk_SmRunStatus::Running: return CkStyle::Status_Active();
-            case ECk_SmRunStatus::Paused:  return CkStyle::Warn();
+            case ECk_SmRunStatus::Running: return ECk_Tone::Accent;
+            case ECk_SmRunStatus::Paused:  return ECk_Tone::Warn;
             case ECk_SmRunStatus::Stopped:
-            default:                       return CkStyle::TextMute();
+            default:                       return ECk_Tone::Neutral;
         }
     }
 
-    auto Format_TaskResult_Color(ECk_SmTaskResult InResult) -> FLinearColor
+    auto Format_TaskResult_Tone(ECk_SmTaskResult InResult) -> ECk_Tone
     {
         switch (InResult)
         {
-            case ECk_SmTaskResult::Running:   return CkStyle::Status_Active();
-            case ECk_SmTaskResult::Succeeded: return CkStyle::Ok();
+            case ECk_SmTaskResult::Running:   return ECk_Tone::Accent;
+            case ECk_SmTaskResult::Succeeded: return ECk_Tone::Ok;
             case ECk_SmTaskResult::Failed:
-            default:                          return CkStyle::Err();
+            default:                          return ECk_Tone::Err;
         }
     }
 
-    auto Format_ConditionResult_Color(ECk_SmConditionResult InResult) -> FLinearColor
+    auto Format_ConditionResult_Tone(ECk_SmConditionResult InResult) -> ECk_Tone
     {
         switch (InResult)
         {
-            case ECk_SmConditionResult::Pass:        return CkStyle::Ok();
-            case ECk_SmConditionResult::Fail:        return CkStyle::Err();
+            case ECk_SmConditionResult::Pass:        return ECk_Tone::Ok;
+            case ECk_SmConditionResult::Fail:        return ECk_Tone::Err;
             case ECk_SmConditionResult::Undetermined:
-            default:                                 return CkStyle::TextMute();
+            default:                                 return ECk_Tone::Neutral;
         }
     }
 
-    auto Format_TransitionResult_Color(ECk_SmTransitionResult InResult) -> FLinearColor
+    auto Format_TransitionResult_Tone(ECk_SmTransitionResult InResult) -> ECk_Tone
     {
         switch (InResult)
         {
-            case ECk_SmTransitionResult::Pass:        return CkStyle::Ok();
-            case ECk_SmTransitionResult::Fail:        return CkStyle::Err();
+            case ECk_SmTransitionResult::Pass:        return ECk_Tone::Ok;
+            case ECk_SmTransitionResult::Fail:        return ECk_Tone::Err;
             case ECk_SmTransitionResult::Undetermined:
-            default:                                  return CkStyle::TextMute();
+            default:                                  return ECk_Tone::Neutral;
         }
     }
 
@@ -135,32 +142,40 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
 
         const auto CapturedEntity = Entity;
 
-        Builder.AddConditionalRow(
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Status:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const auto Status = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus();
                 return FText::FromString(ck::Format_UE(TEXT("{}"), Status));
-            },
-            [CapturedEntity](const FCk_Handle&) -> FLinearColor
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
-                { return CkStyle::None(); }
-                return Format_RunStatus_Color(CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus());
-            });
+                { return ECk_Tone::Neutral; }
+                return Format_RunStatus_Tone(CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_RunStatus());
+            }));
 
-        Builder.AddRow(
+        // The current state is the single most-read value in this inspector — Info-toned pill so it
+        // separates from the run status beside it without competing with Ok/Err result pills below.
+        Builder.AddStatusPillRow(
             FText::FromString(TEXT("Current State:")),
-            [CapturedEntity](const FCk_Handle&)
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
             {
                 if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
                 { return FText::FromString(TEXT("--")); }
                 const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
                 return FText::FromString(Format_Sm_ClassName(StateClass));
-            },
-            CkStyle::Value_Object());
+            }),
+            TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sm_Current>())
+                { return ECk_Tone::Neutral; }
+                const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
+                return StateClass != nullptr ? ECk_Tone::Info : ECk_Tone::Neutral;
+            }));
     }
 
     // ---- Pending Transition ----
@@ -228,6 +243,55 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         }
         else
         {
+            // Timeline first: the whole run's transitions positioned on their real-time axis, which
+            // the numbered rows below cannot show (they are evenly spaced regardless of when the
+            // transition happened — a burst of five transitions in one frame looks the same as five
+            // spread over a minute). Markers are informational (no SelectionId), tooltip carries the
+            // full From -> To plus frame number and the conditions that fired.
+            //
+            // SNAPSHOT, like every AddChipsRow/AddTimelineRow: composed once per (entity x inspector)
+            // build. The panel deliberately does not rebuild from Tick
+            // (CkDebuggerPanel_Inspector.cpp "POLICY"), so new transitions appear on the next
+            // re-selection / filter keystroke. The numbered rows below have always had exactly the
+            // same staleness — their text is captured by value at build time too.
+            auto Content = FCkInspector_TimelineContent{};
+            Content.TimeMin = History[0].RealTimeSeconds;
+            Content.TimeMax = History[HistoryNum - 1].RealTimeSeconds;
+            Content.Events.Reserve(HistoryNum);
+
+            for (auto Index = int32{0}; Index < HistoryNum; ++Index)
+            {
+                const auto& Entry = History[Index];
+
+                auto Tooltip = FString::Printf(TEXT("[%d] %s → %s  (frame %llu, %.2f s)"),
+                    Index,
+                    *Format_Sm_StateName(Entry.FromStateName),
+                    *Format_Sm_StateName(Entry.ToStateName),
+                    Entry.FrameNumber,
+                    Entry.RealTimeSeconds);
+
+                if (NOT Entry.TransitionConditionNames.IsEmpty())
+                {
+                    Tooltip.Append(TEXT("\n"));
+                    Tooltip.Append(FString::Join(Entry.TransitionConditionNames, TEXT(", ")));
+                }
+
+                auto Event = FCkDebug_TimelineEvent{};
+                Event.LaneIndex   = 0;
+                Event.TimeSeconds = Entry.RealTimeSeconds;
+                Event.Shape       = ECkDebug_TimelineMarker::Square;
+                Event.Color       = CkStyle::Accent();
+                Event.Tooltip     = MoveTemp(Tooltip);
+
+                Content.Events.Add(MoveTemp(Event));
+            }
+
+            Builder.AddTimelineRow(
+                FText::FromString(TEXT("Timeline:")),
+                TArray<FString>{ FString(TEXT("Transitions")) },
+                Content,
+                SmTimelineHeight);
+
             constexpr auto MaxEntriesToShow = int32{ 8 };
             const auto     StartIndex       = FMath::Max(0, HistoryNum - MaxEntriesToShow);
 
@@ -311,21 +375,21 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         if (Entity.Has<ck::FFragment_SmTask_Current>())
         {
             const auto CapturedEntity = Entity;
-            Builder.AddConditionalRow(
+            Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
-                [CapturedEntity](const FCk_Handle&)
+                TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_Current>())
                     { return FText::FromString(TEXT("--")); }
                     const auto Result = CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
-                },
-                [CapturedEntity](const FCk_Handle&) -> FLinearColor
+                }),
+                TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTask_Current>())
-                    { return CkStyle::None(); }
-                    return Format_TaskResult_Color(CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult());
-                });
+                    { return ECk_Tone::Neutral; }
+                    return Format_TaskResult_Tone(CapturedEntity.Get<ck::FFragment_SmTask_Current>().Get_LastResult());
+                }));
         }
 
         if (Entity.Has<ck::FFragment_SmTask_SubStateMachine>())
@@ -364,21 +428,21 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         if (Entity.Has<ck::FFragment_SmTransition_Current>())
         {
             const auto CapturedEntity = Entity;
-            Builder.AddConditionalRow(
+            Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
-                [CapturedEntity](const FCk_Handle&)
+                TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition_Current>())
                     { return FText::FromString(TEXT("--")); }
                     const auto Result = CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
-                },
-                [CapturedEntity](const FCk_Handle&) -> FLinearColor
+                }),
+                TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmTransition_Current>())
-                    { return CkStyle::None(); }
-                    return Format_TransitionResult_Color(CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result());
-                });
+                    { return ECk_Tone::Neutral; }
+                    return Format_TransitionResult_Tone(CapturedEntity.Get<ck::FFragment_SmTransition_Current>().Get_Result());
+                }));
         }
     }
 
@@ -400,21 +464,21 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
         if (Entity.Has<ck::FFragment_SmCondition_Current>())
         {
             const auto CapturedEntity = Entity;
-            Builder.AddConditionalRow(
+            Builder.AddStatusPillRow(
                 FText::FromString(TEXT("Result:")),
-                [CapturedEntity](const FCk_Handle&)
+                TAttribute<FText>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition_Current>())
                     { return FText::FromString(TEXT("--")); }
                     const auto Result = CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result();
                     return FText::FromString(ck::Format_UE(TEXT("{}"), Result));
-                },
-                [CapturedEntity](const FCk_Handle&) -> FLinearColor
+                }),
+                TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
                 {
                     if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_SmCondition_Current>())
-                    { return CkStyle::None(); }
-                    return Format_ConditionResult_Color(CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result());
-                });
+                    { return ECk_Tone::Neutral; }
+                    return Format_ConditionResult_Tone(CapturedEntity.Get<ck::FFragment_SmCondition_Current>().Get_Result());
+                }));
         }
     }
 

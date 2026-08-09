@@ -13,9 +13,6 @@
 #include "CkEditorTools/Style/CkStyle.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_TagSet)
 
-static const FLinearColor Color_Tag = FLinearColor(0.6f, 0.85f, 0.55f);
-static const FLinearColor Color_TagCount = FLinearColor(0.5f, 0.7f, 0.45f);
-
 // =====================================================================================================================
 
 auto FCkInspector_TagSet::Get_ComponentName() const -> FText
@@ -56,36 +53,30 @@ auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FStrin
     Builder.AddRow(
         FText::FromString(TEXT("Count:")),
         [NumTags](const FCk_Handle& E) { return FText::FromString(ck::Format_UE(TEXT("{}"), NumTags)); },
-        Color_TagCount);
+        CkStyle::Value_Numeric());
 
-    // Individual tags
+    // The set as chips instead of one tick/cross row per tag. Those rows were never a live view of
+    // the set: they were built from this same Get_Tags snapshot, so a tag ADDED after the build was
+    // invisible and only a REMOVED one could ever flip to a cross. Chips lose that one half-signal
+    // and gain a set that reads as a set. Refresh is the panel's normal rebuild - re-selection or a
+    // filter keystroke (the panel deliberately ignores RequestRebuild from Tick,
+    // CkDebuggerPanel_Inspector.cpp "POLICY").
+    //
+    // Full tag paths (not shortened): the chips row's filter value is the concatenated chip text, so
+    // typing any segment of a tag still keeps this row through the inspector filter.
     const auto Tags = UCk_Utils_TagSet_UE::Get_Tags(TagSetHandle);
+
+    auto Chips = TArray<FCkInspector_Chip>{};
+    Chips.Reserve(Tags.Num());
+
     for (const auto& Tag : Tags)
     {
-        const auto TagName = Tag.ToString();
-        const auto CapturedTag = Tag;
+        Chips.Add(FCkInspector_Chip{ FText::FromString(Tag.ToString()), ECk_Tone::Neutral });
+    }
 
-        Builder.AddConditionalRow(
-            FText::FromString(TagName),
-            [CapturedTag](const FCk_Handle& E)
-            {
-                // Show presence check as live value
-                auto MutableE = E;
-                const auto TS = UCk_Utils_TagSet_UE::Cast(MutableE);
-                if (ck::Is_NOT_Valid(TS)) { return FText::FromString(TEXT("--")); }
-                return FText::FromString(
-                    UCk_Utils_TagSet_UE::HasTagExact(TS, CapturedTag)
-                        ? TEXT("\u2713")   // checkmark
-                        : TEXT("\u2717")); // cross
-            },
-            [CapturedTag](const FCk_Handle& E)
-            {
-                auto MutableE = E;
-                const auto TS = UCk_Utils_TagSet_UE::Cast(MutableE);
-                if (ck::Is_NOT_Valid(TS)) { return CkStyle::None(); }
-                return UCk_Utils_TagSet_UE::HasTagExact(TS, CapturedTag)
-                    ? Color_Tag : CkStyle::Err();
-            });
+    if (NOT Chips.IsEmpty())
+    {
+        Builder.AddChipsRow(FText::FromString(TEXT("Tags:")), Chips);
     }
 
     return Builder.Build(Entity, InFilter);

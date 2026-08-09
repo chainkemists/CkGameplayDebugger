@@ -15,9 +15,6 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityTagQuery)
 
-static const FLinearColor Color_OK    = FLinearColor(0.6f, 0.85f, 0.55f);
-static const FLinearColor Color_Field = FLinearColor(0.5f, 0.7f, 0.45f);
-
 // =====================================================================================================================
 
 auto FCkInspector_EntityTagQuery::Get_ComponentName() const -> FText
@@ -55,21 +52,26 @@ auto FCkInspector_EntityTagQuery::BuildGrid(const FCk_Handle& Entity) -> TShared
     if (ck::Is_NOT_Valid(Query))
     { return Builder.Build(Entity, FString()); }
 
-    // Is Satisfied row
-    Builder.AddConditionalRow(
+    // Is Satisfied — the headline of this inspector, so it gets the pill. Live via attributes: the
+    // entity is captured by value and re-Cast per read, matching the previous row's behaviour.
+    const auto CapturedEntity = Entity;
+
+    Builder.AddStatusPillRow(
         FText::FromString(TEXT("Is Satisfied:")),
-        [](const FCk_Handle& E)
+        TAttribute<FText>::CreateLambda([CapturedEntity]()
         {
-            auto Me = E;
-            auto Q  = UCk_Utils_EntityTagQuery_UE::Cast(Me);
-            return FText::FromString(UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? TEXT("YES") : TEXT("no"));
-        },
-        [](const FCk_Handle& E)
+            auto Me = CapturedEntity;
+            if (ck::Is_NOT_Valid(Me)) { return FText::FromString(TEXT("--")); }
+            auto Q = UCk_Utils_EntityTagQuery_UE::Cast(Me);
+            return FText::FromString(UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? TEXT("Yes") : TEXT("No"));
+        }),
+        TAttribute<ECk_Tone>::CreateLambda([CapturedEntity]()
         {
-            auto Me = E;
-            auto Q  = UCk_Utils_EntityTagQuery_UE::Cast(Me);
-            return UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? Color_OK : CkStyle::Err();
-        });
+            auto Me = CapturedEntity;
+            if (ck::Is_NOT_Valid(Me)) { return ECk_Tone::Neutral; }
+            auto Q = UCk_Utils_EntityTagQuery_UE::Cast(Me);
+            return UCk_Utils_EntityTagQuery_UE::Get_IsSatisfied(Q) ? ECk_Tone::Ok : ECk_Tone::Err;
+        }));
 
     const auto Reqs    = UCk_Utils_EntityTagQuery_UE::Get_AllRequirements(Query);
     const auto Results = UCk_Utils_EntityTagQuery_UE::Get_CurrentResults(Query);
@@ -77,7 +79,7 @@ auto FCkInspector_EntityTagQuery::BuildGrid(const FCk_Handle& Entity) -> TShared
     Builder.AddRow(
         FText::FromString(FString::Printf(TEXT("Requirements (%d):"), Reqs.Num())),
         [N = Reqs.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-        Color_Field);
+        CkStyle::Value_Numeric());
 
     for (int32 i = 0; i < Reqs.Num(); ++i)
     {
@@ -99,24 +101,27 @@ auto FCkInspector_EntityTagQuery::BuildGrid(const FCk_Handle& Entity) -> TShared
         Builder.AddRow(
             FText::FromString(Header),
             [](const FCk_Handle&) { return FText::GetEmpty(); },
-            Color_Field);
+            CkStyle::TextDim());
 
         if (R.Get_MaxAllowedEnsure() > FCk_EntityTagQuery_Requirement::NoEnsure)
         {
             Builder.AddRow(
                 FText::FromString(TEXT("    Ensure ≤:")),
                 [Max = R.Get_MaxAllowedEnsure()](const FCk_Handle&) { return FText::FromString(FString::FromInt(Max)); },
-                Color_Field);
+                CkStyle::Value_Numeric());
         }
 
+        // Matches were one formatted-handle text row each — dead text for the one thing you always
+        // want to do with a match, which is go look at it. One badge box of SCkDebug_EntityRef pills
+        // instead (house policy: never render an FCk_Handle as plain text).
         if (i < Results.Num())
         {
-            for (const auto& H : Results[i].Get_Handles())
+            const auto& Handles = Results[i].Get_Handles();
+            if (NOT Handles.IsEmpty())
             {
-                Builder.AddRow(
-                    FText::FromString(TEXT("    Match:")),
-                    [Captured = H](const FCk_Handle&) { return FText::FromString(ck::Format_UE(TEXT("{}"), Captured)); },
-                    Color_OK);
+                Builder.AddWidgetRow(
+                    FText::FromString(TEXT("    Matches:")),
+                    FCkInspectorWidgetBuilder::MakeBadgeBox(Handles));
             }
         }
     }

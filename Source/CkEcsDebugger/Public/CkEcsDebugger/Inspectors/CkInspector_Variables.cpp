@@ -81,6 +81,23 @@ namespace
                 InColor);
         }
     }
+
+    // Fixed-precision components for AddAlignedNumericRow, in X/Y/Z order so the row's index-based
+    // axis coloring lands on the right axis. Values are snapshots — every row in this inspector is
+    // (the variable maps are read once at build time), so nothing changes about liveness here.
+    auto Make_VariableNumericComponents(
+        const TArray<double>& InValues) -> TArray<TAttribute<FText>>
+    {
+        auto Components = TArray<TAttribute<FText>>{};
+        Components.Reserve(InValues.Num());
+
+        for (const auto& Value : InValues)
+        {
+            Components.Emplace(FText::FromString(FString::Printf(TEXT("%.3f"), Value)));
+        }
+
+        return Components;
+    }
 }
 
 // =====================================================================================================================
@@ -140,13 +157,45 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
         [](const FText& InValue) -> FString { return InValue.IsEmpty() ? TEXT("(Empty)") : InValue.ToString(); });
 
     // ---- Math types
-    AddVariableRows<ck::FFragment_Variable_Vector>(Builder, Entity, FText::FromString(TEXT("Vector")),
-        CkStyle::Value_Math(),
-        [](const FVector& InValue) -> FString { return InValue.ToString(); });
+    // Vector / Vector2D render as aligned numeric rows — right-aligned fixed-width columns with the
+    // X/Y/Z axis colors, the shape the Transform inspector uses. The axis colors carry what
+    // FVector::ToString()'s inline "X= Y= Z=" labels used to, and several vector variables now line
+    // up column-for-column instead of being ragged strings.
+    //
+    // Rotator and Transform deliberately STAY textual: FRotator::ToString() prints "P= Y= R=", whose
+    // order does not match this row's positional X/Y/Z coloring, and a Transform is three vectors —
+    // neither fits one aligned row without inventing a label convention.
+    if (Entity.Has<ck::FFragment_Variable_Vector>())
+    {
+        const auto& Variables = Entity.Get<ck::FFragment_Variable_Vector>().Get_Variables();
+        if (NOT Variables.IsEmpty())
+        {
+            Builder.AddHeader(FText::FromString(TEXT("Vector")));
 
-    AddVariableRows<ck::FFragment_Variable_Vector2D>(Builder, Entity, FText::FromString(TEXT("Vector2D")),
-        CkStyle::Value_Math(),
-        [](const FVector2D& InValue) -> FString { return InValue.ToString(); });
+            for (const auto& [Name, Value] : Variables)
+            {
+                Builder.AddAlignedNumericRow(
+                    FText::FromString(Name.ToString()),
+                    Make_VariableNumericComponents(TArray<double>{ Value.X, Value.Y, Value.Z }));
+            }
+        }
+    }
+
+    if (Entity.Has<ck::FFragment_Variable_Vector2D>())
+    {
+        const auto& Variables = Entity.Get<ck::FFragment_Variable_Vector2D>().Get_Variables();
+        if (NOT Variables.IsEmpty())
+        {
+            Builder.AddHeader(FText::FromString(TEXT("Vector2D")));
+
+            for (const auto& [Name, Value] : Variables)
+            {
+                Builder.AddAlignedNumericRow(
+                    FText::FromString(Name.ToString()),
+                    Make_VariableNumericComponents(TArray<double>{ Value.X, Value.Y }));
+            }
+        }
+    }
 
     AddVariableRows<ck::FFragment_Variable_Rotator>(Builder, Entity, FText::FromString(TEXT("Rotator")),
         CkStyle::Value_Math(),
@@ -161,9 +210,42 @@ auto FCkInspector_Variables::BuildVariablesGrid(const FCk_Handle& Entity) -> TSh
         CkStyle::Value_Tag(),
         [](const FGameplayTag& InValue) -> FString { return InValue.IsValid() ? InValue.GetTagName().ToString() : TEXT("(None)"); });
 
-    AddVariableRows<ck::FFragment_Variable_GameplayTagContainer>(Builder, Entity, FText::FromString(TEXT("TagContainer")),
-        CkStyle::Value_Tag(),
-        [](const FGameplayTagContainer& InValue) -> FString { return InValue.IsEmpty() ? TEXT("(Empty)") : InValue.ToString(); });
+    // A tag container printed through FGameplayTagContainer::ToString() is one long comma blob that
+    // wraps badly and reads worse the more tags it holds. Chips give it the set shape it actually
+    // has. Snapshot semantics are unchanged — this inspector already read every variable map once at
+    // build time.
+    if (Entity.Has<ck::FFragment_Variable_GameplayTagContainer>())
+    {
+        const auto& Variables = Entity.Get<ck::FFragment_Variable_GameplayTagContainer>().Get_Variables();
+        if (NOT Variables.IsEmpty())
+        {
+            Builder.AddHeader(FText::FromString(TEXT("TagContainer")));
+
+            for (const auto& [Name, Value] : Variables)
+            {
+                const auto NameText = FText::FromString(Name.ToString());
+
+                if (Value.IsEmpty())
+                {
+                    Builder.AddRow(
+                        NameText,
+                        [](const FCk_Handle&) { return FText::FromString(TEXT("(Empty)")); },
+                        CkStyle::Value_Tag());
+                    continue;
+                }
+
+                auto Chips = TArray<FCkInspector_Chip>{};
+                Chips.Reserve(Value.Num());
+
+                for (const auto& Tag : Value)
+                {
+                    Chips.Add(FCkInspector_Chip{ FText::FromName(Tag.GetTagName()), ECk_Tone::Neutral });
+                }
+
+                Builder.AddChipsRow(NameText, Chips);
+            }
+        }
+    }
 
     // ---- LinearColor
     AddVariableRows<ck::FFragment_Variable_LinearColor>(Builder, Entity, FText::FromString(TEXT("LinearColor")),

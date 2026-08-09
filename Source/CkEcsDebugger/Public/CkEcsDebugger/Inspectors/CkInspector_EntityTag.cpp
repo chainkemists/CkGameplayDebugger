@@ -16,9 +16,6 @@
 
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_EntityTag)
 
-static const FLinearColor EntityTag_Color_Tag      = FLinearColor(0.6f, 0.85f, 0.55f);
-static const FLinearColor EntityTag_Color_TagCount = FLinearColor(0.5f, 0.7f, 0.45f);
-
 // =====================================================================================================================
 
 auto FCkInspector_EntityTag::Get_ComponentName() const -> FText
@@ -58,26 +55,24 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
     Builder.AddRow(
         FText::FromString(TEXT("FName Tag Count:")),
         [N = Tags.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-        EntityTag_Color_TagCount);
+        CkStyle::Value_Numeric());
 
-    // One row per FName tag — live presence check
-    for (const auto& T : Tags)
+    // The flattened FName set as chips. Same snapshot semantics as the rows they replace — the
+    // previous per-tag ✓/✗ was checked against this very Get_AllTags snapshot, so it could only
+    // ever report a removal, never an addition. Entity tags are set-once per store in practice, so
+    // the set is structural: the panel's normal rebuild (re-selection / filter keystroke) is the
+    // refresh point.
+    if (NOT Tags.IsEmpty())
     {
-        const auto CapturedTag = T;
-        Builder.AddConditionalRow(
-            FText::FromName(T),
-            [CapturedTag](const FCk_Handle& E)
-            {
-                return FText::FromString(
-                    UCk_Utils_EntityTag_UE::Has(E, CapturedTag)
-                        ? TEXT("✓")   // checkmark
-                        : TEXT("✗")); // cross
-            },
-            [CapturedTag](const FCk_Handle& E)
-            {
-                return UCk_Utils_EntityTag_UE::Has(E, CapturedTag)
-                    ? EntityTag_Color_Tag : CkStyle::Err();
-            });
+        auto TagChips = TArray<FCkInspector_Chip>{};
+        TagChips.Reserve(Tags.Num());
+
+        for (const auto& T : Tags)
+        {
+            TagChips.Add(FCkInspector_Chip{ FText::FromName(T), ECk_Tone::Neutral });
+        }
+
+        Builder.AddChipsRow(FText::FromString(TEXT("FName Tags:")), TagChips);
     }
 
     // GameplayTag roots — explicit only (does NOT include parent-flattened FNames)
@@ -86,15 +81,17 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
         Builder.AddRow(
             FText::FromString(TEXT("GameplayTag Roots:")),
             [N = GtRoots.Num()](const FCk_Handle&) { return FText::FromString(FString::FromInt(N)); },
-            EntityTag_Color_TagCount);
+            CkStyle::Value_Numeric());
+
+        auto RootChips = TArray<FCkInspector_Chip>{};
+        RootChips.Reserve(GtRoots.Num());
 
         for (const auto& GT : GtRoots)
         {
-            Builder.AddRow(
-                FText::FromName(GT.GetTagName()),
-                [](const FCk_Handle&) { return FText::FromString(TEXT("✓")); },
-                EntityTag_Color_Tag);
+            RootChips.Add(FCkInspector_Chip{ FText::FromName(GT.GetTagName()), ECk_Tone::Neutral });
         }
+
+        Builder.AddChipsRow(FText::FromString(TEXT("Roots:")), RootChips);
     }
 
     return Builder.Build(Entity, InFilter);

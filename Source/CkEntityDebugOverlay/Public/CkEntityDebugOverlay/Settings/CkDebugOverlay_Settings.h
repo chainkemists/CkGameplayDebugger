@@ -64,6 +64,13 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="1", ClampMax="16"))
     int32 FocusCardMaxRowsPerSection = 4;
 
+    // Collapse rows that are identical (same field + same value) within one provider across
+    // the focus entity's whole lifetime subtree into a single row badged "xN". Off = every
+    // descendant contributes its own row (one "Label" row per sub-entity, etc.), which eats
+    // the focus-card row budget with repeats.
+    UPROPERTY(Config, EditAnywhere, Category="General")
+    bool bMergeDuplicateRows = true;
+
     // State-machine state-name depth — same rule as the CkSmDebugger graph: show the
     // last N underscore-segments of the state class name ("Ck_SmTest_Complex_State_Chase"
     // → depth 1 → "Chase"). 0 = full (dotted) name.

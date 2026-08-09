@@ -8,6 +8,19 @@
 struct FCk_DebugOverlay_RenderStyle;
 class  FCk_DebugOverlay_History;
 
+// One legend row on the focus card: colored abbrev pill + muted expanded provider name.
+// Deduplicated per PROVIDER, not per rendered section — subtree aggregation emits one section
+// per (provider x source), which used to repeat "[LABL] Label" once per lifetime descendant.
+struct FCk_DebugOverlay_LegendEntry
+{
+    FString      Abbrev;
+    FString      FullName;
+    FLinearColor Color = FLinearColor::White;
+
+    // How many rendered sections this provider contributed.
+    int32        SectionCount = 1;
+};
+
 // ====================================================================================================================
 // Ultra-density focus card for the on-screen entity debug overlay.
 //
@@ -42,6 +55,12 @@ public:
     // Stable, visually-distinct color per provider — used for the provider chip
     // fill, the field-chip tint, and the near-plate feature badges.
     static auto Get_ProviderColor(const FGameplayTag& InProviderTag) -> FLinearColor;
+
+    // Legend rows for the sections that Set_Model actually draws, one entry per unique
+    // provider (SectionCount records how many of its sections contributed). Sections the
+    // render loop skips — no rows and no omission summary — contribute nothing.
+    static auto Build_LegendEntries(
+        const TArray<FCk_DebugOverlay_Section>& InSections) -> TArray<FCk_DebugOverlay_LegendEntry>;
 
     // Width the section wrap-boxes wrap at. MUST be the card's inner content width:
     // the card rebuilds its SWrapBoxes every tick, so UseAllottedSize never gets a

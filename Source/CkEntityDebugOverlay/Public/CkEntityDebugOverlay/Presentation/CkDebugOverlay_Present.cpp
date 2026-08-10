@@ -7,6 +7,7 @@
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_FocusCard.h"   // Get_ProviderColor
 #include "CkEntityDebugOverlay/Tags/CkDebugOverlay_Tags.h"          // Get_LeafName / Get_ProviderAbbrev
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
@@ -123,6 +124,7 @@ auto
             auto Section           = FCk_DebugOverlay_Section{};
             Section.ProviderTag    = InProvider->Get_ProviderTag();
             Section.SortPriority   = InProvider->Get_SortPriority();
+            Section.MergeBehavior  = InProvider->Get_MergeBehavior();
             Section.SourceEntityId = static_cast<uint32>(Source.Get_Entity().Get_EntityNumber());
             Section.SourceOrder    = SourceIdx;
             if (SourceIdx > 0)
@@ -213,8 +215,125 @@ auto
 
     // ---- Pre-budget cleanup (strip value-less rows, collapse subtree duplicates) ----
     // Runs here so the focus-card budget downstream only ever rations rows the card draws.
-    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-    return Prepare_FocusCardModel(OutModel, Settings == nullptr || Settings->bMergeDuplicateRows);
+    const auto* Settings            = GetDefault<UCk_DebugOverlay_Settings>();
+    const auto  MergeDuplicateRows  = Settings == nullptr || Settings->bMergeDuplicateRows;
+
+    // ---- Condense pass (CondensePerSource providers) ----
+    // Must run HERE, not in Prepare_FocusCardModel: the summary row is the provider's own
+    // wording, and the provider pointers only exist on this side of the model boundary.
+    if (MergeDuplicateRows)
+    {
+        auto ProviderByTag = TMap<FGameplayTag, TSharedPtr<ICk_DebugOverlay_Provider>>{};
+        for (const auto& Provider : InProviders)
+        {
+            if (NOT Provider)
+            { continue; }
+
+            ProviderByTag.Add(Provider->Get_ProviderTag(), Provider);
+        }
+
+        const auto FocusEntityId = static_cast<uint32>(InFocusEntity.Get_Entity().Get_EntityNumber());
+
+        OutModel.Sections = ck_debugoverlay::Condense_ProviderSections(
+            OutModel.Sections,
+            FocusEntityId,
+            [&ProviderByTag](
+                const FGameplayTag&                 InProviderTag,
+                const FText&                        InSourceName,
+                const TArray<FCk_DebugOverlay_Row>& InRows) -> FCk_DebugOverlay_Row
+            {
+                const auto* Provider = ProviderByTag.Find(InProviderTag);
+                if (Provider == nullptr || NOT Provider->IsValid())
+                { return FCk_DebugOverlay_Row{}; }
+
+                return (*Provider)->Get_CondensedSourceRow(InSourceName, InRows);
+            });
+    }
+
+    return Prepare_FocusCardModel(OutModel, MergeDuplicateRows);
+}
+
+// ====================================================================================================================
+
+auto
+    ck_debugoverlay::
+    Condense_ProviderSections(
+        const TArray<FCk_DebugOverlay_Section>& InSections,
+        uint32                                  InFocusEntityId,
+        const FCondenseSourceRowFn&             InCondenseFn)
+    -> TArray<FCk_DebugOverlay_Section>
+{
+    auto Result = TArray<FCk_DebugOverlay_Section>{};
+    Result.Reserve(InSections.Num());
+
+    // Providers whose primary (first) section has already been let through untouched.
+    auto PrimarySeenByProvider = TSet<FGameplayTag>{};
+
+    // Provider tag -> index of that provider's collapsed section in Result (created lazily on
+    // the first section it absorbs, so the collapsed section lands where that one was).
+    auto CollapsedIdxByProvider = TMap<FGameplayTag, int32>{};
+
+    for (const auto& Section : InSections)
+    {
+        if (Section.MergeBehavior != ECk_DebugOverlay_MergeBehavior::CondensePerSource)
+        {
+            Result.Add(Section);
+            continue;
+        }
+
+        // The provider's FIRST section is its primary and stays full. Testing "first" rather
+        // than "SourceOrder 0" is what makes this work at all: a hierarchical provider never
+        // provides on the focus entity itself (a GOAP planner and an SM root are both CHILD
+        // entities of the NPC), so a SourceOrder-0 section usually does not exist. Sources are
+        // collected breadth-first, i.e. nearest-first, so the provider's first section IS the
+        // NPC's primary planner / state machine. When a focus section does exist it is first
+        // anyway, which makes this a strict superset of the SourceOrder-0 rule.
+        if (NOT PrimarySeenByProvider.Contains(Section.ProviderTag))
+        {
+            PrimarySeenByProvider.Add(Section.ProviderTag);
+            Result.Add(Section);
+            continue;
+        }
+
+        // A source that collected nothing has no line to contribute.
+        if (Section.Rows.IsEmpty())
+        { continue; }
+
+        auto CondensedRow = InCondenseFn(Section.ProviderTag, Section.SourceName, Section.Rows);
+
+        if (const auto* CollapsedIdx = CollapsedIdxByProvider.Find(Section.ProviderTag))
+        {
+            auto& Collapsed       = Result[*CollapsedIdx];
+            Collapsed.SourceOrder = FMath::Min(Collapsed.SourceOrder, Section.SourceOrder);
+            Collapsed.Rows.Add(MoveTemp(CondensedRow));
+            continue;
+        }
+
+        auto Collapsed           = FCk_DebugOverlay_Section{};
+        Collapsed.ProviderTag    = Section.ProviderTag;
+        Collapsed.SortPriority   = Section.SortPriority;
+        Collapsed.MergeBehavior  = Section.MergeBehavior;
+        // The focus entity is the only stable history bucket here — any one sub-entity's id
+        // would re-key the whole collapsed section the moment that sub-entity comes or goes.
+        Collapsed.SourceEntityId = InFocusEntityId;
+        Collapsed.SourceOrder    = Section.SourceOrder;
+        Collapsed.Rows.Add(MoveTemp(CondensedRow));
+
+        CollapsedIdxByProvider.Add(Section.ProviderTag, Result.Num());
+        Result.Add(MoveTemp(Collapsed));
+    }
+
+    // The source chip can only be named once the collapsed row count is final.
+    for (const auto& Pair : CollapsedIdxByProvider)
+    {
+        auto&      Collapsed = Result[Pair.Value];
+        const auto Count     = Collapsed.Rows.Num();
+        Collapsed.SourceName = FText::FromString(Count == 1
+            ? FString{ TEXT("1 sub-entity") }
+            : ck::Format_UE(TEXT("{} sub-entities"), Count));
+    }
+
+    return Result;
 }
 
 // ====================================================================================================================
@@ -237,9 +356,57 @@ auto
         { return InRow.Value.IsEmpty() && InRow.ExplicitHistory.IsEmpty(); });
     }
 
-    // ---- 2. Collapse rows identical by (FieldTag, Value) within a provider ----
+    // ---- 2. Collapse rows identical by (FieldTag, Value), per the section's declared policy ----
     if (InMergeDuplicateRows)
     {
+        // Absorb InDuplicate into InSurvivor: the survivor stands for both rows and must keep
+        // the loudest of the two severities.
+        const auto Absorb = [](FCk_DebugOverlay_Row& InSurvivor, const FCk_DebugOverlay_Row& InDuplicate) -> void
+        {
+            InSurvivor.MergedCount += InDuplicate.MergedCount;
+            InSurvivor.Severity     = ck_debugoverlay::Get_MaxSeverity(InSurvivor.Severity, InDuplicate.Severity);
+        };
+
+        // A trail is evidence the value alone does not carry: two "(3 entries)" rows from
+        // different state machines are different facts. Such rows never merge, in either pass.
+        const auto Can_Merge = [](const FCk_DebugOverlay_Row& InRow) -> bool
+        { return InRow.ExplicitHistory.IsEmpty(); };
+
+        // ---- Pass 1: within-section dedup (every behavior) ----
+        // One section is one (provider x source), so a duplicate here is genuine redundancy
+        // regardless of what the provider declared about cross-source merging.
+        for (auto& Section : Result.Sections)
+        {
+            // Key = field | value; the provider and source are fixed for the whole section.
+            auto Survivors = TMap<FString, int32>{};
+
+            for (auto RowIdx = 0; RowIdx < Section.Rows.Num(); /* advanced below */)
+            {
+                const auto& Row = Section.Rows[RowIdx];
+                if (NOT Can_Merge(Row))
+                {
+                    ++RowIdx;
+                    continue;
+                }
+
+                const auto FieldKey = Row.FieldTag.ToString();
+                const auto ValueKey = Row.Value.ToString();
+                const auto Key      = ck::Format_UE(TEXT("{}|{}"), FieldKey, ValueKey);
+
+                if (const auto* SurvivorIdx = Survivors.Find(Key))
+                {
+                    // Survivors sit at a LOWER index, so removing here never invalidates one.
+                    Absorb(Section.Rows[*SurvivorIdx], Row);
+                    Section.Rows.RemoveAt(RowIdx);
+                    continue;
+                }
+
+                Survivors.Add(Key, RowIdx);
+                ++RowIdx;
+            }
+        }
+
+        // ---- Pass 2: cross-section merge, MergeAcrossSources sections only ----
         // Key = provider | field | value. The first two components are gameplay-tag strings
         // (no '|'), so the composition is unambiguous even when a value contains one.
         // Payload = { SectionIndex, RowIndex } of the surviving row.
@@ -247,20 +414,31 @@ auto
 
         for (auto SectionIdx = 0; SectionIdx < Result.Sections.Num(); ++SectionIdx)
         {
-            auto&      Section     = Result.Sections[SectionIdx];
+            auto& Section = Result.Sections[SectionIdx];
+
+            if (Section.MergeBehavior != ECk_DebugOverlay_MergeBehavior::MergeAcrossSources)
+            { continue; }
+
             const auto ProviderKey = Section.ProviderTag.ToString();
 
             for (auto RowIdx = 0; RowIdx < Section.Rows.Num(); /* advanced below */)
             {
                 const auto& Row = Section.Rows[RowIdx];
-                const auto  Key = FString::Printf(TEXT("%s|%s|%s"),
-                    *ProviderKey, *Row.FieldTag.ToString(), *Row.Value.ToString());
+                if (NOT Can_Merge(Row))
+                {
+                    ++RowIdx;
+                    continue;
+                }
+
+                const auto FieldKey = Row.FieldTag.ToString();
+                const auto ValueKey = Row.Value.ToString();
+                const auto Key      = ck::Format_UE(TEXT("{}|{}|{}"), ProviderKey, FieldKey, ValueKey);
 
                 if (const auto* Survivor = Survivors.Find(Key))
                 {
-                    // Survivors are always at a LOWER index in this same section (or in an
-                    // earlier one), so removing here never invalidates a recorded position.
-                    ++Result.Sections[Survivor->X].Rows[Survivor->Y].MergedCount;
+                    // Pass 1 already cleared same-section duplicates, so the survivor is in an
+                    // EARLIER section and this removal cannot invalidate a recorded position.
+                    Absorb(Result.Sections[Survivor->X].Rows[Survivor->Y], Row);
                     Section.Rows.RemoveAt(RowIdx);
                     continue;
                 }

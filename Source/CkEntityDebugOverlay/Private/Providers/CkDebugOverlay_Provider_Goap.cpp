@@ -232,6 +232,52 @@ auto FCk_DebugOverlay_Provider_Goap::Collect(
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// CondensedSourceRow
+//
+// One line standing in for a whole sub-planner section. Derived from the rows Collect above
+// emits: Status, Active, Plan (Cost is dropped — it means nothing without the plan beside it).
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCk_DebugOverlay_Provider_Goap::Get_CondensedSourceRow(
+    const FText&                        InSourceName,
+    const TArray<FCk_DebugOverlay_Row>& InRows) const
+    -> FCk_DebugOverlay_Row
+{
+    const auto Get_RowValue = [&InRows](const FGameplayTag& InFieldTag) -> FString
+    {
+        const auto* Found = InRows.FindByPredicate([&InFieldTag](const FCk_DebugOverlay_Row& InRow)
+        { return InRow.FieldTag == InFieldTag; });
+
+        return Found != nullptr ? Found->Value.ToString() : FString{};
+    };
+
+    const auto Status = Get_RowValue(FieldTag_Status());
+    const auto Active = Get_RowValue(FieldTag_Active());
+    const auto Plan   = Get_RowValue(FieldTag_Plan());
+
+    auto Row     = FCk_DebugOverlay_Row{};
+    Row.FieldTag = FieldTag_Status();
+    Row.Severity = ck_debugoverlay::Get_MaxSeverity(InRows);
+
+    // Idle sub-planners are the noise this whole pass exists for: one flat line, no trail.
+    if (Status.IsEmpty() || Status == LabelForStatus(ECk_GoapPlanStatus::Idle))
+    {
+        Row.Value = FText::FromString(ck::Format_UE(TEXT("{}: Idle"), InSourceName));
+        return Row;
+    }
+
+    const auto ActiveText = Active.IsEmpty() ? FString{ TEXT("(none)") } : Active;
+    Row.Value = FText::FromString(ck::Format_UE(TEXT("{}: {} — {}"), InSourceName, Status, ActiveText));
+
+    // The plan is this planner's "how did it get here"; the card renders ExplicitHistory as
+    // the muted breadcrumb under the row, and a row carrying one never merges away.
+    if (NOT Plan.IsEmpty())
+    { Row.ExplicitHistory.Add(FText::FromString(Plan)); }
+
+    return Row;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // CompactToken
 // --------------------------------------------------------------------------------------------------------------------
 

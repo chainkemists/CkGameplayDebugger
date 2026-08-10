@@ -28,6 +28,23 @@ struct FCkEntityTreeNode
     FText CachedDisplayText;
 
     /**
+     * Derived name (P4). An entity with no debug-name fragment used to render the raw handle
+     * dump that Get_DebugName falls back to. HasRealName records which of the two we got;
+     * when it is false the row shows DerivedName instead — a muted "~what it is" label
+     * synthesized from the classification/rollup data below. A real name ALWAYS wins.
+     *
+     * DerivedFromArchetype records that the label came from a registered archetype rather
+     * than from the feature signature — the Minimal complexity level regroups the latter by
+     * the derived label, but must leave archetype-named rows grouping by archetype.
+     *
+     * CachedCleanName is deliberately NOT replaced: archetype-key inference keys off it, and
+     * moving that would move grouping for every level, not just the ones asking for it.
+     */
+    bool HasRealName = true;
+    bool DerivedFromArchetype = false;
+    FString DerivedName;
+
+    /**
      * Classification + signature (redesign spec §3.1/§3.2) — recomputed on structural
      * churn only. Phase 2 renders fold/badges from these; query terms evaluate them.
      */
@@ -194,6 +211,14 @@ private:
         const TArray<TSharedPtr<FCkEntityTreeNode>>& InStructuralChildren,
         const TSharedPtr<FCkEntityTreeNode>& InOwner,
         TArray<TSharedPtr<FCkEntityTreeNode>>& OutPresented) -> void;
+
+    /**
+     * What a candidate row coalesces BY. Archetype at every complexity level except Minimal,
+     * which additionally folds technical noise together by what a row IS — internals by their
+     * single feature, derived-name rows by their derived label. Keys keep the existing
+     * "base#discriminator" shape so the group row's label is still the part left of '#'.
+     */
+    auto Get_GroupingKey(const FCkEntityTreeNode& InNode) const -> FString;
     auto ExpandToReveal(const TSharedPtr<FCkEntityTreeNode>& InNode) -> void;
     auto MarkNodeVisibilityRecursive(TSharedPtr<FCkEntityTreeNode> InNode, bool InVisible) -> void;
     auto RestoreSelection(const TArray<FCk_Handle>& InPreviousSelection) -> void;
@@ -230,6 +255,21 @@ private:
     bool FoldInternals = true;
     bool GroupSiblings = true;
     int32 GroupThreshold = 5;
+
+    /**
+     * TreeComplexity-modulated presentation inputs (P4), recomputed once per RebuildPresentation.
+     * The axis MODULATES the project settings above — those stay the base at every level, and
+     * the Normal default resolves each of these back to exactly the project's own value.
+     * Cached per pass rather than read per node: the settings CDO lookup is not free at
+     * thousands of nodes × 10 Hz.
+     */
+    int32 EffectiveGroupThreshold = 5;
+    bool PresentsInternalRows = false;
+    bool GroupsSiblingRuns = true;
+    bool GroupsUnnamedRows = false;
+
+    /** Style-axis revision last consumed by the gated Tick (UCkDebuggerStyleSettings idiom). */
+    uint32 LastSeenStyleRevision = 0;
 
     /** Stable synthetic group nodes, keyed by (owner ptr, archetype key). */
     TMap<TPair<const FCkEntityTreeNode*, FString>, TSharedPtr<FCkEntityTreeNode>> GroupNodeCache;

@@ -163,6 +163,25 @@ enum class ECkDebugAxis_EditControlStyle : uint8
     Hidden,
 };
 
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * How much structure the ECS entity tree presents at once.
+ *
+ * The axis MODULATES the tree's own project settings (fold toggle, sibling-group threshold,
+ * badge cap) — it never replaces them, so the project's values remain the base at every level
+ * and Normal is a byte-identical no-op on all of them. Minimal tightens the thresholds and
+ * coalesces technical rows harder; Full turns structural folding off so every row is shown
+ * plainly.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_TreeComplexity : uint8
+{
+    Normal,
+    Minimal,
+    Full,
+};
+
 // ====================================================================================================================
 
 /**
@@ -231,6 +250,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
         meta = (ToolTip = "Inspector edit affordances: always inline, revealed on row hover, or hidden (fully read-only inspectors)."))
     ECkDebugAxis_EditControlStyle EditControlStyle = ECkDebugAxis_EditControlStyle::Inline;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "ECS entity tree declutter dial. Minimal folds technical rows harder and tightens the sibling-group threshold; Full turns folding and grouping off. Modulates the project's own tree settings — it never replaces them."))
+    ECkDebugAxis_TreeComplexity TreeComplexity = ECkDebugAxis_TreeComplexity::Normal;
 };
 
 // ====================================================================================================================

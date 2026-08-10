@@ -242,6 +242,103 @@ bool FCkDebuggerStyle_MetricsAndPredicatesAreTotal::RunTest(const FString& Param
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_TreeComplexityIsTotal,
+    "Ck.DebuggerCommon.Style.TreeComplexityIsTotal",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_TreeComplexityIsTotal::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto* ComplexityEnum = StaticEnum<ECkDebugAxis_TreeComplexity>();
+    const auto Levels = Get_AllOptions<ECkDebugAxis_TreeComplexity>();
+
+    TestEqual(TEXT("TreeComplexity option count"), Levels.Num(), 3);
+
+    // Every level must yield a usable modulation — a zero/negative multiplier or a zero badge cap
+    // would silently erase rows or badges instead of decluttering them.
+    constexpr auto BaseCap = 6;
+
+    for (const auto Option : Levels)
+    {
+        auto Selection = FCkDebuggerStyleSelection{};
+        Selection.TreeComplexity = Option;
+
+        const auto Name       = Get_OptionName(static_cast<int64>(Option), ComplexityEnum);
+        const auto Multiplier = ck::debug_axes::Tree_FoldThresholdMultiplier(Selection);
+        const auto BadgeCap   = ck::debug_axes::Tree_BadgeCap(Selection, BaseCap);
+
+        TestTrue(
+            *ck::Format_UE(TEXT("TreeComplexity '{}' yields a positive threshold multiplier"), Name),
+            Multiplier > 0.0f);
+
+        TestTrue(
+            *ck::Format_UE(TEXT("TreeComplexity '{}' yields a badge cap of at least one"), Name),
+            BadgeCap >= 1);
+
+        // Grouping nameless rows IS grouping — the two predicates can never disagree.
+        TestTrue(
+            *ck::Format_UE(TEXT("TreeComplexity '{}' only groups unnamed rows when it groups at all"), Name),
+            NOT ck::debug_axes::Tree_GroupsUnnamedRows(Selection)
+                || ck::debug_axes::Tree_GroupsSiblings(Selection));
+    }
+
+    // A nonsense base cap still resolves to something renderable at every level.
+    for (const auto Option : Levels)
+    {
+        auto Selection = FCkDebuggerStyleSelection{};
+        Selection.TreeComplexity = Option;
+
+        TestTrue(TEXT("A zero base cap still yields at least one badge slot"),
+            ck::debug_axes::Tree_BadgeCap(Selection, 0) >= 1);
+        TestTrue(TEXT("A negative base cap still yields at least one badge slot"),
+            ck::debug_axes::Tree_BadgeCap(Selection, -4) >= 1);
+    }
+
+    // THE REGRESSION BAR: Normal is the default and must be a no-op on every modulator, so an
+    // untouched axis leaves the entity tree exactly as it shipped.
+    const auto Defaults = FCkDebuggerStyleSelection{};
+
+    TestTrue(TEXT("Normal is the default level"),
+        Defaults.TreeComplexity == ECkDebugAxis_TreeComplexity::Normal);
+    TestEqual(TEXT("Normal leaves the project's fold threshold alone"),
+        ck::debug_axes::Tree_FoldThresholdMultiplier(Defaults), 1.0f);
+    TestEqual(TEXT("Normal leaves the caller's badge cap alone"),
+        ck::debug_axes::Tree_BadgeCap(Defaults, BaseCap), BaseCap);
+    TestFalse(TEXT("Normal leaves internal rows to the project's fold setting"),
+        ck::debug_axes::Tree_ShowsInternalRows(Defaults));
+    TestTrue(TEXT("Normal leaves sibling grouping to the project's setting"),
+        ck::debug_axes::Tree_GroupsSiblings(Defaults));
+    TestFalse(TEXT("Normal does not regroup unnamed rows"),
+        ck::debug_axes::Tree_GroupsUnnamedRows(Defaults));
+
+    // Full is the "hide nothing" end of the dial: no folding, no grouping.
+    auto Full = FCkDebuggerStyleSelection{};
+    Full.TreeComplexity = ECkDebugAxis_TreeComplexity::Full;
+
+    TestTrue(TEXT("Full presents internal rows plainly"), ck::debug_axes::Tree_ShowsInternalRows(Full));
+    TestFalse(TEXT("Full never coalesces siblings"), ck::debug_axes::Tree_GroupsSiblings(Full));
+    TestTrue(TEXT("Full never reduces the badge budget"),
+        ck::debug_axes::Tree_BadgeCap(Full, BaseCap) >= BaseCap);
+
+    // Minimal is the "show less" end: folds sooner, fewer badges, still nothing outright removed.
+    auto Minimal = FCkDebuggerStyleSelection{};
+    Minimal.TreeComplexity = ECkDebugAxis_TreeComplexity::Minimal;
+
+    TestTrue(TEXT("Minimal coalesces sooner than the project threshold"),
+        ck::debug_axes::Tree_FoldThresholdMultiplier(Minimal) < 1.0f);
+    TestTrue(TEXT("Minimal shows no more badges than Normal"),
+        ck::debug_axes::Tree_BadgeCap(Minimal, BaseCap) <= BaseCap);
+    TestFalse(TEXT("Minimal still folds internals rather than showing them plainly"),
+        ck::debug_axes::Tree_ShowsInternalRows(Minimal));
+    TestTrue(TEXT("Minimal groups unnamed rows"), ck::debug_axes::Tree_GroupsUnnamedRows(Minimal));
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkDebuggerStyle_RevisionBumpsOnNotifyChanged,
     "Ck.DebuggerCommon.Style.RevisionBumpsOnNotifyChanged",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

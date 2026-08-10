@@ -544,6 +544,89 @@ auto
 }
 
 // ====================================================================================================================
+// TREE COMPLEXITY
+// Modulators, not absolutes: every one of these applies ON TOP of the entity tree's own project
+// settings, and every one of them is a no-op under the Normal default — which is what makes the
+// default option a byte-identical regression bar.
+
+auto
+    ck::debug_axes::
+    Tree_FoldThresholdMultiplier(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> float
+{
+    switch (InSelection.TreeComplexity)
+    {
+        // Half the project's threshold — sibling runs coalesce at roughly half the size before
+        // they earn individual rows.
+        case ECkDebugAxis_TreeComplexity::Minimal: return 0.5f;
+
+        // Full never groups at all (Tree_GroupsSiblings), so the threshold is moot; 1.0 keeps
+        // the value meaningful for any caller that reads the multiplier on its own.
+        case ECkDebugAxis_TreeComplexity::Full:    return 1.0f;
+
+        case ECkDebugAxis_TreeComplexity::Normal:  return 1.0f;
+    }
+
+    return 1.0f;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Tree_ShowsInternalRows(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.TreeComplexity == ECkDebugAxis_TreeComplexity::Full;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Tree_GroupsSiblings(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.TreeComplexity != ECkDebugAxis_TreeComplexity::Full;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Tree_GroupsUnnamedRows(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.TreeComplexity == ECkDebugAxis_TreeComplexity::Minimal;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Tree_BadgeCap(
+        const FCkDebuggerStyleSelection& InSelection,
+        int32 InBaseCap)
+    -> int32
+{
+    // A caller that hands over a nonsense base still gets a renderable budget back.
+    const auto Base = FMath::Max(1, InBaseCap);
+
+    switch (InSelection.TreeComplexity)
+    {
+        case ECkDebugAxis_TreeComplexity::Minimal: return FMath::Max(1, Base / 2);
+        case ECkDebugAxis_TreeComplexity::Full:    return Base * 2;
+        case ECkDebugAxis_TreeComplexity::Normal:  return Base;
+    }
+
+    return Base;
+}
+
+// ====================================================================================================================
 // DOMAIN RAMPS
 
 auto

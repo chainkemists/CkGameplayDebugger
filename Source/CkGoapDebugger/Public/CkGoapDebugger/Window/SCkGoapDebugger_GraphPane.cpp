@@ -11,6 +11,8 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "GraphEditor.h"
 #include "GraphEditorActions.h"
 
@@ -300,7 +302,7 @@ auto
                         SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Action graph - (no selection)")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
 
                 // Right side action buttons — fit / 1:1 / hide-dimmed (stubs for D5).
@@ -366,7 +368,7 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Name")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 + SHorizontalBox::Slot()
                     .AutoWidth()
@@ -404,7 +406,7 @@ auto
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                             .Justification(ETextJustify::Center)
                             .MinDesiredWidth(28.0f)
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
                 + SHorizontalBox::Slot()
                     .AutoWidth()

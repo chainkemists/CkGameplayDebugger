@@ -8,6 +8,8 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Card.h"
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_GlowWrap.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -723,7 +725,8 @@ auto
 
         Steps->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                FMargin{0.0f, 0.0f, 0.0f, CkStyle::SpaceS}))
             [
                 SNew(SCkDebug_Card)
                     .StripeColor(IsNow ? CkStyle::Accent() : (IsFallback ? CkStyle::Warn() : FLinearColor::Transparent))
@@ -765,7 +768,8 @@ auto
 
             Steps->AddSlot()
                 .AutoHeight()
-                .Padding(26.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+                .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                    FMargin{26.0f, 0.0f, 0.0f, CkStyle::SpaceS}))
                 [
                     SNew(SCkDebug_Card)
                         .StripeColor(SubIsFallback ? CkStyle::Warn() : CkStyle::OverlayOf(CkStyle::Accent(), 0.45f))

@@ -10,13 +10,16 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
@@ -40,16 +43,16 @@ namespace ck_goap_debugger_gateway_internal
         ECk_EnableDisable  InEnable) -> FLinearColor
     {
         if (InEnable == ECk_EnableDisable::Disable)
-        { return FCkGoapDebuggerStyle::Color_Text_Faint; }
+        { return CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f); }
 
         switch (InStatus)
         {
-        case ECk_GoapPlanStatus::PlanFound:               return FCkGoapDebuggerStyle::Color_Status_PlanFound;
-        case ECk_GoapPlanStatus::Planning:                return FCkGoapDebuggerStyle::Color_Status_Planning;
-        case ECk_GoapPlanStatus::PlanFailed:              return FCkGoapDebuggerStyle::Color_Status_Failed;
-        case ECk_GoapPlanStatus::CostThresholdReached:    return FCkGoapDebuggerStyle::Color_Status_Selected;
+        case ECk_GoapPlanStatus::PlanFound:               return CkStyle::Ok();
+        case ECk_GoapPlanStatus::Planning:                return CkStyle::Accent();
+        case ECk_GoapPlanStatus::PlanFailed:              return CkStyle::Err();
+        case ECk_GoapPlanStatus::CostThresholdReached:    return CkStyle::Warn();
         case ECk_GoapPlanStatus::Idle:
-        default:                                          return FCkGoapDebuggerStyle::Color_Text_Dim;
+        default:                                          return CkStyle::TextMute();
         }
     }
 
@@ -106,36 +109,17 @@ namespace ck_goap_debugger_gateway_internal
     // Small colored dot used in the Planner list rows + the leaf-status indicator.
     static auto
     MakeStatusDot(
-        const FLinearColor& InColor,
-        float InSize = 7.0f) -> TSharedRef<SWidget>
+        const FLinearColor& InColor) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
-            .WidthOverride(InSize)
-            .HeightOverride(InSize)
+            .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
+            .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
             [
                 SNew(SBorder)
                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
                     .BorderBackgroundColor(InColor)
                     .Padding(FMargin(0.0f))
                     [ SNew(SSpacer) ]
-            ];
-    }
-
-    // Small rounded badge used for the "root" pill in the header.
-    static auto
-    MakeBadge(
-        const FString& InText,
-        const FLinearColor& InColor) -> TSharedRef<SWidget>
-    {
-        return SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-            .BorderBackgroundColor(InColor.CopyWithNewOpacity(0.18f))
-            .Padding(FMargin(6.0f, 1.0f))
-            [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(InText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                    .ColorAndOpacity(FSlateColor(InColor))
             ];
     }
 
@@ -327,7 +311,7 @@ auto
 
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+        .BorderBackgroundColor(CkStyle::Bg2())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SHorizontalBox)
@@ -340,14 +324,15 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("GOAP")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
 
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
                     [
-                        MakeBadge(TEXT("root"), FCkGoapDebuggerStyle::Color_Status_PlanFound)
+                        ck_goap_debugger_axes::Make_Chip(
+                            FText::FromString(TEXT("root")), ECk_Tone::Ok)
                     ]
 
                 + SHorizontalBox::Slot()
@@ -383,7 +368,7 @@ auto
             SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(FString::Printf(TEXT("PLANNERS - %d"), InSnapshot.ActionSets.Num())))
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
         ];
 
     for (const auto& As : InSnapshot.ActionSets)
@@ -402,12 +387,13 @@ auto
                   As.ActiveChainHandles.Num());
 
         const auto NameColor = As.EnableToggle == ECk_EnableDisable::Disable
-            ? FCkGoapDebuggerStyle::Color_Text_Dim
-            : FCkGoapDebuggerStyle::Color_Text_Primary;
+            ? CkStyle::TextMute()
+            : CkStyle::Text();
 
         Box->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, FCkGoapDebuggerStyle::Padding_XSmall)
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                FMargin{0.0f, FCkGoapDebuggerStyle::Padding_XSmall}))
             [
                 SNew(SHorizontalBox)
 
@@ -441,7 +427,7 @@ auto
                                         SNew(SCkDebug_SelectableLabel)
                                             .Text(FText::FromString(TagStr))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                                            .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                                     ]
                         ]
 
@@ -452,14 +438,14 @@ auto
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(StatusStr))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
             ];
     }
 
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
+        .BorderBackgroundColor(CkStyle::Bg3())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             Box
@@ -498,13 +484,13 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT(">")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Mono", 10))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Ghost))
+                        .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.55f)))
                 ];
         }
 
         const auto Color = IsLeaf
-            ? FCkGoapDebuggerStyle::Color_Status_Selected
-            : FCkGoapDebuggerStyle::Color_Text_Secondary;
+            ? CkStyle::Warn()
+            : CkStyle::TextDim();
 
         BreadcrumbBox->AddSlot()
             .AutoWidth()
@@ -534,13 +520,13 @@ auto
                 SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no active chain)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                    .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
             ];
     }
 
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
+        .BorderBackgroundColor(CkStyle::Bg3())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SVerticalBox)
@@ -552,7 +538,7 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(HeaderText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
 
                 + SVerticalBox::Slot()
@@ -561,7 +547,7 @@ auto
                     [
                         SNew(SBorder)
                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                            .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Root)
+                            .BorderBackgroundColor(CkStyle::Bg1())
                             .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
                             [
                                 BreadcrumbBox
@@ -576,7 +562,7 @@ auto
                             .Text(FText::FromString(FString::Printf(TEXT("Action tag chain: %s"),
                                 TagChain.IsEmpty() ? TEXT("(none)") : *TagChain)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                            .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                     ]
         ];
 }
@@ -599,7 +585,7 @@ auto
                     SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(InLabel))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                 ]
             + SHorizontalBox::Slot()
                 .AutoWidth()
@@ -620,7 +606,7 @@ auto
 
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
+        .BorderBackgroundColor(CkStyle::Bg3())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SVerticalBox)
@@ -632,28 +618,31 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(FString::Printf(TEXT("LEAF ACTION - %s"), *InLeaf.ClassName)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
 
                 + SVerticalBox::Slot()
                     .AutoHeight()
-                    .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
+                    .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                        FMargin{0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f}))
                     [
                         MakeRow(TEXT("Status"), LabelForPlanStatus(InLeaf.PlanStatus), StatusColor)
                     ]
 
                 + SVerticalBox::Slot()
                     .AutoHeight()
-                    .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
+                    .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                        FMargin{0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f}))
                     [
-                        MakeRow(TEXT("Cost"), CostStr, FCkGoapDebuggerStyle::Color_Status_Selected)
+                        MakeRow(TEXT("Cost"), CostStr, CkStyle::Warn())
                     ]
 
                 + SVerticalBox::Slot()
                     .AutoHeight()
-                    .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
+                    .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                        FMargin{0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f}))
                     [
-                        MakeRow(TEXT("Plan length"), LenStr, FCkGoapDebuggerStyle::Color_Text_Primary)
+                        MakeRow(TEXT("Plan length"), LenStr, CkStyle::Text())
                     ]
         ];
 }
@@ -690,7 +679,7 @@ auto
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(FString::Printf(TEXT("%d."), i + 1)))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_PlanningBdr))
+                                .ColorAndOpacity(FSlateColor(CkStyle::Info()))
                         ]
                     + SHorizontalBox::Slot()
                         .FillWidth(1.0f)
@@ -699,7 +688,7 @@ auto
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(Name))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
                     + SHorizontalBox::Slot()
                         .AutoWidth()
@@ -711,7 +700,7 @@ auto
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(TEXT("(leaf)")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                         ]
             ];
     }
@@ -725,7 +714,7 @@ auto
                 SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("(no plan)")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                    .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
             ];
     }
 
@@ -739,13 +728,13 @@ auto
                     .Text(FText::FromString(FString::Printf(TEXT("+ %d more - open the Window to see all"),
                         Total - Preview)))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                    .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ];
     }
 
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
+        .BorderBackgroundColor(CkStyle::Bg3())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SVerticalBox)
@@ -757,7 +746,7 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(HeaderText))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
 
                 + SVerticalBox::Slot()
@@ -775,13 +764,13 @@ auto
 {
     return SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Panel)
+        .BorderBackgroundColor(CkStyle::Bg3())
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
         [
             SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(TEXT("(no Goap root on selected entity)")))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
         ];
 }
 

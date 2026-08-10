@@ -8,6 +8,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -423,7 +425,8 @@ auto
 
             Group->AddSlot()
                 .AutoHeight()
-                .Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceS))
+                .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                    FMargin{0.0f, 0.0f, 0.0f, CkStyle::SpaceS}))
                 [
                     DoBuildCandidateCard(InTier, InTier.ChildActions[Score->DefIndex], *Score, NoteText)
                 ];

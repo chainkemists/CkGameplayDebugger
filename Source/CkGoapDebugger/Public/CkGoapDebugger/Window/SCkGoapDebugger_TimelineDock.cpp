@@ -9,6 +9,8 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
@@ -604,7 +606,8 @@ auto
                     [
                         SNew(SButton)
                             .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                            .ContentPadding(FMargin(CkStyle::SpaceS, 1.0f))
+                            .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                                FMargin{CkStyle::SpaceS, 1.0f}))
                             .OnClicked_Lambda([this, EventIndex]() -> FReply
                             {
                                 HandleScrubTo(EventIndex);

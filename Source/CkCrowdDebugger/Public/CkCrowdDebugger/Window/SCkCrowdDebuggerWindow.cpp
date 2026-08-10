@@ -577,6 +577,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 		[ MakeVoxelToggle(TEXT("Chunk Portals"), TEXT("Show cross-chunk portal connections."), &_ShowVoxelPortals) ]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
 		[ MakeVoxelToggle(TEXT("Dirty / Repair Bounds"), TEXT("Show pending and active local-repair regions."), &_ShowVoxelDirtyRepair) ]
+#if WITH_EDITOR
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 2.0f)
 		[
 			SNew(SCkDebug_ToggleSurface)
@@ -594,6 +595,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 				SNew(STextBlock).Text(FText::FromString(TEXT("Level Editor Overlay")))
 			]
 		]
+#endif
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 2.0f)
 		[
 			SNew(SButton)

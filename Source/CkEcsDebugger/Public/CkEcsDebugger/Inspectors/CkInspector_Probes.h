@@ -25,4 +25,12 @@ private:
     FCk_Handle LastInspectedEntity;
     TSharedPtr<SWrapBox> _OverlapsBox;
     int32 _LastOverlapCount = -1;
+
+    // The intent behind the "Debug Draw:" toggle row. Tick re-asserts it on the inspected probe (the
+    // request is idempotent), so the row IS the switch that used to be an unconditional Enable.
+    // Sticky across selections on purpose: it is a viewing preference, not per-entity state.
+    //
+    // A shared box rather than a plain bool: the row's attribute lambdas capture it BY VALUE, so a
+    // widget that briefly outlives this inspector during panel teardown reads a live object.
+    TSharedRef<bool> _DebugDrawEnabled = MakeShared<bool>(true);
 };

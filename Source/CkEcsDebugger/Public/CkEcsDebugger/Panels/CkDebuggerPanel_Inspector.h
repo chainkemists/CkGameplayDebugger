@@ -35,6 +35,14 @@ public:
 private:
     auto DeactivateAllInspectors() -> void;
     auto RebuildInspectors() -> void;
+
+    /**
+     * The one entry point every rebuild TRIGGER goes through (selection change, panel filter,
+     * display-mode flip, a deferred structural request). While an interactive row reports an active
+     * edit the request is parked on the edit guard — deferred, never dropped — and Tick performs it
+     * the moment the edit ends. Construct calls RebuildInspectors directly: there is nothing to eat.
+     */
+    auto Request_RebuildInspectors() -> void;
     auto Build_NoSelectionWidget() -> TSharedRef<SWidget>;
     auto Build_SingleEntityInspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>;
     auto Build_InspectorSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 InspectorIndex) -> TSharedRef<SWidget>;
@@ -69,6 +77,9 @@ private:
     FString _PanelHighlightString;
     TArray<TSharedPtr<ICkDebuggerComponentInspector_Base>> Inspectors;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+
+    // Per-PANEL, never global: two ECS debugger windows must not block each other's rebuilds.
+    TSharedPtr<class FCkInspectorEditGuard> _EditGuard;
 
     ECkInspectorDisplayMode _DisplayMode = ECkInspectorDisplayMode::GroupByInspector;
     TMap<int32, FString> InspectorFilters;

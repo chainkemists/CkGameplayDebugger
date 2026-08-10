@@ -202,6 +202,40 @@ bool FCkDebuggerStyle_MetricsAndPredicatesAreTotal::RunTest(const FString& Param
         TestFalse(TEXT("Aligned columns and plain right-align are mutually exclusive"), Aligned && Right);
     }
 
+    // EditControlStyle — the axis the interactive inspector rows compose through. Both predicates are
+    // total over the enum, and the two of them must never both be true (a hidden control cannot also
+    // be a hover-revealed one).
+    const auto EditStyles = Get_AllOptions<ECkDebugAxis_EditControlStyle>();
+    TestEqual(TEXT("EditControlStyle option count"), EditStyles.Num(), 3);
+
+    for (const auto Option : EditStyles)
+    {
+        auto Selection = FCkDebuggerStyleSelection{};
+        Selection.EditControlStyle = Option;
+
+        const auto AreVisible   = ck::debug_axes::EditControls_AreVisible(Selection);
+        const auto RevealOnHover = ck::debug_axes::EditControls_RevealOnHover(Selection);
+        const auto Name = Get_OptionName(
+            static_cast<int64>(Option), StaticEnum<ECkDebugAxis_EditControlStyle>());
+
+        TestTrue(
+            *ck::Format_UE(TEXT("'{}' is visible unless it is Hidden"), Name),
+            AreVisible == (Option != ECkDebugAxis_EditControlStyle::Hidden));
+
+        TestTrue(
+            *ck::Format_UE(TEXT("'{}' reveals on hover only in OnHover"), Name),
+            RevealOnHover == (Option == ECkDebugAxis_EditControlStyle::OnHover));
+
+        TestFalse(
+            *ck::Format_UE(TEXT("'{}' cannot both hide and hover-reveal"), Name),
+            RevealOnHover && NOT AreVisible);
+    }
+
+    // Inline is the default: an inspector with no user configuration is interactive out of the box.
+    TestTrue(TEXT("the default selection shows edit controls inline"),
+        ck::debug_axes::EditControls_AreVisible(FCkDebuggerStyleSelection{}) &&
+        NOT ck::debug_axes::EditControls_RevealOnHover(FCkDebuggerStyleSelection{}));
+
     return true;
 }
 

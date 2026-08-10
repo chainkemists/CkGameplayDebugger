@@ -34,6 +34,9 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK A* Debugger")); }
 
+protected:
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto RefreshEntitySelector() -> void;

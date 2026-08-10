@@ -72,6 +72,9 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Aggro Debugger")); }
 
+protected:
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     // Structure is rebuilt ONLY when the owner/target SET changes; values are written every gated tick. The refresh
     // gate can run every frame, and rebuilding this subtree that often tears down live widgets mid-layout — which

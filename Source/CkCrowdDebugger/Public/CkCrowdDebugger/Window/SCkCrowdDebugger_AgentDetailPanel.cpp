@@ -211,7 +211,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						SNew(STextBlock)
 						.Justification(ETextJustify::Center)
 						.AutoWrapText(true)
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody()))
+						.Font_Static(&ck::crowd_debugger_axes::Get_Font_Bold_Body)
 						.ColorAndOpacity_Lambda([this]
 						{
 							return FSlateColor((_HasSelection && Diag_WillOrbit()) ? CkStyle::Err() : CkStyle::Ok());
@@ -371,7 +371,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::StatusBadge() -> TSharedRef<SWidget>
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
+				.Font_Static(&ck::crowd_debugger_axes::Get_Font_Bold_Small)
 				.ColorAndOpacity_Lambda([this]{ return FSlateColor(Status_Color()); })
 				.Text_Lambda([this]{ return Status_Text(); })
 			]

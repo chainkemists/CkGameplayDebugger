@@ -31,6 +31,9 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkEqsDebugger_QueryList();
 
+    /** Regenerate every row widget after a Layer-B style revision. Data is untouched. */
+    auto Rebuild_ForStyleChange() -> void;
+
 private:
     // Per-row item bundles the snapshot info with the panel's transient match flags. Match flags are set during
     // ApplyFilterPipeline; rebuilding _Items from the source query list also re-runs the pipeline.
@@ -38,6 +41,9 @@ private:
     {
         FCkEqsDebugger_QueryInfo Info;
         bool                     IsHighlightMatch = true;
+        // Position in the VISIBLE list (post-filter) — what RowBanding alternates on. Kept on the item
+        // so the band brush can be read from an attribute without an O(n) lookup per paint.
+        int32                    RowIndex = 0;
     };
 
     auto OnQueryListChanged(const TArray<FCkEqsDebugger_QueryInfo>& InQueries) -> void;

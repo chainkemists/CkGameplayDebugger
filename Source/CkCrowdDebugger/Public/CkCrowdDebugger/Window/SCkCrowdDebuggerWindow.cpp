@@ -146,6 +146,17 @@ auto SCkCrowdDebuggerWindow::HandleSessionInvalidated() -> void
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkCrowdDebuggerWindow::OnStyleRevisionChanged() -> void
+{
+	// Every panel here is attribute-bound and has already moved by the time this runs; the agent list
+	// is the one surface with generated ROW widgets, whose STableRow style and per-row band index are
+	// resolved at generation time.
+	if (_AgentListPanel.IsValid())
+	{ _AgentListPanel->Rebuild_ForStyleChange(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void
 {
 	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);

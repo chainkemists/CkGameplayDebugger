@@ -153,7 +153,7 @@ auto
                 InAllottedGeometry.GetLocalSize(),
                 FSlateLayoutTransform(FVector2D(20.0f, InAllottedGeometry.GetLocalSize().Y * 0.5f - 8.0f))),
             NoDataText,
-            CkStyle::RegularFont(CkStyle::FontSizeH3()),
+            ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH3()),
             ESlateDrawEffect::None,
             CkStyle::TextMute());
 
@@ -294,7 +294,7 @@ auto
 
     auto WidgetSize = InGeometry.GetLocalSize();
     auto WhiteBrush = FAppStyle::GetBrush("WhiteBrush");
-    auto Font = CkStyle::RegularFont(CkStyle::FontSizeSmall());
+    auto Font = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
 
     struct FLegendItem
     {

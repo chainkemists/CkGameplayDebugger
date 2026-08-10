@@ -28,6 +28,29 @@ const FName SCkDialogDebuggerWindow::WindowId = FName(TEXT("DialogDebugger"));
 
 // --------------------------------------------------------------------------------------------------------------------
 
+namespace ck_dialog_debugger_window
+{
+    // The registry dump and the cooldown table are monospaced by design (columns have to line up).
+    // Routing the two sizes through ScaledFont is what puts them under TextScale; attribute form so
+    // the axis lands without waiting for the cooldown signature to change.
+    auto Get_RowFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); }
+
+    auto Get_EmitterHeadingFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); }
+
+    auto Get_EmitterHeadingPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS}); }
+
+    auto Get_CooldownRowPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}); }
+
+    auto Get_EmptyStatePadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto
     SCkDialogDebuggerWindow::
     Construct(
@@ -103,7 +126,7 @@ auto
             .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
                 SAssignNew(_ContentText, STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_dialog_debugger_window::Get_RowFont)
                 .AutoWrapText(true)
                 .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
             ]
@@ -124,7 +147,9 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
+    // style-revision watch that routes into OnStyleRevisionChanged.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -142,6 +167,19 @@ auto
 
     DoUpdateCooldowns_LiveValues();
     DoRebuildContent();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDialogDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // The cooldown table only rebuilds when the cooling SET changes, so with static data a profile
+    // flip would otherwise never reach the structure pass. Poisoning the cached signature is the
+    // module's own "rebuild once" lever (the same one the Active-cooldowns-only toggle pulls).
+    _LastCooldownSignature.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -332,7 +370,7 @@ auto
             .WidthOverride(260.0f)
             [
                 SNew(STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_dialog_debugger_window::Get_RowFont)
                 .ColorAndOpacity(CkStyle::Text())
                 .Text(FText::FromName(InCooldown.LineID))
             ]
@@ -352,7 +390,7 @@ auto
         .VAlign(VAlign_Center)
         [
             SAssignNew(OutSlot.RemainingText, STextBlock)
-            .Font(CkStyle::MonoFont(9))
+            .Font_Static(&ck_dialog_debugger_window::Get_RowFont)
             .ColorAndOpacity(CkStyle::TextDim())
         ];
 
@@ -380,7 +418,7 @@ auto
             .RightContent()
             [
                 SAssignNew(_CooldownCountText, STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_dialog_debugger_window::Get_RowFont)
                 .ColorAndOpacity(CkStyle::TextDim())
             ]
         ];
@@ -408,11 +446,10 @@ auto
 
         _CooldownBox->AddSlot()
             .AutoHeight()
-            .Padding(ck::debug_axes::Apply_RowDensity(
-                FMargin{CkStyle::SpaceM, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS}))
+            .Padding(TAttribute<FMargin>::CreateStatic(&ck_dialog_debugger_window::Get_EmitterHeadingPadding))
             [
                 SNew(STextBlock)
-                .Font(CkStyle::BoldFont(9))
+                .Font_Static(&ck_dialog_debugger_window::Get_EmitterHeadingFont)
                 .ColorAndOpacity(CkStyle::TextStrong())
                 .Text(FText::FromString(Emitter.DebugName))
             ];
@@ -427,7 +464,7 @@ auto
 
             _CooldownBox->AddSlot()
                 .AutoHeight()
-                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))
+                .Padding(TAttribute<FMargin>::CreateStatic(&ck_dialog_debugger_window::Get_CooldownRowPadding))
                 [
                     Row
                 ];
@@ -439,10 +476,10 @@ auto
 
     _CooldownBox->AddSlot()
         .AutoHeight()
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_dialog_debugger_window::Get_EmptyStatePadding))
         [
             SNew(STextBlock)
-            .Font(CkStyle::MonoFont(9))
+            .Font_Static(&ck_dialog_debugger_window::Get_RowFont)
             .ColorAndOpacity(CkStyle::TextMute())
             .Text(FText::FromString(TEXT("(nothing cooling)")))
         ];

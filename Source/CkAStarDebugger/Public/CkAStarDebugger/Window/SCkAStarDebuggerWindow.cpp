@@ -9,6 +9,8 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -32,6 +34,16 @@
 // ====================================================================================================================
 
 const FName SCkAStarDebuggerWindow::WindowId = FName(TEXT("AStarDebugger"));
+
+namespace ck_astar_debugger_window
+{
+    // Toolbar fonts as attributes so TextScale reaches a toolbar that is built once and never rebuilt.
+    auto Get_ToolbarFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    auto Get_StatusBadgeFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); }
+}
 
 auto
     SCkAStarDebuggerWindow::
@@ -177,7 +189,9 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
+    // style-revision watch that routes into OnStyleRevisionChanged.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -222,6 +236,15 @@ auto
     }
 }
 
+auto SCkAStarDebuggerWindow::OnStyleRevisionChanged() -> void
+{
+    // The toolbar and the grid view are attribute-bound and have already moved. The two right-hand
+    // panels own imperatively-emitted sub-trees (cell detail rows, history rail), so they get an
+    // explicit re-emit.
+    if (_StatsPanel.IsValid())     { _StatsPanel->Rebuild_ForStyleChange(); }
+    if (_SearchHistory.IsValid())  { _SearchHistory->Rebuild_ForStyleChange(); }
+}
+
 auto SCkAStarDebuggerWindow::TargetEntity(const FCk_Handle& InEntity) -> void
 {
     if (ck::IsValid(InEntity)) { _PendingTarget = InEntity.Get_Entity(); }
@@ -256,7 +279,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Entity:")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .Font_Static(&ck_astar_debugger_window::Get_ToolbarFont)
                     .ColorAndOpacity(CkStyle::TextDim())
             ]
 
@@ -272,7 +295,7 @@ auto
                     {
                         return SNew(STextBlock)
                             .Text(FText::FromString(*InItem))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()));
+                            .Font_Static(&ck_astar_debugger_window::Get_ToolbarFont);
                     })
                     .OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type)
                     {
@@ -288,7 +311,7 @@ auto
                     [
                         SAssignNew(_EntitySelectorLabel, STextBlock)
                             .Text(FText::FromString(TEXT("(no entities)")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                            .Font_Static(&ck_astar_debugger_window::Get_ToolbarFont)
                     ]
             ]
 
@@ -318,7 +341,7 @@ auto
             [
                 SAssignNew(_StatusBadgeText, STextBlock)
                     .Text(FText::FromString(TEXT("Idle")))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                    .Font_Static(&ck_astar_debugger_window::Get_StatusBadgeFont)
                     .ColorAndOpacity(CkAStarDebugger::GetStatusColor(ECk_AStarSearchStatus::Idle))
             ]
 

@@ -18,6 +18,7 @@ public:
 	auto Build_Content(TSharedPtr<FCkSchedulerDebugger_ViewModel> InViewModel) -> TSharedRef<SWidget> override;
 	auto Tick(float InDeltaTime) -> void override;
 	auto OnSelectionChanged(int32 InProcessorIndex) -> void override;
+	auto OnStyleRevisionChanged() -> void override;
 
 private:
 	auto DoBuildDetailGraph() -> TSharedRef<SWidget>;

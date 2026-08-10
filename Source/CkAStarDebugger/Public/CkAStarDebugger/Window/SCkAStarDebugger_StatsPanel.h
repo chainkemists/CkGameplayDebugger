@@ -24,6 +24,12 @@ public:
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkAStarDebugger_ViewModel> InViewModel) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    /**
+     * Re-emit the selected-cell detail rows after a Layer-B style revision. Everything else on this
+     * panel is attribute-bound and has already moved by the time this runs.
+     */
+    auto Rebuild_ForStyleChange() -> void;
+
 private:
     auto RefreshFromSearchInfo(const FCkAStarDebugger_SearchInfo& InInfo) -> void;
 

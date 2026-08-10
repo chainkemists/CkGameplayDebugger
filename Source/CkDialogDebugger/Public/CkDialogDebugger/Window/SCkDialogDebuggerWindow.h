@@ -55,6 +55,9 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Dialog Debugger")); }
 
+protected:
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     auto
     DoRebuildContent() -> void;

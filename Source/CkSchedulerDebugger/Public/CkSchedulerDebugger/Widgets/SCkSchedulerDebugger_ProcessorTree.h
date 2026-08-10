@@ -28,6 +28,12 @@ public:
 	auto Construct(const FArguments& InArgs) -> void;
 	~SCkSchedulerDebugger_ProcessorTree();
 
+	/**
+	 * Regenerate every row widget after a Layer-B style revision. Node pointer identity (and therefore
+	 * selection + expansion) is untouched — this only re-runs the row generators.
+	 */
+	auto Rebuild_ForStyleChange() -> void;
+
 private:
 	auto DoOnDataRefreshed() -> void;
 	auto DoRebuildFlattenedTree() -> void;

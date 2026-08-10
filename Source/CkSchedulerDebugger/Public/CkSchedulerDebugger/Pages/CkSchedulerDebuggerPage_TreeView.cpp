@@ -7,6 +7,7 @@
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 #include "CkSchedulerDebugger/ViewModel/CkSchedulerDebugger_ViewModel.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 
 #include "GraphEditor.h"
 #include "Widgets/Layout/SBorder.h"
@@ -108,7 +109,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("X:")))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
@@ -138,7 +139,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("Y:")))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
@@ -168,7 +169,7 @@ auto
 								[
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("Passes:")))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
@@ -249,6 +250,25 @@ auto
 
 auto
 	FCkSchedulerDebuggerPage_TreeView::
+	OnStyleRevisionChanged()
+	-> void
+{
+	if (_ProcessorTree.IsValid())
+	{ _ProcessorTree->Rebuild_ForStyleChange(); }
+
+	if (_Inspector.IsValid())
+	{ _Inspector->Rebuild_ForStyleChange(); }
+
+	// The detail graph's node widgets bake their fill/border at construction (the SGraphNode live-bind
+	// invariant only covers the flag-driven visuals), so the graph is re-emitted rather than repainted.
+	// DoRebuildDetailGraph already forces past the graph's own topology hash.
+	DoRebuildDetailGraph();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	FCkSchedulerDebuggerPage_TreeView::
 	DoOnSelectionChanged(
 		int32 InProcessorIndex)
 	-> void
@@ -277,7 +297,7 @@ auto
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
-						.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
 						.ColorAndOpacity(CkStyle::TextMute())
 				]
 		);
@@ -378,7 +398,7 @@ auto
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
 					.ColorAndOpacity(CkStyle::TextMute())
 			]
 	);

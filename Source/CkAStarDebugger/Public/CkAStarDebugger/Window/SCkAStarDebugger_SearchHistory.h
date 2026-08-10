@@ -23,6 +23,9 @@ public:
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkAStarDebugger_ViewModel> InViewModel) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    /** Re-emit the rail after a Layer-B style revision. Data is untouched. */
+    auto Rebuild_ForStyleChange() -> void;
+
 private:
     auto RebuildList() -> void;
     auto BuildHistoryEntry(const FCkAStarDebugger_HistoryEntry& InEntry) -> TSharedRef<SWidget>;

@@ -14,6 +14,7 @@
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
@@ -86,21 +87,21 @@ auto SCkCrowdDebugger_ViewportPanel::Construct(const FArguments& InArgs) -> void
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("TOP-DOWN VIEWPORT")))
 					.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+					.Font_Static(&ck::crowd_debugger_axes::Get_Font_PaneHeading)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("wheel zoom · drag pan · LMB select · RMB sidewalk move · F follow · Home fit")))
 					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.Font_Static(&ck::crowd_debugger_axes::Get_Font_Small)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceS, 0.0f)
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("PATH")))
 					.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+					.Font_Static(&ck::crowd_debugger_axes::Get_Font_Small)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
@@ -728,7 +729,9 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 					TEXT("%s | %.0f cm (3D)"),
 					*_IntentPathFadeLabel,
 					GoalDistanceCm),
-				FCoreStyle::GetDefaultFontStyle("Bold", 9),
+				// Canvas label: the in-viewport overlay is painted every frame, so ScaledFont here is live
+				// by construction. 9pt is the body role.
+				ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()),
 				ESlateDrawEffect::None,
 				Color_GoalFail);
 		}

@@ -16,11 +16,13 @@
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -96,6 +98,18 @@ namespace
 		}
 	}
 
+	// What the row's SCkDebug_EntityRef actually PRINTS for this agent. Derived through the same
+	// EntityIdStyle composition the pill uses instead of re-formatting the handle by hand, so the
+	// filter can never start matching a string the user cannot see. The pill is ShowName(false), so
+	// the clean-name input is deliberately empty — pass the name here the day that changes.
+	auto AgentEntityIdText(const FCkCrowdDebugger_AgentSnapshot& InSnapshot) -> FString
+	{
+		return ck::debug_axes::Make_EntityIdText(
+			UCkDebuggerStyleSettings::Get_Selection(),
+			FString{},
+			ck::Format_UE(TEXT("{}"), InSnapshot.Handle.Get_Entity())).ToString();
+	}
+
 	// Case-insensitive substring match over exactly the columns the row renders:
 	// the entity id (as SCkDebug_EntityRef prints it), the "n=NN  <tag>" text, the
 	// owner name, and the status label. Empty needle matches everything.
@@ -104,7 +118,7 @@ namespace
 		if (InNeedle.IsEmpty())
 		{ return true; }
 
-		if (ck::Format_UE(TEXT("{}"), InSnapshot.Handle.Get_Entity()).Contains(InNeedle, ESearchCase::IgnoreCase))
+		if (AgentEntityIdText(InSnapshot).Contains(InNeedle, ESearchCase::IgnoreCase))
 		{ return true; }
 		if (AgentRowText(InSnapshot).Contains(InNeedle, ESearchCase::IgnoreCase))
 		{ return true; }
@@ -309,9 +323,23 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 
 	const auto WeakPanel = TWeakPtr<SCkCrowdDebugger_AgentListPanel>(SharedThis(this));
 
+	// RowBanding rides UNDER the sync-flash border rather than replacing it: the flash is a transient
+	// affordance that has to win, and stacking keeps both live. Under the default (Off) the band
+	// brush is the no-brush, so Classic renders exactly what it shipped.
+	const auto RowIndex = _ItemSource.IndexOfByKey(InItem);
+
 	return SNew(STableRow<ItemPtr>, InTable)
-		.Padding(ck::debug_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
+		.Padding(TAttribute<FMargin>::CreateStatic(&ck::crowd_debugger_axes::Get_AgentRowPadding))
 		[
+			SNew(SBorder)
+			.BorderImage_Lambda([RowIndex]() -> const FSlateBrush*
+			{
+				return UCkDebuggerStyleSettings::Get_Selection().RowBanding == ECkDebugAxis_RowBanding::Zebra
+					? ck::debug_axes::Get_RowBandingBrush(RowIndex)
+					: FStyleDefaults::GetNoBrush();
+			})
+			.Padding(FMargin(0))
+			[
 			SNew(SBorder)
 			.BorderImage(CkStyle::GetFilledBrush())
 			.Padding(FMargin(0))
@@ -380,7 +408,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
 			[
 				SNew(STextBlock)
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.Font_Static(&ck::crowd_debugger_axes::Get_Font_Micro)
 				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 				.Text_Lambda([WeakItem]() -> FText
 				{
@@ -411,7 +439,16 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 				})
 			]
 			]
+			]
 		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto SCkCrowdDebugger_AgentListPanel::Rebuild_ForStyleChange() -> void
+{
+	if (_ListView.IsValid())
+	{ _ListView->RebuildList(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

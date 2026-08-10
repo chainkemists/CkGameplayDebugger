@@ -3,14 +3,18 @@
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEcs/Entity/CkEntity.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/SBoxPanel.h"
@@ -31,6 +35,15 @@ namespace ck_eqs_debugger_candidate_panel
         return ECk_Tone::Ok;
     }
 
+    // Fonts ride attributes so TextScale reaches rows generated before the flip.
+    auto Get_RowTitleFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    auto Get_RowTitleFont_Best() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); }
+
+    auto Get_RowMetaFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
 }
 
 
@@ -55,9 +68,19 @@ auto
         SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
         [
-            SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
-            .Text(FText::FromString(TEXT("Candidates (no query selected)")))
-            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            // The pane heading is the common primitive (it carries SectionHeaderStyle live); the
+            // candidate count stays a separate imperative label in the header's trailing slot,
+            // because SCkDebug_SectionHeader's Label / CountText are construct-time arguments and
+            // the count changes every refresh.
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(TEXT("Candidates")))
+            .ToolTip(FText::FromString(TEXT("Every location the selected query generated, in post-Finalize score order.")))
+            .RightContent()
+            [
+                SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
+                .Text(FText::FromString(TEXT("(no query selected)")))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            ]
         ]
         + SVerticalBox::Slot().FillHeight(1.0f)
         [
@@ -107,7 +130,7 @@ auto
     Refresh_FromCurrentQuery()
     -> void
 {
-    auto HeaderStr = FString{TEXT("Candidates (no query selected)")};
+    auto HeaderStr = FString{TEXT("(no query selected)")};
 
     // Reuse existing TSharedPtr instances by ResultIndex when possible — keeps SListView selection identity
     // stable across the per-tick refresh. Same fix as SCkEqsDebugger_QueryList::ApplyFilterPipeline; without
@@ -130,7 +153,7 @@ auto
         const auto* QueryInfo = _ViewModel->Get_CurrentQueryInfo();
         if (QueryInfo)
         {
-            HeaderStr = ck::Format_UE(TEXT("Candidates ({})"), QueryInfo->Candidates.Num());
+            HeaderStr = ck::Format_UE(TEXT("{}"), QueryInfo->Candidates.Num());
             NewItems.Reserve(QueryInfo->Candidates.Num());
             for (const auto& C : QueryInfo->Candidates)
             {
@@ -198,10 +221,6 @@ auto
     const auto MetaText = ck::Format_UE(TEXT("({:.0f}, {:.0f}, {:.0f})"),
         C.Location.X, C.Location.Y, C.Location.Z);
 
-    const auto SubtitleText = ck::IsValid(C.EntityHandle)
-        ? ck::Format_UE(TEXT("entity: {}"), C.EntityHandle)
-        : (C.Passed ? FString{} : FString{TEXT("(filter-rejected)")});
-
     // Custom row body — STextBlock + the click-passive SCkDebug_CategoryDot don't trap clicks the way
     // SCkDebug_HistoryRow's internal SButton does. STableRow.ShowSelection(true) gives the selection visual.
     auto Body = SNew(SVerticalBox)
@@ -210,32 +229,59 @@ auto
         [
             SNew(STextBlock)
             .Text(FText::FromString(TitleText))
-            .Font(C.IsBestPick
-                ? CkStyle::BoldFont(CkStyle::FontSizeBody())
-                : CkStyle::RegularFont(CkStyle::FontSizeBody()))
+            .Font_Lambda([IsBestPick = C.IsBestPick]()
+            {
+                return IsBestPick
+                    ? ck_eqs_debugger_candidate_panel::Get_RowTitleFont_Best()
+                    : ck_eqs_debugger_candidate_panel::Get_RowTitleFont();
+            })
             .ColorAndOpacity(FSlateColor{CkStyle::Text()})
         ]
         + SVerticalBox::Slot().AutoHeight()
         [
             SNew(STextBlock)
             .Text(FText::FromString(MetaText))
-            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+            .Font_Static(&ck_eqs_debugger_candidate_panel::Get_RowMetaFont)
             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ];
 
-    if (NOT SubtitleText.IsEmpty())
+    if (ck::IsValid(C.EntityHandle))
+    {
+        // A real entity reference, so it composes through the EntityIdStyle axis. It stays TEXT rather
+        // than becoming an SCkDebug_EntityRef: the pill consumes the left-click it navigates on, and
+        // this one lives inside an STableRow whose selection click must bubble (CkDebuggerCommon
+        // CLAUDE.md, "List / tree rows"). The pill for the selected candidate is the panel's job, not
+        // the row's.
+        const auto EntityHandle = C.EntityHandle;
+
+        Body->AddSlot().AutoHeight()
+        [
+            SNew(STextBlock)
+            .Text_Lambda([EntityHandle]()
+            {
+                return FText::FromString(ck::Format_UE(TEXT("entity: {}"),
+                    ck::debug_axes::Make_EntityIdText(
+                        UCkDebuggerStyleSettings::Get_Selection(),
+                        FString{},
+                        ck::Format_UE(TEXT("{}"), EntityHandle.Get_Entity())).ToString()));
+            })
+            .Font_Static(&ck_eqs_debugger_candidate_panel::Get_RowMetaFont)
+            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+        ];
+    }
+    else if (NOT C.Passed)
     {
         Body->AddSlot().AutoHeight()
         [
             SNew(STextBlock)
-            .Text(FText::FromString(SubtitleText))
-            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+            .Text(FText::FromString(TEXT("(filter-rejected)")))
+            .Font_Static(&ck_eqs_debugger_candidate_panel::Get_RowMetaFont)
             .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
         ];
     }
 
     return SNew(STableRow<TSharedPtr<FCkEqsDebugger_CandidateInfo>>, InOwner)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}); })
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -254,6 +300,17 @@ auto
             ]
         ];
 }
+
+auto
+    SCkEqsDebugger_CandidatePanel::
+    Rebuild_ForStyleChange()
+    -> void
+{
+    if (_ListView.IsValid())
+    { _ListView->RebuildList(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkEqsDebugger_CandidatePanel::

@@ -49,6 +49,28 @@ namespace ck_aggro_debugger_window
 
         return FMath::Clamp(InValue / InMax, 0.0f, 1.0f);
     }
+
+    // Every row in this window is monospaced by design — the threat table is a column of numbers that
+    // has to line up. The two sizes are the body/micro roles; routing them through ScaledFont is what
+    // puts the whole table under TextScale. Attribute form (not value) so the axis lands on rows the
+    // signature pass has no reason to rebuild.
+    auto Get_RowFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); }
+
+    auto Get_MetaFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); }
+
+    auto Get_OwnerMetaPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS}); }
+
+    auto Get_IdleRowPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}); }
+
+    auto Get_TargetRowPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, 1.0f}); }
+
+    auto Get_EmptyStatePadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -120,7 +142,7 @@ auto
         .Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceXS)
         [
             SAssignNew(_StatusText, STextBlock)
-            .Font(CkStyle::MonoFont(9))
+            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
             .ColorAndOpacity(CkStyle::TextMute())
             .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
         ]
@@ -159,7 +181,9 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
+    // style-revision watch that routes into OnStyleRevisionChanged.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -174,6 +198,18 @@ auto
     }
 
     DoUpdate_LiveValues();
+}
+
+auto
+    SCkAggroDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // This window only rebuilds when the owner/target IDENTITY set changes, so with static data a
+    // profile flip would otherwise never reach the structure pass. Poisoning the cached signature is
+    // the module's own "rebuild once" lever — the next gated tick re-emits the owner sections and the
+    // target rows, and DoUpdate_LiveValues repopulates them in the same pass.
+    _LastSignature.Reset();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -357,7 +393,7 @@ auto
             .WidthOverride(ck_aggro_debugger_window::k_NameColumnWidth)
             [
                 SNew(STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
                 .ColorAndOpacity(InTarget.IsActive ? CkStyle::TextStrong() : CkStyle::Text())
                 .Text(FText::FromString(InTarget.TrackedName))
                 .ToolTipText(FText::FromString(InTarget.TrackedName))
@@ -383,7 +419,7 @@ auto
             .WidthOverride(ck_aggro_debugger_window::k_ValueColumnWidth)
             [
                 SAssignNew(OutSlot.ThreatText, STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
                 .ColorAndOpacity(CkStyle::Text())
             ]
         ]
@@ -407,7 +443,7 @@ auto
             .WidthOverride(ck_aggro_debugger_window::k_ValueColumnWidth)
             [
                 SAssignNew(OutSlot.ScoreText, STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
                 .ColorAndOpacity(CkStyle::TextDim())
             ]
         ]
@@ -420,7 +456,7 @@ auto
             .WidthOverride(ck_aggro_debugger_window::k_StateColumnWidth)
             [
                 SAssignNew(OutSlot.StateText, STextBlock)
-                .Font(CkStyle::MonoFont(9))
+                .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
             ]
         ]
         + SHorizontalBox::Slot()
@@ -428,7 +464,7 @@ auto
         .VAlign(VAlign_Center)
         [
             SAssignNew(OutSlot.DetailText, STextBlock)
-            .Font(CkStyle::MonoFont(9))
+            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
             .ColorAndOpacity(CkStyle::TextMute())
         ];
 }
@@ -468,18 +504,17 @@ auto
                 .RightContent()
                 [
                     SAssignNew(OwnerSlot.ActiveText, STextBlock)
-                    .Font(CkStyle::MonoFont(9))
+                    .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
                     .ColorAndOpacity(CkStyle::Err())
                 ]
             ];
 
         _OwnerBox->AddSlot()
             .AutoHeight()
-            .Padding(ck::debug_axes::Apply_RowDensity(
-                FMargin{CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS}))
+            .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_OwnerMetaPadding))
             [
                 SAssignNew(OwnerSlot.MetaText, STextBlock)
-                .Font(CkStyle::MonoFont(8))
+                .Font_Static(&ck_aggro_debugger_window::Get_MetaFont)
                 .ColorAndOpacity(CkStyle::TextMute())
             ];
 
@@ -489,10 +524,10 @@ auto
         {
             _OwnerBox->AddSlot()
                 .AutoHeight()
-                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))
+                .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_IdleRowPadding))
                 [
                     SNew(STextBlock)
-                    .Font(CkStyle::MonoFont(9))
+                    .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                     .Text(FText::FromString(TEXT("(no tracked targets — idle)")))
                 ];
@@ -507,7 +542,7 @@ auto
 
             _OwnerBox->AddSlot()
                 .AutoHeight()
-                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, 1.0f}))
+                .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_TargetRowPadding))
                 [
                     Row
                 ];
@@ -519,10 +554,10 @@ auto
 
     _OwnerBox->AddSlot()
         .AutoHeight()
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_aggro_debugger_window::Get_EmptyStatePadding))
         [
             SNew(STextBlock)
-            .Font(CkStyle::MonoFont(9))
+            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
             .ColorAndOpacity(CkStyle::TextMute())
             .Text(FText::FromString(TEXT("(no Aggro owners in this world)")))
         ];

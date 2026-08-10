@@ -24,6 +24,7 @@
 #include "Engine/Engine.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Text/STextBlock.h"
@@ -72,6 +73,40 @@ namespace
     }
 }
 
+namespace ck_eqs_debugger_window
+{
+    auto Get_TitleFont() -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3());
+    }
+
+    auto Get_SeparatorThickness() -> float
+    {
+        return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
+
+    // SSeparator::Thickness is a construction-time argument with no setter, which is why
+    // ck::debug_axes::Make_AxisSeparator carries the axis on an SBox HEIGHT override. The toolbar's
+    // divider is vertical, so it needs the width twin — same shape, same collapse-at-zero rule.
+    auto Make_VerticalAxisSeparator() -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .WidthOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{Get_SeparatorThickness()};
+            })
+            .Visibility_Lambda([]()
+            {
+                return Get_SeparatorThickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            [
+                SNew(SSeparator)
+                .Orientation(Orient_Vertical)
+                .Thickness(1.0f)
+            ];
+    }
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -107,9 +142,7 @@ auto
         ]
         + SVerticalBox::Slot().AutoHeight()
         [
-            SNew(SSeparator)
-            .Orientation(Orient_Horizontal)
-            .Thickness(ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection()))
+            ck::debug_axes::Make_AxisSeparator()
         ]
         + SVerticalBox::Slot().FillHeight(1.0f).Padding(FMargin{6.0f, 6.0f, 6.0f, 6.0f})
         [
@@ -214,7 +247,7 @@ auto
             SNew(STextBlock)
             .Text(FText::FromString(TEXT("CK EQS Debugger")))
             .ColorAndOpacity(FSlateColor{CkStyle::Text()})
-            .Font(CkStyle::BoldFont(CkStyle::FontSizeH3()))
+            .Font_Static(&ck_eqs_debugger_window::Get_TitleFont)
         ]
 
         // World selector (shared across all CK debuggers)
@@ -227,9 +260,7 @@ auto
         // Separator
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{6.0f, 0.0f})
         [
-            SNew(SSeparator)
-            .Orientation(Orient_Vertical)
-            .Thickness(ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection()))
+            ck_eqs_debugger_window::Make_VerticalAxisSeparator()
         ]
 
         // Status text (query count + pause indicator).
@@ -257,7 +288,9 @@ auto
         float            InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the WindowBase super, not SCompoundWidget — the base's Tick is what drives the gated
+    // style-revision watch that routes into OnStyleRevisionChanged below.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -294,6 +327,20 @@ auto
         &_ViewModel->Get_AllQueries(),
         _ViewModel->Get_CurrentQueryInfo(),
         UCkEqsDebuggerSettings::Get());
+}
+
+auto
+    SCkEqsDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Everything this window composes is attribute-bound, so the visual axes have already landed by
+    // the time we get here. The three list panels still regenerate their rows: an STableRow bakes its
+    // own style at generation time, and the row bodies are the only surface left that a structural
+    // axis option could reshape.
+    if (_QueryList.IsValid())          { _QueryList->Rebuild_ForStyleChange(); }
+    if (_CandidatePanel.IsValid())     { _CandidatePanel->Rebuild_ForStyleChange(); }
+    if (_TestBreakdownPanel.IsValid()) { _TestBreakdownPanel->Rebuild_ForStyleChange(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -27,6 +27,9 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkEqsDebugger_TestBreakdownPanel();
 
+    /** Regenerate every row widget after a Layer-B style revision. Data is untouched. */
+    auto Rebuild_ForStyleChange() -> void;
+
 private:
     auto OnQueryListChanged(const TArray<FCkEqsDebugger_QueryInfo>& InQueries) -> void;
     auto OnSelectedCandidateChanged(int32 InIndex) -> void;

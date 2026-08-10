@@ -25,6 +25,9 @@ public:
 	// Applies an already-resolved crowd-agent target and frames its row.
 	auto SelectEntityExternal(FCk_Entity InEntity) -> void;
 
+	/** Regenerate every row widget after a Layer-B style revision. Item identity is untouched. */
+	auto Rebuild_ForStyleChange() -> void;
+
 private:
 	using ItemPtr = TSharedPtr<FCkCrowdDebugger_AgentSnapshot>;
 

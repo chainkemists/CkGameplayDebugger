@@ -3,9 +3,11 @@
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"   // ECk_Tone full definition (Err / Accent / Ok)
 
@@ -31,6 +33,15 @@ namespace ck_eqs_debugger_test_breakdown
         return ECk_Tone::Ok;
     }
 
+    // Fonts ride attributes so TextScale reaches rows generated before the flip.
+    auto Get_RowTitleFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    auto Get_RowMetaFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
+
+    auto Get_RowVerdictFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); }
 }
 
 
@@ -55,9 +66,17 @@ auto
         SNew(SVerticalBox)
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
         [
-            SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
-            .Text(FText::FromString(TEXT("Test breakdown (no candidate selected)")))
-            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            // Common pane heading; the per-candidate clarifier stays imperative in the trailing slot
+            // (SCkDebug_SectionHeader's Label / CountText are construct-time arguments).
+            SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(TEXT("Test breakdown")))
+            .ToolTip(FText::FromString(TEXT("Per-test raw / normalized / weighted contribution for the selected candidate.")))
+            .RightContent()
+            [
+                SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
+                .Text(FText::FromString(TEXT("(no candidate selected)")))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            ]
         ]
         + SVerticalBox::Slot().FillHeight(1.0f)
         [
@@ -106,7 +125,7 @@ auto
     Refresh_FromCurrentCandidate()
     -> void
 {
-    auto HeaderStr = FString{TEXT("Test breakdown (no candidate selected)")};
+    auto HeaderStr = FString{TEXT("(no candidate selected)")};
 
     // Stable-pointer pattern keyed by TestIndex (same shape as QueryList / CandidatePanel) — keeps the
     // SListView selection identity stable across the per-tick refresh.
@@ -126,7 +145,7 @@ auto
         const auto* CandInfo = _ViewModel->Get_CurrentCandidateInfo();
         if (CandInfo)
         {
-            HeaderStr = ck::Format_UE(TEXT("Test breakdown (candidate #{}, score {:.4f})"),
+            HeaderStr = ck::Format_UE(TEXT("candidate #{}, score {:.4f}"),
                 CandInfo->ResultIndex, CandInfo->FinalScore);
             NewItems.Reserve(CandInfo->PerTest.Num());
             for (const auto& T : CandInfo->PerTest)
@@ -187,7 +206,7 @@ auto
     // See SCkEqsDebugger_QueryList::OnGenerateRow for the rationale on not using SCkDebug_HistoryRow:
     // its internal SButton consumes selection clicks. Row body = STextBlock + SCkDebug_CategoryDot.
     return SNew(STableRow<TSharedPtr<FCkEqsDebugger_PerTestInfo>>, InOwner)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}); })
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -207,14 +226,14 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TitleText))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .Font_Static(&ck_eqs_debugger_test_breakdown::Get_RowTitleFont)
                     .ColorAndOpacity(FSlateColor{CkStyle::Text()})
                 ]
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(MetaText))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                    .Font_Static(&ck_eqs_debugger_test_breakdown::Get_RowMetaFont)
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 ]
             ]
@@ -224,10 +243,21 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(RightText))
-                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                .Font_Static(&ck_eqs_debugger_test_breakdown::Get_RowVerdictFont)
                 .ColorAndOpacity(FSlateColor{ToneColor})
             ]
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkEqsDebugger_TestBreakdownPanel::
+    Rebuild_ForStyleChange()
+    -> void
+{
+    if (_ListView.IsValid())
+    { _ListView->RebuildList(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

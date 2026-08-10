@@ -11,6 +11,7 @@
 #include "Widgets/Input/SButton.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
@@ -139,7 +140,7 @@ auto
 		[
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("No processor selected")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
 				.ColorAndOpacity(CkStyle::TextMute())
 		];
 }
@@ -165,7 +166,7 @@ auto
 				[
 					SNew(SCkDebug_SelectableLabel)
 						.Text(FText::FromName(InProc.ProcessorName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H2)
 						.ColorAndOpacity(CkStyle::Text())
 				]
 
@@ -188,7 +189,7 @@ auto
 								[
 									SNew(STextBlock)
 										.Text(FText::FromString(InProc.IsGhost ? TEXT("Ghost") : TEXT("Active")))
-										.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+										.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Micro)
 										.ColorAndOpacity(FLinearColor::White)
 								]
 						]
@@ -205,7 +206,7 @@ auto
 								[
 									SNew(STextBlock)
 										.Text(FText::FromString(TEXT("Dirty")))
-										.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+										.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Micro)
 										.ColorAndOpacity(FLinearColor::White)
 								]
 						]
@@ -221,7 +222,7 @@ auto
 								[
 									SNew(STextBlock)
 										.Text(FText::FromString(TEXT("Parallel")))
-										.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+										.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Micro)
 										.ColorAndOpacity(FLinearColor::White)
 								]
 						]
@@ -474,7 +475,7 @@ auto
 				.Text(FText::FromString(AnyUnresolved
 					? TEXT("Unresolved write-write conflicts — add RunAfter/RunBefore to fix.")
 					: TEXT("Auto-resolved in declaration order — consider adding explicit ordering.")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Body)
 				.ColorAndOpacity(ErrorColorRGBA)
 				.AutoWrapText(true)
 		];
@@ -533,7 +534,7 @@ auto
 		[
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Run After:")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 				.ColorAndOpacity(CkStyle::TextDim())
 		];
 
@@ -544,7 +545,7 @@ auto
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("(none)")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Body)
 					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
@@ -563,7 +564,7 @@ auto
 		[
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Run Before:")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 				.ColorAndOpacity(CkStyle::TextDim())
 		];
 
@@ -574,7 +575,7 @@ auto
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("(none)")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Body)
 					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
@@ -613,11 +614,15 @@ auto
 		const FString& InValue)
 	-> TSharedRef<SWidget>
 {
-	// Rows are the RowDensity axis' primary surface in this panel. Rebuilt on selection / frame
-	// change, so the density is sampled here rather than bound per-paint.
-	const auto LabelPadding = ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 2.0f});
-	const auto ValuePadding = ck::debug_axes::Apply_RowDensity(
-		FMargin{FCkSchedulerDebuggerStyle::Padding_Small, 2.0f});
+	// Rows are the RowDensity axis' primary surface in this panel. Attribute form, not value: the
+	// panel only rebuilds on selection / frame change, so a sampled margin would freeze the axis
+	// whenever the selection is static.
+	const auto LabelPadding = TAttribute<FMargin>::CreateStatic(&ck::scheduler_debugger_axes::Get_InspectorLabelPadding);
+	const auto ValuePadding = TAttribute<FMargin>::CreateLambda([]()
+	{
+		return ck::debug_axes::Apply_RowDensity(
+			FMargin{FCkSchedulerDebuggerStyle::Padding_Small, 2.0f});
+	});
 
 	return SNew(SHorizontalBox)
 
@@ -632,7 +637,7 @@ auto
 					[
 						SNew(STextBlock)
 							.Text(FText::FromString(InLabel))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 							.ColorAndOpacity(CkStyle::TextDim())
 							.AutoWrapText(true)
 					]
@@ -645,7 +650,7 @@ auto
 			[
 				SNew(SCkDebug_SelectableLabel)
 					.Text(FText::FromString(InValue))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 					.ColorAndOpacity(CkStyle::Text())
 			];
 }
@@ -701,7 +706,7 @@ auto
 		[
 			SNew(STextBlock)
 				.Text(FText::FromString(DisplayName))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 				.ColorAndOpacity(CkStyle::Selection())
 				.AutoWrapText(true)
 		];

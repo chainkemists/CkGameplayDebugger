@@ -4,6 +4,7 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_RailContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -63,6 +64,16 @@ auto
     }
 }
 
+auto
+    SCkAStarDebugger_SearchHistory::
+    Rebuild_ForStyleChange()
+    -> void
+{
+    // SCkDebug_HistoryRow bakes its tone treatment at construction, so the rail is re-emitted rather
+    // than left to a paint-time attribute.
+    RebuildList();
+}
+
 // ====================================================================================================================
 // Rebuild list
 // ====================================================================================================================
@@ -91,7 +102,7 @@ auto
         _Rail->AddChild(
             SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(TEXT("No search history yet")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                .Font(ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()))
                 .ColorAndOpacity(CkStyle::TextMute()));
         return;
     }

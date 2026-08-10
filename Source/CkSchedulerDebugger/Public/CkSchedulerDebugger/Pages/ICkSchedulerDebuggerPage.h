@@ -21,6 +21,13 @@ public:
 	virtual auto Set_IsActive(bool InActive) -> void { _IsActive = InActive; }
 	virtual auto OnSelectionChanged(int32 InProcessorIndex) -> void {}
 
+	/**
+	 * The Layer-B style selection changed. A page whose sub-widgets are entirely attribute-bound
+	 * needs nothing (that is why the default is a no-op); a page that emits rows imperatively routes
+	 * this to its own rebuild entry point.
+	 */
+	virtual auto OnStyleRevisionChanged() -> void {}
+
 protected:
 	bool _IsActive = false;
 };

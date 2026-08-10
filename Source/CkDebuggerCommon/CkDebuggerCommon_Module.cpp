@@ -5,6 +5,7 @@
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -46,6 +47,10 @@ void FCkDebuggerCommonModule::StartupModule()
 {
 	FCkDebuggerCommonStyle::Initialize();
 
+	// The suite-wide brush/text set (promoted out of CkEcsDebugger). Owned here so every
+	// debugger module — not just the ECS one — can rely on it being registered.
+	FCkDebuggerStyle::Initialize();
+
 #if WITH_EDITOR
 	_BeginPieHandle = FEditorDelegates::BeginPIE.AddRaw(
 		this, &FCkDebuggerCommonModule::HandlePieSessionBoundary);
@@ -84,6 +89,7 @@ void FCkDebuggerCommonModule::ShutdownModule()
 	_GalleryTab.Reset();
 #endif
 
+	FCkDebuggerStyle::Shutdown();
 	FCkDebuggerCommonStyle::Shutdown();
 }
 

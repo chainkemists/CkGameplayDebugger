@@ -29,7 +29,7 @@ auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(FCkDebuggerLauncherStyle::Get().GetBrush(TEXT("CkDebuggerLauncher.Background")))
+        .BorderImage(FCkDebuggerLauncherStyle::Get_BackgroundBrush())
         .Padding(FMargin{4.0f})
         [
             SNew(SBox)
@@ -230,7 +230,7 @@ auto SCkDebuggerLauncher::Build_CategoryHeader(
         .Padding(FMargin{2.0f, InAddSeparator ? 6.0f : 2.0f, 2.0f, 3.0f})
         [
             SNew(SSeparator)
-            .SeparatorImage(FCkDebuggerLauncherStyle::Get().GetBrush(TEXT("CkDebuggerLauncher.Separator")))
+            .SeparatorImage(FCkDebuggerLauncherStyle::Get_SeparatorBrush())
             .Visibility(InAddSeparator ? EVisibility::Visible : EVisibility::Collapsed)
         ]
         + SVerticalBox::Slot()

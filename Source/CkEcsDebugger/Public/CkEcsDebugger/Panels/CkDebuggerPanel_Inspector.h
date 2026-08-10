@@ -7,7 +7,6 @@
 
 class SBox;
 class SScrollBox;
-class SCkDebuggerWidget_SearchBar;
 
 namespace ck_debugger_panel_inspector
 {

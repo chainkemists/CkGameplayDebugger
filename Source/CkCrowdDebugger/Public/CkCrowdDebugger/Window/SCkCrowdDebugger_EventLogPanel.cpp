@@ -63,7 +63,7 @@ auto SCkCrowdDebugger_EventLogPanel::Construct(const FArguments& InArgs) -> void
 		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
 		.Padding_Lambda([]()
 		{
-			return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
+			return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
 		})
 		[
 			SNew(SVerticalBox)

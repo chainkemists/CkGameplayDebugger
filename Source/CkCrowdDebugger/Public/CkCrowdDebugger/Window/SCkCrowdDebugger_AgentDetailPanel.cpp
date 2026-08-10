@@ -53,7 +53,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-		.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
+		.Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SScrollBox)
 			+ SScrollBox::Slot()
@@ -206,7 +206,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						const auto Tone = (_HasSelection && Diag_WillOrbit()) ? CkStyle::Err() : CkStyle::Ok();
 						return FSlateColor(CkStyle::OverlayOf(Tone, 0.20f));
 					})
-					.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
+					.Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 					[
 						SNew(STextBlock)
 						.Justification(ETextJustify::Center)

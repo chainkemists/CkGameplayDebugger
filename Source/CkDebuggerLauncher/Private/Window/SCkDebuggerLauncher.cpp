@@ -25,38 +25,6 @@
 
 namespace ck_debugger_launcher
 {
-    // RowDensity and IconSize both apply as a DELTA on the rail's own geometry: the rail is denser
-    // and its glyphs larger than the axes' own absolute scales, so only the offset between options
-    // is the axes' business. The default options leave the rail exactly as it shipped.
-    auto Apply_RowDensity(
-        const FMargin& InBase)
-        -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
-    auto Apply_IconSize(
-        float InBase)
-        -> float
-    {
-        const auto Baseline = ck::debug_axes::Get_IconSize(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
-
-        return FMath::Max(1.0f, InBase + (Current - Baseline));
-    }
-
     auto Get_SeparatorThickness()
         -> float
     {
@@ -171,7 +139,7 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
         _ToolList->AddSlot()
         .AutoHeight()
         .HAlign(HAlign_Fill)
-        .Padding(ck_debugger_launcher::Apply_RowDensity(FMargin{0.0f, 2.0f}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 2.0f}))
         [
             Build_ToolButton(Tool)
         ];
@@ -241,11 +209,11 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
                 SNew(SBox)
                 .WidthOverride_Lambda([]() -> FOptionalSize
                 {
-                    return FOptionalSize{ck_debugger_launcher::Apply_IconSize(28.0f)};
+                    return FOptionalSize{ck::debug_axes::Apply_IconSize(28.0f)};
                 })
                 .HeightOverride_Lambda([]() -> FOptionalSize
                 {
-                    return FOptionalSize{ck_debugger_launcher::Apply_IconSize(28.0f)};
+                    return FOptionalSize{ck::debug_axes::Apply_IconSize(28.0f)};
                 })
                 .HAlign(HAlign_Center)
                 .VAlign(VAlign_Center)

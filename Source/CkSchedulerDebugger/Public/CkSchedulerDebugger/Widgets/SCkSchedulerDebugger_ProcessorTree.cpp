@@ -16,37 +16,10 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
-
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace ck_scheduler_debugger_processor_tree
-{
-	// RowDensity as a DELTA on the tree's own base row padding, never as an absolute — this tree is
-	// deliberately tighter than an inspector row, and only the offset between density options is the
-	// axis' business. Comfortable is the axis default, so Classic renders exactly as it shipped.
-	// Clamped at zero so Compact can't produce negative margins.
-	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-	{
-		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-		const auto DeltaX = Current.Left - Baseline.Left;
-		const auto DeltaY = Current.Top  - Baseline.Top;
-
-		return FMargin
-		{
-			FMath::Max(0.0f, InBase.Left   + DeltaX),
-			FMath::Max(0.0f, InBase.Top    + DeltaY),
-			FMath::Max(0.0f, InBase.Right  + DeltaX),
-			FMath::Max(0.0f, InBase.Bottom + DeltaY)
-		};
-	}
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -2036,7 +2009,7 @@ auto
 	-> TSharedRef<ITableRow>
 {
 	return SNew(STableRow<TSharedPtr<FCkSchedulerDebugger_TreeNode>>, InOwnerTable)
-		.Padding(ck_scheduler_debugger_processor_tree::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+		.Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
 		.ShowSelection(true)
 		.Content()
 		[

@@ -5,7 +5,6 @@
 
 #include "CkCore/Format/CkFormat.h"
 
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_FrameStrip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
@@ -17,7 +16,6 @@
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -30,34 +28,9 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Named, not anonymous: this module builds with unity on, and a merged TU makes an anonymous
+// `FPlaceholderPage` collide with any other file's identically-named local type.
 namespace ck_scheduler_debugger_window
-{
-	// RowDensity applies as a DELTA on this surface's own base padding, never as an absolute — the
-	// window chrome is deliberately tighter than a tree row, and only the offset between density
-	// options is the axis' business. Comfortable is the axis default, so under Classic the delta is
-	// zero and the bars render exactly as they shipped. Clamped so Compact can't go negative.
-	// Same contract as CkDebuggerWidget_EntityTree.cpp::Apply_RowDensity.
-	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-	{
-		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-		const auto DeltaX = Current.Left - Baseline.Left;
-		const auto DeltaY = Current.Top  - Baseline.Top;
-
-		return FMargin
-		{
-			FMath::Max(0.0f, InBase.Left   + DeltaX),
-			FMath::Max(0.0f, InBase.Top    + DeltaY),
-			FMath::Max(0.0f, InBase.Right  + DeltaX),
-			FMath::Max(0.0f, InBase.Bottom + DeltaY)
-		};
-	}
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace
 {
 	class FPlaceholderPage : public ICkSchedulerDebuggerPage
 	{
@@ -427,7 +400,7 @@ auto
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
 		.Padding_Lambda([]()
 		{
-			return ck_scheduler_debugger_window::Apply_RowDensity(
+			return ck::debug_axes::Apply_RowDensity(
 				FMargin{FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small});
 		})
 		[
@@ -523,7 +496,7 @@ auto
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 		.Padding_Lambda([]()
 		{
-			return ck_scheduler_debugger_window::Apply_RowDensity(
+			return ck::debug_axes::Apply_RowDensity(
 				FMargin{FCkSchedulerDebuggerStyle::Padding_Small});
 		})
 		[

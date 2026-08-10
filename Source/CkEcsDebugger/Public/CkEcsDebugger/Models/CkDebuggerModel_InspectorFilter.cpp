@@ -6,6 +6,7 @@
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -16,7 +17,7 @@ namespace
     /**
      * Curated badge color map for well-known inspectors. Reuses semantic colors that already
      * live in FCkDebuggerStyle so the palette stays consistent with the rest of the debugger.
-     * Inspectors not listed here fall back to a deterministic hash into FallbackPalette.
+     * Inspectors not listed here fall back to the shared categorical ramp.
      */
     static auto Get_CuratedBadgeColor(
         FName InID) -> TOptional<FLinearColor>
@@ -57,21 +58,11 @@ namespace
         return TOptional<FLinearColor>{};
     }
 
-    /** Deterministic fallback palette — six visually distinct colors. */
+    /** Deterministic fallback bucket color for an inspector with no curated role. */
     static auto Get_FallbackBadgeColor(
         FName InID) -> FLinearColor
     {
-        static const auto Palette = TArray<FLinearColor>{
-            FLinearColor(0.85f, 0.45f, 0.20f),  // Orange
-            FLinearColor(0.30f, 0.75f, 0.40f),  // Green
-            FLinearColor(0.65f, 0.45f, 0.80f),  // Purple
-            FLinearColor(0.85f, 0.75f, 0.25f),  // Yellow
-            FLinearColor(0.40f, 0.80f, 0.80f),  // Cyan
-            FLinearColor(0.85f, 0.50f, 0.65f),  // Pink
-        };
-
-        const auto Hash = GetTypeHash(InID);
-        return Palette[Hash % Palette.Num()];
+        return ck::debug_axes::Get_CategoricalColor(InID);
     }
 
     static auto Resolve_BadgeColor(

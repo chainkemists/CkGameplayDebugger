@@ -5,6 +5,8 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -78,9 +80,10 @@ auto FCkDebuggerPage_Activity::Build_Content(const FCkDebuggerPageContext& InCon
         .AutoHeight()
         .Padding(FCkDebuggerStyle::Padding_Medium)
         [
-            SNew(STextBlock)
-            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Header"))
-            .Text(FText::FromString(TEXT("Spawn / destroy feed (newest first)")))
+            ck::debug_axes::Make_SectionHeader(
+                UCkDebuggerStyleSettings::Get_Selection(),
+                FText::FromString(TEXT("Spawn / destroy feed (newest first)")),
+                ECk_Tone::Neutral)
         ]
 
         + SVerticalBox::Slot()
@@ -181,7 +184,7 @@ auto FCkDebuggerPage_Activity::OnGenerateRow(
 
     return SNew(STableRow<TSharedPtr<FActivityEvent>>, InOwnerTable)
         .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
-        .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 1.0f))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -193,10 +196,12 @@ auto FCkDebuggerPage_Activity::OnGenerateRow(
             [
                 SNew(SImage)
                 .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
-                .ColorAndOpacity(IsSpawn
-                    ? FSlateColor{FLinearColor{0.25f, 0.85f, 0.35f}}
-                    : FSlateColor{FLinearColor{0.85f, 0.30f, 0.25f}})
-                .DesiredSizeOverride(FVector2D(6.0f, 6.0f))
+                .ColorAndOpacity(IsSpawn ? FSlateColor{CkStyle::Ok()} : FSlateColor{CkStyle::Err()})
+                .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                {
+                    const auto Size = ck::debug_axes::Apply_IconSize(6.0f);
+                    return FVector2D{Size, Size};
+                })
             ]
 
             + SHorizontalBox::Slot()

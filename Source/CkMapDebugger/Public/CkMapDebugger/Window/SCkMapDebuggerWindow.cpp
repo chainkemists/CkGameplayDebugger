@@ -57,27 +57,6 @@
 
 namespace ck_map_debugger
 {
-    // RowDensity applies as a DELTA on this window's own base padding, not as an absolute: the POI list
-    // is deliberately tighter than the ECS entity tree, and only the offset between density options is
-    // the axis' business. Comfortable is the axis default, so the delta is zero and the list renders
-    // exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
-    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
     // The category swatch is half an icon so it reads as a marker, not a glyph — but it still tracks
     // the IconSize axis so a Small/Large flip moves it with every other indicator in the suite.
     static auto Get_CategoryDotSize() -> float
@@ -1187,7 +1166,7 @@ auto
 
     // Plain visual widgets only — no click-consuming children, so STableRow selection bubbles cleanly
     return SNew(STableRow<TSharedPtr<FCkMapDebug_PoiRow>>, InOwnerTable)
-        .Padding(ck_map_debugger::Apply_RowDensity(FMargin{2.0f, 1.0f}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)

@@ -8,6 +8,9 @@
 #include "CkEntityDebugOverlay/Style/CkDebugOverlay_RenderStyle.h"
 #include "CkEntityDebugOverlay/History/CkDebugOverlay_History.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SConstraintCanvas.h"
@@ -27,6 +30,54 @@ namespace OverlayRoot_Constants
     constexpr float FocusCardMargin = 8.0f;
 }
 
+namespace ck_debugoverlay_root
+{
+    // Dark ink for text sitting on a saturated provider fill — same reading as the focus card's.
+    constexpr auto ChipInk = FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f };
+
+    // ProviderChipStyle at plate density (3px side padding, micro font). Tint is the badge
+    // exactly as the near-plate shipped; the provider color is per-badge, so this cannot go
+    // through the tone-keyed ck::debug_axes::Make_ProviderChip.
+    auto Make_PlateBadge(
+        const FText&        InText,
+        const FLinearColor& InProviderColor) -> TSharedRef<SWidget>
+    {
+        const auto Make_Pill = [&](const FLinearColor& InFill, const FLinearColor& InInk) -> TSharedRef<SWidget>
+        {
+            return SNew(SBorder)
+                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderBackgroundColor(InFill)
+                .VAlign(VAlign_Center)
+                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ 3.0f, 0.0f }))
+                [
+                    SNew(STextBlock)
+                        .Text(InText)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
+                        .ColorAndOpacity(InInk)
+                ];
+        };
+
+        switch (UCkDebuggerStyleSettings::Get_Selection().ProviderChipStyle)
+        {
+            case ECkDebugAxis_ProviderChipStyle::Tint:
+                return Make_Pill(InProviderColor, ChipInk);
+
+            case ECkDebugAxis_ProviderChipStyle::Solid:
+                return Make_Pill(InProviderColor, CkStyle::TextStrong());
+
+            // The plate badge text is ALREADY the provider abbreviation, so this option drops the
+            // pill rather than truncating a second time.
+            case ECkDebugAxis_ProviderChipStyle::AbbrevOnly:
+                return SNew(STextBlock)
+                    .Text(InText)
+                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(InProviderColor);
+        }
+
+        return Make_Pill(InProviderColor, ChipInk);
+    }
+}
+
 // ====================================================================================================================
 
 auto
@@ -44,7 +95,7 @@ auto
         .Visibility(EVisibility::Collapsed)
         .BorderImage(CkStyle::GetRoundedBrush())
         .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f))
-        .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS }))
         [
             SAssignNew(_HintsText, STextBlock)
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
@@ -366,17 +417,7 @@ auto
         BadgeRow->AddSlot()
             .Padding(FMargin{ 0.0f, 0.0f, 2.0f, 0.0f })
             [
-                SNew(SBorder)
-                    .BorderImage(CkStyle::GetRoundedBrush())
-                    .BorderBackgroundColor(Badge.Color)
-                    .VAlign(VAlign_Center)
-                    .Padding(FMargin{ 3.0f, 0.0f })
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(Badge.Text))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
-                            .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
-                    ]
+                ck_debugoverlay_root::Make_PlateBadge(FText::FromString(Badge.Text), Badge.Color)
             ];
     }
 
@@ -418,7 +459,7 @@ auto
             SNew(SBorder)
                 .BorderImage(CkStyle::GetRoundedBrush())
                 .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f))
-                .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
+                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS }))
                 [
                     Body
                 ]

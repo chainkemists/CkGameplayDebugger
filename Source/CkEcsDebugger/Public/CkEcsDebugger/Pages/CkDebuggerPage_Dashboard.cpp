@@ -7,6 +7,8 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/SCkEcsDebugger_Sparkline.h"
 
@@ -56,10 +58,17 @@ namespace ck_debugger_page_dashboard
 
     static auto MakeSectionHeader(const TCHAR* InLabel) -> TSharedRef<SWidget>
     {
-        return SNew(STextBlock)
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-            .Text(FText::FromString(InLabel))
-            .ColorAndOpacity(CkStyle::TextMute());
+        return ck::debug_axes::Make_SectionHeader(
+            UCkDebuggerStyleSettings::Get_Selection(), FText::FromString(InLabel), ECk_Tone::Neutral);
+    }
+
+    // Icon glyphs on this page are smaller than the axis' own 12/16/20 scale, so IconSize moves
+    // them by its offset. SCkDebug_Icon::Size is a plain argument, not an attribute — the value is
+    // read when the card/row is built, which is every DoRefresh that changes the presented set.
+    static auto IconSquare(float InBase) -> TOptional<FVector2D>
+    {
+        const auto Size = ck::debug_axes::Apply_IconSize(InBase);
+        return FVector2D{Size, Size};
     }
 }
 
@@ -305,7 +314,7 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
 
             FamilyBox->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 1.0f)
+            .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 Entry.RowWidget.ToSharedRef()
             ];
@@ -414,7 +423,7 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
 
             SingletonsBox->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 1.0f)
+            .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
 
@@ -427,7 +436,7 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
                     .Brush(IconBrush)
                     .Meaning(FText::FromString(Bucket->DisplayName))
                     .ColorAndOpacity(Bucket->IconColor)
-                    .Size(FVector2D(14.0f, 14.0f))
+                    .Size(ck_debugger_page_dashboard::IconSquare(14.0f))
                 ]
 
                 + SHorizontalBox::Slot()
@@ -538,7 +547,7 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
             .Brush(Brush)
             .Meaning(FText::FromName(FeatureId))
             .ColorAndOpacity(Visual->Color)
-            .Size(FVector2D(11.0f, 11.0f))
+            .Size(ck_debugger_page_dashboard::IconSquare(11.0f))
         ];
         ++BadgeCount;
     }
@@ -595,7 +604,7 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
                         .Brush(IconBrush)
                         .Meaning(FText::FromString(InBucket.DisplayName))
                         .ColorAndOpacity(AccentColor)
-                        .Size(FVector2D(14.0f, 14.0f))
+                        .Size(ck_debugger_page_dashboard::IconSquare(14.0f))
                     ]
                 ]
 

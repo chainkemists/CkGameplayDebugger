@@ -3,7 +3,6 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Format/CkFormat.h"
 
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -31,7 +30,6 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -45,49 +43,6 @@ namespace ck_jolt_debugger
     static auto Normal(int32 InSize = 9) -> FSlateFontInfo { return CkStyle::RegularFont(InSize); }
     static auto Bold(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::BoldFont(InSize); }
     static auto Mono(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::MonoFont(InSize); }
-
-    // RowDensity applies as a DELTA on this surface's own base padding: only the offset between
-    // density options belongs to the axis, and Comfortable (the default) leaves the stat rows
-    // exactly where they shipped. Clamped so Compact cannot produce negative margins.
-    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
-    // SSeparator::Thickness is a construction-time argument with no setter, so the axis is carried
-    // by an SBox override instead; a zero-thickness option collapses the box and its slot padding.
-    static auto Make_Separator() -> TSharedRef<SWidget>
-    {
-        const auto Get_Thickness = []()
-        {
-            return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
-        };
-
-        return SNew(SBox)
-            .HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
-            {
-                return FOptionalSize{Get_Thickness()};
-            })
-            .Visibility_Lambda([Get_Thickness]()
-            {
-                return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
-            })
-            [
-                SNew(SSeparator).Thickness(1.0f)
-            ];
-    }
 
     static auto FindGameWorld() -> UWorld*
     {
@@ -250,7 +205,7 @@ auto
                 [ Summary ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-                [ ck_jolt_debugger::Make_Separator() ]
+                [ ck::debug_axes::Make_AxisSeparator() ]
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [
@@ -258,52 +213,52 @@ auto
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("World")) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Async Physics Update:"), TAttribute<FText>::CreateLambda([this]()
                             { return FText::FromString(_Stats.HasWorld ? (_Stats.AsyncPhysics ? TEXT("Yes") : TEXT("No")) : TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Parallel Physics:"), TAttribute<FText>::CreateLambda([this]()
                             { return FText::FromString(_Stats.HasWorld ? (_Stats.ParallelPhysics ? TEXT("Yes") : TEXT("No")) : TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Physics Threads:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.ThreadCount) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Rigid Bodies")) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("JoltBody Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumBodies) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Dynamic:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumDynamic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Kinematic:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumKinematic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Static:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStatic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Awake:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumAwake) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Asleep:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumAsleep) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Characters")) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("JoltCharacter Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumCharacters) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Static World")) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("JoltStaticActor Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStaticActors) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Static Bodies:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStaticBodies) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(ck_jolt_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
+                    + SScrollBox::Slot().Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f}))
                         [ MakeStatRow(TEXT("Unique Shapes:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumUniqueShapes) : FText::FromString(TEXT("--")); })) ]
                 ]

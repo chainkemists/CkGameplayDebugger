@@ -2,7 +2,6 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -26,33 +25,6 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 const FName SCkDialogDebuggerWindow::WindowId = FName(TEXT("DialogDebugger"));
-
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace ck_dialog_debugger_window
-{
-    // RowDensity applies as a DELTA on this surface's own base padding: only the offset between
-    // density options belongs to the axis, and Comfortable (the default) leaves the cooldown rows
-    // exactly where they shipped. Clamped so Compact cannot produce negative margins.
-    auto Apply_RowDensity(
-        const FMargin& InBase)
-        -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -436,7 +408,7 @@ auto
 
         _CooldownBox->AddSlot()
             .AutoHeight()
-            .Padding(ck_dialog_debugger_window::Apply_RowDensity(
+            .Padding(ck::debug_axes::Apply_RowDensity(
                 FMargin{CkStyle::SpaceM, CkStyle::SpaceM, 0.0f, CkStyle::SpaceXS}))
             [
                 SNew(STextBlock)
@@ -455,7 +427,7 @@ auto
 
             _CooldownBox->AddSlot()
                 .AutoHeight()
-                .Padding(ck_dialog_debugger_window::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))
+                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))
                 [
                     Row
                 ];
@@ -467,7 +439,7 @@ auto
 
     _CooldownBox->AddSlot()
         .AutoHeight()
-        .Padding(ck_dialog_debugger_window::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
         [
             SNew(STextBlock)
             .Font(CkStyle::MonoFont(9))

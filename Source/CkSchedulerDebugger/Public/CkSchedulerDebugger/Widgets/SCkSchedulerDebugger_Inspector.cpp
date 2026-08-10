@@ -27,48 +27,6 @@ namespace ck_scheduler_debugger_inspector
 			UCkDebuggerStyleSettings::Get_Selection(), FText::FromString(InLabel), InTone);
 	}
 
-	// The between-section rule, wired to the SeparatorWeight axis. SSeparator::Thickness is a plain
-	// SLATE_ARGUMENT with no setter, so the axis is carried by an SBox height override; a zero-weight
-	// option collapses the box, and SBoxPanel then skips the child AND its slot padding.
-	// Hairline == 1.0f == what SSeparator drew before, so Classic is unchanged.
-	auto Make_SectionSeparator() -> TSharedRef<SWidget>
-	{
-		const auto Get_Thickness = []()
-		{
-			return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
-		};
-
-		return SNew(SBox)
-			.HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
-			{
-				return FOptionalSize{Get_Thickness()};
-			})
-			.Visibility_Lambda([Get_Thickness]()
-			{
-				return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			[
-				SNew(SSeparator)
-			];
-	}
-
-	// RowDensity as a DELTA on the inspector's own base padding — same contract as the ECS tree.
-	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-	{
-		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-		const auto DeltaX = Current.Left - Baseline.Left;
-		const auto DeltaY = Current.Top  - Baseline.Top;
-
-		return FMargin
-		{
-			FMath::Max(0.0f, InBase.Left   + DeltaX),
-			FMath::Max(0.0f, InBase.Top    + DeltaY),
-			FMath::Max(0.0f, InBase.Right  + DeltaX),
-			FMath::Max(0.0f, InBase.Bottom + DeltaY)
-		};
-	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -273,7 +231,7 @@ auto
 	Content->AddSlot()
 		.AutoHeight()
 		[
-			ck_scheduler_debugger_inspector::Make_SectionSeparator()
+			ck::debug_axes::Make_AxisSeparator()
 		];
 
 	Content->AddSlot()
@@ -358,7 +316,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
+		[ck::debug_axes::Make_AxisSeparator()];
 
 	return Section;
 }
@@ -428,7 +386,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
+		[ck::debug_axes::Make_AxisSeparator()];
 
 	return Section;
 }
@@ -480,7 +438,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
+		[ck::debug_axes::Make_AxisSeparator()];
 
 	return Section;
 }
@@ -554,7 +512,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
+		[ck::debug_axes::Make_AxisSeparator()];
 
 	return Section;
 }
@@ -657,8 +615,8 @@ auto
 {
 	// Rows are the RowDensity axis' primary surface in this panel. Rebuilt on selection / frame
 	// change, so the density is sampled here rather than bound per-paint.
-	const auto LabelPadding = ck_scheduler_debugger_inspector::Apply_RowDensity(FMargin{0.0f, 2.0f});
-	const auto ValuePadding = ck_scheduler_debugger_inspector::Apply_RowDensity(
+	const auto LabelPadding = ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 2.0f});
+	const auto ValuePadding = ck::debug_axes::Apply_RowDensity(
 		FMargin{FCkSchedulerDebuggerStyle::Padding_Small, 2.0f});
 
 	return SNew(SHorizontalBox)

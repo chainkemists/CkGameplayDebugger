@@ -4,6 +4,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "Layout/Margin.h"
 #include "Widgets/SWidget.h"
 
 // ====================================================================================================================
@@ -80,6 +81,26 @@ namespace ck::debug_axes
 
     // SeparatorWeight: None 0, Hairline 1, Standard 2, Heavy 3. Zero means "draw nothing".
     CKDEBUGGERCOMMON_API auto Get_SeparatorThickness(const FCkDebuggerStyleSelection& InSelection) -> float;
+
+    // ----- Metric deltas -----------------------------------------------------
+    // The metric axes apply as a DELTA on a surface's own base geometry, never as an absolute.
+    // Surfaces deliberately disagree on absolute spacing and glyph size (the on-screen overlay
+    // card is far denser than the ECS tree, the launcher rail's glyphs are larger than the axis'
+    // own 12/16/20 scale) — only the OFFSET between options is the axis' business. The default
+    // option yields a zero delta, so under Classic every surface renders exactly as it shipped.
+    // Row padding is clamped at zero so Compact can never produce negative margins; icon size is
+    // clamped at 1 so Small can never collapse a glyph box.
+    //
+    // Unlike the render/metric/predicate families above, these three read the LIVE selection
+    // instead of taking one: a delta is only meaningful against the user's current setting, and
+    // every call site was already passing `UCkDebuggerStyleSettings::Get_Selection()`.
+    CKDEBUGGERCOMMON_API auto Apply_RowDensity(const FMargin& InBase) -> FMargin;
+    CKDEBUGGERCOMMON_API auto Apply_IconSize(float InBase) -> float;
+
+    // SSeparator::Thickness is a construction-time argument with no setter, so SeparatorWeight is
+    // carried by an SBox height override wrapped around a 1px rule. The None option collapses the
+    // box so its slot padding goes with it, rather than reserving space for a zero-height rule.
+    CKDEBUGGERCOMMON_API auto Make_AxisSeparator() -> TSharedRef<SWidget>;
 
     // ----- Predicates --------------------------------------------------------
     // EditControlStyle: the two questions a row builder asks before composing an edit affordance.

@@ -1,9 +1,12 @@
 #include "CkDebuggerAxes.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+
 #include "CkCore/Format/CkFormat.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
 
 // ====================================================================================================================
@@ -407,6 +410,70 @@ auto
     }
 
     return 1.0f;
+}
+
+// ====================================================================================================================
+// METRIC DELTAS
+
+auto
+    ck::debug_axes::
+    Apply_RowDensity(
+        const FMargin& InBase)
+    -> FMargin
+{
+    const auto Baseline = Get_RowPadding(FCkDebuggerStyleSelection{});
+    const auto Current  = Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+    const auto DeltaX = Current.Left - Baseline.Left;
+    const auto DeltaY = Current.Top  - Baseline.Top;
+
+    return FMargin
+    {
+        FMath::Max(0.0f, InBase.Left   + DeltaX),
+        FMath::Max(0.0f, InBase.Top    + DeltaY),
+        FMath::Max(0.0f, InBase.Right  + DeltaX),
+        FMath::Max(0.0f, InBase.Bottom + DeltaY)
+    };
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Apply_IconSize(
+        float InBase)
+    -> float
+{
+    const auto Baseline = Get_IconSize(FCkDebuggerStyleSelection{});
+    const auto Current  = Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
+
+    return FMath::Max(1.0f, InBase + (Current - Baseline));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Make_AxisSeparator()
+    -> TSharedRef<SWidget>
+{
+    const auto Get_Thickness = []()
+    {
+        return Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    };
+
+    return SNew(SBox)
+        .HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
+        {
+            return FOptionalSize{Get_Thickness()};
+        })
+        .Visibility_Lambda([Get_Thickness]()
+        {
+            return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            SNew(SSeparator).Thickness(1.0f)
+        ];
 }
 
 // ====================================================================================================================

@@ -7,6 +7,8 @@
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
 #include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -20,6 +22,20 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/CoreStyle.h"
+
+// =====================================================================================================================
+
+namespace ck_debugger_page_archetypes
+{
+    // The card glyphs are smaller than the axis' own 12/16/20 scale, so IconSize moves them by its
+    // offset. SCkDebug_Icon::Size is a plain argument, not an attribute — the value is read when the
+    // card is built, which is every RebuildCards that changes the presented set.
+    static auto IconSquare(float InBase) -> TOptional<FVector2D>
+    {
+        const auto Size = ck::debug_axes::Apply_IconSize(InBase);
+        return FVector2D{Size, Size};
+    }
+}
 
 // =====================================================================================================================
 
@@ -286,7 +302,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
             .Brush(IconBrush)
             .Meaning(FText::FromString(InBucket.DisplayName))
             .ColorAndOpacity(AccentColor)
-            .Size(FVector2D(16.0f, 16.0f))
+            .Size(ck_debugger_page_archetypes::IconSquare(16.0f))
         ]
     ];
 
@@ -308,16 +324,10 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
         .VAlign(VAlign_Center)
         .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
         [
-            SNew(SBorder)
-            .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Badge.Rounded"))
-            .BorderBackgroundColor(FSlateColor{CkStyle::Selection().CopyWithNewOpacity(0.18f)})
-            .Padding(FMargin{4.0f, 1.0f})
-            [
-                SNew(STextBlock)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                .Text(FText::FromString(TEXT("GAME")))
-                .ColorAndOpacity(CkStyle::Selection())
-            ]
+            ck::debug_axes::Make_Badge(
+                UCkDebuggerStyleSettings::Get_Selection(),
+                FText::FromString(TEXT("GAME")),
+                ECk_Tone::Info)
         ];
     }
 
@@ -344,7 +354,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
             .Brush(Brush)
             .Meaning(FText::FromName(FeatureId))
             .ColorAndOpacity(Visual->Color)
-            .Size(FVector2D(11.0f, 11.0f))
+            .Size(ck_debugger_page_archetypes::IconSquare(11.0f))
         ];
         ++BadgeCount;
     }

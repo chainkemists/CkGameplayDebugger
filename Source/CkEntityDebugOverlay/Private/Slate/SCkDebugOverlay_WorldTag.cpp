@@ -2,6 +2,8 @@
 
 #include "CkEntityDebugOverlay/Slate/SCkDebugOverlay_WorldTag.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
@@ -25,11 +27,13 @@ auto
         .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
         .ColorAndOpacity(CkStyle::TextStrong());
 
-    // Dark rounded pill behind the text so it reads against any world background.
+    // Dark rounded pill behind the text so it reads against any world background. RowDensity moves
+    // the pill's padding by its DELTA — the tag is deliberately denser than any editor row, so the
+    // axis' absolutes would blow it up; Comfortable (the default) leaves it exactly as it shipped.
     SAssignNew(_Border, SBorder)
         .BorderImage(CkStyle::GetRoundedBrush())
         .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.78f))
-        .Padding(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS })
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS }))
         [
             _TextBlock.ToSharedRef()
         ];

@@ -40,7 +40,7 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Construct(const FArguments& InArgs) ->
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-		.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
+		.Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)

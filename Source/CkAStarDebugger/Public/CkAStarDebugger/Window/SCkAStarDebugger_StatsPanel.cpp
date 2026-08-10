@@ -29,27 +29,6 @@ namespace ck_astar_debugger_stats_panel
             ECk_Tone::Neutral);
     }
 
-    // RowDensity applies as a DELTA on this panel's own base padding, not as an absolute — the stat
-    // cards are deliberately airier than a tree row, and only the offset between density options is
-    // the axis' business. Comfortable is the axis default, so the delta is zero and the panel renders
-    // exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
-    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
     // Height for the two meter rows. SCkDebug_MeterBar has no intrinsic height, so the panel names
     // one — chunky enough to read next to the percent label without dominating the section.
     constexpr auto MeterHeight = 8.0f;
@@ -83,28 +62,28 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_IterationsStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("ITERATIONS")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_OpenStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("OPEN")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_ClosedStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("CLOSED")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_PathStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)

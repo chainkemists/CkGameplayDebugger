@@ -72,6 +72,15 @@ private:
     auto Resolve_ActiveWorld()  const -> UWorld*;
     auto Resolve_ActiveLayout() const -> const FCk_DebugOverlay_Layout*;
 
+    /** Layout quick-switcher: clamp + adopt InIndex and remember it per-USER (the input
+     *  settings class is the overlay's only per-user config slot; the project class is shared
+     *  DefaultConfig and must never be dirtied by a runtime gesture). */
+    auto Set_ActiveLayoutIndex(int32 InIndex) -> void;
+
+    /** Text for the focus card's corner switcher chip ("LAYOUT AI 2/6  L x2"). Empty when no
+     *  layouts are configured. */
+    auto Get_LayoutSwitcherLabel() const -> FText;
+
     /** Enumerate all transform-bearing entities that have at least one capable provider.
      *  Non-const: rebuilds the shared _Markers snapshot (markers/links/candidates are
      *  the same set — what you see is what you can focus).
@@ -183,6 +192,14 @@ private:
     // Double-tap detection for UnpinAllKey / HelpKey.
     double _LastUnpinAllKeyPressTime = -1.0;
     double _LastHelpKeyPressTime     = -1.0;
+
+    // Double-tap detection for CycleLayoutKey (layout quick-switcher).
+    double _LastCycleLayoutKeyPressTime = -1.0;
+
+    // Focus-card distance-LOD tier currently on screen. Carried across ticks because it IS the
+    // hysteresis reference (Resolve_LodTier widens the boundary the card last crossed). Reset
+    // with the rest of the session state on deactivation.
+    ECk_DebugOverlay_LodTier _LodTier = ECk_DebugOverlay_LodTier::Full;
 
     // Global Slate input pre-processor — observes key-downs regardless of game-vs-editor
     // viewport focus so the double-tap gestures keep working while ejected (F8).

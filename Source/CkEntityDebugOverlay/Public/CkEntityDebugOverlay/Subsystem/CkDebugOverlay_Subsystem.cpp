@@ -7,6 +7,7 @@
 // Already included via the header (History, Layout, Model, Provider, Selection).
 // Only add the extras the header omits:
 #include "CkEntityDebugOverlay/Layout/CkDebugOverlay_Resolve.h"
+#include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_DistanceLod.h"
 #include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_Present.h"
 #include "CkEntityDebugOverlay/Provider/CkDebugOverlay_Registry.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
@@ -205,23 +206,37 @@ auto
         ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem: secondary instance — console commands owned by primary"));
     }
 
-    // ---- Seed the active layout index from settings ----
+    // ---- Seed the active layout index ----
+    // The per-USER layout the quick-switcher last selected wins over the project's
+    // StartingLayout (a developer's live switch should survive their next PIE session without
+    // touching shared config); both fall back to the first configured layout.
     if (const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>())
     {
-        const auto& StartingTag = Settings->StartingLayout;
-        for (auto Idx = 0; Idx < Settings->Layouts.Num(); ++Idx)
+        const auto Find_LayoutIndex = [Settings](const FGameplayTag& InTag) -> int32
         {
-            if (Settings->Layouts[Idx].LayoutTag == StartingTag)
+            if (NOT InTag.IsValid())
+            { return INDEX_NONE; }
+
+            for (auto Idx = 0; Idx < Settings->Layouts.Num(); ++Idx)
             {
-                _ActiveLayoutIndex = Idx;
-                break;
+                if (Settings->Layouts[Idx].LayoutTag == InTag)
+                { return Idx; }
             }
-        }
-        // Fall back to first layout if starting tag not found.
-        if (_ActiveLayoutIndex == INDEX_NONE && !Settings->Layouts.IsEmpty())
-        {
-            _ActiveLayoutIndex = 0;
-        }
+            return INDEX_NONE;
+        };
+
+        const auto* InputSettings = GetDefault<UCk_DebugOverlay_InputSettings>();
+
+        _ActiveLayoutIndex = InputSettings != nullptr
+            ? Find_LayoutIndex(InputSettings->LastActiveLayout)
+            : INDEX_NONE;
+
+        if (_ActiveLayoutIndex == INDEX_NONE)
+        { _ActiveLayoutIndex = Find_LayoutIndex(Settings->StartingLayout); }
+
+        // Fall back to first layout if neither tag resolves.
+        if (_ActiveLayoutIndex == INDEX_NONE && NOT Settings->Layouts.IsEmpty())
+        { _ActiveLayoutIndex = 0; }
     }
 
     ck::debug_overlay::Log(TEXT("UCk_DebugOverlay_Subsystem initialized"));
@@ -441,6 +456,8 @@ auto
     _LastCycleKeyPressTime = -1.0;
     _LastUnpinAllKeyPressTime = -1.0;
     _LastHelpKeyPressTime = -1.0;
+    _LastCycleLayoutKeyPressTime = -1.0;
+    _LodTier = ECk_DebugOverlay_LodTier::Full;
 
     ck::debug_overlay::Log(TEXT("Overlay deactivated"));
 }
@@ -648,6 +665,13 @@ auto
             }
         }
 
+        // Double-tap CycleLayoutKey (default L): step the active layout — same step as
+        // `ck.DebugOverlay.Layout.Next`, and the card's corner chip shows where you landed.
+        if (WasDoubleTapped(Settings->CycleLayoutKey, _LastCycleLayoutKeyPressTime))
+        {
+            DoCmd_Layout_Next();
+        }
+
         // Double-tap HelpKey (default unbound): toggle the full keyboard-hints legend.
         if (WasDoubleTapped(Settings->HelpKey, _LastHelpKeyPressTime))
         {
@@ -791,6 +815,37 @@ auto
         Build_Model(FocusEntity, _Providers, *Layout, Now, Model);
     }
 
+    // ---- 7b. Distance LOD (opt-in) ----
+    // Trims the MODEL, before Slate and before the card's row budget, so a step-down is
+    // rationed against the same protected ordering and reported through the same omission
+    // affordances. Needs a real viewpoint AND the focus entity's world position; without
+    // either the card stays Full.
+    {
+        const auto* LodSettings = GetDefault<UCk_DebugOverlay_Settings>();
+        const auto  FocusIdx    = ck::IsValid(FocusEntity)
+            ? CandidateHandles.IndexOfByPredicate(
+                [&FocusEntity](const FCk_Handle& InHandle){ return InHandle == FocusEntity; })
+            : INDEX_NONE;
+
+        if (LodSettings != nullptr && LodSettings->bEnableFocusCardDistanceLod &&
+            CullOrigin.IsSet() && Candidates.IsValidIndex(FocusIdx))
+        {
+            auto Thresholds = FCk_DebugOverlay_LodThresholds{};
+            Thresholds.SummaryDistance = LodSettings->FocusCardSummaryDist;
+            Thresholds.PillDistance    = LodSettings->FocusCardPillDist;
+
+            const auto FocusDist = static_cast<float>(
+                FVector::Dist(CullOrigin.GetValue(), Candidates[FocusIdx].WorldLocation));
+
+            _LodTier = ck_debugoverlay::Resolve_LodTier(FocusDist, Thresholds, _LodTier);
+            Model    = ck_debugoverlay::Apply_DistanceLod(Model, _LodTier);
+        }
+        else
+        {
+            _LodTier = ECk_DebugOverlay_LodTier::Full;
+        }
+    }
+
     // ---- 8. Push to root (focus card + pinned cards + world tags + key hints) ----
     Push_ToRoot(Model, *Layout, CandidateHandles, Candidates, _Providers, PC, Now);
 
@@ -842,6 +897,54 @@ auto
         _ActiveLayoutIndex, 0, Settings->Layouts.Num() - 1);
 
     return &Settings->Layouts[ClampedIdx];
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    Set_ActiveLayoutIndex(
+        int32 InIndex)
+    -> void
+{
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    if (Settings == nullptr || Settings->Layouts.IsEmpty())
+    { return; }
+
+    _ActiveLayoutIndex = FMath::Clamp(InIndex, 0, Settings->Layouts.Num() - 1);
+
+    // Per-USER persistence. EditorPerProjectUserSettings is the overlay's only per-user config
+    // slot, so the remembered layout rides along with the keybinds; the project settings class
+    // is Config=Game/DefaultConfig and a runtime gesture must never write shared config.
+    if (auto* InputSettings = GetMutableDefault<UCk_DebugOverlay_InputSettings>();
+        InputSettings != nullptr)
+    {
+        InputSettings->LastActiveLayout = Settings->Layouts[_ActiveLayoutIndex].LayoutTag;
+        InputSettings->SaveConfig();
+    }
+
+    ck::debug_overlay::Log(TEXT("Layout changed to index {}"), _ActiveLayoutIndex);
+}
+
+auto
+    UCk_DebugOverlay_Subsystem::
+    Get_LayoutSwitcherLabel() const
+    -> FText
+{
+    const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+    if (Settings == nullptr || Settings->Layouts.IsEmpty())
+    { return FText::GetEmpty(); }
+
+    const auto Index      = FMath::Clamp(_ActiveLayoutIndex, 0, Settings->Layouts.Num() - 1);
+    const auto LayoutName = ck_debugoverlay::Get_LeafName(Settings->Layouts[Index].LayoutTag).ToUpper();
+
+    const auto* InputSettings = GetDefault<UCk_DebugOverlay_InputSettings>();
+    const auto  CycleKey      = InputSettings != nullptr && InputSettings->CycleLayoutKey.IsValid()
+        ? InputSettings->CycleLayoutKey.GetDisplayName().ToString()
+        : FString{ TEXT("(unbound)") };
+
+    // The chip doubles as its own affordance: the overlay root is hit-test invisible, so the
+    // switcher can never be a clickable dropdown — it names the gesture that drives it.
+    return FText::FromString(ck::Format_UE(TEXT("LAYOUT {} {}/{}  {} x2"),
+        LayoutName, Index + 1, Settings->Layouts.Num(), CycleKey));
 }
 
 auto
@@ -989,9 +1092,10 @@ auto
     const auto FocusIsPinned = ck::IsValid(InModel.Entity) && _PinnedEntities.ContainsByPredicate(
         [&InModel](const FCk_Handle& InPinned){ return InPinned == InModel.Entity; });
 
+    // Layout quick-switcher chip — primary card only (pinned cards share the same layout).
     _RootWidget->Set_FocusCardContent(
         InModel, CardStyle, *_History, InNow, _FocusLocked, FocusIsPinned,
-        FocusCoLocIndex, FocusCoLocCount);
+        FocusCoLocIndex, FocusCoLocCount, Get_LayoutSwitcherLabel());
 
     // ---- Pinned cards (item 6): dedupe vs the live focus, build models ----
     auto PinnedModels = TArray<FCk_DebugOverlay_EntityModel>{};
@@ -1033,11 +1137,12 @@ auto
         };
 
         const auto Compact = FString::Printf(
-            TEXT("%s x2 pin   %s x2 cycle/unlock   %s x2 unpin-all   %s x2 ECS   %s x2 help"),
+            TEXT("%s x2 pin   %s x2 cycle/unlock   %s x2 unpin-all   %s x2 ECS   %s x2 layout   %s x2 help"),
             *KeyName(InputSettings->LockKey),
             *KeyName(InputSettings->CycleCoLocatedKey),
             *KeyName(InputSettings->UnpinAllKey),
             *KeyName(InputSettings->EcsDebuggerFocusKey),
+            *KeyName(InputSettings->CycleLayoutKey),
             *KeyName(InputSettings->HelpKey));
 
         const auto Full = FString::Printf(
@@ -1046,12 +1151,14 @@ auto
             TEXT("%s x2   cycle co-located entities (one tap past the last UNLOCKS / auto-follows)\n")
             TEXT("%s x2   release ALL pins\n")
             TEXT("%s x2   open focused entity in ECS Debugger\n")
+            TEXT("%s x2   cycle the active LAYOUT (remembered per user; chip in the card corner)\n")
             TEXT("%s x2   toggle this help\n")
             TEXT("console: ck.DebugOverlay .Next .Prev .Lock .Layout.Next/.Prev .UnpinAll .Help"),
             *KeyName(InputSettings->LockKey),
             *KeyName(InputSettings->CycleCoLocatedKey),
             *KeyName(InputSettings->UnpinAllKey),
             *KeyName(InputSettings->EcsDebuggerFocusKey),
+            *KeyName(InputSettings->CycleLayoutKey),
             *KeyName(InputSettings->HelpKey));
 
         _RootWidget->Update_KeyHints(Compact, Full, _ShowFullLegend, OverlaySettings->ShowKeyHints);
@@ -1368,8 +1475,8 @@ auto
     if (Settings == nullptr || Settings->Layouts.IsEmpty())
     { return; }
 
-    _ActiveLayoutIndex = (_ActiveLayoutIndex + 1) % Settings->Layouts.Num();
-    ck::debug_overlay::Log(TEXT("Layout changed to index {}"), _ActiveLayoutIndex);
+    const auto Count = Settings->Layouts.Num();
+    Set_ActiveLayoutIndex((FMath::Max(0, _ActiveLayoutIndex) + 1) % Count);
 }
 
 auto
@@ -1381,9 +1488,8 @@ auto
     if (Settings == nullptr || Settings->Layouts.IsEmpty())
     { return; }
 
-    const auto Count   = Settings->Layouts.Num();
-    _ActiveLayoutIndex = (_ActiveLayoutIndex - 1 + Count) % Count;
-    ck::debug_overlay::Log(TEXT("Layout changed to index {}"), _ActiveLayoutIndex);
+    const auto Count = Settings->Layouts.Num();
+    Set_ActiveLayoutIndex((FMath::Max(0, _ActiveLayoutIndex) - 1 + Count) % Count);
 }
 
 auto

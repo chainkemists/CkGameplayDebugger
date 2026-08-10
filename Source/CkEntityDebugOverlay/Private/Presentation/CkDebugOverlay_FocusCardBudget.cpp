@@ -15,12 +15,10 @@ namespace
     }
 }
 
-auto ck_debugoverlay::Apply_FocusCardBudget(
-    const FCk_DebugOverlay_EntityModel& InModel,
-    const FCk_DebugOverlay_FocusCardBudget& InBudget) -> FCk_DebugOverlay_EntityModel
+auto ck_debugoverlay::Sort_SectionsForBudget(
+    TArray<FCk_DebugOverlay_Section>& InOutSections) -> void
 {
-    auto Result = InModel;
-    Result.Sections.Sort([](const FCk_DebugOverlay_Section& A, const FCk_DebugOverlay_Section& B)
+    InOutSections.Sort([](const FCk_DebugOverlay_Section& A, const FCk_DebugOverlay_Section& B)
     {
         const auto AProtected = IsProtectedProvider(A.ProviderTag);
         const auto BProtected = IsProtectedProvider(B.ProviderTag);
@@ -31,15 +29,24 @@ auto ck_debugoverlay::Apply_FocusCardBudget(
         if (A.SortPriority != B.SortPriority) { return A.SortPriority < B.SortPriority; }
         return A.SourceOrder < B.SourceOrder;
     });
+}
+
+auto ck_debugoverlay::Apply_FocusCardBudget(
+    const FCk_DebugOverlay_EntityModel& InModel,
+    const FCk_DebugOverlay_FocusCardBudget& InBudget) -> FCk_DebugOverlay_EntityModel
+{
+    auto Result = InModel;
+    Sort_SectionsForBudget(Result.Sections);
 
     int32 Remaining = FMath::Max(0, InBudget.MaxRowsTotal);
     for (auto& Section : Result.Sections)
     {
-        Section.OmittedRowCount = 0;
+        // ACCUMULATE, never reset: an earlier pre-render trim (distance LOD) may already have
+        // shed rows from this section, and both counts belong in the same "+N more".
         const auto Allowed = FMath::Min(FMath::Max(0, InBudget.MaxRowsPerSection), Remaining);
         if (Section.Rows.Num() > Allowed)
         {
-            Section.OmittedRowCount = Section.Rows.Num() - Allowed;
+            Section.OmittedRowCount += Section.Rows.Num() - Allowed;
             Section.Rows.SetNum(Allowed);
         }
         Remaining -= Section.Rows.Num();

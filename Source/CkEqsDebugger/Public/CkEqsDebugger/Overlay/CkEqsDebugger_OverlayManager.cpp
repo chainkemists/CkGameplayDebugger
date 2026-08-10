@@ -1,10 +1,11 @@
 #include "CkEqsDebugger/Overlay/CkEqsDebugger_OverlayManager.h"
 
-#include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 
@@ -145,7 +146,7 @@ auto
         DrawOptions.Set_ShowCoordinates(false);
         DrawOptions.Set_ShowPivot(false);
         DrawOptions.Set_ShowCellSizeInfo(false);
-        DrawOptions.Set_EnabledCellColor(FCkEqsDebuggerStyle::Color_Text_Muted);   // muted so spheres dominate
+        DrawOptions.Set_EnabledCellColor(CkStyle::TextMute());   // muted so spheres dominate
         DrawOptions.Set_CellThickness(InSettings->GridLineThickness);
         DrawOptions.Set_Duration(0.0f);
 
@@ -248,7 +249,7 @@ auto
             InSettings.QuerierMarkerRadius,
             Segments, Rings,
             ECk_Plane_Axis::XY,
-            FCkEqsDebuggerStyle::Color_Status_InProgress,
+            CkStyle::Info(),   // the querier is context, not a result — informational role
             /*InDrawLines=*/true,
             /*InLineThickness=*/2.0f,
             /*InDuration=*/-1.0f);
@@ -265,9 +266,11 @@ auto
             if (NOT Cand.Passed && NOT InSettings.Show_FailedCandidates && NOT IsBestPick)
             { continue; }
 
+            // Best pick reads as Accent — the same tone the candidate list row uses for it, so the
+            // in-world sphere and the panel row agree without either side naming a color.
             const auto Color = IsBestPick
-                ? FCkEqsDebuggerStyle::Color_Score_Best
-                : CkEqsDebugger::GetScoreColor(FMath::Clamp(Cand.FinalScore, 0.0f, 1.0f), Cand.Passed);
+                ? CkStyle::GetToneColor(ECk_Tone::Accent)
+                : CkEqsDebugger::GetScoreColor(Cand.FinalScore, Cand.Passed);
 
             const auto Radius = IsBestPick
                 ? InSettings.BestPickSphereRadius
@@ -293,7 +296,7 @@ auto
             _OverlayParent,
             QuerierLoc,
             InQuery.BestLocation,
-            FCkEqsDebuggerStyle::Color_Score_Best,
+            CkStyle::GetToneColor(ECk_Tone::Accent),
             InSettings.BestLocationLineThickness);
     }
 

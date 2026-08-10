@@ -24,6 +24,7 @@ public class CkAStarDebugger : CkModuleRules
 			"CkAStar",
 
 			"CkDebuggerCommon",
+			"CkEditorTools", // CkStyle:: roles — reached from this module's PUBLIC headers, so declare it directly
 		});
 
 		if (Target.bBuildEditor)

@@ -42,11 +42,14 @@ private:
     TSharedPtr<SCkDebug_StatPair> _TimeStat;
     TSharedPtr<SCkDebug_StatPair> _ThresholdStat;
 
-    // Progress bars + their right-aligned percent labels.
-    TSharedPtr<class SProgressBar> _BudgetBar;
+    // Right-aligned percent labels next to the two SCkDebug_MeterBars. The meters themselves are
+    // attribute-driven: the refresh pass writes the fractions below and each bar reads its own on
+    // the next paint, so no widget handle is needed for them.
     TSharedPtr<SCkDebug_SelectableLabel> _BudgetPctText;
-    TSharedPtr<class SProgressBar> _ExplorationBar;
     TSharedPtr<SCkDebug_SelectableLabel> _ExplorationPctText;
+
+    float _BudgetFraction      = 0.0f;
+    float _ExplorationFraction = 0.0f;
 
     TSharedPtr<SVerticalBox> _CellDetailBox;
     int32 _LastShownCellIndex = -1;

@@ -6,7 +6,8 @@
 #include "CkAStarDebugger/GridView/SCkAStarDebugger_GridView.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_StatsPanel.h"
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
-#include "CkAStarDebugger/CkAStarDebuggerStyle.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -145,7 +146,7 @@ auto SCkAStarDebuggerWindow::HandleWorldChanged(UWorld*) -> void
     if (_StatusBadgeText.IsValid())
     {
         _StatusBadgeText->SetText(FText::FromString(TEXT("Idle")));
-        _StatusBadgeText->SetColorAndOpacity(FCkAStarDebuggerStyle::Color_Status_Idle);
+        _StatusBadgeText->SetColorAndOpacity(CkAStarDebugger::GetStatusColor(ECk_AStarSearchStatus::Idle));
     }
     if (_GridView.IsValid())
     { _GridView->Reset_ForWorldChange(); }
@@ -255,8 +256,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Entity:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .ColorAndOpacity(CkStyle::TextDim())
             ]
 
         // Entity selector combo box
@@ -271,7 +272,7 @@ auto
                     {
                         return SNew(STextBlock)
                             .Text(FText::FromString(*InItem))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9));
+                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()));
                     })
                     .OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type)
                     {
@@ -287,7 +288,7 @@ auto
                     [
                         SAssignNew(_EntitySelectorLabel, STextBlock)
                             .Text(FText::FromString(TEXT("(no entities)")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
                     ]
             ]
 
@@ -317,8 +318,8 @@ auto
             [
                 SAssignNew(_StatusBadgeText, STextBlock)
                     .Text(FText::FromString(TEXT("Idle")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Status_Idle)
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                    .ColorAndOpacity(CkAStarDebugger::GetStatusColor(ECk_AStarSearchStatus::Idle))
             ]
 
         // Spacer

@@ -2,31 +2,59 @@
 #include "CkAStarDebugger/ViewModel/CkAStarDebugger_ViewModel.h"
 
 #include "CkCore/Macros/CkMacros.h"
-#include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
+#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Notifications/SProgressBar.h"
-#include "Widgets/Text/STextBlock.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 // ====================================================================================================================
 // Helpers
 // ====================================================================================================================
 
-static auto
-    MakeSectionHeader(
-        const FString& InTitle)
-    -> TSharedRef<SWidget>
+namespace ck_astar_debugger_stats_panel
 {
-    return SNew(SCkDebug_SelectableLabel)
-        .Text(FText::FromString(InTitle.ToUpper()))
-        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-        .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted);
+    auto MakeSectionHeader(const FString& InTitle) -> TSharedRef<SWidget>
+    {
+        return ck::debug_axes::Make_SectionHeader(
+            UCkDebuggerStyleSettings::Get_Selection(),
+            FText::FromString(InTitle),
+            ECk_Tone::Neutral);
+    }
+
+    // RowDensity applies as a DELTA on this panel's own base padding, not as an absolute — the stat
+    // cards are deliberately airier than a tree row, and only the offset between density options is
+    // the axis' business. Comfortable is the axis default, so the delta is zero and the panel renders
+    // exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
+    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
+
+    // Height for the two meter rows. SCkDebug_MeterBar has no intrinsic height, so the panel names
+    // one — chunky enough to read next to the percent label without dominating the section.
+    constexpr auto MeterHeight = 8.0f;
 }
+
 
 // ====================================================================================================================
 // Construction
@@ -55,28 +83,28 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_IterationsStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("ITERATIONS")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_OpenStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("OPEN")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_ClosedStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("CLOSED")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(FMargin(8.0f))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck_astar_debugger_stats_panel::Apply_RowDensity(FMargin(8.0f)))
                                         [
                                             SAssignNew(_PathStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
@@ -91,7 +119,7 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SVerticalBox)
-                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ MakeSectionHeader(TEXT("Budget Usage")) ]
+                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ ck_astar_debugger_stats_panel::MakeSectionHeader(TEXT("Budget Usage")) ]
                                     + SVerticalBox::Slot().AutoHeight()
                                         [
                                             SNew(SHorizontalBox)
@@ -99,9 +127,15 @@ auto
                                                     .FillWidth(1.0f)
                                                     .VAlign(VAlign_Center)
                                                     [
-                                                        SAssignNew(_BudgetBar, SProgressBar)
-                                                            .Percent(0.0f)
-                                                            .FillColorAndOpacity(FCkAStarDebuggerStyle::Color_Budget_Normal)
+                                                        // Budget usage rides the shared cold→hot ramp: Ok at
+                                                        // idle, Warn at half the budget, Err at the cap.
+                                                        SNew(SCkDebug_MeterBar)
+                                                            .DesiredSize(FVector2D(110.0f, ck_astar_debugger_stats_panel::MeterHeight))
+                                                            .Fraction_Lambda([this]() { return _BudgetFraction; })
+                                                            .FillColor_Lambda([this]()
+                                                            {
+                                                                return ck::debug_axes::Get_HeatColor(_BudgetFraction);
+                                                            })
                                                     ]
                                                 + SHorizontalBox::Slot()
                                                     .AutoWidth()
@@ -110,8 +144,8 @@ auto
                                                     [
                                                         SAssignNew(_BudgetPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
-                                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                            .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
+                                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                                            .ColorAndOpacity(CkStyle::TextDim())
                                                     ]
                                         ]
                             ]
@@ -122,7 +156,7 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SVerticalBox)
-                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ MakeSectionHeader(TEXT("Exploration")) ]
+                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ ck_astar_debugger_stats_panel::MakeSectionHeader(TEXT("Exploration")) ]
                                     + SVerticalBox::Slot().AutoHeight()
                                         [
                                             SNew(SHorizontalBox)
@@ -130,9 +164,12 @@ auto
                                                     .FillWidth(1.0f)
                                                     .VAlign(VAlign_Center)
                                                     [
-                                                        SAssignNew(_ExplorationBar, SProgressBar)
-                                                            .Percent(0.0f)
-                                                            .FillColorAndOpacity(FCkAStarDebuggerStyle::Color_Exploration)
+                                                        // Exploration is coverage, not pressure — a flat accent
+                                                        // keeps it visually distinct from the budget heat bar.
+                                                        SNew(SCkDebug_MeterBar)
+                                                            .DesiredSize(FVector2D(110.0f, ck_astar_debugger_stats_panel::MeterHeight))
+                                                            .Fraction_Lambda([this]() { return _ExplorationFraction; })
+                                                            .FillColor(CkStyle::Accent())
                                                     ]
                                                 + SHorizontalBox::Slot()
                                                     .AutoWidth()
@@ -141,8 +178,8 @@ auto
                                                     [
                                                         SAssignNew(_ExplorationPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
-                                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                            .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Secondary)
+                                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                                            .ColorAndOpacity(CkStyle::TextDim())
                                                     ]
                                         ]
                             ]
@@ -153,7 +190,7 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SVerticalBox)
-                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ MakeSectionHeader(TEXT("Details")) ]
+                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ ck_astar_debugger_stats_panel::MakeSectionHeader(TEXT("Details")) ]
                                     + SVerticalBox::Slot().AutoHeight()
                                         [
                                             SAssignNew(_GridSizeStat, SCkDebug_StatPair)
@@ -197,7 +234,7 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SVerticalBox)
-                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ MakeSectionHeader(TEXT("Selected Cell")) ]
+                                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 4.0f) [ ck_astar_debugger_stats_panel::MakeSectionHeader(TEXT("Selected Cell")) ]
                                     + SVerticalBox::Slot().AutoHeight()
                                         [
                                             SAssignNew(_CellDetailBox, SVerticalBox)
@@ -206,8 +243,8 @@ auto
                                                     [
                                                         SNew(SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
-                                                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                                                            .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
+                                                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                                                            .ColorAndOpacity(CkStyle::TextMute())
                                                     ]
                                         ]
                             ]
@@ -253,8 +290,8 @@ auto
                 [
                     SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                        .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
+                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                        .ColorAndOpacity(CkStyle::TextMute())
                 ];
         }
         else
@@ -286,8 +323,8 @@ auto
                 ? FString::Printf(TEXT("%d"), Info->CameFrom[SelectedCell])
                 : FString(TEXT("none"));
 
-            auto TitleColor = FCkAStarDebuggerStyle::Color_Cell_Goal;
-            auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", 9);
+            auto TitleColor = CkStyle::Accent();
+            auto BoldFont = CkStyle::BoldFont(CkStyle::FontSizeBody());
 
             _CellDetailBox->AddSlot().AutoHeight()
                 [
@@ -343,13 +380,8 @@ auto
     }
 
     auto BudgetPct = FMath::Clamp(InInfo.BudgetUsagePercent, 0.0f, 100.0f);
-    _BudgetBar->SetPercent(BudgetPct / 100.0f);
+    _BudgetFraction = BudgetPct / 100.0f;
     _BudgetPctText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(BudgetPct))));
-
-    auto BudgetColor = BudgetPct > 90.0f ? FCkAStarDebuggerStyle::Color_Budget_Over
-        : BudgetPct > 70.0f ? FCkAStarDebuggerStyle::Color_Budget_Warning
-        : FCkAStarDebuggerStyle::Color_Budget_Normal;
-    _BudgetBar->SetFillColorAndOpacity(BudgetColor);
 
     auto TotalCells = InInfo.GridWidth * InInfo.GridHeight;
     auto Reachable = TotalCells - InInfo.BlockedCells.Num();
@@ -357,7 +389,7 @@ auto
     if (Reachable > 0)
     {
         auto ExplPct = static_cast<float>(InInfo.ClosedSetSize) / static_cast<float>(Reachable);
-        _ExplorationBar->SetPercent(FMath::Clamp(ExplPct, 0.0f, 1.0f));
+        _ExplorationFraction = FMath::Clamp(ExplPct, 0.0f, 1.0f);
         _ExplorationPctText->SetText(FText::FromString(FString::Printf(TEXT("%d%%"), FMath::RoundToInt(ExplPct * 100.0f))));
     }
 

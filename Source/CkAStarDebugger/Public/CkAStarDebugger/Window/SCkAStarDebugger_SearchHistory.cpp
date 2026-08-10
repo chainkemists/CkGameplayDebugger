@@ -1,16 +1,16 @@
 #include "CkAStarDebugger/Window/SCkAStarDebugger_SearchHistory.h"
 #include "CkAStarDebugger/ViewModel/CkAStarDebugger_ViewModel.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
-#include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Text/STextBlock.h"
-
+#include "CkDebuggerCommon/Widgets/SCkDebug_HistoryRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_RailContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
-#include "Widgets/Images/SImage.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "Styling/CoreStyle.h"
 
 // ====================================================================================================================
 // Construction
@@ -25,28 +25,14 @@ auto
 {
     _ViewModel = InViewModel;
 
+    // Standalone fixed-rebuild rail (SVerticalBox inside the container's scroll box), NOT an
+    // SListView — which is what makes SCkDebug_HistoryRow legal here: its internal SButton would
+    // eat the selection click inside an STableRow.
     ChildSlot
     [
-        SNew(SVerticalBox)
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(12.0f, 8.0f, 12.0f, 4.0f)
-                [
-                    SNew(SCkDebug_SelectableLabel)
-                        .Text(FText::FromString(TEXT("SEARCH HISTORY")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                        .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
-                ]
-            + SVerticalBox::Slot()
-                .FillHeight(1.0f)
-                .Padding(12.0f, 0.0f, 12.0f, 8.0f)
-                [
-                    SNew(SScrollBox)
-                        + SScrollBox::Slot()
-                            [
-                                SAssignNew(_EntryListBox, SVerticalBox)
-                            ]
-                ]
+        SAssignNew(_Rail, SCkDebug_RailContainer)
+            .Title(FText::FromString(TEXT("Search History")))
+            .CountText(FText::FromString(TEXT("0")))
     ];
 }
 
@@ -86,34 +72,35 @@ auto
     RebuildList()
     -> void
 {
-    _EntryListBox->ClearChildren();
+    if (NOT _Rail.IsValid())
+    { return; }
+
+    _Rail->ClearChildren();
 
     if (NOT _ViewModel.IsValid() || NOT _ViewModel->Has_SelectedEntity())
-    { return; }
+    {
+        _Rail->Set_CountText(FText::FromString(TEXT("0")));
+        return;
+    }
 
     auto* History = _ViewModel->Get_SearchHistory(_ViewModel->Get_SelectedEntityHandle());
 
     if (NOT History || History->IsEmpty())
     {
-        _EntryListBox->AddSlot()
-            .AutoHeight()
-            [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(TEXT("No search history yet")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                    .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
-            ];
+        _Rail->Set_CountText(FText::FromString(TEXT("0")));
+        _Rail->AddChild(
+            SNew(SCkDebug_SelectableLabel)
+                .Text(FText::FromString(TEXT("No search history yet")))
+                .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                .ColorAndOpacity(CkStyle::TextMute()));
         return;
     }
 
-    for (int32 Idx = History->Num() - 1; Idx >= 0; --Idx)
+    _Rail->Set_CountText(FText::FromString(ck::Format_UE(TEXT("{}"), History->Num())));
+
+    for (auto Idx = History->Num() - 1; Idx >= 0; --Idx)
     {
-        _EntryListBox->AddSlot()
-            .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, 3.0f)
-            [
-                BuildHistoryEntry((*History)[Idx])
-            ];
+        _Rail->AddChild(BuildHistoryEntry((*History)[Idx]));
     }
 }
 
@@ -127,73 +114,51 @@ auto
         const FCkAStarDebugger_HistoryEntry& InEntry)
     -> TSharedRef<SWidget>
 {
-    auto StatusStr = CkAStarDebugger::GetStatusString(InEntry.FinalStatus);
-    auto StatusColor = CkAStarDebugger::GetStatusColor(InEntry.FinalStatus);
+    const auto StatusStr = CkAStarDebugger::GetStatusString(InEntry.FinalStatus);
+    const auto FrameStr  = ck::Format_UE(TEXT("F#{}"), InEntry.FrameNumber);
 
-    auto MetaStr = FString::Printf(TEXT("F#%llu"), InEntry.FrameNumber);
-
-    if (InEntry.FinalStatus == ECk_AStarSearchStatus::Complete)
+    const auto MetaStr = [&]() -> FString
     {
-        MetaStr += FString::Printf(TEXT(" \u00B7 %.1f cost \u00B7 %d iter \u00B7 %lldus"),
-            InEntry.TotalCost,
+        if (InEntry.FinalStatus == ECk_AStarSearchStatus::Complete)
+        {
+            return ck::Format_UE(TEXT("{:.1f} cost \u00B7 {} iter \u00B7 {}us"),
+                InEntry.TotalCost,
+                InEntry.TotalIterations,
+                InEntry.TotalTimeMicroseconds);
+        }
+
+        if (InEntry.FinalStatus == ECk_AStarSearchStatus::Failed)
+        {
+            return ck::Format_UE(TEXT("no path \u00B7 {} iter \u00B7 {}us"),
+                InEntry.TotalIterations,
+                InEntry.TotalTimeMicroseconds);
+        }
+
+        return ck::Format_UE(TEXT("{} iter \u00B7 {}us"),
             InEntry.TotalIterations,
             InEntry.TotalTimeMicroseconds);
-    }
-    else if (InEntry.FinalStatus == ECk_AStarSearchStatus::Failed)
-    {
-        MetaStr += FString::Printf(TEXT(" \u00B7 no path \u00B7 %d iter \u00B7 %lldus"),
-            InEntry.TotalIterations,
-            InEntry.TotalTimeMicroseconds);
-    }
-    else
-    {
-        MetaStr += FString::Printf(TEXT(" \u00B7 %d iter \u00B7 %lldus"),
-            InEntry.TotalIterations,
-            InEntry.TotalTimeMicroseconds);
-    }
+    }();
 
-    return SNew(SHorizontalBox)
-        .Clipping(EWidgetClipping::ClipToBounds)
+    const auto CopyText = ck::Format_UE(
+        TEXT("A* search [{}]\n")
+        TEXT("  frame:      {}\n")
+        TEXT("  iterations: {}\n")
+        TEXT("  time:       {}us\n")
+        TEXT("  cost:       {}\n")
+        TEXT("  path len:   {}"),
+        StatusStr,
+        InEntry.FrameNumber,
+        InEntry.TotalIterations,
+        InEntry.TotalTimeMicroseconds,
+        InEntry.TotalCost,
+        InEntry.PathLength);
 
-        // Status dot
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
-            [
-                SNew(SBox)
-                    .WidthOverride(FCkAStarDebuggerStyle::HistoryDot_Size)
-                    .HeightOverride(FCkAStarDebuggerStyle::HistoryDot_Size)
-                    [
-                        SNew(SImage)
-                            .Image(FAppStyle::GetBrush("WhiteBrush"))
-                            .ColorAndOpacity(StatusColor)
-                    ]
-            ]
-
-        // Status text + meta
-        + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(SVerticalBox)
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SNew(SCkDebug_SelectableLabel)
-                                .Text(FText::FromString(StatusStr))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                                .ColorAndOpacity(StatusColor)
-                        ]
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            SNew(SCkDebug_SelectableLabel)
-                                .Text(FText::FromString(MetaStr))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FCkAStarDebuggerStyle::Color_Text_Muted)
-                        ]
-            ];
+    return SNew(SCkDebug_HistoryRow)
+        .Tone(CkAStarDebugger::GetStatusTone(InEntry.FinalStatus))
+        .TitleText(FText::FromString(StatusStr))
+        .RightText(FText::FromString(FrameStr))
+        .SubtitleText(FText::FromString(MetaStr))
+        .CopyText(CopyText);
 }
 
 // ====================================================================================================================

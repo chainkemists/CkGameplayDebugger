@@ -8,8 +8,11 @@
 #include "Framework/Docking/TabManager.h"
 #include "Textures/SlateIcon.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkDebuggerLauncherModule"
 
@@ -42,15 +45,18 @@ auto FCkDebuggerLauncherModule::StartupModule() -> void
 {
     FCkDebuggerLauncherStyle::Initialize();
 
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         LauncherTabName,
         FOnSpawnTab::CreateRaw(this, &FCkDebuggerLauncherModule::OnSpawnLauncherTab))
         .SetDisplayName(LOCTEXT("LauncherTabTitle", "CK Debugger Launcher"))
         .SetTooltipText(LOCTEXT("LauncherTabTooltip", "Open and focus the available CK debugger tools"))
         .SetIcon(FSlateIcon{
             FCkDebuggerLauncherStyle::GetStyleSetName(),
-            TEXT("CkDebuggerLauncher.Icon.Bug")})
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+            TEXT("CkDebuggerLauncher.Icon.Bug")});
+
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
 }
 

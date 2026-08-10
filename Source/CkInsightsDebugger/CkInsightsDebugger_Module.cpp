@@ -8,8 +8,11 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkInsightsDebuggerModule"
 
@@ -40,12 +43,15 @@ static FAutoConsoleCommand CmdInsightsDebugger(
 
 auto FCkInsightsDebuggerModule::StartupModule() -> void
 {
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkInsightsDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(LOCTEXT("InsightsAnalyzerDisplayName", "Insights Analyzer"))
-        .SetTooltipText(LOCTEXT("InsightsAnalyzerTooltip", "Open .utrace files and analyze frame performance"))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(LOCTEXT("InsightsAnalyzerTooltip", "Open .utrace files and analyze frame performance"));
+
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkInsightsDebugger"),

@@ -6,7 +6,6 @@
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
@@ -35,7 +34,6 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -62,48 +60,6 @@ namespace ck_input_debugger
         }
     }
 
-    // RowDensity applies as a DELTA on this surface's own base padding: only the offset between
-    // density options belongs to the axis, and Comfortable (the default) leaves the mapping and
-    // action rows exactly where they shipped. Clamped so Compact cannot produce negative margins.
-    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
-    // SSeparator::Thickness is a construction-time argument with no setter, so the axis is carried
-    // by an SBox override instead; a zero-thickness option collapses the box and its slot padding.
-    static auto Make_Separator() -> TSharedRef<SWidget>
-    {
-        const auto Get_Thickness = []()
-        {
-            return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
-        };
-
-        return SNew(SBox)
-            .HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
-            {
-                return FOptionalSize{Get_Thickness()};
-            })
-            .Visibility_Lambda([Get_Thickness]()
-            {
-                return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
-            })
-            [
-                SNew(SSeparator).Thickness(1.0f)
-            ];
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -164,7 +120,7 @@ auto
                 [ _SummaryText.ToSharedRef() ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
-                [ ck_input_debugger::Make_Separator() ]
+                [ ck::debug_axes::Make_AxisSeparator() ]
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [
@@ -184,7 +140,7 @@ auto
                                 [ _ContextListBox.ToSharedRef() ]
 
                             + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM)
-                                [ ck_input_debugger::Make_Separator() ]
+                                [ ck::debug_axes::Make_AxisSeparator() ]
 
                             + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
                                 [
@@ -562,7 +518,7 @@ auto
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(BgColor)
-            .Padding(ck_input_debugger::Apply_RowDensity(
+            .Padding(ck::debug_axes::Apply_RowDensity(
                 FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS}))
             [
                 SNew(SHorizontalBox)
@@ -675,7 +631,7 @@ auto
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(BgColor)
-            .Padding(ck_input_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
+            .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
             [
                 SNew(SHorizontalBox)
 

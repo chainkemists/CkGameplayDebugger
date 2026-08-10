@@ -28,6 +28,8 @@
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Archetypes.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
@@ -478,9 +480,27 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
             .VAlign(VAlign_Center)
             .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 0.0f))
             [
-                SNew(SSeparator)
-                .Orientation(Orient_Vertical)
-                .Thickness(1.0f)
+                // Vertical twin of ck::debug_axes::Make_AxisSeparator: SSeparator::Thickness has
+                // no setter, so SeparatorWeight rides an SBox width override and the None option
+                // collapses the box together with its slot padding.
+                SNew(SBox)
+                .WidthOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection())};
+                })
+                .Visibility_Lambda([]()
+                {
+                    return ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection()) > 0.0f
+                        ? EVisibility::Visible
+                        : EVisibility::Collapsed;
+                })
+                [
+                    SNew(SSeparator)
+                    .Orientation(Orient_Vertical)
+                    .Thickness(1.0f)
+                ]
             ]
 
             // ---- Filter button (with active count) ----
@@ -798,7 +818,9 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
 // Gameplay-tag-driven layout data intentionally stays in Project Settings.
 // ====================================================================================================================
 
-namespace
+// Named, not anonymous: this module builds with unity on, and a merged TU collides file-local
+// helpers by name.
+namespace ck_debugger_window_main
 {
     auto Get_OverlayCVar(const TCHAR* InName) -> IConsoleVariable*
     {
@@ -849,7 +871,8 @@ namespace
 
 auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
 {
-    const auto RowPad = FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small);
+    const auto RowPad = ck::debug_axes::Apply_RowDensity(
+        FMargin{0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small});
 
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
@@ -863,7 +886,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
-                    Make_OverlayPopoverLabel(TEXT("Max Depth:"))
+                    ck_debugger_window_main::Make_OverlayPopoverLabel(TEXT("Max Depth:"))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
@@ -876,12 +899,12 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                         .Delta(1)
                         .Value_Lambda([]() -> int32
                         {
-                            const auto* CVar = Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName());
+                            const auto* CVar = ck_debugger_window_main::Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName());
                             return CVar != nullptr ? CVar->GetInt() : 0;
                         })
                         .OnValueChanged_Lambda([](int32 InValue)
                         {
-                            if (auto* CVar = Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName()))
+                            if (auto* CVar = ck_debugger_window_main::Get_OverlayCVar(ck::DebugMarkers::Get_MaxDepthCVarName()))
                             {
                                 CVar->Set(InValue, ECVF_SetByConsole);
                             }
@@ -896,7 +919,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
 
             + SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.0f, FCkDebuggerStyle::Padding_Small))
             [
-                SNew(SSeparator).Orientation(Orient_Horizontal).Thickness(1.0f)
+                ck::debug_axes::Make_AxisSeparator()
             ]
 
             // ---- Settings-backed controls (live; session-only — persist via Project Settings) ----
@@ -905,7 +928,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
-                    Make_OverlayPopoverLabel(TEXT("Plate Anchor:"))
+                    ck_debugger_window_main::Make_OverlayPopoverLabel(TEXT("Plate Anchor:"))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
@@ -946,21 +969,21 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Plate Width:"), 240.0f, 1600.0f, 10.0f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Plate Width:"), 240.0f, 1600.0f, 10.0f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->PlateWidth; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->PlateWidth = InValue; },
                     TEXT("Width (Slate units) of the focus plate. Applied live."))
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Diamond Scale:"), 0.2f, 5.0f, 0.1f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Diamond Scale:"), 0.2f, 5.0f, 0.1f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->DiamondScale; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->DiamondScale = InValue; },
                     TEXT("Uniform scale of the in-world diamond markers. Applied live."))
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Plate Font:"), 0.5f, 2.0f, 0.05f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Plate Font:"), 0.5f, 2.0f, 0.05f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->PlateFontScale; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->PlateFontScale = InValue; },
                     TEXT("Font-size multiplier for the main overlay plate's text. Applied live."))
@@ -970,7 +993,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
-                    Make_OverlayPopoverLabel(TEXT("SM Name Depth:"))
+                    ck_debugger_window_main::Make_OverlayPopoverLabel(TEXT("SM Name Depth:"))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
@@ -997,35 +1020,35 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Near Dist:"), 100.0f, 5000.0f, 50.0f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Near Dist:"), 100.0f, 5000.0f, 50.0f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->NearDist; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->NearDist = InValue; },
                     TEXT("Distance (cm) below which pills are full-size and near plates appear."))
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Far Dist:"), 500.0f, 20000.0f, 100.0f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Far Dist:"), 500.0f, 20000.0f, 100.0f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->FarDist; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->FarDist = InValue; },
                     TEXT("Distance (cm) at which pills reach their minimum scale."))
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Min Scale:"), 0.1f, 1.0f, 0.05f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Min Scale:"), 0.1f, 1.0f, 0.05f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->MinScale; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->MinScale = InValue; },
                     TEXT("Minimum pill scale applied at Far Dist and beyond."))
             ]
             + SVerticalBox::Slot().AutoHeight().Padding(RowPad)
             [
-                Make_OverlaySettingSpin(TEXT("Fade Start:"), 500.0f, 20000.0f, 100.0f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Fade Start:"), 500.0f, 20000.0f, 100.0f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->FadeStartDist; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->FadeStartDist = InValue; },
                     TEXT("Distance (cm) at which pill opacity starts fading."))
             ]
             + SVerticalBox::Slot().AutoHeight()
             [
-                Make_OverlaySettingSpin(TEXT("Max Dist:"), 1000.0f, 50000.0f, 100.0f,
+                ck_debugger_window_main::Make_OverlaySettingSpin(TEXT("Max Dist:"), 1000.0f, 50000.0f, 100.0f,
                     []() { return GetDefault<UCk_DebugOverlay_Settings>()->MaxDist; },
                     [](float InValue) { GetMutableDefault<UCk_DebugOverlay_Settings>()->MaxDist = InValue; },
                     TEXT("Hard cull distance (cm): pills/plates beyond this are not shown."))
@@ -1274,7 +1297,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                 .AutoHeight()
                 .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
                 [
-                    SNew(SSeparator).Thickness(1.0f)
+                    ck::debug_axes::Make_AxisSeparator()
                 ]
 
                 // ---- Scrollable inspector list ----

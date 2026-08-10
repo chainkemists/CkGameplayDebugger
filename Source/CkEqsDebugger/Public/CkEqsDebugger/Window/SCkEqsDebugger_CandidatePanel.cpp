@@ -3,7 +3,6 @@
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
-#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
@@ -32,24 +31,6 @@ namespace ck_eqs_debugger_candidate_panel
         return ECk_Tone::Ok;
     }
 
-    // RowDensity as a DELTA on this panel's own base row padding — see the QueryList copy for the
-    // rationale. Zero delta under the Classic (Comfortable) default.
-    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
 }
 
 
@@ -254,7 +235,7 @@ auto
     }
 
     return SNew(STableRow<TSharedPtr<FCkEqsDebugger_CandidateInfo>>, InOwner)
-        .Padding(ck_eqs_debugger_candidate_panel::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)

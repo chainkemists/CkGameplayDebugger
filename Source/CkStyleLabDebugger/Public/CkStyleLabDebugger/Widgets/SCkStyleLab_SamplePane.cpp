@@ -4,6 +4,7 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
@@ -261,29 +262,6 @@ namespace ck_style_lab_sample
             ];
     }
 
-    // The EntityRefStyle treatment, composed from the resolvers the real widget will adopt in U3.
-    auto Make_EntityRef(
-        const FCkDebuggerStyleSelection& InSelection,
-        const FString&                   InCleanName,
-        const FString&                   InIdText) -> TSharedRef<SWidget>
-    {
-        const auto Accent = CkStyle::EntityId();
-
-        return SNew(SBorder)
-            .BorderImage(ck::debug_axes::Get_EntityRefBrush())
-            .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_EntityRefFill(Accent)})
-            .Padding(ck::debug_axes::Get_EntityRefPadding())
-            [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(ck::debug_axes::Make_EntityIdText(InSelection, InCleanName, InIdText))
-                    .Font(ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{
-                        InCleanName.IsEmpty()
-                            ? CkStyle::TextMute()
-                            : ck::debug_axes::Get_EntityRefInk(Accent)})
-            ];
-    }
-
     // A stand-in graph node: the two roles GraphNodeStyle modulates are exactly what the SM and
     // GOAP node widgets read, so the swatch moves the same way those graphs will.
     auto Make_GraphNode(const FText& InTitle, bool InIsActive) -> TSharedRef<SWidget>
@@ -481,11 +459,17 @@ auto
                     .Size(FVector2D{IconSize, IconSize})
             ];
 
+        // The shipping widget, in preview mode: the Lab has no world, and an invalid handle would
+        // collapse all four EntityRefStyle treatments onto the same muted "None". The explicit
+        // tooltip replaces the navigator's "click to open" promise, which no preview can keep.
         RowContent->AddSlot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                ck_style_lab_sample::Make_EntityRef(InSelection, Row.CleanName, Row.IdText)
+                SNew(SCkDebug_EntityRef)
+                    .PreviewName(Row.CleanName)
+                    .PreviewIdText(Row.IdText)
+                    .Tooltip(FText::FromString(TEXT("Style Lab preview — not a live entity")))
             ];
 
         if (NOT Row.FoldChipText.IsEmpty())

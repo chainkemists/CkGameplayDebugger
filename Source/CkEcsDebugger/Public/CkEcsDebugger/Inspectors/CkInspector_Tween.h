@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkTween/CkTween_Fragment_Data.h"
+
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspector_Base.h"
 
 class FCkInspector_Tween : public ICkDebuggerComponentInspector_Base
@@ -10,4 +12,11 @@ public:
     auto Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget> override;
     auto Get_SortPriority() const -> int32 override { return 120; }
     auto Tick(const FCk_Handle& Entity, float InDeltaTime) -> void override;
+
+private:
+    // Pending argument for the Stop verb — the tween stores no such field, so the dropdown holds what
+    // the next Stop will carry. Shared box, not a plain member: the row lambdas capture it BY VALUE so a
+    // widget that briefly outlives this inspector during panel teardown still reads a live object.
+    TSharedRef<ECk_TweenStopBehavior> _StopBehavior =
+        MakeShared<ECk_TweenStopBehavior>(ECk_TweenStopBehavior::DoNothing);
 };

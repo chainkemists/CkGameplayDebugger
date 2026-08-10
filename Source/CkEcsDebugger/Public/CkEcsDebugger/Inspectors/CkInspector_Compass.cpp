@@ -34,6 +34,7 @@ auto FCkInspector_Compass::Tick(const FCk_Handle& Entity, float InDeltaTime) -> 
 auto FCkInspector_Compass::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto CompassHandle = UCk_Utils_Compass_UE::Cast(MutableEntity);
@@ -54,6 +55,26 @@ auto FCkInspector_Compass::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         },
         CkStyle::Value_Numeric());
 
+    // Editable heading. CosmeticOnly: a compass exists to drive a local HUD ribbon, so a dedicated
+    // server has nothing to point — the row greys there with the reason instead of firing.
+    // Get_Heading is the live read-back, so the field reverts on its own if the source is not Manual.
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("Manual Heading:")),
+        TAttribute<float>::CreateLambda([CapturedCompass]()
+        {
+            if (ck::Is_NOT_Valid(CapturedCompass)) { return 0.0f; }
+            return UCk_Utils_Compass_UE::Get_Heading(CapturedCompass);
+        }),
+        [CapturedCompass](float InHeadingDegrees)
+        {
+            auto MutableCompass = CapturedCompass;
+            if (ck::Is_NOT_Valid(MutableCompass)) { return; }
+            UCk_Utils_Compass_UE::Request_SetManualHeading(MutableCompass, InHeadingDegrees, {});
+        },
+        0.0f,
+        360.0f,
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
     Builder.AddRow(
         FText::FromString(TEXT("Source:")),
         [CapturedCompass](const FCk_Handle&)
@@ -64,6 +85,8 @@ auto FCkInspector_Compass::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         },
         CkStyle::Value_Enum());
 
+    // Read-only: Request_SetObserver takes an FCk_Handle, which needs an entity picker this
+    // vocabulary does not have yet. Deferred, not forgotten.
     Builder.AddWidgetRow(
         FText::FromString(TEXT("Observer:")),
         SNew(SCkDebug_EntityRef)

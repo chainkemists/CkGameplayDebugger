@@ -2,6 +2,7 @@
 
 #include "CkCore/Chrono/CkChrono.h"
 #include "CkCore/Format/CkFormat.h"
+#include "CkCore/Time/CkTime.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkTimer/CkTimer_Utils.h"
@@ -66,6 +67,7 @@ auto FCkInspector_Timer::CanInspect(const FCk_Handle& Entity) const -> bool
 auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto TimerHandle = UCk_Utils_Timer_UE::Cast(MutableEntity);
@@ -173,6 +175,180 @@ auto FCkInspector_Timer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             return Chrono.Get_IsDone()
                 ? CkStyle::Value_Bool_True()
                 : CkStyle::Value_Bool_False();
+        });
+
+    // ---- Controls ----
+    //
+    // Every verb below leaves through the public Timer Utils with the typed handle captured BY VALUE
+    // and re-validated on fire. Nothing reads a request back: the live rows above are the display, and
+    // the queued verbs land a frame later.
+    //
+    // All of them are LocalOk — FProcessor_Timer_HandleRequests runs on every net mode, and a timer
+    // that is not replicated at all is the common case.
+
+    Builder.AddHeader(FText::FromString(TEXT("Controls")));
+
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Playback:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Pause")),
+                FText::FromString(TEXT("Request_Pause — stops advancing, keeps the elapsed value")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_Pause(Timer, {});
+                }
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Resume")),
+                FText::FromString(TEXT("Request_Resume — resumes advancing from the current elapsed value")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_Resume(Timer, {});
+                }
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Stop")),
+                FText::FromString(TEXT("Request_Stop — pauses AND rewinds to the starting value")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_Stop(Timer, {});
+                }
+            }
+        });
+
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Position:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Reset")),
+                FText::FromString(TEXT("Request_Reset — rewinds to the starting value, leaving the run state alone")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_Reset(Timer, {});
+                }
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Complete")),
+                FText::FromString(TEXT("Request_Complete — jumps straight to Done and fires the timer's completion signals")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_Complete(Timer, {});
+                }
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Reverse")),
+                FText::FromString(TEXT("Request_ReverseDirection — flips CountUp <-> CountDown immediately (no queue)")),
+                [CapturedTimer]
+                {
+                    auto Timer = CapturedTimer;
+                    if (ck::Is_NOT_Valid(Timer))
+                    { return; }
+
+                    UCk_Utils_Timer_UE::Request_ReverseDirection(Timer, {});
+                }
+            }
+        });
+
+    // Immediate mutator, so the read-only "Direction:" row above agrees with this dropdown on the very
+    // next paint rather than a frame later.
+    Builder.AddEnumDropdownRow(
+        FText::FromString(TEXT("Set Direction:")),
+        {
+            FText::FromString(TEXT("CountUp")),
+            FText::FromString(TEXT("CountDown"))
+        },
+        TAttribute<int32>::CreateLambda([CapturedTimer]()
+        {
+            if (ck::Is_NOT_Valid(CapturedTimer))
+            { return 0; }
+
+            return static_cast<int32>(UCk_Utils_Timer_UE::Get_CountDirection(CapturedTimer));
+        }),
+        [CapturedTimer](int32 InIndex)
+        {
+            auto Timer = CapturedTimer;
+            if (ck::Is_NOT_Valid(Timer))
+            { return; }
+
+            UCk_Utils_Timer_UE::Request_ChangeCountDirection(
+                Timer, static_cast<ECk_Timer_CountDirection>(InIndex), {});
+        });
+
+    // Jump mode is a pending ARGUMENT, not timer state — it selects how the next committed jump amount
+    // is read (delta vs target elapsed), so it writes only to this inspector's box.
+    Builder.AddEnumDropdownRow(
+        FText::FromString(TEXT("Jump Mode:")),
+        {
+            FText::FromString(TEXT("Relative")),
+            FText::FromString(TEXT("Absolute"))
+        },
+        TAttribute<int32>::CreateLambda([Mode = _JumpMode]()
+        {
+            return static_cast<int32>(*Mode);
+        }),
+        [Mode = _JumpMode](int32 InIndex)
+        {
+            *Mode = static_cast<ECk_RelativeAbsolute>(InIndex);
+        });
+
+    // Committing the amount IS the verb — the editor commits on enter / lost focus, never per
+    // keystroke, so one jump is enqueued per deliberate edit.
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("Jump (s):")),
+        TAttribute<float>::CreateLambda([Seconds = _JumpSeconds]() { return *Seconds; }),
+        [CapturedTimer, Seconds = _JumpSeconds, Mode = _JumpMode](float InSeconds)
+        {
+            *Seconds = InSeconds;
+
+            auto Timer = CapturedTimer;
+            if (ck::Is_NOT_Valid(Timer))
+            { return; }
+
+            UCk_Utils_Timer_UE::Request_Jump(
+                Timer,
+                FCk_Request_Timer_Jump{FCk_Time{InSeconds}}.Set_JumpMode(*Mode),
+                {});
+        });
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("Consume (s):")),
+        TAttribute<float>::CreateLambda([Seconds = _ConsumeSeconds]() { return *Seconds; }),
+        [CapturedTimer, Seconds = _ConsumeSeconds](float InSeconds)
+        {
+            *Seconds = InSeconds;
+
+            auto Timer = CapturedTimer;
+            if (ck::Is_NOT_Valid(Timer))
+            { return; }
+
+            UCk_Utils_Timer_UE::Request_Consume(Timer, FCk_Request_Timer_Consume{FCk_Time{InSeconds}}, {});
         });
 
     return Builder.Build(Entity, FString());

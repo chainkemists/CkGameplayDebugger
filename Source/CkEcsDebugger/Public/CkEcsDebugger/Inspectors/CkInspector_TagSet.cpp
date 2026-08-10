@@ -1,5 +1,6 @@
 #include "CkInspector_TagSet.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkTagSet/CkTagSet_Utils.h"
 
@@ -40,6 +41,7 @@ auto FCkInspector_TagSet::Build_Inspector(const FCk_Handle& Entity, const FStrin
 auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     auto TagSetHandle = UCk_Utils_TagSet_UE::Cast(MutableEntity);
@@ -78,6 +80,48 @@ auto FCkInspector_TagSet::BuildTagSetGrid(const FCk_Handle& Entity, const FStrin
     if (NOT Chips.IsEmpty())
     {
         Builder.AddChipsRow(FText::FromString(TEXT("Tags:")), Chips);
+    }
+
+    // ---- Write surface ----
+    //
+    // AUTHORITY NOTE — the Utils are INCONSISTENT here: Request_RemoveTag/Request_RemoveTags carry
+    // BlueprintAuthorityOnly (CkTagSet_Utils.h:178,189) while Request_AddTag/Request_AddTags sit under
+    // the same "Requests (Authority Only)" section header WITHOUT the specifier (:157,:167). The
+    // section header is the stated contract, so both are gated AuthorityOnly here — the conservative
+    // read. If Add is genuinely meant to be client-callable, the specifier is what should change.
+    const auto CapturedTagSet = TagSetHandle;
+
+    Builder.AddTagEntryRow(
+        FText::FromString(TEXT("Add Tag:")),
+        TAttribute<FText>{},
+        [CapturedTagSet](FGameplayTag InTag)
+        {
+            auto MutableTagSet = CapturedTagSet;
+            if (ck::Is_NOT_Valid(MutableTagSet)) { return; }
+            UCk_Utils_TagSet_UE::Request_AddTag(MutableTagSet, InTag, {});
+        },
+        ECk_DebugRequest_Requirement::AuthorityOnly);
+
+    // One remove button per listed tag, from the SAME Get_Tags snapshot the chips row above is built
+    // from — so the two always agree, and both refresh on the panel's normal rebuild.
+    for (const auto& Tag : Tags)
+    {
+        Builder.AddActionRow(
+            FText::FromString(Tag.ToString()),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Remove")),
+                    FText::FromString(ck::Format_UE(TEXT("UCk_Utils_TagSet_UE::Request_RemoveTag({})"), Tag.ToString())),
+                    [CapturedTagSet, Tag]()
+                    {
+                        auto MutableTagSet = CapturedTagSet;
+                        if (ck::Is_NOT_Valid(MutableTagSet)) { return; }
+                        UCk_Utils_TagSet_UE::Request_RemoveTag(MutableTagSet, Tag, {});
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                },
+            });
     }
 
     return Builder.Build(Entity, InFilter);

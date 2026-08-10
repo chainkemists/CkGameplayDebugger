@@ -4,7 +4,9 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkOverlapBody/Marker/CkMarker_Fragment.h"
+#include "CkOverlapBody/Marker/CkMarker_Utils.h"
 #include "CkOverlapBody/Sensor/CkSensor_Fragment.h"
+#include "CkOverlapBody/Sensor/CkSensor_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -58,12 +60,36 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
 {
     auto Builder = FCkInspectorWidgetBuilder();
 
+    auto MutableEntity = Entity;
+
     // ---- Marker ----
     if (Entity.Has<ck::FFragment_Marker_Current>())
     {
         Builder.AddHeader(FText::FromString(TEXT("Marker")));
 
         const auto CapturedEntity = Entity;
+        const auto CapturedMarker = UCk_Utils_Marker_UE::Cast(MutableEntity);
+
+        // Enable/disable is the one arg-free write a marker has that isn't a nested shape payload
+        // (Request_Resize takes the shape variant, which is SKIP tier). The switch reads the live
+        // Current fragment, so a gameplay-side flip is reflected without a rebuild.
+        Builder.AddToggleRow(
+            FText::FromString(TEXT("Enabled:")),
+            TAttribute<bool>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Marker_Current>())
+                { return false; }
+                return CapturedEntity.Get<ck::FFragment_Marker_Current>().Get_EnableDisable() == ECk_EnableDisable::Enable;
+            }),
+            [CapturedMarker](bool InIsEnabled)
+            {
+                auto Mutable = CapturedMarker;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_Marker_UE::Request_EnableDisable(Mutable,
+                    FCk_Request_Marker_EnableDisable{InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable},
+                    {});
+            });
 
         Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),
@@ -106,6 +132,25 @@ auto FCkInspector_OverlapBody::Build_Inspector(const FCk_Handle& Entity) -> TSha
         Builder.AddHeader(FText::FromString(TEXT("Sensor")));
 
         const auto CapturedEntity = Entity;
+        const auto CapturedSensor = UCk_Utils_Sensor_UE::Cast(MutableEntity);
+
+        Builder.AddToggleRow(
+            FText::FromString(TEXT("Enabled:")),
+            TAttribute<bool>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Sensor_Current>())
+                { return false; }
+                return CapturedEntity.Get<ck::FFragment_Sensor_Current>().Get_EnableDisable() == ECk_EnableDisable::Enable;
+            }),
+            [CapturedSensor](bool InIsEnabled)
+            {
+                auto Mutable = CapturedSensor;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_Sensor_UE::Request_EnableDisable(Mutable,
+                    FCk_Request_Sensor_EnableDisable{InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable},
+                    {});
+            });
 
         Builder.AddStatusPillRow(
             FText::FromString(TEXT("State:")),

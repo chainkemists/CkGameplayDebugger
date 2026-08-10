@@ -4,6 +4,7 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkTween/CkTween_Fragment.h"
+#include "CkTween/CkTween_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -63,6 +64,7 @@ auto FCkInspector_Tween::CanInspect(const FCk_Handle& Entity) const -> bool
 auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     if (NOT Entity.Has<ck::FFragment_Tween_Current>())
     { return Builder.Build(Entity); }
@@ -164,6 +166,116 @@ auto FCkInspector_Tween::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             return FText::FromString(FString::Printf(TEXT("%.3f"), Multiplier));
         },
         CkStyle::Value_Numeric());
+
+    // ---- Controls ----
+    //
+    // Public Tween Utils only, with the typed handle captured BY VALUE and re-validated on fire; the
+    // live rows above remain the display. LocalOk throughout — a tween is a local animation driver and
+    // FProcessor_Tween_HandleRequests runs on every net mode.
+    auto MutableEntity = Entity;
+
+    if (const auto CapturedTween = UCk_Utils_Tween_UE::Cast(MutableEntity);
+        ck::IsValid(CapturedTween))
+    {
+        Builder.AddHeader(FText::FromString(TEXT("Controls")));
+
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Playback:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Pause")),
+                    FText::FromString(TEXT("Pause — freezes the tween at its current time")),
+                    [CapturedTween]
+                    {
+                        auto Tween = CapturedTween;
+                        if (ck::Is_NOT_Valid(Tween))
+                        { return; }
+
+                        UCk_Utils_Tween_UE::Pause(Tween, {});
+                    }
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Resume")),
+                    FText::FromString(TEXT("Resume — continues from the current time")),
+                    [CapturedTween]
+                    {
+                        auto Tween = CapturedTween;
+                        if (ck::Is_NOT_Valid(Tween))
+                        { return; }
+
+                        UCk_Utils_Tween_UE::Resume(Tween, {});
+                    }
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Restart")),
+                    FText::FromString(TEXT("Restart — rewinds to the start and plays again")),
+                    [CapturedTween]
+                    {
+                        auto Tween = CapturedTween;
+                        if (ck::Is_NOT_Valid(Tween))
+                        { return; }
+
+                        UCk_Utils_Tween_UE::Restart(Tween, {});
+                    }
+                }
+            });
+
+        // Stop's behavior is an ARGUMENT with no stored counterpart on the tween, so the dropdown holds
+        // what the next Stop will carry rather than reading anything back.
+        Builder.AddEnumDropdownRow(
+            FText::FromString(TEXT("Stop Behavior:")),
+            {
+                FText::FromString(TEXT("DoNothing")),
+                FText::FromString(TEXT("SelfDestruct"))
+            },
+            TAttribute<int32>::CreateLambda([Behavior = _StopBehavior]()
+            {
+                return static_cast<int32>(*Behavior);
+            }),
+            [Behavior = _StopBehavior](int32 InIndex)
+            {
+                *Behavior = static_cast<ECk_TweenStopBehavior>(InIndex);
+            });
+
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Stop:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Stop")),
+                    FText::FromString(TEXT("Stop with the behavior selected above — SelfDestruct also destroys the tween entity")),
+                    [CapturedTween, Behavior = _StopBehavior]
+                    {
+                        auto Tween = CapturedTween;
+                        if (ck::Is_NOT_Valid(Tween))
+                        { return; }
+
+                        UCk_Utils_Tween_UE::Stop(Tween, *Behavior, {});
+                    }
+                }
+            });
+
+        Builder.AddNumericRow(
+            FText::FromString(TEXT("Set Time Multiplier:")),
+            TAttribute<float>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity) || NOT CapturedEntity.Has<ck::FFragment_Tween_Current>())
+                { return 1.0f; }
+
+                return CapturedEntity.Get<ck::FFragment_Tween_Current>().Get_TimeMultiplier();
+            }),
+            [CapturedTween](float InMultiplier)
+            {
+                auto Tween = CapturedTween;
+                if (ck::Is_NOT_Valid(Tween))
+                { return; }
+
+                UCk_Utils_Tween_UE::SetTimeMultiplier(Tween, InMultiplier, {});
+            });
+    }
 
     // ---- Chain ----
     if (Entity.Has<ck::FFragment_Tween_Chain>())

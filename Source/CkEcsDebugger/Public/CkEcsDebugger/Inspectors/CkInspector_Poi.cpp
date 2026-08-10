@@ -131,6 +131,35 @@ auto FCkInspector_Poi::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<S
                 : ECk_Tone::Ok;
         }));
 
+    // Disabled is a CONVENTION, not a feature flag: CkPoi ships no enable/disable request, it ships the
+    // "Poi.Disabled" EntityTag and every consumer gates on it (CkPoi/CLAUDE.md). So the switch writes
+    // that tag through CkEntityTag's public Add/Request_TryRemove rather than inventing a POI verb.
+    // The GameplayTag overloads are used (not the FName pair the census cited) so the write addresses the
+    // tag through exactly the same spelling the State row above reads it with.
+    Builder.AddToggleRow(
+        FText::FromString(TEXT("Disabled:")),
+        TAttribute<bool>::CreateLambda([CapturedPoi]()
+        {
+            if (ck::Is_NOT_Valid(CapturedPoi)) { return false; }
+            return UCk_Utils_EntityTag_UE::Has_UsingGameplayTag(CapturedPoi, Tag_Poi_DisabledName);
+        }),
+        [CapturedPoi](bool InIsDisabled)
+        {
+            if (ck::Is_NOT_Valid(CapturedPoi)) { return; }
+
+            // The EntityTag API takes the base handle by reference; the typed POI handle is only the
+            // source of the entity here.
+            auto MutableEntity = FCk_Handle{CapturedPoi};
+
+            if (InIsDisabled)
+            {
+                UCk_Utils_EntityTag_UE::Add_UsingGameplayTag(MutableEntity, Tag_Poi_DisabledName);
+                return;
+            }
+
+            UCk_Utils_EntityTag_UE::Request_TryRemove_UsingGameplayTag(MutableEntity, Tag_Poi_DisabledName, {});
+        });
+
     Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("World Pos:")),
         ck_inspector_poi::Make_AxisComponents(CapturedPoi,

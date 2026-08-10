@@ -4,6 +4,9 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkAnimation/MontagePlayer/CkMontagePlayer_Fragment.h"
+#include "CkAnimation/MontagePlayer/CkMontagePlayer_Utils.h"
+
+#include "CkCore/Time/CkTime.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
@@ -91,6 +94,7 @@ auto FCkInspector_MontagePlayer::CanInspect(const FCk_Handle& Entity) const -> b
 auto FCkInspector_MontagePlayer::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     const auto CapturedEntity = Entity;
 
@@ -192,6 +196,102 @@ auto FCkInspector_MontagePlayer::Build_Inspector(const FCk_Handle& Entity) -> TS
                 CapturedEntity.Get<ck::FFragment_MontagePlayer_Current>().Get_CatchUpRemaining().Get_Seconds()));
         },
         CkStyle::Value_Numeric());
+
+    // ================================================================================================
+    // Playback controls.
+    //
+    // EVERY MontagePlayer request is AuthorityOnly — the header states it outright ("AUTHORITY ONLY.
+    // Ensures and no-ops on clients", CkMontagePlayer_Utils.h:130) and the replication path uses a
+    // private FromReplication entry point instead. So the whole block is gated: on a client world the
+    // controls grey out with the reason rather than ensuring on every press.
+    // ================================================================================================
+
+    auto MutableEntity = Entity;
+    const auto MontagePlayer = UCk_Utils_MontagePlayer_UE::Cast(MutableEntity);
+
+    if (ck::IsValid(MontagePlayer))
+    {
+        Builder.AddHeader(FText::FromString(TEXT("Controls")));
+
+        // Blend-out is a parameter OF the Stop request, not a stored value, so it is row-owned state
+        // seeded at the request struct's own default (0.25s). It dies with the row.
+        const auto PendingBlendOut = MakeShared<float>(0.25f);
+        const auto PendingSection  = MakeShared<FName>(UCk_Utils_MontagePlayer_UE::Get_CurrentSection(MontagePlayer));
+
+        Builder.AddNumericRow(
+            FText::FromString(TEXT("Blend Out (s):")),
+            TAttribute<float>::CreateLambda([PendingBlendOut]() { return *PendingBlendOut; }),
+            [PendingBlendOut](float InSeconds) { *PendingBlendOut = InSeconds; },
+            0.0f,
+            TOptional<float>{},
+            ECk_DebugRequest_Requirement::AuthorityOnly);
+
+        Builder.AddNameEntryRow(
+            FText::FromString(TEXT("Section:")),
+            TAttribute<FText>::CreateLambda([PendingSection]()
+            {
+                return PendingSection->IsNone() ? FText::FromString(TEXT("(none)")) : FText::FromName(*PendingSection);
+            }),
+            [PendingSection](FName InSection) { *PendingSection = InSection; },
+            ECk_DebugRequest_Requirement::AuthorityOnly);
+
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Playback:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Pause")),
+                    FText::FromString(TEXT("Request_Pause — freezes the active montage where it stands.")),
+                    [MontagePlayer]()
+                    {
+                        auto Mutable = MontagePlayer;
+                        if (ck::Is_NOT_Valid(Mutable)) { return; }
+                        UCk_Utils_MontagePlayer_UE::Request_Pause(Mutable, FCk_Request_MontagePlayer_Pause{}, {});
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Resume")),
+                    FText::FromString(TEXT("Request_Resume — continues a paused montage.")),
+                    [MontagePlayer]()
+                    {
+                        auto Mutable = MontagePlayer;
+                        if (ck::Is_NOT_Valid(Mutable)) { return; }
+                        UCk_Utils_MontagePlayer_UE::Request_Resume(Mutable, FCk_Request_MontagePlayer_Resume{}, {});
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Stop")),
+                    FText::FromString(TEXT("Request_Stop, blending out over the Blend Out seconds above.")),
+                    [MontagePlayer, PendingBlendOut]()
+                    {
+                        auto Mutable = MontagePlayer;
+                        if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                        UCk_Utils_MontagePlayer_UE::Request_Stop(Mutable,
+                            FCk_Request_MontagePlayer_Stop{FCk_Time{static_cast<double>(*PendingBlendOut)}}, {});
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Jump")),
+                    FText::FromString(TEXT("Request_JumpToSection with the Section name above. Ignored while it is empty.")),
+                    [MontagePlayer, PendingSection]()
+                    {
+                        auto Mutable = MontagePlayer;
+                        if (ck::Is_NOT_Valid(Mutable) || PendingSection->IsNone()) { return; }
+
+                        UCk_Utils_MontagePlayer_UE::Request_JumpToSection(Mutable,
+                            FCk_Request_MontagePlayer_JumpToSection{*PendingSection}, {});
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                },
+            });
+    }
 
     return Builder.Build(Entity);
 }

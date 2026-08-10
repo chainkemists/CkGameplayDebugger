@@ -1,5 +1,6 @@
 #include "CkInspector_EntityTag.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkEntityTag/CkEntityTag_Utils.h"
@@ -47,6 +48,7 @@ auto FCkInspector_EntityTag::Tick(const FCk_Handle& Entity, float InDeltaTime) -
 auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     const auto Tags      = UCk_Utils_EntityTag_UE::Get_AllTags(Entity);
     const auto GtRoots   = UCk_Utils_EntityTag_UE::Get_AllTagsAsContainer(Entity);
@@ -93,6 +95,77 @@ auto FCkInspector_EntityTag::BuildGrid(const FCk_Handle& Entity, const FString& 
         }
 
         Builder.AddChipsRow(FText::FromString(TEXT("Roots:")), RootChips);
+    }
+
+    // ---- Write surface ----
+    //
+    // LocalOk: EntityTag add/remove are plain deferred requests with no authority gate, and the
+    // display rows above re-read the live set on the panel's next rebuild — nothing here assumes a
+    // write-then-read within the same frame.
+    const auto CapturedEntity = Entity;
+
+    Builder.AddNameEntryRow(
+        FText::FromString(TEXT("Add Tag (FName):")),
+        TAttribute<FText>{},
+        [CapturedEntity](FName InTag)
+        {
+            auto MutableEntity = CapturedEntity;
+            if (ck::Is_NOT_Valid(MutableEntity) || InTag.IsNone()) { return; }
+            UCk_Utils_EntityTag_UE::Add(MutableEntity, InTag);
+        });
+
+    Builder.AddTagEntryRow(
+        FText::FromString(TEXT("Add Tag (GameplayTag):")),
+        TAttribute<FText>{},
+        [CapturedEntity](FGameplayTag InTag)
+        {
+            auto MutableEntity = CapturedEntity;
+            if (ck::Is_NOT_Valid(MutableEntity)) { return; }
+            UCk_Utils_EntityTag_UE::Add_UsingGameplayTag(MutableEntity, InTag);
+        });
+
+    // Per-tag removes, built from the SAME snapshots the chip rows above use. Note Get_AllTags is the
+    // FLATTENED FName set (parents included), so removing a parent-derived name is a legitimate but
+    // blunt operation — Request_TryRemove decides, this row only asks.
+    for (const auto& Tag : Tags)
+    {
+        Builder.AddActionRow(
+            FText::FromName(Tag),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Remove")),
+                    FText::FromString(ck::Format_UE(TEXT("UCk_Utils_EntityTag_UE::Request_TryRemove({})"), Tag.ToString())),
+                    [CapturedEntity, Tag]()
+                    {
+                        auto MutableEntity = CapturedEntity;
+                        if (ck::Is_NOT_Valid(MutableEntity)) { return; }
+                        UCk_Utils_EntityTag_UE::Request_TryRemove(MutableEntity, Tag, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
+            });
+    }
+
+    for (const auto& GT : GtRoots)
+    {
+        Builder.AddActionRow(
+            FText::FromName(GT.GetTagName()),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Remove Root")),
+                    FText::FromString(ck::Format_UE(TEXT("UCk_Utils_EntityTag_UE::Request_TryRemove_UsingGameplayTag({})"),
+                        GT.GetTagName().ToString())),
+                    [CapturedEntity, GT]()
+                    {
+                        auto MutableEntity = CapturedEntity;
+                        if (ck::Is_NOT_Valid(MutableEntity)) { return; }
+                        UCk_Utils_EntityTag_UE::Request_TryRemove_UsingGameplayTag(MutableEntity, GT, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
+            });
     }
 
     return Builder.Build(Entity, InFilter);

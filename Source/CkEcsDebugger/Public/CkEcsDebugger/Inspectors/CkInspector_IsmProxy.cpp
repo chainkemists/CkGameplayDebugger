@@ -1,6 +1,7 @@
 #include "CkInspector_IsmProxy.h"
 
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkIsmRenderer/Proxy/CkIsmProxy_Fragment.h"
 #include "CkIsmRenderer/Proxy/CkIsmProxy_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -65,6 +66,7 @@ auto FCkInspector_IsmProxy::Build_Inspector(const FCk_Handle& Entity) -> TShared
 auto FCkInspector_IsmProxy::BuildIsmProxyGrid(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto ProxyHandle = UCk_Utils_IsmProxy_UE::CastChecked(MutableEntity);
@@ -75,6 +77,11 @@ auto FCkInspector_IsmProxy::BuildIsmProxyGrid(const FCk_Handle& Entity) -> TShar
 
     // Mesh name
     const auto CapturedProxy = ProxyHandle;
+    const auto CapturedEntity = Entity;
+
+    // Which custom-data index the value editor below addresses. The VALUE is a live read off
+    // Get_CustomInstanceData, so only this selector is row-owned state.
+    const auto CustomDataIndex = MakeShared<int32>(0);
     Builder.AddRow(
         FText::FromString(TEXT("Mesh:")),
         [CapturedProxy](const FCk_Handle& E)
@@ -125,6 +132,70 @@ auto FCkInspector_IsmProxy::BuildIsmProxyGrid(const FCk_Handle& Entity) -> TShar
         ck_inspector_ism_proxy::Make_AxisComponents(CapturedProxy, TEXT("{:.2f}"),
             [](const FCk_Handle_IsmProxy& InProxy)
             { return UCk_Utils_IsmProxy_UE::Get_ScaleMultiplier(InProxy); }));
+
+    // ================================================================================================
+    // Controls. Both writes are CosmeticOnly — an ISM instance is a render-side thing a dedicated
+    // server never has.
+    // ================================================================================================
+
+    Builder.AddHeader(FText::FromString(TEXT("Controls")));
+
+    // Enabled state is carried by an ECS tag, not a stored enum, so the switch reads the tag directly
+    // (there is no Get_ on the Utils) and writes through the public request.
+    Builder.AddToggleRow(
+        FText::FromString(TEXT("Enabled:")),
+        TAttribute<bool>::CreateLambda([CapturedEntity]()
+        {
+            if (ck::Is_NOT_Valid(CapturedEntity)) { return false; }
+            return NOT CapturedEntity.Has<ck::FTag_IsmProxy_Disabled>();
+        }),
+        [CapturedProxy](bool InIsEnabled)
+        {
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_IsmProxy_UE::Request_EnableDisable(Mutable,
+                FCk_Request_IsmProxy_EnableDisable{InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable},
+                {});
+        },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    // AddNumericRow/AddIntegerRow carry no per-row tooltip, so the caveat that would otherwise hang off
+    // the value editor gets its own dim note row instead of being lost.
+    Builder.AddRow(
+        FText::FromString(TEXT("Custom Data:")),
+        [](const FCk_Handle&)
+        { return FText::FromString(TEXT("post-setup writes only reach the GPU on Movable proxies")); },
+        CkStyle::TextDim());
+
+    Builder.AddIntegerRow(
+        FText::FromString(TEXT("  Index:")),
+        TAttribute<int32>::CreateLambda([CustomDataIndex]() { return *CustomDataIndex; }),
+        [CustomDataIndex](int32 InIndex) { *CustomDataIndex = InIndex; },
+        0,
+        TOptional<int32>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("  Value:")),
+        TAttribute<float>::CreateLambda([CapturedProxy, CustomDataIndex]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy)) { return 0.0f; }
+
+            const auto Data = UCk_Utils_IsmProxy_UE::Get_CustomInstanceData(CapturedProxy);
+            return Data.IsValidIndex(*CustomDataIndex) ? Data[*CustomDataIndex] : 0.0f;
+        }),
+        [CapturedProxy, CustomDataIndex](float InValue)
+        {
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_IsmProxy_UE::Request_SetCustomInstanceDataValue(Mutable,
+                FCk_Request_IsmProxy_SetCustomInstanceDataValue{*CustomDataIndex, InValue}, {});
+        },
+        TOptional<float>{},
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
 
     return Builder.Build(Entity, FString());
 }

@@ -2,7 +2,7 @@
 
 #include "CkEcsDebugGraph.h"
 #include "CkEcsDebugNode_Entity.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
 

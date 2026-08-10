@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CkEcs/Handle/CkHandle.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"

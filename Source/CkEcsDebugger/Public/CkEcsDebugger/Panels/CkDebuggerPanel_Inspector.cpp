@@ -4,7 +4,7 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"

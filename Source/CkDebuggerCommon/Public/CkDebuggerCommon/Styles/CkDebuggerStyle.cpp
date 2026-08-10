@@ -1,8 +1,9 @@
 #include "CkDebuggerStyle.h"
 
 #include "CkCore/IO/CkIO_Utils.h"
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
-#include "CkObjective/Objective/CkObjective_Fragment_Data.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
@@ -10,26 +11,18 @@
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
-#include "Interfaces/IPluginManager.h"
+
+// ====================================================================================================================
 
 TSharedPtr<FSlateStyleSet> FCkDebuggerStyle::StyleInstance = nullptr;
 TArray<FName> FCkDebuggerStyle::GeneralIconPool = {};
 
-// -----------------------------------------------------------------------------------------------------------------
-auto FCkDebuggerStyle::Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor
-{
-    switch (InStatus)
-    {
-        case ECk_ObjectiveStatus::NotStarted: return CkStyle::Status_NotStarted();
-        case ECk_ObjectiveStatus::Active:     return CkStyle::Status_Active();
-        case ECk_ObjectiveStatus::Completed:  return CkStyle::Status_Completed();
-        case ECk_ObjectiveStatus::Failed:     return CkStyle::Status_Failed();
-        default:                              return CkStyle::Text();
-    }
-}
+// ====================================================================================================================
 
-// -----------------------------------------------------------------------------------------------------------------
-auto FCkDebuggerStyle::Initialize() -> void
+auto
+    FCkDebuggerStyle::
+    Initialize()
+    -> void
 {
     if (NOT StyleInstance.IsValid())
     {
@@ -38,7 +31,10 @@ auto FCkDebuggerStyle::Initialize() -> void
     }
 }
 
-auto FCkDebuggerStyle::Shutdown() -> void
+auto
+    FCkDebuggerStyle::
+    Shutdown()
+    -> void
 {
     if (StyleInstance.IsValid())
     {
@@ -47,24 +43,37 @@ auto FCkDebuggerStyle::Shutdown() -> void
     }
 }
 
-auto FCkDebuggerStyle::Get() -> const ISlateStyle&
+auto
+    FCkDebuggerStyle::
+    Get()
+    -> const ISlateStyle&
 {
     return *StyleInstance;
 }
 
-auto FCkDebuggerStyle::GetStyleSetName() -> FName
+auto
+    FCkDebuggerStyle::
+    GetStyleSetName()
+    -> FName
 {
     static const FName StyleSetName(TEXT("CkDebuggerStyle"));
     return StyleSetName;
 }
 
-auto FCkDebuggerStyle::Create() -> TSharedRef<FSlateStyleSet>
+// ====================================================================================================================
+
+auto
+    FCkDebuggerStyle::
+    Create()
+    -> TSharedRef<FSlateStyleSet>
 {
     auto Style = MakeShared<FSlateStyleSet>(GetStyleSetName());
 
     // Content root points at the plugin's Resources/ so icon brushes can resolve
     // Icons/*.svg. Get_PluginsDir joins the plugin FOLDER name (CkGameplayDebugger),
     // not the plugin name (CkDebugger) — and avoids a direct Projects-module dep.
+    // This is a path-only lookup, so it resolves identically from any module in
+    // the plugin; the promotion out of CkEcsDebugger does not move the root.
     Style->SetContentRoot(UCk_Utils_IO_UE::Get_PluginsDir(TEXT("CkGameplayDebugger")) / TEXT("Resources"));
 
     CreateBrushes(Style);
@@ -75,7 +84,11 @@ auto FCkDebuggerStyle::Create() -> TSharedRef<FSlateStyleSet>
     return Style;
 }
 
-auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
+auto
+    FCkDebuggerStyle::
+    CreateBrushes(
+        TSharedRef<FSlateStyleSet> InStyle)
+    -> void
 {
     InStyle->Set("CkDebugger.Background.Dark", new FSlateColorBrush(CkStyle::BgRoot()));
     InStyle->Set("CkDebugger.Background.Medium", new FSlateColorBrush(CkStyle::Bg1()));
@@ -125,7 +138,11 @@ auto FCkDebuggerStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
     }
 }
 
-auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
+auto
+    FCkDebuggerStyle::
+    CreateIconBrushes(
+        TSharedRef<FSlateStyleSet> InStyle)
+    -> void
 {
     // Everything under Resources/Icons registers as "CkDebugger.Icon.<BaseName>" —
     // monochrome white SVGs, tinted at draw time via SImage.ColorAndOpacity. Resolve
@@ -156,12 +173,19 @@ auto FCkDebuggerStyle::CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> 
     RegisterDir(IconsDir / TEXT("General"), &GeneralIconPool);
 }
 
-auto FCkDebuggerStyle::Get_GeneralIconPool() -> const TArray<FName>&
+auto
+    FCkDebuggerStyle::
+    Get_GeneralIconPool()
+    -> const TArray<FName>&
 {
     return GeneralIconPool;
 }
 
-auto FCkDebuggerStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*
+auto
+    FCkDebuggerStyle::
+    Get_IconBrush(
+        FName InIconId)
+    -> const FSlateBrush*
 {
     if (InIconId.IsNone() || NOT StyleInstance.IsValid())
     { return nullptr; }
@@ -170,7 +194,11 @@ auto FCkDebuggerStyle::Get_IconBrush(FName InIconId) -> const FSlateBrush*
         FName{FString{TEXT("CkDebugger.Icon.")} + InIconId.ToString()});
 }
 
-auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void
+auto
+    FCkDebuggerStyle::
+    CreateColors(
+        TSharedRef<FSlateStyleSet> InStyle)
+    -> void
 {
     InStyle->Set("CkDebugger.Color.Text.Primary", CkStyle::Text());
     InStyle->Set("CkDebugger.Color.Text.Secondary", CkStyle::TextDim());
@@ -190,7 +218,11 @@ auto FCkDebuggerStyle::CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void
     InStyle->Set("CkDebugger.Color.Success", CkStyle::Ok());
 }
 
-auto FCkDebuggerStyle::CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void
+auto
+    FCkDebuggerStyle::
+    CreateTextStyles(
+        TSharedRef<FSlateStyleSet> InStyle)
+    -> void
 {
     const auto DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", 9);
     const auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", 9);
@@ -222,3 +254,5 @@ auto FCkDebuggerStyle::CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> v
         .SetFont(DefaultFont)
         .SetColorAndOpacity(CkStyle::TextMute()));
 }
+
+// ====================================================================================================================

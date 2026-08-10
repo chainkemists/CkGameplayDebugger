@@ -1,6 +1,7 @@
 #include "CkDebuggerLauncherStyle.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "HAL/FileManager.h"
@@ -66,10 +67,24 @@ auto FCkDebuggerLauncherStyle::Create() -> TSharedRef<FSlateStyleSet>
     return Style;
 }
 
+auto FCkDebuggerLauncherStyle::Get_BackgroundBrush() -> const FSlateBrush*
+{
+    // Suite-shared: same BgRoot fill the rest of the debuggers use. Owned by FCkDebuggerStyle
+    // so a palette change lands everywhere at once.
+    return FCkDebuggerStyle::Get().GetBrush(TEXT("CkDebugger.Background.Dark"));
+}
+
+auto FCkDebuggerLauncherStyle::Get_SeparatorBrush() -> const FSlateBrush*
+{
+    return FCkDebuggerStyle::Get().GetBrush(TEXT("CkDebugger.Separator"));
+}
+
 auto FCkDebuggerLauncherStyle::CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void
 {
-    InStyle->Set("CkDebuggerLauncher.Background", new FSlateColorBrush{CkStyle::BgRoot()});
-    InStyle->Set("CkDebuggerLauncher.Separator", new FSlateColorBrush{CkStyle::Border()});
+    // Background + Separator are NOT registered here — they resolve from the promoted
+    // suite style set (see Get_BackgroundBrush / Get_SeparatorBrush). Everything below is
+    // genuinely launcher-specific: the rail's active marker, the tool button, and the two
+    // rail text styles (Bold 7 section caps / foreground-driven tool label).
     InStyle->Set("CkDebuggerLauncher.ActiveMarker", new FSlateRoundedBoxBrush{CkStyle::Selection(), 2.0f});
 
     InStyle->Set("CkDebuggerLauncher.ToolButton", FButtonStyle{}

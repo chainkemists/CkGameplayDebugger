@@ -3,7 +3,6 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 #include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
@@ -49,7 +48,8 @@ static FAutoConsoleCommand CmdEcsDebugger(
 
 auto FCkEcsDebuggerModule::StartupModule() -> void
 {
-    FCkDebuggerStyle::Initialize();
+    // FCkDebuggerStyle now lives in (and is initialized by) CkDebuggerCommon — the whole
+    // suite shares one style set, so a feature module must never Initialize/Shutdown it.
 
     // Feature-id → marker-fragment table for the CkEcs debug feature-flag cache.
     // Registration is inert until a registry is enabled (world observation).
@@ -205,8 +205,6 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
     // reload, where OnEnginePreExit doesn't fire).
     DebuggerWindow.Reset();
     DebuggerTab.Reset();
-
-    FCkDebuggerStyle::Shutdown();
 }
 
 auto FCkEcsDebuggerModule::Get() -> FCkEcsDebuggerModule&

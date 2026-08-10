@@ -1,6 +1,8 @@
 #include "SCkDebug_Card.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_GlowWrap.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
@@ -26,21 +28,25 @@ auto
         .GlowColor(Glow)
         [
             SNew(SBorder)
-            .BorderImage(CkStyle::GetRoundedBrush_Large())
+            .BorderImage_Static(&ck::debug_axes::Get_CardBrush)
             .BorderBackgroundColor_Lambda([Selected]
             {
                 if (Selected.Get(false))
                 {
-                    auto Border = CkStyle::Accent(); Border.A = 0.65f;
-                    return FSlateColor{Border};
+                    return FSlateColor{CkStyle::OverlayOf(CkStyle::Accent(), CkStyle::AlphaStrong())};
                 }
                 return FSlateColor{CkStyle::Border()};
             })
-            .Padding(FMargin{1.0f})
+            .Padding_Lambda([]{ return FMargin{CkStyle::RingWidth()}; })
             [
+                // The card body is a depth-2 surface: Layered keeps today's Bg2 fill, Flat pulls it
+                // up to the shared tier, Outlined turns it into a ring.
                 SNew(SBorder)
-                .BorderImage(CkStyle::GetRoundedBrush_Large())
-                .BorderBackgroundColor(FSlateColor{CkStyle::Bg2()})
+                .BorderImage_Static(&ck::debug_axes::Get_CardBrush)
+                .BorderBackgroundColor_Lambda([]
+                {
+                    return FSlateColor{ck::debug_axes::Get_SurfaceTint(2)};
+                })
                 .Padding(FMargin{0.0f})
                 [
                     SNew(SHorizontalBox)

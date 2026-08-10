@@ -25,7 +25,8 @@ public:
     // Bumped by any axis add / remove / reorder in CkDebuggerStyleSelection.h.
     // v2: + EditControlStyle (interactive inspector rows).
     // v3: + TreeComplexity (ECS entity tree declutter dial).
-    static constexpr int32 CurrentSchemaVersion = 3;
+    // v4: + IconTreatment, TextScale, EntityRefStyle, CornerStyle, SurfaceElevation, GraphNodeStyle, RowBanding.
+    static constexpr int32 CurrentSchemaVersion = 4;
 
 public:
     UCkDebuggerStyleSettings();

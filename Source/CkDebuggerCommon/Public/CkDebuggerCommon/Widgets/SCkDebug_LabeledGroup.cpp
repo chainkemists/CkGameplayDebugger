@@ -2,6 +2,8 @@
 
 #include "SCkDebug_CategoryDot.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
@@ -65,7 +67,7 @@ auto
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Border()))
-		.Padding(FMargin(1.0f))
+		.Padding_Lambda([]{ return FMargin{CkStyle::RingWidth()}; })
 		[
 			SNew(SVerticalBox)
 
@@ -74,8 +76,8 @@ auto
 			.AutoHeight()
 			[
 				SNew(SBorder)
-				.BorderImage(CkStyle::GetFilledBrush())
-				.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+				.BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
+				.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
 				.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					Header
@@ -87,8 +89,8 @@ auto
 			.FillHeight(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkStyle::GetFilledBrush())
-				.BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+				.BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(2); })
+				.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(2)}; })
 				.Padding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS))
 				[
 					SAssignNew(_Body, SVerticalBox)

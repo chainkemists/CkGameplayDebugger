@@ -182,6 +182,109 @@ enum class ECkDebugAxis_TreeComplexity : uint8
     Full,
 };
 
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * The backdrop a glyph sits on. Plain is a bare glyph in its box — the shape every SCkDebug_Icon
+ * site ships with. Well and Ring both grow the widget by their own padding, which is why the
+ * default has to stay Plain for the layout to be unchanged.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_IconTreatment : uint8
+{
+    Plain,
+    Well,
+    Ring,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Global type-size multiplier applied on top of the CkStyle FontSize* roles: Normal x1.0,
+ * Small x0.875, Large x1.125. It composes with the palette's own font sizes rather than replacing
+ * them, so an Editor Preferences typography edit still moves everything.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_TextScale : uint8
+{
+    Normal,
+    Small,
+    Large,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Visual TREATMENT of SCkDebug_EntityRef — the box the reference is drawn in. Orthogonal to
+ * EntityIdStyle, which owns only what TEXT the reference composes.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_EntityRefStyle : uint8
+{
+    Flat,
+    Pill,
+    OutlinePill,
+    Monochrome,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Corner shape for every chip / badge / card surface, resolved through the registered brush
+ * selectors so nothing allocates per frame.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_CornerStyle : uint8
+{
+    Rounded,
+    Sharp,
+    Pill,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * How much tonal separation nested surfaces get. Layered walks the Bg ladder per depth (today).
+ * Flat collapses every nested tier onto one fill. Outlined drops the fills entirely and draws a
+ * 1px ring instead.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_SurfaceElevation : uint8
+{
+    Layered,
+    Flat,
+    Outlined,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * How a debug graph node presents itself: Card is today's bordered fill, Minimal thins the border
+ * and fades inactive nodes harder, Dense thickens the border and keeps inactive nodes readable so
+ * a crowded graph still parses.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_GraphNodeStyle : uint8
+{
+    Card,
+    Minimal,
+    Dense,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Row-to-row separation in list and tree surfaces. Zebra alternates a fill; Hairline draws a rule
+ * under each row at the SeparatorWeight thickness instead.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_RowBanding : uint8
+{
+    Off,
+    Zebra,
+    Hairline,
+};
+
 // ====================================================================================================================
 
 /**
@@ -254,6 +357,34 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
         meta = (ToolTip = "ECS entity tree declutter dial. Minimal folds technical rows harder and tightens the sibling-group threshold; Full turns folding and grouping off. Modulates the project's own tree settings — it never replaces them."))
     ECkDebugAxis_TreeComplexity TreeComplexity = ECkDebugAxis_TreeComplexity::Normal;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Backdrop behind every SCkDebug_Icon glyph: bare, a tinted well, or a thin ring."))
+    ECkDebugAxis_IconTreatment IconTreatment = ECkDebugAxis_IconTreatment::Plain;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Type-size multiplier applied on top of the palette's font-size roles: Normal x1.0, Small x0.875, Large x1.125."))
+    ECkDebugAxis_TextScale TextScale = ECkDebugAxis_TextScale::Normal;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Visual treatment of the entity reference pill. What TEXT it composes stays with Entity Id Style."))
+    ECkDebugAxis_EntityRefStyle EntityRefStyle = ECkDebugAxis_EntityRefStyle::Flat;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Corner shape for chips, badges, and cards."))
+    ECkDebugAxis_CornerStyle CornerStyle = ECkDebugAxis_CornerStyle::Rounded;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Tonal separation between nested surfaces: a background ladder per depth, one flat fill, or transparent fills with 1px rings."))
+    ECkDebugAxis_SurfaceElevation SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Border weight and inactive fade for debug graph nodes (state machine, GOAP)."))
+    ECkDebugAxis_GraphNodeStyle GraphNodeStyle = ECkDebugAxis_GraphNodeStyle::Card;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Row-to-row separation in list and tree surfaces: none, alternating fills, or a per-row rule."))
+    ECkDebugAxis_RowBanding RowBanding = ECkDebugAxis_RowBanding::Off;
 };
 
 // ====================================================================================================================

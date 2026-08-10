@@ -50,9 +50,11 @@ auto
 		.ContentPadding(FMargin(0.0f))
 		.OnClicked(this, &SCkDebug_InspectorPanel::OnHeaderClicked)
 		[
+			// The header strip is a depth-1 surface; the body deliberately keeps the engine's
+			// NoBorder so editor chrome shows through, which no elevation option overrides.
 			SNew(SBorder)
-			.BorderImage(CkStyle::GetFilledBrush())
-			.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+			.BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
+			.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
 			.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 			[
 				_HeaderRow.ToSharedRef()

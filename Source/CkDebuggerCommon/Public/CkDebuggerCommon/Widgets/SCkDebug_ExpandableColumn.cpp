@@ -84,8 +84,8 @@ auto
 			.Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkStyle::GetRoundedBrush())
-				.BorderBackgroundColor(FSlateColor(CkStyle::Bg3()))
+				.BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
+				.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(3)}; })
 				.Padding(FMargin(CkStyle::SpaceM, 1.0f))
 				[
 					SNew(STextBlock)
@@ -101,7 +101,7 @@ auto
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Border()))
-		.Padding(FMargin(1.0f))
+		.Padding_Lambda([]{ return FMargin{CkStyle::RingWidth()}; })
 		[
 			SNew(SVerticalBox)
 
@@ -115,8 +115,8 @@ auto
 				.OnClicked(this, &SCkDebug_ExpandableColumn::OnHeaderClicked)
 				[
 					SNew(SBorder)
-					.BorderImage(CkStyle::GetFilledBrush())
-					.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
+					.BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
+					.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
 					.Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
 					[
 						HeaderStack
@@ -129,8 +129,8 @@ auto
 			.FillHeight(1.0f)
 			[
 				SNew(SBorder)
-				.BorderImage(CkStyle::GetFilledBrush())
-				.BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
+				.BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(2); })
+				.BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(2)}; })
 				.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
 				[
 					SAssignNew(_BodySwitcher, SWidgetSwitcher)

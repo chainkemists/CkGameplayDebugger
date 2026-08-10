@@ -44,6 +44,34 @@ public:
      */
     static auto Get_GeneralIconPool() -> const TArray<FName>&;
 
+    /**
+     * Shape variants for the CornerStyle axis. Rounded resolves through CkStyle's own rounded
+     * family; only the square and pill ends live here, registered once (never allocated per frame).
+     * Both are WHITE — tint at the use site like every other brush in this set.
+     */
+    static auto Get_SquareBrush() -> const FSlateBrush*;
+    static auto Get_PillBrush()   -> const FSlateBrush*;
+
+    /**
+     * Transparent-fill, 1px-ring counterparts of the three corner shapes — the SurfaceElevation
+     * axis' Outlined option and the EntityRef axis' OutlinePill. The ring is white, so the widget's
+     * BorderBackgroundColor picks the ring color; the fill stays transparent whatever tint is
+     * applied, which is what lets one Slate tint express both a fill and a ring.
+     */
+    static auto Get_SurfaceOutlineBrush() -> const FSlateBrush*;
+    static auto Get_RoundedOutlineBrush() -> const FSlateBrush*;
+    static auto Get_PillOutlineBrush()    -> const FSlateBrush*;
+
+    /** The tinted backdrop and the ring behind an icon glyph (IconTreatment Well / Ring). */
+    static auto Get_IconWellBrush() -> const FSlateBrush*;
+    static auto Get_IconRingBrush() -> const FSlateBrush*;
+
+    /** Alternating row fills for the RowBanding axis' Zebra option. */
+    static auto Get_RowBandBrush(bool InIsOddRow) -> const FSlateBrush*;
+
+    /** The 1px rule brush — the separator, and RowBanding's Hairline option. */
+    static auto Get_SeparatorBrush() -> const FSlateBrush*;
+
     static constexpr float Padding_Small = 4.0f;
     static constexpr float Padding_Medium = 8.0f;
     static constexpr float Padding_Large = 16.0f;
@@ -62,7 +90,6 @@ private:
     static auto Create() -> TSharedRef<FSlateStyleSet>;
     static auto CreateBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateIconBrushes(TSharedRef<FSlateStyleSet> InStyle) -> void;
-    static auto CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void;
 };
 

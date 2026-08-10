@@ -6,6 +6,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
@@ -602,30 +604,9 @@ auto
 
     const auto AddCheckRow = [&Rows](const FString& InVerdict, ECk_Tone InTone, const FString& InText)
     {
-        const auto Color = [InTone]() -> FLinearColor
-        {
-            switch (InTone)
-            {
-                case ECk_Tone::Ok:   return CkStyle::Ok();
-                case ECk_Tone::Err:  return CkStyle::Err();
-                case ECk_Tone::Warn: return CkStyle::Warn();
-                default:             return CkStyle::TextDim();
-            }
-        }();
-        const auto DimColor = [InTone]() -> FLinearColor
-        {
-            switch (InTone)
-            {
-                case ECk_Tone::Ok:   return CkStyle::OkDim();
-                case ECk_Tone::Err:  return CkStyle::ErrDim();
-                case ECk_Tone::Warn: return CkStyle::WarnDim();
-                default:             return CkStyle::Bg3();
-            }
-        }();
-
         Rows->AddSlot()
             .AutoHeight()
-            .Padding(FMargin(0.0f, 1.0f))
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
 
@@ -636,18 +617,10 @@ auto
                         [
                             SNew(SBox)
                                 .MinDesiredWidth(44.0f)
+                                .HAlign(HAlign_Center)
                                 [
-                                    SNew(SBorder)
-                                        .BorderImage(CkStyle::GetFilledBrush())
-                                        .BorderBackgroundColor(FSlateColor(DimColor))
-                                        .Padding(FMargin(CkStyle::SpaceS, 0.0f))
-                                        .HAlign(HAlign_Center)
-                                        [
-                                            SNew(STextBlock)
-                                                .Text(FText::FromString(InVerdict))
-                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
-                                                .ColorAndOpacity(FSlateColor(Color))
-                                        ]
+                                    ck_goap_debugger_axes::Make_Chip(
+                                        FText::FromString(InVerdict), InTone)
                                 ]
                         ]
 

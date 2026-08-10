@@ -11,6 +11,8 @@
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -386,7 +388,7 @@ auto
     const auto PlannerHandle = Row.PlannerHandle;
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(FMargin(0.0f, 1.0f))
+        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         [
             SNew(SBorder)
                 .BorderImage(CkStyle::GetRoundedBrush())

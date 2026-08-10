@@ -80,6 +80,11 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK UI Debugger")); }
 
+protected:
+    // Layer slots + history rows are built imperatively, so anything they read at build time (row
+    // banding, palette roles) re-runs through the structural rebuild on the next gated tick.
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     // ---- Event Binding ----
 

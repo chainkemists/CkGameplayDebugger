@@ -83,6 +83,11 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Enhanced Input Debugger")); }
 
+protected:
+    // Context / action rows are built imperatively, so a style revision re-runs them through the
+    // existing signature-driven rebuild instead of mutating the tree from the revision poll.
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     // ---- Construction ----
 

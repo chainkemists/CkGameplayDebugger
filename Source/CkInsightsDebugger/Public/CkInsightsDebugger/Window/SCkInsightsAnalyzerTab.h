@@ -49,6 +49,8 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     virtual ~SCkInsightsAnalyzerTab() override;
 
+    virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
+
 private:
 
     // ---- Results mode ----
@@ -85,6 +87,15 @@ private:
     auto DoRebuildWorstFrameRows() -> void;
     auto DoRebuildCategoryAvgRows() -> void;
     auto DoRebuildWaitRows() -> void;
+    auto DoRebuildAllSidePanelRows() -> void;
+
+    // ---- Style live-apply ----
+
+    // Mirrors SCkDebugger_WindowBase::Poll_StyleRevision — this tab is a plain SCompoundWidget, so it
+    // cannot inherit the suite watcher and keeps its own transient revision baseline.
+    auto Poll_StyleRevision() -> void;
+
+    uint32 _LastSeenStyleRevision = 0;
 
     // ---- Button Handlers ----
 

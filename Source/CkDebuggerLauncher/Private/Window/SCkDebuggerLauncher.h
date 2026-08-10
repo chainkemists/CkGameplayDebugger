@@ -28,9 +28,16 @@ private:
     auto Build_CategoryHeader(ECkDebuggerToolCategory InCategory, bool InAddSeparator) -> TSharedRef<SWidget>;
     auto Get_LabelVisibility() const -> EVisibility;
 
+    // The rail is a plain SCompoundWidget — no window id, no refresh gate — so it carries its own
+    // copy of SCkDebugger_WindowBase's style-revision watch instead of inheriting one.
+    auto Poll_StyleRevision() -> void;
+
     static auto Get_CategoryDisplayName(ECkDebuggerToolCategory InCategory) -> FText;
 
     TSharedPtr<SVerticalBox> _ToolList;
     FDelegateHandle _RegistryChangedHandle;
     bool _ShowLabels = false;
+
+    // Transient, like the revision itself — resets with the widget, never serialized.
+    uint32 _LastSeenStyleRevision = 0;
 };

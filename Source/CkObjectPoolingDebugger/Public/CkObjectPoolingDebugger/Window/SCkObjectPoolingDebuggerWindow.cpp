@@ -35,7 +35,8 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -58,8 +59,35 @@ namespace ck_object_pooling_debugger_window
     static constexpr auto Col_Trend     = 0.09f;
     static constexpr auto Col_Num       = 0.05f;
 
-    static auto MonoFont(int32 InSize) -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Mono", InSize); }
-    static auto BoldFont(int32 InSize) -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Bold", InSize); }
+    // TextScale-aware counterparts of the engine's default font styles. Bound through .Font_Static
+    // at the call sites so a Style Lab flip resizes text that was built long before the flip.
+    static auto MonoFont(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", InSize); }
+    static auto BoldFont(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", InSize); }
+    static auto RegularFont(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", InSize); }
+
+    static auto Font_MonoSmall()    -> FSlateFontInfo { return MonoFont(CkStyle::FontSizeSmall()); }
+    static auto Font_MonoBody()     -> FSlateFontInfo { return MonoFont(CkStyle::FontSizeBody()); }
+    static auto Font_MonoMicro()    -> FSlateFontInfo { return MonoFont(CkStyle::FontSizeMicro()); }
+    static auto Font_BoldMicro()    -> FSlateFontInfo { return BoldFont(CkStyle::FontSizeMicro()); }
+    static auto Font_BoldBody()     -> FSlateFontInfo { return BoldFont(CkStyle::FontSizeBody()); }
+    static auto Font_RegularSmall() -> FSlateFontInfo { return RegularFont(CkStyle::FontSizeSmall()); }
+
+    // STableRow::Padding is a Slate attribute, so RowDensity lands live on every generated row.
+    static auto Get_TableRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{0.0f});
+    }
+
+    // RowBanding for the pool list. Zebra paints the row full-bleed fill; Hairline leaves the fill
+    // empty and is drawn instead as a rule along the row bottom edge (see the row body below), so
+    // the two options never double up. Off draws neither, which is byte-identical to the un-banded
+    // row this list shipped with.
+    static auto Get_RowBandingFill(int32 InRowIndex) -> const FSlateBrush*
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? ck::debug_axes::Get_RowBandingBrush(InRowIndex)
+            : FStyleDefaults::GetNoBrush();
+    }
 
     static auto Get_HitRateColor(const FCkObjectPoolingDebugger_PoolRow& InRow) -> FLinearColor
     {
@@ -227,9 +255,25 @@ auto
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [
-                            SNew(SSeparator)
-                                .Orientation(Orient_Vertical)
-                                .Thickness(ck_object_pooling_debugger_window::Get_SeparatorThickness())
+                            // SSeparator::Thickness is a construction-time argument with no setter, so
+                            // SeparatorWeight is carried by an SBox width override; None collapses the box
+                            // so its slot goes with it instead of reserving a zero-width rule.
+                            SNew(SBox)
+                            .WidthOverride_Lambda([]() -> FOptionalSize
+                            {
+                                return FOptionalSize{ck_object_pooling_debugger_window::Get_SeparatorThickness()};
+                            })
+                            .Visibility_Lambda([]()
+                            {
+                                return ck_object_pooling_debugger_window::Get_SeparatorThickness() > 0.0f
+                                    ? EVisibility::Visible
+                                    : EVisibility::Collapsed;
+                            })
+                            [
+                                SNew(SSeparator)
+                                    .Orientation(Orient_Vertical)
+                                    .Thickness(1.0f)
+                            ]
                         ]
 
                     + SHorizontalBox::Slot().AutoWidth()
@@ -280,7 +324,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
                 [
                     SAssignNew(_PinnedUniqueText, STextBlock)
-                        .Font(ck_object_pooling_debugger_window::MonoFont(CkStyle::FontSizeSmall()))
+                        .Font_Static(&ck_object_pooling_debugger_window::Font_MonoSmall)
                         .ColorAndOpacity(CkStyle::TextDim())
                 ]
 
@@ -312,7 +356,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Export JSON")))
-                                .Font(ck_object_pooling_debugger_window::BoldFont(CkStyle::FontSizeMicro()))
+                                .Font_Static(&ck_object_pooling_debugger_window::Font_BoldMicro)
                                 .ColorAndOpacity(CkStyle::Accent())
                         ]
                 ]
@@ -395,7 +439,7 @@ auto
                                 + SHorizontalBox::Slot().AutoWidth()
                                     [
                                         SAssignNew(_HeroNowText, STextBlock)
-                                            .Font(ck_object_pooling_debugger_window::MonoFont(CkStyle::FontSizeBody()))
+                                            .Font_Static(&ck_object_pooling_debugger_window::Font_MonoBody)
                                             .ColorAndOpacity(CkStyle::Info())
                                     ]
                             ]
@@ -433,7 +477,7 @@ auto
         .OnClicked(this, &SCkObjectPoolingDebuggerWindow::OnSortColumnClicked, InColumn)
         [
             SNew(STextBlock)
-                .Font(ck_object_pooling_debugger_window::BoldFont(CkStyle::FontSizeMicro()))
+                .Font_Static(&ck_object_pooling_debugger_window::Font_BoldMicro)
                 .ColorAndOpacity_Lambda([this, InColumn]() -> FSlateColor
                 {
                     return _SortColumn == InColumn ? CkStyle::Accent() : CkStyle::TextDim();
@@ -458,7 +502,7 @@ auto
     {
         return SNew(STextBlock)
             .Text(FText::FromString(InLabel))
-            .Font(BoldFont(CkStyle::FontSizeMicro()))
+            .Font_Static(&Font_BoldMicro)
             .ColorAndOpacity(CkStyle::TextDim())
             .Margin(FMargin(CkStyle::SpaceS, 2.0f));
     };
@@ -504,7 +548,7 @@ auto
                                   TFunction<FLinearColor(const FCkObjectPoolingDebugger_PoolRow&)> InColor) -> TSharedRef<SWidget>
     {
         return SNew(STextBlock)
-            .Font(MonoFont(CkStyle::FontSizeSmall()))
+            .Font_Static(&Font_MonoSmall)
             .Margin(FMargin(CkStyle::SpaceS, 2.0f))
             .Justification(ETextJustify::Right)
             .Text_Lambda([InItem, InGetter]() { return InGetter(*InItem); })
@@ -514,10 +558,19 @@ auto
     const auto PlainColor = [](const FCkObjectPoolingDebugger_PoolRow&) { return CkStyle::Text(); };
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_TableRowPadding))
         [
+            SNew(SVerticalBox)
+
+            + SVerticalBox::Slot().FillHeight(1.0f)
+            [
             SNew(SBorder)
-            .BorderImage(FAppStyle::GetBrush("NoBorder"))
+            // The row index is read at paint time rather than captured: the list re-sorts without
+            // regenerating row widgets, so a captured index would band the wrong rows.
+            .BorderImage_Lambda([this, InItem]() -> const FSlateBrush*
+            {
+                return Get_RowBandingFill(_VisibleItems.IndexOfByKey(InItem));
+            })
             .ColorAndOpacity_Lambda([this, InItem]() -> FLinearColor
             {
                 if (_HighlightText.IsEmpty() || Matches(*InItem, _HighlightText))
@@ -535,7 +588,7 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(InItem->DisplayClassName))
-                                    .Font(MonoFont(CkStyle::FontSizeSmall()))
+                                    .Font_Static(&Font_MonoSmall)
                                     .ColorAndOpacity(CkStyle::EntityId())
                                     .Margin(FMargin(CkStyle::SpaceS, 2.0f))
                             ]
@@ -571,7 +624,7 @@ auto
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
                             [
                                 SNew(STextBlock)
-                                    .Font(MonoFont(CkStyle::FontSizeMicro()))
+                                    .Font_Static(&Font_MonoMicro)
                                     .ColorAndOpacity(CkStyle::TextMute())
                                     .Text_Lambda([InItem]()
                                     {
@@ -623,6 +676,29 @@ auto
                                       : FText::FromString(TEXT("—"));
                               },
                               [](const auto& R) { return R.NumPrewarmRemaining > 0 ? CkStyle::Warn() : CkStyle::TextMute(); }) ]
+            ]
+            ]
+
+            + SVerticalBox::Slot().AutoHeight()
+            [
+                // RowBanding Hairline: a rule on the row bottom edge at the axis thickness, which
+                // defers to SeparatorWeight — zero collapses the slot entirely.
+                SNew(SBox)
+                .HeightOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+                })
+                .Visibility_Lambda([]()
+                {
+                    return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                        ? EVisibility::Visible
+                        : EVisibility::Collapsed;
+                })
+                [
+                    SNew(SImage)
+                    .Image(CkStyle::GetFilledBrush())
+                    .ColorAndOpacity(FSlateColor(CkStyle::Border()))
+                ]
             ]
         ];
 }
@@ -681,7 +757,7 @@ auto
                 + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, 0.0f)
                     [
                         SAssignNew(_SelectedNameText, STextBlock)
-                            .Font(BoldFont(CkStyle::FontSizeBody()))
+                            .Font_Static(&Font_BoldBody)
                             .ColorAndOpacity(CkStyle::EntityId())
                             .Text(FText::FromString(TEXT("Select a pool")))
                     ]
@@ -689,7 +765,7 @@ auto
                 + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 2.0f, CkStyle::SpaceM, CkStyle::SpaceM)
                     [
                         SAssignNew(_SelectedSubText, STextBlock)
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+                            .Font_Static(&Font_RegularSmall)
                             .ColorAndOpacity(CkStyle::TextMute())
                             .Text(FText::FromString(TEXT("click a row to inspect")))
                     ]
@@ -713,7 +789,7 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("■ in use")))
-                                                    .Font(MonoFont(CkStyle::FontSizeMicro()))
+                                                    .Font_Static(&Font_MonoMicro)
                                                     .ColorAndOpacity(CkStyle::Info())
                                             ]
 
@@ -721,14 +797,14 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("■ live")))
-                                                    .Font(MonoFont(CkStyle::FontSizeMicro()))
+                                                    .Font_Static(&Font_MonoMicro)
                                                     .ColorAndOpacity(CkStyle::OverlayOf(CkStyle::Ok(), 0.7f))
                                             ]
 
                                         + SHorizontalBox::Slot().AutoWidth()
                                             [
                                                 SNew(STextBlock)
-                                                    .Font(MonoFont(CkStyle::FontSizeMicro()))
+                                                    .Font_Static(&Font_MonoMicro)
                                                     .ColorAndOpacity(CkStyle::Accent())
                                                     .Text_Lambda([this]()
                                                     {
@@ -852,7 +928,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth()
                 [
                     SAssignNew(_GatherMsText, STextBlock)
-                        .Font(MonoFont(CkStyle::FontSizeMicro()))
+                        .Font_Static(&Font_MonoMicro)
                         .ColorAndOpacity(CkStyle::TextMute())
                 ]
 
@@ -861,7 +937,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth()
                 [
                     SAssignNew(_SortDescText, STextBlock)
-                        .Font(MonoFont(CkStyle::FontSizeMicro()))
+                        .Font_Static(&Font_MonoMicro)
                         .ColorAndOpacity(CkStyle::TextMute())
                 ]
         ];
@@ -1189,7 +1265,7 @@ auto
 {
     using namespace ck_object_pooling_debugger_window;
 
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }

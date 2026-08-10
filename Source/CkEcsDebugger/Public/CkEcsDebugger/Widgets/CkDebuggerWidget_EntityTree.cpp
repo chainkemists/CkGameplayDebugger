@@ -111,8 +111,88 @@ namespace ck_debugger_entity_tree
                         : EQueryNetMode::None;
         Context.EntityId = static_cast<uint32>(InNode.Entity.Get_Entity().Get_ID());
         Context.ArchetypeName = InNode.ArchetypeKey.ToLower();
-        Context.DisplayName = InNode.CachedDebugName;
+
+        // A derived-name row has no real name to search, and the raw handle dump the fallback
+        // used to produce is not what the user is looking at. Match what the row RENDERS, so
+        // typing "Timer" finds the nameless timer-carrying rows too.
+        Context.DisplayName = InNode.HasRealName ? InNode.CachedDebugName : InNode.DerivedName;
         return Context;
+    }
+
+    // ---- Derived names (P4) -------------------------------------------------
+    // A nameless entity's row used to read as the handle's own ToString dump. Synthesize a label
+    // out of what the entity IS instead, using the classification/rollup data the tree already
+    // computes. Presentation only — classification is never consulted for anything but reading.
+
+    // ASCII on purpose (decorated glyphs render as tofu boxes in the editor font). The marker is
+    // half the signal that this is NOT a name; the muted text colour is the other half.
+    constexpr auto DerivedNameMarker = TEXT("~");
+
+    // How many features a derived label spells out before it summarises the remainder as "+N".
+    constexpr auto MaxDerivedFeatures = 3;
+
+    static auto Derive_NameBody(const FCkEntityTreeNode& InNode, bool InHasRegisteredArchetype) -> FString
+    {
+        // A registered archetype is the strongest available statement of what the entity is.
+        if (InHasRegisteredArchetype && NOT InNode.ArchetypeKey.IsEmpty())
+        { return InNode.ArchetypeKey; }
+
+        // Internals are single-feature by definition (classification §3.1) — that feature IS
+        // the identity of the row.
+        if (InNode.IsInternal && NOT InNode.InternalFeatureId.IsNone())
+        { return InNode.InternalFeatureId.ToString(); }
+
+        auto Tokens = TArray<FString>{};
+        auto Omitted = 0;
+
+        // Badge order, so the label and the badge strip tell the same story left to right.
+        for (const auto& [FeatureId, Bit] : Get_BadgeFeatures())
+        {
+            if ((InNode.OwnBits & (uint64{1} << Bit)) == 0)
+            { continue; }
+
+            if (Tokens.Num() < MaxDerivedFeatures)
+            { Tokens.Add(FeatureId.ToString()); }
+            else
+            { ++Omitted; }
+        }
+
+        if (NOT Tokens.IsEmpty())
+        {
+            auto Body = FString::Join(Tokens, TEXT("+"));
+
+            if (Omitted > 0)
+            { Body += ck::Format_UE(TEXT("+{}"), Omitted); }
+
+            return Body;
+        }
+
+        // No own features worth naming: what it CONTAINS is the only thing left that says
+        // anything. Ties break lexically so the label can't flicker between equal rollups.
+        auto Dominant = FName{};
+        auto DominantCount = 0;
+
+        for (const auto& [FeatureId, Count] : InNode.RollupCounts)
+        {
+            if (Count > DominantCount || (Count == DominantCount && FeatureId.Compare(Dominant) < 0))
+            {
+                Dominant = FeatureId;
+                DominantCount = Count;
+            }
+        }
+
+        if (NOT Dominant.IsNone())
+        { return ck::Format_UE(TEXT("{} host"), Dominant.ToString()); }
+
+        return FString{TEXT("Entity")};
+    }
+
+    static auto Derive_Name(const FCkEntityTreeNode& InNode, bool InHasRegisteredArchetype) -> FString
+    {
+        // The same strip patterns real names go through (Project Settings -> Ck -> Debugger), so a
+        // registered archetype name reads identically whether it arrived as a name or a fallback.
+        return FString{DerivedNameMarker} + ck::DebugNameClean::Get_CleanName(
+            Derive_NameBody(InNode, InHasRegisteredArchetype));
     }
 }
 
@@ -421,9 +501,15 @@ private:
         auto BadgeCount = 0;
         auto OverflowCount = 0;
 
+        // TreeComplexity modulates the strip's OWN budget: the surface still owns what "6 badges"
+        // means, the axis only owns the offset between levels. Overflow still renders as "+N", so
+        // a tighter cap summarises rather than silently drops.
+        const auto BadgeCap = ck::debug_axes::Tree_BadgeCap(
+            UCkDebuggerStyleSettings::Get_Selection(), ck_debugger_entity_tree::MaxBadges);
+
         const auto AddBadge = [&](const FName InFeatureId, const int32 InRollupCount) -> void
         {
-            if (BadgeCount >= ck_debugger_entity_tree::MaxBadges)
+            if (BadgeCount >= BadgeCap)
             {
                 ++OverflowCount;
                 return;
@@ -530,6 +616,11 @@ private:
         if (Node->HoistedChildCount > 0)
         { return CkStyle::TextMute(); }
 
+        // A DERIVED name is not a name. Muting it (plus the '~' marker the label carries) is what
+        // keeps "this entity is called X" and "this entity looks like an X" visually separable.
+        if (NOT Node->HasRealName)
+        { return CkStyle::TextMute(); }
+
         return CkStyle::Text();
     }
 
@@ -594,6 +685,11 @@ auto SCkDebuggerWidget_EntityTree::Construct(
         GroupThreshold = FMath::Max(2, Settings->SiblingGroupThreshold);
     }
 
+    // Seed the style-axis revision so the first gated Tick doesn't read an unrelated bump from
+    // earlier in the session as "TreeComplexity just changed".
+    if (const auto* StyleSettings = UCkDebuggerStyleSettings::Get())
+    { LastSeenStyleRevision = StyleSettings->Get_Revision(); }
+
     if (SelectionModel.IsValid())
     {
         SelectionModel->OnSelectionChanged.AddSP(this, &SCkDebuggerWidget_EntityTree::OnExternalSelectionChanged);
@@ -652,10 +748,31 @@ auto SCkDebuggerWidget_EntityTree::Tick(
     {
         TimeSinceLastRefresh = 0.0f;
 
+        // TreeComplexity is a STRUCTURAL axis — it modulates the fold/group values the
+        // presentation pass reads — so it needs the settings revision poll rather than a bound
+        // attribute. Consumed unconditionally: a refresh happening this interval already
+        // re-presents, and leaving the revision unread would re-fire the rebuild forever.
+        auto StyleChanged = false;
+        if (const auto* StyleSettings = UCkDebuggerStyleSettings::Get())
+        {
+            const auto Revision = StyleSettings->Get_Revision();
+            StyleChanged = Revision != LastSeenStyleRevision;
+            LastSeenStyleRevision = Revision;
+        }
+
         if (NeedsRefresh || (WorldModel.IsValid() && WorldModel->IsCacheDirty()))
         {
             RefreshTree();   // syncs the exclusion list as part of its body
             NeedsRefresh = false;
+        }
+        else if (StyleChanged)
+        {
+            // Presentation only: nodes keep their TSharedPtr identity, so selection and
+            // expansion survive the level change untouched — only PresentedChildren move.
+            RebuildPresentation();
+
+            if (TreeView.IsValid())
+            { TreeView->RequestTreeRefresh(); }
         }
         else if (FilterModel.IsValid() && FilterModel->Sync_ExclusionsFromSettings())
         {
@@ -896,9 +1013,31 @@ auto SCkDebuggerWidget_EntityTree::DoCreateNode(const FCk_Handle& InEntity) -> T
 
     // Names derive once here (spec §5.2 cached names) — routed through the shared
     // name-clean so the settings-driven strip patterns apply.
-    Node->CachedDebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity).ToString();
+    const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(InEntity);
+    Node->CachedDebugName = DebugName.ToString();
     Node->CachedCleanName = ck::DebugNameClean::Get_CleanName(Node->CachedDebugName);
     Node->CachedDisplayText = FText::FromString(Node->CachedCleanName);
+
+    // "No debug name" is not one condition but three, and only one of them is an empty string:
+    //   - no debug-name fragment      -> Get_DebugName falls back to the handle's OWN ToString,
+    //                                    which is how a nameless row ended up rendering a raw
+    //                                    handle dump. Detected by identity with that source.
+    //   - fragment present, name None -> renders the literal "None".
+    //   - handle debugging compiled out -> NAME_None.
+    // Public Utils only, so no CK_DISABLE_ECS_HANDLE_DEBUGGING guard leaks into debugger code.
+    // Node creation is incremental (new entities only), so the second format is not a hot path.
+    Node->HasRealName = NOT DebugName.IsNone()
+        && NOT Node->CachedDebugName.IsEmpty()
+        && Node->CachedDebugName != UCk_Utils_Handle_UE::Conv_HandleToString(InEntity);
+
+    if (NOT Node->HasRealName)
+    {
+        // Signature-free derivation until the first RecomputeNodeSignatures fills in the real one
+        // — the row must never render the handle dump, not even for one refresh interval.
+        constexpr auto NoRegisteredArchetype = false;
+        Node->DerivedName = ck_debugger_entity_tree::Derive_Name(*Node, NoRegisteredArchetype);
+        Node->CachedDisplayText = FText::FromString(Node->DerivedName);
+    }
 
     return Node;
 }
@@ -1100,14 +1239,18 @@ auto SCkDebuggerWidget_EntityTree::RecomputeNodeSignatures() -> void
             { Node->RollupBits |= uint64{1} << Bit; }
         }
 
+        auto HasRegisteredArchetype = false;
+
         if (ck::IsValid(Node->Entity))
         {
             // Registry-first archetype keying (spec §3.3): registered archetype beats
             // the inferred base-name + signature key.
             const auto RegisteredArchetype = ck::archetype_registry::TryGet_BestMatchName(Node->Entity);
-            Node->ArchetypeKey = RegisteredArchetype.IsNone()
-                ? ck::ecs_debugger_query::Get_InferredArchetypeKey(Node->CachedCleanName, Bits[Index])
-                : RegisteredArchetype.ToString();
+            HasRegisteredArchetype = NOT RegisteredArchetype.IsNone();
+
+            Node->ArchetypeKey = HasRegisteredArchetype
+                ? RegisteredArchetype.ToString()
+                : ck::ecs_debugger_query::Get_InferredArchetypeKey(Node->CachedCleanName, Bits[Index]);
 
             Node->NetRole = UCk_Utils_Net_UE::Get_EntityNetRole(Node->Entity);
         }
@@ -1115,6 +1258,16 @@ auto SCkDebuggerWidget_EntityTree::RecomputeNodeSignatures() -> void
         {
             Node->ArchetypeKey.Reset();
             Node->NetRole = ECk_Net_EntityNetRole::None;
+        }
+
+        // Derived name (P4) — recomputed here rather than at node creation because it reads the
+        // classification/rollup/archetype data this pass just produced. Real names always win, so
+        // a named node never enters this branch and its display text is untouched.
+        if (NOT Node->HasRealName)
+        {
+            Node->DerivedFromArchetype = HasRegisteredArchetype;
+            Node->DerivedName = ck_debugger_entity_tree::Derive_Name(*Node, HasRegisteredArchetype);
+            Node->CachedDisplayText = FText::FromString(Node->DerivedName);
         }
     }
 }
@@ -1280,6 +1433,18 @@ auto SCkDebuggerWidget_EntityTree::UpdateFilteredRootNodes() -> void
 
 auto SCkDebuggerWidget_EntityTree::RebuildPresentation() -> void
 {
+    // TreeComplexity resolves ONCE per pass, not per node: the settings CDO lookup is not free at
+    // thousands of nodes × 10 Hz. The axis MODULATES the project settings — those stay the base,
+    // and the Normal default resolves every value back to exactly what the project asked for.
+    const auto& StyleSelection = UCkDebuggerStyleSettings::Get_Selection();
+    const auto ThresholdMultiplier = ck::debug_axes::Tree_FoldThresholdMultiplier(StyleSelection);
+
+    EffectiveGroupThreshold = FMath::Max(2,
+        FMath::RoundToInt(static_cast<float>(GroupThreshold) * ThresholdMultiplier));
+    PresentsInternalRows = ck::debug_axes::Tree_ShowsInternalRows(StyleSelection);
+    GroupsSiblingRuns    = GroupSiblings && ck::debug_axes::Tree_GroupsSiblings(StyleSelection);
+    GroupsUnnamedRows    = ck::debug_axes::Tree_GroupsUnnamedRows(StyleSelection);
+
     MemberToGroup.Reset();
 
     FilteredRootNodes.Reset();
@@ -1292,6 +1457,25 @@ auto SCkDebuggerWidget_EntityTree::RebuildPresentation() -> void
     }
 }
 
+auto SCkDebuggerWidget_EntityTree::Get_GroupingKey(const FCkEntityTreeNode& InNode) const -> FString
+{
+    if (GroupsUnnamedRows)
+    {
+        // Technical noise coalesces by WHAT IT IS rather than by its exact archetype signature —
+        // twelve sibling timers under one owner read as one "Timer x12" row instead of twelve
+        // near-identical ones. Everything stays reachable inside the group row.
+        if (InNode.IsInternal && NOT InNode.InternalFeatureId.IsNone())
+        { return ck::Format_UE(TEXT("{}#internal"), InNode.InternalFeatureId.ToString()); }
+
+        // Derived-name rows too — but NOT the ones whose label came from a registered archetype,
+        // which already group correctly (and identically to their named siblings) by that key.
+        if (NOT InNode.HasRealName && NOT InNode.DerivedFromArchetype && NOT InNode.DerivedName.IsEmpty())
+        { return ck::Format_UE(TEXT("{}#derived"), InNode.DerivedName); }
+    }
+
+    return InNode.ArchetypeKey;
+}
+
 auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
     const TArray<TSharedPtr<FCkEntityTreeNode>>& InStructuralChildren,
     const TSharedPtr<FCkEntityTreeNode>& InOwner,
@@ -1299,8 +1483,14 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
 {
     // Folding never applies while a text filter or rail selection narrows the set —
     // a filter hit on an internal entity must stay reachable.
+    //
+    // The Full complexity level takes the fold pass out entirely (PresentsInternalRows): internals
+    // are composed as plain rows rather than folded and then revealed, so no ⊞ chip appears and
+    // nothing has to be clicked open. Every other level leaves the decision to the project's own
+    // FoldInternals setting.
     const auto NoActiveNarrowing = CurrentFilter.IsEmpty() && RailIncluded.IsEmpty();
-    const auto FoldActive = FoldInternals
+    const auto FoldsInternals = FoldInternals && NOT PresentsInternalRows;
+    const auto FoldActive = FoldsInternals
         && NoActiveNarrowing
         && InOwner.IsValid()
         && NOT InOwner->UnfoldInternalsOverride;
@@ -1316,7 +1506,7 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
         if (NOT Child.IsValid() || NOT Child->IsVisible)
         { continue; }
 
-        if (FoldInternals && NoActiveNarrowing && InOwner.IsValid() && Child->IsInternal)
+        if (FoldsInternals && NoActiveNarrowing && InOwner.IsValid() && Child->IsInternal)
         {
             // Counted even when the override shows them, so the chip can flip back.
             ++InOwner->FoldedInternalCount;
@@ -1328,34 +1518,44 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
         Candidates.Add(Child);
     }
 
-    if (NOT GroupSiblings || Candidates.Num() < GroupThreshold)
+    if (NOT GroupsSiblingRuns || Candidates.Num() < EffectiveGroupThreshold)
     {
         OutPresented.Append(Candidates);
         return;
     }
 
-    // Coalesce runs of same-archetype siblings (spec idea #6): keys at/over the
-    // threshold collapse into one stable synthetic group row, emitted at the first
-    // member's position.
+    // Coalesce runs of same-key siblings (spec idea #6): keys at/over the threshold collapse into
+    // one stable synthetic group row, emitted at the first member's position. WHAT the key is
+    // depends on the complexity level (Get_GroupingKey — archetype everywhere but Minimal), so it
+    // is resolved ONCE per candidate here: counting and emission can never disagree about a run.
+    auto KeyOf = TMap<const FCkEntityTreeNode*, FString>{};
+    KeyOf.Reserve(Candidates.Num());
+
     auto CountByKey = TMap<FString, int32>{};
     for (const auto& Candidate : Candidates)
     {
-        if (NOT Candidate->ArchetypeKey.IsEmpty())
-        { ++CountByKey.FindOrAdd(Candidate->ArchetypeKey); }
+        auto Key = Get_GroupingKey(*Candidate);
+
+        if (NOT Key.IsEmpty())
+        { ++CountByKey.FindOrAdd(Key); }
+
+        KeyOf.Add(Candidate.Get(), MoveTemp(Key));
     }
 
     auto EmittedGroups = TSet<TSharedPtr<FCkEntityTreeNode>>{};
 
     for (const auto& Candidate : Candidates)
     {
-        const auto* KeyCount = CountByKey.Find(Candidate->ArchetypeKey);
-        if (KeyCount == nullptr || *KeyCount < GroupThreshold)
+        const auto& CandidateKey = KeyOf[Candidate.Get()];
+
+        const auto* KeyCount = CountByKey.Find(CandidateKey);
+        if (KeyCount == nullptr || *KeyCount < EffectiveGroupThreshold)
         {
             OutPresented.Add(Candidate);
             continue;
         }
 
-        const auto CacheKey = TPair<const FCkEntityTreeNode*, FString>{ InOwner.Get(), Candidate->ArchetypeKey };
+        const auto CacheKey = TPair<const FCkEntityTreeNode*, FString>{ InOwner.Get(), CandidateKey };
         auto& Group = GroupNodeCache.FindOrAdd(CacheKey);
         if (NOT Group.IsValid())
         {
@@ -1363,8 +1563,8 @@ auto SCkDebuggerWidget_EntityTree::DoPresentContainer(
             Group->IsGroupNode = true;
 
             auto BaseName = FString{};
-            if (NOT Candidate->ArchetypeKey.Split(TEXT("#"), &BaseName, nullptr))
-            { BaseName = Candidate->ArchetypeKey; }
+            if (NOT CandidateKey.Split(TEXT("#"), &BaseName, nullptr))
+            { BaseName = CandidateKey; }
             Group->GroupBaseName = BaseName;
         }
 
@@ -1528,6 +1728,9 @@ auto SCkDebuggerWidget_EntityTree::Set_GroupSiblings(bool InGroup) -> void
 
 auto SCkDebuggerWidget_EntityTree::Get_Counts() const -> FTreeCounts
 {
+    // ENTITIES, never presented rows. AllNodes holds one node per live entity and no synthetic
+    // group rows, so folding, grouping, and the TreeComplexity level cannot move these numbers —
+    // the status bar stays truthful however few rows the tree happens to be drawing.
     auto Counts = FTreeCounts{};
     Counts.Total = AllNodes.Num();
 
@@ -1550,9 +1753,10 @@ auto SCkDebuggerWidget_EntityTree::ExpandToReveal(const TSharedPtr<FCkEntityTree
     if (NOT InNode.IsValid() || NOT TreeView.IsValid())
     { return; }
 
-    // A folded-away internal has no row at all — flip its owner's override first.
+    // A folded-away internal has no row at all — flip its owner's override first. Under the Full
+    // complexity level nothing is folded, so there is no override to flip.
     auto NeedsPresentationRebuild = false;
-    if (InNode->IsInternal && FoldInternals)
+    if (InNode->IsInternal && FoldInternals && NOT PresentsInternalRows)
     {
         if (const auto Owner = InNode->Parent.Pin(); Owner.IsValid() && NOT Owner->UnfoldInternalsOverride)
         {
@@ -1809,7 +2013,13 @@ auto SCkDebuggerWidget_EntityTree::OnContextMenuOpening() -> TSharedPtr<SWidget>
                 if (NOT EntityNode.IsValid())
                 { continue; }
 
-                const auto& NameStr = EntityNode->CachedDebugName;
+                // Copy what the row SHOWS. A derived-name row has no real name, and the handle
+                // dump Get_DebugName falls back to is not what the user is pointing at — the id
+                // is copied on its own line (and in "Name [ID]") either way.
+                const auto& NameStr = EntityNode->HasRealName
+                    ? EntityNode->CachedDebugName
+                    : EntityNode->DerivedName;
+
                 const auto IdStr = ck::Format_UE(TEXT("{}"), EntityNode->Entity.Get_Entity().Get_ID());
                 NameLines.Add(NameStr);
                 IdLines.Add(IdStr);

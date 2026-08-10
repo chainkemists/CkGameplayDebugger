@@ -1,5 +1,6 @@
 #include "CkInspector_EntityCollections.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEntityCollection/CkEntityCollection_Utils.h"
 #include "CkLabel/CkLabel_Utils.h"
@@ -71,6 +72,36 @@ auto FCkInspector_EntityCollections::BuildCollectionGrid(const FCk_Handle& Entit
                     WeakSelectionModel->Set_SelectedEntities({ CollectionHandle });
                 }
             });
+
+        // One removal row per MEMBER. The count badge above says how many there are; this is the only
+        // place the individual handles were ever addressable, so the list has to be walked here. The
+        // rows are a compose-time snapshot of membership — the collection's own count badge stays live,
+        // and a membership change lands on the next inspector rebuild.
+        if (ck::IsValid(CapturedCollection))
+        {
+            for (const auto& Member : UCk_Utils_EntityCollection_UE::Get_EntitiesInCollection(CapturedCollection).Get_EntitiesInCollection())
+            {
+                if (ck::Is_NOT_Valid(Member)) { continue; }
+
+                Builder.AddActionRow(
+                    FText::FromString(ck::Format_UE(TEXT("  {}"), Member.ToString())),
+                    {
+                        FCkInspector_Action
+                        {
+                            FText::FromString(TEXT("Remove")),
+                            FText::FromString(TEXT("Request_RemoveEntities with just this entity — the collection itself and the entity both survive.")),
+                            [CapturedCollection, Member]()
+                            {
+                                auto Mutable = CapturedCollection;
+                                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                                UCk_Utils_EntityCollection_UE::Request_RemoveEntities(Mutable,
+                                    FCk_Request_EntityCollection_RemoveEntities{TArray<FCk_Handle>{Member}}, {});
+                            }
+                        },
+                    });
+            }
+        }
     });
 
     return Builder.Build(Entity, InFilter);

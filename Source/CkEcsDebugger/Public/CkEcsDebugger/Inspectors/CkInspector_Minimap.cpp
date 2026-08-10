@@ -64,6 +64,7 @@ auto FCkInspector_Minimap::Tick(const FCk_Handle& Entity, float InDeltaTime) -> 
 auto FCkInspector_Minimap::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto MinimapHandle = UCk_Utils_Minimap_UE::Cast(MutableEntity);
@@ -82,14 +83,34 @@ auto FCkInspector_Minimap::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         },
         CkStyle::Value_Enum());
 
-    Builder.AddRow(
+    // Rotation mode — the one minimap enum with a plain Set request. Index order below is the enum's
+    // own declaration order (NorthLocked, RotateWithObserver); the caller owns the index <-> enum map.
+    // CosmeticOnly: a minimap is a local HUD projection, so a dedicated server has nothing to rotate.
+    Builder.AddEnumDropdownRow(
         FText::FromString(TEXT("Rotation:")),
-        [CapturedMinimap](const FCk_Handle&)
         {
-            if (ck::Is_NOT_Valid(CapturedMinimap)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{}"), UCk_Utils_Minimap_UE::Get_RotationMode(CapturedMinimap)));
+            FText::FromString(TEXT("NorthLocked")),
+            FText::FromString(TEXT("RotateWithObserver")),
         },
-        CkStyle::Value_Enum());
+        TAttribute<int32>::CreateLambda([CapturedMinimap]()
+        {
+            if (ck::Is_NOT_Valid(CapturedMinimap)) { return 0; }
+            return UCk_Utils_Minimap_UE::Get_RotationMode(CapturedMinimap) == ECk_Minimap_RotationMode::RotateWithObserver
+                ? 1 : 0;
+        }),
+        [CapturedMinimap](int32 InIndex)
+        {
+            auto Mutable = CapturedMinimap;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            const auto Mode = InIndex == 1
+                ? ECk_Minimap_RotationMode::RotateWithObserver
+                : ECk_Minimap_RotationMode::NorthLocked;
+
+            UCk_Utils_Minimap_UE::Request_SetRotationMode(Mutable,
+                FCk_Request_Minimap_SetRotationMode{Mode}, {});
+        },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
 
     Builder.AddRow(
         FText::FromString(TEXT("Frame:")),
@@ -100,14 +121,27 @@ auto FCkInspector_Minimap::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         },
         CkStyle::Value_Enum());
 
-    Builder.AddRow(
+    // View extent — world cm from frame centre to frame edge. The request is REJECTED at or below
+    // zero (CkMinimap_Fragment_Data.h ClampMin 1.0), so the editor clamps to 1 rather than firing a
+    // request the handler drops.
+    Builder.AddNumericRow(
         FText::FromString(TEXT("View Extent:")),
-        [CapturedMinimap](const FCk_Handle&)
+        TAttribute<float>::CreateLambda([CapturedMinimap]()
         {
-            if (ck::Is_NOT_Valid(CapturedMinimap)) { return FText::FromString(TEXT("--")); }
-            return FText::FromString(ck::Format_UE(TEXT("{:.0f}"), UCk_Utils_Minimap_UE::Get_ViewExtent(CapturedMinimap)));
+            if (ck::Is_NOT_Valid(CapturedMinimap)) { return 0.0f; }
+            return UCk_Utils_Minimap_UE::Get_ViewExtent(CapturedMinimap);
+        }),
+        [CapturedMinimap](float InValue)
+        {
+            auto Mutable = CapturedMinimap;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_Minimap_UE::Request_SetViewExtent(Mutable,
+                FCk_Request_Minimap_SetViewExtent{InValue}, {});
         },
-        CkStyle::Value_Numeric());
+        1.0f,
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
 
     Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("View Origin:")),

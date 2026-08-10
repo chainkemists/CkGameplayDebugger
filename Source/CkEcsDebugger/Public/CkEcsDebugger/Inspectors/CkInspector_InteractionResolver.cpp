@@ -66,6 +66,40 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         const auto IntentName = Intent.IsValid() ? Intent.GetTagName().ToString() : TEXT("Unknown Intent");
         Builder.AddHeader(FText::FromString(IntentName));
 
+        // Start / Stop for THIS section's intent. The section already IS the intent, so the tag needs
+        // no entry field — it is captured by value alongside the resolver handle. LocalOk: intents are
+        // a local input-driven concept; a client experiment is legitimate.
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Intent:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Start")),
+                    FText::FromString(ck::Format_UE(TEXT("Request_StartIntent({})"), IntentName)),
+                    [CapturedResolver, Intent]()
+                    {
+                        auto Mutable = CapturedResolver;
+                        if (ck::Is_NOT_Valid(Mutable) || NOT Intent.IsValid()) { return; }
+
+                        UCk_Utils_InteractionResolver_UE::Request_StartIntent(Mutable,
+                            FCk_Request_InteractionResolver_StartIntent{Intent}, {});
+                    }
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Stop")),
+                    FText::FromString(ck::Format_UE(TEXT("Request_StopIntent({})"), IntentName)),
+                    [CapturedResolver, Intent]()
+                    {
+                        auto Mutable = CapturedResolver;
+                        if (ck::Is_NOT_Valid(Mutable) || NOT Intent.IsValid()) { return; }
+
+                        UCk_Utils_InteractionResolver_UE::Request_StopIntent(Mutable,
+                            FCk_Request_InteractionResolver_StopIntent{Intent}, {});
+                    }
+                },
+            });
+
         // Channels — plain tags off the params, i.e. static config, so the chips row's compose-time snapshot
         // is exactly right here (unlike Active Intents below, which changes every frame).
         const auto& Channels = Mapping.Get_Channels();
@@ -89,6 +123,36 @@ auto FCkInspector_InteractionResolver::BuildResolverGrid(const FCk_Handle& Entit
         else
         {
             Builder.AddChipsRow(FText::FromString(TEXT("Channels:")), ChannelChips);
+
+            // One clear button per CONFIGURED channel, off the same params iteration the chips came
+            // from — a free-text channel entry would only add the chance to typo a tag that resolves
+            // to a channel this resolver never uses.
+            auto ClearActions = TArray<FCkInspector_Action>{};
+            for (const auto& Channel : Channels)
+            {
+                if (NOT Channel.IsValid()) { continue; }
+
+                ClearActions.Add(FCkInspector_Action
+                {
+                    FText::FromName(Channel.GetTagName()),
+                    FText::FromString(ck::Format_UE(
+                        TEXT("Request_RemoveAllTargetsByChannel({}) — drops every target this resolver holds on that channel."),
+                        Channel.GetTagName().ToString())),
+                    [CapturedResolver, Channel]()
+                    {
+                        auto Mutable = CapturedResolver;
+                        if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                        UCk_Utils_InteractionResolver_UE::Request_RemoveAllTargetsByChannel(Mutable,
+                            FCk_Request_InteractionResolver_RemoveAllTargetsByChannel{Channel}, {});
+                    }
+                });
+            }
+
+            if (NOT ClearActions.IsEmpty())
+            {
+                Builder.AddActionRow(FText::FromString(TEXT("Clear Channel:")), ClearActions);
+            }
         }
 
         // Distance Sorting

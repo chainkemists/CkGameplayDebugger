@@ -5,6 +5,7 @@
 
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment_Data.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Utils.h"
 #include "CkStateMachine/State/CkSmState_Fragment.h"
 #include "CkStateMachine/Task/CkSmTask_Fragment.h"
 #include "CkStateMachine/Task/EntityScripts/CkSmTask_EntityScript.h"
@@ -135,6 +136,7 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
     UCk_Utils_StateMachineDebug_UE::NotifyDebugDataConsumed();
 
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     // ---- State Machine root entity ----
     if (Entity.Has<ck::FFragment_Sm_Current>())
@@ -177,6 +179,51 @@ auto FCkInspector_StateMachine::Build_Inspector(const FCk_Handle& Entity) -> TSh
                 const UClass* StateClass = CapturedEntity.Get<ck::FFragment_Sm_Current>().Get_CurrentStateClass();
                 return StateClass != nullptr ? ECk_Tone::Info : ECk_Tone::Neutral;
             }));
+
+        // Run-status verbs. AuthorityOnly across the board: the SM request processor is authority-
+        // gated and ensure-and-drops off-authority, so a live button on a client would read as "the
+        // debugger is broken". The gate greys them with the reason instead.
+        //
+        // NO transition control here by design: the only public API is
+        // Request_Transition(TSubclassOf<UCk_SmState_EntityScript>), which needs a class picker this
+        // vocabulary does not have (design doc "Deliberately excluded").
+        auto MutableSmEntity = Entity;
+        const auto CapturedSm = UCk_Utils_StateMachine_UE::Cast(MutableSmEntity);
+
+        if (ck::IsValid(CapturedSm))
+        {
+            const auto Make_SmAction = [CapturedSm](
+                const FString& InLabel,
+                const FString& InTooltip,
+                auto InRequest) -> FCkInspector_Action
+            {
+                return FCkInspector_Action
+                {
+                    FText::FromString(InLabel),
+                    FText::FromString(InTooltip),
+                    [CapturedSm, InRequest]()
+                    {
+                        auto MutableSm = CapturedSm;
+                        if (ck::Is_NOT_Valid(MutableSm)) { return; }
+                        InRequest(MutableSm);
+                    },
+                    ECk_DebugRequest_Requirement::AuthorityOnly
+                };
+            };
+
+            Builder.AddActionRow(
+                FText::FromString(TEXT("Control:")),
+                {
+                    Make_SmAction(TEXT("Start"), TEXT("UCk_Utils_StateMachine_UE::Request_Start"),
+                        [](FCk_Handle_StateMachine& InSm) { UCk_Utils_StateMachine_UE::Request_Start(InSm, {}); }),
+                    Make_SmAction(TEXT("Stop"), TEXT("UCk_Utils_StateMachine_UE::Request_Stop"),
+                        [](FCk_Handle_StateMachine& InSm) { UCk_Utils_StateMachine_UE::Request_Stop(InSm, {}); }),
+                    Make_SmAction(TEXT("Pause"), TEXT("UCk_Utils_StateMachine_UE::Request_Pause"),
+                        [](FCk_Handle_StateMachine& InSm) { UCk_Utils_StateMachine_UE::Request_Pause(InSm, {}); }),
+                    Make_SmAction(TEXT("Resume"), TEXT("UCk_Utils_StateMachine_UE::Request_Resume"),
+                        [](FCk_Handle_StateMachine& InSm) { UCk_Utils_StateMachine_UE::Request_Resume(InSm, {}); }),
+                });
+        }
     }
 
     // ---- Pending Transition ----

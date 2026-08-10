@@ -5,6 +5,7 @@
 #include "CkLabel/CkLabel_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorAttributeRows.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
@@ -81,6 +82,7 @@ auto FCkInspector_ByteAttributes::Build_Inspector(const FCk_Handle& Entity, cons
 auto FCkInspector_ByteAttributes::BuildAttributeGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto WeakSelectionModel = SelectionModel;
 
@@ -130,34 +132,44 @@ auto FCkInspector_ByteAttributes::BuildAttributeGrid(const FCk_Handle& Entity, c
                         + ck_inspector_byte_attributes::Get_Annotations(CapturedAttribute));
                 }),
                 OnClicked);
+        }
+        else
+        {
+            Builder.AddClickableRow(
+                FText::FromString(AttributeName),
+                [CapturedTag, HasMax](const FCk_Handle& E)
+                {
+                    auto MutableE = E;
+                    const auto Attr = UCk_Utils_ByteAttribute_UE::TryGet(MutableE, CapturedTag);
+                    if (ck::Is_NOT_Valid(Attr)) { return FText::GetEmpty(); }
 
-            return;
+                    const auto Final = UCk_Utils_ByteAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Current);
+
+                    auto Result = ck::Format_UE(TEXT("{}"), Final);
+
+                    if (HasMax)
+                    {
+                        const auto MaxVal = UCk_Utils_ByteAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Max);
+                        Result += ck::Format_UE(TEXT("  / {}"), MaxVal);
+                    }
+
+                    Result += ck_inspector_byte_attributes::Get_Annotations(Attr);
+
+                    return FText::FromString(Result);
+                },
+                CkStyle::Attribute(),
+                OnClicked);
         }
 
-        Builder.AddClickableRow(
-            FText::FromString(AttributeName),
-            [CapturedTag, HasMax](const FCk_Handle& E)
-            {
-                auto MutableE = E;
-                const auto Attr = UCk_Utils_ByteAttribute_UE::TryGet(MutableE, CapturedTag);
-                if (ck::Is_NOT_Valid(Attr)) { return FText::GetEmpty(); }
+        // Interactive rows for this attribute, written through the shared Float/Integer/Byte helper.
+        // No refill block here: the Byte family ships no refill Utils at all.
+        namespace attribute_rows = ck_inspector_attribute_rows;
 
-                const auto Final = UCk_Utils_ByteAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Current);
+        attribute_rows::Add_OverrideRows<UCk_Utils_ByteAttribute_UE>(
+            Builder, AttributeName, InAttribute);
 
-                auto Result = ck::Format_UE(TEXT("{}"), Final);
-
-                if (HasMax)
-                {
-                    const auto MaxVal = UCk_Utils_ByteAttribute_UE::Get_FinalValue(Attr, ECk_MinMaxCurrent::Max);
-                    Result += ck::Format_UE(TEXT("  / {}"), MaxVal);
-                }
-
-                Result += ck_inspector_byte_attributes::Get_Annotations(Attr);
-
-                return FText::FromString(Result);
-            },
-            CkStyle::Attribute(),
-            OnClicked);
+        attribute_rows::Add_ModifierRows<UCk_Utils_ByteAttribute_UE, UCk_Utils_ByteAttributeModifier_UE>(
+            Builder, AttributeName, InAttribute);
     });
 
     return Builder.Build(Entity, InFilter);

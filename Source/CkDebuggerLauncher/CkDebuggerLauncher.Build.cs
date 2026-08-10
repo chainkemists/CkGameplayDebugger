@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkDebuggerLauncher : CkModuleRules
@@ -10,7 +11,6 @@ public class CkDebuggerLauncher : CkModuleRules
             "Projects",
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             "CkCore",
             "CkDebuggerCommon",
@@ -19,5 +19,18 @@ public class CkDebuggerLauncher : CkModuleRules
             "CkEcs",
             "CkEditorTools",
         });
+
+        if (Target.bBuildEditor)
+        {
+            PublicDependencyModuleNames.Add("WorkspaceMenuStructure");
+        }
+
+        foreach (var IconPath in Directory.EnumerateFiles(
+            Path.Combine(PluginDirectory, "Resources", "Icons"),
+            "*.svg",
+            SearchOption.AllDirectories))
+        {
+            RuntimeDependencies.Add(IconPath, StagedFileType.NonUFS);
+        }
     }
 }

@@ -20,7 +20,6 @@ public class CkInsightsDebugger : CkModuleRules
             "SlateCore",
             "TraceLog",
             "TraceServices",
-            "WorkspaceMenuStructure",
 
             "CkCore",
             "CkDebuggerCommon",
@@ -34,7 +33,12 @@ public class CkInsightsDebugger : CkModuleRules
         PrivateDependencyModuleNames.AddRange(new string[]
         {
             "CkProfile",
-            "UnrealEd",
         });
+
+        if (Target.bBuildEditor)
+        {
+            PublicDependencyModuleNames.Add("WorkspaceMenuStructure");
+            PrivateDependencyModuleNames.Add("UnrealEd");
+        }
     }
 }

@@ -5,8 +5,6 @@
 
 #include <Containers/Ticker.h>
 #include <CoreGlobals.h>
-#include <Editor.h>
-#include <EditorViewportClient.h>
 #include <Engine/Engine.h>
 #include <Engine/GameViewportClient.h>
 #include <HAL/IConsoleManager.h>
@@ -17,6 +15,11 @@
 #include <Stats/StatsSystemTypes.h>
 #include <Trace/Trace.h>
 #include <UnrealClient.h>
+
+#if WITH_EDITOR
+    #include <Editor.h>
+    #include <EditorViewportClient.h>
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -30,9 +33,13 @@ namespace ck_insights_capture
         if (GEngine->GameViewport && NOT GEngine->GameViewport->IsSimulateInEditorViewport())
         { return GEngine->GameViewport; }
 
+#if WITH_EDITOR
         return GLastKeyLevelEditingViewportClient
             ? GLastKeyLevelEditingViewportClient
             : GCurrentLevelEditingViewportClient;
+#else
+        return nullptr;
+#endif
     }
 }
 

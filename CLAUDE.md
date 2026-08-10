@@ -11,11 +11,11 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
 - **19-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 16 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 2 DeveloperTool (`CkInsightsDebugger`,
+  `CkDebuggerLauncher`) + 14 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
   `CkDialogDebugger`, `CkAggroDebugger`, `CkUIDebugger`, `CkSchedulerDebugger`, `CkAStarDebugger`,
   `CkGoapDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
-  `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
-  `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
+  `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`). Plugin dependency: **CkFoundation only**
   (`CkDebugger.uplugin:160-164`). The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
 - **No AngelScript surface anywhere in this plugin** — no `Script/` dir, zero `.as` files
@@ -29,7 +29,7 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 15 feature debugger modules + `CkDebuggerLauncher` | UncookedOnly | Slate editor-tab debuggers on the shared `CkDebuggerCommon` widget base, plus the dockable discovery/launch rail (tabs under the Tools main menu → Developer Tools category; engine 5.7.4 `WorkspaceMenuStructureModule.cpp:184-185`). Flagship: `CkEcsDebugger` — entity tree, auto-registered inspectors, viewport picker; console toggle `ck.EcsDebugger` (`Source/CkEcsDebugger/CkEcsDebugger_Module.cpp:25-27`). | **Extend when you need an editor tool.** |
+| 2 (2025→) | 15 feature debugger modules + `CkDebuggerLauncher` | 14 UncookedOnly + 2 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug. The DeveloperTool launcher and Insights Analyzer also ship in packaged Development/DebugGame targets as floating Slate windows; Test/Shipping exclude them. Flagship editor tool: `CkEcsDebugger`; packaged QA tool: `CkInsightsDebugger`. | **Extend when you need a standalone analysis tool. Keep packaged support opt-in per module.** |
 | 3 (2026, current flagship) | `CkEntityDebugOverlay` | Runtime | In-game on-screen overlay: `ULocalPlayerSubsystem` (`Subsystem/CkDebugOverlay_Subsystem.h:48`), self-registering providers, focus card + world pills + diamond markers. Compiled under `WITH_CK_DEBUG_OVERLAY`, non-Shipping only (`CkEntityDebugOverlay.Build.cs:36-39`); driven by `ck.DebugOverlay*` cvars/commands (`Subsystem/CkDebugOverlay_Subsystem.cpp:159-213`). | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces
@@ -92,6 +92,10 @@ remain (see Open issues).
   `WorkspaceMenuStructure`/`EditorStyle`/`ToolMenus` ungated (`CkEcsDebugger.Build.cs:20-24`) and
   on `UnrealEd` behind `Target.bBuildEditor` (`:66-72`). Runtime code — game modules, or the three
   Runtime modules here — must never depend on them.
+- **Packaged QA tools use `DeveloperTool`, not `Runtime`**: this includes them when
+  `bBuildDeveloperTools` is enabled (editor and packaged Development/DebugGame) while excluding
+  Test/Shipping. Their editor-only workspace-menu and `UnrealEd` dependencies must remain behind
+  `Target.bBuildEditor` / `WITH_EDITOR`; packaged windows use runtime Slate's global tab manager.
 - **Overlay focus-card capacity**: row budgeting happens in the presentation model before Slate.
   Respect total/per-section limits, protected AI/navigation provider ordering, and explicit
   omission summaries; do not solve capacity by increasing the hard clip or hiding overflow.

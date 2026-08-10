@@ -58,7 +58,7 @@ namespace ck_inspector_inventories
     //   Color_CellEmpty     -> CkStyle::Bg3()       lightest background tier: an empty, usable cell
     //   Color_CellDisabled  -> CkStyle::Bg1()       a tier darker: an unusable cell (border matches fill)
     //   Color_CellBorder    -> CkStyle::Border()
-    //   Color_DetachedItem       -> CkStyle::Error() a lifetime child that is NOT an inventory member
+    //   Color_DetachedItem       -> CkStyle::Err()   a lifetime child that is NOT an inventory member
     //   Color_PendingRemovalItem -> CkStyle::Warn()  an item mid-destruction, still listed for diagnosis
     //
     // Occupied-cell borders stay a derivation of the item tint, held at half brightness.
@@ -732,7 +732,7 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
             {
                 return FText::FromString(TEXT("not an inventory member"));
             },
-            CkStyle::Error(),
+            CkStyle::Err(),
             [WeakSelectionModel, DetachedItemEntity]()
             {
                 if (WeakSelectionModel.IsValid() && ck::IsValid(DetachedItemEntity))

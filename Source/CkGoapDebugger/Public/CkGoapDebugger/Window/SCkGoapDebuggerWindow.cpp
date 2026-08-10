@@ -280,7 +280,9 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
+    // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -313,6 +315,33 @@ auto
     RefreshAgentList();
     if (_AgentList.IsValid())
     { _AgentList->RestoreSelectionFromViewModel(); }
+}
+
+// ====================================================================================================================
+// STYLE LIVE-APPLY
+// ====================================================================================================================
+
+auto
+    SCkGoapDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Mission Control's panels are hash-debounced rebuild-on-data surfaces: with PIE at rest their
+    // content hash never moves, so an axis flip would sit invisible until the next replan. Flip each
+    // panel's debounce and re-run its normal refresh — same code path as a data change, no new
+    // rebuild entry points.
+    //
+    // The GraphPane is deliberately NOT invalidated: its node widgets bind every axis-driven visual
+    // through attribute lambdas and repaint each frame, and re-running the topology pass would
+    // recreate node widgets (the flicker the live-bind invariant exists to avoid).
+    if (_Sidebar.IsValid())          { _Sidebar->Invalidate_StyleCache(); }
+    if (_AgentColumn.IsValid())      { _AgentColumn->Invalidate_StyleCache(); }
+    if (_DecisionPanel.IsValid())    { _DecisionPanel->Invalidate_StyleCache(); }
+    if (_SearchTracePanel.IsValid()) { _SearchTracePanel->Invalidate_StyleCache(); }
+    if (_TimelineDock.IsValid())     { _TimelineDock->Invalidate_StyleCache(); }
+    if (_SquadTable.IsValid())       { _SquadTable->Invalidate_StyleCache(); }
+    if (_CatalogPanel.IsValid())     { _CatalogPanel->Invalidate_StyleCache(); }
+    if (_WorldStateRail.IsValid())   { _WorldStateRail->Invalidate_StyleCache(); }
 }
 
 // ====================================================================================================================
@@ -358,8 +387,10 @@ auto
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                             [
                                 SNew(SBox)
-                                    .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
-                                    .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
+                                    .WidthOverride_Lambda([]() -> FOptionalSize
+                                    { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
+                                    .HeightOverride_Lambda([]() -> FOptionalSize
+                                    { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
                                 [
                                     SNew(SImage)
                                         .Image(CkStyle::GetRoundedBrush_Small())
@@ -370,7 +401,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("GOAP Mission Control")))
-                                    .Font(CkStyle::MonoFont(CkStyle::FontSizeBody()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeBody()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                             ]
                     ]
@@ -395,7 +427,8 @@ auto
                             .OptionsSource(&_AgentPickerLabels)
                             .OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandleAgentPicked)
                             .ToolTipText(FText::FromString(TEXT("Select the agent under inspection.")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     ]
 
                 // Planner picker — top-level Planners on the selected agent
@@ -409,7 +442,8 @@ auto
                             .OptionsSource(&_PlannerPickerLabels)
                             .OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandlePlannerPicked)
                             .ToolTipText(FText::FromString(TEXT("Select a top-level Planner on this agent. Sub-Planners live in the Inspector tree.")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     ]
 
                 // Selected agent pill (ID|Version) — click navigates to ECS debugger
@@ -486,7 +520,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("|◀")))
-                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                     ]
@@ -509,7 +544,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("▶|")))
-                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                     ]
@@ -551,7 +587,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("Nerd mode")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             .ToolTipText(FText::FromString(TEXT("Reveal search internals: budget usage, states expanded, the regressive trace, entity handles.")))
                     ]
@@ -723,7 +760,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(InLabel)
-                        .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                 ]
 
@@ -733,7 +771,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(InValue)
-                        .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ];
     };
@@ -885,7 +924,8 @@ auto
                                     *UCk_Utils_Handle_UE::Get_DebugName(Planner->PlannerHandle).ToString(),
                                     *Planner->WorldStateSourceLabel));
                             })
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
         ];

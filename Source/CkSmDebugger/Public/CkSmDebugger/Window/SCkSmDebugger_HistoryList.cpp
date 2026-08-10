@@ -2,6 +2,7 @@
 
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -12,6 +13,7 @@
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
@@ -147,6 +149,15 @@ auto
     }
 }
 
+auto
+    SCkSmDebugger_HistoryList::
+    Invalidate_StyleCache()
+    -> void
+{
+    _LastHistoryCount = -1;
+    RebuildList();
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 // Row dispatch
 // --------------------------------------------------------------------------------------------------------------------
@@ -192,9 +203,14 @@ auto
 
     const auto TitleStr = FString::Printf(TEXT("%s  \u25C0\u2500  %s"), *ToName, *FromName);
 
-    const auto MonoSmall = FCoreStyle::GetDefaultFontStyle("Mono", CkStyle::FontSizeSmall());
-    const auto BoldBody  = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody());
-    const auto RegSmall  = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall());
+    // Attribute-bound so TextScale (and an Editor Preferences typography edit) moves rows that were
+    // generated long before the flip — SListView only regenerates a row when its item set changes.
+    const auto MonoSmall = TAttribute<FSlateFontInfo>::CreateLambda([]() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); });
+    const auto BoldBody = TAttribute<FSlateFontInfo>::CreateLambda([]() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); });
+    const auto RegSmall = TAttribute<FSlateFontInfo>::CreateLambda([]() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); });
 
     auto Line = SNew(SHorizontalBox)
 
@@ -306,17 +322,62 @@ auto
         }));
 
     return SNew(STableRow<FHistoryItemPtr>, InOwnerTable)
-        .Style(&FCoreStyle::Get().GetWidgetStyle<FTableRowStyle>("TableView.Row"))
+        // The suite's translucent selection style, not the ENGINE "TableView.Row" — the engine
+        // brush is a saturated fill that drowns the row's chips and mono columns.
+        .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
         [
             SNew(SCkDebug_CopyableContainer)
             .CopyText(CopyStr)
             [
-                SNew(SBorder)
-                .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-                .BorderBackgroundColor(TintAttr)
-                .ColorAndOpacity(ContentTintAttr)
-                .Padding(ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection()))
-                [ Line ]
+                SNew(SVerticalBox)
+
+                // RowBanding: full-bleed alternating fill under Zebra, nothing under Off (a
+                // no-brush border with zero padding contributes neither paint nor geometry, which
+                // is what keeps Classic identical).
+                + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SBorder)
+                        .BorderImage_Lambda([Index]() -> const FSlateBrush*
+                        {
+                            return ck::debug_axes::Get_RowBandingBrush(Index);
+                        })
+                        .Padding(0.0f)
+                        [
+                            SNew(SBorder)
+                            .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
+                            .BorderBackgroundColor(TintAttr)
+                            .ColorAndOpacity(ContentTintAttr)
+                            .Padding_Lambda([]() -> FMargin
+                            {
+                                return ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+                            })
+                            [ Line ]
+                        ]
+                    ]
+
+                // Hairline banding draws the rule along the row's bottom edge instead of filling
+                // it. Zero thickness (Off / Zebra, or SeparatorWeight None) collapses the box so
+                // the slot costs nothing.
+                + SVerticalBox::Slot()
+                    .AutoHeight()
+                    [
+                        SNew(SBox)
+                        .HeightOverride_Lambda([]() -> FOptionalSize
+                        {
+                            return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+                        })
+                        .Visibility_Lambda([]() -> EVisibility
+                        {
+                            return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                                ? EVisibility::HitTestInvisible
+                                : EVisibility::Collapsed;
+                        })
+                        [
+                            SNew(SImage)
+                            .Image(FCkDebuggerStyle::Get_SeparatorBrush())
+                        ]
+                    ]
             ]
         ];
 }

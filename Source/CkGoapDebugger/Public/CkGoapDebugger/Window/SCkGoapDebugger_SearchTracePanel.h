@@ -33,6 +33,19 @@ public:
 
     // Called by the window when the ViewModel publishes a change.
     auto RefreshFromViewModel() -> void;
+    /**
+     * Drop the rebuild debounce so the next refresh re-emits structure. The window calls this on a
+     * style-revision bump: colours / fonts / paddings are attribute-bound and already live, but a
+     * panel's STRUCTURE (which rows and slots exist at all) is composed once against the axes, so a
+     * structural axis change needs the re-emit. Flipping the hash rather than zeroing it keeps a
+     * genuine zero hash from swallowing the invalidation.
+     */
+    auto Invalidate_StyleCache() -> void
+    {
+        _LastHash = ~_LastHash;
+        RefreshFromViewModel();
+    }
+
 
 private:
     auto DoBuildRow(const FCk_Goap_SearchDebugRow& InRow, int32 InIndex) -> TSharedRef<SWidget>;

@@ -24,6 +24,13 @@ public:
     auto Construct(const FArguments& InArgs, TSharedPtr<FCkSmDebugger_ViewModel> InViewModel, UCkSmDebugGraph* InGraph = nullptr) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    /**
+     * Drop the rebuild debounce and re-emit every row. The window calls this on a style-revision
+     * bump: rows are attribute-bound for colour / font / padding, but a row's STRUCTURE (which
+     * slots exist) is composed once at generation, so a structural axis needs the re-emit.
+     */
+    auto Invalidate_StyleCache() -> void;
+
 private:
     using FHistoryItemPtr = TSharedPtr<FCkSmDebugger_HistoryEntry>;
 

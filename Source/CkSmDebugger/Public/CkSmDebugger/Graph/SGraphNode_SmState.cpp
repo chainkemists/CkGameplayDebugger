@@ -67,8 +67,13 @@ auto
     const auto BpRed = CkStyle::Err();
     const auto BpHollow = CkStyle::OverlayOf(BpRed, 0.25f);
 
-    // Inline node indicators read as a glyph at half an icon box; Medium reproduces today's 8px exactly.
-    const auto IndicatorSize = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection()) * 0.5f;
+    // Inline node indicators read as a glyph at half an icon box; Medium reproduces today's 8px
+    // exactly. Bound per-box below rather than computed here — a construction-time read bakes
+    // IconSize into a node widget that is only ever recreated by a topology rebuild.
+    const auto IndicatorSizeAttr = TAttribute<FOptionalSize>::CreateLambda([]() -> FOptionalSize
+    {
+        return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()};
+    });
 
     // Style 22/23: breakpoint indicators are INSIDE the widget (replace state-color icon).
     // Hollow when unset, filled when set. Always visible.
@@ -86,8 +91,8 @@ auto
             .Padding(0.0f, 0.0f, 4.0f, 0.0f)
             [
                 SNew(SBox)
-                    .WidthOverride(IndicatorSize)
-                    .HeightOverride(IndicatorSize)
+                    .WidthOverride(IndicatorSizeAttr)
+                    .HeightOverride(IndicatorSizeAttr)
                     [
                         bUseInlineBreakpoints
                         ? StaticCastSharedRef<SWidget>(
@@ -118,7 +123,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(StateName))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::NodeTitleFontSize()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize()); })
                     .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                     {
                         auto Color = CkStyle::Text();
@@ -137,8 +143,8 @@ auto
             .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             [
                 SNew(SBox)
-                    .WidthOverride(IndicatorSize)
-                    .HeightOverride(IndicatorSize)
+                    .WidthOverride(IndicatorSizeAttr)
+                    .HeightOverride(IndicatorSizeAttr)
                     .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
                     [
                         SNew(SBorder)
@@ -171,7 +177,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("OVERRIDE")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", 7); })
                     .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_Override))
                     .Visibility_Lambda([StateNodePtr = _StateNode]()
                     {
@@ -188,7 +195,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", 7); })
                     .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     .Visibility_Lambda([StateNodePtr = _StateNode]()
                     {
@@ -274,14 +282,22 @@ auto
                         // Live opacity: dimmed → full, lerped by the cell-glow
                         // alpha. Fades IN on becoming current and HOLDS — leaving
                         // a state fades only the border, not the whole cell.
+                        //
+                        // GraphNodeStyle rides in through the axis' node-opacity entry point rather
+                        // than the raw role: Minimal fades inactive states harder, Dense keeps them
+                        // readable in a crowded graph, Card is the role value unchanged.
                         .OpacityOverride_Lambda([WeakNode = TWeakObjectPtr<UCkSmDebugNode_State>(_StateNode)]() -> float
                         {
+                            const auto Inactive = ck::debug_axes::Get_NodeInactiveOpacity();
                             const auto* Node = WeakNode.Get();
-                            if (Node == nullptr) { return CkStyle::NodeInactiveOpacity(); }
-                            return FMath::Lerp(
-                                CkStyle::NodeInactiveOpacity(),
-                                1.0f,
-                                Node->Get_CellGlowAlpha());
+                            if (Node == nullptr) { return Inactive; }
+                            return FMath::Lerp(Inactive, 1.0f, Node->Get_CellGlowAlpha());
+                        })
+                        // The pill's rounded frame padding IS its border weight. Bound live so the
+                        // axis reaches a node widget that only a topology rebuild would recreate.
+                        .BorderThickness_Lambda([]() -> float
+                        {
+                            return ck::debug_axes::Get_NodeBorderThickness();
                         })
                         .BodyContent() [ PillBody ]
                 ]
@@ -484,11 +500,21 @@ auto
             GlowAlpha = 0.34f * _StateNode->Get_PreviousGlowAlpha();
         }
 
+        // GraphNodeStyle scales the halo with the same dim factor it applies to inactive nodes, so
+        // the "this is current" signal keeps its relative weight against the rest of the graph.
+        GlowAlpha *= ck_sm_debugger_axes::Get_NodeDimScale();
+
         if (GlowAlpha > 0.001f)
         {
             constexpr auto Pad = 6.0f;
             const auto GlowColor = CkStyle::OverlayOf(GlowRgb, GlowAlpha);
-            static auto GlowBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
+            // One registered-once brush per reachable radius (R7) — Dense squares the halo off to
+            // match the tighter node chrome.
+            static auto GlowBrushStandard = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
+            static auto GlowBrushTight    = FSlateRoundedBoxBrush(FLinearColor::White, 3.0f);
+            const auto* GlowBrush = ck_sm_debugger_axes::Get_NodeRadiusScale() < 1.0f
+                ? &GlowBrushTight
+                : &GlowBrushStandard;
 
             auto Size = AllottedGeometry.GetLocalSize();
             auto W = static_cast<float>(Size.X);
@@ -501,7 +527,7 @@ auto
             FSlateDrawElement::MakeBox(
                 OutDrawElements, LayerId - 1,
                 GlowGeom.ToPaintGeometry(),
-                &GlowBrush, ESlateDrawEffect::None, GlowColor);
+                GlowBrush, ESlateDrawEffect::None, GlowColor);
         }
     }
 
@@ -790,24 +816,32 @@ auto
 
     auto TaskBox = SNew(SVerticalBox);
 
-    // Separator line below header — collapses entirely when the SeparatorWeight axis is None.
-    const auto SeparatorThickness =
-        ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
-
-    if (SeparatorThickness > 0.0f)
-    {
-        TaskBox->AddSlot()
-            .AutoHeight()
-            [
-                SNew(SBox)
-                    .HeightOverride(SeparatorThickness)
-                    [
-                        SNew(SBorder)
-                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                            .BorderBackgroundColor(CkStyle::Border())
-                    ]
-            ];
-    }
+    // Separator line below header. The slot is ALWAYS added and the box collapses itself when the
+    // SeparatorWeight axis is None — a collapsed child contributes neither size nor slot padding,
+    // so the layout matches the old conditional slot while the axis stays live on a node widget
+    // that no style change recreates.
+    TaskBox->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SBox)
+                .HeightOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection())};
+                })
+                .Visibility_Lambda([]() -> EVisibility
+                {
+                    return ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection()) > 0.0f
+                        ? EVisibility::SelfHitTestInvisible
+                        : EVisibility::Collapsed;
+                })
+                [
+                    SNew(SBorder)
+                        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                        .BorderBackgroundColor(CkStyle::Border())
+                ]
+        ];
 
     for (auto TaskIdx = 0; TaskIdx < _StateNode->Get_Tasks().Num(); ++TaskIdx)
     {
@@ -859,7 +893,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(ClassName))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                             {
                                 auto Color = CkStyle::TextDim();
@@ -877,7 +912,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("TICK")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", 7); })
                             .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                             {
                                 auto Color = CkStyle::Warn();

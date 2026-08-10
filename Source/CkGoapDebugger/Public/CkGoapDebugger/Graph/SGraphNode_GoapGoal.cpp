@@ -73,11 +73,12 @@ auto
 
             Conditions->AddSlot()
                 .AutoHeight()
-                .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+                .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(Line))
-                        .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ];
@@ -86,18 +87,33 @@ auto
 
     auto Header = SNew(STextBlock)
         .Text(FText::FromString(TEXT("\x25C6 Goal")))   // ◆ Goal (★ tofus in the editor font)
-        .Font(CkStyle::BoldFont(CkStyle::NodeTitleFontSize()))
+        .Font_Lambda([]() -> FSlateFontInfo
+        { return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize()); })
         .ColorAndOpacity(FSlateColor(CkStyle::NodeBorder_Goal()));
 
     auto Card = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
         .BorderBackgroundColor(CkStyle::NodeBorder_Goal())
-        .Padding(FMargin(CkStyle::NodeBorderThickness()))
+        // GraphNodeStyle — same routing as the action card: the frame's padding IS the border
+        // weight, the fill drops out under Minimal, Dense tightens the inner padding.
+        .Padding_Lambda([]() -> FMargin
+        {
+            return FMargin{ck::debug_axes::Get_NodeBorderThickness()};
+        })
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                .BorderBackgroundColor(CkStyle::NodeFill_Goal())
-                .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+                .BorderBackgroundColor_Lambda([]() -> FSlateColor
+                {
+                    return ck_goap_debugger_axes::Get_NodeDrawsFill()
+                        ? FSlateColor(CkStyle::NodeFill_Goal())
+                        : FSlateColor(FLinearColor::Transparent);
+                })
+                .Padding_Lambda([]() -> FMargin
+                {
+                    const auto Scale = ck_goap_debugger_axes::Get_NodePaddingScale();
+                    return FMargin{CkStyle::SpaceM * Scale, CkStyle::SpaceS * Scale};
+                })
                 [
                     SNew(SVerticalBox)
                         + SVerticalBox::Slot()

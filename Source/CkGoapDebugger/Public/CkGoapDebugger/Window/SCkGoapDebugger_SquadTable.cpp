@@ -290,15 +290,22 @@ auto
 
             // ---- Search pipeline ---------------------------------------------
             // Filter hides, Highlight dims. Both run over the same visible-column
-            // set, including the entity id exactly as the row's EntityRef pill
-            // renders it (SCkDebug_EntityRef.cpp:95).
+            // set, including the entity reference exactly as the row's EntityRef pill renders it.
+            //
+            // Composed through the axes lib rather than hand-formatted: the pill is a ShowName(false)
+            // site, so it feeds an empty name and every EntityIdStyle option degrades to the bare id
+            // — the same text this search sees, whichever option is selected. Hand-rolling the id
+            // string here is what let the two drift apart in the first place.
             //
             // NOTE the planner stays in SeenPlanners above even when filtered out,
             // so its cached row TSharedPtr survives and comes back with the same
             // identity when the query is cleared.
             {
-                const auto StatusText   = Get_StatusText(Row->PlanStatus, Row->IsDisabled);
-                const auto EntityIdText = ck::Format_UE(TEXT("{}"), Row->EntityHandle.Get_Entity());
+                const auto StatusText = Get_StatusText(Row->PlanStatus, Row->IsDisabled);
+                const auto EntityIdText = ck::debug_axes::Make_EntityIdText(
+                    UCkDebuggerStyleSettings::Get_Selection(),
+                    FString{},
+                    ck::Format_UE(TEXT("{}"), Row->EntityHandle.Get_Entity())).ToString();
 
                 if (NOT Matches_Row(_FilterString, Row->AgentName, Row->PlannerLabel,
                         Row->ChainText, StatusText, EntityIdText))
@@ -378,7 +385,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(Alert))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(IsBad ? CkStyle::Err() : CkStyle::Warn()))
                     ]
             ];
@@ -388,7 +396,7 @@ auto
     const auto PlannerHandle = Row.PlannerHandle;
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
         [
             SNew(SBorder)
                 .BorderImage(CkStyle::GetRoundedBrush())
@@ -416,7 +424,8 @@ auto
                                                 [
                                                     SNew(STextBlock)
                                                         .Text(FText::FromString(Row.Avatar))
-                                                        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                        .Font_Lambda([]() -> FSlateFontInfo
+                                                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                                         .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                                                 ]
                                         ]
@@ -427,7 +436,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(Row.AgentName))
-                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                                                 .ColorAndOpacity(FSlateColor(Row.IsHighlightMatch ? CkStyle::Text() : CkStyle::TextMute()))
                                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                                         ]
@@ -456,7 +466,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(Row.PlannerLabel))
-                                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                             ]
@@ -483,7 +494,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(Row.ChainText))
-                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                     .ColorAndOpacity(FSlateColor(Row.IsHighlightMatch ? CkStyle::TextDim() : CkStyle::TextMute()))
                                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                             ]
@@ -500,7 +512,8 @@ auto
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::FromString(Row.CostText))
-                                            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                                             .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                                     ]
                             ]
@@ -517,7 +530,8 @@ auto
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::AsNumber(Row.Attempts))
-                                            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                     ]
                             ]
@@ -565,7 +579,8 @@ auto
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::FromString(TEXT("Inspect \x203A")))
-                                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                             .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                                     ]
                             ]

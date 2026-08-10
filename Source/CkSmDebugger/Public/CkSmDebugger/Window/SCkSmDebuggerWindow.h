@@ -10,7 +10,7 @@ class FCkSmDebugger_ViewModel;
 class FCkSmDebugger_DataCollector;
 class UCkSmDebugGraph;
 class SCkSmDebugger_HistoryList;
-class SCkSmDebugger_Timeline;
+class SCkDebug_ScrubTimeline;
 class SCkSmDebugger_PreviewPane;
 class SGraphEditor;
 class SSplitter;
@@ -49,6 +49,20 @@ private:
     auto RefreshDetailContent() -> void;
     auto RefreshSmSelector() -> void;
 
+    // Push the current run's segments + marks into the shared scrub timeline.
+    auto RefreshTimelineContent() -> void;
+
+    // Re-centre the timeline window on the cursor. Replaces the old
+    // "ScrubState.TimelineScrollX = 0" recentre — the widget owns the window now.
+    auto FocusTimelineOnCursor() -> void;
+
+    // Run-relative time -> absolute engine frame, via the run's FrameSegments table.
+    // Returns 0 when the run has no history yet.
+    static auto ComputeFrameAtTime(const FCkSmDebugger_RunInfo& InRun, double InRunRelativeTime) -> int64;
+
+    // The run the timeline / scrub toolbar currently addresses (selected completed run, else live).
+    auto Get_ScrubbedRun() const -> const FCkSmDebugger_RunInfo*;
+
     // Move the scrub needle to the previous (-1) or next (+1) history transition.
     auto StepScrubToTransition(int32 InDirection) -> void;
     // Jump to a specific frame number (entered via the toolbar input field).
@@ -63,7 +77,12 @@ private:
 
     // Sub-widgets
     TSharedPtr<SCkSmDebugger_HistoryList> _HistoryList;
-    TSharedPtr<SCkSmDebugger_Timeline> _Timeline;
+    TSharedPtr<SCkDebug_ScrubTimeline> _Timeline;
+
+    // Mirror of the timeline's widget-owned view window, kept current through OnViewChanged.
+    // Its one consumer is world teardown: the new session's run restarts at t=0, so the window is
+    // re-anchored to the origin while the user's zoom level is carried over.
+    double _TimelineViewDuration = 10.0;
 
     // SM selector
     TArray<TSharedPtr<FString>> _SmSelectorItems;

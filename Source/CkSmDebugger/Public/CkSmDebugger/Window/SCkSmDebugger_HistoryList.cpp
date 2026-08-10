@@ -10,6 +10,8 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
@@ -262,10 +264,10 @@ auto
         {
             auto VM = ViewModelWeak.Pin();
             if (NOT VM.IsValid() || VM->Get_ViewMode() != ECkSmDebugger_ViewMode::Scrub)
-            { return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f); }
+            { return FLinearColor::Transparent; }
 
             auto* Info = VM->Get_CurrentSmInfo();
-            if (NOT Info) { return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f); }
+            if (NOT Info) { return FLinearColor::Transparent; }
 
             auto& SS = VM->Get_ScrubState();
             auto RIdx = SS.SelectedRunIndex;
@@ -283,8 +285,8 @@ auto
                 { BestTime = Entry.RealTimeSeconds; }
             }
             if (BestTime == ItemTime)
-            { return FLinearColor(1.0f, 0.6f, 0.1f, 0.35f); }
-            return FLinearColor(1.0f, 1.0f, 1.0f, 0.0f);
+            { return FSlateColor(CkStyle::OverlayOf(CkStyle::Warn(), 0.35f)); }
+            return FLinearColor::Transparent;
         }));
 
     // Highlight dimming — when the dual-search Highlight input has text and this
@@ -313,7 +315,7 @@ auto
                 .BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(TintAttr)
                 .ColorAndOpacity(ContentTintAttr)
-                .Padding(FMargin(CkStyle::SpaceS, 2.0f))
+                .Padding(ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection()))
                 [ Line ]
             ]
         ];
@@ -361,7 +363,7 @@ auto
                     .SuffixText(FText::FromString(Icon))
                     .ValueColor(ResultColor)
                     .SuffixColor(ResultColor)
-                    .BorderColor(FLinearColor(ResultColor.R, ResultColor.G, ResultColor.B, 0.4f))
+                    .BorderColor(CkStyle::OverlayOf(ResultColor, 0.4f))
             ];
     }
 
@@ -411,7 +413,6 @@ auto
         RunRelative = InItem->RealTimeSeconds - Run.StartTime;
     }
     NewScrubState.ScrubTime = RunRelative;
-    NewScrubState.TimelineScrollX = 0.0f;
 
     auto ItemIndex = _Items.IndexOfByKey(InItem);
     NewScrubState.SelectedHistoryIndex = ItemIndex;

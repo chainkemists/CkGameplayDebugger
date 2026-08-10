@@ -4,6 +4,8 @@
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateColor.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 // ====================================================================================================================
 // CkGoap Debugger style — brushes, text styles, and layout constants. Owned by the CkGoapDebugger
 // module; registered at StartupModule, unregistered at ShutdownModule.
@@ -22,10 +24,15 @@ public:
     static auto GetStyleSetName() -> FName;
 
     // -- Layout constants -----------------------------------------------------
-    static constexpr float Padding_XSmall  = 2.0f;
-    static constexpr float Padding_Small   = 4.0f;
-    static constexpr float Padding_Medium  = 8.0f;
-    static constexpr float Padding_Large   = 14.0f;
+    // The padding ladder is an ALIAS onto the suite spacing ladder, not a parallel one. It used to
+    // repeat 2/4/8 verbatim and then diverge at the top rung (14 where the suite's is 16), which is
+    // exactly the drift the alias removes. The reconciliation moves one call site — the WS rail's
+    // outer container padding (SCkGoapDebugger_WorldStateRail.cpp) — by 2px per edge; every other
+    // rung is byte-identical.
+    static constexpr float Padding_XSmall  = CkStyle::SpaceXS;
+    static constexpr float Padding_Small   = CkStyle::SpaceS;
+    static constexpr float Padding_Medium  = CkStyle::SpaceM;
+    static constexpr float Padding_Large   = CkStyle::SpaceXL;
 
     static constexpr float SidebarWidth          = 280.0f;
     static constexpr float SidebarBottomHeight   = 230.0f;

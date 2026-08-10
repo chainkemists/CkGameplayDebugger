@@ -3,6 +3,8 @@
 #include "CkSmDebugNode_Entry.h"
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "SGraphPin.h"
@@ -73,7 +75,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Entry")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity(TextColor)
                         ]
 
@@ -83,7 +86,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x25B6")))  // ▶
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH2()); })
                                 .ColorAndOpacity(TextColor)
                         ]
                 ]

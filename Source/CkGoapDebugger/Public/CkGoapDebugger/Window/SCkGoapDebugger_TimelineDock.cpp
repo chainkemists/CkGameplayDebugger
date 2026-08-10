@@ -140,7 +140,8 @@ auto
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::FromString(TEXT("Jump to replan")))
-                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                     ]
 
@@ -414,7 +415,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(
                                 TEXT("#%d · %.1fs"), ReplanNumber, Event.WorldTimeSeconds)))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity_Lambda([this, EventIndex]() -> FSlateColor
                             {
                                 const auto Selected = _ViewModel.IsValid() &&
@@ -456,7 +458,8 @@ auto
         _DiffHost->SetContent(
             SNew(STextBlock)
                 .Text(FText::FromString(TEXT("No replans yet — the diff card fills in after the first plan.")))
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim())));
         return;
     }
@@ -526,7 +529,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(TriggerText))
-                                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
 
@@ -536,7 +540,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(FString::Printf(TEXT("old   %s"), *OldText)))
-                                .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                         ]
 
@@ -545,7 +550,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(FString::Printf(TEXT("new   %s"), *NewText)))
-                                .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
             ]);
@@ -575,7 +581,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("(no events yet)")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
             ];
         return;
@@ -606,7 +613,7 @@ auto
                     [
                         SNew(SButton)
                             .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                            .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                            .ContentPadding(ck_goap_debugger_axes::Live_RowDensity(
                                 FMargin{CkStyle::SpaceS, 1.0f}))
                             .OnClicked_Lambda([this, EventIndex]() -> FReply
                             {
@@ -623,7 +630,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(ck_goap_debugger_history_model::Format_Timestamp(Event.WorldTimeSeconds)))
-                                                .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
 
@@ -637,7 +645,8 @@ auto
                                                 [
                                                     SNew(STextBlock)
                                                         .Text(FText::FromString(ck_goap_debugger_history_model::KindTag(Event.Kind)))
-                                                        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                        .Font_Lambda([]() -> FSlateFontInfo
+                                                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                                         .ColorAndOpacity(FSlateColor(
                                                             Event.Kind == ECkGoapDebugger_HistoryEventKind::PlanFailed
                                                                 ? CkStyle::Err()
@@ -657,7 +666,8 @@ auto
                                                     : FString::Printf(TEXT("%s — %s"),
                                                           *Get_DisplayText(Event, Event.Title, LogNameDepth),
                                                           *Get_DisplayText(Event, Event.Meta, LogNameDepth))))
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                                         ]

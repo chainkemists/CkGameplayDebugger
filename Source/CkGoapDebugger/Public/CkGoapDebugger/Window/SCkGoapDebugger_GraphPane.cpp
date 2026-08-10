@@ -9,6 +9,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -301,7 +302,8 @@ auto
                     [
                         SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Action graph - (no selection)")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
 
@@ -367,7 +369,8 @@ auto
                     [
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("Name")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 + SHorizontalBox::Slot()
@@ -403,7 +406,8 @@ auto
                                 const auto D = _Graph->NameDepth;
                                 return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                             .Justification(ETextJustify::Center)
                             .MinDesiredWidth(28.0f)
                             .ColorAndOpacity(FSlateColor(CkStyle::Text()))

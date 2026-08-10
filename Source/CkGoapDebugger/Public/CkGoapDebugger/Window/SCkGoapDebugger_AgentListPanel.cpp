@@ -64,7 +64,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("AGENTS")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
 
@@ -252,7 +253,7 @@ auto
     const auto WeakPanel = TWeakPtr<SCkGoapDebugger_AgentListPanel>(SharedThis(this));
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
+        .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{8.0f, 3.0f}))
         .ShowSelection(true)
         [
             SNew(SBorder)
@@ -300,7 +301,8 @@ auto
                                 const auto Pinned = WeakItem.Pin();
                                 return FText::FromString(Pinned.IsValid() ? Pinned->Name : FString{});
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                             .ColorAndOpacity_Lambda([WeakItem]() -> FSlateColor
                             {
                                 const auto Pinned = WeakItem.Pin();
@@ -324,7 +326,8 @@ auto
                                 return FText::FromString(FString::Printf(TEXT("%d planner%s"),
                                     Pinned->PlannerCount, Pinned->PlannerCount == 1 ? TEXT("") : TEXT("s")));
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
                 ]

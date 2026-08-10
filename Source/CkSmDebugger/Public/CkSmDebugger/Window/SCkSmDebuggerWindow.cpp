@@ -76,7 +76,6 @@ namespace ck_sm_debugger_window
     auto MakeSectionHeader(const FString& InText) -> TSharedRef<SWidget>
     {
         const auto& Selection = UCkDebuggerStyleSettings::Get_Selection();
-        const auto SeparatorThickness = ck::debug_axes::Get_SeparatorThickness(Selection);
 
         auto Box = SNew(SVerticalBox);
 
@@ -86,18 +85,30 @@ namespace ck_sm_debugger_window
                 Selection, FText::FromString(InText), ECk_Tone::Neutral)
         ];
 
-        if (SeparatorThickness > 0.0f)
-        {
-            Box->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+        // The underline slot is ALWAYS added and collapses itself at SeparatorWeight None. A
+        // collapsed child contributes neither size nor slot padding, so the geometry matches the
+        // old conditional slot while the axis stays live without a rebuild.
+        Box->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
+        [
+            SNew(SBox)
+                .HeightOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection())};
+                })
+                .Visibility_Lambda([]() -> EVisibility
+                {
+                    return ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection()) > 0.0f
+                        ? EVisibility::SelfHitTestInvisible
+                        : EVisibility::Collapsed;
+                })
             [
-                SNew(SBox).HeightOverride(SeparatorThickness)
-                [
-                    SNew(SBorder)
-                        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                        .BorderBackgroundColor(CkStyle::Border())
-                ]
-            ];
-        }
+                SNew(SBorder)
+                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor(CkStyle::Border())
+            ]
+        ];
 
         return Box;
     }
@@ -116,7 +127,8 @@ namespace ck_sm_debugger_window
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(InText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(FSlateColor(InColor))
             ];
     }
@@ -128,7 +140,8 @@ namespace ck_sm_debugger_window
     {
         return SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(InText))
-            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+            .Font_Lambda([]() -> FSlateFontInfo
+            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
             .ColorAndOpacity(FSlateColor(Color_Detail_ClassName()));
     }
 
@@ -145,7 +158,8 @@ namespace ck_sm_debugger_window
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(InKey))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                 ]
             ]
@@ -153,7 +167,8 @@ namespace ck_sm_debugger_window
             [
                 SNew(SCkDebug_SelectableLabel)
                     .Text(InValue)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                     .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
             ];
     }
@@ -191,7 +206,8 @@ namespace ck_sm_debugger_window
             [
                 SNew(STextBlock)
                     .Text(TextAttr)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(ColorAttr)
             ];
     }
@@ -253,7 +269,8 @@ namespace ck_sm_debugger_window
             [
                 SNew(STextBlock)
                     .Text(TextAttr)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(FgAttr)
             ];
     }
@@ -828,7 +845,9 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
+    // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (_IsTestMode)
     {
@@ -1014,6 +1033,31 @@ auto
     // Detail panel: swap content when selection signature changes.
     RefreshDetailContent();
 }
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Detail panel: BuildDetailContent COMPOSES against SeparatorWeight / ValueAlignment (a zero
+    // weight drops the underline slot entirely), so the axis change has to re-emit it. Bypass the
+    // signature early-exit by pushing content directly — the signature is unchanged by definition.
+    if (_DetailContentBox.IsValid())
+    { _DetailContentBox->SetContent(BuildDetailContent()); }
+
+    if (_HistoryList.IsValid())
+    { _HistoryList->Invalidate_StyleCache(); }
+
+    // Graph nodes bind their axis-driven visuals through attribute lambdas and repaint every frame,
+    // so they need nothing here. The one structural consumer is the task-row separator inside a
+    // state node, which ForceRebuild re-emits along with the layout pass.
+    if (ck::IsValid(_Graph))
+    { _Graph->ForceRebuild(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 
 auto SCkSmDebuggerWindow::TargetEntity(const FCk_Handle& InEntity) -> void
 {
@@ -1209,7 +1253,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("SM:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                     .ColorAndOpacity(CkStyle::TextDim())
             ]
         + SHorizontalBox::Slot()
@@ -1223,7 +1268,8 @@ auto
                     {
                         return SNew(STextBlock)
                             .Text(FText::FromString(*InItem))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9));
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); });
                     })
                     .OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type InType)
                     {
@@ -1247,7 +1293,8 @@ auto
 
                                 return FText::FromString(TEXT("(select SM)"));
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                     ]
             ]
 
@@ -1352,7 +1399,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("\x2699")))  // ⚙
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH2()); })
                     ]
                     .MenuContent()
                     [
@@ -1373,7 +1421,8 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("History")))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .Font_Lambda([]() -> FSlateFontInfo
+                                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                                     .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
@@ -1416,7 +1465,8 @@ auto
                                                     return FText::FromString(TEXT("Classic"));
                                                 }
                                             })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                             .Justification(ETextJustify::Center)
                                             .MinDesiredWidth(52.0f)
                                     ]
@@ -1454,7 +1504,8 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("H Spacing")))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .Font_Lambda([]() -> FSlateFontInfo
+                                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                                     .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
@@ -1484,7 +1535,8 @@ auto
                                                 if (NOT _Graph) { return FText::FromString(TEXT("350")); }
                                                 return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingX));
                                             })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                             .Justification(ETextJustify::Center)
                                             .MinDesiredWidth(32.0f)
                                     ]
@@ -1521,7 +1573,8 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("V Spacing")))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .Font_Lambda([]() -> FSlateFontInfo
+                                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                                     .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
@@ -1551,7 +1604,8 @@ auto
                                                 if (NOT _Graph) { return FText::FromString(TEXT("120")); }
                                                 return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingY));
                                             })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                             .Justification(ETextJustify::Center)
                                             .MinDesiredWidth(32.0f)
                                     ]
@@ -1588,7 +1642,8 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("Badge Gap")))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                                    .Font_Lambda([]() -> FSlateFontInfo
+                                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                                     .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
@@ -1617,7 +1672,8 @@ auto
                                                 if (NOT _Graph) { return FText::FromString(TEXT("20")); }
                                                 return FText::FromString(FString::Printf(TEXT("%.0f"), _Graph->LayoutParams.BadgeSpread));
                                             })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                             .Justification(ETextJustify::Center)
                                             .MinDesiredWidth(32.0f)
                                     ]
@@ -1685,7 +1741,8 @@ auto
                             ? FSlateColor(CkStyle::Ok())
                             : FSlateColor(CkStyle::Warn());
                     })
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
             ]
 
         // (Scrub navigation moved to the dedicated timeline toolbar, just above the
@@ -1836,7 +1893,8 @@ auto
                         return FText::GetEmpty();
                     })
                     .ColorAndOpacity(CkStyle::Err())
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
             ]
 
         // ── Per-window refresh controls ─────────────────────────────────
@@ -2028,7 +2086,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(NSLOCTEXT("CkSmDebugger", "JumpToFrameLabel", "Frame:"))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                 ]
             + SHorizontalBox::Slot()
                 .AutoWidth().Padding(0.0f, 0.0f, 2.0f, 0.0f).VAlign(VAlign_Center)
@@ -2236,7 +2295,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("No selection")))
                             .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
                     ]
                 ]
         ];
@@ -2319,7 +2379,8 @@ auto
             SNew(STextBlock)
                 .Text(FText::FromString(TEXT("No selection")))
                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9)));
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); }));
     };
 
     if (NOT _ViewModel.IsValid())
@@ -2367,14 +2428,16 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Bullet()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(ToName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
         ];
 
@@ -2400,14 +2463,16 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(IconChar))
                                 .ColorAndOpacity(FSlateColor(IconColor))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         ]
                 ];
             }
@@ -2423,14 +2488,16 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CB")))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FromName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
         ];
 
@@ -2445,7 +2512,8 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                 ];
             }
         }
@@ -2473,7 +2541,8 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                         [
@@ -2502,7 +2571,8 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(CName))
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         ]
                 ];
             }
@@ -2514,7 +2584,8 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("(unconditional)")))
                     .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
             ];
         }
 
@@ -2523,7 +2594,8 @@ auto
             SNew(STextBlock)
                 .Text(FText::FromString(FString::Printf(TEXT("Frame [%llu]"), Entry.FrameNumber)))
                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
         ];
 
         return Root;
@@ -2549,21 +2621,24 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(SrcName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x2500\x25B6")))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Arrow()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH3()); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DstName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                 ]
         ];
 
@@ -2594,7 +2669,8 @@ auto
                     SNew(STextBlock)
                         .Text(CountAttr)
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                 [
@@ -2649,7 +2725,8 @@ auto
                                 SNew(STextBlock)
                                     .Text(FText::FromString(CName))
                                     .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                             ]
                     ]
                     + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)
@@ -2741,7 +2818,8 @@ auto
                 SNew(STextBlock)
                     .Text(ScrubFrameAttr)
                     .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeBody()); })
             ];
 
             // CAME FROM (the transition that entered this segment)
@@ -2757,7 +2835,8 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                 ];
             }
 
@@ -2779,7 +2858,8 @@ auto
                             TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
                             *NextName, FramesAhead, NextEntry.FrameNumber)))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                 ];
 
                 // Conditions that fired the transition (PASS pills). Falls back to
@@ -2801,7 +2881,8 @@ auto
                                     SNew(STextBlock)
                                         .Text(FText::FromString(CName))
                                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                 ]
                         ];
                     }
@@ -2813,7 +2894,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("(unconditional)")))
                             .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
                     ];
                 }
             }
@@ -2824,7 +2906,8 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
                 ];
             }
 
@@ -2857,14 +2940,16 @@ auto
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Bullet()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", 11); })
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DisplayName))
                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", 11); })
                 ];
 
             auto StateIdx = SelectedIdx;
@@ -3082,7 +3167,8 @@ auto
                                     SNew(STextBlock)
                                         .Text(FText::FromString(TName))
                                         .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                                 [
@@ -3171,21 +3257,24 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x2500\x25B6")))
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Arrow()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH3()); })
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(DstName))
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(CountAttr)
                                 .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                         [
@@ -3264,7 +3353,8 @@ auto
                                         SNew(STextBlock)
                                             .Text(FText::FromString(CName))
                                             .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                     ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)

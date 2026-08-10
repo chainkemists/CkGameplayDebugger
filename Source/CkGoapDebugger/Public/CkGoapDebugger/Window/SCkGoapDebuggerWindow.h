@@ -83,6 +83,10 @@ public:
     // entity handles). Read by child panels via the window.
     auto Get_NerdMode() const -> bool { return _NerdMode; }
 
+protected:
+    // Structural style axes changed — drop each panel's rebuild debounce and re-run its refresh.
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     // -----------------------------------------------------------------------------------------------------------------
     // Build helpers — called once from Construct; result subtrees are cached.

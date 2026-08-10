@@ -103,7 +103,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("Select a Planner to audit its catalog.")))
-                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                     .Justification(ETextJustify::Center)
                             ]
@@ -307,10 +308,11 @@ auto
             .AutoHeight()
             .Padding(FMargin(0.0f, 0.0f, 0.0f, CkStyle::SpaceS))
             [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(FText::FromString(InLabel.ToUpper()))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
-                    .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                // The suite's header widget rather than a hand-rolled uppercase label: it carries
+                // SectionHeaderStyle (Uppercase / Mixed / Minimal) live, which a manual ToUpper
+                // cannot.
+                SNew(SCkDebug_SectionHeader)
+                    .Label(FText::FromString(InLabel))
             ]
 
         + SVerticalBox::Slot()
@@ -344,7 +346,8 @@ auto
                     .Prefix(FString::Printf(TEXT("%s "),
                         InAction.IsPlannerRole ? TEXT("◆●") : TEXT("●")))
                     .NameDepth(NameDepth)
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
             ]
 
@@ -354,7 +357,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%.1f"), InAction.Cost)))
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
             ]
 
@@ -387,7 +391,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("sub-planner")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
             ];
@@ -407,7 +412,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("fallback")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     ]
             ];
@@ -433,7 +439,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("…")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                     .OnGetMenuContent_Lambda([PlannerHandle, ActionClass, ClassName]() -> TSharedRef<SWidget>
@@ -555,7 +562,8 @@ auto
                             .Text(FText::FromString(FString::Printf(TEXT("%s · tag %s"),
                                 *InAction.ClassName,
                                 InAction.ActionTag.IsValid() ? *InAction.ActionTag.ToString() : TEXT("(none)"))))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
 
@@ -606,7 +614,7 @@ auto
     {
         Rows->AddSlot()
             .AutoHeight()
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
 
@@ -630,7 +638,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(InText))
-                                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
             ];
@@ -714,7 +723,8 @@ auto
             [
                 SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("HEALTH CHECKS")))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ]
 
@@ -799,7 +809,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(Action.ClassName, HeaderNameDepth)))
                             .ToolTipText(FText::FromString(Action.ClassName))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(Highlight ? CkStyle::Accent() : CkStyle::TextMute()))
                             .RenderTransform(FSlateRenderTransform(FQuat2D(FMath::DegreesToRadians(-45.0f))))
                             .RenderTransformPivot(FVector2D(0.0f, 1.0f))
@@ -838,7 +849,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(KeyLabel))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity_Lambda([WeakPanel, Key]() -> FSlateColor
                             {
                                 const auto Pinned = WeakPanel.Pin();
@@ -879,7 +891,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(CellText))
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CellColor))
                         ]
                 ];
@@ -894,7 +907,8 @@ auto
             [
                 SNew(SCkDebug_SelectableLabel)
                     .Text(FText::FromString(TEXT("KEY × ACTION MATRIX")))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ]
 

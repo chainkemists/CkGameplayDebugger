@@ -368,7 +368,8 @@ auto
                 [
                     SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("(no keys match filter)")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                 ];
         }
@@ -407,7 +408,8 @@ auto
         [
             SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(Message))
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ];
 }
@@ -433,7 +435,8 @@ auto
                 {
                     return _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
                 })
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute())));
 
     return SNew(SCkDebug_SectionHeader)
@@ -472,7 +475,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("Sandbox")))
-                                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
 
@@ -570,7 +574,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(TEXT("keys")))
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
 
@@ -580,7 +585,8 @@ auto
                                             SNew(SCkDebug_SelectableLabel)
                                                 .Text(FText::FromString(FString::Printf(
                                                     TEXT("%d / %d"), InKeyCount, ck::goap::WorldState_MaxKeys)))
-                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                         ]
                             ]
@@ -598,7 +604,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(TEXT("subscribers")))
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
 
@@ -607,7 +614,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(SubscriberTextAttr)
-                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                         ]
                             ]
@@ -625,7 +633,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(TraceHintTextAttr)
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
 
@@ -649,7 +658,8 @@ auto
                                                 [
                                                     SNew(STextBlock)
                                                         .Text(FText::FromString(TEXT("clear")))
-                                                        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                                        .Font_Lambda([]() -> FSlateFontInfo
+                                                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                                         .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                                                 ]
                                         ]
@@ -708,7 +718,8 @@ auto
                                     ? TEXT("Sort: Name")
                                     : TEXT("Sort: TRUE"));
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                     ]
             ];
@@ -857,7 +868,8 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(KeyText))
                     .ToolTipText(FText::FromString(InEntry.Key.IsValid() ? InEntry.Key.ToString() : FString{}))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(KeyCol))
             ]
 
@@ -871,7 +883,8 @@ auto
                     .Text(FText::FromString(FString::Printf(TEXT("%dP·%dE"), InUsage.X, InUsage.Y)))
                     .ToolTipText(FText::FromString(FString::Printf(
                         TEXT("%d precondition/goal reads · %d effect writes"), InUsage.X, InUsage.Y)))
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ]
 
@@ -890,7 +903,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(ShadowTextAttr)
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     ]
             ]
@@ -910,7 +924,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("just changed")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     ]
             ]
@@ -994,7 +1009,7 @@ auto
         [
             SNew(SButton)
                 .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                .ContentPadding(ck_goap_debugger_axes::Live_RowDensity(
                     FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
                 .ToolTipText(FText::FromString(TEXT("Click to trace this key across panes (plan chips, decision cards, graph).")))
                 .OnClicked(FOnClicked::CreateSP(
@@ -1181,7 +1196,8 @@ auto
                     [
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("OVERRIDE LAYERS")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
 
@@ -1193,7 +1209,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(
                                 TEXT("· depth %d"), LayerNames.Num())))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
 
@@ -1227,7 +1244,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(TEXT("Clear all")))
-                                    .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::Err()))
                             ]
                     ]
@@ -1248,7 +1266,7 @@ auto
     // no layer shadows the key.
     Section->AddSlot()
         .AutoHeight()
-        .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+        .Padding(ck_goap_debugger_axes::Live_RowDensity(
             FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
         [
             SNew(SHorizontalBox)
@@ -1259,7 +1277,8 @@ auto
                     [
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(TEXT("base store")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
 
@@ -1270,7 +1289,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(
                                 TEXT("%d key%s"), InBaseKeyCount, InBaseKeyCount == 1 ? TEXT("") : TEXT("s"))))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
         ];
@@ -1304,7 +1324,7 @@ auto
             [
                 SNew(SButton)
                     .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                    .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                    .ContentPadding(ck_goap_debugger_axes::Live_RowDensity(
                         FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
                     .ToolTipText(FText::FromString(FString::Printf(
                         TEXT("Click to %s this layer's keys."),
@@ -1322,7 +1342,8 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(IsExpanded ? TEXT("v") : TEXT(">")))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 ]
                             + SHorizontalBox::Slot()
@@ -1331,7 +1352,8 @@ auto
                                 [
                                     SNew(SCkDebug_SelectableLabel)
                                         .Text(FText::FromString(InLayerName.ToString()))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                                 ]
                             + SHorizontalBox::Slot()
@@ -1343,7 +1365,8 @@ auto
                                         .Text(FText::FromString(FString::Printf(
                                             TEXT("· %d key%s"),
                                             KeyCount, KeyCount == 1 ? TEXT("") : TEXT("s"))))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 ]
                     ]
@@ -1367,7 +1390,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("Pop")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Err()))
                     ]
             ];
@@ -1394,7 +1418,7 @@ auto
 
             KeysBox->AddSlot()
                 .AutoHeight()
-                .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                .Padding(ck_goap_debugger_axes::Live_RowDensity(
                 FMargin{FCkGoapDebuggerStyle::Padding_Medium, 1.0f, 0.0f, 1.0f}))
                 [
                     SNew(SHorizontalBox)
@@ -1404,7 +1428,8 @@ auto
                             [
                                 SNew(SCkDebug_SelectableLabel)
                                     .Text(FText::FromString(Kv.Key.ToString()))
-                                    .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         + SHorizontalBox::Slot()
@@ -1413,9 +1438,11 @@ auto
                             [
                                 SNew(SCkDebug_SelectableLabel)
                                     .Text(FText::FromString(ValueStr))
-                                    .Font(Kv.Value
-                                        ? FCoreStyle::GetDefaultFontStyle("Bold", 8)
-                                        : FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                    .Font_Lambda([IsSet = Kv.Value]() -> FSlateFontInfo
+                                    {
+                                        return ck::debug_axes::ScaledFont(
+                                            IsSet ? "Bold" : "Regular", CkStyle::FontSizeMicro());
+                                    })
                                     .ColorAndOpacity(FSlateColor(ValueCol))
                             ]
                 ];

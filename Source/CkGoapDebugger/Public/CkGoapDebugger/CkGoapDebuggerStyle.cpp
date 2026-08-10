@@ -155,13 +155,21 @@ auto
     CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle)
     -> void
 {
-    const auto Regular     = FCoreStyle::GetDefaultFontStyle("Regular", 9);
-    const auto Bold        = FCoreStyle::GetDefaultFontStyle("Bold",    9);
-    const auto Mono        = FCoreStyle::GetDefaultFontStyle("Mono",    9);
-    const auto MonoSmall   = FCoreStyle::GetDefaultFontStyle("Mono",    8);
-    const auto Header      = FCoreStyle::GetDefaultFontStyle("Bold",   10);
-    const auto LargeHeader = FCoreStyle::GetDefaultFontStyle("Bold",   12);
-    const auto TitleHeader = FCoreStyle::GetDefaultFontStyle("Bold",   15);
+    // Sizes come from CkStyle roles, resolved here at Initialize() (module startup, past static
+    // init), so an Editor Preferences typography edit moves this style set with the rest of the
+    // suite. They deliberately do NOT compose TextScale: an FTextBlockStyle bakes its font at
+    // style-set creation, so a registered style cannot follow a live axis (see CkDebuggerAxes.h,
+    // "Typography"). Text that must track TextScale composes through ck::debug_axes::ScaledFont at
+    // the call site instead — which is what every GOAP panel now does.
+    const auto Regular     = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody());
+    const auto Bold        = FCoreStyle::GetDefaultFontStyle("Bold",    CkStyle::FontSizeBody());
+    const auto Mono        = FCoreStyle::GetDefaultFontStyle("Mono",    CkStyle::FontSizeBody());
+    const auto MonoSmall   = FCoreStyle::GetDefaultFontStyle("Mono",    CkStyle::FontSizeMicro());
+    const auto Header      = FCoreStyle::GetDefaultFontStyle("Bold",    CkStyle::FontSizeH3());
+    const auto LargeHeader = FCoreStyle::GetDefaultFontStyle("Bold",    CkStyle::FontSizeH2());
+    // Deliberate outlier: the Mission Control product title is a stop ABOVE the H2 role and has no
+    // role of its own. Kept literal rather than inventing an H1 nobody else would use.
+    const auto TitleHeader = FCoreStyle::GetDefaultFontStyle("Bold",    15);
 
     const auto Faint = CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f);
 

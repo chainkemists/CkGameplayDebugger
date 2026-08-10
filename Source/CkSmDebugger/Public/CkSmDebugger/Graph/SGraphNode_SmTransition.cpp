@@ -5,6 +5,8 @@
 #include "CkSmDebugGraph.h"
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkSmDebugger/CkSmDebuggerStyle.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "SGraphPin.h"
@@ -76,8 +78,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
@@ -98,8 +102,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
@@ -120,8 +126,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
@@ -144,8 +152,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     .Visibility(TAttribute<EVisibility>::CreateLambda([TransNodePtr = _TransitionNode]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
@@ -168,8 +178,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     [
                         SNew(SBorder)
                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -191,8 +203,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     [
                         SNew(SBorder)
                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -214,8 +228,10 @@ auto
             .VAlign(VAlign_Bottom)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     [
                         SNew(SBorder)
                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -237,8 +253,10 @@ auto
             .VAlign(VAlign_Top)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()}; })
                     [
                         SNew(SBorder)
                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -260,7 +278,8 @@ auto
                     .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
-                            ? CkStyle::OverlayOf(BpRed, 0.35f)
+                            ? CkStyle::OverlayOf(BpRed,
+                                FMath::Clamp(0.35f * ck_sm_debugger_axes::Get_NodeDimScale(), 0.05f, 1.0f))
                             : FLinearColor::Transparent;
                     })
             ];

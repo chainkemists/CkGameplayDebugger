@@ -77,11 +77,15 @@ auto
 
         + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection()))
+            .Padding(TAttribute<FMargin>::CreateLambda([]() -> FMargin
+            {
+                return ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+            }))
             [
                 SNew(STextBlock)
                     .Text_Lambda([this]() { return GetStatusText(); })
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(CkStyle::TextDim())
             ]
     ];
@@ -161,7 +165,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Initial State:")))
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                     .ColorAndOpacity(CkStyle::TextDim())
             ]
 

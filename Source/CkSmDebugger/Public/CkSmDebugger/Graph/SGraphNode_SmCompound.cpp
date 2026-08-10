@@ -22,6 +22,29 @@
 
 namespace
 {
+    // The sub-SM bubble's corner radius, and the ONE brush per radius variant that draws it.
+    // GraphNodeStyle can change the radius, and a brush cannot be rebuilt per paint (R7) — so each
+    // reachable radius gets its own function-local static, allocated once on first use, and the
+    // paint path picks between them. Two variants cover the axis: Card and Minimal share the
+    // surface's own radius, Dense halves it.
+    constexpr auto Compound_CornerRadius = 8.0f;
+
+    auto Get_CompoundBorderBrush() -> const FSlateBrush*
+    {
+        static auto Standard = FSlateRoundedBoxBrush(FLinearColor::White, Compound_CornerRadius);
+        static auto Tight    = FSlateRoundedBoxBrush(FLinearColor::White, Compound_CornerRadius * 0.5f);
+
+        return ck_sm_debugger_axes::Get_NodeRadiusScale() < 1.0f ? &Tight : &Standard;
+    }
+
+    auto Get_CompoundFillBrush() -> const FSlateBrush*
+    {
+        static auto Standard = FSlateRoundedBoxBrush(FLinearColor::White, Compound_CornerRadius - 1.0f);
+        static auto Tight    = FSlateRoundedBoxBrush(FLinearColor::White, (Compound_CornerRadius - 1.0f) * 0.5f);
+
+        return ck_sm_debugger_axes::Get_NodeRadiusScale() < 1.0f ? &Tight : &Standard;
+    }
+
     // Padding around the child AABB when computing the compound's own bounds.
     // Matches the visual margin expected between the border and the outermost states.
     constexpr auto Compound_ChildPaddingX = 40.0f;
@@ -305,7 +328,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(DisplayLabel))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity_Lambda([CompoundNodePtr = _CompoundNode]()
                                 {
                                     auto Color = CkStyle::OverlayOf(CkStyle::Accent(), 0.753f);
@@ -384,8 +408,11 @@ auto
     auto W = static_cast<float>(Size.X);
     auto H = static_cast<float>(Size.Y);
 
-    constexpr auto CornerRadius = 8.0f;
-    constexpr auto BorderThickness = 1.0f;
+    // GraphNodeStyle, read live — OnPaint runs every frame, so no binding is needed or possible.
+    // Both are SCALES on the bubble's own tuned geometry: Card divides the role by itself, so
+    // Classic paints exactly the 1px border and 0.22/0.1 alphas it shipped with.
+    const auto BorderThickness = 1.0f * ck_sm_debugger_axes::Get_NodeBorderScale();
+    const auto DimScale        = ck_sm_debugger_axes::Get_NodeDimScale();
 
     // The bubble's intensity fades by _BubbleGlowAlpha (see Tick): it brightens a
     // little (via alpha) when it holds the active sub-state and dims back when it
@@ -396,8 +423,11 @@ auto
     constexpr auto ActiveFillAlpha = 0.02f;
     constexpr auto InactiveFillAlpha = 0.01f;
 
-    auto BorderAlpha = FMath::Lerp(InactiveBorderAlpha, ActiveBorderAlpha, _BubbleGlowAlpha);
-    auto FillAlpha = FMath::Lerp(InactiveFillAlpha, ActiveFillAlpha, _BubbleGlowAlpha);
+    auto BorderAlpha = FMath::Lerp(InactiveBorderAlpha, ActiveBorderAlpha, _BubbleGlowAlpha) * DimScale;
+    // Minimal is border-only: the bubble keeps its outline and drops the wash entirely.
+    auto FillAlpha = ck_sm_debugger_axes::Get_NodeDrawsFill()
+        ? FMath::Lerp(InactiveFillAlpha, ActiveFillAlpha, _BubbleGlowAlpha) * DimScale
+        : 0.0f;
 
     // Faint neutral container: the active STATE inside (its green edge bar) is the
     // eye-catcher, so the bubble stays a subtle grey-blue box that only brightens
@@ -408,17 +438,14 @@ auto
 
     // --- Border ---
     {
-        static auto BorderBrush = FSlateRoundedBoxBrush(FLinearColor::White, CornerRadius);
-
         FSlateDrawElement::MakeBox(
             OutDrawElements, ContainerLayer,
             AllottedGeometry.ToPaintGeometry(),
-            &BorderBrush, ESlateDrawEffect::None, BorderColor);
+            Get_CompoundBorderBrush(), ESlateDrawEffect::None, BorderColor);
     }
 
     // --- Near-transparent fill ---
     {
-        static auto FillBrush = FSlateRoundedBoxBrush(FLinearColor::White, CornerRadius - 1.0f);
         auto FillGeom = AllottedGeometry.MakeChild(
             FVector2f(W - BorderThickness * 2, H - BorderThickness * 2),
             FSlateLayoutTransform(FVector2f(BorderThickness, BorderThickness)));
@@ -429,7 +456,7 @@ auto
         FSlateDrawElement::MakeBox(
             OutDrawElements, ContainerLayer + 1,
             FillGeom.ToPaintGeometry(),
-            &FillBrush, ESlateDrawEffect::None, FillColor);
+            Get_CompoundFillBrush(), ESlateDrawEffect::None, FillColor);
     }
 
     return SGraphNode::OnPaint(

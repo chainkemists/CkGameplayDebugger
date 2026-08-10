@@ -55,6 +55,20 @@ public:
     // contents if the structural shape changed; otherwise relies on per-row
     // attribute lambdas.
     auto RefreshFromViewModel() -> void;
+    /**
+     * Drop the rebuild debounce so the next refresh re-emits structure. The window calls this on a
+     * style-revision bump: colours / fonts / paddings are attribute-bound and already live, but a
+     * panel's STRUCTURE (which rows and slots exist at all) is composed once against the axes, so a
+     * structural axis change needs the re-emit. Flipping the hash rather than zeroing it keeps a
+     * genuine zero hash from swallowing the invalidation.
+     */
+    auto Invalidate_StyleCache() -> void
+    {
+        _LastTreeStructureHash = ~_LastTreeStructureHash;
+        _LastHistoryHash = ~_LastHistoryHash;
+        RefreshFromViewModel();
+    }
+
 
     // The history block (header + scrub track + list), built in Construct but parented by the
     // window into a full-width bottom dock. The sidebar's own ChildSlot holds only the planner tree.

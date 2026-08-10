@@ -35,15 +35,47 @@ namespace ck_debugoverlay
         FCk_DebugOverlay_History*                            InHistory,
         double                                               InNow) -> FCk_DebugOverlay_EntityModel;
 
+    // Builds the one summary row that stands in for a whole sub-source section during the
+    // condense pass. Build_EntityModel routes this to the owning provider's
+    // Get_CondensedSourceRow; specs pass a stub so the collapse is testable without providers.
+    using FCondenseSourceRowFn = TFunction<FCk_DebugOverlay_Row(
+        const FGameplayTag&                 InProviderTag,
+        const FText&                        InSourceName,
+        const TArray<FCk_DebugOverlay_Row>& InRows)>;
+
+    // Pure collapse of a CondensePerSource provider's sections into: its FIRST section, kept
+    // whole, plus ONE condensed section holding a summary row per section that followed. Every
+    // other behavior's sections pass through untouched and in order, as does a provider that
+    // contributed only one section (nothing to condense).
+    //
+    // "First section", not "the focus entity's section": a hierarchical provider never provides
+    // on the focus entity itself — a GOAP planner and an SM root are both CHILD entities of the
+    // NPC — so a SourceOrder-0 section usually does not exist at all. Sources are collected
+    // breadth-first, i.e. nearest-first, so the provider's first section IS the NPC's primary
+    // planner / state machine and is exactly the one worth keeping in full. When a focus section
+    // does exist it is first anyway, so this is a strict superset of a SourceOrder-0 rule.
+    //
+    // The condensed section keeps the provider's tag/priority, buckets its history under
+    // InFocusEntityId (stable across ticks, unlike any one sub-entity), takes the lowest
+    // collapsed SourceOrder as its sort tie-break, and names its source chip "N sub-entities".
+    // Collapsed sections that carry no rows contribute nothing.
+    CKENTITYDEBUGOVERLAY_API auto Condense_ProviderSections(
+        const TArray<FCk_DebugOverlay_Section>& InSections,
+        uint32                                  InFocusEntityId,
+        const FCondenseSourceRowFn&             InCondenseFn) -> TArray<FCk_DebugOverlay_Section>;
+
     // Pure pre-budget cleanup of a freshly collected model. Build_EntityModel applies this
     // before handing the model on, so the focus-card budget spends its slots on rows the card
     // will actually draw:
     //   1. rows with nothing to render (no Value AND no ExplicitHistory) are dropped — Slate
     //      already skipped them at render time, but only AFTER they had consumed a budget slot;
-    //   2. when InMergeDuplicateRows, rows identical by (FieldTag, Value) within one provider
-    //      collapse into the FIRST section that carried them, bumping that row's MergedCount
-    //      (subtree aggregation emits the same row once per lifetime descendant). The survivor
-    //      stays in its original section, so its history bucket (SourceEntityId) is unchanged.
+    //   2. when InMergeDuplicateRows, rows identical by (FieldTag, Value) collapse in two
+    //      passes — first WITHIN each section (genuine redundancy, every behavior), then ACROSS
+    //      sections but only between those the provider declared MergeAcrossSources. The
+    //      survivor keeps its original section, so its history bucket (SourceEntityId) is
+    //      unchanged, absorbs the duplicate's MergedCount, and keeps the loudest Severity.
+    //      A row carrying ExplicitHistory never merges in either pass: two identical values
+    //      with different trails are not the same fact.
     // Sections left empty by either step are dropped.
     CKENTITYDEBUGOVERLAY_API auto Prepare_FocusCardModel(
         const FCk_DebugOverlay_EntityModel& InModel,

@@ -266,6 +266,50 @@ auto FCk_DebugOverlay_Provider_StateMachine::Collect(
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// CondensedSourceRow
+//
+// One line standing in for a whole sub-state-machine section. Collect above emits one State row
+// per level of the chain (nested levels carry a "> " prefix) plus one History row whose value is
+// the entry count and whose ExplicitHistory is the trail — the trail is what a value-identical
+// merge used to destroy, so it is carried over verbatim.
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCk_DebugOverlay_Provider_StateMachine::Get_CondensedSourceRow(
+    const FText&                        InSourceName,
+    const TArray<FCk_DebugOverlay_Row>& InRows) const
+    -> FCk_DebugOverlay_Row
+{
+    auto Row     = FCk_DebugOverlay_Row{};
+    Row.FieldTag = FieldTag_State();
+    Row.Severity = ck_debugoverlay::Get_MaxSeverity(InRows);
+
+    // The FIRST State row is this SM's own level; deeper chain rows are dropped by the condense
+    // (one line per source is the point — the PRIMARY SM's section still shows the full chain).
+    auto StateName = FString{ TEXT("(None)") };
+    for (const auto& SourceRow : InRows)
+    {
+        if (SourceRow.FieldTag != FieldTag_State())
+        { continue; }
+
+        StateName = SourceRow.Value.ToString();
+        break;
+    }
+
+    Row.Value = FText::FromString(ck::Format_UE(TEXT("{}: {}"), InSourceName, StateName));
+
+    for (const auto& SourceRow : InRows)
+    {
+        if (SourceRow.FieldTag != FieldTag_History())
+        { continue; }
+
+        Row.ExplicitHistory = SourceRow.ExplicitHistory;
+        break;
+    }
+
+    return Row;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // CompactToken
 // --------------------------------------------------------------------------------------------------------------------
 

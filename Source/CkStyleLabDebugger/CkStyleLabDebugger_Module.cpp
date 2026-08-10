@@ -6,8 +6,10 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkStyleLabDebuggerModule"
 
@@ -44,8 +46,10 @@ auto FCkStyleLabDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkStyleLabDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Debugger Style Lab")))
-        .SetTooltipText(FText::FromString(TEXT("Opens the CK Debugger Style Lab window")))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK Debugger Style Lab window")));
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkStyleLabDebugger"),

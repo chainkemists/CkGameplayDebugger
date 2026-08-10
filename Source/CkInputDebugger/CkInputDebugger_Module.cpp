@@ -8,8 +8,10 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkInputDebuggerModule"
 
@@ -46,8 +48,10 @@ auto FCkInputDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkInputDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Enhanced Input Debugger")))
-        .SetTooltipText(FText::FromString(TEXT("Opens the CK Enhanced Input Debugger window")))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK Enhanced Input Debugger window")));
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkInputDebugger"),

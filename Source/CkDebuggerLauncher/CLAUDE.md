@@ -23,7 +23,10 @@
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
 The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.
-In packaged targets, editor-only debugger modules are absent, so the launcher catalog contains only packaged-capable registered tools such as Insights Analyzer.
+In packaged Development/DebugGame targets, 11 feature debugger modules and Insights Analyzer
+register with the catalog. Their editor workspace-menu wiring is compiled out; the launcher invokes
+their runtime Slate tab spawners in floating windows. ECS, State Machine, Scheduler, and GOAP remain
+editor-only until their GraphEditor surfaces have packaged Slate fallbacks.
 
 ## Adding another standalone debugger
 
@@ -55,4 +58,4 @@ editor behavior:
 7. Click it again and confirm the existing tab receives focus without creating a duplicate.
 8. Close it and confirm the active indicator clears.
 9. Restart the editor and confirm the launcher restores at the chosen dock location.
-10. Stage a Development package, launch it with `-ExecCmds="ck.DebuggerLauncher 1"`, confirm the floating launcher opens and lists Insights Analyzer, then open/focus the analyzer twice.
+10. Stage a Development package, launch it with `-ExecCmds="ck.DebuggerLauncher 1"`, confirm the floating launcher opens and lists every registered developer tool, then open/focus the target tool twice.

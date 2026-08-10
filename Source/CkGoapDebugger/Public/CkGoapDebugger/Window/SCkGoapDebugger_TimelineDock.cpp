@@ -16,7 +16,9 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#if WITH_EDITOR
 #include "Editor.h"
+#endif
 
 #include "Styling/CoreStyle.h"
 
@@ -722,8 +724,10 @@ auto
 
         // The blueprint-breakpoint pause — same pattern as CkSmDebugger's
         // pause-on-transition (SCkSmDebuggerWindow.cpp).
+#if WITH_EDITOR
         if (GEditor != nullptr && GEditor->PlayWorld != nullptr)
         { GEditor->PlayWorld->bDebugPauseExecution = true; }
+#endif
         break;
     }
 }

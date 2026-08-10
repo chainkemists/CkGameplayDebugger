@@ -12,7 +12,6 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include "Editor.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
@@ -189,13 +188,18 @@ auto
     DoGet_PieWorld() const
     -> UWorld*
 {
-    if (ck::Is_NOT_Valid(GEditor))
+    if (ck::Is_NOT_Valid(GEngine))
     { return nullptr; }
 
-    for (const auto& Context : GEditor->GetWorldContexts())
+    for (const auto& Context : GEngine->GetWorldContexts())
     {
-        if (Context.WorldType == EWorldType::PIE && ck::IsValid(Context.World()))
-        { return Context.World(); }
+        auto* World = Context.World();
+        if (ck::Is_NOT_Valid(World))
+        { continue; }
+
+        if ((Context.WorldType == EWorldType::PIE || Context.WorldType == EWorldType::Game)
+            && World->HasBegunPlay())
+        { return World; }
     }
 
     return nullptr;

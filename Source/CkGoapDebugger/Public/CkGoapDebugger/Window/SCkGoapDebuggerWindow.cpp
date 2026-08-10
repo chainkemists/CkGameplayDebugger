@@ -56,7 +56,6 @@
 #include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "Editor.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 

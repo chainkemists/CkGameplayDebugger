@@ -14,8 +14,10 @@
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CoreDelegates.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 #include "Widgets/Docking/SDockTab.h"
 
 #define LOCTEXT_NAMESPACE "FCkCrowdDebuggerModule"
@@ -42,8 +44,10 @@ void FCkCrowdDebuggerModule::StartupModule()
 		_TabId,
 		FOnSpawnTab::CreateRaw(this, &FCkCrowdDebuggerModule::OnSpawnDebuggerTab))
 		.SetDisplayName(LOCTEXT("TabTitle", "CK Crowd Debugger"))
-		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK Crowd / Navigation debugger window"))
-		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+		.SetTooltipText(LOCTEXT("TabTooltip", "Opens the CK Crowd / Navigation debugger window"));
+#if WITH_EDITOR
+	TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
 	_DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
 		TEXT("CkCrowdDebugger"),

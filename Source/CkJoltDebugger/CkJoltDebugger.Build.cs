@@ -13,7 +13,6 @@ public class CkJoltDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             "CkCore",
             "CkDebuggerCommon",
@@ -26,7 +25,8 @@ public class CkJoltDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure"
             });
         }
     }

@@ -18,10 +18,7 @@ public class CkEcsDebugger : CkModuleRules
             "Slate",
             "SlateCore",
             "GraphEditor",
-            "WorkspaceMenuStructure",
-            "EditorStyle",
             "AppFramework",
-            "ToolMenus",
 
             "CkActorRelay",
             "CkAggro",
@@ -88,7 +85,10 @@ public class CkEcsDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure",
+                "EditorStyle",
+                "ToolMenus"
             });
         }
     }

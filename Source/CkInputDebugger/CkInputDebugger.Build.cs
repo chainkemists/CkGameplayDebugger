@@ -16,7 +16,6 @@ public class CkInputDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             "CkCore",
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
@@ -28,7 +27,8 @@ public class CkInputDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure"
             });
         }
     }

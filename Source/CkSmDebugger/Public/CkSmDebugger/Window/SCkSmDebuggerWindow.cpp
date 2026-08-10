@@ -31,7 +31,9 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "GraphEditor.h"
+#if WITH_EDITOR
 #include "Editor.h"
+#endif
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -994,8 +996,10 @@ auto
             {
                 if (OldNode->Get_HasExitBreakpoint())
                 {
+#if WITH_EDITOR
                     if (GEditor && GEditor->PlayWorld)
                     { GEditor->PlayWorld->bDebugPauseExecution = true; }
+#endif
                 }
             }
 
@@ -1004,8 +1008,10 @@ auto
             {
                 if (NewNode->Get_HasEntryBreakpoint())
                 {
+#if WITH_EDITOR
                     if (GEditor && GEditor->PlayWorld)
                     { GEditor->PlayWorld->bDebugPauseExecution = true; }
+#endif
                 }
             }
 
@@ -1021,8 +1027,10 @@ auto
                         && Src->Get_StateIndex() == _LastCurrentStateIdx
                         && Dst->Get_StateIndex() == CurrentStateIdx)
                     {
+#if WITH_EDITOR
                         if (GEditor && GEditor->PlayWorld)
                         { GEditor->PlayWorld->bDebugPauseExecution = true; }
+#endif
                     }
                 }
             }
@@ -1757,8 +1765,10 @@ auto
                 SNew(SButton)
                     .Text_Lambda([]()
                     {
+#if WITH_EDITOR
                         if (GEditor && GEditor->PlayWorld && GEditor->PlayWorld->bDebugPauseExecution)
                         { return FText::FromString(TEXT("\x25B6 Resume")); }
+#endif
                         // ASCII bars, not U+23F8 ⏸ — that codepoint misses the whole
                         // editor font chain and forces a synchronous LastResort.ttf
                         // load mid-paint (log-confirmed; also the prime suspect for a
@@ -1767,11 +1777,13 @@ auto
                     })
                     .OnClicked_Lambda([this]()
                     {
+#if WITH_EDITOR
                         if (GEditor && GEditor->PlayWorld)
                         {
                             GEditor->PlayWorld->bDebugPauseExecution =
                                 !GEditor->PlayWorld->bDebugPauseExecution;
                         }
+#endif
                         return FReply::Handled();
                     })
             ]

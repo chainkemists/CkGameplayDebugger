@@ -14,10 +14,7 @@ public class CkAStarDebugger : CkModuleRules
 
 			"Slate",
 			"SlateCore",
-			"WorkspaceMenuStructure",
-			"EditorStyle",
 			"AppFramework",
-			"ToolMenus",
 
 			"CkCore",
 			"CkEcs",
@@ -31,7 +28,10 @@ public class CkAStarDebugger : CkModuleRules
 		{
 			PublicDependencyModuleNames.AddRange(new string[]
 			{
-				"UnrealEd"
+				"UnrealEd",
+				"WorkspaceMenuStructure",
+				"EditorStyle",
+				"ToolMenus"
 			});
 		}
 	}

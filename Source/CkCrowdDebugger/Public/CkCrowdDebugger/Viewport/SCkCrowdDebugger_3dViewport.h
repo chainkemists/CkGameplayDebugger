@@ -4,7 +4,11 @@
 
 #include "CkVoxelNav/Debug/CkVoxelNav_DebugSnapshot.h"
 
+#if WITH_EDITOR
 #include "SEditorViewport.h"
+#else
+#include "Widgets/SCompoundWidget.h"
+#endif
 
 class FPreviewScene;
 class FCkCrowdDebugger_3dViewportClient;
@@ -29,7 +33,13 @@ enum class ECkCrowdDebugger_CameraPreset : uint8
 	FrameSelection
 };
 
-class SCkCrowdDebugger_3dViewport final : public SEditorViewport
+#if WITH_EDITOR
+using SCkCrowdDebugger_ViewportBase = SEditorViewport;
+#else
+using SCkCrowdDebugger_ViewportBase = SCompoundWidget;
+#endif
+
+class SCkCrowdDebugger_3dViewport final : public SCkCrowdDebugger_ViewportBase
 {
 public:
 	SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}
@@ -49,12 +59,16 @@ public:
 		const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
 	auto Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset) -> void;
 
+#if WITH_EDITOR
 protected:
 	virtual auto MakeEditorViewportClient() -> TSharedRef<FEditorViewportClient> override;
 
 private:
 	TSharedPtr<FPreviewScene> _PreviewScene;
 	TSharedPtr<FCkCrowdDebugger_3dViewportClient> _ViewportClient;
+#endif
+
+private:
 	FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
 };
 

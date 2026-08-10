@@ -14,7 +14,6 @@ public class CkStyleLabDebugger : CkModuleRules
             "InputCore",
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             "CkCore",
             "CkDebuggerCommon",
@@ -30,7 +29,8 @@ public class CkStyleLabDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure"
             });
         }
     }

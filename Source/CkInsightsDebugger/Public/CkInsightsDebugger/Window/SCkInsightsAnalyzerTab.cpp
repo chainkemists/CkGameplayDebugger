@@ -12,14 +12,19 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
+#include <Brushes/SlateDynamicImageBrush.h>
 #include <DesktopPlatformModule.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/FileManager.h>
 #include <HAL/PlatformApplicationMisc.h>
 #include <HAL/PlatformTime.h>
+#include <IImageWrapperModule.h>
+#include <ImageCore.h>
 #include <Misc/FileHelper.h>
+#include <Modules/ModuleManager.h>
 #include <Styling/AppStyle.h>
 #include <Styling/CoreStyle.h>
 #include <Widgets/Images/SImage.h>
@@ -28,9 +33,11 @@
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
 #include <Widgets/Layout/SExpandableArea.h>
+#include <Widgets/Layout/SScaleBox.h>
 #include <Widgets/Layout/SScrollBox.h>
 #include <Widgets/Layout/SSplitter.h>
 #include <Widgets/SOverlay.h>
+#include <Widgets/Notifications/SProgressBar.h>
 #include <Widgets/Views/SExpanderArrow.h>
 #include <Widgets/Views/SHeaderRow.h>
 #include <Widgets/Views/STableRow.h>
@@ -45,6 +52,7 @@ namespace ck_insights_analyzer_tab
     constexpr float SideBarWidth = 90.0f;    // proportion bar width in side panels
     constexpr double TargetFrameMs = 16.67;
     constexpr int32 TopTimerCount = 15;
+    constexpr int32 MaxEagerScreenshotThumbnails = 12;
 
     // ---- Fonts (sizes read live from the style settings at construct time) ----
 
@@ -431,6 +439,8 @@ auto
                     .TargetFrameMs(TargetFrameMs)
                     .OnFrameSelectionChanged(
                         FOnFrameSelectionChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnFrameSelectionChanged))
+                    .OnScreenshotMarkerClicked(
+                        FOnScreenshotMarkerClicked::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnScreenshotMarkerClicked))
                 ]
             ]
 
@@ -471,12 +481,18 @@ auto
             DoCreateStatus()
         ]
     ];
+
+    _CaptureUiTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnCaptureUiTick),
+        0.1f);
 }
 
 SCkInsightsAnalyzerTab::~SCkInsightsAnalyzerTab()
 {
+    DoCancelCaptureUiTick();
     DoCancelAutoOpenTrace();
     DoCancelLoading();
+    DoClearScreenshots();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -490,43 +506,6 @@ auto
 {
     auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
     auto Actions = TArray<FCkDebug_IconToggleAction>{};
-
-    Actions.Add(FCkDebug_IconToggleAction{
-        TEXT("TraceCapture"),
-        TEXT("Radio"),
-        FText::FromString(TEXT("Trace capture")),
-        FText::FromString(TEXT(
-            "Start or stop a file trace in Saved/Profiling. The analyzer only stops captures it started and "
-            "automatically opens the completed capture.")),
-        TAttribute<bool>::CreateLambda([Capture]() { return Capture->Get_Snapshot().bIsTracing; }),
-        FOnCkDebug_IconToggleChanged::CreateLambda([this, Capture](bool InEnabled)
-        {
-            auto Error = FString{};
-            auto StoppedTracePath = FString{};
-            auto StoppedTraceGuid = FGuid{};
-            if (NOT Capture->TrySet_Tracing(InEnabled, Error, &StoppedTracePath, &StoppedTraceGuid))
-            {
-                DoSetStatus(Error, ECk_Tone::Err);
-                return;
-            }
-
-            if (InEnabled)
-            {
-                const auto Snapshot = Capture->Get_Snapshot();
-                const auto Destination = Snapshot.Destination.IsEmpty()
-                    ? FString{TEXT("Saved/Profiling")}
-                    : Snapshot.Destination;
-                DoSetStatus(FString::Printf(TEXT("Trace recording started: %s"), *Destination), ECk_Tone::Ok);
-            }
-            else
-            {
-                DoQueueAutoOpenTrace(MoveTemp(StoppedTracePath), StoppedTraceGuid);
-            }
-        }),
-        TAttribute<bool>::CreateLambda([this, Capture]()
-        {
-            return NOT _AutoOpenTickerHandle.IsValid() && Capture->Can_ToggleTracing();
-        })});
 
     Actions.Add(FCkDebug_IconToggleAction{
         TEXT("NamedEvents"),
@@ -631,6 +610,182 @@ auto
         FOnCkDebug_IconToggleChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnShowAllChildrenChanged)});
 
     return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SNew(SBox)
+            .WidthOverride(210.0f)
+            .HeightOverride(26.0f)
+            [
+                SNew(SButton)
+                .ContentPadding(0.0f)
+                .ToolTipText(FText::FromString(TEXT(
+                    "Start a timed file trace, or stop it early. Choose 0-12 automated screenshots; 0 disables them, "
+                    "and the default 3 are embedded at 10%, 50%, and 90%. "
+                    "The completed trace opens automatically and produces same-name Markdown and JSON reports.")))
+                .IsEnabled_Lambda([this, Capture]()
+                {
+                    return NOT _AutoOpenTickerHandle.IsValid()
+                        && NOT DoIsLoading()
+                        && Capture->Can_ToggleTracing();
+                })
+                .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnCaptureClicked)
+                [
+                    SNew(SOverlay)
+
+                    + SOverlay::Slot()
+                    [
+                        SNew(SProgressBar)
+                        .Percent_Lambda([Capture]() -> TOptional<float>
+                        {
+                            const auto Snapshot = Capture->Get_Snapshot();
+                            return Snapshot.State == ECkInsightsCaptureState::Idle
+                                ? TOptional<float>{0.0f}
+                                : TOptional<float>{static_cast<float>(Snapshot.Progress)};
+                        })
+                        .FillColorAndOpacity(CkStyle::Accent())
+                    ]
+
+                    + SOverlay::Slot()
+                    .HAlign(HAlign_Center)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .Font(ck_insights_analyzer_tab::SmallFont())
+                        .Text_Lambda([this, Capture]()
+                        {
+                            const auto Snapshot = Capture->Get_Snapshot();
+                            switch (Snapshot.State)
+                            {
+                            case ECkInsightsCaptureState::Starting:
+                                return FText::FromString(TEXT("Starting trace..."));
+                            case ECkInsightsCaptureState::Recording:
+                                return FText::FromString(FString::Printf(
+                                    TEXT("Stop trace — %.1fs remaining"),
+                                    Snapshot.RemainingSeconds));
+                            case ECkInsightsCaptureState::Stopping:
+                                return FText::FromString(TEXT("Finalizing trace..."));
+                            default:
+                                return Snapshot.bIsTracing
+                                    ? FText::FromString(TEXT("External trace active"))
+                                    : FText::FromString(FString::Printf(
+                                        TEXT("Capture %ds trace"),
+                                        _CaptureDurationSeconds));
+                            }
+                        })
+                    ]
+                ]
+            ]
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SBox)
+                .WidthOverride(64.0f)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(1)
+                    .MinSliderValue(1)
+                    .MaxValue(3600)
+                    .MaxSliderValue(300)
+                    .Delta(5)
+                    .Value_Lambda([this]() { return _CaptureDurationSeconds; })
+                    .IsEnabled_Lambda([this, Capture]()
+                    {
+                        const auto Snapshot = Capture->Get_Snapshot();
+                        return Snapshot.State == ECkInsightsCaptureState::Idle
+                            && NOT Snapshot.bIsTracing
+                            && NOT _AutoOpenTickerHandle.IsValid()
+                            && NOT DoIsLoading();
+                    })
+                    .OnValueCommitted_Lambda([this](int32 InValue, ETextCommit::Type)
+                    {
+                        _CaptureDurationSeconds = FMath::Clamp(InValue, 1, 3600);
+                    })
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("s")))
+                .Font(ck_insights_analyzer_tab::SmallFont())
+                .ColorAndOpacity(CkStyle::TextDim())
+            ]
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            [
+                SNew(SBox)
+                .WidthOverride(52.0f)
+                [
+                    SNew(SSpinBox<int32>)
+                    .MinValue(FCkInsightsCaptureController::MinTimedCaptureScreenshotCount)
+                    .MinSliderValue(FCkInsightsCaptureController::MinTimedCaptureScreenshotCount)
+                    .MaxValue(FCkInsightsCaptureController::MaxTimedCaptureScreenshotCount)
+                    .MaxSliderValue(FCkInsightsCaptureController::MaxTimedCaptureScreenshotCount)
+                    .Delta(1)
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Automated screenshots per timed capture (0-12). 0 disables them; 1 uses 50%; 2 use 10% "
+                        "and 90%; 3-12 are evenly spaced from 10% through 90%.")))
+                    .Value_Lambda([this]() { return _CaptureScreenshotCount; })
+                    .IsEnabled_Lambda([this, Capture]()
+                    {
+                        const auto Snapshot = Capture->Get_Snapshot();
+                        return Snapshot.State == ECkInsightsCaptureState::Idle
+                            && NOT Snapshot.bIsTracing
+                            && NOT _AutoOpenTickerHandle.IsValid()
+                            && NOT DoIsLoading();
+                    })
+                    .OnValueChanged_Lambda([this](int32 InValue)
+                    {
+                        _CaptureScreenshotCount = FMath::Clamp(
+                            InValue,
+                            FCkInsightsCaptureController::MinTimedCaptureScreenshotCount,
+                            FCkInsightsCaptureController::MaxTimedCaptureScreenshotCount);
+                    })
+                    .OnValueCommitted_Lambda([this](int32 InValue, ETextCommit::Type)
+                    {
+                        _CaptureScreenshotCount = FMath::Clamp(
+                            InValue,
+                            FCkInsightsCaptureController::MinTimedCaptureScreenshotCount,
+                            FCkInsightsCaptureController::MaxTimedCaptureScreenshotCount);
+                    })
+                ]
+            ]
+
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(TEXT("shots")))
+                .Font(ck_insights_analyzer_tab::SmallFont())
+                .ColorAndOpacity(CkStyle::TextDim())
+            ]
+        ]
 
         + SHorizontalBox::Slot()
         .FillWidth(1.0f)
@@ -1006,6 +1161,11 @@ auto
 
         + SScrollBox::Slot()
         [
+            DoCreateScreenshotPanel()
+        ]
+
+        + SScrollBox::Slot()
+        [
             MakeGatedPanel(TEXT("Worst Frames"), _WorstFrameRowsBox.ToSharedRef(),
                 [this]() { return _WorstFrames.Num() > 0; })
         ]
@@ -1032,6 +1192,130 @@ auto
         [
             MakeGatedPanel(TEXT("Top Timers (exclusive time)"), _TopTimerRowsBox.ToSharedRef(),
                 [this]() { return _TopTimers.Num() > 0; })
+        ];
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoCreateScreenshotPanel()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_insights_analyzer_tab;
+
+    return SNew(SBox)
+        .Visibility_Lambda([this]() -> EVisibility
+        {
+            return _SelectedScreenshotId.IsSet() ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        .Padding(FMargin(SectionSpacing, 0.0f, 0.0f, SectionSpacing))
+        [
+            MakePanel(
+                TEXT("Captured Screenshot"),
+                SNew(SVerticalBox)
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SCkDebug_SelectableLabel)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        const auto Screenshot = _SelectedScreenshotId.IsSet()
+                            ? DoFindScreenshot(_SelectedScreenshotId.GetValue())
+                            : nullptr;
+                        return FText::FromString(Screenshot != nullptr ? Screenshot->Name : FString{});
+                    })
+                    .Font(BodyBoldFont())
+                    .ColorAndOpacity(CkStyle::Accent())
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(0.0f, CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS)
+                [
+                    SNew(SCkDebug_SelectableLabel)
+                    .Text_Lambda([this]() -> FText
+                    {
+                        const auto Screenshot = _SelectedScreenshotId.IsSet()
+                            ? DoFindScreenshot(_SelectedScreenshotId.GetValue())
+                            : nullptr;
+                        if (Screenshot == nullptr)
+                        {
+                            return FText::GetEmpty();
+                        }
+
+                        const auto GameFrame = Screenshot->GameFrameIndex != INDEX_NONE
+                            ? FString::Printf(
+                                TEXT("%sgame frame #%lld"),
+                                Screenshot->bIsInsideGameFrame ? TEXT("") : TEXT("nearest "),
+                                Screenshot->GameFrameIndex)
+                            : FString{TEXT("no game-frame mapping")};
+                        const auto RenderFrame = Screenshot->RenderFrameIndex != INDEX_NONE
+                            ? FString::Printf(
+                                TEXT("%srender frame #%lld"),
+                                Screenshot->bIsInsideRenderFrame ? TEXT("") : TEXT("nearest "),
+                                Screenshot->RenderFrameIndex)
+                            : FString{TEXT("no render-frame mapping")};
+
+                        return FText::FromString(FString::Printf(
+                            TEXT("%.6fs  |  %s  |  %s  |  %ux%u"),
+                            Screenshot->TimestampSeconds,
+                            *GameFrame,
+                            *RenderFrame,
+                            Screenshot->Width,
+                            Screenshot->Height));
+                    })
+                    .Font(SmallFont())
+                    .ColorAndOpacity(CkStyle::TextDim())
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(SBox)
+                    .HeightOverride(300.0f)
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return ck::IsValid(_SelectedScreenshotBrush)
+                            ? EVisibility::Visible
+                            : EVisibility::Collapsed;
+                    })
+                    [
+                        SNew(SBorder)
+                        .BorderImage(CkStyle::GetFilledBrush())
+                        .BorderBackgroundColor(CkStyle::BgRoot())
+                        .Padding(CkStyle::SpaceXS)
+                        [
+                            SNew(SScaleBox)
+                            .Stretch(EStretch::ScaleToFit)
+                            .StretchDirection(EStretchDirection::Both)
+                            [
+                                SNew(SImage)
+                                .Image_Lambda([this]() -> const FSlateBrush*
+                                {
+                                    return ck::IsValid(_SelectedScreenshotBrush)
+                                        ? _SelectedScreenshotBrush.Get()
+                                        : nullptr;
+                                })
+                            ]
+                        ]
+                    ]
+                ]
+
+                + SVerticalBox::Slot()
+                .AutoHeight()
+                [
+                    SNew(STextBlock)
+                    .Visibility_Lambda([this]() -> EVisibility
+                    {
+                        return _SelectedScreenshotError.IsEmpty()
+                            ? EVisibility::Collapsed
+                            : EVisibility::Visible;
+                    })
+                    .Text_Lambda([this]() { return FText::FromString(_SelectedScreenshotError); })
+                    .Font(SmallFont())
+                    .ColorAndOpacity(CkStyle::Warn())
+                    .AutoWrapText(true)
+                ])
         ];
 }
 
@@ -1576,11 +1860,85 @@ auto
         return;
     }
 
+    DoClearScreenshots();
     _Session.Close();
     _FrameBarChart->ClearFrameData();
     DoClearResults();
 
     DoStartAsyncOpen(TracePath);
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnCaptureClicked()
+    -> FReply
+{
+    auto& Capture = FCkInsightsDebuggerModule::Get().Get_CaptureController();
+    const auto Snapshot = Capture.Get_Snapshot();
+    auto Error = FString{};
+
+    if (Snapshot.State == ECkInsightsCaptureState::Idle)
+    {
+        if (NOT Capture.TryStart_TimedCapture(
+                static_cast<double>(_CaptureDurationSeconds),
+                _CaptureScreenshotCount,
+                Error))
+        {
+            DoSetStatus(Error, ECk_Tone::Err);
+            return FReply::Handled();
+        }
+
+        DoSetStatus(
+            FString::Printf(
+                TEXT("Starting a %ds trace with %d automated screenshot%s..."),
+                _CaptureDurationSeconds,
+                _CaptureScreenshotCount,
+                _CaptureScreenshotCount == 1 ? TEXT("") : TEXT("s")),
+            ECk_Tone::Info);
+        return FReply::Handled();
+    }
+
+    if (Snapshot.State == ECkInsightsCaptureState::Recording)
+    {
+        if (NOT Capture.TryStop_TimedCapture(Error))
+        {
+            DoSetStatus(Error, ECk_Tone::Err);
+            return FReply::Handled();
+        }
+
+        DoSetStatus(TEXT("Stopping trace early. Finalizing the capture..."), ECk_Tone::Info);
+    }
+
+    return FReply::Handled();
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnCaptureUiTick(float)
+    -> bool
+{
+    if (_AutoOpenTickerHandle.IsValid() || DoIsLoading())
+    { return true; }
+
+    auto& Capture = FCkInsightsDebuggerModule::Get().Get_CaptureController();
+    auto CompletedTracePath = FString{};
+    auto CompletedTraceGuid = FGuid{};
+    if (Capture.Get_CompletedCapture(CompletedTracePath, CompletedTraceGuid)
+        && CompletedTraceGuid != _SuppressedAutoOpenTraceGuid)
+    {
+        DoQueueAutoOpenTrace(MoveTemp(CompletedTracePath), CompletedTraceGuid);
+    }
+
+    return true;
+}
+
+auto SCkInsightsAnalyzerTab::DoCancelCaptureUiTick() -> void
+{
+    if (_CaptureUiTickerHandle.IsValid())
+    {
+        FTSTicker::GetCoreTicker().RemoveTicker(_CaptureUiTickerHandle);
+        _CaptureUiTickerHandle.Reset();
+    }
 }
 
 auto
@@ -1622,6 +1980,7 @@ auto
             if (FPlatformTime::Seconds() < _AutoOpenDeadlineSeconds)
             { return true; }
 
+            _SuppressedAutoOpenTraceGuid = _PendingAutoOpenTraceGuid;
             _AutoOpenTickerHandle.Reset();
             _PendingAutoOpenTracePath.Reset();
             _PendingAutoOpenTraceGuid.Invalidate();
@@ -1636,6 +1995,7 @@ auto
     { return true; }
 
     const auto TracePath = MoveTemp(_PendingAutoOpenTracePath);
+    const auto TraceGuid = _PendingAutoOpenTraceGuid;
     _PendingAutoOpenTracePath.Reset();
     _PendingAutoOpenTraceGuid.Invalidate();
     _PendingAutoOpenWriterFinalized = false;
@@ -1647,11 +2007,29 @@ auto
     {}
     if (NOT TraceExists)
     {
+        _SuppressedAutoOpenTraceGuid = TraceGuid;
         DoSetStatus(TEXT("The stopped trace file is missing or empty."), ECk_Tone::Err);
         return false;
     }
 
+    _PendingAutoReportTracePath = TracePath;
     DoOpenTracePath(TracePath);
+    if (DoIsLoading())
+    {
+        const auto Acknowledged = Capture.Acknowledge_CompletedCapture(TraceGuid);
+        CK_ENSURE_IF_NOT(Acknowledged, TEXT("The completed trace must still be retained when auto-open begins"))
+        {}
+        if (NOT Acknowledged)
+        {
+            _SuppressedAutoOpenTraceGuid = TraceGuid;
+            DoSetStatus(TEXT("Trace opening started, but capture completion acknowledgement failed."), ECk_Tone::Err);
+        }
+    }
+    else
+    {
+        _PendingAutoReportTracePath.Reset();
+        _SuppressedAutoOpenTraceGuid = TraceGuid;
+    }
     return false;
 }
 
@@ -1872,8 +2250,10 @@ auto
 
     if (ck::IsValid(_FrameBarChart))
     {
+        _FrameBarChart->EnsureFrameVisible(FrameIndex);
         _FrameBarChart->SetSelection(FrameIndex, FrameIndex);
     }
+    DoClearScreenshotSelection();
     DoAnalyzeSingleFrame(FrameIndex);
 
     return FReply::Handled();
@@ -1882,6 +2262,36 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 // Depth Selector
 // --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoOnScreenshotMarkerClicked(uint32 ScreenshotId, uint64 FrameIndex)
+    -> void
+{
+    if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening)
+    {
+        return;
+    }
+
+    const auto Screenshot = DoFindScreenshot(ScreenshotId);
+    const auto IsMappedFrame = Screenshot != nullptr
+        && Screenshot->GameFrameIndex != INDEX_NONE
+        && static_cast<uint64>(Screenshot->GameFrameIndex) == FrameIndex;
+    CK_ENSURE_IF_NOT(IsMappedFrame, TEXT("A screenshot marker must resolve to its mapped game frame"))
+    {}
+    if (NOT IsMappedFrame || NOT DoSelectScreenshot(ScreenshotId))
+    {
+        DoSetStatus(TEXT("The selected screenshot is no longer available in this trace."), ECk_Tone::Err);
+        return;
+    }
+
+    if (ck::IsValid(_FrameBarChart))
+    {
+        _FrameBarChart->EnsureFrameVisible(FrameIndex);
+        _FrameBarChart->SetSelection(FrameIndex, FrameIndex);
+    }
+    DoAnalyzeSingleFrame(FrameIndex);
+}
 
 auto
     SCkInsightsAnalyzerTab::
@@ -1927,6 +2337,8 @@ auto
 {
     // Only Opening is blocked — during ReadingFrames the user can inspect loaded frames.
     if (NOT _Session.IsOpen() || _LoadingState == ELoadingState::Opening) return;
+
+    DoClearScreenshotSelection();
 
     if (StartFrame == EndFrame)
     {
@@ -1997,6 +2409,189 @@ auto
 
 auto
     SCkInsightsAnalyzerTab::
+    DoLoadScreenshots()
+    -> void
+{
+    DoClearScreenshots();
+    if (NOT _Session.IsOpen())
+    {
+        return;
+    }
+
+    _TraceScreenshots = _Session.GetScreenshots();
+
+    auto Markers = TArray<FCk_FrameScreenshotMarker>{};
+    Markers.Reserve(_TraceScreenshots.Num());
+    int32 RemainingThumbnailBudget = ck_insights_analyzer_tab::MaxEagerScreenshotThumbnails;
+    for (const auto& Screenshot : _TraceScreenshots)
+    {
+        if (Screenshot.GameFrameIndex == INDEX_NONE
+            || Screenshot.GameFrameIndex < 0
+            || static_cast<uint64>(Screenshot.GameFrameIndex) >= _Session.GetFrameCount())
+        {
+            continue;
+        }
+
+        auto Thumbnail = TSharedPtr<FSlateDynamicImageBrush>{};
+        if (Screenshot.bIsPayloadComplete && RemainingThumbnailBudget > 0)
+        {
+            --RemainingThumbnailBudget;
+            Thumbnail = DoCreateScreenshotBrush(Screenshot.Id, 128, 72, TEXT("Thumbnail"));
+            if (ck::IsValid(Thumbnail))
+            {
+                _ScreenshotThumbnailBrushes.Add(Screenshot.Id, Thumbnail);
+            }
+        }
+
+        auto& Marker = Markers.AddDefaulted_GetRef();
+        Marker.ScreenshotId = Screenshot.Id;
+        Marker.FrameIndex = static_cast<uint64>(Screenshot.GameFrameIndex);
+        Marker.Label = Screenshot.bIsInsideGameFrame
+            ? Screenshot.Name
+            : FString::Printf(TEXT("%s (nearest preceding game frame)"), *Screenshot.Name);
+        Marker.ThumbnailBrush = Thumbnail;
+    }
+
+    if (ck::IsValid(_FrameBarChart))
+    {
+        _FrameBarChart->SetScreenshotMarkers(MoveTemp(Markers));
+    }
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoClearScreenshots()
+    -> void
+{
+    if (ck::IsValid(_FrameBarChart))
+    {
+        _FrameBarChart->ClearScreenshotMarkers();
+    }
+    DoClearScreenshotSelection();
+    _ScreenshotThumbnailBrushes.Reset();
+    _TraceScreenshots.Reset();
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoClearScreenshotSelection()
+    -> void
+{
+    _SelectedScreenshotBrush.Reset();
+    _SelectedScreenshotId.Reset();
+    _SelectedScreenshotError.Reset();
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoSelectScreenshot(uint32 ScreenshotId)
+    -> bool
+{
+    const auto Screenshot = DoFindScreenshot(ScreenshotId);
+    if (Screenshot == nullptr)
+    {
+        DoClearScreenshotSelection();
+        return false;
+    }
+
+    if (_SelectedScreenshotId.IsSet()
+        && _SelectedScreenshotId.GetValue() == ScreenshotId
+        && ck::IsValid(_SelectedScreenshotBrush))
+    {
+        return true;
+    }
+
+    DoClearScreenshotSelection();
+    _SelectedScreenshotId = ScreenshotId;
+    if (NOT Screenshot->bIsPayloadComplete)
+    {
+        _SelectedScreenshotError = FString::Printf(
+            TEXT("The screenshot payload is incomplete (%u of %u bytes)."),
+            Screenshot->PayloadByteSize,
+            Screenshot->ExpectedPayloadByteSize);
+        return true;
+    }
+
+    _SelectedScreenshotBrush = DoCreateScreenshotBrush(ScreenshotId, 1280, 720, TEXT("Preview"));
+    if (ck::Is_NOT_Valid(_SelectedScreenshotBrush))
+    {
+        _SelectedScreenshotError = TEXT("The embedded screenshot could not be decoded.");
+    }
+    return true;
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoFindScreenshot(uint32 ScreenshotId) const
+    -> const FCk_TraceScreenshot*
+{
+    return _TraceScreenshots.FindByPredicate(
+        [ScreenshotId](const FCk_TraceScreenshot& Screenshot)
+        {
+            return Screenshot.Id == ScreenshotId;
+        });
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoCreateScreenshotBrush(uint32 ScreenshotId,
+                            int32 MaxWidth,
+                            int32 MaxHeight,
+                            const TCHAR* ResourceSuffix)
+    -> TSharedPtr<FSlateDynamicImageBrush>
+{
+    const auto DimensionsAreValid = MaxWidth > 0 && MaxHeight > 0 && ResourceSuffix != nullptr;
+    CK_ENSURE_IF_NOT(DimensionsAreValid, TEXT("Screenshot brush dimensions and suffix must be valid"))
+    {}
+    if (NOT DimensionsAreValid)
+    {
+        return nullptr;
+    }
+
+    auto CompressedData = TArray<uint8>{};
+    if (NOT _Session.TryCopyScreenshotData(ScreenshotId, CompressedData) || CompressedData.IsEmpty())
+    {
+        return nullptr;
+    }
+
+    auto& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName{TEXT("ImageWrapper")});
+    auto DecodedImage = FImage{};
+    if (NOT ImageWrapperModule.DecompressImage(CompressedData.GetData(), CompressedData.Num(), DecodedImage)
+        || DecodedImage.SizeX <= 0
+        || DecodedImage.SizeY <= 0)
+    {
+        return nullptr;
+    }
+
+    const auto Scale = FMath::Min(
+        1.0,
+        FMath::Min(
+            static_cast<double>(MaxWidth) / static_cast<double>(DecodedImage.SizeX),
+            static_cast<double>(MaxHeight) / static_cast<double>(DecodedImage.SizeY)));
+    const auto DisplayWidth = FMath::Max(1, FMath::RoundToInt(static_cast<double>(DecodedImage.SizeX) * Scale));
+    const auto DisplayHeight = FMath::Max(1, FMath::RoundToInt(static_cast<double>(DecodedImage.SizeY) * Scale));
+
+    auto DisplayImage = FImage{};
+    DecodedImage.ResizeTo(
+        DisplayImage,
+        DisplayWidth,
+        DisplayHeight,
+        ERawImageFormat::BGRA8,
+        EGammaSpace::sRGB);
+
+    const auto ResourceName = FName{*FString::Printf(
+        TEXT("CkInsightsScreenshot_%u_%s_%llu"),
+        ScreenshotId,
+        ResourceSuffix,
+        ++_ScreenshotBrushGeneration)};
+    return FSlateDynamicImageBrush::CreateWithImageData(
+        ResourceName,
+        FVector2D{static_cast<float>(DisplayWidth), static_cast<float>(DisplayHeight)},
+        TArray<uint8>(DisplayImage.RawData));
+}
+
+auto
+    SCkInsightsAnalyzerTab::
     DoAnalyzeSingleFrame(uint64 FrameIndex)
     -> void
 {
@@ -2056,8 +2651,16 @@ auto
     DoRebuildWaitRows();
     DoRebuildSummaryStrip_SingleFrame(Result);
 
-    DoSetStatus(FString::Printf(TEXT("Frame %llu: %.2fms"), FrameIndex, Result.FrameDurationMs),
-        FrameBudgetTone(Result.FrameDurationMs));
+    auto Status = FString::Printf(TEXT("Frame %llu: %.2fms"), FrameIndex, Result.FrameDurationMs);
+    if (_SelectedScreenshotId.IsSet())
+    {
+        const auto Screenshot = DoFindScreenshot(_SelectedScreenshotId.GetValue());
+        if (Screenshot != nullptr && Screenshot->GameFrameIndex == static_cast<int64>(FrameIndex))
+        {
+            Status += FString::Printf(TEXT("  |  screenshot: %s"), *Screenshot->Name);
+        }
+    }
+    DoSetStatus(Status, FrameBudgetTone(Result.FrameDurationMs));
 }
 
 auto
@@ -2126,6 +2729,82 @@ auto
     DoRebuildSummaryStrip_MultiFrame(Stats);
 }
 
+auto
+    SCkInsightsAnalyzerTab::
+    DoGenerateAutomatedCaptureReport()
+    -> void
+{
+    using namespace ck_insights_analyzer_tab;
+
+    const auto TracePath = MoveTemp(_PendingAutoReportTracePath);
+    _PendingAutoReportTracePath.Reset();
+
+    const auto CanGenerate = _Session.IsOpen()
+        && NOT TracePath.IsEmpty()
+        && FPaths::ConvertRelativePathToFull(TracePath) == FPaths::ConvertRelativePathToFull(_Session.GetFilePath());
+    CK_ENSURE_IF_NOT(CanGenerate, TEXT("Automated capture report must target the trace that finished loading"))
+    {}
+    if (NOT CanGenerate)
+    {
+        DoSetStatus(TEXT("Trace loaded, but its automated report target did not match."), ECk_Tone::Err);
+        return;
+    }
+
+    constexpr int32 HotFrameCount = 5;
+    FCk_MultiFrameReportConfig Config;
+    Config.TargetFrameMs = TargetFrameMs;
+    Config.Depth = ECkReportDepth::Standard;
+    Config.ApplyDepth();
+    Config.WorstFrameCount = HotFrameCount;
+
+    FCk_MultiFrameReport MultiReport(Config);
+    const auto Markdown = MultiReport.AnalyzeWorstFrames(_Session, HotFrameCount);
+    const auto HasAnalyzableFrames = MultiReport.GetStats().FrameCount > 0;
+    const auto Json = FCk_JsonReport::GenerateMultiFrame(
+        _Session,
+        MultiReport.GetStats(),
+        MultiReport.GetConfig());
+
+    DoSetReport(Markdown);
+    DoPopulateMultiFrame(MultiReport.GetStats());
+
+    const auto ReportDirectory = FPaths::GetPath(TracePath);
+    const auto TraceStem = FPaths::GetBaseFilename(TracePath);
+    const auto MarkdownPath = ReportDirectory / (TraceStem + TEXT(".report.md"));
+    const auto JsonPath = ReportDirectory / (TraceStem + TEXT(".report.json"));
+    const auto SavedMarkdown = FFileHelper::SaveStringToFile(
+        Markdown,
+        *MarkdownPath,
+        FFileHelper::EEncodingOptions::ForceUTF8);
+    const auto SavedJson = FFileHelper::SaveStringToFile(
+        Json,
+        *JsonPath,
+        FFileHelper::EEncodingOptions::ForceUTF8);
+
+    if (NOT SavedMarkdown || NOT SavedJson)
+    {
+        DoSetStatus(
+            FString::Printf(
+                TEXT("Trace loaded, but automated report export failed (%s%s)."),
+                SavedMarkdown ? TEXT("") : TEXT("Markdown "),
+                SavedJson ? TEXT("") : TEXT("JSON")),
+            ECk_Tone::Err);
+        return;
+    }
+
+    DoSetStatus(
+        HasAnalyzableFrames
+            ? FString::Printf(
+                TEXT("Capture analyzed: %s, %s"),
+                *FPaths::GetCleanFilename(MarkdownPath),
+                *FPaths::GetCleanFilename(JsonPath))
+            : FString::Printf(
+                TEXT("Capture loaded with no game frames; diagnostic reports saved: %s, %s"),
+                *FPaths::GetCleanFilename(MarkdownPath),
+                *FPaths::GetCleanFilename(JsonPath)),
+        HasAnalyzableFrames ? ECk_Tone::Ok : ECk_Tone::Warn);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 // Summary strip
 // --------------------------------------------------------------------------------------------------------------------
@@ -2171,6 +2850,11 @@ auto
     DoAddSummaryTile(TEXT("Trace"), FPaths::GetCleanFilename(_Session.GetFilePath()), CkStyle::Text());
     DoAddSummaryTile(TEXT("Duration"), FString::Printf(TEXT("%.1fs"), _Session.GetDurationSeconds()), CkStyle::Text());
     DoAddSummaryTile(TEXT("Game Frames"), FormatWithCommas(_Session.GetFrameCount()), CkStyle::Text());
+
+    if (NOT _TraceScreenshots.IsEmpty())
+    {
+        DoAddSummaryTile(TEXT("Screenshots"), FormatWithCommas(_TraceScreenshots.Num()), CkStyle::Accent());
+    }
 
     if (const uint64 RenderFrames = _Session.GetRenderFrameCount();
         RenderFrames > 0)
@@ -2370,15 +3054,26 @@ auto
     }
     _PendingFrameDurations.Reset();
 
+    DoLoadScreenshots();
+
     const double DurationSec = _Session.GetDurationSeconds();
     DoSetStatus(FString::Printf(
-        TEXT("Loaded: %s  |  %llu frames  |  %.1fs duration"),
-        *FPaths::GetCleanFilename(_PendingTracePath), _TotalFrameCount, DurationSec), ECk_Tone::Ok);
+        TEXT("Loaded: %s  |  %llu frames  |  %.1fs duration  |  %d screenshots"),
+        *FPaths::GetCleanFilename(_PendingTracePath),
+        _TotalFrameCount,
+        DurationSec,
+        _TraceScreenshots.Num()),
+        ECk_Tone::Ok);
 
     DoRebuildSummaryStrip_TraceInfo();
 
     _LoadingState = ELoadingState::Idle;
     _LoadingTickerHandle.Reset();
+
+    if (NOT _PendingAutoReportTracePath.IsEmpty())
+    {
+        DoGenerateAutomatedCaptureReport();
+    }
 }
 
 auto

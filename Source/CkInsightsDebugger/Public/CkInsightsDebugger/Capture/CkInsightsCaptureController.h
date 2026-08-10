@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include <Containers/Ticker.h>
 #include <ProfilingDebugging/TraceAuxiliary.h>
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -16,11 +17,24 @@ enum class ECkInsightsStatProfile : uint8
     Rendering,
 };
 
+enum class ECkInsightsCaptureState : uint8
+{
+    Idle,
+    Starting,
+    Recording,
+    Stopping,
+};
+
 struct CKINSIGHTSDEBUGGER_API FCkInsightsCaptureSnapshot
 {
     bool bIsTracing = false;
     bool bIsOwnedByTool = false;
     FString Destination;
+    ECkInsightsCaptureState State = ECkInsightsCaptureState::Idle;
+    double TargetDurationSeconds = 0.0;
+    double ElapsedSeconds = 0.0;
+    double RemainingSeconds = 0.0;
+    double Progress = 0.0;
 };
 
 /**
@@ -32,6 +46,10 @@ struct CKINSIGHTSDEBUGGER_API FCkInsightsCaptureSnapshot
 class CKINSIGHTSDEBUGGER_API FCkInsightsCaptureController
 {
 public:
+    static constexpr int32 MinTimedCaptureScreenshotCount = 0;
+    static constexpr int32 DefaultTimedCaptureScreenshotCount = 3;
+    static constexpr int32 MaxTimedCaptureScreenshotCount = 12;
+
     FCkInsightsCaptureController();
     FCkInsightsCaptureController(
         FTraceAuxiliary::EConnectionType InConnectionType,
@@ -46,6 +64,11 @@ public:
         FString* OutStoppedTracePath = nullptr,
         FGuid* OutStoppedTraceGuid = nullptr)
         -> bool;
+    auto TryStart_TimedCapture(double InDurationSeconds, FString& OutError) -> bool;
+    auto TryStart_TimedCapture(double InDurationSeconds, int32 InScreenshotCount, FString& OutError) -> bool;
+    auto TryStop_TimedCapture(FString& OutError) -> bool;
+    auto Get_CompletedCapture(FString& OutTracePath, FGuid& OutTraceGuid) const -> bool;
+    auto Acknowledge_CompletedCapture(FGuid InTraceGuid) -> bool;
     auto IsTraceWriterFinalized(FGuid InStoppedTraceGuid) const -> bool;
 
     auto Get_NamedEventsEnabled() const -> bool;
@@ -67,11 +90,24 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FCkInsightsCaptureController_TogglesCkStatProfiles;
+    friend class FCkInsightsCaptureController_MapsTimedCaptureProgress;
+    friend class FCkInsightsCaptureController_MapsTimedCaptureScreenshotThresholds;
+    friend class FCkInsightsCaptureController_RejectsTimedCaptureScreenshotCount;
 #endif
 
     auto DoOnTraceStarted(FTraceAuxiliary::EConnectionType InType, const FString& InDestination) -> void;
     auto DoOnTraceConnection() -> void;
     auto DoOnTraceStopped(FTraceAuxiliary::EConnectionType InType, const FString& InDestination) -> void;
+    auto DoTick_TimedCapture(float InDeltaSeconds) -> bool;
+    auto DoAdvance_TimedCapture(double InNowSeconds) -> void;
+    auto DoTryStop_TimedCapture(bool InAllowScreenshotDrain, FString& OutError) -> bool;
+    auto DoQueue_CompletedCapture(FString InTracePath, FGuid InTraceGuid) -> void;
+    static auto DoGet_TimedCaptureProgress(double InElapsedSeconds, double InDurationSeconds) -> double;
+    static auto DoGet_ScreenshotMilestones(
+        double InElapsedSeconds,
+        double InDurationSeconds,
+        int32 InScreenshotCount)
+        -> TArray<int32>;
 
     static auto DoGet_StatCommandName(FName InGroup) -> FString;
     static auto DoIs_StatGroupEnabled(FName InGroup) -> bool;
@@ -85,6 +121,15 @@ private:
     bool _ConnectionReadyDuringStart = false;
     bool _TraceStartedDuringStart = false;
     bool _TraceStoppedDuringStart = false;
+    bool _TimedCaptureRequested = false;
+    bool _TimedCaptureStopping = false;
+    double _TimedCaptureDurationSeconds = 0.0;
+    double _TimedCaptureStartedSeconds = 0.0;
+    double _TimedCaptureScreenshotFlushDeadlineSeconds = 0.0;
+    int32 _TimedCaptureScreenshotCount = DefaultTimedCaptureScreenshotCount;
+    uint16 _TimedCaptureScreenshotMask = 0;
+    FString _CompletedTracePath;
+    FGuid _CompletedTraceGuid;
     FTraceAuxiliary::EConnectionType _ConnectionType = FTraceAuxiliary::EConnectionType::File;
     FString _ConnectionDestination;
     FTraceAuxiliary::EConnectionType _OwnedTraceType = FTraceAuxiliary::EConnectionType::None;
@@ -93,6 +138,7 @@ private:
     FDelegateHandle _TraceStartedHandle;
     FDelegateHandle _TraceConnectionHandle;
     FDelegateHandle _TraceStoppedHandle;
+    FTSTicker::FDelegateHandle _TimedCaptureTickerHandle;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

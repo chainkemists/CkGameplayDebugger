@@ -3,6 +3,7 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
+#include <Containers/Ticker.h>
 #include <CoreGlobals.h>
 #include <Editor.h>
 #include <EditorViewportClient.h>
@@ -11,13 +12,15 @@
 #include <HAL/IConsoleManager.h>
 #include <Misc/CoreDelegates.h>
 #include <Misc/ScopeLock.h>
+#include <ProfilingDebugging/MiscTrace.h>
+#include <ProfilingDebugging/TraceScreenshot.h>
 #include <Stats/StatsSystemTypes.h>
 #include <Trace/Trace.h>
 #include <UnrealClient.h>
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace
+namespace ck_insights_capture
 {
     auto Get_StatViewportClient() -> FCommonViewportClient*
     {
@@ -54,10 +57,24 @@ FCkInsightsCaptureController::FCkInsightsCaptureController(
     _TraceStoppedHandle = FTraceAuxiliary::OnTraceStopped.AddRaw(
         this,
         &FCkInsightsCaptureController::DoOnTraceStopped);
+    _TimedCaptureTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateRaw(this, &FCkInsightsCaptureController::DoTick_TimedCapture));
 }
 
 FCkInsightsCaptureController::~FCkInsightsCaptureController()
 {
+    auto Error = FString{};
+    if (NOT TryStop_TimedCapture(Error))
+    {
+        auto CanStopOwnedTimedTrace = false;
+        {
+            auto Lock = FScopeLock{&_OwnershipMutex};
+            CanStopOwnedTimedTrace = _TimedCaptureRequested && _OwnsActiveTrace;
+        }
+        if (CanStopOwnedTimedTrace)
+        { FTraceAuxiliary::Stop(); }
+    }
+    FTSTicker::GetCoreTicker().RemoveTicker(_TimedCaptureTickerHandle);
     FTraceAuxiliary::OnTraceStarted.Remove(_TraceStartedHandle);
     FTraceAuxiliary::OnConnection.Remove(_TraceConnectionHandle);
     FTraceAuxiliary::OnTraceStopped.Remove(_TraceStoppedHandle);
@@ -71,6 +88,24 @@ auto FCkInsightsCaptureController::Get_Snapshot() const -> FCkInsightsCaptureSna
 
     auto Lock = FScopeLock{&_OwnershipMutex};
     Snapshot.bIsOwnedByTool = Snapshot.bIsTracing && _OwnsActiveTrace;
+    Snapshot.TargetDurationSeconds = _TimedCaptureDurationSeconds;
+    if (NOT _TimedCaptureRequested)
+    { return Snapshot; }
+
+    if (_TimedCaptureStartedSeconds <= 0.0)
+    {
+        Snapshot.State = _TimedCaptureStopping
+            ? ECkInsightsCaptureState::Stopping
+            : ECkInsightsCaptureState::Starting;
+        return Snapshot;
+    }
+
+    Snapshot.ElapsedSeconds = FMath::Max(0.0, FPlatformTime::Seconds() - _TimedCaptureStartedSeconds);
+    Snapshot.Progress = DoGet_TimedCaptureProgress(Snapshot.ElapsedSeconds, Snapshot.TargetDurationSeconds);
+    Snapshot.RemainingSeconds = FMath::Max(0.0, Snapshot.TargetDurationSeconds - Snapshot.ElapsedSeconds);
+    Snapshot.State = _TimedCaptureStopping
+        ? ECkInsightsCaptureState::Stopping
+        : ECkInsightsCaptureState::Recording;
     return Snapshot;
 }
 
@@ -80,6 +115,9 @@ auto FCkInsightsCaptureController::Can_ToggleTracing() const -> bool
     const auto Snapshot = Get_Snapshot();
     if (NOT Snapshot.bIsTracing)
     { return true; }
+
+    if (Snapshot.State == ECkInsightsCaptureState::Stopping)
+    { return false; }
 
     auto Lock = FScopeLock{&_OwnershipMutex};
     return Snapshot.bIsOwnedByTool && _CanStopOwnedTrace;
@@ -139,6 +177,11 @@ auto
                 && UE::Trace::IsTracing();
             _OwnsActiveTrace = OwnsStartedTrace;
             _CanStopOwnedTrace = OwnsStartedTrace && _ConnectionReadyDuringStart;
+            if (_TimedCaptureRequested
+                && _OwnsActiveTrace
+                && _CanStopOwnedTrace
+                && _TimedCaptureStartedSeconds <= 0.0)
+            { _TimedCaptureStartedSeconds = FPlatformTime::Seconds(); }
         }
 
         if (NOT Started)
@@ -192,6 +235,11 @@ auto
         return false;
     }
 
+    if (OwnedTraceType == FTraceAuxiliary::EConnectionType::File
+        && NOT OwnedTraceDestination.IsEmpty()
+        && OwnedTraceGuid.IsValid())
+    { DoQueue_CompletedCapture(OwnedTraceDestination, OwnedTraceGuid); }
+
     if (OutStoppedTracePath && OwnedTraceType == FTraceAuxiliary::EConnectionType::File)
     { *OutStoppedTracePath = MoveTemp(OwnedTraceDestination); }
     if (OutStoppedTraceGuid)
@@ -203,6 +251,136 @@ auto
     _OwnedTraceType = FTraceAuxiliary::EConnectionType::None;
     _OwnedTraceDestination.Reset();
     _OwnedTraceGuid.Invalidate();
+    return true;
+}
+
+auto FCkInsightsCaptureController::TryStart_TimedCapture(double InDurationSeconds, FString& OutError) -> bool
+{
+    return TryStart_TimedCapture(InDurationSeconds, DefaultTimedCaptureScreenshotCount, OutError);
+}
+
+auto
+    FCkInsightsCaptureController::
+    TryStart_TimedCapture(double InDurationSeconds, int32 InScreenshotCount, FString& OutError)
+    -> bool
+{
+    OutError.Reset();
+    const auto DurationIsValid = InDurationSeconds > 0.0;
+    CK_ENSURE_IF_NOT(DurationIsValid, TEXT("Timed Insights capture duration must be positive, got [{}]"), InDurationSeconds)
+    {}
+    if (NOT DurationIsValid)
+    {
+        OutError = TEXT("Timed capture duration must be greater than zero.");
+        return false;
+    }
+
+    const auto ScreenshotCountIsValid = InScreenshotCount >= MinTimedCaptureScreenshotCount
+        && InScreenshotCount <= MaxTimedCaptureScreenshotCount;
+    CK_ENSURE_IF_NOT(
+        ScreenshotCountIsValid,
+        TEXT("Timed Insights capture screenshot count must be from {} through {}, got [{}]"),
+        MinTimedCaptureScreenshotCount,
+        MaxTimedCaptureScreenshotCount,
+        InScreenshotCount)
+    {}
+    if (NOT ScreenshotCountIsValid)
+    {
+        OutError = ck::Format_UE(
+            TEXT("Timed capture screenshot count must be from {} through {}."),
+            MinTimedCaptureScreenshotCount,
+            MaxTimedCaptureScreenshotCount);
+        return false;
+    }
+
+    const auto Snapshot = Get_Snapshot();
+    if (Snapshot.bIsTracing)
+    {
+        OutError = Snapshot.bIsOwnedByTool
+            ? TEXT("An Insights capture is already running.")
+            : TEXT("The active trace was started outside the Insights Analyzer and was left running.");
+        return false;
+    }
+
+    {
+        auto Lock = FScopeLock{&_OwnershipMutex};
+        _TimedCaptureRequested = true;
+        _TimedCaptureStopping = false;
+        _TimedCaptureDurationSeconds = InDurationSeconds;
+        _TimedCaptureStartedSeconds = 0.0;
+        _TimedCaptureScreenshotFlushDeadlineSeconds = 0.0;
+        _TimedCaptureScreenshotCount = InScreenshotCount;
+        _TimedCaptureScreenshotMask = 0;
+    }
+
+    if (TrySet_Tracing(true, OutError))
+    { return true; }
+
+    auto Lock = FScopeLock{&_OwnershipMutex};
+    _TimedCaptureRequested = false;
+    _TimedCaptureStopping = false;
+    _TimedCaptureDurationSeconds = 0.0;
+    _TimedCaptureStartedSeconds = 0.0;
+    _TimedCaptureScreenshotFlushDeadlineSeconds = 0.0;
+    _TimedCaptureScreenshotCount = DefaultTimedCaptureScreenshotCount;
+    _TimedCaptureScreenshotMask = 0;
+    return false;
+}
+
+auto FCkInsightsCaptureController::TryStop_TimedCapture(FString& OutError) -> bool
+{
+    return DoTryStop_TimedCapture(false, OutError);
+}
+
+auto FCkInsightsCaptureController::DoTryStop_TimedCapture(bool InAllowScreenshotDrain, FString& OutError) -> bool
+{
+    OutError.Reset();
+    auto ShouldStop = false;
+    {
+        auto Lock = FScopeLock{&_OwnershipMutex};
+        const auto IsScreenshotDrainActive = _TimedCaptureStopping;
+        if (IsScreenshotDrainActive && NOT InAllowScreenshotDrain)
+        {
+            OutError = TEXT("Timed capture is finishing scheduled screenshots before it stops.");
+            return false;
+        }
+
+        ShouldStop = _TimedCaptureRequested && _OwnsActiveTrace && _CanStopOwnedTrace;
+        if (ShouldStop)
+        { _TimedCaptureStopping = true; }
+    }
+
+    if (NOT ShouldStop)
+    {
+        OutError = TEXT("There is no ready module-owned timed capture to stop.");
+        return false;
+    }
+
+    auto StoppedTracePath = FString{};
+    auto StoppedTraceGuid = FGuid{};
+    if (TrySet_Tracing(false, OutError, &StoppedTracePath, &StoppedTraceGuid))
+    { return true; }
+
+    auto Lock = FScopeLock{&_OwnershipMutex};
+    _TimedCaptureStopping = false;
+    return false;
+}
+
+auto FCkInsightsCaptureController::Get_CompletedCapture(FString& OutTracePath, FGuid& OutTraceGuid) const -> bool
+{
+    auto Lock = FScopeLock{&_OwnershipMutex};
+    OutTracePath = _CompletedTracePath;
+    OutTraceGuid = _CompletedTraceGuid;
+    return NOT OutTracePath.IsEmpty() && OutTraceGuid.IsValid();
+}
+
+auto FCkInsightsCaptureController::Acknowledge_CompletedCapture(FGuid InTraceGuid) -> bool
+{
+    auto Lock = FScopeLock{&_OwnershipMutex};
+    if (NOT InTraceGuid.IsValid() || InTraceGuid != _CompletedTraceGuid)
+    { return false; }
+
+    _CompletedTracePath.Reset();
+    _CompletedTraceGuid.Invalidate();
     return true;
 }
 
@@ -419,6 +597,159 @@ auto FCkInsightsCaptureController::DoOnTraceConnection() -> void
     { _CanStopOwnedTrace = true; }
     if (ConnectionHasIdentity && (_StartInProgress || _OwnsActiveTrace))
     { _OwnedTraceGuid = TraceGuid; }
+    if (_TimedCaptureRequested && _OwnsActiveTrace && _CanStopOwnedTrace && _TimedCaptureStartedSeconds <= 0.0)
+    { _TimedCaptureStartedSeconds = FPlatformTime::Seconds(); }
+}
+
+auto FCkInsightsCaptureController::DoTick_TimedCapture(float) -> bool
+{
+    DoAdvance_TimedCapture(FPlatformTime::Seconds());
+    return true;
+}
+
+auto FCkInsightsCaptureController::DoAdvance_TimedCapture(double InNowSeconds) -> void
+{
+    auto ScreenshotMilestones = TArray<int32>{};
+    auto ScreenshotMilestoneBits = TArray<uint16>{};
+    auto DeadlineReached = false;
+    auto ScreenshotQueuedThisTick = false;
+    auto HasQueuedScreenshot = false;
+    {
+        auto Lock = FScopeLock{&_OwnershipMutex};
+        const auto IsTimedCaptureActive = _TimedCaptureRequested
+            && _OwnsActiveTrace
+            && _CanStopOwnedTrace
+            && _TimedCaptureStartedSeconds > 0.0;
+        if (NOT IsTimedCaptureActive)
+        { return; }
+
+        const auto ElapsedSeconds = FMath::Max(0.0, InNowSeconds - _TimedCaptureStartedSeconds);
+        DeadlineReached = ElapsedSeconds >= _TimedCaptureDurationSeconds;
+        if (DeadlineReached)
+        { _TimedCaptureStopping = true; }
+        if (_TimedCaptureStopping && NOT DeadlineReached)
+        { return; }
+
+        const auto DueScreenshotMilestones = DoGet_ScreenshotMilestones(
+            ElapsedSeconds,
+            _TimedCaptureDurationSeconds,
+            _TimedCaptureScreenshotCount);
+        for (auto ScreenshotIndex = 0; ScreenshotIndex < DueScreenshotMilestones.Num(); ++ScreenshotIndex)
+        {
+            const auto Milestone = DueScreenshotMilestones[ScreenshotIndex];
+            const auto MilestoneBit = static_cast<uint16>(1u << ScreenshotIndex);
+            if ((_TimedCaptureScreenshotMask & MilestoneBit) != 0)
+            { continue; }
+
+            ScreenshotMilestones.Add(Milestone);
+            ScreenshotMilestoneBits.Add(MilestoneBit);
+        }
+        HasQueuedScreenshot = _TimedCaptureScreenshotMask != 0;
+    }
+
+    auto ScreenshotTracingEnabled = false;
+#if UE_SCREENSHOT_TRACE_ENABLED
+    const auto Snapshot = Get_Snapshot();
+    ScreenshotTracingEnabled = SHOULD_TRACE_SCREENSHOT();
+    if (Snapshot.bIsOwnedByTool
+        && (Snapshot.State == ECkInsightsCaptureState::Recording
+            || Snapshot.State == ECkInsightsCaptureState::Stopping)
+        && ScreenshotTracingEnabled
+        && NOT FScreenshotRequest::IsScreenshotRequested()
+        && ScreenshotMilestones.Num() > 0)
+    {
+        const auto Milestone = ScreenshotMilestones[0];
+        FTraceScreenshot::RequestScreenshot(
+            ck::Format_UE(TEXT("CkInsights_TimedCapture_{}Percent"), Milestone),
+            true);
+        ScreenshotQueuedThisTick = true;
+
+        {
+            auto Lock = FScopeLock{&_OwnershipMutex};
+            const auto MilestoneBit = ScreenshotMilestoneBits[0];
+            _TimedCaptureScreenshotMask |= MilestoneBit;
+            HasQueuedScreenshot = true;
+            if (DeadlineReached)
+            {
+                constexpr double ScreenshotFlushTimeoutSeconds = 2.0;
+                _TimedCaptureScreenshotFlushDeadlineSeconds = InNowSeconds + ScreenshotFlushTimeoutSeconds;
+            }
+        }
+    }
+#endif
+
+    if (NOT DeadlineReached)
+    { return; }
+
+    if (ScreenshotQueuedThisTick)
+    { return; }
+
+#if UE_SCREENSHOT_TRACE_ENABLED
+    const auto HasPendingScreenshot = ScreenshotMilestones.Num() > 0;
+    if (ScreenshotTracingEnabled && (HasQueuedScreenshot || HasPendingScreenshot))
+    {
+        auto ScreenshotFlushDeadlineSeconds = 0.0;
+        {
+            auto Lock = FScopeLock{&_OwnershipMutex};
+            if (_TimedCaptureScreenshotFlushDeadlineSeconds <= 0.0)
+            {
+                constexpr double ScreenshotFlushTimeoutSeconds = 2.0;
+                _TimedCaptureScreenshotFlushDeadlineSeconds = InNowSeconds + ScreenshotFlushTimeoutSeconds;
+            }
+            ScreenshotFlushDeadlineSeconds = _TimedCaptureScreenshotFlushDeadlineSeconds;
+        }
+        if (InNowSeconds < ScreenshotFlushDeadlineSeconds)
+        {
+            // The same bounded window lets a pre-existing global screenshot request clear before the first timed
+            // screenshot is queued. Once queued, FTraceScreenshot clears FScreenshotRequest before its fire-and-forget
+            // PNG compression task emits the ScreenshotHeader and ScreenshotChunk trace events, so keep honoring the
+            // window after the viewport request clears rather than discarding those asynchronous events on trace stop.
+            return;
+        }
+    }
+#endif
+
+    auto Error = FString{};
+    DoTryStop_TimedCapture(true, Error);
+}
+
+auto FCkInsightsCaptureController::DoQueue_CompletedCapture(FString InTracePath, FGuid InTraceGuid) -> void
+{
+    auto Lock = FScopeLock{&_OwnershipMutex};
+    _CompletedTracePath = MoveTemp(InTracePath);
+    _CompletedTraceGuid = InTraceGuid;
+}
+
+auto FCkInsightsCaptureController::DoGet_TimedCaptureProgress(double InElapsedSeconds, double InDurationSeconds) -> double
+{
+    if (InDurationSeconds <= 0.0)
+    { return 0.0; }
+
+    return FMath::Clamp(InElapsedSeconds / InDurationSeconds, 0.0, 1.0);
+}
+
+auto
+    FCkInsightsCaptureController::
+    DoGet_ScreenshotMilestones(
+        double InElapsedSeconds,
+        double InDurationSeconds,
+        int32 InScreenshotCount)
+    -> TArray<int32>
+{
+    auto Milestones = TArray<int32>{};
+    if (InScreenshotCount <= 0)
+    { return Milestones; }
+
+    const auto Progress = DoGet_TimedCaptureProgress(InElapsedSeconds, InDurationSeconds);
+    for (auto ScreenshotIndex = 0; ScreenshotIndex < InScreenshotCount; ++ScreenshotIndex)
+    {
+        const auto Milestone = InScreenshotCount == 1
+            ? 50
+            : FMath::RoundToInt(10.0 + 80.0 * ScreenshotIndex / (InScreenshotCount - 1));
+        if (Progress >= Milestone / 100.0)
+        { Milestones.Add(Milestone); }
+    }
+    return Milestones;
 }
 
 auto
@@ -441,7 +772,7 @@ auto
 
     auto CurrentViewportEnabled = false;
     auto OtherViewportEnabled = false;
-    auto* StatViewportClient = Get_StatViewportClient();
+    auto* StatViewportClient = ck_insights_capture::Get_StatViewportClient();
     if (NOT StatViewportClient)
     { return false; }
 
@@ -462,7 +793,7 @@ auto
 {
     if (DoIs_StatGroupEnabled(InGroup) != InEnabled)
     {
-        auto* StatViewportClient = Get_StatViewportClient();
+        auto* StatViewportClient = ck_insights_capture::Get_StatViewportClient();
         if (NOT StatViewportClient)
         { return false; }
 
@@ -504,6 +835,13 @@ auto
     { _TraceStoppedDuringStart = true; }
     _OwnsActiveTrace = false;
     _CanStopOwnedTrace = false;
+    _TimedCaptureRequested = false;
+    _TimedCaptureStopping = false;
+    _TimedCaptureDurationSeconds = 0.0;
+    _TimedCaptureStartedSeconds = 0.0;
+    _TimedCaptureScreenshotFlushDeadlineSeconds = 0.0;
+    _TimedCaptureScreenshotCount = DefaultTimedCaptureScreenshotCount;
+    _TimedCaptureScreenshotMask = 0;
     _OwnedTraceType = FTraceAuxiliary::EConnectionType::None;
     _OwnedTraceDestination.Reset();
     _OwnedTraceGuid.Invalidate();

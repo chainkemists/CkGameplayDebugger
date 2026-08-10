@@ -34,4 +34,15 @@ public:
 
     /** Unseen-count shown on the page's tab (0 = no badge). Activity uses it. */
     virtual auto Get_BadgeCount() const -> int32 { return 0; }
+
+    /**
+     * The Layer-B style selection changed structurally. Routed from the window's
+     * SCkDebugger_WindowBase::OnStyleRevisionChanged rather than from a re-Build_Content:
+     * Build_Content is NOT idempotent for every page (Overview roots a fresh UEdGraph and
+     * re-binds its model delegates), so the window hands the change to the page instead of
+     * re-running the builder.
+     *
+     * Default is a no-op — a page whose axis reads are all attribute-bound needs nothing.
+     */
+    virtual auto OnStyleRevisionChanged() -> void {}
 };

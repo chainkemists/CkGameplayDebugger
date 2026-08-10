@@ -35,6 +35,14 @@ namespace ck_debugoverlay_root
     // Dark ink for text sitting on a saturated provider fill — same reading as the focus card's.
     constexpr auto ChipInk = FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f };
 
+    // Plate text sits in the WORLD, not on the card, so it deliberately does NOT compose the
+    // overlay's PlateFontScale — only the suite-wide TextScale rides on the CkStyle role.
+    auto Get_PlateBadgeFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); }
+
+    auto Get_PlateHeaderFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); }
+
     // ProviderChipStyle at plate density (3px side padding, micro font). Tint is the badge
     // exactly as the near-plate shipped; the provider color is per-badge, so this cannot go
     // through the tone-keyed ck::debug_axes::Make_ProviderChip.
@@ -45,14 +53,17 @@ namespace ck_debugoverlay_root
         const auto Make_Pill = [&](const FLinearColor& InFill, const FLinearColor& InInk) -> TSharedRef<SWidget>
         {
             return SNew(SBorder)
-                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderImage_Static(&CkStyle::GetRoundedBrush)
                 .BorderBackgroundColor(InFill)
                 .VAlign(VAlign_Center)
-                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ 3.0f, 0.0f }))
+                .Padding_Lambda([]() -> FMargin
+                {
+                    return ck::debug_axes::Apply_RowDensity(FMargin{ 3.0f, 0.0f });
+                })
                 [
                     SNew(STextBlock)
                         .Text(InText)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
+                        .Font_Static(&ck_debugoverlay_root::Get_PlateBadgeFont)
                         .ColorAndOpacity(InInk)
                 ];
         };
@@ -70,7 +81,7 @@ namespace ck_debugoverlay_root
             case ECkDebugAxis_ProviderChipStyle::AbbrevOnly:
                 return SNew(STextBlock)
                     .Text(InText)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeMicro()))
+                    .Font_Static(&ck_debugoverlay_root::Get_PlateBadgeFont)
                     .ColorAndOpacity(InProviderColor);
         }
 
@@ -91,15 +102,31 @@ auto
     SAssignNew(_TagCanvas, SConstraintCanvas);
     SAssignNew(_CardStrip, SVerticalBox);
 
+    // The hints strip is the one overlay surface that is NOT rebuilt per frame (the focus card,
+    // pinned cards and world tags all re-present from the subsystem's ticker every frame, so their
+    // axis reads are live by repetition). Its style therefore has to be bound, or a Style Lab flip
+    // never reaches it — at rest or otherwise.
     SAssignNew(_HintsBox, SBorder)
         .Visibility(EVisibility::Collapsed)
-        .BorderImage(CkStyle::GetRoundedBrush())
-        .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f))
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS }))
+        .BorderImage_Static(&CkStyle::GetRoundedBrush)
+        .BorderBackgroundColor_Lambda([]() -> FSlateColor
+        {
+            return FSlateColor{CkStyle::OverlayOf(CkStyle::BgRoot(), 0.82f)};
+        })
+        .Padding_Lambda([]() -> FMargin
+        {
+            return ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS });
+        })
         [
             SAssignNew(_HintsText, STextBlock)
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()))
-                .ColorAndOpacity(CkStyle::TextMute())
+                .Font_Lambda([]() -> FSlateFontInfo
+                {
+                    return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
+                })
+                .ColorAndOpacity_Lambda([]() -> FSlateColor
+                {
+                    return FSlateColor{CkStyle::TextMute()};
+                })
         ];
 
     DoRebuildLayout();
@@ -430,7 +457,7 @@ auto
         [
             SNew(STextBlock)
                 .Text(InInfo.Header)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeSmall()))
+                .Font_Static(&ck_debugoverlay_root::Get_PlateHeaderFont)
                 .ColorAndOpacity(CkStyle::TextStrong())
         ];
 

@@ -12,6 +12,7 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityDebuggerLinks.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -752,9 +753,17 @@ auto SCkDebuggerPanel_Inspector::Format_EntityDisplayName(const FCk_Handle& Enti
     if (ck::Is_NOT_Valid(Entity))
     { return FText::FromString(TEXT("Invalid Entity")); }
 
-    const auto DebugName = UCk_Utils_Handle_UE::Get_DebugName(Entity);
-    const auto EntityId = Entity.Get_Entity().Get_ID();
-    return FText::FromString(ck::Format_UE(TEXT("{} [{}]"), DebugName, EntityId));
+    // Composed through the EntityIdStyle axis instead of a private "{Name} [{Id}]" format, so this
+    // header reads exactly like every SCkDebug_EntityRef pill in the suite and follows the same
+    // NameAndId / CompactId / NameOnly setting. The panel re-composes on the window's style
+    // revision, so a Style Lab flip lands without a re-selection.
+    const auto CleanName = ck::DebugNameClean::Get_CleanName(
+        UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString());
+
+    return ck::debug_axes::Make_EntityIdText(
+        UCkDebuggerStyleSettings::Get_Selection(),
+        CleanName,
+        ck::Format_UE(TEXT("{}"), Entity.Get_Entity()));
 }
 
 // ============================================================================

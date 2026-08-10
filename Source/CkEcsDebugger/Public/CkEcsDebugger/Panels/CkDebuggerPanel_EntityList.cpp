@@ -32,6 +32,58 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 
+#include "Styling/StyleDefaults.h"
+
+// ====================================================================================================================
+// Named, not anonymous: this module builds with unity on, and a merged TU collides file-local
+// helpers by name.
+// ====================================================================================================================
+
+namespace ck_debugger_panel_entity_list
+{
+    // The rail group heading is deliberately below every CkStyle role (the rail column is only as
+    // wide as its widest chip), so the size stays literal — inside ScaledFont, so it still follows
+    // TextScale.
+    auto Get_RailGroupFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", 6); }
+
+    auto Get_QuickAccessRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(
+            FMargin{FCkDebuggerStyle::Padding_Small, 1.0f, 0.0f, 1.0f});
+    }
+
+    // RowBanding, split the way the axis defines it: Zebra owns the row's fill, Hairline owns a
+    // rule under the row. Asking for the band brush under Hairline would paint the separator
+    // across the whole row instead of along its edge.
+    auto Get_RowBandFill(int32 InRowIndex) -> const FSlateBrush*
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? ck::debug_axes::Get_RowBandingBrush(InRowIndex)
+            : FStyleDefaults::GetNoBrush();
+    }
+
+    auto Make_RowRule() -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+            })
+            .Visibility_Lambda([]()
+            {
+                return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            [
+                SNew(SBorder)
+                .BorderImage(CkStyle::GetFilledBrush())
+                .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+            ];
+    }
+}
+
 SCkDebuggerPanel_EntityList::~SCkDebuggerPanel_EntityList()
 {
     if (PinsChangedHandle.IsValid() && EntityTree.IsValid())
@@ -246,7 +298,7 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
         .Padding(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f)
         [
             SNew(STextBlock)
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 6))
+            .Font_Static(&ck_debugger_panel_entity_list::Get_RailGroupFont)
             .Text(FText::FromString(Group.ToString().ToUpper()))
             .ColorAndOpacity(CkStyle::TextMute())
         ];
@@ -380,48 +432,83 @@ auto SCkDebuggerPanel_EntityList::DoBuildQuickAccessRows(
     const TArray<FCk_Handle>& InEntities,
     const TSharedPtr<SVerticalBox>& InContainer) -> void
 {
+    auto RowIndex = 0;
+
     for (const auto& Entity : InEntities)
     {
         const auto CleanName = ck::DebugNameClean::Get_CleanName(
             UCk_Utils_Handle_UE::Get_DebugName(Entity).ToString());
 
+        const auto Index = RowIndex++;
+
         InContainer->AddSlot()
         .AutoHeight()
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small, 1.0f, 0.0f, 1.0f}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_debugger_panel_entity_list::Get_QuickAccessRowPadding))
         [
-            SNew(SHorizontalBox)
+            SNew(SVerticalBox)
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
+            // RowBanding: Zebra paints an alternating full-bleed fill, Off paints nothing (a
+            // no-brush border with zero padding contributes neither paint nor geometry, which is
+            // what keeps Classic identical).
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(SButton)
-                .ButtonStyle(FAppStyle::Get(), "SimpleButton")
-                .ToolTipText(FText::FromString(TEXT("Select in the tree")))
-                .ContentPadding(FMargin(2.0f, 0.0f))
-                .OnClicked_Lambda([this, Entity]() -> FReply
+                SNew(SBorder)
+                .BorderImage_Lambda([Index]() -> const FSlateBrush*
                 {
-                    if (SelectionModel.IsValid() && ck::IsValid(Entity))
-                    { SelectionModel->Set_SelectedEntities({ Entity }); }
-                    return FReply::Handled();
+                    return ck_debugger_panel_entity_list::Get_RowBandFill(Index);
                 })
+                .Padding(0.0f)
                 [
-                    SNew(STextBlock)
-                    .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                    .Text(FText::FromString(CleanName))
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                        .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+                        .ToolTipText(FText::FromString(TEXT("Select in the tree")))
+                        .ContentPadding(FMargin(2.0f, 0.0f))
+                        .OnClicked_Lambda([this, Entity]() -> FReply
+                        {
+                            if (SelectionModel.IsValid() && ck::IsValid(Entity))
+                            { SelectionModel->Set_SelectedEntities({ Entity }); }
+                            return FReply::Handled();
+                        })
+                        [
+                            SNew(STextBlock)
+                            .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                            .Text(FText::FromString(CleanName))
+                        ]
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+                    [
+                        SNew(SCkDebug_EntityRef)
+                        .Entity_Lambda([Entity]() { return Entity; })
+                    ]
                 ]
             ]
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            // Hairline banding draws the rule along the row's bottom edge instead of filling it.
+            // Zero thickness (Off / Zebra, or SeparatorWeight None) collapses the box, taking its
+            // slot with it.
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(SCkDebug_EntityRef)
-                .Entity_Lambda([Entity]() { return Entity; })
+                ck_debugger_panel_entity_list::Make_RowRule()
             ]
         ];
     }
+}
+
+auto SCkDebuggerPanel_EntityList::Notify_StyleRevisionChanged() -> void
+{
+    RefreshQuickAccessSections();
 }
 
 auto SCkDebuggerPanel_EntityList::Reset_ForWorldChange() -> void

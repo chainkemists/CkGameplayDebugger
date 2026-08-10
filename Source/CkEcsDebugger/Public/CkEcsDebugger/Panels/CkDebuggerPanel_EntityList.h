@@ -34,6 +34,14 @@ public:
     /** Drop all quick-access and tree handles owned by the previous world. */
     auto Reset_ForWorldChange() -> void;
 
+    /**
+     * The Layer-B style selection changed structurally. Routed from the window; regenerates the
+     * quick-access rows, whose per-entity composition (row banding index, EntityRef pill) is a
+     * build-time decision. The tree owns its own revision poll and the feature rails are entirely
+     * attribute-bound, so neither is touched here.
+     */
+    auto Notify_StyleRevisionChanged() -> void;
+
 private:
     auto Build_Toolbar() -> TSharedRef<SWidget>;
     auto Build_StatusBar() -> TSharedRef<SWidget>;

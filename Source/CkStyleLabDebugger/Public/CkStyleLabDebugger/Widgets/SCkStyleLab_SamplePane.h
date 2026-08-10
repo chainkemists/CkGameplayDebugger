@@ -38,6 +38,10 @@ private:
     auto Build_Inspector(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
     auto Build_Separator(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
 
+    // Shapes, surfaces, glyph backdrops and graph nodes — the axes whose effect is a BOX rather
+    // than a row, so the document above cannot show them without contriving one.
+    auto Build_ShapesAndSurfaces(const FCkDebuggerStyleSelection& InSelection) const -> TSharedRef<SWidget>;
+
     TSharedPtr<SBorder> _Root;
 
     bool _ShowAllTones = false;

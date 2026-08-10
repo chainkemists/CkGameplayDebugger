@@ -1,6 +1,7 @@
 #include "SCkDebug_Chip.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_GlowWrap.h"
@@ -64,6 +65,11 @@ namespace ck_debug_chip
     auto Get_ChipStyle() -> ECkDebugAxis_ChipStyle
     {
         return UCkDebuggerStyleSettings::Get_Selection().ChipStyle;
+    }
+
+    auto Get_LabelFont() -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
     }
 
     auto Has_Box() -> bool
@@ -171,7 +177,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("→")))
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .Font_Static(&ck_debug_chip::Get_LabelFont)
                 .ColorAndOpacity_Lambda([Kind]
                 {
                     return FSlateColor{ck_debug_chip::InkOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
@@ -191,7 +197,7 @@ auto
         [
             SNew(STextBlock)
             .Text(InArgs._Text)
-            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .Font_Static(&ck_debug_chip::Get_LabelFont)
             .ColorAndOpacity_Lambda([Kind]
             {
                 return FSlateColor{ck_debug_chip::InkOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
@@ -209,7 +215,7 @@ auto
         })
         [
             SNew(SBorder)
-            .BorderImage(CkStyle::GetRoundedBrush())
+            .BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
             .BorderBackgroundColor_Lambda([Kind, Highlighted]
             {
                 return FSlateColor{
@@ -218,7 +224,7 @@ auto
             .Padding_Static(&ck_debug_chip::Get_RingPadding)
             [
                 SNew(SBorder)
-                .BorderImage(CkStyle::GetRoundedBrush())
+                .BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
                 .BorderBackgroundColor_Lambda([Kind]
                 {
                     return FSlateColor{ck_debug_chip::FillOf(Kind.Get(ECkDebug_ChipKind::Neutral))};

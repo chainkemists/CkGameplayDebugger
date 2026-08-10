@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 
 // ====================================================================================================================
@@ -37,22 +38,35 @@ auto
     SetToolTipText(InArgs._Meaning);
 
     const auto BaseSize = InArgs._Size.Get(FVector2D{ck_debug_icon::BaselineSize, ck_debug_icon::BaselineSize});
+    const auto Accent   = InArgs._Accent;
 
+    // One tree for all three treatments: the backdrop layer is always present and Plain collapses
+    // it to a no-brush, zero-padding shell that contributes no geometry — so the glyph keeps the
+    // size and position it has always had, and a Style Lab flip moves it without a rebuild.
     ChildSlot
     [
-        SNew(SBox)
-            .WidthOverride_Lambda([BaseSize]() -> FOptionalSize
+        SNew(SBorder)
+            .BorderImage_Static(&ck::debug_axes::Get_IconBackdropBrush)
+            .BorderBackgroundColor_Lambda([Accent]() -> FSlateColor
             {
-                return FOptionalSize{static_cast<float>(BaseSize.X) * ck_debug_icon::Get_SizeScale()};
+                return FSlateColor{ck::debug_axes::Get_IconBackdropTint(Accent.Get(FLinearColor::Transparent))};
             })
-            .HeightOverride_Lambda([BaseSize]() -> FOptionalSize
-            {
-                return FOptionalSize{static_cast<float>(BaseSize.Y) * ck_debug_icon::Get_SizeScale()};
-            })
+            .Padding_Static(&ck::debug_axes::Get_IconBackdropPadding)
             [
-                SNew(SImage)
-                    .Image(InArgs._Brush)
-                    .ColorAndOpacity(InArgs._ColorAndOpacity)
+                SNew(SBox)
+                    .WidthOverride_Lambda([BaseSize]() -> FOptionalSize
+                    {
+                        return FOptionalSize{static_cast<float>(BaseSize.X) * ck_debug_icon::Get_SizeScale()};
+                    })
+                    .HeightOverride_Lambda([BaseSize]() -> FOptionalSize
+                    {
+                        return FOptionalSize{static_cast<float>(BaseSize.Y) * ck_debug_icon::Get_SizeScale()};
+                    })
+                    [
+                        SNew(SImage)
+                            .Image(InArgs._Brush)
+                            .ColorAndOpacity(InArgs._ColorAndOpacity)
+                    ]
             ]
     ];
 }

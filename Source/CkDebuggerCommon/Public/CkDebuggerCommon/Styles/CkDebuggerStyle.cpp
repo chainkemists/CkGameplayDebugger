@@ -11,6 +11,7 @@
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateTypes.h"
+#include "Styling/StyleDefaults.h"
 
 // ====================================================================================================================
 
@@ -78,7 +79,6 @@ auto
 
     CreateBrushes(Style);
     CreateIconBrushes(Style);
-    CreateColors(Style);
     CreateTextStyles(Style);
 
     return Style;
@@ -92,12 +92,8 @@ auto
 {
     InStyle->Set("CkDebugger.Background.Dark", new FSlateColorBrush(CkStyle::BgRoot()));
     InStyle->Set("CkDebugger.Background.Medium", new FSlateColorBrush(CkStyle::Bg1()));
-    InStyle->Set("CkDebugger.Background.Light", new FSlateColorBrush(CkStyle::Bg2()));
     InStyle->Set("CkDebugger.Border", new FSlateColorBrush(CkStyle::Border()));
-    InStyle->Set("CkDebugger.Selection", new FSlateColorBrush(CkStyle::Selection()));
-    InStyle->Set("CkDebugger.Hover", new FSlateColorBrush(CkStyle::Hover()));
 
-    InStyle->Set("CkDebugger.Panel.Background", new FSlateColorBrush(CkStyle::Bg1()));
     InStyle->Set("CkDebugger.Panel.Border", new FSlateRoundedBoxBrush(
         CkStyle::Border(),
         2.0f,
@@ -105,25 +101,38 @@ auto
         1.0f
     ));
 
+    // Alternating row fills — the RowBanding axis' Zebra option.
     InStyle->Set("CkDebugger.Row.Even", new FSlateColorBrush(CkStyle::Bg1()));
     InStyle->Set("CkDebugger.Row.Odd", new FSlateColorBrush(CkStyle::Bg2()));
 
     InStyle->Set("CkDebugger.Separator", new FSlateColorBrush(CkStyle::Border()));
 
     InStyle->Set("CkDebugger.Graph.Background", new FSlateColorBrush(CkStyle::Graph_Background()));
-    InStyle->Set("CkDebugger.Graph.NodeBackground", new FSlateRoundedBoxBrush(
-        CkStyle::Graph_Node_Default(), GraphNode_CornerRadius));
-    InStyle->Set("CkDebugger.Graph.NodeBackground.Hover", new FSlateRoundedBoxBrush(
-        CkStyle::Graph_Node_Center(), GraphNode_CornerRadius));
-    InStyle->Set("CkDebugger.Graph.NodeBackground.Center", new FSlateRoundedBoxBrush(
-        CkStyle::Graph_Node_Center(), GraphNode_CornerRadius));
 
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
-        FLinearColor::White, 3.0f));
+        FLinearColor::White, CkStyle::RadiusS()));
 
-    // Tintable icon backdrop for cards — white so BorderBackgroundColor carries the tint.
+    // The two ends of the CornerStyle axis. Rounded is CkStyle's own family, so only square and
+    // pill need registering — white, tinted at the use site like everything else here.
+    InStyle->Set("CkDebugger.Corner.Square", new FSlateRoundedBoxBrush(
+        FLinearColor::White, 0.0f));
+    InStyle->Set("CkDebugger.Corner.Pill", new FSlateRoundedBoxBrush(
+        FLinearColor::White, CkStyle::RadiusPill()));
+
+    // Ring counterparts of the same three shapes: the fill is transparent at ANY tint (alpha zero
+    // multiplies to zero), so the widget's BorderBackgroundColor selects the ring color alone.
+    InStyle->Set("CkDebugger.Surface.Outline", new FSlateRoundedBoxBrush(
+        FLinearColor::Transparent, 0.0f, FLinearColor::White, CkStyle::RingWidth()));
+    InStyle->Set("CkDebugger.Corner.Rounded.Outline", new FSlateRoundedBoxBrush(
+        FLinearColor::Transparent, CkStyle::RadiusM(), FLinearColor::White, CkStyle::RingWidth()));
+    InStyle->Set("CkDebugger.Corner.Pill.Outline", new FSlateRoundedBoxBrush(
+        FLinearColor::Transparent, CkStyle::RadiusPill(), FLinearColor::White, CkStyle::RingWidth()));
+
+    // Tintable icon backdrops — white so BorderBackgroundColor carries the tint.
     InStyle->Set("CkDebugger.Card.IconWell", new FSlateRoundedBoxBrush(
         FLinearColor::White, 4.0f));
+    InStyle->Set("CkDebugger.Card.IconRing", new FSlateRoundedBoxBrush(
+        FLinearColor::Transparent, 4.0f, FLinearColor::White, CkStyle::RingWidth()));
 
     // List/tree rows: the engine's selection brush is a saturated fill that drowns row
     // content — replace the four selection states with a translucent accent so text,
@@ -196,26 +205,94 @@ auto
 
 auto
     FCkDebuggerStyle::
-    CreateColors(
-        TSharedRef<FSlateStyleSet> InStyle)
-    -> void
+    Get_SquareBrush()
+    -> const FSlateBrush*
 {
-    InStyle->Set("CkDebugger.Color.Text.Primary", CkStyle::Text());
-    InStyle->Set("CkDebugger.Color.Text.Secondary", CkStyle::TextDim());
-    InStyle->Set("CkDebugger.Color.Text.Muted", CkStyle::TextMute());
-    InStyle->Set("CkDebugger.Color.Text.Highlight", CkStyle::TextStrong());
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Corner.Square"))
+        : FStyleDefaults::GetNoBrush();
+}
 
-    InStyle->Set("CkDebugger.Color.EntityID", CkStyle::EntityId());
-    InStyle->Set("CkDebugger.Color.Transform", CkStyle::Transform());
-    InStyle->Set("CkDebugger.Color.Network", CkStyle::Network());
-    InStyle->Set("CkDebugger.Color.Relationship", CkStyle::Relationship());
-    InStyle->Set("CkDebugger.Color.Attribute", CkStyle::Attribute());
-    InStyle->Set("CkDebugger.Color.Reference", CkStyle::Reference());
-    InStyle->Set("CkDebugger.Color.None", CkStyle::None());
+auto
+    FCkDebuggerStyle::
+    Get_PillBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Corner.Pill"))
+        : FStyleDefaults::GetNoBrush();
+}
 
-    InStyle->Set("CkDebugger.Color.Error", CkStyle::Err());
-    InStyle->Set("CkDebugger.Color.Warning", CkStyle::Warn());
-    InStyle->Set("CkDebugger.Color.Success", CkStyle::Ok());
+auto
+    FCkDebuggerStyle::
+    Get_SurfaceOutlineBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Surface.Outline"))
+        : FStyleDefaults::GetNoBrush();
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_RoundedOutlineBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Corner.Rounded.Outline"))
+        : FStyleDefaults::GetNoBrush();
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_PillOutlineBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Corner.Pill.Outline"))
+        : FStyleDefaults::GetNoBrush();
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_IconWellBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Card.IconWell"))
+        : FStyleDefaults::GetNoBrush();
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_IconRingBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Card.IconRing"))
+        : FStyleDefaults::GetNoBrush();
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_RowBandBrush(
+        bool InIsOddRow)
+    -> const FSlateBrush*
+{
+    if (NOT StyleInstance.IsValid())
+    { return FStyleDefaults::GetNoBrush(); }
+
+    return StyleInstance->GetBrush(InIsOddRow ? TEXT("CkDebugger.Row.Odd") : TEXT("CkDebugger.Row.Even"));
+}
+
+auto
+    FCkDebuggerStyle::
+    Get_SeparatorBrush()
+    -> const FSlateBrush*
+{
+    return StyleInstance.IsValid()
+        ? StyleInstance->GetBrush(TEXT("CkDebugger.Separator"))
+        : FStyleDefaults::GetNoBrush();
 }
 
 auto
@@ -224,11 +301,13 @@ auto
         TSharedRef<FSlateStyleSet> InStyle)
     -> void
 {
-    const auto DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", 9);
-    const auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", 9);
-    const auto MonospaceFont = FCoreStyle::GetDefaultFontStyle("Mono", 9);
-    const auto HeaderFont = FCoreStyle::GetDefaultFontStyle("Bold", 10);
-    const auto LargeHeaderFont = FCoreStyle::GetDefaultFontStyle("Bold", 12);
+    // Sizes come from the CkStyle roles rather than literals, so an Editor Preferences typography
+    // edit moves them. A registered FTextBlockStyle is construct-baked by nature — the TextScale
+    // axis cannot reach through one, and only reaches text composed via ck::debug_axes::ScaledFont.
+    const auto DefaultFont = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody());
+    const auto BoldFont = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody());
+    const auto HeaderFont = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeH3());
+    const auto LargeHeaderFont = FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeH2());
 
     InStyle->Set("CkDebugger.Text.Normal", FTextBlockStyle()
         .SetFont(DefaultFont)
@@ -237,10 +316,6 @@ auto
     InStyle->Set("CkDebugger.Text.Bold", FTextBlockStyle()
         .SetFont(BoldFont)
         .SetColorAndOpacity(CkStyle::Text()));
-
-    InStyle->Set("CkDebugger.Text.Monospace", FTextBlockStyle()
-        .SetFont(MonospaceFont)
-        .SetColorAndOpacity(CkStyle::TextDim()));
 
     InStyle->Set("CkDebugger.Text.Header", FTextBlockStyle()
         .SetFont(HeaderFont)

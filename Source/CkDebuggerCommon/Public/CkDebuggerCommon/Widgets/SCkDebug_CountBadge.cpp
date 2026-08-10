@@ -1,13 +1,13 @@
 #include "SCkDebug_CountBadge.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Styling/AppStyle.h"
 
 // ====================================================================================================================
 
@@ -43,6 +43,16 @@ namespace ck_debug_count_badge
 	{
 		return Has_Box() ? FMargin{InnerPaddingX, InnerPaddingY} : FMargin{0.0f};
 	}
+
+	auto Get_ValueFont() -> FSlateFontInfo
+	{
+		return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody());
+	}
+
+	auto Get_SuffixFont() -> FSlateFontInfo
+	{
+		return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
+	}
 }
 
 // ====================================================================================================================
@@ -61,7 +71,7 @@ auto
 			SNew(STextBlock)
 			.Text(InArgs._ValueText)
 			.ColorAndOpacity(FSlateColor(InArgs._ValueColor))
-			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+			.Font_Static(&ck_debug_count_badge::Get_ValueFont)
 		];
 
 	if (!InArgs._SuffixText.IsEmpty())
@@ -74,7 +84,7 @@ auto
 				SNew(STextBlock)
 				.Text(InArgs._SuffixText)
 				.ColorAndOpacity(FSlateColor(InArgs._SuffixColor))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.Font_Static(&ck_debug_count_badge::Get_SuffixFont)
 			];
 	}
 
@@ -84,7 +94,7 @@ auto
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(CkStyle::GetRoundedBrush())
+		.BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
 		.BorderBackgroundColor_Lambda([BorderColor]() -> FSlateColor
 		{
 			// Solid + Hollow both keep the ring; CountOnly drops all chrome.
@@ -93,7 +103,7 @@ auto
 		.Padding_Static(&ck_debug_count_badge::Get_RingPadding)
 		[
 			SNew(SBorder)
-			.BorderImage(CkStyle::GetRoundedBrush())
+			.BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
 			.BorderBackgroundColor_Lambda([BackgroundColor]() -> FSlateColor
 			{
 				// Hollow is the ring without its body — the outline reading.

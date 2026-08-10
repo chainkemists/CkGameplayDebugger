@@ -11,7 +11,10 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
@@ -26,7 +29,6 @@
 #include <Misc/FileHelper.h>
 #include <Modules/ModuleManager.h>
 #include <Styling/AppStyle.h>
-#include <Styling/CoreStyle.h>
 #include <Widgets/Images/SImage.h>
 #include <Widgets/Input/SComboButton.h>
 #include <Widgets/Input/SSpinBox.h>
@@ -54,14 +56,36 @@ namespace ck_insights_analyzer_tab
     constexpr int32 TopTimerCount = 15;
     constexpr int32 MaxEagerScreenshotThumbnails = 12;
 
-    // ---- Fonts (sizes read live from the style settings at construct time) ----
+    // ---- Fonts ----
+    // Same CkStyle roles as before, now through ck::debug_axes::ScaledFont so they follow TextScale.
+    // Bound at the call sites through .Font_Static, so a Style Lab flip resizes text that was built
+    // long before the flip — no rebuild, no invalidation.
 
-    auto BodyFont()     -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeBody()); }
-    auto BodyBoldFont() -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeBody()); }
-    auto SmallFont()    -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()); }
-    auto ItalicFont()   -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeSmall()); }
-    auto MicroFont()    -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeMicro()); }
-    auto TileFont()     -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::FontSizeH2()); }
+    auto BodyFont()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+    auto BodyBoldFont() -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); }
+    auto SmallFont()    -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); }
+    auto ItalicFont()   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeSmall()); }
+    auto MicroFont()    -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
+    auto TileFont()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH2()); }
+
+    // ---- Metrics ----
+    // RowDensity as a DELTA on this tab's own 1px row gutter, so Classic is unchanged and Compact /
+    // Comfortable move the side-panel rows with every other list in the suite.
+
+    auto Get_SidePanelRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f});
+    }
+
+    auto Get_SidePanelSubRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f, 0.0f, 1.0f});
+    }
+
+    auto Get_HotPathRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f});
+    }
 
     // ---- Colors ----
 
@@ -106,19 +130,24 @@ namespace ck_insights_analyzer_tab
 
     // ---- Small widget builders ----
 
+    // The suite's section header rather than a hand-rolled uppercase STextBlock: same Bold 9pt caps,
+    // but it follows SectionHeaderStyle + TextScale live. It carries its own bottom gutter, so the
+    // slots that used to add one below MakeHeading no longer do (see MakePanel / the hot-path panel).
     auto MakeHeading(const FString& InText) -> TSharedRef<SWidget>
     {
-        return SNew(STextBlock)
-            .Text(FText::FromString(InText.ToUpper()))
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
-            .ColorAndOpacity(CkStyle::PaneHeadingColor());
+        return SNew(SCkDebug_SectionHeader)
+            .Label(FText::FromString(InText));
     }
 
+    // A severity / category marker, not a glyph — so it stays an SImage rather than SCkDebug_Icon
+    // (an icon well behind a solid dot is noise), but its box tracks IconSize live.
     auto MakeDot(const FLinearColor& InColor, float InSize = 7.0f) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
-            .WidthOverride(InSize)
-            .HeightOverride(InSize)
+            .WidthOverride_Lambda([InSize]() -> FOptionalSize
+            { return FOptionalSize{ck::debug_axes::Apply_IconSize(InSize)}; })
+            .HeightOverride_Lambda([InSize]() -> FOptionalSize
+            { return FOptionalSize{ck::debug_axes::Apply_IconSize(InSize)}; })
             [
                 SNew(SImage)
                 .Image(CkStyle::GetFilledBrush())
@@ -168,7 +197,7 @@ namespace ck_insights_analyzer_tab
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(InLabel.ToUpper()))
-                    .Font(MicroFont())
+                    .Font_Static(&MicroFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
                 + SVerticalBox::Slot()
@@ -177,7 +206,7 @@ namespace ck_insights_analyzer_tab
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(InValue))
-                    .Font(TileFont())
+                    .Font_Static(&TileFont)
                     .ColorAndOpacity(InValueColor)
                 ]
             ];
@@ -193,7 +222,6 @@ namespace ck_insights_analyzer_tab
                 SNew(SVerticalBox)
                 + SVerticalBox::Slot()
                 .AutoHeight()
-                .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
                 [
                     MakeHeading(InHeading)
                 ]
@@ -244,7 +272,7 @@ public:
 
         SMultiColumnTableRow<TSharedPtr<FCk_HotPathNode>>::Construct(
             FSuperRowType::FArguments()
-                .Padding(FMargin(0.0f, 1.0f))
+                .Padding(TAttribute<FMargin>::CreateStatic(&ck_insights_analyzer_tab::Get_HotPathRowPadding))
                 .ShowSelection(true),
             InOwnerTable);
     }
@@ -285,7 +313,8 @@ public:
                [
                    SNew(STextBlock)
                    .Text(FText::FromString(_Node->DisplayName))
-                   .Font(_Node->bIsAggregate ? ItalicFont() : BodyFont())
+                   .Font_Lambda([IsAggregate = _Node->bIsAggregate]()
+                   { return IsAggregate ? ItalicFont() : BodyFont(); })
                    .ColorAndOpacity(_Node->bIsAggregate ? CkStyle::TextDim() : CkStyle::Text())
                    .ToolTipText(FText::FromString(_Node->RawName))
                ];
@@ -299,7 +328,7 @@ public:
                    [
                        SNew(STextBlock)
                        .Text(FText::FromString(Breadcrumb))
-                       .Font(ItalicFont())
+                       .Font_Static(&ItalicFont)
                        .ColorAndOpacity(CkStyle::TextMute())
                    ];
             }
@@ -311,7 +340,7 @@ public:
         {
             return DoMakeCell(
                 FCk_TimerCategorizer::FormatMs(_Node->InclusiveMs),
-                BodyBoldFont(),
+                &BodyBoldFont,
                 _Node->bIsAggregate ? CkStyle::TextDim() : SeverityColor(_Node->InclusiveMs));
         }
 
@@ -320,14 +349,14 @@ public:
             const bool ShowSelf = _Node->ExclusiveMs > 0.05;
             return DoMakeCell(
                 ShowSelf ? FCk_TimerCategorizer::FormatMs(_Node->ExclusiveMs) : FString(),
-                BodyFont(), CkStyle::TextDim());
+                &BodyFont, CkStyle::TextDim());
         }
 
         if (InColumnName == TEXT("Count"))
         {
             return DoMakeCell(
                 (_Node->Count > 1) ? FCk_TimerCategorizer::FormatCount(_Node->Count) : FString(),
-                BodyFont(), CkStyle::TextMute());
+                &BodyFont, CkStyle::TextMute());
         }
 
         if (InColumnName == TEXT("Pct"))
@@ -350,7 +379,7 @@ public:
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%.0f%%"), Pct)))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextDim())
                 ];
         }
@@ -381,7 +410,11 @@ private:
         return Breadcrumb.IsEmpty() ? Breadcrumb : FString::Printf(TEXT("  (%s)"), *Breadcrumb);
     }
 
-    auto DoMakeCell(const FString& InText, const FSlateFontInfo& InFont, const FLinearColor& InColor) const -> TSharedRef<SWidget>
+    // Takes the font GETTER, not a font: bound through .Font_Static the cell keeps following
+    // TextScale after the row widget is built.
+    using FFontGetter = FSlateFontInfo (*)();
+
+    auto DoMakeCell(const FString& InText, FFontGetter InFont, const FLinearColor& InColor) const -> TSharedRef<SWidget>
     {
         return SNew(SBox)
             .Padding(FMargin(ck_insights_analyzer_tab::SectionSpacing * 0.5f, 0.0f))
@@ -390,7 +423,7 @@ private:
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(InText))
-                .Font(InFont)
+                .Font_Static(InFont)
                 .ColorAndOpacity(InColor)
             ];
     }
@@ -809,7 +842,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("Max/group")))
-                .Font(ck_insights_analyzer_tab::SmallFont())
+                .Font_Static(&ck_insights_analyzer_tab::SmallFont)
                 .ColorAndOpacity(CkStyle::TextDim())
                 .ToolTipText(FText::FromString(TEXT(
                     "Maximum stat rows drawn for each enabled stat group (stats.MaxPerGroup).")))
@@ -891,7 +924,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("Recent")))
-                .Font(BodyFont())
+                .Font_Static(&BodyFont)
             ]
         ]
 
@@ -908,7 +941,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("Depth:")))
-                .Font(BodyFont())
+                .Font_Static(&BodyFont)
                 .ColorAndOpacity(CkStyle::TextDim())
             ]
             + SHorizontalBox::Slot()
@@ -975,8 +1008,10 @@ auto
         .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(SBox)
-            .WidthOverride(8.0f)
-            .HeightOverride(8.0f)
+            .WidthOverride_Lambda([]() -> FOptionalSize
+            { return FOptionalSize{ck::debug_axes::Apply_IconSize(8.0f)}; })
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            { return FOptionalSize{ck::debug_axes::Apply_IconSize(8.0f)}; })
             [
                 SNew(SImage)
                 .Image(CkStyle::GetFilledBrush())
@@ -992,7 +1027,7 @@ auto
         [
             SAssignNew(_StatusText, STextBlock)
             .Text(FText::FromString(TEXT("No trace loaded. Click \"Open .utrace...\" to begin.")))
-            .Font(BodyFont())
+            .Font_Static(&BodyFont)
             .ColorAndOpacity(CkStyle::TextDim())
         ];
 }
@@ -1087,7 +1122,6 @@ auto
             SNew(SVerticalBox)
             + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
             [
                 MakeHeading(TEXT("Game Thread Hot Paths"))
             ]
@@ -1104,7 +1138,7 @@ auto
                 .VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
-                    .Font(BodyFont())
+                    .Font_Static(&BodyFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                     .Visibility_Lambda([this]() -> EVisibility
                     {
@@ -1419,7 +1453,7 @@ auto
     {
         _CategoryRowsBox->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 1.0f)
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelRowPadding))
         [
             SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
@@ -1435,7 +1469,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(Cat.Name))
-                .Font(BodyFont())
+                .Font_Static(&BodyFont)
                 .ColorAndOpacity(CkStyle::Text())
             ]
             + SHorizontalBox::Slot()
@@ -1455,7 +1489,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FCk_TimerCategorizer::FormatMs(Cat.ExclusiveMs)))
-                    .Font(BodyBoldFont())
+                    .Font_Static(&BodyBoldFont)
                     .ColorAndOpacity(SeverityColor(Cat.ExclusiveMs))
                 ]
             ]
@@ -1469,7 +1503,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%.0f%%"), Cat.PctOfFrame)))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ]
@@ -1496,7 +1530,7 @@ auto
 
         _WaitRowsBox->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 1.0f)
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelRowPadding))
         [
             SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
@@ -1505,7 +1539,8 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(Wait.ThreadName))
-                .Font(Wait.bIsGameThread ? BodyBoldFont() : BodyFont())
+                .Font_Lambda([IsGameThread = Wait.bIsGameThread]()
+                { return IsGameThread ? BodyBoldFont() : BodyFont(); })
                 .ColorAndOpacity(CkStyle::Text())
             ]
             + SHorizontalBox::Slot()
@@ -1525,7 +1560,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FCk_TimerCategorizer::FormatMs(Wait.WaitMs)))
-                    .Font(BodyBoldFont())
+                    .Font_Static(&BodyBoldFont)
                     .ColorAndOpacity(SeverityColor(Wait.WaitMs))
                 ]
             ]
@@ -1539,7 +1574,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%.0f%%"), PctOfWall)))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ]
@@ -1549,7 +1584,7 @@ auto
         {
             _WaitRowsBox->AddSlot()
             .AutoHeight()
-            .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 1.0f)
+            .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelSubRowPadding))
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot()
@@ -1558,7 +1593,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(Top.Name))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextDim())
                 ]
                 + SHorizontalBox::Slot()
@@ -1570,7 +1605,7 @@ auto
                     .Text(FText::FromString(FString::Printf(TEXT("%s  %s"),
                         *FCk_TimerCategorizer::FormatMs(Top.ExclusiveMs),
                         *FCk_TimerCategorizer::FormatCount(Top.Count))))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ];
@@ -1598,7 +1633,7 @@ auto
 
         _TopTimerRowsBox->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 1.0f)
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelRowPadding))
         [
             SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
@@ -1612,7 +1647,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%d."), Rank)))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ]
@@ -1622,7 +1657,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(Timer.Name))
-                .Font(BodyFont())
+                .Font_Static(&BodyFont)
                 .ColorAndOpacity(CkStyle::Text())
                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 .ToolTipText(FText::FromString(FString::Printf(
@@ -1642,7 +1677,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FCk_TimerCategorizer::FormatMs(Timer.ExclusiveMs)))
-                    .Font(BodyBoldFont())
+                    .Font_Static(&BodyBoldFont)
                     .ColorAndOpacity(SeverityColor(Timer.ExclusiveMs))
                 ]
             ]
@@ -1656,7 +1691,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString((Timer.Count > 1) ? FCk_TimerCategorizer::FormatCount(Timer.Count) : FString()))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ]
@@ -1681,7 +1716,7 @@ auto
     {
         _WorstFrameRowsBox->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 1.0f)
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelRowPadding))
         [
             SNew(SButton)
             .ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -1699,7 +1734,7 @@ auto
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(TEXT("#%s"), *FormatWithCommas(Frame.FrameIndex))))
-                        .Font(BodyBoldFont())
+                        .Font_Static(&BodyBoldFont)
                         .ColorAndOpacity(CkStyle::Accent())
                     ]
                 ]
@@ -1713,7 +1748,7 @@ auto
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(FCk_TimerCategorizer::FormatMs(Frame.DurationMs)))
-                        .Font(BodyBoldFont())
+                        .Font_Static(&BodyBoldFont)
                         .ColorAndOpacity(FrameBudgetColor(Frame.DurationMs))
                     ]
                 ]
@@ -1724,7 +1759,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(Frame.DominantCost))
-                    .Font(ItalicFont())
+                    .Font_Static(&ItalicFont)
                     .ColorAndOpacity(CkStyle::TextDim())
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ]
@@ -1750,7 +1785,7 @@ auto
     {
         _CategoryAvgRowsBox->AddSlot()
         .AutoHeight()
-        .Padding(0.0f, 1.0f)
+        .Padding(TAttribute<FMargin>::CreateStatic(&Get_SidePanelRowPadding))
         [
             SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
@@ -1766,7 +1801,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(Cat.Name))
-                .Font(BodyFont())
+                .Font_Static(&BodyFont)
                 .ColorAndOpacity(CkStyle::Text())
             ]
             + SHorizontalBox::Slot()
@@ -1786,7 +1821,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%s avg"), *FCk_TimerCategorizer::FormatMs(Cat.AvgExclMs))))
-                    .Font(BodyBoldFont())
+                    .Font_Static(&BodyBoldFont)
                     .ColorAndOpacity(SeverityColor(Cat.AvgExclMs))
                 ]
             ]
@@ -1800,7 +1835,7 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("%s p95"), *FCk_TimerCategorizer::FormatMs(Cat.P95ExclMs))))
-                    .Font(SmallFont())
+                    .Font_Static(&SmallFont)
                     .ColorAndOpacity(CkStyle::TextMute())
                 ]
             ]
@@ -2398,13 +2433,65 @@ auto
     _LastMultiStats.Reset();
 
     if (ck::IsValid(_HotPathTree)) { _HotPathTree->RequestTreeRefresh(); }
+    DoRebuildAllSidePanelRows();
+
+    if (ck::IsValid(_SummaryBox)) { _SummaryBox->ClearChildren(); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoRebuildAllSidePanelRows()
+    -> void
+{
     DoRebuildCategoryRows();
     DoRebuildTopTimerRows();
     DoRebuildWorstFrameRows();
     DoRebuildCategoryAvgRows();
     DoRebuildWaitRows();
+}
 
-    if (ck::IsValid(_SummaryBox)) { _SummaryBox->ClearChildren(); }
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    Tick(
+        const FGeometry& InAllottedGeometry,
+        double           InCurrentTime,
+        float            InDeltaTime)
+    -> void
+{
+    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    Poll_StyleRevision();
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    Poll_StyleRevision()
+    -> void
+{
+    // This tab is a plain SCompoundWidget with no refresh gate of its own (its work is driven by
+    // FTSTicker, not by Slate Tick), so it carries its own copy of SCkDebugger_WindowBase's watch.
+    const auto* Settings = UCkDebuggerStyleSettings::Get();
+
+    if (Settings == nullptr)
+    { return; }
+
+    const auto Revision = Settings->Get_Revision();
+
+    if (Revision == _LastSeenStyleRevision)
+    { return; }
+
+    _LastSeenStyleRevision = Revision;
+
+    // Everything visual is attribute-bound now; the side-panel rows and the hot-path row widgets are
+    // still built imperatively, so they get re-stamped through their existing rebuild entry points.
+    DoRebuildAllSidePanelRows();
+
+    if (ck::IsValid(_HotPathTree))
+    { _HotPathTree->RebuildList(); }
 }
 
 auto

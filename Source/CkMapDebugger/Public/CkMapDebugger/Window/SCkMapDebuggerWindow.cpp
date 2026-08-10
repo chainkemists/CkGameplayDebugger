@@ -69,6 +69,21 @@ namespace ck_map_debugger
         return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
     }
 
+    // TextScale-aware fonts on the same CkStyle roles this window already used. Bound through
+    // .Font_Static so a Style Lab flip resizes text that was built long before the flip.
+    static auto Font_Title()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH2()); }
+    static auto Font_Subtitle()  -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH3()); }
+    static auto Font_Body()      -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+    static auto Font_Micro()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
+    static auto Font_MonoBody()  -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeBody()); }
+    static auto Font_MonoMicro() -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); }
+
+    // STableRow::Padding is a Slate attribute, so RowDensity lands live on every generated POI row.
+    static auto Get_PoiRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{2.0f, 1.0f});
+    }
+
     // POI categories are an OPEN set of author-defined gameplay tags, so this stays a full-hue hash
     // rather than ck::debug_axes::Get_CategoricalColor — that palette wraps at eight and would collide
     // two unrelated categories onto one swatch on any project with more than eight POI kinds.
@@ -565,7 +580,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
-                    .Font(CkStyle::BoldFont(CkStyle::FontSizeH2()))
+                    .Font_Static(&ck_map_debugger::Font_Title)
                     .ColorAndOpacity(CkStyle::TextStrong())
                     .Text(FText::FromString(TEXT("Map Stack")))
                 ]
@@ -573,7 +588,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeH3()))
+                    .Font_Static(&ck_map_debugger::Font_Subtitle)
                     .ColorAndOpacity(CkStyle::TextDim())
                     .Text_Lambda([this]() -> FText
                     {
@@ -628,7 +643,7 @@ auto
         + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
             [
                 SNew(STextBlock)
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .Font_Static(&ck_map_debugger::Font_Micro)
                 .ColorAndOpacity(CkStyle::TextMute())
                 .Text_Lambda([this]() -> FText
                 {
@@ -671,7 +686,7 @@ auto
                 + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                        .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                        .Font_Static(&ck_map_debugger::Font_Body)
                         .ColorAndOpacity(CkStyle::TextDim())
                         .Text(FText::FromString(TEXT("Entity:")))
                     ]
@@ -745,7 +760,7 @@ auto
         .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         [
             SNew(STextBlock)
-            .Font(CkStyle::MonoFont(CkStyle::FontSizeBody()))
+            .Font_Static(&ck_map_debugger::Font_MonoBody)
             .ColorAndOpacity(CkStyle::TextDim())
             .Text_Lambda([this]() -> FText
             {
@@ -804,13 +819,13 @@ auto
                         [ SNew(SBox).WidthOverride(250.0f) [ LeftRail ] ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(ck_map_debugger::Get_SeparatorThickness()) ]
+                        [ MakeRailSeparator() ]
 
                     + SHorizontalBox::Slot().FillWidth(1.0f)
                         [ _Canvas.ToSharedRef() ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(ck_map_debugger::Get_SeparatorThickness()) ]
+                        [ MakeRailSeparator() ]
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [ SNew(SBox).WidthOverride(280.0f) [ RightRail ] ]
@@ -831,7 +846,7 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -1162,18 +1177,24 @@ auto
     -> TSharedRef<ITableRow>
 {
     const auto WeakRow = TWeakPtr<FCkMapDebug_PoiRow>{InRow};
-    const auto DotSize = ck_map_debugger::Get_CategoryDotSize();
 
     // Plain visual widgets only — no click-consuming children, so STableRow selection bubbles cleanly
     return SNew(STableRow<TSharedPtr<FCkMapDebug_PoiRow>>, InOwnerTable)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_map_debugger::Get_PoiRowPadding))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f)
                 [
-                    SNew(SBox).WidthOverride(DotSize).HeightOverride(DotSize)
+                    // The swatch is a COLOR marker, not a glyph, so it stays an SImage rather than
+                    // SCkDebug_Icon (an icon well behind a solid dot is noise) — but its box tracks
+                    // IconSize live, so a Style Lab flip resizes it without regenerating the row.
+                    SNew(SBox)
+                    .WidthOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_map_debugger::Get_CategoryDotSize()}; })
+                    .HeightOverride_Lambda([]() -> FOptionalSize
+                    { return FOptionalSize{ck_map_debugger::Get_CategoryDotSize()}; })
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("WhiteBrush"))
@@ -1188,7 +1209,7 @@ auto
             + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .Font_Static(&ck_map_debugger::Font_Body)
                     .Text_Lambda([WeakRow]() -> FText
                     {
                         const auto Row = WeakRow.Pin();
@@ -1211,7 +1232,7 @@ auto
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .Font_Static(&ck_map_debugger::Font_MonoMicro)
                     .ColorAndOpacity(CkStyle::TextDim())
                     .Text_Lambda([WeakRow]() -> FText
                     {
@@ -1241,6 +1262,32 @@ auto
 
 auto
     SCkMapDebuggerWindow::
+    MakeRailSeparator() const
+    -> TSharedRef<SWidget>
+{
+    // SSeparator::Thickness is a construction-time argument with no setter, so SeparatorWeight is
+    // carried by an SBox width override; None collapses the box so its slot goes with it instead of
+    // reserving a zero-width rule.
+    return SNew(SBox)
+        .WidthOverride_Lambda([]() -> FOptionalSize
+        {
+            return FOptionalSize{ck_map_debugger::Get_SeparatorThickness()};
+        })
+        .Visibility_Lambda([]()
+        {
+            return ck_map_debugger::Get_SeparatorThickness() > 0.0f
+                ? EVisibility::Visible
+                : EVisibility::Collapsed;
+        })
+        [
+            SNew(SSeparator)
+                .Orientation(Orient_Vertical)
+                .Thickness(1.0f)
+        ];
+}
+
+auto
+    SCkMapDebuggerWindow::
     MakeSectionHeader(
         const FString& InText) const
     -> TSharedRef<SWidget>
@@ -1263,7 +1310,7 @@ auto
         + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                .Font_Static(&ck_map_debugger::Font_Body)
                 .ColorAndOpacity(CkStyle::TextDim())
                 .Text(FText::FromString(InLabel))
             ]
@@ -1271,7 +1318,7 @@ auto
         + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Font(CkStyle::MonoFont(CkStyle::FontSizeBody()))
+                .Font_Static(&ck_map_debugger::Font_MonoBody)
                 .ColorAndOpacity(CkStyle::Text())
                 .Text(MoveTemp(InValue))
             ]

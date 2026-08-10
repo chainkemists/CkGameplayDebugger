@@ -7,6 +7,8 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
@@ -29,6 +31,30 @@ namespace ck_debugger_launcher
         -> float
     {
         return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
+
+    // RowDensity on the rail's tool buttons. Slot padding is a Slate attribute, so the axis moves
+    // buttons that were built on the last registry change.
+    auto Get_ToolButtonPadding()
+        -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 2.0f});
+    }
+
+    // The two rail text styles bake their font at style-set creation, so TextScale can only reach
+    // them as a per-widget Font override. Sizes mirror CkDebuggerLauncherStyle exactly: the section
+    // caps are a deliberate 7pt outlier (no CkStyle role goes below FontSizeMicro's 8), the tool
+    // label is the FontSizeSmall role.
+    auto Get_SectionFont()
+        -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Bold", 7);
+    }
+
+    auto Get_ToolLabelFont()
+        -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
     }
 }
 
@@ -59,6 +85,29 @@ auto SCkDebuggerLauncher::Construct(const FArguments& InArgs) -> void
         ]
     ];
 
+    // Seed the baseline so the first tick can only report a change the user actually made.
+    if (const auto* Settings = UCkDebuggerStyleSettings::Get())
+    { _LastSeenStyleRevision = Settings->Get_Revision(); }
+
+    RebuildTools();
+}
+
+auto SCkDebuggerLauncher::Poll_StyleRevision() -> void
+{
+    const auto* Settings = UCkDebuggerStyleSettings::Get();
+
+    if (Settings == nullptr)
+    { return; }
+
+    const auto Revision = Settings->Get_Revision();
+
+    if (Revision == _LastSeenStyleRevision)
+    { return; }
+
+    _LastSeenStyleRevision = Revision;
+
+    // The rail's construct-baked reads (row density on the button slots, the separator between
+    // category groups) live inside RebuildTools — the same entry point the registry uses.
     RebuildTools();
 }
 
@@ -77,6 +126,8 @@ auto SCkDebuggerLauncher::Tick(
     float InDeltaTime) -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    Poll_StyleRevision();
 
     const auto Width = InAllottedGeometry.GetLocalSize().X;
     auto ShowLabels = _ShowLabels;
@@ -139,7 +190,7 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
         _ToolList->AddSlot()
         .AutoHeight()
         .HAlign(HAlign_Fill)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 2.0f}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_debugger_launcher::Get_ToolButtonPadding))
         [
             Build_ToolButton(Tool)
         ];
@@ -231,6 +282,7 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
                 SNew(STextBlock)
                 .Text(InTool.Get_DisplayName())
                 .TextStyle(&FCkDebuggerLauncherStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("CkDebuggerLauncher.ToolText")))
+                .Font_Static(&ck_debugger_launcher::Get_ToolLabelFont)
                 .Visibility_Lambda([WeakPanel]()
                 {
                     const auto Panel = WeakPanel.Pin();
@@ -276,6 +328,7 @@ auto SCkDebuggerLauncher::Build_CategoryHeader(
             SNew(STextBlock)
             .Text(Get_CategoryDisplayName(InCategory))
             .TextStyle(&FCkDebuggerLauncherStyle::Get().GetWidgetStyle<FTextBlockStyle>(TEXT("CkDebuggerLauncher.SectionText")))
+            .Font_Static(&ck_debugger_launcher::Get_SectionFont)
         ];
 }
 

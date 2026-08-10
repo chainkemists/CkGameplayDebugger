@@ -50,6 +50,37 @@
 
 const FName SCkDebuggerWindow_Main::WindowId = FName(TEXT("EcsDebugger"));
 
+// ====================================================================================================================
+// Typography. Every font here rides an attribute (Font_Static / Font_Lambda) instead of a
+// construct-time FSlateFontInfo: TextScale bakes into the FSlateFontInfo, so a value-form call
+// freezes the size of a widget that was built before the flip.
+//
+// Sizes come from CkStyle roles wherever a role matches what the site shipped with. The two
+// literals below are deliberate outliers — no role sits at 7 or 11 and rounding them onto the
+// nearest role would move Classic — so they stay literal INSIDE ScaledFont, which keeps them
+// following TextScale even though they do not follow a role.
+//
+// Named, not anonymous: this module builds with unity on, and a merged TU collides file-local
+// helpers by name.
+// ====================================================================================================================
+
+namespace ck_debugger_window_main
+{
+    auto Get_LabelFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4()); }
+
+    auto Get_BodyFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    // Sub-micro: the toolbar's tiny popover heading and the tab-strip unseen-count badge.
+    auto Get_TinyLabelFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", 7); }
+
+    // The gear glyph is sized to the button, not to a text role.
+    auto Get_GlyphFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", 11); }
+}
+
 auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 {
     Register_WithGate();
@@ -212,7 +243,10 @@ auto SCkDebuggerWindow_Main::Tick(
     const double InCurrentTime,
     const float InDeltaTime) -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    // MUST be the base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
+    // revision and fires OnStyleRevisionChanged. Calling the grandparent compiles and runs, and
+    // silently kills live-apply for every structural axis in this window.
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     // Page ticks drive graph rebuilds — gate them behind the user's refresh
     // settings. Viewport-picker ticks stay ungated so input handling keeps
@@ -231,6 +265,42 @@ auto SCkDebuggerWindow_Main::Tick(
     if (ViewportPicker.IsValid() && ViewportPicker->IsActive())
     {
         ViewportPicker->Tick(InDeltaTime);
+    }
+}
+
+// ====================================================================================================================
+// Style live-apply — the structural half.
+//
+// Everything visual in this window is attribute-bound and needs nothing here. What this drives is
+// the four surfaces that COMPOSE at build time and cannot be expressed as an attribute:
+//
+//   1. the toolbar's active-filter badge strip (its widget per badge is chosen by BadgeStyle),
+//   2. the inspector panel (row set, section headers, EntityIdStyle name composition),
+//   3. the entity list's quick-access section (rows composed per pinned entity),
+//   4. the active page, via the page interface's own hook.
+//
+// Deliberately NOT RebuildContentArea(): Build_ContentArea re-invokes the active page's
+// Build_Content, which is not idempotent for every page (Overview roots a fresh UEdGraph and
+// re-binds its model delegates each call). The page hook is the safe route.
+//
+// The entity tree is absent on purpose — it owns its own revision poll inside its refresh
+// interval, where it can re-present without losing node pointer identity.
+// ====================================================================================================================
+
+auto SCkDebuggerWindow_Main::OnStyleRevisionChanged() -> void
+{
+    Refresh_FilterBadgeStrip();
+
+    if (InspectorPanel.IsValid())
+    { InspectorPanel->Request_RebuildInspectors(); }
+
+    if (EntityListPanel.IsValid())
+    { EntityListPanel->Notify_StyleRevisionChanged(); }
+
+    for (const auto& Page : Pages)
+    {
+        if (Page.IsValid())
+        { Page->OnStyleRevisionChanged(); }
     }
 }
 
@@ -396,7 +466,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                             ? FText::FromString(TEXT("Picking..."))
                             : FText::FromString(TEXT("Pick"));
                     })
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                 ]
             ]
 
@@ -427,7 +497,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\u2699"))) // gear glyph
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+                        .Font_Static(&ck_debugger_window_main::Get_GlyphFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 ]
@@ -468,7 +538,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Overlay")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                 ]
@@ -553,7 +623,7 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                                 : ck::Format_UE(TEXT("{}"), Count);
                             return FText::FromString(ck::Format_UE(TEXT("Filter ({})"), CountStr));
                         })
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                     ]
                 ]
             ]
@@ -595,7 +665,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(TEXT("OVERLAY ATTRIBUTES")))
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ]
 
@@ -608,7 +678,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 [
                     SNew(SEditableTextBox)
                     .HintText(FText::FromString(TEXT("patterns, comma-separated")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ToolTipText(FText::FromString(TEXT(
                         "Case-insensitive SUBSTRING patterns matched against attribute names\n"
                         "on the overlay focus card ('Health' catches 'Attr.Health.Max').\n"
@@ -678,7 +748,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Cull Radius:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
@@ -726,7 +796,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Billboard Size:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
@@ -772,7 +842,7 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Max Depth:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
                 + SHorizontalBox::Slot()
@@ -818,10 +888,17 @@ auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget
 // Gameplay-tag-driven layout data intentionally stays in Project Settings.
 // ====================================================================================================================
 
-// Named, not anonymous: this module builds with unity on, and a merged TU collides file-local
-// helpers by name.
+// Reopens the file-local namespace declared at the top of this file.
 namespace ck_debugger_window_main
 {
+    // The popover's uniform row gap. Bound, not computed: SBoxPanel slot padding is a
+    // TAttribute, so RowDensity lands on the already-built popover.
+    auto Get_PopoverRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(
+            FMargin{0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small});
+    }
+
     auto Get_OverlayCVar(const TCHAR* InName) -> IConsoleVariable*
     {
         return IConsoleManager::Get().FindConsoleVariable(InName);
@@ -835,7 +912,7 @@ namespace ck_debugger_window_main
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(InLabel))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
             ];
     }
@@ -871,8 +948,8 @@ namespace ck_debugger_window_main
 
 auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
 {
-    const auto RowPad = ck::debug_axes::Apply_RowDensity(
-        FMargin{0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small});
+    const auto RowPad = TAttribute<FMargin>::CreateStatic(
+        &ck_debugger_window_main::Get_PopoverRowPadding);
 
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
@@ -961,7 +1038,7 @@ auto SCkDebuggerWindow_Main::Build_OverlayPopover() -> TSharedRef<SWidget>
                                     StaticEnum<ECk_DebugOverlay_PlateAnchor>()->GetNameStringByValue(
                                         static_cast<int64>(Anchor)));
                             })
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                            .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                             .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     ]
@@ -1112,7 +1189,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                 [
                     SNew(STextBlock)
                     .Text(DisplayName)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                 ]
             ]
@@ -1141,7 +1218,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Hide")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                 ]
             ]
@@ -1171,7 +1248,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Match:")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                     + SHorizontalBox::Slot()
@@ -1221,7 +1298,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                             [
                                 SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Clear hidden")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         ]
@@ -1243,7 +1320,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                             [
                                 SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("Clear all")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Static(&ck_debugger_window_main::Get_BodyFont)
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         ]
@@ -1263,7 +1340,7 @@ auto SCkDebuggerWindow_Main::Build_FilterPopover() -> TSharedRef<SWidget>
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Badges:")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
                     + SHorizontalBox::Slot()
@@ -1360,7 +1437,7 @@ auto SCkDebuggerWindow_Main::Refresh_FilterBadgeStrip() -> void
             {
                 BadgeContent = SNew(STextBlock)
                     .Text(FText::FromString(Label))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                     .ColorAndOpacity(FSlateColor(BadgeColor));
                 break;
             }
@@ -1374,7 +1451,7 @@ auto SCkDebuggerWindow_Main::Refresh_FilterBadgeStrip() -> void
                     [
                         SNew(STextBlock)
                         .Text(FText::FromString(Label))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                        .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))
                     ];
                 break;
@@ -1454,7 +1531,11 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
                         [
                             SNew(STextBlock)
                                 .Text(Pages[i]->Get_PageName())
-                                .Font(FCoreStyle::GetDefaultFontStyle(IsActive ? "Bold" : "Regular", 9))
+                                .Font_Lambda([IsActive]() -> FSlateFontInfo
+                                {
+                                    return ck::debug_axes::ScaledFont(
+                                        IsActive ? "Bold" : "Regular", CkStyle::FontSizeH4());
+                                })
                         ]
 
                         + SHorizontalBox::Slot()
@@ -1475,7 +1556,7 @@ auto SCkDebuggerWindow_Main::Build_ContentArea() -> TSharedRef<SWidget>
                             })
                             [
                                 SNew(STextBlock)
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
+                                .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
                                 .ColorAndOpacity(FLinearColor::White)
                                 .Text_Lambda([WeakPage]()
                                 {

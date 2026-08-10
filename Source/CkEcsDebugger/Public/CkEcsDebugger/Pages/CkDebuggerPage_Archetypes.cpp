@@ -29,11 +29,19 @@ namespace ck_debugger_page_archetypes
 {
     // The card glyphs are smaller than the axis' own 12/16/20 scale, so IconSize moves them by its
     // offset. SCkDebug_Icon::Size is a plain argument, not an attribute — the value is read when the
-    // card is built, which is every RebuildCards that changes the presented set.
+    // card is built, which is every RebuildCards that changes the presented set. The page's
+    // OnStyleRevisionChanged drops the card cache so a style-only flip re-reads it too.
     static auto IconSquare(float InBase) -> TOptional<FVector2D>
     {
         const auto Size = ck::debug_axes::Apply_IconSize(InBase);
         return FVector2D{Size, Size};
+    }
+
+    // The instance count is the card's hero number — deliberately larger than any CkStyle text
+    // role, so the size stays literal inside ScaledFont rather than rounding onto FontSizeH2.
+    static auto Get_CountFont() -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Bold", 16);
     }
 }
 
@@ -134,8 +142,26 @@ auto FCkDebuggerPage_Archetypes::Build_Content(const FCkDebuggerPageContext& InC
             ]
         ];
 
+    // The grid panel above is a NEW widget, so the "same keys, same columns" fast path in
+    // RebuildCards would leave it empty. Drop the slotting bookkeeping (not the card cache —
+    // those widgets are still good) so the fresh panel always gets populated.
+    PresentedKeys.Reset();
+    LastSlottedColumns = INDEX_NONE;
+
     RebuildCards();
     return Content;
+}
+
+auto FCkDebuggerPage_Archetypes::OnStyleRevisionChanged() -> void
+{
+    // The cards' axis reads happen at DoCreateCard time (SCkDebug_Icon::Size is a plain argument,
+    // the badge budget is a loop bound), so a style-only flip has to discard the cached widgets —
+    // the count/key fast paths would otherwise keep the pre-flip cards alive forever.
+    CardCache.Reset();
+    PresentedKeys.Reset();
+    LastSlottedColumns = INDEX_NONE;
+
+    RebuildCards();
 }
 
 auto FCkDebuggerPage_Archetypes::Tick(float InDeltaTime) -> void
@@ -293,15 +319,27 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
     .VAlign(VAlign_Center)
     .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
     [
+        // The well is the CARD's own design and must persist under Classic, where IconTreatment
+        // is Plain — so it stays local composition rather than becoming SCkDebug_Icon's backdrop.
+        // What the sweep reclaims is the two hardcoded values: the brush is now the registered
+        // well brush the IconTreatment axis itself uses, and the wash alpha is CkStyle::
+        // IconWellAlpha() (0.15 by default — byte-identical to the literal it replaces), both
+        // bound so an Editor Preferences edit moves the card without a rebuild. `.Accent` is
+        // passed through so that when the user DOES select Well/Ring, the glyph's own backdrop
+        // tints from the archetype color instead of falling back to the muted text role.
         SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Card.IconWell"))
-        .BorderBackgroundColor(FSlateColor{AccentColor.CopyWithNewOpacity(0.15f)})
+        .BorderImage_Static(&FCkDebuggerStyle::Get_IconWellBrush)
+        .BorderBackgroundColor_Lambda([AccentColor]() -> FSlateColor
+        {
+            return FSlateColor{CkStyle::OverlayOf(AccentColor, CkStyle::IconWellAlpha())};
+        })
         .Padding(FMargin{5.0f})
         [
             SNew(SCkDebug_Icon)
             .Brush(IconBrush)
             .Meaning(FText::FromString(InBucket.DisplayName))
             .ColorAndOpacity(AccentColor)
+            .Accent(AccentColor)
             .Size(ck_debugger_page_archetypes::IconSquare(16.0f))
         ]
     ];
@@ -362,7 +400,7 @@ auto FCkDebuggerPage_Archetypes::DoCreateCard(
     OutEntry.LastCount = InBucket.Count;
     OutEntry.CountText =
         SNew(STextBlock)
-        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
+        .Font_Static(&ck_debugger_page_archetypes::Get_CountFont)
         .Text(FText::AsNumber(InBucket.Count))
         .ColorAndOpacity(CkStyle::TextStrong());
 

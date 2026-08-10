@@ -24,16 +24,26 @@ auto
 
     SAssignNew(_TextBlock, STextBlock)
         .Text(InArgs._Text)
-        .Font(FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::FontSizeSmall()))
+        .Font_Lambda([]() -> FSlateFontInfo
+        {
+            return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
+        })
+        // Colour stays a VALUE here: Set_Style overwrites it imperatively with the distance-faded
+        // alpha immediately after construction, so an attribute would be dead on arrival.
         .ColorAndOpacity(CkStyle::TextStrong());
 
     // Dark rounded pill behind the text so it reads against any world background. RowDensity moves
     // the pill's padding by its DELTA — the tag is deliberately denser than any editor row, so the
     // axis' absolutes would blow it up; Comfortable (the default) leaves it exactly as it shipped.
+    // Brush and padding are bound (they follow CornerStyle / RowDensity); the background colour is
+    // not, for the same Set_Style reason as above.
     SAssignNew(_Border, SBorder)
-        .BorderImage(CkStyle::GetRoundedBrush())
+        .BorderImage_Static(&CkStyle::GetRoundedBrush)
         .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::BgRoot(), 0.78f))
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS }))
+        .Padding_Lambda([]() -> FMargin
+        {
+            return ck::debug_axes::Apply_RowDensity(FMargin{ CkStyle::SpaceS, CkStyle::SpaceXS });
+        })
         [
             _TextBlock.ToSharedRef()
         ];

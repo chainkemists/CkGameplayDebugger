@@ -6,8 +6,10 @@
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkJoltDebuggerModule"
 
@@ -44,8 +46,10 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkJoltDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Jolt Physics Debugger")))
-        .SetTooltipText(FText::FromString(TEXT("Opens the CK Jolt Physics Debugger window")))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK Jolt Physics Debugger window")));
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkJoltDebugger"),

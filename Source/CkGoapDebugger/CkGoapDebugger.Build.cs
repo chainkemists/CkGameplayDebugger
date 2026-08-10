@@ -17,10 +17,7 @@ public class CkGoapDebugger : CkModuleRules
 
 			"Slate",
 			"SlateCore",
-			"WorkspaceMenuStructure",
-			"EditorStyle",
 			"AppFramework",
-			"ToolMenus",
 
 			"CkCore",
 			"CkEcs",
@@ -46,6 +43,12 @@ public class CkGoapDebugger : CkModuleRules
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("UnrealEd");
+			PublicDependencyModuleNames.AddRange(new string[]
+			{
+				"WorkspaceMenuStructure",
+				"EditorStyle",
+				"ToolMenus",
+			});
 		}
 	}
 }

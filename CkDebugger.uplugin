@@ -58,7 +58,7 @@
 		},
 		{
 			"Name": "CkDialogDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -68,7 +68,7 @@
 		},
 		{
 			"Name": "CkAggroDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -88,7 +88,7 @@
 		},
 		{
 			"Name": "CkUIDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -108,7 +108,7 @@
 		},
 		{
 			"Name": "CkAStarDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -128,7 +128,7 @@
 		},
 		{
 			"Name": "CkCrowdDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -138,7 +138,7 @@
 		},
 		{
 			"Name": "CkEqsDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -148,7 +148,7 @@
 		},
 		{
 			"Name": "CkInputDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -168,7 +168,7 @@
 		},
 		{
 			"Name": "CkObjectPoolingDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -178,7 +178,7 @@
 		},
 		{
 			"Name": "CkJoltDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -188,7 +188,7 @@
 		},
 		{
 			"Name": "CkMapDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -208,7 +208,7 @@
 		},
 		{
 			"Name": "CkStyleLabDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",

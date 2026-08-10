@@ -22,8 +22,10 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
+#if WITH_EDITOR
 #include "CkVoxelNavEditor/Preview/CkVoxelNavPreview_EdMode.h"
 #include "CkVoxelNavEditor/Preview/CkVoxelNavPreview_EditorSubsystem.h"
+#endif
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboButton.h"
@@ -432,6 +434,7 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 	}
 	else
 	{
+#if WITH_EDITOR
 		auto* PreviewSubsystem = UCk_VoxelNavPreview_EditorSubsystem_UE::Get();
 		if (PreviewSubsystem != nullptr)
 		{
@@ -446,6 +449,9 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 			if (Published.IsValid())
 			{ Combined = Combine_Snapshots(*Published, Params._MaxCellsPerLayer); }
 		}
+#else
+		_VoxelSourceStatus = TEXT("VoxelNav Editor Preview is unavailable in packaged builds");
+#endif
 	}
 
 	if (NOT Combined.IsSet())

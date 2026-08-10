@@ -1,5 +1,7 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 
+#if WITH_EDITOR
+
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
 #include "DynamicMeshBuilder.h"
@@ -15,8 +17,6 @@
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "PreviewScene.h"
-
-// --------------------------------------------------------------------------------------------------------------------
 
 // KEPT LOCAL — every FLinearColor below this line is 3D SCENE paint pushed through an
 // FPrimitiveDrawInterface, not a Slate surface. Voxel layer fills, snapshot-status wire colours,
@@ -818,3 +818,36 @@ auto SCkCrowdDebugger_3dViewport::Apply_CameraPreset(ECkCrowdDebugger_CameraPres
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#else
+
+#include "Widgets/Text/STextBlock.h"
+
+auto SCkCrowdDebugger_3dViewport::Construct(const FArguments& InArgs) -> void
+{
+	_OnAgentPicked = InArgs._OnAgentPicked;
+	ChildSlot
+	[
+		SNew(STextBlock)
+		.Text(FText::FromString(TEXT("The 3D Crowd viewport is editor-only; packaged builds retain the live lists and diagnostics.")))
+		.Justification(ETextJustify::Center)
+	];
+}
+
+auto SCkCrowdDebugger_3dViewport::Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot&) -> void {}
+auto SCkCrowdDebugger_3dViewport::Clear_VoxelNavSnapshot() -> void {}
+
+auto SCkCrowdDebugger_3dViewport::Set_AgentSnapshots(
+	const TArray<FCkCrowdDebugger_AgentSnapshot>&,
+	const FCk_Handle&) -> void
+{}
+
+auto SCkCrowdDebugger_3dViewport::Set_NavmeshTriangles(const TArray<FVector>&, uint64) -> void {}
+
+auto SCkCrowdDebugger_3dViewport::Set_PathNetworkRibbons(
+	const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&) -> void
+{}
+
+auto SCkCrowdDebugger_3dViewport::Apply_CameraPreset(ECkCrowdDebugger_CameraPreset) -> void {}
+
+#endif

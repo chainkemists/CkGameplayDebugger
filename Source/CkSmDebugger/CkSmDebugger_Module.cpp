@@ -15,8 +15,10 @@
 #include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
+#if WITH_EDITOR
+    #include "WorkspaceMenuStructure.h"
+    #include "WorkspaceMenuStructureModule.h"
+#endif
 
 #define LOCTEXT_NAMESPACE "FCkSmDebuggerModule"
 
@@ -67,8 +69,10 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkSmDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
-        .SetTooltipText(FText::FromString(TEXT("Opens the CK State Machine Debugger window")))
-        .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+        .SetTooltipText(FText::FromString(TEXT("Opens the CK State Machine Debugger window")));
+#if WITH_EDITOR
+    TabSpawner.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory());
+#endif
 
     _TabForegroundedHandle = FGlobalTabmanager::Get()->OnTabForegrounded_Subscribe(
         FOnActiveTabChanged::FDelegate::CreateRaw(

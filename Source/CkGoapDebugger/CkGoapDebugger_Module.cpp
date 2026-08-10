@@ -139,7 +139,7 @@ auto
             return MakeShared<FCkGoapInspector_Gateway>();
         });
 
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkGoapDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK GOAP Debugger")))

@@ -44,7 +44,7 @@ static FAutoConsoleCommand CmdInputDebugger(
 
 auto FCkInputDebuggerModule::StartupModule() -> void
 {
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkInputDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Enhanced Input Debugger")))

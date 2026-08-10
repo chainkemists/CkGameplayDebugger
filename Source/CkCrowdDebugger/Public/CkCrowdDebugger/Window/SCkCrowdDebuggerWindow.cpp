@@ -8,6 +8,7 @@
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_StatsPanel.h"
 #include "CkCrowdDebugger/Window/SCkCrowdDebugger_EventLogPanel.h"
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
+#include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
 
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -17,6 +18,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkVoxelNav/Volume/CkVoxelNavVolume_Utils.h"
 #include "CkVoxelNavEditor/Preview/CkVoxelNavPreview_EdMode.h"
@@ -236,10 +239,7 @@ namespace
 		auto Content = SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 7.0f, 8.0f, 3.0f)
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(InTitle))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FLinearColor(0.65f, 0.75f, 0.90f))
+				ck::crowd_debugger_axes::Make_PaneHeading(InTitle)
 			];
 
 		for (const auto& Toggle : InToggles)
@@ -544,10 +544,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 6.0f, 8.0f, 2.0f)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("VOXEL NAVIGATION")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FLinearColor(0.65f, 0.75f, 0.90f))
+			ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Voxel Navigation"))
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f)
 		[ MakeVoxelToggle(TEXT("Volume Bounds"), TEXT("Show authored and navigation volume bounds."), &_ShowVoxelVolume) ]
@@ -596,7 +593,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("Voxel cells are driven by the selected immutable snapshot.")))
 			.AutoWrapText(true)
-			.ColorAndOpacity(FLinearColor(0.55f, 0.55f, 0.55f))
+			.ColorAndOpacity(CkStyle::TextMute())
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 2.0f, 8.0f, 8.0f)
 		[
@@ -728,7 +725,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			[
 				SNew(STextBlock)
 					.Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); })
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.65f, 0.78f, 0.92f)))
+					.ColorAndOpacity(FSlateColor(CkStyle::Info()))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
@@ -744,7 +741,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("ck.CrowdDebugger 1")))
-				.ColorAndOpacity(FSlateColor(FLinearColor(0.55f, 0.55f, 0.55f)))
+				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			]
 		];
 }

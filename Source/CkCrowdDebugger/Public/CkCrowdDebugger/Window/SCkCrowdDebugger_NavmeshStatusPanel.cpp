@@ -2,11 +2,12 @@
 
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
+#include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 
 #include "HAL/PlatformTime.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -39,15 +40,12 @@ auto SCkCrowdDebugger_NavmeshStatusPanel::Construct(const FArguments& InArgs) ->
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-		.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+		.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("NAVMESH STATUS")))
-				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+				ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Navmesh Status"))
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[

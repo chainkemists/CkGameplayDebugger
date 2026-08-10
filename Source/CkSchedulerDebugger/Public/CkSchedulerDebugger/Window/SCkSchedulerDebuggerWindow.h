@@ -8,7 +8,7 @@
 
 #include "Widgets/Layout/SBox.h"
 
-class SCkSchedulerDebugger_FrameHistoryBar;
+class SCkDebug_FrameStrip;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -40,12 +40,30 @@ private:
 
 	auto DoGetFrameHistoryMaxSize() const -> int32 { return _FrameHistoryMaxSize; }
 
+	// Rebuilds the frame strip's sample array from the collector. The strip is immediate-mode and
+	// owns no data, so this is the whole feed. InForce bypasses the unchanged-history early-out —
+	// used when the highlight filter changes but the frame set did not.
+	auto DoPushFrameSamples(bool InForce) -> void;
+
+	/** One clipboard line describing the frame the strip currently has selected. */
+	auto DoComposeSelectedFrameText() const -> FString;
+
 private:
 	TSharedPtr<FCkSchedulerDebugger_ViewModel> _ViewModel;
 	TArray<TSharedPtr<ICkSchedulerDebuggerPage>> _Pages;
 	int32 _ActivePageIndex = 0;
 	TSharedPtr<SBox> _ContentContainer;
-	TSharedPtr<SCkSchedulerDebugger_FrameHistoryBar> _FrameHistoryBar;
+	TSharedPtr<SCkDebug_FrameStrip> _FrameStrip;
+
+	// Highlight-filter state moved from the retired FrameHistoryBar: the strip renders the verdict,
+	// the window owns the query and answers it.
+	FString _HighlightFilter;
+
+	// A frame's "did it run a matching processor" answer never changes once taken, so surviving
+	// frames keep theirs across pushes instead of re-scanning every snapshot's processor list.
+	TMap<uint64, bool> _HighlightVerdictByFrame;
+	int32 _LastPushedSampleCount = INDEX_NONE;
+	uint64 _LastPushedNewestFrame = 0;
 
 	TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
 	int32 _FrameHistoryMaxSize = 3000;

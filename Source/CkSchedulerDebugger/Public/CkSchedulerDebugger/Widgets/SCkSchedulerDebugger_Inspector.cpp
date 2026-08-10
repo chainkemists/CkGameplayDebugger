@@ -1,7 +1,6 @@
 #include "SCkSchedulerDebugger_Inspector.h"
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
-#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_Sparkline.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -11,7 +10,66 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_scheduler_debugger_inspector
+{
+	// Section headers go through the SectionHeaderStyle axis instead of each site hand-rolling a
+	// bold uppercase STextBlock. Classic keeps the uppercase bold form these sections already used.
+	auto Make_Header(const FString& InLabel, ECk_Tone InTone) -> TSharedRef<SWidget>
+	{
+		return ck::debug_axes::Make_SectionHeader(
+			UCkDebuggerStyleSettings::Get_Selection(), FText::FromString(InLabel), InTone);
+	}
+
+	// The between-section rule, wired to the SeparatorWeight axis. SSeparator::Thickness is a plain
+	// SLATE_ARGUMENT with no setter, so the axis is carried by an SBox height override; a zero-weight
+	// option collapses the box, and SBoxPanel then skips the child AND its slot padding.
+	// Hairline == 1.0f == what SSeparator drew before, so Classic is unchanged.
+	auto Make_SectionSeparator() -> TSharedRef<SWidget>
+	{
+		const auto Get_Thickness = []()
+		{
+			return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+		};
+
+		return SNew(SBox)
+			.HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
+			{
+				return FOptionalSize{Get_Thickness()};
+			})
+			.Visibility_Lambda([Get_Thickness]()
+			{
+				return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SSeparator)
+			];
+	}
+
+	// RowDensity as a DELTA on the inspector's own base padding — same contract as the ECS tree.
+	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+	{
+		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+		const auto DeltaX = Current.Left - Baseline.Left;
+		const auto DeltaY = Current.Top  - Baseline.Top;
+
+		return FMargin
+		{
+			FMath::Max(0.0f, InBase.Left   + DeltaX),
+			FMath::Max(0.0f, InBase.Top    + DeltaY),
+			FMath::Max(0.0f, InBase.Right  + DeltaX),
+			FMath::Max(0.0f, InBase.Bottom + DeltaY)
+		};
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -124,7 +182,7 @@ auto
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("No processor selected")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+				.ColorAndOpacity(CkStyle::TextMute())
 		];
 }
 
@@ -150,7 +208,7 @@ auto
 					SNew(SCkDebug_SelectableLabel)
 						.Text(FText::FromName(InProc.ProcessorName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+						.ColorAndOpacity(CkStyle::Text())
 				]
 
 			+ SVerticalBox::Slot()
@@ -166,8 +224,8 @@ auto
 							SNew(SBorder)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
 								.BorderBackgroundColor(InProc.IsGhost
-									? FCkSchedulerDebuggerStyle::Color_Ghost
-									: FCkSchedulerDebuggerStyle::Color_Active)
+									? CkStyle::None()
+									: CkStyle::Ok())
 								.Padding(FMargin(6.0f, 2.0f))
 								[
 									SNew(STextBlock)
@@ -184,7 +242,7 @@ auto
 							SNew(SBorder)
 								.Visibility(InProc.HasDirtyMarker ? EVisibility::Visible : EVisibility::Collapsed)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.BorderBackgroundColor(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+								.BorderBackgroundColor(CkStyle::Warn())
 								.Padding(FMargin(6.0f, 2.0f))
 								[
 									SNew(STextBlock)
@@ -200,7 +258,7 @@ auto
 							SNew(SBorder)
 								.Visibility(InProc.IsParallel ? EVisibility::Visible : EVisibility::Collapsed)
 								.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-								.BorderBackgroundColor(FCkSchedulerDebuggerStyle::Color_Parallel)
+								.BorderBackgroundColor(CkStyle::Info())
 								.Padding(FMargin(6.0f, 2.0f))
 								[
 									SNew(STextBlock)
@@ -215,7 +273,7 @@ auto
 	Content->AddSlot()
 		.AutoHeight()
 		[
-			SNew(SSeparator)
+			ck_scheduler_debugger_inspector::Make_SectionSeparator()
 		];
 
 	Content->AddSlot()
@@ -290,10 +348,7 @@ auto
 	Section->AddSlot().AutoHeight()
 		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("INFO")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			ck_scheduler_debugger_inspector::Make_Header(TEXT("INFO"), ECk_Tone::Neutral)
 		];
 
 	Section->AddSlot().AutoHeight()
@@ -303,7 +358,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[SNew(SSeparator)];
+		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
 
 	return Section;
 }
@@ -318,17 +373,38 @@ auto
 {
 	auto Body = SNew(SVerticalBox);
 
+	// The retired module-local sparkline took a TArray<double> by value; the common widget takes a
+	// shared ring of floats and holds it alive, which is why the copy is built here and handed over.
+	auto Samples = MakeShared<TArray<float>>();
+	Samples->Reserve(InProc.TimingHistory.Num());
+
+	auto PeakTimeMs = 0.0;
+	for (const auto TimeMs : InProc.TimingHistory)
+	{
+		Samples->Add(static_cast<float>(TimeMs));
+		PeakTimeMs = FMath::Max(PeakTimeMs, TimeMs);
+	}
+
+	const auto LatestTimeMs = InProc.TimingHistory.IsEmpty() ? 0.0 : InProc.TimingHistory.Last();
+
 	Body->AddSlot().AutoHeight()
 		[
 			SNew(SBox)
 				.HeightOverride(48.0f)
 				.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
 				[
-					SNew(SCkSchedulerDebugger_Sparkline)
-						.TimingHistory(InProc.TimingHistory)
-						.DesiredHeight(40.0f)
+					SNew(SCkDebug_Sparkline)
+						.Samples(Samples)
+						.Color(FCkSchedulerDebuggerStyle::Get_TimingColor(LatestTimeMs))
+						.FillOpacity(0.15f)
+						.DesiredSize(FVector2D{200.0f, 40.0f})
 				]
 		];
+
+	// The old sparkline painted its own peak / current labels into the corners. The common widget
+	// draws no text, so those two numbers become inspector rows rather than being lost.
+	Body->AddSlot().AutoHeight()
+		[DoMakeInfoRow(TEXT("Peak (history)"), FString::Printf(TEXT("%.3f ms"), PeakTimeMs))];
 
 	Body->AddSlot().AutoHeight()
 		[DoMakeInfoRow(TEXT("Total Ticks"), FString::FromInt(InProc.TotalTicks))];
@@ -342,10 +418,7 @@ auto
 	Section->AddSlot().AutoHeight()
 		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("TIMING")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			ck_scheduler_debugger_inspector::Make_Header(TEXT("TIMING"), ECk_Tone::Neutral)
 		];
 
 	Section->AddSlot().AutoHeight()
@@ -355,7 +428,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[SNew(SSeparator)];
+		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
 
 	return Section;
 }
@@ -397,10 +470,7 @@ auto
 	Section->AddSlot().AutoHeight()
 		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("DIRTY MARKER")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			ck_scheduler_debugger_inspector::Make_Header(TEXT("DIRTY MARKER"), ECk_Tone::Neutral)
 		];
 
 	Section->AddSlot().AutoHeight()
@@ -410,7 +480,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[SNew(SSeparator)];
+		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
 
 	return Section;
 }
@@ -424,7 +494,7 @@ auto
 	-> TSharedRef<SWidget>
 {
 	// Red accent to signal these are errors/warnings, not ordinary metadata.
-	constexpr auto ErrorColorRGBA = FLinearColor{0.92f, 0.30f, 0.30f, 1.0f};
+	const auto ErrorColorRGBA = CkStyle::Err();
 
 	auto Body = SNew(SVerticalBox);
 
@@ -474,10 +544,7 @@ auto
 	Section->AddSlot().AutoHeight()
 		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("WRITE CONFLICTS")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(ErrorColorRGBA)
+			ck_scheduler_debugger_inspector::Make_Header(TEXT("WRITE CONFLICTS"), ECk_Tone::Err)
 		];
 
 	Section->AddSlot().AutoHeight()
@@ -487,7 +554,7 @@ auto
 		];
 
 	Section->AddSlot().AutoHeight()
-		[SNew(SSeparator)];
+		[ck_scheduler_debugger_inspector::Make_SectionSeparator()];
 
 	return Section;
 }
@@ -509,7 +576,7 @@ auto
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Run After:")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+				.ColorAndOpacity(CkStyle::TextDim())
 		];
 
 	if (InProc.InEdges.Num() == 0)
@@ -520,7 +587,7 @@ auto
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("(none)")))
 					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
 	else
@@ -539,7 +606,7 @@ auto
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Run Before:")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+				.ColorAndOpacity(CkStyle::TextDim())
 		];
 
 	if (InProc.OutEdges.Num() == 0)
@@ -550,7 +617,7 @@ auto
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("(none)")))
 					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
 	else
@@ -567,10 +634,7 @@ auto
 	Section->AddSlot().AutoHeight()
 		.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small)
 		[
-			SNew(STextBlock)
-				.Text(FText::FromString(TEXT("DEPENDENCIES")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			ck_scheduler_debugger_inspector::Make_Header(TEXT("DEPENDENCIES"), ECk_Tone::Neutral)
 		];
 
 	Section->AddSlot().AutoHeight()
@@ -591,12 +655,18 @@ auto
 		const FString& InValue)
 	-> TSharedRef<SWidget>
 {
+	// Rows are the RowDensity axis' primary surface in this panel. Rebuilt on selection / frame
+	// change, so the density is sampled here rather than bound per-paint.
+	const auto LabelPadding = ck_scheduler_debugger_inspector::Apply_RowDensity(FMargin{0.0f, 2.0f});
+	const auto ValuePadding = ck_scheduler_debugger_inspector::Apply_RowDensity(
+		FMargin{FCkSchedulerDebuggerStyle::Padding_Small, 2.0f});
+
 	return SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Top)
-			.Padding(0.0f, 2.0f)
+			.Padding(LabelPadding)
 			[
 				SNew(SBox)
 					.MinDesiredWidth(80.0f)
@@ -605,7 +675,7 @@ auto
 						SNew(STextBlock)
 							.Text(FText::FromString(InLabel))
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+							.ColorAndOpacity(CkStyle::TextDim())
 							.AutoWrapText(true)
 					]
 			]
@@ -613,12 +683,12 @@ auto
 		+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			.VAlign(VAlign_Top)
-			.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
+			.Padding(ValuePadding)
 			[
 				SNew(SCkDebug_SelectableLabel)
 					.Text(FText::FromString(InValue))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+					.ColorAndOpacity(CkStyle::Text())
 			];
 }
 
@@ -674,7 +744,7 @@ auto
 			SNew(STextBlock)
 				.Text(FText::FromString(DisplayName))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+				.ColorAndOpacity(CkStyle::Selection())
 				.AutoWrapText(true)
 		];
 }

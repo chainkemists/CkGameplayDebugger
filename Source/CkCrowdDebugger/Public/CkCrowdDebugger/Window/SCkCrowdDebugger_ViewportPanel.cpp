@@ -208,6 +208,10 @@ auto
 		_IntentPathFadeLabel = IsCurrentSidewalkFallback
 			? Selected->PathTroubleSummary
 			: FString(TEXT("UNREAL NAV: Pending"));
+		// KEPT LOCAL — canvas semantics. On the 2D map the intent line encodes WHICH routing layer
+		// gave up (sidewalk fallback vs plain nav), and the hue is the only channel carrying that; a
+		// Warn/Err role would collapse two different failures into one look. Same class as the AStar
+		// cell states / Map fog the consolidation ruling keeps out of CkStyle::.
 		_IntentPathFadeColor = IsCurrentSidewalkFallback
 			? FLinearColor(1.0f, 0.35f, 0.05f, 1.0f)
 			: CkStyle::Warn();
@@ -227,6 +231,9 @@ auto
 		const auto HasNavigationTrouble =
 			Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Partial
 			|| Selected->TroubleNavigationStatus == ECk_Nav_PathStatus::Failed;
+		// KEPT LOCAL — canvas semantics, three-way: sidewalk+nav both failed (magenta), sidewalk only
+		// (orange), nav only (red). Three roles would have to be invented to say the same thing, and
+		// they would mean nothing outside this map.
 		_IntentPathFadeColor = Selected->HadPathNetworkFailure
 			? (HasNavigationTrouble
 				? FLinearColor(1.0f, 0.05f, 0.60f, 1.0f)
@@ -541,6 +548,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		: 0.0f;
 	if (PathNetworkOpacity > 0.0f)
 	{
+		// KEPT LOCAL — canvas paint. The ribbon is a world feature (the sidewalk network), drawn under
+		// the agents at a user-driven opacity; it is not a status, so no semantic role applies.
 		const auto RibbonColor = FLinearColor(0.16f, 0.76f, 0.96f, PathNetworkOpacity);
 		const auto& Ribbons = _ViewModel->Get_PathNetworkRibbons();
 		for (const auto& Ribbon : Ribbons)
@@ -578,6 +587,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		auto DotLayer = RetLayerId + 3;
 		if (IsSelected)
 		{
+			// KEPT LOCAL — canvas paint. The selected dot has to out-read every status hue on the map at
+			// once; CkStyle::Selection() is a UI-chrome blue that disappears against the navmesh fill.
 			Color = FLinearColor(1.0f, 0.90f, 0.20f, 1.0f);
 			DotPx = 11.0f;
 			DotLayer = RetLayerId + 4;
@@ -667,6 +678,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnPaint(
 		const auto Color_Orbit   = CkStyle::Err();  // red
 		const auto Color_Turn    = CkStyle::Info(); // blue
 		const auto Color_Vel     = CkStyle::Warn(); // yellow
+		// KEPT LOCAL — canvas paint: the planned-path polyline must stay distinguishable from the four
+		// role-toned diagnosis rings above it while sharing the map with them.
 		const auto Color_Path     = FLinearColor(0.48f, 0.64f, 1.0f, 0.9f); // planned-path light blue
 		auto Color_GoalFail = _IntentPathFadeColor;
 		Color_GoalFail.A = _IntentPathFadeAlpha;
@@ -919,6 +932,8 @@ auto SCkCrowdDebugger_ViewportPanel::OnMouseButtonUp(
 						/*InOuterRadius=*/60.0f,
 						/*InInnerRadius=*/45.0f,
 						/*InSegments=*/32,
+						// KEPT LOCAL — in-world PMG paint, not a Slate surface: the destination ping is a
+						// game-world marker read against arbitrary level art, not against the debugger palette.
 						FLinearColor{0.15f, 1.0f, 0.35f, 0.85f},
 						/*InDrawLines=*/false,
 						/*InLineThickness=*/2.0f,

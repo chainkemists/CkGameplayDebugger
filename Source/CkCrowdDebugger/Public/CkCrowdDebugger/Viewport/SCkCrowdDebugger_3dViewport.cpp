@@ -18,6 +18,17 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// KEPT LOCAL — every FLinearColor below this line is 3D SCENE paint pushed through an
+// FPrimitiveDrawInterface, not a Slate surface. Voxel layer fills, snapshot-status wire colours,
+// per-agent status capsules, navmesh translucency and portal lines are read against arbitrary level
+// geometry over a black background, and several are deliberately alpha-tuned so they can overlap
+// without turning to mud. That is the "semantic canvas colours" carve-out in the common-widget
+// consolidation ruling (alongside AStar grid cell states and Map fog) — routing them through
+// CkStyle:: roles would trade a tuned 3D read for palette consistency nobody sees here.
+//
+// The panel's Slate chrome (headings, rows, status text) DOES go through the roles and the style
+// axes; see Window/CkCrowdDebugger_PanelAxes.h.
+
 namespace ck_crowd_debugger_3d_viewport
 {
 	constexpr int32 MaxImmediateBoxesPerLayer = 10000;

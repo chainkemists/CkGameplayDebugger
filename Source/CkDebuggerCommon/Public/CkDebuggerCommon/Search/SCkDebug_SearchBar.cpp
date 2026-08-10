@@ -20,7 +20,32 @@
 
 namespace ck_debug_search_bar
 {
-    constexpr auto ClearGlyphSize = 12.0f;
+    // Both glyphs ride the IconSize axis live. The search icon sits AT the axis' own scale
+    // (12/16/20, Medium == today's 16); the clear glyph is a deliberately smaller affordance, so it
+    // rides the axis as a DELTA off its shipped 12 — Classic renders 16 and 12 exactly as before.
+    constexpr auto ClearGlyphSizeBase = 12.0f;
+
+    auto Get_SearchGlyphSize() -> TOptional<FVector2D>
+    {
+        const auto Size = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
+        return TOptional<FVector2D>{FVector2D{Size, Size}};
+    }
+
+    auto Get_ClearGlyphExtent() -> float
+    {
+        return ck::debug_axes::Apply_IconSize(ClearGlyphSizeBase);
+    }
+
+    auto Get_ClearGlyphBoxSize() -> FOptionalSize
+    {
+        return FOptionalSize{Get_ClearGlyphExtent()};
+    }
+
+    auto Get_ClearGlyphSize() -> TOptional<FVector2D>
+    {
+        const auto Size = Get_ClearGlyphExtent();
+        return TOptional<FVector2D>{FVector2D{Size, Size}};
+    }
 }
 
 // ====================================================================================================================
@@ -33,10 +58,6 @@ auto
 {
     _OnSearchTextChanged = InArgs._OnSearchTextChanged;
     _DebounceDelay = FMath::Max(0.0f, InArgs._DebounceDelay);
-
-    // Read once at construct: the glyph is sized through an SBox override, and re-reading the
-    // axis per paint would need an invalidation path this widget does not otherwise have.
-    const auto IconSize = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
 
     ChildSlot
     [
@@ -58,7 +79,7 @@ auto
                     SNew(SImage)
                     .Image(FAppStyle::GetBrush("Icons.Search"))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
-                    .DesiredSizeOverride(FVector2D{IconSize, IconSize})
+                    .DesiredSizeOverride_Static(&ck_debug_search_bar::Get_SearchGlyphSize)
                 ]
 
                 + SHorizontalBox::Slot()
@@ -78,8 +99,8 @@ auto
                 .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
                 [
                     SNew(SBox)
-                    .WidthOverride(ck_debug_search_bar::ClearGlyphSize)
-                    .HeightOverride(ck_debug_search_bar::ClearGlyphSize)
+                    .WidthOverride_Static(&ck_debug_search_bar::Get_ClearGlyphBoxSize)
+                    .HeightOverride_Static(&ck_debug_search_bar::Get_ClearGlyphBoxSize)
                     [
                         SNew(SButton)
                         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -90,8 +111,7 @@ auto
                             SNew(SImage)
                             .Image(FAppStyle::GetBrush("Icons.X"))
                             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-                            .DesiredSizeOverride(FVector2D{
-                                ck_debug_search_bar::ClearGlyphSize, ck_debug_search_bar::ClearGlyphSize})
+                            .DesiredSizeOverride_Static(&ck_debug_search_bar::Get_ClearGlyphSize)
                         ]
                     ]
                 ]

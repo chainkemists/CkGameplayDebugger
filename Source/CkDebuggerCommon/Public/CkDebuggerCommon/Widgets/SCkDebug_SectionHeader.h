@@ -18,11 +18,14 @@ public:
 	SLATE_BEGIN_ARGS(SCkDebug_SectionHeader)
 		: _Label(FText::GetEmpty())
 		, _CountText(FText::GetEmpty())
+		, _ToolTip(FText::GetEmpty())
 		, _SubText(FText::GetEmpty())
 		, _Underline(false)
 	{}
 		SLATE_ARGUMENT(FText, Label)
 		SLATE_ARGUMENT(FText, CountText)
+		// Hover explanation for the section. Empty (the default) attaches no tooltip at all.
+		SLATE_ARGUMENT(FText, ToolTip)
 		// Muted, non-uppercase clarifier after the label.
 		SLATE_ARGUMENT(FText, SubText)
 		// Widget clarifier after the label — takes precedence over SubText.

@@ -28,13 +28,44 @@
 namespace ck::debug_axes
 {
     // ----- Render ------------------------------------------------------------
+    // LIVE BY CONSTRUCTION (R1). Every widget these emit binds its axis-driven visuals through
+    // TAttribute lambdas that re-read the LIVE selection at paint time, so flipping an axis in the
+    // Style Lab moves widgets that were built long before the flip — no rebuild, no invalidation,
+    // no revision watch. Options that differ STRUCTURALLY (a ring the other options don't draw, a
+    // box TextOnly doesn't want) are expressed by making that layer transparent and zero-padded,
+    // never by building a different widget tree. Brushes are the ones registered once in CkStyle;
+    // nothing here allocates (R7).
+    //
+    // Consequence for `InSelection` on the tone overloads: it is NOT read. It stays for call-site
+    // symmetry with the metric / predicate families below, and because every existing caller
+    // already hands over `UCkDebuggerStyleSettings::Get_Selection()`. Passing a hypothetical
+    // selection will not be honored — the emitted widget always follows the user's live setting.
+
     // ChipStyle: inspector badge boxes, feature chips, overlay field chips.
+    // `InInk` is the accent: the label ink for Tint / Outline / TextOnly, the ring for Outline, and
+    // the BODY for Solid (whose label flips to TextStrong). `InFill` is the tint wash and is read
+    // by Tint only. `InFontSize` defaults to CkStyle::FontSizeSmall().
+    CKDEBUGGERCOMMON_API auto Make_Chip(
+        const FText& InText,
+        FLinearColor InInk,
+        FLinearColor InFill,
+        TOptional<int32> InFontSize = {}) -> TSharedRef<SWidget>;
+
     CKDEBUGGERCOMMON_API auto Make_Chip(
         const FCkDebuggerStyleSelection& InSelection,
         const FText& InText,
         ECk_Tone InTone) -> TSharedRef<SWidget>;
 
     // BadgeStyle: count badges, fold badges.
+    // `InInk` is the accent: the ring and label ink for Hollow / CountOnly. `InFill` is the Solid
+    // body (whose label flips to TextStrong). Note the deliberate asymmetry with Make_Chip — a
+    // badge has no tint wash, so its solid body is the caller's Fill rather than its Ink.
+    CKDEBUGGERCOMMON_API auto Make_Badge(
+        const FText& InText,
+        FLinearColor InInk,
+        FLinearColor InFill,
+        TOptional<int32> InFontSize = {}) -> TSharedRef<SWidget>;
+
     CKDEBUGGERCOMMON_API auto Make_Badge(
         const FCkDebuggerStyleSelection& InSelection,
         const FText& InText,
@@ -54,10 +85,13 @@ namespace ck::debug_axes
         ECk_Tone InTone) -> TSharedRef<SWidget>;
 
     // SectionHeaderStyle: inspector + overlay section headers.
+    // `InToolTip` is optional — empty (the default) attaches no tooltip at all, so an existing
+    // three-argument call renders exactly as it did.
     CKDEBUGGERCOMMON_API auto Make_SectionHeader(
         const FCkDebuggerStyleSelection& InSelection,
         const FText& InText,
-        ECk_Tone InTone) -> TSharedRef<SWidget>;
+        ECk_Tone InTone,
+        const FText& InToolTip = FText::GetEmpty()) -> TSharedRef<SWidget>;
 
     // EntityIdStyle: pure text composition for every SCkDebug_EntityRef site. InCleanName is
     // already run through ck::DebugNameClean; InIdText is the canonical "ID|Version(Raw)" string.
@@ -66,8 +100,11 @@ namespace ck::debug_axes
         const FString& InCleanName,
         const FString& InIdText) -> FText;
 
-    // MergeCountDisplay: the xN affordance on a merged row. Null when the axis is Hidden or when
-    // there is nothing merged (InCount <= 1) — callers skip the slot entirely rather than pad it.
+    // MergeCountDisplay: the xN affordance on a merged row. Null only when there is nothing merged
+    // (InCount <= 1) — that is DATA, not an axis, so callers still skip the slot entirely.
+    // The Hidden option is now carried by a collapsed visibility on the returned widget instead of
+    // a null return: a collapsed child contributes neither size nor slot padding, so the layout is
+    // the same as omitting it, and the option stays live (R1).
     CKDEBUGGERCOMMON_API auto Make_MergeCount(
         const FCkDebuggerStyleSelection& InSelection,
         int32 InCount) -> TSharedPtr<SWidget>;

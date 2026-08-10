@@ -1,5 +1,8 @@
 #include "SCkDebug_KeyValueRow.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Styling/AppStyle.h"
@@ -11,6 +14,61 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
+
+// ====================================================================================================================
+
+namespace ck_debug_key_value_row
+{
+	// THE inspector row: 26 consumer sites compose through it, so both of its axes are bound as
+	// attributes rather than read at construction — an axis flip has to move rows that were built
+	// when the entity was selected, not only rows built after the flip.
+	//
+	// Both axes are DELTAS on this row's own shipped geometry, matching the metric-delta contract
+	// in CkDebuggerAxes.h: the default option (Comfortable + Left) yields exactly the margins and
+	// the value treatment the row has always drawn.
+	constexpr auto MarkerGapBase    = CkStyle::SpaceM;
+	constexpr auto ValueGapBase     = CkStyle::SpaceM;
+	constexpr auto BodyPaddingXBase = CkStyle::SpaceM;
+	constexpr auto BodyPaddingYBase = 3.0f;
+
+	// Wide enough for the numeric values these rows carry; matches the Style Lab's own preview
+	// column so the Lab does not lie about what AlignedColumns does.
+	constexpr auto AlignedValueColumnWidth = 96.0f;
+
+	auto Get_MarkerGap() -> FMargin
+	{
+		return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 0.0f, MarkerGapBase, 0.0f});
+	}
+
+	auto Get_ValueGap() -> FMargin
+	{
+		return ck::debug_axes::Apply_RowDensity(FMargin{ValueGapBase, 0.0f, 0.0f, 0.0f});
+	}
+
+	auto Get_BodyPadding() -> FMargin
+	{
+		return ck::debug_axes::Apply_RowDensity(FMargin{BodyPaddingXBase, BodyPaddingYBase});
+	}
+
+	auto Get_ValueJustification() -> ETextJustify::Type
+	{
+		const auto& Selection = UCkDebuggerStyleSettings::Get_Selection();
+
+		return ck::debug_axes::Values_AlignRight(Selection) || ck::debug_axes::Values_UseAlignedColumns(Selection)
+			? ETextJustify::Right
+			: ETextJustify::Left;
+	}
+
+	// Only AlignedColumns needs geometry: a fixed-width right-aligned value is what makes decimal
+	// points line up down a column. Left and Right leave the value hugging its own text, which is
+	// the width the row has always given it.
+	auto Get_ValueMinWidth() -> float
+	{
+		return ck::debug_axes::Values_UseAlignedColumns(UCkDebuggerStyleSettings::Get_Selection())
+			? AlignedValueColumnWidth
+			: 0.0f;
+	}
+}
 
 // ====================================================================================================================
 
@@ -47,7 +105,7 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+			.Padding(TAttribute<FMargin>::CreateStatic(&ck_debug_key_value_row::Get_MarkerGap))
 			[
 				SNew(SBox)
 				.WidthOverride(7.0f)
@@ -103,10 +161,11 @@ auto
 	const auto HasCustomValueSlot = InArgs._ValueWidget.Widget != SNullWidget::NullWidget;
 	if (HasCustomValueSlot)
 	{
+		// A caller-supplied value widget owns its own alignment — the row only contributes the gap.
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(TAttribute<FMargin>::CreateStatic(&ck_debug_key_value_row::Get_ValueGap))
 			[
 				InArgs._ValueWidget.Widget
 			];
@@ -117,13 +176,15 @@ auto
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			.Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+			.Padding(TAttribute<FMargin>::CreateStatic(&ck_debug_key_value_row::Get_ValueGap))
 			[
 				SNew(SEditableText)
 				.Text(ValueAttr)
 				.Font(BoldFont)
 				.ColorAndOpacity(ValueColorAttr)
 				.IsReadOnly(true)
+				.Justification_Static(&ck_debug_key_value_row::Get_ValueJustification)
+				.MinDesiredWidth_Static(&ck_debug_key_value_row::Get_ValueMinWidth)
 				.Visibility_Lambda([ValueAttr]()
 				{
 					return ValueAttr.Get().IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible;
@@ -134,7 +195,7 @@ auto
 	auto Body = SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(InArgs._BackgroundColor))
-		.Padding(FMargin(CkStyle::SpaceM, 3.0f))
+		.Padding_Static(&ck_debug_key_value_row::Get_BodyPadding)
 		[
 			Row
 		];

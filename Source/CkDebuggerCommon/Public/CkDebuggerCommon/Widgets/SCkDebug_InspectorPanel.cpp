@@ -1,5 +1,6 @@
 #include "SCkDebug_InspectorPanel.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -10,6 +11,21 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
+
+// ====================================================================================================================
+
+namespace ck_debug_inspector_panel
+{
+	// The expand/collapse chevron. 12 is the size this header has always drawn — four less than the
+	// IconSize axis' 16 default — so it rides the axis as a DELTA and stays 12 under Classic.
+	constexpr auto ChevronSizeBase = 12.0f;
+
+	auto Get_ChevronSize() -> TOptional<FVector2D>
+	{
+		const auto Size = ck::debug_axes::Apply_IconSize(ChevronSizeBase);
+		return TOptional<FVector2D>{FVector2D{Size, Size}};
+	}
+}
 
 // ====================================================================================================================
 
@@ -146,7 +162,7 @@ auto
 			SAssignNew(_ChevronIcon, SImage)
 			.Image(FAppStyle::GetBrush(_IsExpanded ? TEXT("Icons.ChevronDown") : TEXT("Icons.ChevronRight")))
 			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-			.DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+			.DesiredSizeOverride_Static(&ck_debug_inspector_panel::Get_ChevronSize)
 		];
 }
 

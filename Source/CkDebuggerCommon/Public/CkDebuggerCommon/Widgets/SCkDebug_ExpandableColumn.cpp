@@ -1,5 +1,7 @@
 #include "SCkDebug_ExpandableColumn.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
@@ -9,6 +11,20 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
+
+// ====================================================================================================================
+
+namespace ck_debug_expandable_column
+{
+	// Same chevron, same 12px base, same delta contract as SCkDebug_InspectorPanel's.
+	constexpr auto ChevronSizeBase = 12.0f;
+
+	auto Get_ChevronSize() -> TOptional<FVector2D>
+	{
+		const auto Size = ck::debug_axes::Apply_IconSize(ChevronSizeBase);
+		return TOptional<FVector2D>{FVector2D{Size, Size}};
+	}
+}
 
 // ====================================================================================================================
 
@@ -47,7 +63,7 @@ auto
 			SAssignNew(_ChevronIcon, SImage)
 			.Image(FAppStyle::GetBrush(_IsExpanded ? TEXT("Icons.ChevronDown") : TEXT("Icons.ChevronRight")))
 			.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-			.DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+			.DesiredSizeOverride_Static(&ck_debug_expandable_column::Get_ChevronSize)
 		];
 
 	// Pill (gate tag, etc.) drops to its own row below the title so long

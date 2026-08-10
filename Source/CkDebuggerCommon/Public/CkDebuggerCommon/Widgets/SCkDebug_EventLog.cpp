@@ -29,6 +29,14 @@ namespace ck_debug_event_log
 
         return FString::Printf(TEXT("%02d:%02d.%03d"), Minutes, Seconds, Millis);
     }
+
+    // Rows keep their TSharedPtr identity across refreshes, so a row built before a RowDensity flip
+    // is the row that has to move. STableRow::Padding is a TAttribute — bind it and the axis lands
+    // on every existing row with no regeneration and no loss of selection.
+    auto Get_RowPadding() -> FMargin
+    {
+        return ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+    }
 }
 
 // ====================================================================================================================
@@ -213,7 +221,6 @@ auto
     -> TSharedRef<ITableRow>
 {
     const auto& Selection = UCkDebuggerStyleSettings::Get_Selection();
-    const auto RowPadding = ck::debug_axes::Get_RowPadding(Selection);
 
     auto Row = SNew(SHorizontalBox);
 
@@ -261,7 +268,7 @@ auto
         ];
 
     return SNew(STableRow<FEntryPtr>, InOwnerTable)
-        .Padding(RowPadding)
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_debug_event_log::Get_RowPadding))
         .ShowSelection(true)
         [
             Row

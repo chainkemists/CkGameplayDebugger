@@ -40,6 +40,8 @@ public:
     // bIsLocked: amber ring (focus lock). bIsPinned: cyan ring, which takes precedence.
     // InCoLocatedIndex/Count: "i/N" header badge when the focus entity is one of several
     // co-located entities.
+    // InLayoutLabel: layout quick-switcher chip in the card's top-right corner (primary card
+    // only — pinned cards share the same layout, so repeating it would be noise).
     auto Set_FocusCardContent(
         const FCk_DebugOverlay_EntityModel& InModel,
         const FCk_DebugOverlay_RenderStyle& InStyle,
@@ -48,7 +50,8 @@ public:
         bool                                bIsLocked        = false,
         bool                                bIsPinned        = false,
         int32                               InCoLocatedIndex = INDEX_NONE,
-        int32                               InCoLocatedCount = 0) -> void;
+        int32                               InCoLocatedCount = 0,
+        const FText&                        InLayoutLabel    = FText::GetEmpty()) -> void;
 
     // Rebuilds the pinned-card strip (one persistent live card per pinned entity), stacked
     // under the primary card at the same anchor. Each pinned card gets a cyan ring.

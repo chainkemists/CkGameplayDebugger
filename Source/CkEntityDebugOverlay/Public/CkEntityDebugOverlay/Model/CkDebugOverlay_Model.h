@@ -6,6 +6,30 @@
 UENUM() enum class ECk_DebugOverlay_Severity : uint8 { Normal, Good, Warn, Bad };
 
 /**
+ * Focus-card detail tier, chosen from the camera distance to the focused entity.
+ *
+ * The tier is resolved (with hysteresis) and APPLIED to the model before Slate — the card
+ * never hides rows it was handed. Opt-in: OFF unless
+ * UCk_DebugOverlay_Settings::bEnableFocusCardDistanceLod is set, in which case every card is
+ * Full and the pipeline is exactly the shipped one.
+ */
+UENUM()
+enum class ECk_DebugOverlay_LodTier : uint8
+{
+    // Every collected section and row reaches the focus-card budget (shipped behavior).
+    Full,
+
+    // Header + the top budget-ordered sections only. Sections beyond the cap are dropped and
+    // their rows counted into FCk_DebugOverlay_EntityModel::LodOmittedRowCount, which the card
+    // renders as its card-wide omission line.
+    Summary,
+
+    // Header + ONE severity-carrying token per provider, all on a single flow line. The rows
+    // each section shed are counted into its own OmittedRowCount ("+N more").
+    Pill,
+};
+
+/**
  * How a provider's rows may be collapsed by the pre-budget merge pass.
  *
  * Subtree aggregation emits one section per (provider x source entity), so "duplicate"
@@ -78,6 +102,14 @@ struct FCk_DebugOverlay_EntityModel
     FCk_Handle   Entity;
     UPROPERTY() FText Header;
     UPROPERTY() TArray<FCk_DebugOverlay_Section> Sections;
+
+    // Detail tier this model was trimmed to. Full = untouched by the distance-LOD pass.
+    UPROPERTY() ECk_DebugOverlay_LodTier LodTier = ECk_DebugOverlay_LodTier::Full;
+
+    // Rows the distance-LOD pass removed by dropping WHOLE sections (Summary tier). Rows it
+    // trimmed inside a surviving section live on that section's OmittedRowCount instead. The
+    // card adds this to its budget omission summary so an LOD trim is never silent.
+    UPROPERTY() int32 LodOmittedRowCount = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -273,13 +273,14 @@ auto
         bool                                bIsLocked,
         bool                                bIsPinned,
         int32                               InCoLocatedIndex,
-        int32                               InCoLocatedCount)
+        int32                               InCoLocatedCount,
+        const FText&                        InLayoutLabel)
     -> void
 {
     if (_FocusCard.IsValid())
     {
         _FocusCard->Set_Model(InModel, InStyle, InHistory, InNow, bIsLocked, bIsPinned,
-            InCoLocatedIndex, InCoLocatedCount);
+            InCoLocatedIndex, InCoLocatedCount, InLayoutLabel);
     }
 }
 

@@ -64,6 +64,31 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="General", meta=(ClampMin="1", ClampMax="16"))
     int32 FocusCardMaxRowsPerSection = 4;
 
+    // ---- Focus-card distance LOD (opt-in) ----
+
+    // Trim the focus card by camera distance to the FOCUSED entity: the full card up close,
+    // then header + the top budget-ordered sections, then a single flow line of one
+    // severity-colored token per provider. Everything a tier drops is still counted into the
+    // card's existing "+N more" / omission-summary affordances — the trim is visible, never
+    // silent. OFF by default: the shipped card renders identically at every distance, and this
+    // only starts changing that once you opt in (Project Settings, or the Style Lab preview).
+    UPROPERTY(Config, EditAnywhere, Category="Focus Card LOD")
+    bool bEnableFocusCardDistanceLod = false;
+
+    // Camera distance (cm) at which the card steps down to the SUMMARY tier. Sits inside the
+    // MarkerMaxDist candidate cull (3000 by default) so all three tiers are reachable without
+    // retuning the declutter range. A small enter/exit gap around this boundary stops the card
+    // flickering between tiers.
+    UPROPERTY(Config, EditAnywhere, Category="Focus Card LOD",
+        meta=(ClampMin="0.0", EditCondition="bEnableFocusCardDistanceLod"))
+    float FocusCardSummaryDist = 1200.0f;
+
+    // Camera distance (cm) at which the card steps down to the PILL tier (entity ref + one
+    // token per provider). Values below FocusCardSummaryDist are treated as equal to it.
+    UPROPERTY(Config, EditAnywhere, Category="Focus Card LOD",
+        meta=(ClampMin="0.0", EditCondition="bEnableFocusCardDistanceLod"))
+    float FocusCardPillDist = 2400.0f;
+
     // Collapse rows that are identical (same field + same value) within one provider across
     // the focus entity's whole lifetime subtree into a single row badged "xN". Off = every
     // descendant contributes its own row (one "Label" row per sub-entity, etc.), which eats
@@ -198,10 +223,24 @@ public:
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey UnpinAllKey = EKeys::BackSpace;
 
+    // Tap twice quickly to cycle the ACTIVE LAYOUT (same step as `ck.DebugOverlay.Layout.Next`;
+    // the card's corner chip shows which layout is live). A NON-modifier key by default, same
+    // reason as CycleCoLocatedKey.
+    UPROPERTY(Config, EditAnywhere, Category="Input")
+    FKey CycleLayoutKey = EKeys::L;
+
     // Optional: tap twice quickly to toggle the full keyboard-hints legend (also
     // `ck.DebugOverlay.Help`). Default unbound.
     UPROPERTY(Config, EditAnywhere, Category="Input")
     FKey HelpKey;
+
+    // Per-USER memory of the layout the quick-switcher last selected, re-seeded on the next
+    // session. It lives here rather than next to the layout definitions because this is the
+    // overlay's only per-user config slot (EditorPerProjectUserSettings): the project class is
+    // Config=Game/DefaultConfig and a runtime gesture must never dirty shared project config.
+    // Unset / unknown falls back to the project's StartingLayout.
+    UPROPERTY(Config, EditAnywhere, Category="Layout", meta=(Categories="Ck.OnScreenDebugger.Layout"))
+    FGameplayTag LastActiveLayout;
 
     // World-space radius (cm) for the co-located cycle's connected-component flood.
     UPROPERTY(Config, EditAnywhere, Category="Input", meta=(ClampMin="10.0", ClampMax="1000.0"))

@@ -27,8 +27,13 @@ namespace ck_debug_section_header
 	auto Get_LabelFont() -> FSlateFontInfo
 	{
 		return Get_HeaderStyle() == ECkDebugAxis_SectionHeaderStyle::Minimal
-			? CkStyle::RegularFont(CkStyle::FontSizeSmall())
-			: CkStyle::BoldFont(CkStyle::FontSizeH4());
+			? ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall())
+			: ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4());
+	}
+
+	auto Get_SubLabelFont() -> FSlateFontInfo
+	{
+		return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
 	}
 
 	auto Get_LabelColor() -> FSlateColor
@@ -92,7 +97,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._CountText)
-				.Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+				.Font_Static(&ck_debug_section_header::Get_SubLabelFont)
 				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}
@@ -116,7 +121,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(InArgs._SubText)
-				.Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+				.Font_Static(&ck_debug_section_header::Get_SubLabelFont)
 				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
 			];
 	}

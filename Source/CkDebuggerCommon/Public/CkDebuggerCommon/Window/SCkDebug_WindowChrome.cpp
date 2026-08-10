@@ -4,6 +4,7 @@
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UseEcsSelection.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -52,9 +53,11 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
 
     ChildSlot
     [
+        // Window ground (depth 0) with a header strip and a status strip (depth 1) on it — the
+        // SurfaceElevation axis' canonical two-tier shape.
         SNew(SBorder)
-            .BorderImage(CkStyle::GetFilledBrush())
-            .BorderBackgroundColor(CkStyle::BgRoot())
+            .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(0); })
+            .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(0)}; })
             .Padding(0.0f)
             [
                 SNew(SVerticalBox)
@@ -63,8 +66,8 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                 .AutoHeight()
                 [
                     SNew(SBorder)
-                        .BorderImage(CkStyle::GetFilledBrush())
-                        .BorderBackgroundColor(CkStyle::Bg1())
+                        .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
+                        .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
                         .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
                         [
                             SNew(SHorizontalBox)
@@ -130,8 +133,8 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                 .AutoHeight()
                 [
                     SNew(SBorder)
-                        .BorderImage(CkStyle::GetFilledBrush())
-                        .BorderBackgroundColor(CkStyle::Bg1())
+                        .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
+                        .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
                         .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceXS})
                         [
                             SNew(SHorizontalBox)

@@ -1,6 +1,9 @@
 #include "SCkDebug_ValuePill.h"
 
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "InputCoreTypes.h"
@@ -33,7 +36,7 @@ auto
     ChildSlot
     [
         SNew(SBorder)
-        .BorderImage(CkStyle::GetRoundedBrush())
+        .BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
         .BorderBackgroundColor_Lambda([this, Value, Editable]
         {
             if (Editable.Get(false) && IsHovered())
@@ -49,7 +52,7 @@ auto
         .Padding(FMargin{1.0f})
         [
             SNew(SBorder)
-            .BorderImage(CkStyle::GetRoundedBrush())
+            .BorderImage_Static(&ck::debug_axes::Get_ChipBrush)
             .BorderBackgroundColor_Lambda([Value]
             {
                 return FSlateColor{Value.Get(false) ? CkStyle::OkDim() : CkStyle::NeutralDim()};
@@ -65,7 +68,7 @@ auto
                     {
                         return Value.Get(false) ? TrueText : FalseText;
                     })
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]{ return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity_Lambda([this, Value, Editable]
                     {
                         if (Editable.Get(false) && IsHovered())

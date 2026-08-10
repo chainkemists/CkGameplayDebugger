@@ -109,6 +109,73 @@ namespace ck::debug_axes
         const FCkDebuggerStyleSelection& InSelection,
         int32 InCount) -> TSharedPtr<SWidget>;
 
+    // ----- Typography --------------------------------------------------------
+    // TextScale. Both read the LIVE selection, like the metric deltas below — a scale is only
+    // meaningful against the user's current setting. Bind them through an attribute to stay live;
+    // a construct-time call bakes the size, which is exactly why the five registered
+    // CkDebugger.Text.* styles cannot follow this axis (an FTextBlockStyle bakes its font at
+    // style-set creation). Text that must follow TextScale composes through ScaledFont instead.
+
+    /** The multiplier TextScale applies on top of every CkStyle FontSize* role: 1.0 / 0.875 / 1.125. */
+    CKDEBUGGERCOMMON_API auto Get_TextScale() -> float;
+
+    /** A CkStyle role size with TextScale applied, rounded to whole points and clamped at 1. */
+    CKDEBUGGERCOMMON_API auto Get_ScaledFontSize(int32 InRoleSize) -> int32;
+
+    /**
+     * The scaled counterpart of CkStyle::RegularFont / BoldFont / MonoFont — same face names
+     * ("Regular" / "Bold" / "Mono"), same role sizes, plus the axis.
+     */
+    CKDEBUGGERCOMMON_API auto ScaledFont(const ANSICHAR* InFace, int32 InRoleSize) -> FSlateFontInfo;
+
+    // ----- Brushes -----------------------------------------------------------
+    // CornerStyle. Every brush here is registered ONCE in FCkDebuggerStyle or CkStyle (R7) — a call
+    // site must never allocate one. Bind through .BorderImage_Lambda to keep the axis live.
+    CKDEBUGGERCOMMON_API auto Get_ChipBrush()  -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_BadgeBrush() -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_CardBrush()  -> const FSlateBrush*;
+
+    // SurfaceElevation, for the COMMON surface widgets (card body, window chrome strips, inspector
+    // header, labeled group, expandable column). Depth 0 is the window ground and stays an opaque
+    // BgRoot fill under every option — a transparent root would show editor chrome through the
+    // debugger. Depth 1 is a header/strip, 2 a body, 3+ an inset.
+    //
+    // The tint is whatever the BRUSH paints: the fill under Layered / Flat, the ring under Outlined
+    // (whose fill is transparent at any tint). A Slate border carries one tint, so the two options
+    // are expressed by swapping the brush, not by adding a second layer.
+    //
+    // Flat collapses the nested fills onto one tier rather than growing per-surface hairlines —
+    // boundary weight stays the SeparatorWeight axis' business.
+    CKDEBUGGERCOMMON_API auto Get_SurfaceBrush(int32 InDepth) -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_SurfaceTint(int32 InDepth)  -> FLinearColor;
+
+    // RowBanding for list / tree surfaces. Under Zebra the brush is the row's full-bleed fill and
+    // the rule thickness is zero; under Hairline the brush is the 1px rule the caller draws along
+    // the row's bottom edge at Get_RowBandingRuleThickness() (which honours SeparatorWeight, so
+    // SeparatorWeight None silences the banding too). Off draws neither.
+    CKDEBUGGERCOMMON_API auto Get_RowBandingBrush(int32 InRowIndex) -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_RowBandingRuleThickness() -> float;
+
+    // GraphNodeStyle, expressed as a modulation of the two node roles the SM / GOAP graph-node
+    // widgets already read. Card is a byte-identical pass-through of the role values.
+    CKDEBUGGERCOMMON_API auto Get_NodeBorderThickness() -> float;
+    CKDEBUGGERCOMMON_API auto Get_NodeInactiveOpacity() -> float;
+
+    // EntityRefStyle — the box SCkDebug_EntityRef draws around its label. Flat is the treatment the
+    // widget ships today (no box); Pill fills, OutlinePill rings, Monochrome drops the accent color
+    // for the dim text role. The widget itself adopts these in a later unit.
+    CKDEBUGGERCOMMON_API auto Get_EntityRefBrush()   -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_EntityRefPadding() -> FMargin;
+    CKDEBUGGERCOMMON_API auto Get_EntityRefFill(const FLinearColor& InAccent) -> FLinearColor;
+    CKDEBUGGERCOMMON_API auto Get_EntityRefInk(const FLinearColor& InAccent)  -> FLinearColor;
+
+    // IconTreatment — the backdrop SCkDebug_Icon composes behind its glyph. Plain draws nothing and
+    // costs no padding, which is what keeps the default glyph geometry unchanged. InAccent is the
+    // caller's tint; a zero-alpha accent means "unset" and falls back to the muted text role.
+    CKDEBUGGERCOMMON_API auto Get_IconBackdropBrush()   -> const FSlateBrush*;
+    CKDEBUGGERCOMMON_API auto Get_IconBackdropPadding() -> FMargin;
+    CKDEBUGGERCOMMON_API auto Get_IconBackdropTint(const FLinearColor& InAccent) -> FLinearColor;
+
     // ----- Metrics -----------------------------------------------------------
     // RowDensity: padding for tree rows, inspector rows, overlay card rows.
     CKDEBUGGERCOMMON_API auto Get_RowPadding(const FCkDebuggerStyleSelection& InSelection) -> FMargin;

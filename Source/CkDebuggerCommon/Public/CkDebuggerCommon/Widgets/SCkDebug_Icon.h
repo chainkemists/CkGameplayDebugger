@@ -18,6 +18,10 @@
 //
 // Brushes stay owned by each debugger's own style registry (e.g.
 // FCkDebuggerStyle::Get_IconBrush in CkEcsDebugger) — pass the pointer in.
+//
+// The IconTreatment axis draws a live backdrop behind the glyph (bare / tinted
+// well / thin ring). Plain costs zero padding and paints nothing, so the
+// default is byte-identical to the bare glyph this widget shipped with.
 // ====================================================================================================================
 
 class CKDEBUGGERCOMMON_API SCkDebug_Icon : public SCompoundWidget
@@ -26,6 +30,7 @@ public:
     SLATE_BEGIN_ARGS(SCkDebug_Icon)
         : _Brush(nullptr)
         , _ColorAndOpacity(FSlateColor::UseForeground())
+        , _Accent(FLinearColor::Transparent)
     {}
         // The glyph. Nullptr renders nothing (matches GetOptionalBrush misses).
         SLATE_ARGUMENT(const FSlateBrush*, Brush)
@@ -34,6 +39,11 @@ public:
         // exists to prevent.
         SLATE_ATTRIBUTE(FText, Meaning)
         SLATE_ATTRIBUTE(FSlateColor, ColorAndOpacity)
+        // The feature color the IconTreatment backdrop tints itself from. A zero-alpha
+        // accent (the default) means "unset" and the backdrop falls back to the muted
+        // text role — Plain draws no backdrop at all, so under the default treatment
+        // this argument changes nothing.
+        SLATE_ATTRIBUTE(FLinearColor, Accent)
         // Optional square size override (e.g. 14 for rail chips, 16 default). Whatever is
         // set here is the BASE size: the IconSize axis scales it (Medium 16 = x1.0, Small
         // 12 = x0.75, Large 20 = x1.25) live, via attribute, so a Style Lab flip resizes

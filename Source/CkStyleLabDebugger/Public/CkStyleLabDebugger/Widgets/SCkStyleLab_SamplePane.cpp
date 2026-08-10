@@ -219,8 +219,96 @@ namespace ck_style_lab_sample
     {
         return SNew(STextBlock)
             .Text(FText::FromString(InKey))
-            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .Font(ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()))
             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()});
+    }
+
+    // RowBanding, applied the way a real list surface would: Zebra swaps the row's own fill for the
+    // alternating band brush, Hairline keeps the fill and adds a rule under the row, Off does
+    // neither. The rule widget is always emitted and collapses at zero thickness.
+    auto Get_RowFillBrush(const FCkDebuggerStyleSelection& InSelection, int32 InRowIndex) -> const FSlateBrush*
+    {
+        return InSelection.RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? ck::debug_axes::Get_RowBandingBrush(InRowIndex)
+            : ck::debug_axes::Get_SurfaceBrush(2);
+    }
+
+    auto Get_RowFillTint(const FCkDebuggerStyleSelection& InSelection) -> FSlateColor
+    {
+        // The band brushes carry their own color, so they want an identity tint.
+        return InSelection.RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? FSlateColor{FLinearColor::White}
+            : FSlateColor{ck::debug_axes::Get_SurfaceTint(2)};
+    }
+
+    auto Make_RowRule() -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+            })
+            .Visibility_Lambda([]()
+            {
+                return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            [
+                SNew(SBorder)
+                    .BorderImage(CkStyle::GetFilledBrush())
+                    .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+            ];
+    }
+
+    // The EntityRefStyle treatment, composed from the resolvers the real widget will adopt in U3.
+    auto Make_EntityRef(
+        const FCkDebuggerStyleSelection& InSelection,
+        const FString&                   InCleanName,
+        const FString&                   InIdText) -> TSharedRef<SWidget>
+    {
+        const auto Accent = CkStyle::EntityId();
+
+        return SNew(SBorder)
+            .BorderImage(ck::debug_axes::Get_EntityRefBrush())
+            .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_EntityRefFill(Accent)})
+            .Padding(ck::debug_axes::Get_EntityRefPadding())
+            [
+                SNew(SCkDebug_SelectableLabel)
+                    .Text(ck::debug_axes::Make_EntityIdText(InSelection, InCleanName, InIdText))
+                    .Font(ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{
+                        InCleanName.IsEmpty()
+                            ? CkStyle::TextMute()
+                            : ck::debug_axes::Get_EntityRefInk(Accent)})
+            ];
+    }
+
+    // A stand-in graph node: the two roles GraphNodeStyle modulates are exactly what the SM and
+    // GOAP node widgets read, so the swatch moves the same way those graphs will.
+    auto Make_GraphNode(const FText& InTitle, bool InIsActive) -> TSharedRef<SWidget>
+    {
+        const auto Fill   = InIsActive ? CkStyle::NodeFill_InPlan()   : CkStyle::NodeFill_Inactive();
+        const auto Border = InIsActive ? CkStyle::NodeBorder_InPlan() : CkStyle::NodeBorder_Inactive();
+
+        const auto Opacity = InIsActive ? 1.0f : ck::debug_axes::Get_NodeInactiveOpacity();
+
+        return SNew(SBorder)
+            .BorderImage(ck::debug_axes::Get_CardBrush())
+            .BorderBackgroundColor(FSlateColor{CkStyle::OverlayOf(Border, Opacity)})
+            .Padding(FMargin{ck::debug_axes::Get_NodeBorderThickness()})
+            [
+                SNew(SBorder)
+                    .BorderImage(ck::debug_axes::Get_CardBrush())
+                    .BorderBackgroundColor(FSlateColor{CkStyle::OverlayOf(Fill, Opacity)})
+                    .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
+                    [
+                        SNew(STextBlock)
+                            .Text(InTitle)
+                            .Font(ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize()))
+                            .ColorAndOpacity(FSlateColor{CkStyle::OverlayOf(CkStyle::Text(), Opacity)})
+                    ]
+            ];
     }
 }
 
@@ -318,6 +406,16 @@ auto
         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
             [
                 Build_Inspector(Selection)
+            ]
+
+        + SVerticalBox::Slot().AutoHeight()
+            [
+                Build_Separator(Selection)
+            ]
+
+        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+            [
+                Build_ShapesAndSurfaces(Selection)
             ];
 }
 
@@ -364,6 +462,8 @@ auto
 
     auto Rows = SNew(SVerticalBox);
 
+    auto RowIndex = 0;
+
     for (const auto& Row : ck_style_lab_sample::Get_TreeRows())
     {
         auto RowContent = SNew(SHorizontalBox);
@@ -377,6 +477,7 @@ auto
                     .Brush(FAppStyle::GetBrush("Icons.FilledCircle"))
                     .Meaning(FText::FromString(TEXT("Entity is alive")))
                     .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(Row.Tone)})
+                    .Accent(CkStyle::GetToneColor(Row.Tone))
                     .Size(FVector2D{IconSize, IconSize})
             ];
 
@@ -384,11 +485,7 @@ auto
             .AutoWidth()
             .VAlign(VAlign_Center)
             [
-                SNew(SCkDebug_SelectableLabel)
-                    .Text(ck::debug_axes::Make_EntityIdText(InSelection, Row.CleanName, Row.IdText))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(FSlateColor{
-                        Row.CleanName.IsEmpty() ? CkStyle::TextMute() : CkStyle::Text()})
+                ck_style_lab_sample::Make_EntityRef(InSelection, Row.CleanName, Row.IdText)
             ];
 
         if (NOT Row.FoldChipText.IsEmpty())
@@ -419,13 +516,21 @@ auto
             .AutoHeight()
             [
                 SNew(SBorder)
-                    .BorderImage(CkStyle::GetFilledBrush())
-                    .BorderBackgroundColor(FSlateColor{CkStyle::Bg2()})
+                    .BorderImage(ck_style_lab_sample::Get_RowFillBrush(InSelection, RowIndex))
+                    .BorderBackgroundColor(ck_style_lab_sample::Get_RowFillTint(InSelection))
                     .Padding(RowPadding)
                     [
                         RowContent
                     ]
             ];
+
+        Rows->AddSlot()
+            .AutoHeight()
+            [
+                ck_style_lab_sample::Make_RowRule()
+            ];
+
+        ++RowIndex;
     }
 
     return Rows;
@@ -447,7 +552,7 @@ auto
     {
         auto Value = SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(InRow.Value))
-            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+            .Font(ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()))
             .ColorAndOpacity(FSlateColor{CkStyle::Value_Numeric()});
 
         // AlignedColumns is the one option that needs geometry, not just alignment: a fixed-width
@@ -465,8 +570,8 @@ auto
         const auto ValueAlignment = (UseAlignedCols || AlignRight) ? HAlign_Right : HAlign_Left;
 
         return SNew(SBorder)
-            .BorderImage(CkStyle::GetFilledBrush())
-            .BorderBackgroundColor(FSlateColor{CkStyle::Bg2()})
+            .BorderImage(ck::debug_axes::Get_SurfaceBrush(2))
+            .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_SurfaceTint(2)})
             .Padding(RowPadding)
             [
                 SNew(SHorizontalBox)
@@ -541,6 +646,133 @@ auto
     Body->AddSlot().AutoHeight().Padding(RowPadding)
         [
             BadgeBox
+        ];
+
+    return Body;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkStyleLab_SamplePane::
+    Build_ShapesAndSurfaces(
+        const FCkDebuggerStyleSelection& InSelection) const
+    -> TSharedRef<SWidget>
+{
+    auto Body = SNew(SVerticalBox);
+
+    Body->AddSlot().AutoHeight()
+        [
+            ck::debug_axes::Make_SectionHeader(
+                InSelection, FText::FromString(TEXT("Shapes and surfaces")), ECk_Tone::Accent)
+        ];
+
+    // ---- CornerStyle: the three brush selectors, side by side -----------------
+    const auto MakeCornerSwatch = [](const FSlateBrush* InBrush, const TCHAR* InLabel) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(InBrush)
+            .BorderBackgroundColor(FSlateColor{CkStyle::AccentDim()})
+            .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
+            [
+                SNew(STextBlock)
+                    .Text(FText::FromString(FString{InLabel}))
+                    .Font(ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
+            ];
+    };
+
+    auto CornerRow = SNew(SHorizontalBox);
+
+    CornerRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ MakeCornerSwatch(ck::debug_axes::Get_ChipBrush(), TEXT("chip")) ];
+    CornerRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ MakeCornerSwatch(ck::debug_axes::Get_BadgeBrush(), TEXT("badge")) ];
+    CornerRow->AddSlot().AutoWidth().VAlign(VAlign_Center)
+        [ MakeCornerSwatch(ck::debug_axes::Get_CardBrush(), TEXT("card")) ];
+
+    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [
+            CornerRow
+        ];
+
+    // ---- IconTreatment: the same glyph on three feature accents ---------------
+    auto IconRow = SNew(SHorizontalBox);
+
+    const auto IconTones = TArray<ECk_Tone>{ECk_Tone::Accent, ECk_Tone::Ok, ECk_Tone::Warn};
+    for (const auto Tone : IconTones)
+    {
+        IconRow->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SCkDebug_Icon)
+                    .Brush(FAppStyle::GetBrush("Icons.FilledCircle"))
+                    .Meaning(FText::FromString(TEXT("Icon treatment preview")))
+                    .ColorAndOpacity(FSlateColor{CkStyle::GetToneColor(Tone)})
+                    .Accent(CkStyle::GetToneColor(Tone))
+            ];
+    }
+
+    IconRow->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            ck_style_lab_sample::Make_KeyLabel(TEXT("icon treatment"))
+        ];
+
+    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [
+            IconRow
+        ];
+
+    // ---- SurfaceElevation: a depth-1 strip wrapping a depth-2 body ------------
+    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [
+            SNew(SBorder)
+                .BorderImage(ck::debug_axes::Get_SurfaceBrush(1))
+                .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_SurfaceTint(1)})
+                .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
+                [
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot().AutoHeight()
+                        [
+                            ck_style_lab_sample::Make_KeyLabel(TEXT("depth 1 — strip"))
+                        ]
+
+                    + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
+                        [
+                            SNew(SBorder)
+                                .BorderImage(ck::debug_axes::Get_SurfaceBrush(2))
+                                .BorderBackgroundColor(FSlateColor{ck::debug_axes::Get_SurfaceTint(2)})
+                                .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
+                                [
+                                    ck_style_lab_sample::Make_KeyLabel(TEXT("depth 2 — body"))
+                                ]
+                        ]
+                ]
+        ];
+
+    // ---- GraphNodeStyle: an active node beside a faded inactive one -----------
+    constexpr auto NodeIsActive = true;
+
+    Body->AddSlot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+        [
+            SNew(SHorizontalBox)
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    ck_style_lab_sample::Make_GraphNode(
+                        FText::FromString(TEXT("Reach_Target")), NodeIsActive)
+                ]
+
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    ck_style_lab_sample::Make_GraphNode(
+                        FText::FromString(TEXT("Gather_Wood")), NOT NodeIsActive)
+                ]
         ];
 
     return Body;

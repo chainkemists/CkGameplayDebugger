@@ -1,9 +1,13 @@
 #include "CkDebuggerAxes.h"
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -29,11 +33,16 @@ namespace ck_debugger_axes
 
     // --------------------------------------------------------------------------------------------------------------
 
+    auto Get_SmallLabelFont() -> FSlateFontInfo
+    {
+        return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
+    }
+
     auto Make_Label(const FText& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
     {
         return SNew(STextBlock)
             .Text(InText)
-            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+            .Font_Static(&Get_SmallLabelFont)
             .ColorAndOpacity(FSlateColor{InColor});
     }
 
@@ -44,7 +53,7 @@ namespace ck_debugger_axes
     // build once and never rebuild. A collapsed-to-transparent layer contributes no geometry, so
     // Classic renders byte-for-byte what the three-branch version rendered.
     auto Make_ToneBox(
-        const FSlateBrush*         InBrush,
+        TAttribute<const FSlateBrush*> InBrush,
         TAttribute<FSlateColor>    InRing,
         TAttribute<FMargin>        InRingPadding,
         TAttribute<FSlateColor>    InFill,
@@ -79,14 +88,36 @@ namespace ck_debugger_axes
     auto Get_LabelFont(const TOptional<int32>& InFontSize) -> FSlateFontInfo
     {
         // Resolved per read rather than captured: FontSizeSmall goes through the style settings, so
-        // an Editor Preferences font edit moves the label too.
+        // an Editor Preferences font edit moves the label too — and TextScale rides on top of it.
         const auto Size = InFontSize.IsSet() ? InFontSize.GetValue() : CkStyle::FontSizeSmall();
-        return CkStyle::RegularFont(Size);
+        return ck::debug_axes::ScaledFont("Regular", Size);
     }
 
     auto Get_Transparent() -> FSlateColor
     {
         return FSlateColor{FLinearColor::Transparent};
+    }
+
+    // ----- CornerStyle brushes ------------------------------------------------
+    // The ring counterpart of the corner shape, for the options that draw an outline instead of a
+    // fill. Kept internal: the public selectors below are what call sites compose through.
+    auto Get_OutlineBrush() -> const FSlateBrush*
+    {
+        switch (Get_LiveSelection().CornerStyle)
+        {
+            case ECkDebugAxis_CornerStyle::Rounded: return FCkDebuggerStyle::Get_RoundedOutlineBrush();
+            case ECkDebugAxis_CornerStyle::Sharp:   return FCkDebuggerStyle::Get_SurfaceOutlineBrush();
+            case ECkDebugAxis_CornerStyle::Pill:    return FCkDebuggerStyle::Get_PillOutlineBrush();
+        }
+
+        return FCkDebuggerStyle::Get_RoundedOutlineBrush();
+    }
+
+    // A zero-alpha accent is the "caller did not supply one" signal — an icon with no feature color
+    // still needs a readable backdrop.
+    auto Resolve_Accent(const FLinearColor& InAccent) -> FLinearColor
+    {
+        return InAccent.A > 0.0f ? InAccent : CkStyle::TextMute();
     }
 
     // ----- ChipStyle resolvers ------------------------------------------------
@@ -237,12 +268,12 @@ namespace ck_debugger_axes
     {
         switch (Get_LiveSelection().FoldChipStyle)
         {
-            case ECkDebugAxis_FoldChipStyle::Chip:    return CkStyle::RegularFont(CkStyle::FontSizeSmall());
-            case ECkDebugAxis_FoldChipStyle::Text:    return CkStyle::RegularFont(CkStyle::FontSizeSmall());
-            case ECkDebugAxis_FoldChipStyle::Minimal: return CkStyle::RegularFont(CkStyle::FontSizeMicro());
+            case ECkDebugAxis_FoldChipStyle::Chip:    return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
+            case ECkDebugAxis_FoldChipStyle::Text:    return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
+            case ECkDebugAxis_FoldChipStyle::Minimal: return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
         }
 
-        return CkStyle::RegularFont(CkStyle::FontSizeSmall());
+        return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
     }
 
     auto FoldChip_Ink(const FLinearColor& InTone) -> FSlateColor
@@ -303,12 +334,12 @@ namespace ck_debugger_axes
     {
         switch (Get_LiveSelection().SectionHeaderStyle)
         {
-            case ECkDebugAxis_SectionHeaderStyle::Uppercase: return CkStyle::BoldFont(CkStyle::FontSizeH4());
-            case ECkDebugAxis_SectionHeaderStyle::Mixed:     return CkStyle::BoldFont(CkStyle::FontSizeH4());
-            case ECkDebugAxis_SectionHeaderStyle::Minimal:   return CkStyle::RegularFont(CkStyle::FontSizeSmall());
+            case ECkDebugAxis_SectionHeaderStyle::Uppercase: return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4());
+            case ECkDebugAxis_SectionHeaderStyle::Mixed:     return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4());
+            case ECkDebugAxis_SectionHeaderStyle::Minimal:   return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
         }
 
-        return CkStyle::BoldFont(CkStyle::FontSizeH4());
+        return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4());
     }
 
     auto SectionHeader_Ink(const FLinearColor& InTone) -> FSlateColor
@@ -410,7 +441,7 @@ auto
     using namespace ck_debugger_axes;
 
     return Make_ToneBox(
-        CkStyle::GetRoundedBrush(),
+        TAttribute<const FSlateBrush*>::CreateStatic(&Get_ChipBrush),
         TAttribute<FSlateColor>::CreateLambda([InInk]() { return Chip_Ring(InInk); }),
         TAttribute<FMargin>::CreateStatic(&Chip_RingPadding),
         TAttribute<FSlateColor>::CreateLambda([InInk, InFill]() { return Chip_Fill(InInk, InFill); }),
@@ -447,7 +478,7 @@ auto
     using namespace ck_debugger_axes;
 
     return Make_ToneBox(
-        CkStyle::GetRoundedBrush_Small(),
+        TAttribute<const FSlateBrush*>::CreateStatic(&Get_BadgeBrush),
         TAttribute<FSlateColor>::CreateLambda([InInk]() { return Badge_Ring(InInk); }),
         TAttribute<FMargin>::CreateStatic(&Badge_RingPadding),
         TAttribute<FSlateColor>::CreateLambda([InFill]() { return Badge_Fill(InFill); }),
@@ -521,7 +552,7 @@ auto
     const auto Abbrev = Get_Abbreviation(InText);
 
     return Make_ToneBox(
-        CkStyle::GetRoundedBrush_Small(),
+        TAttribute<const FSlateBrush*>::CreateStatic(&Get_BadgeBrush),
         Get_Transparent(),
         FMargin{0.0f},
         TAttribute<FSlateColor>::CreateLambda([Tone, ToneDim]() { return ProviderChip_Fill(Tone, ToneDim); }),
@@ -532,7 +563,7 @@ auto
                 ? Abbrev
                 : Full;
         }),
-        CkStyle::RegularFont(CkStyle::FontSizeSmall()),
+        TAttribute<FSlateFontInfo>::CreateStatic(&Get_SmallLabelFont),
         TAttribute<FSlateColor>::CreateLambda([Tone]() { return ProviderChip_Ink(Tone); }));
 }
 
@@ -650,6 +681,371 @@ auto
     Row->SetVisibility(TAttribute<EVisibility>::CreateStatic(&MergeCount_ContainerVisibility));
 
     return Row;
+}
+
+// ====================================================================================================================
+// TYPOGRAPHY
+
+auto
+    ck::debug_axes::
+    Get_TextScale()
+    -> float
+{
+    switch (ck_debugger_axes::Get_LiveSelection().TextScale)
+    {
+        case ECkDebugAxis_TextScale::Normal: return 1.0f;
+        case ECkDebugAxis_TextScale::Small:  return 0.875f;
+        case ECkDebugAxis_TextScale::Large:  return 1.125f;
+    }
+
+    return 1.0f;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_ScaledFontSize(
+        int32 InRoleSize)
+    -> int32
+{
+    // Font sizes are whole points, so a scale of 0.875 on the palette's 9pt body lands on 8 and
+    // 1.125 lands on 10 — three distinct sizes at every role the suite uses.
+    return FMath::Max(1, FMath::RoundToInt(static_cast<float>(InRoleSize) * Get_TextScale()));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    ScaledFont(
+        const ANSICHAR* InFace,
+        int32 InRoleSize)
+    -> FSlateFontInfo
+{
+    return FCoreStyle::GetDefaultFontStyle(InFace, Get_ScaledFontSize(InRoleSize));
+}
+
+// ====================================================================================================================
+// BRUSHES
+
+auto
+    ck::debug_axes::
+    Get_ChipBrush()
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().CornerStyle)
+    {
+        case ECkDebugAxis_CornerStyle::Rounded: return CkStyle::GetRoundedBrush();
+        case ECkDebugAxis_CornerStyle::Sharp:   return FCkDebuggerStyle::Get_SquareBrush();
+        case ECkDebugAxis_CornerStyle::Pill:    return FCkDebuggerStyle::Get_PillBrush();
+    }
+
+    return CkStyle::GetRoundedBrush();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_BadgeBrush()
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().CornerStyle)
+    {
+        case ECkDebugAxis_CornerStyle::Rounded: return CkStyle::GetRoundedBrush_Small();
+        case ECkDebugAxis_CornerStyle::Sharp:   return FCkDebuggerStyle::Get_SquareBrush();
+        case ECkDebugAxis_CornerStyle::Pill:    return FCkDebuggerStyle::Get_PillBrush();
+    }
+
+    return CkStyle::GetRoundedBrush_Small();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CardBrush()
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().CornerStyle)
+    {
+        case ECkDebugAxis_CornerStyle::Rounded: return CkStyle::GetRoundedBrush_Large();
+        case ECkDebugAxis_CornerStyle::Sharp:   return FCkDebuggerStyle::Get_SquareBrush();
+        case ECkDebugAxis_CornerStyle::Pill:    return FCkDebuggerStyle::Get_PillBrush();
+    }
+
+    return CkStyle::GetRoundedBrush_Large();
+}
+
+// ====================================================================================================================
+// SURFACES
+
+auto
+    ck::debug_axes::
+    Get_SurfaceBrush(
+        int32 InDepth)
+    -> const FSlateBrush*
+{
+    // The ground is always a solid fill: an outlined or flattened ROOT would let editor chrome
+    // read through the debugger, which no option is asking for.
+    if (InDepth <= 0)
+    { return CkStyle::GetFilledBrush(); }
+
+    switch (ck_debugger_axes::Get_LiveSelection().SurfaceElevation)
+    {
+        case ECkDebugAxis_SurfaceElevation::Layered:  return CkStyle::GetFilledBrush();
+        case ECkDebugAxis_SurfaceElevation::Flat:     return CkStyle::GetFilledBrush();
+        case ECkDebugAxis_SurfaceElevation::Outlined: return FCkDebuggerStyle::Get_SurfaceOutlineBrush();
+    }
+
+    return CkStyle::GetFilledBrush();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_SurfaceTint(
+        int32 InDepth)
+    -> FLinearColor
+{
+    if (InDepth <= 0)
+    { return CkStyle::BgRoot(); }
+
+    switch (ck_debugger_axes::Get_LiveSelection().SurfaceElevation)
+    {
+        case ECkDebugAxis_SurfaceElevation::Layered:
+            if (InDepth == 1) { return CkStyle::Bg1(); }
+            if (InDepth == 2) { return CkStyle::Bg2(); }
+            return CkStyle::Bg3();
+
+        // One tier for every nested surface — the tonal ladder collapses, so what still separates
+        // two adjacent surfaces is their separator, not their fill.
+        case ECkDebugAxis_SurfaceElevation::Flat:
+            return CkStyle::Bg1();
+
+        // Paired with the outline brush, whose fill is transparent: the tint lands on the ring.
+        case ECkDebugAxis_SurfaceElevation::Outlined:
+            return CkStyle::Border();
+    }
+
+    return CkStyle::Bg1();
+}
+
+// ====================================================================================================================
+// ROW BANDING
+
+auto
+    ck::debug_axes::
+    Get_RowBandingBrush(
+        int32 InRowIndex)
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().RowBanding)
+    {
+        case ECkDebugAxis_RowBanding::Off:
+            return FStyleDefaults::GetNoBrush();
+
+        // Absolute so a caller handing over a negative index still alternates instead of banding
+        // two adjacent rows identically.
+        case ECkDebugAxis_RowBanding::Zebra:
+            return FCkDebuggerStyle::Get_RowBandBrush((FMath::Abs(InRowIndex) % 2) != 0);
+
+        case ECkDebugAxis_RowBanding::Hairline:
+            return FCkDebuggerStyle::Get_SeparatorBrush();
+    }
+
+    return FStyleDefaults::GetNoBrush();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_RowBandingRuleThickness()
+    -> float
+{
+    // Deferring to SeparatorWeight is the point: a user who silenced separators does not want a
+    // per-row rule sneaking the same line back in.
+    return ck_debugger_axes::Get_LiveSelection().RowBanding == ECkDebugAxis_RowBanding::Hairline
+        ? Get_SeparatorThickness(ck_debugger_axes::Get_LiveSelection())
+        : 0.0f;
+}
+
+// ====================================================================================================================
+// GRAPH NODES
+
+auto
+    ck::debug_axes::
+    Get_NodeBorderThickness()
+    -> float
+{
+    const auto Role = CkStyle::NodeBorderThickness();
+
+    switch (ck_debugger_axes::Get_LiveSelection().GraphNodeStyle)
+    {
+        case ECkDebugAxis_GraphNodeStyle::Card:    return Role;
+        case ECkDebugAxis_GraphNodeStyle::Minimal: return FMath::Max(0.5f, Role * 0.5f);
+        case ECkDebugAxis_GraphNodeStyle::Dense:   return Role * 1.5f;
+    }
+
+    return Role;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_NodeInactiveOpacity()
+    -> float
+{
+    const auto Role = CkStyle::NodeInactiveOpacity();
+
+    switch (ck_debugger_axes::Get_LiveSelection().GraphNodeStyle)
+    {
+        case ECkDebugAxis_GraphNodeStyle::Card:    return Role;
+        case ECkDebugAxis_GraphNodeStyle::Minimal: return FMath::Clamp(Role * 0.6f, 0.05f, 1.0f);
+        case ECkDebugAxis_GraphNodeStyle::Dense:   return FMath::Clamp(Role * 1.4f, 0.05f, 1.0f);
+    }
+
+    return Role;
+}
+
+// ====================================================================================================================
+// ENTITY REF
+
+auto
+    ck::debug_axes::
+    Get_EntityRefBrush()
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().EntityRefStyle)
+    {
+        case ECkDebugAxis_EntityRefStyle::Flat:        return FStyleDefaults::GetNoBrush();
+        case ECkDebugAxis_EntityRefStyle::Pill:        return Get_ChipBrush();
+        case ECkDebugAxis_EntityRefStyle::OutlinePill: return ck_debugger_axes::Get_OutlineBrush();
+        case ECkDebugAxis_EntityRefStyle::Monochrome:  return FStyleDefaults::GetNoBrush();
+    }
+
+    return FStyleDefaults::GetNoBrush();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_EntityRefPadding()
+    -> FMargin
+{
+    using namespace ck_debugger_axes;
+
+    switch (Get_LiveSelection().EntityRefStyle)
+    {
+        case ECkDebugAxis_EntityRefStyle::Flat:        return FMargin{0.0f};
+        case ECkDebugAxis_EntityRefStyle::Pill:        return FMargin{ChipPaddingX, ChipPaddingY};
+        case ECkDebugAxis_EntityRefStyle::OutlinePill: return FMargin{ChipPaddingX, ChipPaddingY};
+        case ECkDebugAxis_EntityRefStyle::Monochrome:  return FMargin{0.0f};
+    }
+
+    return FMargin{0.0f};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_EntityRefFill(
+        const FLinearColor& InAccent)
+    -> FLinearColor
+{
+    switch (ck_debugger_axes::Get_LiveSelection().EntityRefStyle)
+    {
+        case ECkDebugAxis_EntityRefStyle::Flat:        return FLinearColor::Transparent;
+        case ECkDebugAxis_EntityRefStyle::Pill:        return CkStyle::OverlayOf(InAccent, CkStyle::AlphaFaint());
+
+        // The outline brush's fill is transparent, so this lands on the ring rather than a body.
+        case ECkDebugAxis_EntityRefStyle::OutlinePill: return CkStyle::OverlayOf(InAccent, CkStyle::AlphaSoft());
+        case ECkDebugAxis_EntityRefStyle::Monochrome:  return FLinearColor::Transparent;
+    }
+
+    return FLinearColor::Transparent;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_EntityRefInk(
+        const FLinearColor& InAccent)
+    -> FLinearColor
+{
+    switch (ck_debugger_axes::Get_LiveSelection().EntityRefStyle)
+    {
+        case ECkDebugAxis_EntityRefStyle::Flat:        return InAccent;
+        case ECkDebugAxis_EntityRefStyle::Pill:        return InAccent;
+        case ECkDebugAxis_EntityRefStyle::OutlinePill: return InAccent;
+        case ECkDebugAxis_EntityRefStyle::Monochrome:  return CkStyle::TextDim();
+    }
+
+    return InAccent;
+}
+
+// ====================================================================================================================
+// ICON TREATMENT
+
+auto
+    ck::debug_axes::
+    Get_IconBackdropBrush()
+    -> const FSlateBrush*
+{
+    switch (ck_debugger_axes::Get_LiveSelection().IconTreatment)
+    {
+        case ECkDebugAxis_IconTreatment::Plain: return FStyleDefaults::GetNoBrush();
+        case ECkDebugAxis_IconTreatment::Well:  return FCkDebuggerStyle::Get_IconWellBrush();
+        case ECkDebugAxis_IconTreatment::Ring:  return FCkDebuggerStyle::Get_IconRingBrush();
+    }
+
+    return FStyleDefaults::GetNoBrush();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_IconBackdropPadding()
+    -> FMargin
+{
+    switch (ck_debugger_axes::Get_LiveSelection().IconTreatment)
+    {
+        // Zero is load-bearing: Plain has to cost the glyph exactly nothing, or every icon slot in
+        // the suite shifts the moment the widget grows a backdrop layer.
+        case ECkDebugAxis_IconTreatment::Plain: return FMargin{0.0f};
+        case ECkDebugAxis_IconTreatment::Well:  return FMargin{CkStyle::SpaceS};
+        case ECkDebugAxis_IconTreatment::Ring:  return FMargin{CkStyle::SpaceXS};
+    }
+
+    return FMargin{0.0f};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_IconBackdropTint(
+        const FLinearColor& InAccent)
+    -> FLinearColor
+{
+    const auto Accent = ck_debugger_axes::Resolve_Accent(InAccent);
+
+    switch (ck_debugger_axes::Get_LiveSelection().IconTreatment)
+    {
+        case ECkDebugAxis_IconTreatment::Plain: return FLinearColor::Transparent;
+        case ECkDebugAxis_IconTreatment::Well:  return CkStyle::OverlayOf(Accent, CkStyle::IconWellAlpha());
+        case ECkDebugAxis_IconTreatment::Ring:  return CkStyle::OverlayOf(Accent, CkStyle::AlphaStrong());
+    }
+
+    return FLinearColor::Transparent;
 }
 
 // ====================================================================================================================
@@ -1018,6 +1414,15 @@ auto
         Dense.SeparatorWeight   = ECkDebugAxis_SeparatorWeight::None;
         Dense.IconSize          = ECkDebugAxis_IconSize::Small;
         Dense.MergeCountDisplay = ECkDebugAxis_MergeCountDisplay::Hidden;
+        // Every row that can be a row: smaller type, one flat surface tier, square corners so
+        // adjacent chips tile, and a per-row rule doing the separating the strips no longer do.
+        Dense.IconTreatment     = ECkDebugAxis_IconTreatment::Plain;
+        Dense.TextScale         = ECkDebugAxis_TextScale::Small;
+        Dense.EntityRefStyle    = ECkDebugAxis_EntityRefStyle::Flat;
+        Dense.CornerStyle       = ECkDebugAxis_CornerStyle::Sharp;
+        Dense.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Flat;
+        Dense.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Dense;
+        Dense.RowBanding        = ECkDebugAxis_RowBanding::Hairline;
 
         Result.Add(FCkDebuggerStyleProfile{
             TEXT("Dense"),
@@ -1030,6 +1435,15 @@ auto
         Presentation.ChipStyle       = ECkDebugAxis_ChipStyle::Solid;
         Presentation.SeparatorWeight = ECkDebugAxis_SeparatorWeight::Standard;
         Presentation.IconSize        = ECkDebugAxis_IconSize::Large;
+        // Everything a metre further away: bigger type, glyphs on wells, capsule corners, and
+        // alternating row fills so a projected list still tracks left to right.
+        Presentation.IconTreatment     = ECkDebugAxis_IconTreatment::Well;
+        Presentation.TextScale         = ECkDebugAxis_TextScale::Large;
+        Presentation.EntityRefStyle    = ECkDebugAxis_EntityRefStyle::Pill;
+        Presentation.CornerStyle       = ECkDebugAxis_CornerStyle::Pill;
+        Presentation.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Layered;
+        Presentation.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Card;
+        Presentation.RowBanding        = ECkDebugAxis_RowBanding::Zebra;
 
         Result.Add(FCkDebuggerStyleProfile{
             TEXT("Presentation"),
@@ -1042,6 +1456,15 @@ auto
         MinimalInk.SeparatorWeight   = ECkDebugAxis_SeparatorWeight::Hairline;
         MinimalInk.ProviderChipStyle = ECkDebugAxis_ProviderChipStyle::AbbrevOnly;
         MinimalInk.LegendMode        = ECkDebugAxis_LegendMode::Off;
+        // Rings instead of fills, everywhere the choice exists — consistent with the hollow badges
+        // and unfilled chips this profile already asks for. Type size stays honest.
+        MinimalInk.IconTreatment     = ECkDebugAxis_IconTreatment::Ring;
+        MinimalInk.TextScale         = ECkDebugAxis_TextScale::Normal;
+        MinimalInk.EntityRefStyle    = ECkDebugAxis_EntityRefStyle::Monochrome;
+        MinimalInk.CornerStyle       = ECkDebugAxis_CornerStyle::Sharp;
+        MinimalInk.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Outlined;
+        MinimalInk.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Minimal;
+        MinimalInk.RowBanding        = ECkDebugAxis_RowBanding::Off;
 
         Result.Add(FCkDebuggerStyleProfile{
             TEXT("Minimal ink"),

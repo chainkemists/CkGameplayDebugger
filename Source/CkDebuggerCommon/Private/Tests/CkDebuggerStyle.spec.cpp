@@ -4,9 +4,15 @@
 
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "Styling/AppStyle.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -131,7 +137,9 @@ bool FCkDebuggerStyle_ProfileRegistryIntegrity::RunTest(const FString& Parameter
         ++ComparedAxes;
     }
 
-    TestTrue(TEXT("The reflection walk actually visited axes"), ComparedAxes > 0);
+    // The catalog size is asserted explicitly so an accidental axis drop is caught here rather than
+    // silently narrowing every reflection-driven surface (the Style Lab's controls pane included).
+    TestEqual(TEXT("The axis catalog holds every declared axis"), ComparedAxes, 22);
 
     // Every non-Classic profile must actually differ, otherwise the registry entry is dead weight.
     for (auto Index = 1; Index < Profiles.Num(); ++Index)
@@ -673,6 +681,291 @@ bool FCkDebuggerStyle_CommonWidgetsAreLive::RunTest(const FString& Parameters)
     TestTrue(
         TEXT("IconSize Small shrinks the same toggle"),
         ToggleSmall.X < ToggleMedium.X);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_SchemaV4AxesResolveDistinctly,
+    "Ck.DebuggerCommon.Style.SchemaV4AxesResolveDistinctly",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    // Every resolver added with schema v4 reads the LIVE selection, so the settings CDO is the only
+    // knob these cases turn. The guard puts the user's whole selection back afterwards.
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    TestEqual(TEXT("Schema version tracks the v4 catalog"),
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 4);
+
+    // ---- TextScale -----------------------------------------------------------
+    const auto RoleSize = CkStyle::FontSizeSmall();
+
+    TestEqual(TEXT("Normal is a byte-identical pass-through of the role size"),
+        ck::debug_axes::Get_ScaledFontSize(RoleSize), RoleSize);
+    TestEqual(TEXT("Normal is a unit multiplier"), ck::debug_axes::Get_TextScale(), 1.0f);
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Small;
+    const auto SmallSize = ck::debug_axes::Get_ScaledFontSize(RoleSize);
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+    const auto LargeSize = ck::debug_axes::Get_ScaledFontSize(RoleSize);
+
+    TestTrue(TEXT("TextScale orders Small < Normal < Large at the palette's own role size"),
+        SmallSize < RoleSize && RoleSize < LargeSize);
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+    TestEqual(TEXT("ScaledFont carries the scaled size through to the font"),
+        ck::debug_axes::ScaledFont("Regular", RoleSize).Size, static_cast<float>(LargeSize));
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Normal;
+
+    // A nonsense role size still resolves to something renderable.
+    TestTrue(TEXT("A zero role size still yields a drawable point size"),
+        ck::debug_axes::Get_ScaledFontSize(0) >= 1);
+
+    // ---- CornerStyle ---------------------------------------------------------
+    // Rounded must be exactly the brushes the chip / badge / card drew before the axis existed.
+    TestTrue(TEXT("Rounded chips keep CkStyle's 6px brush"),
+        ck::debug_axes::Get_ChipBrush() == CkStyle::GetRoundedBrush());
+    TestTrue(TEXT("Rounded badges keep CkStyle's 3px brush"),
+        ck::debug_axes::Get_BadgeBrush() == CkStyle::GetRoundedBrush_Small());
+    TestTrue(TEXT("Rounded cards keep CkStyle's 8px brush"),
+        ck::debug_axes::Get_CardBrush() == CkStyle::GetRoundedBrush_Large());
+
+    auto CornerBrushes = TSet<const FSlateBrush*>{};
+    for (const auto Option : Get_AllOptions<ECkDebugAxis_CornerStyle>())
+    {
+        Settings->Selection.CornerStyle = Option;
+
+        const auto* Brush = ck::debug_axes::Get_ChipBrush();
+        const auto  Name  = Get_OptionName(
+            static_cast<int64>(Option), StaticEnum<ECkDebugAxis_CornerStyle>());
+
+        TestNotNull(*ck::Format_UE(TEXT("CornerStyle '{}' resolves to a registered brush"), Name), Brush);
+        TestFalse(
+            *ck::Format_UE(TEXT("CornerStyle '{}' is a distinct shape"), Name),
+            CornerBrushes.Contains(Brush));
+
+        CornerBrushes.Add(Brush);
+    }
+
+    Settings->Selection.CornerStyle = ECkDebugAxis_CornerStyle::Rounded;
+
+    // ---- SurfaceElevation ----------------------------------------------------
+    // Layered is the ladder every common surface widget drew by hand before the axis existed.
+    TestTrue(TEXT("Depth 0 is the window ground"), ck::debug_axes::Get_SurfaceTint(0) == CkStyle::BgRoot());
+    TestTrue(TEXT("Layered depth 1 is the strip tier"), ck::debug_axes::Get_SurfaceTint(1) == CkStyle::Bg1());
+    TestTrue(TEXT("Layered depth 2 is the body tier"), ck::debug_axes::Get_SurfaceTint(2) == CkStyle::Bg2());
+    TestTrue(TEXT("Layered depth 3 is the inset tier"), ck::debug_axes::Get_SurfaceTint(3) == CkStyle::Bg3());
+    TestTrue(TEXT("Layered surfaces are plain fills"),
+        ck::debug_axes::Get_SurfaceBrush(2) == CkStyle::GetFilledBrush());
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Flat;
+    TestTrue(TEXT("Flat collapses the nested tiers onto one fill"),
+        ck::debug_axes::Get_SurfaceTint(2) == ck::debug_axes::Get_SurfaceTint(3));
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Outlined;
+    TestTrue(TEXT("Outlined swaps the fill brush for the ring brush"),
+        ck::debug_axes::Get_SurfaceBrush(2) == FCkDebuggerStyle::Get_SurfaceOutlineBrush());
+    TestTrue(TEXT("Outlined leaves the ground opaque so editor chrome cannot read through"),
+        ck::debug_axes::Get_SurfaceBrush(0) == CkStyle::GetFilledBrush());
+
+    // Every option is total over any depth a caller could hand over.
+    for (const auto Option : Get_AllOptions<ECkDebugAxis_SurfaceElevation>())
+    {
+        Settings->Selection.SurfaceElevation = Option;
+
+        TestNotNull(TEXT("A negative depth still resolves to a brush"), ck::debug_axes::Get_SurfaceBrush(-3));
+        TestNotNull(TEXT("A very deep surface still resolves to a brush"), ck::debug_axes::Get_SurfaceBrush(99));
+    }
+
+    Settings->Selection.SurfaceElevation = ECkDebugAxis_SurfaceElevation::Layered;
+
+    // ---- RowBanding ----------------------------------------------------------
+    TestEqual(TEXT("Off never draws a rule"), ck::debug_axes::Get_RowBandingRuleThickness(), 0.0f);
+
+    Settings->Selection.RowBanding = ECkDebugAxis_RowBanding::Zebra;
+    TestTrue(TEXT("Zebra alternates between two band brushes"),
+        ck::debug_axes::Get_RowBandingBrush(0) != ck::debug_axes::Get_RowBandingBrush(1));
+    TestTrue(TEXT("Zebra bands repeat every other row"),
+        ck::debug_axes::Get_RowBandingBrush(0) == ck::debug_axes::Get_RowBandingBrush(2));
+    TestTrue(TEXT("A negative row index still alternates"),
+        ck::debug_axes::Get_RowBandingBrush(-1) == ck::debug_axes::Get_RowBandingBrush(1));
+    TestEqual(TEXT("Zebra separates by fill, not by a rule"),
+        ck::debug_axes::Get_RowBandingRuleThickness(), 0.0f);
+
+    Settings->Selection.RowBanding = ECkDebugAxis_RowBanding::Hairline;
+    TestTrue(TEXT("Hairline draws a rule at the separator weight"),
+        ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f);
+
+    // Silencing separators has to silence the per-row rule too, or the axis smuggles the line back.
+    Settings->Selection.SeparatorWeight = ECkDebugAxis_SeparatorWeight::None;
+    TestEqual(TEXT("SeparatorWeight None silences the hairline banding"),
+        ck::debug_axes::Get_RowBandingRuleThickness(), 0.0f);
+
+    Settings->Selection.SeparatorWeight = ECkDebugAxis_SeparatorWeight::Hairline;
+    Settings->Selection.RowBanding      = ECkDebugAxis_RowBanding::Off;
+
+    // ---- GraphNodeStyle ------------------------------------------------------
+    TestEqual(TEXT("Card passes the node border role through untouched"),
+        ck::debug_axes::Get_NodeBorderThickness(), CkStyle::NodeBorderThickness());
+    TestEqual(TEXT("Card passes the inactive opacity role through untouched"),
+        ck::debug_axes::Get_NodeInactiveOpacity(), CkStyle::NodeInactiveOpacity());
+
+    Settings->Selection.GraphNodeStyle = ECkDebugAxis_GraphNodeStyle::Minimal;
+    const auto MinimalBorder  = ck::debug_axes::Get_NodeBorderThickness();
+    const auto MinimalOpacity = ck::debug_axes::Get_NodeInactiveOpacity();
+
+    Settings->Selection.GraphNodeStyle = ECkDebugAxis_GraphNodeStyle::Dense;
+    const auto DenseBorder  = ck::debug_axes::Get_NodeBorderThickness();
+    const auto DenseOpacity = ck::debug_axes::Get_NodeInactiveOpacity();
+
+    TestTrue(TEXT("GraphNodeStyle orders Minimal < Card < Dense on border weight"),
+        MinimalBorder < CkStyle::NodeBorderThickness() && CkStyle::NodeBorderThickness() < DenseBorder);
+    TestTrue(TEXT("Minimal fades inactive nodes harder than Dense"), MinimalOpacity < DenseOpacity);
+
+    for (const auto Option : Get_AllOptions<ECkDebugAxis_GraphNodeStyle>())
+    {
+        Settings->Selection.GraphNodeStyle = Option;
+
+        TestTrue(TEXT("Every graph node style keeps a drawable border"),
+            ck::debug_axes::Get_NodeBorderThickness() > 0.0f);
+        TestTrue(TEXT("Every graph node style keeps an inactive node visible"),
+            ck::debug_axes::Get_NodeInactiveOpacity() > 0.0f
+                && ck::debug_axes::Get_NodeInactiveOpacity() <= 1.0f);
+    }
+
+    Settings->Selection.GraphNodeStyle = ECkDebugAxis_GraphNodeStyle::Card;
+
+    // ---- IconTreatment -------------------------------------------------------
+    const auto Accent = CkStyle::Accent();
+
+    TestEqual(TEXT("Plain costs the glyph no horizontal padding"),
+        ck::debug_axes::Get_IconBackdropPadding().Left, 0.0f);
+    TestEqual(TEXT("Plain costs the glyph no vertical padding"),
+        ck::debug_axes::Get_IconBackdropPadding().Top, 0.0f);
+    TestEqual(TEXT("Plain paints no backdrop"),
+        ck::debug_axes::Get_IconBackdropTint(Accent).A, 0.0f);
+
+    Settings->Selection.IconTreatment = ECkDebugAxis_IconTreatment::Well;
+    TestEqual(TEXT("Well tints itself from the accent at the icon-well alpha"),
+        ck::debug_axes::Get_IconBackdropTint(Accent).A, CkStyle::IconWellAlpha());
+    TestTrue(TEXT("Well draws the registered well brush"),
+        ck::debug_axes::Get_IconBackdropBrush() == FCkDebuggerStyle::Get_IconWellBrush());
+
+    Settings->Selection.IconTreatment = ECkDebugAxis_IconTreatment::Ring;
+    TestTrue(TEXT("Ring draws the registered ring brush"),
+        ck::debug_axes::Get_IconBackdropBrush() == FCkDebuggerStyle::Get_IconRingBrush());
+
+    // An unset accent still has to produce a readable backdrop rather than an invisible one.
+    TestTrue(TEXT("An unset accent falls back instead of vanishing"),
+        ck::debug_axes::Get_IconBackdropTint(FLinearColor::Transparent).A > 0.0f);
+
+    Settings->Selection.IconTreatment = ECkDebugAxis_IconTreatment::Plain;
+
+    // ---- EntityRefStyle ------------------------------------------------------
+    TestEqual(TEXT("Flat boxes nothing"), ck::debug_axes::Get_EntityRefPadding().Left, 0.0f);
+    TestTrue(TEXT("Flat keeps the caller's accent as its ink"),
+        ck::debug_axes::Get_EntityRefInk(Accent) == Accent);
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Pill;
+    const auto* PillBrush = ck::debug_axes::Get_EntityRefBrush();
+
+    TestTrue(TEXT("Pill boxes the reference"),
+        ck::debug_axes::Get_EntityRefPadding().Left > 0.0f);
+    TestTrue(TEXT("Pill washes the box with the accent"),
+        ck::debug_axes::Get_EntityRefFill(Accent).A > 0.0f);
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::OutlinePill;
+    TestTrue(TEXT("OutlinePill rings instead of filling"),
+        ck::debug_axes::Get_EntityRefBrush() != PillBrush);
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Monochrome;
+    TestTrue(TEXT("Monochrome drops the accent for the dim text role"),
+        ck::debug_axes::Get_EntityRefInk(Accent) == CkStyle::TextDim());
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_SchemaV4AxesAreLive,
+    "Ck.DebuggerCommon.Style.SchemaV4AxesAreLive",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_SchemaV4AxesAreLive::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    // ---- IconTreatment on an ALREADY-BUILT glyph -----------------------------
+    const auto Icon = SNew(SCkDebug_Icon)
+        .Brush(FAppStyle::GetBrush("Icons.FilledCircle"))
+        .Meaning(FText::FromString(TEXT("Live icon treatment")))
+        .Accent(CkStyle::Accent());
+
+    const auto IconPlain = Repass(Icon);
+    TestTrue(TEXT("A Plain glyph occupies its own box and nothing more"), IconPlain.X > 0.0f);
+
+    Settings->Selection.IconTreatment = ECkDebugAxis_IconTreatment::Well;
+    const auto IconWell = Repass(Icon);
+
+    TestTrue(
+        TEXT("IconTreatment Well grows the SAME glyph — the treatment is live, not baked"),
+        IconWell.X > IconPlain.X && IconWell.Y > IconPlain.Y);
+
+    Settings->Selection.IconTreatment = ECkDebugAxis_IconTreatment::Plain;
+    TestTrue(
+        TEXT("Returning to Plain restores the glyph's shipped footprint"),
+        FMath::IsNearlyEqual(Repass(Icon).X, IconPlain.X));
+
+    // ---- TextScale on an ALREADY-BUILT chip ----------------------------------
+    const auto Chip = ck::debug_axes::Make_Chip(
+        UCkDebuggerStyleSettings::Get_Selection(),
+        FText::FromString(TEXT("transform")),
+        ECk_Tone::Info);
+
+    const auto ChipNormal = Repass(Chip);
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Large;
+    const auto ChipLarge = Repass(Chip);
+
+    TestTrue(
+        TEXT("TextScale Large grows an ALREADY-BUILT chip's label"),
+        ChipLarge.X > ChipNormal.X);
+
+    Settings->Selection.TextScale = ECkDebugAxis_TextScale::Small;
+    TestTrue(
+        TEXT("TextScale Small shrinks the same chip"),
+        Repass(Chip).X < ChipLarge.X);
 
     return true;
 }

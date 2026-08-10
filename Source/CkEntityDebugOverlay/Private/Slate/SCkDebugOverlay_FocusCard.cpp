@@ -9,6 +9,8 @@
 #include "CkEntityDebugOverlay/Presentation/CkDebugOverlay_FocusCardBudget.h"
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
 
+#include "CkCore/Format/CkFormat.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
@@ -276,7 +278,8 @@ auto
         bool                                bIsLocked,
         bool                                bIsPinned,
         int32                               InCoLocatedIndex,
-        int32                               InCoLocatedCount)
+        int32                               InCoLocatedCount,
+        const FText&                        InLayoutLabel)
     -> void
 {
     if (NOT _ContentBox.IsValid())
@@ -341,6 +344,31 @@ auto
                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeH3())))
         ];
 
+    // ---- Layout quick-switcher chip (card's top-right corner) ----
+    // Read-only by construction, not by omission: the whole overlay root is HitTestInvisible so
+    // it never steals viewport input, which rules out a clickable dropdown. The chip therefore
+    // carries its own gesture ("L x2") and is budget-neutral — it lives in the header row and
+    // consumes no data-row slot.
+    if (NOT InLayoutLabel.IsEmpty())
+    {
+        HeaderRow->AddSlot()
+            .FillWidth(1.0f).HAlign(HAlign_Right).VAlign(VAlign_Center)
+            .Padding(FMargin{ CkStyle::SpaceS, 0.0f, 0.0f, 0.0f })
+            [
+                SNew(SBorder)
+                    .BorderImage(CkStyle::GetRoundedBrush())
+                    .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::Accent(), 0.55f))
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{ CkStyle::SpaceS, 1.0f })
+                    [
+                        SNew(STextBlock)
+                            .Text(InLayoutLabel)
+                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
+                            .ColorAndOpacity(ck_debugoverlay_focuscard::ChipInk)
+                    ]
+            ];
+    }
+
     _ContentBox->AddSlot()
         .AutoHeight()
         .Padding(ck::debug_axes::Apply_RowDensity(
@@ -359,6 +387,23 @@ auto
         { Settings ? Settings->FocusCardMaxRowsPerSection : 4, Settings ? Settings->FocusCardMaxRows : 18 });
     const auto& SortedSections = BudgetedModel.Sections;
 
+    // Distance LOD, Pill tier: the model pass already trimmed every section to ONE
+    // severity-carrying token, so the card packs them all onto a single flow line instead of
+    // one line per section. Slate hides nothing here — it lays out what the trim left.
+    const auto bPillTier = InModel.LodTier == ECk_DebugOverlay_LodTier::Pill;
+
+    const auto Make_FlowRow = [this]() -> TSharedRef<SWrapBox>
+    {
+        // Explicit PreferredSize, NOT UseAllottedSize: the wrap boxes are recreated every
+        // Set_Model call, so the allotted-size sync (which happens in Tick) never runs —
+        // desired size would wrap at the 100px default and reserve phantom empty lines.
+        return SNew(SWrapBox).PreferredSize(_WrapWidth);
+    };
+
+    auto PillRow = TSharedPtr<SWrapBox>{};
+    if (bPillTier)
+    { PillRow = Make_FlowRow(); }
+
     // Derive a stable entity id for the history key.
     // FCk_Entity::Get_EntityNumber() returns the entt entity index (uint32-compatible).
     const auto EntityId = static_cast<uint32>(InModel.Entity.Get_Entity().Get_EntityNumber());
@@ -370,7 +415,9 @@ auto
 
     const auto LegendEntries = [&]() -> TArray<FCk_DebugOverlay_LegendEntry>
     {
-        if (NOT ck::debug_axes::Legend_IsVisible(Selection))
+        // The pill line already carries one provider chip per token — a legend under it would
+        // be longer than the data it explains.
+        if (bPillTier || NOT ck::debug_axes::Legend_IsVisible(Selection))
         { return {}; }
 
         return ck::debug_axes::Legend_IsDeduped(Selection)
@@ -398,12 +445,8 @@ auto
 
         // One color-grouped flow line per section:
         //   [PROVIDER]  [KEY value]  [KEY trail‹ value] ...
-        // Explicit PreferredSize, NOT UseAllottedSize: the wrap boxes are recreated
-        // every Set_Model call, so the allotted-size sync (which happens in Tick)
-        // never runs — desired size would wrap at the 100px default and reserve
-        // phantom empty lines under each section.
-        auto SectionRow = SNew(SWrapBox)
-            .PreferredSize(_WrapWidth);
+        // At the Pill tier every section shares ONE flow line instead.
+        auto SectionRow = PillRow.IsValid() ? PillRow.ToSharedRef() : Make_FlowRow();
 
         // Provider chip — ProviderChipStyle axis; Tint is the shipped provider-colored pill.
         SectionRow->AddSlot()
@@ -416,7 +459,8 @@ auto
 
         // Source chip — dim sub-entity name when the section came from a descendant
         // (subtree aggregation), so the reader can tell WHOSE SM/attribute this is.
-        if (NOT Section.SourceName.IsEmpty())
+        // Dropped at the Pill tier: one line for the whole card has no room for attribution.
+        if (NOT bPillTier && NOT Section.SourceName.IsEmpty())
         {
             SectionRow->AddSlot()
                 .VAlign(VAlign_Center)
@@ -547,21 +591,44 @@ auto
                 .ColorAndOpacity(CkStyle::TextMute()) ];
         }
 
+        // The pill line is added ONCE after the loop — every section feeds the same wrap box.
+        if (NOT bPillTier)
+        {
+            _ContentBox->AddSlot()
+                .AutoHeight()
+                .Padding(ck::debug_axes::Apply_RowDensity(
+                    FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
+                [
+                    SectionRow
+                ];
+        }
+    }
+
+    if (bPillTier && PillRow.IsValid() && PillRow->GetChildren()->Num() > 0)
+    {
         _ContentBox->AddSlot()
             .AutoHeight()
             .Padding(ck::debug_axes::Apply_RowDensity(
                 FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
             [
-                SectionRow
+                PillRow.ToSharedRef()
             ];
     }
 
-    const auto TotalOmittedRows = FMath::Max(0, InputRowCount - RenderedRowCount);
+    // Budget omissions (rows this card dropped) PLUS whole sections the distance-LOD pass
+    // trimmed before the card ever saw them — a tier step-down must never be silent.
+    const auto TotalOmittedRows =
+        FMath::Max(0, InputRowCount - RenderedRowCount) + FMath::Max(0, InModel.LodOmittedRowCount);
+
     if (TotalOmittedRows > 0)
     {
+        const auto OmissionText = InModel.LodTier == ECk_DebugOverlay_LodTier::Full
+            ? ck::Format_UE(TEXT("+{} focus-card rows omitted by budget"), TotalOmittedRows)
+            : ck::Format_UE(TEXT("+{} focus-card rows omitted (distance LOD + budget)"), TotalOmittedRows);
+
         _ContentBox->AddSlot().AutoHeight().Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
         [ SNew(STextBlock)
-            .Text(FText::FromString(FString::Printf(TEXT("+%d focus-card rows omitted by budget"), TotalOmittedRows)))
+            .Text(FText::FromString(OmissionText))
             .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
             .ColorAndOpacity(CkStyle::TextMute()) ];
     }

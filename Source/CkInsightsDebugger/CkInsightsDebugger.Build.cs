@@ -13,6 +13,8 @@ public class CkInsightsDebugger : CkModuleRules
             "CoreUObject",
             "DesktopPlatform",
             "Engine",
+            "ImageCore",
+            "ImageWrapper",
             "InputCore",
             "Slate",
             "SlateCore",

@@ -1,12 +1,13 @@
 #include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
 
-#include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 #include "CkEqsDebugger/Window/SCkEqsDebugger_QueryList.h"
 #include "CkEqsDebugger/Window/SCkEqsDebugger_CandidatePanel.h"
 #include "CkEqsDebugger/Window/SCkEqsDebugger_TestBreakdownPanel.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
@@ -16,6 +17,8 @@
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -104,7 +107,9 @@ auto
         ]
         + SVerticalBox::Slot().AutoHeight()
         [
-            SNew(SSeparator).Orientation(Orient_Horizontal).Thickness(1.0f)
+            SNew(SSeparator)
+            .Orientation(Orient_Horizontal)
+            .Thickness(ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection()))
         ]
         + SVerticalBox::Slot().FillHeight(1.0f).Padding(FMargin{6.0f, 6.0f, 6.0f, 6.0f})
         [
@@ -208,8 +213,8 @@ auto
         [
             SNew(STextBlock)
             .Text(FText::FromString(TEXT("CK EQS Debugger")))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+            .Font(CkStyle::BoldFont(CkStyle::FontSizeH3()))
         ]
 
         // World selector (shared across all CK debuggers)
@@ -222,7 +227,9 @@ auto
         // Separator
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{6.0f, 0.0f})
         [
-            SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f)
+            SNew(SSeparator)
+            .Orientation(Orient_Vertical)
+            .Thickness(ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection()))
         ]
 
         // Status text (query count + pause indicator).
@@ -230,7 +237,7 @@ auto
         [
             SAssignNew(_StatusLabel, SCkDebug_SelectableLabel)
             .Text(FText::FromString(TEXT("(no PIE world)")))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ]
 
         // Refresh-rate / mode controls — common widget; reads/writes UCkDebuggerWindowSettings.

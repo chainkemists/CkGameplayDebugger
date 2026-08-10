@@ -1,10 +1,12 @@
 #include "CkEqsDebugger/Window/SCkEqsDebugger_CandidatePanel.h"
 
-#include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
@@ -12,11 +14,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -25,7 +23,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace
+namespace ck_eqs_debugger_candidate_panel
 {
     auto Tone_FromCandidate(const FCkEqsDebugger_CandidateInfo& InItem) -> ECk_Tone
     {
@@ -33,7 +31,27 @@ namespace
         if (NOT InItem.Passed) { return ECk_Tone::Err; }
         return ECk_Tone::Ok;
     }
+
+    // RowDensity as a DELTA on this panel's own base row padding — see the QueryList copy for the
+    // rationale. Zero delta under the Classic (Comfortable) default.
+    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 }
+
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -58,7 +76,7 @@ auto
         [
             SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
             .Text(FText::FromString(TEXT("Candidates (no query selected)")))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ]
         + SVerticalBox::Slot().FillHeight(1.0f)
         [
@@ -189,7 +207,7 @@ auto
     -> TSharedRef<ITableRow>
 {
     const auto& C = *InItem;
-    const auto Tone      = Tone_FromCandidate(C);
+    const auto Tone      = ck_eqs_debugger_candidate_panel::Tone_FromCandidate(C);
     const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto TitleText = C.IsBestPick
@@ -203,23 +221,25 @@ auto
         ? ck::Format_UE(TEXT("entity: {}"), C.EntityHandle)
         : (C.Passed ? FString{} : FString{TEXT("(filter-rejected)")});
 
-    // Custom row body — STextBlock + SBox + SImage don't trap clicks the way SCkDebug_HistoryRow's
-    // internal SButton does. STableRow.ShowSelection(true) provides the selection visual.
+    // Custom row body — STextBlock + the click-passive SCkDebug_CategoryDot don't trap clicks the way
+    // SCkDebug_HistoryRow's internal SButton does. STableRow.ShowSelection(true) gives the selection visual.
     auto Body = SNew(SVerticalBox)
 
         + SVerticalBox::Slot().AutoHeight()
         [
             SNew(STextBlock)
             .Text(FText::FromString(TitleText))
-            .Font(FCoreStyle::GetDefaultFontStyle(C.IsBestPick ? "Bold" : "Regular", 9))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
+            .Font(C.IsBestPick
+                ? CkStyle::BoldFont(CkStyle::FontSizeBody())
+                : CkStyle::RegularFont(CkStyle::FontSizeBody()))
+            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
         ]
         + SVerticalBox::Slot().AutoHeight()
         [
             SNew(STextBlock)
             .Text(FText::FromString(MetaText))
-            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ];
 
     if (NOT SubtitleText.IsEmpty())
@@ -228,13 +248,13 @@ auto
         [
             SNew(STextBlock)
             .Text(FText::FromString(SubtitleText))
-            .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Muted})
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
         ];
     }
 
     return SNew(STableRow<TSharedPtr<FCkEqsDebugger_CandidateInfo>>, InOwner)
-        .Padding(FMargin{0.0f, 1.0f})
+        .Padding(ck_eqs_debugger_candidate_panel::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -242,13 +262,8 @@ auto
             .AutoWidth().VAlign(VAlign_Center)
             .Padding(FMargin{6.0f, 0.0f, 8.0f, 0.0f})
             [
-                SNew(SBox)
-                .WidthOverride(8.0f).HeightOverride(8.0f)
-                [
-                    SNew(SImage)
-                    .Image(CkStyle::GetFilledBrush())
-                    .ColorAndOpacity(FSlateColor{ToneColor})
-                ]
+                SNew(SCkDebug_CategoryDot)
+                .Color(ToneColor)
             ]
             + SHorizontalBox::Slot()
             .FillWidth(1.0f).VAlign(VAlign_Center)

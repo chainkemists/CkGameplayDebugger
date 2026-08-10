@@ -1,10 +1,12 @@
 #include "CkEqsDebugger/Window/SCkEqsDebugger_TestBreakdownPanel.h"
 
-#include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"   // ECk_Tone full definition (Err / Accent / Ok)
 
@@ -12,11 +14,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -25,7 +23,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace
+namespace ck_eqs_debugger_test_breakdown
 {
     auto Tone_FromTest(const FCkEqsDebugger_PerTestInfo& InTest) -> ECk_Tone
     {
@@ -33,7 +31,27 @@ namespace
         if (InTest.TestPurpose == ECk_Eqs_TestPurpose::Score) { return ECk_Tone::Accent; }
         return ECk_Tone::Ok;
     }
+
+    // RowDensity as a DELTA on this panel's own base row padding — see the QueryList copy for the
+    // rationale. Zero delta under the Classic (Comfortable) default.
+    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 }
+
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -58,7 +76,7 @@ auto
         [
             SAssignNew(_HeaderLabel, SCkDebug_SelectableLabel)
             .Text(FText::FromString(TEXT("Test breakdown (no candidate selected)")))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ]
         + SVerticalBox::Slot().FillHeight(1.0f)
         [
@@ -171,7 +189,7 @@ auto
     -> TSharedRef<ITableRow>
 {
     const auto& T        = *InItem;
-    const auto Tone      = Tone_FromTest(T);
+    const auto Tone      = ck_eqs_debugger_test_breakdown::Tone_FromTest(T);
     const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto TitleText = ck::Format_UE(TEXT("[{}] {}    ({}, w={:.2f})"),
@@ -186,9 +204,9 @@ auto
     const auto RightText = T.PassedThisTest ? FString{TEXT("PASS")} : FString{TEXT("FAIL")};
 
     // See SCkEqsDebugger_QueryList::OnGenerateRow for the rationale on not using SCkDebug_HistoryRow:
-    // its internal SButton consumes selection clicks. Build the row body from STextBlock + SBox + SImage.
+    // its internal SButton consumes selection clicks. Row body = STextBlock + SCkDebug_CategoryDot.
     return SNew(STableRow<TSharedPtr<FCkEqsDebugger_PerTestInfo>>, InOwner)
-        .Padding(FMargin{0.0f, 1.0f})
+        .Padding(ck_eqs_debugger_test_breakdown::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -196,13 +214,8 @@ auto
             .AutoWidth().VAlign(VAlign_Center)
             .Padding(FMargin{6.0f, 0.0f, 8.0f, 0.0f})
             [
-                SNew(SBox)
-                .WidthOverride(8.0f).HeightOverride(8.0f)
-                [
-                    SNew(SImage)
-                    .Image(CkStyle::GetFilledBrush())
-                    .ColorAndOpacity(FSlateColor{ToneColor})
-                ]
+                SNew(SCkDebug_CategoryDot)
+                .Color(ToneColor)
             ]
             + SHorizontalBox::Slot()
             .FillWidth(1.0f).VAlign(VAlign_Center)
@@ -213,15 +226,15 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(TitleText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
                 ]
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(MetaText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 ]
             ]
             + SHorizontalBox::Slot()
@@ -230,7 +243,7 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(RightText))
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
                 .ColorAndOpacity(FSlateColor{ToneColor})
             ]
         ];

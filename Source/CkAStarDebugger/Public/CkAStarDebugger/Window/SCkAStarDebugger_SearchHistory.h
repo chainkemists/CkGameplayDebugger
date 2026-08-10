@@ -7,9 +7,11 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkAStarDebugger_ViewModel;
+class SCkDebug_RailContainer;
 
 // --------------------------------------------------------------------------------------------------------------------
-// Search history — scrollable list of past search completion events.
+// Search history — scrollable rail of past search completion events, built from the common
+// SCkDebug_RailContainer + SCkDebug_HistoryRow primitives.
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkAStarDebugger_SearchHistory : public SCompoundWidget
@@ -26,7 +28,7 @@ private:
     auto BuildHistoryEntry(const FCkAStarDebugger_HistoryEntry& InEntry) -> TSharedRef<SWidget>;
 
     TSharedPtr<FCkAStarDebugger_ViewModel> _ViewModel;
-    TSharedPtr<SVerticalBox> _EntryListBox;
+    TSharedPtr<SCkDebug_RailContainer> _Rail;
     int32 _LastEntryCount = 0;
 };
 

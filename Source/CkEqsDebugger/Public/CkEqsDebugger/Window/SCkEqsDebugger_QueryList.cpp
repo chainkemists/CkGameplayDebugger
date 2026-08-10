@@ -1,22 +1,20 @@
 #include "CkEqsDebugger/Window/SCkEqsDebugger_QueryList.h"
 
-#include "CkEqsDebugger/CkEqsDebuggerStyle.h"
 #include "CkEqsDebugger/ViewModel/CkEqsDebugger_ViewModel.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
-#include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -25,22 +23,27 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace
+namespace ck_eqs_debugger_query_list
 {
-    // Map our query status enum onto the common widget's tone palette so SCkDebug_HistoryRow / StatusPill render
-    // a recognisable color per status.
-    auto Tone_FromStatus(ECkEqsDebugger_QueryStatus InStatus) -> ECk_Tone
+    // RowDensity applies as a DELTA on this panel's own base row padding, not as an absolute — the
+    // list rows are deliberately tighter than the ECS tree, and only the offset between density
+    // options is the axis' business. Comfortable is the axis default, so the delta is zero and the
+    // list renders exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
+    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
     {
-        switch (InStatus)
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
         {
-        case ECkEqsDebugger_QueryStatus::Pending:    return ECk_Tone::Neutral;
-        case ECkEqsDebugger_QueryStatus::InProgress: return ECk_Tone::Info;
-        case ECkEqsDebugger_QueryStatus::Complete:   return ECk_Tone::Ok;
-        case ECkEqsDebugger_QueryStatus::Failed:     return ECk_Tone::Err;
-        case ECkEqsDebugger_QueryStatus::Cancelled:  return ECk_Tone::Warn;
-        case ECkEqsDebugger_QueryStatus::Unknown:    return ECk_Tone::Neutral;
-        }
-        return ECk_Tone::Neutral;
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
     }
 
     auto BuildTestSummary(const TArray<ECk_Eqs_TestType>& InTestTypes) -> FString
@@ -75,6 +78,7 @@ namespace
     }
 }
 
+
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
@@ -96,10 +100,10 @@ auto
 
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
         [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("Queries")))
-            .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
-            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+            ck::debug_axes::Make_SectionHeader(
+                UCkDebuggerStyleSettings::Get_Selection(),
+                FText::FromString(TEXT("Queries")),
+                ECk_Tone::Neutral)
         ]
 
         + SVerticalBox::Slot().AutoHeight().Padding(FMargin{0.0f, 0.0f, 0.0f, 4.0f})
@@ -179,7 +183,7 @@ auto
     for (const auto& Q : InQueries)
     {
         // Filter-pass: hide non-matches entirely.
-        if (NOT MatchesQuery(Q, _FilterString))
+        if (NOT ck_eqs_debugger_query_list::MatchesQuery(Q, _FilterString))
         { continue; }
 
         auto Item = TSharedPtr<FRowItem>{};
@@ -198,7 +202,7 @@ auto
         // for in-progress queries that need live updates, this still works because the row is rebuilt
         // on RequestListRefresh below when the entity set changes (new-cycle queries are new entities).
         Item->Info             = Q;
-        Item->IsHighlightMatch = MatchesQuery(Q, _HighlightString);
+        Item->IsHighlightMatch = ck_eqs_debugger_query_list::MatchesQuery(Q, _HighlightString);
 
         if (ck::IsValid(SelectedHandle) && Item->Info.QueryHandle == SelectedHandle)
         { NewSelection = Item; }
@@ -243,14 +247,14 @@ auto
     // Tone is muted to Neutral when not highlight-matched so matches stand out among visible rows.
     const auto& Info = InItem->Info;
     const auto Tone  = InItem->IsHighlightMatch
-        ? Tone_FromStatus(Info.Status)
+        ? CkEqsDebugger::GetStatusTone(Info.Status)
         : ECk_Tone::Neutral;
     const auto ToneColor = CkStyle::GetToneColor(Tone);
 
     const auto NameText = NOT Info.DebugName.IsEmpty() ? Info.DebugName : FString{TEXT("(unnamed)")};
     const auto MetaText = ck::Format_UE(TEXT("{}  -  {}"),
         CkEqsDebugger::GetGeneratorTypeString(Info.GeneratorType),
-        BuildTestSummary(Info.TestTypes));
+        ck_eqs_debugger_query_list::BuildTestSummary(Info.TestTypes));
 
     const auto RightText = [&]() -> FString
     {
@@ -263,12 +267,12 @@ auto
 
     // IMPORTANT: build the row body from widgets that DO NOT consume click events. SCkDebug_HistoryRow
     // wraps its content in an SButton that returns FReply::Handled() on every click — that traps the
-    // selection click before STableRow can see it. Mirror the CkSchedulerDebugger_ProcessorTree pattern
-    // (custom STextBlock/SBox/SImage tree under STableRow). Selection styling is handled by STableRow
-    // itself via .ShowSelection(true); right-click context menu is wired via the SListView's
-    // OnContextMenuOpening below.
+    // selection click before STableRow can see it. Mirror the CkSchedulerDebugger_ProcessorTree pattern:
+    // STextBlock plus the click-passive SCkDebug_CategoryDot under STableRow. Selection styling is
+    // handled by STableRow itself via .ShowSelection(true); right-click context menu is wired via the
+    // SListView's OnContextMenuOpening below.
     return SNew(STableRow<TSharedPtr<FRowItem>>, InOwner)
-        .Padding(FMargin{0.0f, 1.0f})
+        .Padding(ck_eqs_debugger_query_list::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -279,14 +283,8 @@ auto
             .VAlign(VAlign_Center)
             .Padding(FMargin{6.0f, 0.0f, 8.0f, 0.0f})
             [
-                SNew(SBox)
-                .WidthOverride(8.0f)
-                .HeightOverride(8.0f)
-                [
-                    SNew(SImage)
-                    .Image(CkStyle::GetFilledBrush())
-                    .ColorAndOpacity(FSlateColor{ToneColor})
-                ]
+                SNew(SCkDebug_CategoryDot)
+                .Color(ToneColor)
             ]
 
             // Title + meta (vertical stack)
@@ -300,15 +298,15 @@ auto
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(NameText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Primary})
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
                 ]
                 + SVerticalBox::Slot().AutoHeight()
                 [
                     SNew(STextBlock)
                     .Text(FText::FromString(MetaText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                 ]
             ]
 
@@ -320,8 +318,8 @@ auto
             [
                 SNew(STextBlock)
                 .Text(FText::FromString(RightText))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                .ColorAndOpacity(FSlateColor{FCkEqsDebuggerStyle::Color_Text_Secondary})
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
             ]
         ];
 }
@@ -404,7 +402,7 @@ auto
         InInfo.DebugName,
         CkEqsDebugger::GetStatusString(InInfo.Status),
         CkEqsDebugger::GetGeneratorTypeString(InInfo.GeneratorType),
-        BuildTestSummary(InInfo.TestTypes),
+        ck_eqs_debugger_query_list::BuildTestSummary(InInfo.TestTypes),
         CkEqsDebugger::GetRunModeString(InInfo.RunMode),
         InInfo.NextTestIndex, InInfo.TestCount,
         InInfo.CandidateCount, InInfo.HasResults ? TEXT("true") : TEXT("false"),

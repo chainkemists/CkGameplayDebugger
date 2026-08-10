@@ -1,6 +1,6 @@
 # CkDebuggerLauncher
 
-`CkDebuggerLauncher` is the UncookedOnly editor front door for the standalone CK debugger suite. It owns one dockable Nomad tab, a responsive vertical icon rail, and a launcher-local Slate style. It owns no gameplay data or ECS handles.
+`CkDebuggerLauncher` is the DeveloperTool front door for the standalone CK debugger suite. It owns one dockable editor Nomad tab or floating packaged-build window, a responsive vertical icon rail, and a launcher-local Slate style. It is available in editor and packaged Development/DebugGame targets, but excluded from Test and Shipping. It owns no gameplay data or ECS handles.
 
 ## Architecture
 
@@ -9,6 +9,7 @@
 - Registration returns a generation token. Unregister requires the matching token, so stale Shutdown code during live reload cannot remove a replacement entry.
 - The launcher subscribes to catalog changes and rebuilds only when modules register or unregister. It opens/focuses tools through `FGlobalTabmanager::TryInvokeTab` and detects open tabs with `FindExistingLiveTab`.
 - The launcher style scans `Resources/Icons/*.svg` and `Resources/Icons/General/*.svg`. SVGs must remain monochrome white and are tinted through Slate foreground colour.
+- Editor targets attach the launcher to Tools > Debug. Packaged Development/DebugGame targets omit that editor workspace-menu dependency; `FGlobalTabmanager` opens the Nomad tab in a floating top-level Slate window when QA runs `ck.DebuggerLauncher 1`.
 
 ## Tool groups
 
@@ -22,6 +23,7 @@
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
 The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.
+In packaged targets, editor-only debugger modules are absent, so the launcher catalog contains only packaged-capable registered tools such as Insights Analyzer.
 
 ## Adding another standalone debugger
 
@@ -42,7 +44,7 @@ The Foundation analysis module supplies trace parsing and report data; it does n
 ## Verification
 
 Run the `Ck.DebuggerLauncher` automation filter after rebuilding the host editor. Then verify the
-editor-only behavior:
+editor behavior:
 
 1. Open **Tools > Debug > CK Debugger Launcher** and dock the tab as a narrow vertical rail.
 2. Confirm every expected tool appears in the documented groups; icons remain centered, sharp, and unstretched.
@@ -53,3 +55,4 @@ editor-only behavior:
 7. Click it again and confirm the existing tab receives focus without creating a duplicate.
 8. Close it and confirm the active indicator clears.
 9. Restart the editor and confirm the launcher restores at the chosen dock location.
+10. Stage a Development package, launch it with `-ExecCmds="ck.DebuggerLauncher 1"`, confirm the floating launcher opens and lists Insights Analyzer, then open/focus the analyzer twice.

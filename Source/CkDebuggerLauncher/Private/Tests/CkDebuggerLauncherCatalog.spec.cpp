@@ -5,9 +5,12 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
 #include "CkCore/Format/CkFormat.h"
+#include "CkCore/Validation/CkIsValid.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Interfaces/IPluginManager.h"
 #include "Misc/AutomationTest.h"
+#include "ModuleDescriptor.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -95,6 +98,87 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
     }
 
     TestEqual(TEXT("Every expected tab id was registered"), ExpectedTabIds.Num(), 0);
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerLauncherPackaging_DevToolsCompileIntoDevelopmentCookedWin64,
+    "Ck.DebuggerLauncher.Packaging.DevToolsCompileIntoDevelopmentCookedWin64",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// --------------------------------------------------------------------------------------------------------------------
+
+bool FCkDebuggerLauncherPackaging_DevToolsCompileIntoDevelopmentCookedWin64::RunTest(const FString& Parameters)
+{
+    const auto TestModule = [this](const TCHAR* InPluginName, const TCHAR* InModuleName)
+    {
+        const auto Plugin = IPluginManager::Get().FindPlugin(InPluginName);
+        const auto PluginIsValid = ck::IsValid(Plugin);
+        const auto PluginMessage = ck::Format_UE(TEXT("Plugin is discoverable: {}"), InPluginName);
+        TestTrue(*PluginMessage, PluginIsValid);
+
+        if (NOT PluginIsValid)
+        {
+            return static_cast<const FModuleDescriptor*>(nullptr);
+        }
+
+        const auto ModuleName = FName{InModuleName};
+        const auto& Modules = Plugin->GetDescriptor().Modules;
+        const auto* Module = Modules.FindByPredicate([ModuleName](const FModuleDescriptor& Candidate)
+        {
+            return Candidate.Name == ModuleName;
+        });
+        const auto ModuleMessage = ck::Format_UE(
+            TEXT("Module descriptor is present: {}:{}"),
+            InPluginName,
+            ModuleName);
+        TestNotNull(*ModuleMessage, Module);
+        return Module;
+    };
+
+    const auto TestExpectedModule = [&TestModule, this](const TCHAR* InPluginName, const TCHAR* InModuleName)
+    {
+        const auto* Module = TestModule(InPluginName, InModuleName);
+        const auto ModuleIsValid = ck::IsValid(Module, ck::IsValid_Policy_NullptrOnly{});
+        if (NOT ModuleIsValid)
+        {
+            return;
+        }
+
+        const auto Prefix = ck::Format_UE(TEXT("{}:{}"), InPluginName, InModuleName);
+        TestEqual(*ck::Format_UE(TEXT("{} is a DeveloperTool module"), Prefix),
+            Module->Type, EHostType::DeveloperTool);
+        TestTrue(*ck::Format_UE(TEXT("{} compiles for Win64 Game Development with developer tools and cooked data"), Prefix),
+            Module->IsCompiledInConfiguration(
+                TEXT("Win64"),
+                EBuildConfiguration::Development,
+                TEXT("BusterBlock"),
+                EBuildTargetType::Game,
+                true,
+                true));
+        TestFalse(*ck::Format_UE(TEXT("{} is excluded from Win64 Game Shipping"), Prefix),
+            Module->IsCompiledInConfiguration(
+                TEXT("Win64"),
+                EBuildConfiguration::Shipping,
+                TEXT("BusterBlock"),
+                EBuildTargetType::Game,
+                false,
+                true));
+        TestFalse(*ck::Format_UE(TEXT("{} is excluded from Win64 Game Test"), Prefix),
+            Module->IsCompiledInConfiguration(
+                TEXT("Win64"),
+                EBuildConfiguration::Test,
+                TEXT("BusterBlock"),
+                EBuildTargetType::Game,
+                false,
+                true));
+    };
+
+    TestExpectedModule(TEXT("CkFoundation"), TEXT("CkInsightsAnalyzer"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
     return true;
 }
 

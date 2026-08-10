@@ -44,7 +44,7 @@ static FAutoConsoleCommand CmdObjectPoolingDebugger(
 
 auto FCkObjectPoolingDebuggerModule::StartupModule() -> void
 {
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkObjectPoolingDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Object Pooling Debugger")))

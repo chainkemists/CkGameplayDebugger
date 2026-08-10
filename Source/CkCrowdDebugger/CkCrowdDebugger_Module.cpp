@@ -40,7 +40,7 @@ namespace
 
 void FCkCrowdDebuggerModule::StartupModule()
 {
-	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+	auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		_TabId,
 		FOnSpawnTab::CreateRaw(this, &FCkCrowdDebuggerModule::OnSpawnDebuggerTab))
 		.SetDisplayName(LOCTEXT("TabTitle", "CK Crowd Debugger"))

@@ -60,7 +60,7 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
     _NodeFactory = MakeShared<FCkEcsDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
 
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkEcsDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK ECS Debugger")))

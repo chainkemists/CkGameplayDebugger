@@ -1,5 +1,7 @@
 #include "SCkDebug_Chip.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_GlowWrap.h"
 
@@ -49,6 +51,70 @@ namespace ck_debug_chip
         Color.A = 0.55f;
         return Color;
     }
+
+    // ----- ChipStyle ---------------------------------------------------------
+    // The chip is a ring around a fill around a row. The axis is expressed by making a layer
+    // transparent-and-zero-padded on demand rather than by building four different widget trees
+    // (the SCkDebug_CountBadge idiom) — every option is then live, and Tint is today's chip
+    // untouched, ring colour, fill colour, paddings and ink all identical.
+    constexpr auto RingWidth    = 1.0f;
+    constexpr auto FillPaddingX = 7.0f;
+    constexpr auto FillPaddingY = 2.0f;
+
+    auto Get_ChipStyle() -> ECkDebugAxis_ChipStyle
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().ChipStyle;
+    }
+
+    auto Has_Box() -> bool
+    {
+        return Get_ChipStyle() != ECkDebugAxis_ChipStyle::TextOnly;
+    }
+
+    auto Get_RingPadding() -> FMargin
+    {
+        return Has_Box() ? FMargin{RingWidth} : FMargin{0.0f};
+    }
+
+    auto Get_FillPadding() -> FMargin
+    {
+        return Has_Box() ? FMargin{FillPaddingX, FillPaddingY} : FMargin{0.0f};
+    }
+
+    auto RingOf(ECkDebug_ChipKind InKind, bool InHighlighted) -> FLinearColor
+    {
+        if (NOT Has_Box())
+        { return FLinearColor::Transparent; }
+
+        if (InHighlighted)
+        { return CkStyle::Accent(); }
+
+        // Outline promotes the ring to the full tone; every other boxed option keeps the
+        // half-alpha hairline the chip has always drawn.
+        return Get_ChipStyle() == ECkDebugAxis_ChipStyle::Outline ? ToneOf(InKind) : BorderOf(InKind);
+    }
+
+    auto FillOf(ECkDebug_ChipKind InKind) -> FLinearColor
+    {
+        switch (Get_ChipStyle())
+        {
+            case ECkDebugAxis_ChipStyle::Solid:    return ToneOf(InKind);
+            case ECkDebugAxis_ChipStyle::Outline:  return CkStyle::Bg2();
+            case ECkDebugAxis_ChipStyle::TextOnly: return FLinearColor::Transparent;
+            default:                               return DimOf(InKind);
+        }
+    }
+
+    // Ink drives the label AND the leading dot / arrow glyph, so a Solid chip's contents stay
+    // legible on top of a full-tone body. Under Tint this resolves to exactly what the label and
+    // the glyph read before: TextDim for Neutral, the kind's tone otherwise.
+    auto InkOf(ECkDebug_ChipKind InKind) -> FLinearColor
+    {
+        if (Get_ChipStyle() == ECkDebugAxis_ChipStyle::Solid)
+        { return CkStyle::TextStrong(); }
+
+        return InKind == ECkDebug_ChipKind::Neutral ? CkStyle::TextDim() : ToneOf(InKind);
+    }
 }
 
 // ====================================================================================================================
@@ -93,7 +159,7 @@ auto
                     .Image(CkStyle::GetRoundedBrush_Pill())
                     .ColorAndOpacity_Lambda([Kind]
                     {
-                        return FSlateColor{ck_debug_chip::ToneOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
+                        return FSlateColor{ck_debug_chip::InkOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
                     })
                 ]
             ];
@@ -108,7 +174,7 @@ auto
                 .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
                 .ColorAndOpacity_Lambda([Kind]
                 {
-                    return FSlateColor{ck_debug_chip::ToneOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
+                    return FSlateColor{ck_debug_chip::InkOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
                 })
                 .Visibility_Lambda([Kind]
                 {
@@ -128,10 +194,7 @@ auto
             .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
             .ColorAndOpacity_Lambda([Kind]
             {
-                const auto Resolved = Kind.Get(ECkDebug_ChipKind::Neutral);
-                return FSlateColor{Resolved == ECkDebug_ChipKind::Neutral
-                    ? CkStyle::TextDim()
-                    : ck_debug_chip::ToneOf(Resolved)};
+                return FSlateColor{ck_debug_chip::InkOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
             })
         ];
 
@@ -149,19 +212,18 @@ auto
             .BorderImage(CkStyle::GetRoundedBrush())
             .BorderBackgroundColor_Lambda([Kind, Highlighted]
             {
-                return FSlateColor{Highlighted.Get(false)
-                    ? CkStyle::Accent()
-                    : ck_debug_chip::BorderOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
+                return FSlateColor{
+                    ck_debug_chip::RingOf(Kind.Get(ECkDebug_ChipKind::Neutral), Highlighted.Get(false))};
             })
-            .Padding(FMargin{1.0f})
+            .Padding_Static(&ck_debug_chip::Get_RingPadding)
             [
                 SNew(SBorder)
                 .BorderImage(CkStyle::GetRoundedBrush())
                 .BorderBackgroundColor_Lambda([Kind]
                 {
-                    return FSlateColor{ck_debug_chip::DimOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
+                    return FSlateColor{ck_debug_chip::FillOf(Kind.Get(ECkDebug_ChipKind::Neutral))};
                 })
-                .Padding(FMargin{7.0f, 2.0f})
+                .Padding_Static(&ck_debug_chip::Get_FillPadding)
                 [
                     Row
                 ]

@@ -1,6 +1,7 @@
 #include "SCkDebug_IconToggle.h"
 
 #include "CkCore/Macros/CkMacros.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -13,6 +14,21 @@
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SCkDebug_IconToggle"
+
+// ====================================================================================================================
+
+namespace ck_debug_icon_toggle
+{
+    // The toolbar glyph box. 16 is the size this control has always drawn, and it is also the
+    // IconSize axis' own default, so Apply_IconSize is a zero delta under Classic. Bound as an
+    // attribute so a Style Lab flip resizes toolbars that are already on screen.
+    constexpr auto GlyphSizeBase = 16.0f;
+
+    auto Get_GlyphSize() -> FOptionalSize
+    {
+        return FOptionalSize{ck::debug_axes::Apply_IconSize(GlyphSizeBase)};
+    }
+}
 
 // ====================================================================================================================
 
@@ -98,8 +114,8 @@ auto
     }
 
     auto Icon = SNew(SBox)
-        .WidthOverride(16.0f)
-        .HeightOverride(16.0f)
+        .WidthOverride_Static(&ck_debug_icon_toggle::Get_GlyphSize)
+        .HeightOverride_Static(&ck_debug_icon_toggle::Get_GlyphSize)
         [
             SNew(SImage)
             .Image(IconBrush)

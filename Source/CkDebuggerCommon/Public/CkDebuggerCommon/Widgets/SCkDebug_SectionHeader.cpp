@@ -63,17 +63,24 @@ auto
 	Construct(const FArguments& InArgs)
 	-> void
 {
+	auto Label = SNew(STextBlock)
+		.Text(InArgs._Label)
+		.Font_Static(&ck_debug_section_header::Get_LabelFont)
+		.ColorAndOpacity_Static(&ck_debug_section_header::Get_LabelColor)
+		.TransformPolicy_Static(&ck_debug_section_header::Get_LabelTransform);
+
+	// Only attach a tooltip when the caller asked for one — an empty one would still register a
+	// tooltip widget, and "no tooltip" is what every existing call expects.
+	if (!InArgs._ToolTip.IsEmpty())
+	{ Label->SetToolTipText(InArgs._ToolTip); }
+
 	auto Row = SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
 		[
-			SNew(STextBlock)
-			.Text(InArgs._Label)
-			.Font_Static(&ck_debug_section_header::Get_LabelFont)
-			.ColorAndOpacity_Static(&ck_debug_section_header::Get_LabelColor)
-			.TransformPolicy_Static(&ck_debug_section_header::Get_LabelTransform)
+			Label
 		];
 
 	if (!InArgs._CountText.IsEmpty())

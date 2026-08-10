@@ -5,6 +5,8 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -12,10 +14,52 @@
 #include "UObject/Class.h"
 #include "UObject/UnrealType.h"
 
+#include "Widgets/SWidget.h"
+
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_debugger_style_tests
 {
+    // Specs must never leak style state — a later spec (or the user's editor session) would inherit
+    // whatever axis this one was mid-way through flipping. The WHOLE selection plus the profile name
+    // are captured and put back, so an early `return false` cannot poison the rest of the run.
+    struct FScopedStyleSelection
+    {
+        FScopedStyleSelection()
+        {
+            if (const auto* Settings = UCkDebuggerStyleSettings::Get())
+            {
+                _Selection   = Settings->Selection;
+                _ProfileName = Settings->ActiveProfileName;
+            }
+        }
+
+        ~FScopedStyleSelection()
+        {
+            if (auto* Settings = UCkDebuggerStyleSettings::Get_Mutable())
+            {
+                Settings->Selection          = _Selection;
+                Settings->ActiveProfileName  = _ProfileName;
+                Settings->NotifyChanged();
+            }
+        }
+
+    private:
+        FCkDebuggerStyleSelection _Selection;
+        FString                   _ProfileName;
+    };
+
+    // The live-ness probe. The widget is NEVER recreated between calls — only the settings CDO
+    // moves — so a size change is proof the widget re-read the axis through its own attributes.
+    auto Repass(const TSharedRef<SWidget>& InWidget) -> FVector2D
+    {
+        InWidget->MarkPrepassAsDirty();
+        InWidget->SlatePrepass();
+
+        const auto Size = InWidget->GetDesiredSize();
+        return FVector2D{Size.X, Size.Y};
+    }
+
     // Every enumerator of InEnumType, minus the hidden UHT-generated _MAX entry.
     template <typename T_Axis>
     auto Get_AllOptions() -> TArray<T_Axis>
@@ -382,6 +426,16 @@ bool FCkDebuggerStyle_MergeCountVisibility::RunTest(const FString& Parameters)
 {
     using namespace ck_debugger_style_tests;
 
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
     for (const auto Option : Get_AllOptions<ECkDebugAxis_MergeCountDisplay>())
     {
         auto Selection = FCkDebuggerStyleSelection{};
@@ -390,6 +444,7 @@ bool FCkDebuggerStyle_MergeCountVisibility::RunTest(const FString& Parameters)
         const auto Name = Get_OptionName(
             static_cast<int64>(Option), StaticEnum<ECkDebugAxis_MergeCountDisplay>());
 
+        // Null is DATA-driven only — an unmerged row genuinely has no affordance to place.
         TestFalse(
             *ck::Format_UE(TEXT("'{}' renders nothing for an unmerged row"), Name),
             ck::debug_axes::Make_MergeCount(Selection, 1).IsValid());
@@ -398,13 +453,226 @@ bool FCkDebuggerStyle_MergeCountVisibility::RunTest(const FString& Parameters)
             *ck::Format_UE(TEXT("'{}' renders nothing for a zero count"), Name),
             ck::debug_axes::Make_MergeCount(Selection, 0).IsValid());
 
-        const auto Merged = ck::debug_axes::Make_MergeCount(Selection, 4);
-        const auto ExpectVisible = Option != ECkDebugAxis_MergeCountDisplay::Hidden;
-
+        // A merged row ALWAYS gets a widget now, whatever the caller's snapshot says — the axis
+        // lives on the widget, not in the call. Hidden is a collapsed widget, not a null one.
         TestTrue(
-            *ck::Format_UE(TEXT("'{}' visibility for a merged row"), Name),
-            Merged.IsValid() == ExpectVisible);
+            *ck::Format_UE(TEXT("'{}' always emits a widget for a merged row"), Name),
+            ck::debug_axes::Make_MergeCount(Selection, 4).IsValid());
     }
+
+    // ---- Live-ness: one widget, three axis states, no rebuild ----------------
+    Settings->Selection.MergeCountDisplay = ECkDebugAxis_MergeCountDisplay::SuffixText;
+
+    const auto MergeCount = ck::debug_axes::Make_MergeCount(UCkDebuggerStyleSettings::Get_Selection(), 4);
+
+    if (NOT MergeCount.IsValid())
+    {
+        AddError(TEXT("Make_MergeCount returned nothing for a merged row"));
+        return false;
+    }
+
+    const auto AsSuffix = Repass(MergeCount.ToSharedRef());
+    TestTrue(TEXT("SuffixText occupies space"), AsSuffix.X > 0.0f);
+
+    Settings->Selection.MergeCountDisplay = ECkDebugAxis_MergeCountDisplay::Hidden;
+    const auto AsHidden = Repass(MergeCount.ToSharedRef());
+
+    TestTrue(
+        TEXT("Flipping to Hidden collapses the SAME widget — the option is live, not baked"),
+        AsHidden.X == 0.0f && AsHidden.Y == 0.0f);
+
+    Settings->Selection.MergeCountDisplay = ECkDebugAxis_MergeCountDisplay::CountBadge;
+    const auto AsBadge = Repass(MergeCount.ToSharedRef());
+
+    TestTrue(TEXT("Flipping back to CountBadge re-expands the same widget"), AsBadge.X > 0.0f);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_HelpersAreLive,
+    "Ck.DebuggerCommon.Style.HelpersAreLive",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_HelpersAreLive::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    // R1's regression bar, expressed as a test: a widget built under one axis option must FOLLOW a
+    // later flip. Every case below builds ONCE, prepasses, flips the settings CDO, and prepasses
+    // the same widget again — a size change can only come from the widget re-reading the axis.
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    const auto Label = FText::FromString(TEXT("transform"));
+
+    // ---- Make_Chip: Tint (boxed) -> TextOnly (no box) ------------------------
+    const auto Chip = ck::debug_axes::Make_Chip(
+        UCkDebuggerStyleSettings::Get_Selection(), Label, ECk_Tone::Info);
+
+    const auto ChipTint = Repass(Chip);
+
+    Settings->Selection.ChipStyle = ECkDebugAxis_ChipStyle::TextOnly;
+    const auto ChipTextOnly = Repass(Chip);
+
+    TestTrue(
+        TEXT("ChipStyle TextOnly drops the box padding off an ALREADY-BUILT chip"),
+        ChipTextOnly.X < ChipTint.X && ChipTextOnly.Y < ChipTint.Y);
+
+    Settings->Selection.ChipStyle = ECkDebugAxis_ChipStyle::Tint;
+    TestTrue(
+        TEXT("Flipping back restores the chip's original geometry"),
+        FMath::IsNearlyEqual(Repass(Chip).X, ChipTint.X));
+
+    // ---- Make_Badge: Solid (boxed) -> CountOnly (no box) ---------------------
+    const auto Badge = ck::debug_axes::Make_Badge(
+        UCkDebuggerStyleSettings::Get_Selection(), FText::AsNumber(12), ECk_Tone::Neutral);
+
+    const auto BadgeSolid = Repass(Badge);
+
+    Settings->Selection.BadgeStyle = ECkDebugAxis_BadgeStyle::CountOnly;
+    const auto BadgeCountOnly = Repass(Badge);
+
+    TestTrue(
+        TEXT("BadgeStyle CountOnly drops the box padding off an ALREADY-BUILT badge"),
+        BadgeCountOnly.X < BadgeSolid.X);
+
+    Settings->Selection.BadgeStyle = ECkDebugAxis_BadgeStyle::Solid;
+
+    // ---- Make_SectionHeader: Uppercase (bold, ToUpper) -> Minimal ------------
+    // The label is deliberately lowercase: ToUpper makes it measurably wider in any proportional
+    // font, and Minimal drops both the transform and the bold face.
+    const auto Header = ck::debug_axes::Make_SectionHeader(
+        UCkDebuggerStyleSettings::Get_Selection(), Label, ECk_Tone::Info);
+
+    const auto HeaderUppercase = Repass(Header);
+
+    Settings->Selection.SectionHeaderStyle = ECkDebugAxis_SectionHeaderStyle::Minimal;
+    const auto HeaderMinimal = Repass(Header);
+
+    TestTrue(
+        TEXT("SectionHeaderStyle Minimal restyles an ALREADY-BUILT header"),
+        HeaderMinimal.X < HeaderUppercase.X);
+
+    Settings->Selection.SectionHeaderStyle = ECkDebugAxis_SectionHeaderStyle::Uppercase;
+
+    // ---- Make_FoldChip: Chip (padded) -> Text (bare) -------------------------
+    const auto FoldChip = ck::debug_axes::Make_FoldChip(
+        UCkDebuggerStyleSettings::Get_Selection(), Label, ECk_Tone::Neutral);
+
+    const auto FoldChipBoxed = Repass(FoldChip);
+
+    Settings->Selection.FoldChipStyle = ECkDebugAxis_FoldChipStyle::Text;
+    const auto FoldChipBare = Repass(FoldChip);
+
+    TestTrue(
+        TEXT("FoldChipStyle Text drops the chip padding off an ALREADY-BUILT fold chip"),
+        FoldChipBare.X < FoldChipBoxed.X);
+
+    Settings->Selection.FoldChipStyle = ECkDebugAxis_FoldChipStyle::Chip;
+
+    // ---- Make_ProviderChip: Tint (padded) -> AbbrevOnly (bare, 3 chars) ------
+    const auto ProviderChip = ck::debug_axes::Make_ProviderChip(
+        UCkDebuggerStyleSettings::Get_Selection(), Label, ECk_Tone::Accent);
+
+    const auto ProviderTint = Repass(ProviderChip);
+
+    Settings->Selection.ProviderChipStyle = ECkDebugAxis_ProviderChipStyle::AbbrevOnly;
+    const auto ProviderAbbrev = Repass(ProviderChip);
+
+    TestTrue(
+        TEXT("ProviderChipStyle AbbrevOnly reshapes AND abbreviates an ALREADY-BUILT chip"),
+        ProviderAbbrev.X < ProviderTint.X);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_CommonWidgetsAreLive,
+    "Ck.DebuggerCommon.Style.CommonWidgetsAreLive",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_CommonWidgetsAreLive::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    // ---- SCkDebug_KeyValueRow: RowDensity on THE inspector row ---------------
+    // Airy adds (SpaceS - SpaceXS) to the row's vertical padding on both edges. Padding-driven, so
+    // the assertion does not depend on font metrics.
+    const auto Row = SNew(SCkDebug_KeyValueRow)
+        .KeyText(FText::FromString(TEXT("Location")))
+        .ValueText(FText::FromString(TEXT("0, 0, 0")))
+        .Tone(ECkDebug_KeyValueTone::Custom);
+
+    const auto RowComfortable = Repass(Row);
+
+    Settings->Selection.RowDensity = ECkDebugAxis_RowDensity::Airy;
+    const auto RowAiry = Repass(Row);
+
+    TestTrue(
+        TEXT("RowDensity Airy loosens an ALREADY-BUILT inspector row"),
+        RowAiry.Y > RowComfortable.Y);
+
+    Settings->Selection.RowDensity = ECkDebugAxis_RowDensity::Compact;
+    const auto RowCompact = Repass(Row);
+
+    TestTrue(
+        TEXT("RowDensity Compact tightens the same row"),
+        RowCompact.Y < RowAiry.Y);
+
+    Settings->Selection.RowDensity = ECkDebugAxis_RowDensity::Comfortable;
+    TestTrue(
+        TEXT("Returning to Comfortable restores the row's shipped height"),
+        FMath::IsNearlyEqual(Repass(Row).Y, RowComfortable.Y));
+
+    // ---- SCkDebug_IconToggle: IconSize on the glyph box ----------------------
+    const auto Toggle = SNew(SCkDebug_IconToggle)
+        .IconId(TEXT("Grid"))
+        .Label(FText::FromString(TEXT("Live icon")))
+        .ShowLabel(false)
+        .IsOn(false)
+        .OnStateChanged(FOnCkDebug_IconToggleChanged::CreateLambda([](bool) {}));
+
+    const auto ToggleMedium = Repass(Toggle);
+
+    Settings->Selection.IconSize = ECkDebugAxis_IconSize::Large;
+    const auto ToggleLarge = Repass(Toggle);
+
+    TestTrue(
+        TEXT("IconSize Large grows an ALREADY-BUILT icon toggle"),
+        ToggleLarge.X > ToggleMedium.X);
+
+    Settings->Selection.IconSize = ECkDebugAxis_IconSize::Small;
+    const auto ToggleSmall = Repass(Toggle);
+
+    TestTrue(
+        TEXT("IconSize Small shrinks the same toggle"),
+        ToggleSmall.X < ToggleMedium.X);
 
     return true;
 }

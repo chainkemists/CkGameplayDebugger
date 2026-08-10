@@ -15,6 +15,11 @@
 // a rebuild. `Highlighted` draws a tight accent glow ring — the cross-panel
 // key-trace affordance.
 //
+// The box treatment follows the ChipStyle axis (Tint / Solid / Outline /
+// TextOnly) through attribute lambdas, so a Style Lab flip moves chips that
+// were built long before it. Tint is the default and is this widget's shipped
+// look untouched.
+//
 // Click-trap warning: when OnClicked is bound the chip consumes left-clicks —
 // do NOT place clickable chips inside SListView/STreeView rows (see
 // CkDebuggerCommon/CLAUDE.md §"List / tree rows"). Unbound chips are inert

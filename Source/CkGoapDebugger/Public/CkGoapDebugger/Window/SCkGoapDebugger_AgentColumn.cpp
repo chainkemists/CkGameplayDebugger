@@ -165,7 +165,8 @@ namespace ck_goap_debugger_agent_column
         // coverage (renders as tofu).
         return SNew(STextBlock)
             .Text(FText::FromString(TEXT("RO")))
-            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+            .Font_Lambda([]() -> FSlateFontInfo
+            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             .ToolTipText(FText::FromString(InWhy));
     }
@@ -230,7 +231,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Select an agent in the Squad tab (or a planner in the tree) to inspect it.")))
-                        .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         .AutoWrapText(true)
                 ];
@@ -319,7 +321,8 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(InitialsOf(InAgentName)))
-                                        .Font(CkStyle::MonoFont(CkStyle::FontSizeH2()))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeH2()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                                 ]
                         ]
@@ -336,7 +339,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text(FText::FromString(InAgentName.IsEmpty() ? TEXT("(no agent)") : *InAgentName))
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeH2()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH2()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
 
@@ -353,7 +357,8 @@ auto
                                 [
                                     SNew(SCkDebug_SelectableLabel)
                                         .Text(FText::FromString(InPlanner.DisplayName))
-                                        .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                 ]
 
@@ -373,7 +378,8 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(FString::Printf(TEXT("attempt #%d"), InPlanner.PlanAttemptCount)))
-                                        .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                 ]
                         ]
@@ -455,7 +461,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("›")))
-                        .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                 ];
         }
@@ -487,7 +494,8 @@ auto
                                         SNew(STextBlock)
                                             .Text(FText::FromString(FString::Printf(TEXT("%s %s"), *Crumb.Glyph, *Crumb.Name)))
                                             .ToolTipText(FText::FromString(Crumb.FullName))
-                                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                                             .ColorAndOpacity(FSlateColor(TextColor))
                                     ]
                             ]
@@ -521,7 +529,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Empty goal — plans complete immediately.")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
             ];
     }
@@ -574,7 +583,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("! Unregistered goal keys:")))
-                            .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Err()))
                     ]
                 + SHorizontalBox::Slot().FillWidth(1.0f) [ InvalidChips ]
@@ -612,7 +622,8 @@ auto
                     .Text(FText::FromString(InPlanner.PlanStatus == ECk_GoapPlanStatus::PlanFound
                         ? TEXT("Goal already satisfied — empty plan (Plan Found immediately).")
                         : TEXT("No plan yet.")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     .AutoWrapText(true)
             ];
@@ -662,7 +673,8 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::AsNumber(StepIndex + 1))
-                                        .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                         .ColorAndOpacity(FSlateColor(IsNow ? CkStyle::Accent() : CkStyle::TextMute()))
                                 ]
                         ]
@@ -679,7 +691,8 @@ auto
                                     const auto Vm = WeakVm.Pin();
                                     return Vm.IsValid() ? Vm->Get_NameDepth() : 1;
                                 })
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
 
@@ -691,7 +704,8 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(StepInfo != nullptr
                                     ? FString::Printf(TEXT("%.1f"), StepInfo->Cost) : FString{}))
-                                .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
 
@@ -701,7 +715,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("◀ NOW")))
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                                 .Visibility(IsNow ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
                         ]
@@ -722,7 +737,8 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("! Fallback — selected because nothing cheaper reaches the goal")))
-                        .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                         .AutoWrapText(true)
                 ];
@@ -730,7 +746,7 @@ auto
 
         Steps->AddSlot()
             .AutoHeight()
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(
                 FMargin{0.0f, 0.0f, 0.0f, CkStyle::SpaceS}))
             [
                 SNew(SCkDebug_Card)
@@ -773,7 +789,7 @@ auto
 
             Steps->AddSlot()
                 .AutoHeight()
-                .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                .Padding(ck_goap_debugger_axes::Live_RowDensity(
                     FMargin{26.0f, 0.0f, 0.0f, CkStyle::SpaceS}))
                 [
                     SNew(SCkDebug_Card)
@@ -790,7 +806,8 @@ auto
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(TEXT("»")))
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
@@ -802,7 +819,8 @@ auto
                                                     const auto Vm = WeakVm.Pin();
                                                     return Vm.IsValid() ? Vm->Get_NameDepth() : 1;
                                                 })
-                                                .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                                         ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
@@ -810,14 +828,16 @@ auto
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(SubStepInfo != nullptr
                                                     ? FString::Printf(TEXT("%.1f"), SubStepInfo->Cost) : FString{}))
-                                                .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                         ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                                         [
                                             SNew(STextBlock)
                                                 .Text(FText::FromString(TEXT("sub-planner expansion")))
-                                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                                .Font_Lambda([]() -> FSlateFontInfo
+                                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                                         ]
                                 ]
@@ -850,7 +870,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("top-tier cost %.1f"), InPlanner.PlanCost)))
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
             ];
 
@@ -860,7 +881,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("sub expansion %.1f"), SubCost)))
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
             ];
     }
@@ -900,7 +922,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(InLabel))
-                                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
                 ]
@@ -917,7 +940,8 @@ auto
     {
         return SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(InText))
-            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+            .Font_Lambda([]() -> FSlateFontInfo
+            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
             .ColorAndOpacity(FSlateColor(CkStyle::Text()));
     };
 
@@ -977,7 +1001,8 @@ auto
                 const auto Vm = WeakVm.Pin();
                 return Vm.IsValid() ? Vm->Get_NameDepth() : 1;
             })
-            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+            .Font_Lambda([]() -> FSlateFontInfo
+            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeSmall()); })
             .ColorAndOpacity(FSlateColor(CkStyle::Text()));
     };
 
@@ -1022,7 +1047,8 @@ auto
             {
                 return SNew(STextBlock)
                     .Text(FText::FromString(InOption.IsValid() ? *InOption : FString{}))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()));
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); });
             })
             .OnSelectionChanged_Lambda([PlannerHandle, IndexToPolicy](TSharedPtr<FString> InOption, ESelectInfo::Type InSelectInfo)
             {
@@ -1037,7 +1063,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(*PolicyOptions[PolicyToIndex(InPlanner.ReplanPolicy)]))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
             ]));
 
     AddRow(MakeRow(TEXT("Min replan interval"),
@@ -1160,7 +1187,8 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(InLabel))
-                                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                                    .Font_Lambda([]() -> FSlateFontInfo
+                                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
                                     .ColorAndOpacity(FSlateColor(InAccent ? CkStyle::Accent() : CkStyle::Text()))
                             ]
                     ]
@@ -1195,7 +1223,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("PLANNER SETTINGS")))
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
                 ]

@@ -67,8 +67,10 @@ namespace
     auto MakeDot(const TAttribute<FSlateColor>& InColor) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
-            .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
-            .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
+            .WidthOverride_Lambda([]() -> FOptionalSize
+            { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
             [
                 SNew(SBorder)
                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -163,7 +165,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(Snap.ClassName, OwningDepth)))
-                    .Font(CkStyle::BoldFont(CkStyle::NodeTitleFontSize()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
             ]
@@ -180,7 +183,8 @@ auto
                         if (Node == nullptr) { return FText::GetEmpty(); }
                         return FText::FromString(FString::Printf(TEXT("$%.0f"), Node->Get_Snapshot().Cost));
                     }))
-                    .Font(CkStyle::BoldFont(CkStyle::NodeCostFontSize()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeCostFontSize()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
             ];
 
@@ -199,7 +203,8 @@ auto
             { return FText::FromString(TEXT("\x25CF FALLBACK")); }
             return FText::FromString(TEXT("\x25CF ACTION"));
         }))
-        .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+        .Font_Lambda([]() -> FSlateFontInfo
+        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
         .ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([WeakNode]() -> FSlateColor
         {
             const auto* Node = WeakNode.Get();
@@ -228,7 +233,8 @@ auto
         [
             SNew(STextBlock)
                 .Text(FText::FromString(CompositeText))
-                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::CategoryAge()))
         ];
 
@@ -238,8 +244,10 @@ auto
     // produces stale visuals (or, worse, requires NotifyGraphChanged to
     // rebuild the whole node widget, which is the flicker we're fixing).
     auto StepBadge = SNew(SBox)
-        .WidthOverride(ck_goap_debugger_axes::Get_IconSize())
-        .HeightOverride(ck_goap_debugger_axes::Get_IconSize())
+        .WidthOverride_Lambda([]() -> FOptionalSize
+        { return FOptionalSize{ck_goap_debugger_axes::Get_IconSize()}; })
+        .HeightOverride_Lambda([]() -> FOptionalSize
+        { return FOptionalSize{ck_goap_debugger_axes::Get_IconSize()}; })
         .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
         {
             const auto* Node = WeakNode.Get();
@@ -261,7 +269,8 @@ auto
                             if (Node == nullptr) { return FText::GetEmpty(); }
                             return FText::FromString(FString::FromInt(Node->Get_PlanStepIndex()));
                         }))
-                        .Font(CkStyle::BoldFont(CkStyle::NodeCostFontSize()))
+                        .Font_Lambda([]() -> FSlateFontInfo
+                        { return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeCostFontSize()); })
                         .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))
                 ]
         ];
@@ -279,20 +288,37 @@ auto
             const auto* Node = WeakNode.Get();
             return FSlateColor(Compute_BorderColor(Node));
         }))
-        .Padding(FMargin(CkStyle::NodeBorderThickness()))
+        // GraphNodeStyle: the frame's own padding IS the border weight, so it routes through the
+        // axis' node-border entry point. Lambda-bound because a card widget is only ever recreated
+        // by a topology rebuild — a construction-time read would freeze the axis.
+        .Padding_Lambda([]() -> FMargin
+        {
+            return FMargin{ck::debug_axes::Get_NodeBorderThickness()};
+        })
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
                 // Fill follows the in-plan flag, so it live-binds exactly like the border does.
+                // GraphNodeStyle Minimal drops the fill entirely — border and content only — which
+                // is expressed as a transparent colour on the layer that already exists, never as a
+                // different widget tree.
                 .BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([WeakNode]()
                 {
+                    if (NOT ck_goap_debugger_axes::Get_NodeDrawsFill())
+                    { return FSlateColor(FLinearColor::Transparent); }
+
                     const auto* Node = WeakNode.Get();
                     if (Node == nullptr) { return FSlateColor(CkStyle::NodeFill_Inactive()); }
                     return FSlateColor(Node->Get_IsInPlan()
                         ? CkStyle::NodeFill_InPlan()
                         : CkStyle::NodeFill_Inactive());
                 }))
-                .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+                // Dense tightens the card's inner padding; Card / Minimal keep the surface's own.
+                .Padding_Lambda([]() -> FMargin
+                {
+                    const auto Scale = ck_goap_debugger_axes::Get_NodePaddingScale();
+                    return FMargin{CkStyle::SpaceM * Scale, CkStyle::SpaceS * Scale};
+                })
                 [
                     SNew(SVerticalBox)
 
@@ -458,7 +484,7 @@ auto
 
         LeftCol->AddSlot()
             .AutoHeight()
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
                     .ToolTipText(TooltipAttr)
@@ -476,7 +502,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x2192")))
-                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                         ]
 
@@ -493,7 +520,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Compute_TagLeaf(Pre.Key)))
-                                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]
@@ -504,7 +532,7 @@ auto
     {
         RightCol->AddSlot()
             .AutoHeight()
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
                     .ToolTipText(FText::FromString(Eff.Key.ToString()))
@@ -515,7 +543,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Compute_TagLeaf(Eff.Key)))
-                                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]

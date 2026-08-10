@@ -262,7 +262,8 @@ auto
                                         // axis resolves to for the default Uppercase option.
                                         SNew(SCkDebug_SelectableLabel)
                                             .Text_Lambda([this]() { return GetHistoryHeaderText(); })
-                                            .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                                            .Font_Lambda([]() -> FSlateFontInfo
+                                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4()); })
                                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                     ]
                                 + SHorizontalBox::Slot()
@@ -280,7 +281,8 @@ auto
                                             [
                                                 SNew(STextBlock)
                                                     .Text(NSLOCTEXT("CkGoapDebugger", "CopyAllBtn", "Copy"))
-                                                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+                                                    .Font_Lambda([]() -> FSlateFontInfo
+                                                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeMicro()); })
                                             ]
                                     ]
                         ]
@@ -315,7 +317,8 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
-                                .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH4()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
 
@@ -783,7 +786,7 @@ auto
     }
 
     return SNew(FRowType, InOwnerTable)
-        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 2.0f}))
+        .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{2.0f, 2.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -802,8 +805,10 @@ auto
                     .Padding(0.0f, 0.0f, 6.0f, 0.0f)
                     [
                         SNew(SBox)
-                            .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
-                            .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
+                            .WidthOverride_Lambda([]() -> FOptionalSize
+                            { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
+                            .HeightOverride_Lambda([]() -> FOptionalSize
+                            { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
                             [
                                 SNew(SBorder)
                                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -831,7 +836,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(InItem->DisplayName.IsEmpty()
                                 ? TEXT("(no name)") : InItem->DisplayName))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
 
@@ -1106,11 +1112,27 @@ auto
 
     const auto Depth = _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
 
+    // RowBanding — the history list is the sidebar's one uniform row surface, so it is where the
+    // axis earns its keep. Off returns a no-brush and the wrapper costs nothing; the planner TREE
+    // above deliberately opts out (its rows carry their own depth-indent chrome, and banding an
+    // indented tree reads as noise rather than structure).
+    const auto BandIndex = _HistoryItems.IndexOfByKey(InItem);
+    const auto Band = [BandIndex](TSharedRef<SWidget> InContent) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage_Lambda([BandIndex]() -> const FSlateBrush*
+            {
+                return ck::debug_axes::Get_RowBandingBrush(BandIndex);
+            })
+            .Padding(0.0f)
+            [ InContent ];
+    };
+
     // ---- Planner-group header --------------------------------------------------------------------
     if (InItem->IsGroupHeader)
     {
         return SNew(FRowType, InOwnerTable)
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 3.0f, 2.0f, 1.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{2.0f, 3.0f, 2.0f, 1.0f}))
             .ShowSelection(false)
             [
                 SNew(SHorizontalBox)
@@ -1118,14 +1140,16 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("▼")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                         ]
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(InItem->PlannerName, Depth)))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
             ];
@@ -1143,26 +1167,29 @@ auto
             *FormatTimestamp_Sidebar(Row.FlapTStart), *FormatTimestamp_Sidebar(Row.FlapTEnd));
 
         return SNew(FRowType, InOwnerTable)
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{2.0f, 1.0f}))
             .ShowSelection(true)
             [
-                SNew(SHorizontalBox)
+                Band(SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 4.0f, 0.0f)
                         [ MakeFlapPill_Sidebar() ]
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(6.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Body))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Span))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                                .Font_Lambda([]() -> FSlateFontInfo
+                                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                                 .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                         ]
+                )
             ];
     }
 
@@ -1175,10 +1202,10 @@ auto
     { NameText = Ev.Title.IsEmpty() ? HistoryKindLabel_Sidebar(Ev.Kind) : Ev.Title; }
 
     return SNew(FRowType, InOwnerTable)
-        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
+        .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{2.0f, 1.0f}))
         .ShowSelection(true)
         [
-            SNew(SHorizontalBox)
+            Band(SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(16.0f, 0.0f, 4.0f, 0.0f)
                     [ MakeKindPill_Sidebar(Ev.Kind) ]
 
@@ -1189,14 +1216,16 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(NameText))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                                 ]
                             + SVerticalBox::Slot().AutoHeight()
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(Ev.Meta))
-                                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
+                                        .Font_Lambda([]() -> FSlateFontInfo
+                                        { return ck::debug_axes::ScaledFont("Regular", 7); })
                                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                         .Visibility(Ev.Meta.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
                                 ]
@@ -1206,9 +1235,11 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(FormatTimestamp_Sidebar(Ev.WorldTimeSeconds)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                     ]
+            )
         ];
 }
 

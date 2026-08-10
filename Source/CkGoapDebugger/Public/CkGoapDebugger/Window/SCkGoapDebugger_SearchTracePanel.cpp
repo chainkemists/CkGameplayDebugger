@@ -106,7 +106,8 @@ auto
                     .Text(FText::FromString(Planner == nullptr
                         ? TEXT("Select a Planner to see its last search trace.")
                         : TEXT("No search trace yet — this Planner hasn't run a search this session.")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                    .Font_Lambda([]() -> FSlateFontInfo
+                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
                     .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     .Justification(ETextJustify::Center)
             ];
@@ -123,7 +124,8 @@ auto
                     "Regressive A* — the search walks BACKWARD from the goal. Each row is a constraint set still "
                     "unsatisfied at that state; an action trades it for the set its preconditions demand. Green rows "
                     "are already satisfied by the world state — the search terminates there.")))
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
         ];
 
@@ -140,7 +142,8 @@ auto
                     Stats.Get_ElapsedMicroseconds(),
                     Stats.Get_PlanLength(),
                     Stats.Get_PlanCost())))
-                .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ];
 
@@ -149,7 +152,7 @@ auto
     {
         _Body->AddSlot()
             .AutoHeight()
-            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 0.0f, 0.0f, 2.0f}))
+            .Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 0.0f, 0.0f, 2.0f}))
             [
                 DoBuildRow(Planner->SearchDebug[Index], Index)
             ];
@@ -163,7 +166,8 @@ auto
                 .Text(FText::FromString(FString::Printf(
                     TEXT("%d explored constraint sets retained from the last search (pool holds every state the search touched)."),
                     Planner->SearchDebug.Num())))
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .Font_Lambda([]() -> FSlateFontInfo
+                { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                 .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ];
 }
@@ -225,7 +229,8 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(TEXT("%02d"), InIndex)))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
 
@@ -244,7 +249,8 @@ auto
                         SNew(SCkDebug_SelectableLabel)
                             .Text(FText::FromString(FString::Printf(TEXT("via %s"), *LeafOfClass(InRow.Get_ViaActionClass()))))
                             .ToolTipText(FText::FromString(TEXT("The action whose preconditions introduced this constraint set (regressive step).")))
-                            .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
 
@@ -256,7 +262,8 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(TEXT("h=%d"), InRow.Get_UnsatisfiedCount())))
                             .ToolTipText(FText::FromString(TEXT("Heuristic: unsatisfied-condition count at this state.")))
-                            .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                            .Font_Lambda([]() -> FSlateFontInfo
+                            { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeMicro()); })
                             .ColorAndOpacity(FSlateColor(Satisfied ? CkStyle::Ok() : CkStyle::TextMute()))
                     ]
         ];

@@ -40,6 +40,12 @@ public:
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK SM Debugger")); }
 
+protected:
+    // Structural style axes changed — re-emit the surfaces that COMPOSE against an axis instead of
+    // binding it (the detail panel decides per-axis whether a separator slot exists at all, the
+    // history list re-slots its rows). Visual axes need nothing; they are attribute-bound.
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     auto BuildToolbar() -> TSharedRef<SWidget>;
     auto BuildMenuActions() -> TSharedRef<SWidget>;

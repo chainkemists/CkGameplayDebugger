@@ -6,7 +6,12 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
@@ -119,6 +124,13 @@ namespace
     // can space columns/rows without overlap and the Slate widget can size the
     // card to its content (no key-name cutoff). Fonts MUST stay in sync with
     // SGraphNode_GoapAction's header/composite/body rows.
+    //
+    // This is the one place the axes are read as VALUES rather than bound as attributes: a layout
+    // pass produces numbers, not widgets. The consequence is that a TextScale / GraphNodeStyle flip
+    // moves the CARDS immediately (they are attribute-bound and self-size between Min/MaxDesiredWidth)
+    // while the column SPACING this function feeds stays at its last-measured value until the next
+    // topology rebuild. Self-correcting and never clipping, so the graph is deliberately not
+    // invalidated on a style-revision bump.
     auto Measure_NodeSize_Graph(
         const FCkGoapDebugger_ActionInfo& InAction,
         int32 InNameDepth) -> FVector2D
@@ -130,18 +142,21 @@ namespace
 
         const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 
-        const auto Font_Header    = FCoreStyle::GetDefaultFontStyle("Bold", 10);
-        const auto Font_Cost      = FCoreStyle::GetDefaultFontStyle("Bold", 9);
-        const auto Font_Composite = FCoreStyle::GetDefaultFontStyle("Regular", 8);
-        const auto Font_Row       = FCoreStyle::GetDefaultFontStyle("Regular", 8);
+        const auto Font_Header    = ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3());
+        const auto Font_Cost      = ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody());
+        const auto Font_Composite = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
+        const auto Font_Row       = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
 
         constexpr auto DotWidth      = 7.0f + 4.0f;   // MakeDot + its padding slot
         // Precondition rows lead with "[exp square] -> [cur square]":
         // 7 + 2 + ~10 (arrow at font 7) + 2 + 7 + 4 trailing padding.
         constexpr auto PreRowPrefix  = 32.0f;
         constexpr auto ColumnGap     = 12.0f;         // breathing room between pre/eff columns
-        constexpr auto CardChrome    = 2.0f * 2.0f    // outer border thickness
-                                     + 2.0f * 8.0f    // inner Padding_Medium (horizontal)
+        // Chrome tracks the card's own GraphNodeStyle treatment — otherwise Dense (tighter inner
+        // padding) would reserve width the card no longer wants, and a thicker border would clip.
+        const auto CardChrome        = 2.0f * ck::debug_axes::Get_NodeBorderThickness() // outer border
+                                     + 2.0f * CkStyle::SpaceM                           // inner horizontal padding
+                                           * ck_goap_debugger_axes::Get_NodePaddingScale()
                                      + 6.0f;          // slack so ellipsis never triggers at the cap
         constexpr auto RowVertPad    = 2.0f;          // 1.0f top + bottom per condition row
 

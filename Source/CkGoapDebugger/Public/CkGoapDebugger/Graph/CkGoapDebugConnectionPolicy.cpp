@@ -7,6 +7,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Rendering/DrawElements.h"
@@ -58,6 +60,20 @@ namespace
     // at default zoom; tuned along with the dependency-edge solid wire.
     constexpr float TreeEdge_DashLength_ConnectionPolicy = 8.0f;
     constexpr float TreeEdge_GapLength_ConnectionPolicy  = 6.0f;
+
+    // GraphNodeStyle reaches the wires too — a Minimal graph whose nodes lost their fill but kept
+    // fat wires reads worse than either extreme. Both are SCALES on the policy's own tuned values
+    // (Card == 1.0 == today's graph), and DetermineWiringStyle runs per paint, so they are live
+    // without any binding.
+    auto Wire_ThicknessScale_ConnectionPolicy() -> float
+    {
+        return ck_goap_debugger_axes::Get_NodeBorderScale();
+    }
+
+    auto Wire_DimScale_ConnectionPolicy() -> float
+    {
+        return ck_goap_debugger_axes::Get_NodeDimScale();
+    }
 }
 
 // ====================================================================================================================
@@ -82,9 +98,12 @@ auto
     // Border(), not Graph_Edge(): the GOAP tree deliberately draws its off-plan
     // wires at divider weight so the in-plan spine is the only thing that reads
     // at a glance. Graph_Edge is several stops brighter and drowns it out.
+    const auto ThicknessScale = Wire_ThicknessScale_ConnectionPolicy();
+    const auto DimScale       = Wire_DimScale_ConnectionPolicy();
+
     OutParams.WireColor     = CkStyle::Border();
-    OutParams.WireColor.A   = 0.65f;
-    OutParams.WireThickness = 1.0f;
+    OutParams.WireColor.A   = FMath::Clamp(0.65f * DimScale, 0.05f, 1.0f);
+    OutParams.WireThickness = 1.0f * ThicknessScale;
 
     if (NOT InOutputPin || NOT InInputPin) { return; }
 
@@ -106,8 +125,8 @@ auto
         OutParams.WireColor = bInPlan
             ? CkStyle::Ok()
             : CkStyle::CategoryAge();
-        OutParams.WireColor.A   = bInPlan ? 1.0f : 0.55f;
-        OutParams.WireThickness = bInPlan ? 2.0f : 1.25f;
+        OutParams.WireColor.A   = bInPlan ? 1.0f : FMath::Clamp(0.55f * DimScale, 0.05f, 1.0f);
+        OutParams.WireThickness = (bInPlan ? 2.0f : 1.25f) * ThicknessScale;
         OutParams.bUserFlag1    = true;   // dashed render path
         return;
     }
@@ -118,14 +137,14 @@ auto
     if (Is_EdgeFailureBlocked_ConnectionPolicy(SrcNode, DstNode))
     {
         OutParams.WireColor     = CkStyle::Err();
-        OutParams.WireThickness = 2.0f;
+        OutParams.WireThickness = 2.0f * ThicknessScale;
         return;
     }
 
     if (Is_EdgeInPlan_ConnectionPolicy(SrcNode, DstNode))
     {
         OutParams.WireColor     = CkStyle::Ok();
-        OutParams.WireThickness = 2.0f;
+        OutParams.WireThickness = 2.0f * ThicknessScale;
         return;
     }
 }

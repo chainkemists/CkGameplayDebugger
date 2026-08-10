@@ -4,6 +4,7 @@
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_SearchBar.h"
 
@@ -13,6 +14,7 @@
 #include "CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityDebuggerLinks.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -38,6 +40,11 @@ namespace ck_debugger_panel_inspector
     {
         return InCanInspect || InWantsTickWhenNotInspectable;
     }
+
+    // Diff mode replays every inspector's Build path once PER ENTITY. Past a handful of entities that
+    // cost stops paying for itself and the tint stops being readable, so the comparison is capped —
+    // and the remainder is REPORTED next to the toggle, never silently dropped.
+    constexpr auto MaxDiffEntities = 8;
 
     // Feature glyph + accent for an inspector's section header (the debugger-wide
     // icon language). Nullptr brush = inspector declared no glyph; header unchanged.
@@ -298,6 +305,11 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     ScrollBox->ClearChildren();
     _InspectorContentContainers.Empty();
 
+    // Recomputed below only for a multi-entity selection; clearing here is what keeps a stale verdict
+    // from surviving into a single-entity or empty selection.
+    _DiffLabelsByInspector.Empty();
+    _DiffSkippedCount = 0;
+
     // Hide mode toggle by default
     if (_ModeToggleContainer.IsValid())
     {
@@ -333,6 +345,10 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     if (SelectedEntities.Num() > 1)
     {
         _CurrentInspectedEntities = SelectedEntities;
+
+        // Ahead of BOTH the toggle row (which reports the cap) and the content build (which consumes
+        // the verdict) — the compare pass is what makes those two agree.
+        Rebuild_DiffLabels(SelectedEntities);
 
         if (_ModeToggleContainer.IsValid())
         {
@@ -570,7 +586,150 @@ auto SCkDebuggerPanel_Inspector::Build_ModeToggle() -> TSharedRef<SWidget>
                     ]
                 ]
             ]
+
+            // Diff mode rides the mode row because that row already exists exactly when more than one
+            // entity is selected — the only selection shape a value comparison means anything for.
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                Build_DiffModeControls()
+            ]
         ];
+}
+
+// ============================================================================
+// Build_DiffModeControls
+// ============================================================================
+
+auto SCkDebuggerPanel_Inspector::Build_DiffModeControls() -> TSharedRef<SWidget>
+{
+    const auto WeakPanel = TWeakPtr<SCkDebuggerPanel_Inspector>{SharedThis(this)};
+
+    auto Row = SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Scale"))
+            .Label(FText::FromString(TEXT("Diff Values")))
+            .ToolTip(FText::FromString(ck::Format_UE(
+                TEXT("Tint every row whose value DIFFERS across the selected entities. Compares up to {} of them; a label missing from an entity counts as a difference."),
+                ck_debugger_panel_inspector::MaxDiffEntities)))
+            .IsOn_Lambda([WeakPanel]()
+            {
+                const auto Panel = WeakPanel.Pin();
+                return Panel.IsValid() && Panel->_DiffMode;
+            })
+            .OnStateChanged_Lambda([WeakPanel](bool InIsOn)
+            {
+                const auto Panel = WeakPanel.Pin();
+
+                if (NOT Panel.IsValid() || Panel->_DiffMode == InIsOn)
+                { return; }
+
+                Panel->_DiffMode = InIsOn;
+                Panel->Request_RebuildInspectors();
+            })
+        ];
+
+    // The cap is stated, never silent: the user must be able to tell "these rows all match" from
+    // "these rows were never compared".
+    if (_DiffMode && _DiffSkippedCount > 0)
+    {
+        Row->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FCkDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                .Text(FText::FromString(ck::Format_UE(TEXT("+{} not compared"), _DiffSkippedCount)))
+                .ToolTipText(FText::FromString(ck::Format_UE(
+                    TEXT("Only the first {} selected entities take part in the comparison."),
+                    ck_debugger_panel_inspector::MaxDiffEntities)))
+                .ColorAndOpacity(FSlateColor{CkStyle::Warn()})
+            ];
+    }
+
+    return Row;
+}
+
+// ============================================================================
+// Rebuild_DiffLabels
+// ============================================================================
+
+auto SCkDebuggerPanel_Inspector::Rebuild_DiffLabels(const TArray<FCk_Handle>& InEntities) -> void
+{
+    _DiffLabelsByInspector.Empty();
+    _DiffSkippedCount = 0;
+
+    if (NOT _DiffMode)
+    { return; }
+
+    auto Comparable = TArray<FCk_Handle>{};
+    Comparable.Reserve(InEntities.Num());
+
+    for (const auto& Entity : InEntities)
+    {
+        if (ck::IsValid(Entity))
+        { Comparable.Add(Entity); }
+    }
+
+    _DiffSkippedCount = FMath::Max(0, Comparable.Num() - ck_debugger_panel_inspector::MaxDiffEntities);
+
+    if (_DiffSkippedCount > 0)
+    { Comparable.SetNum(ck_debugger_panel_inspector::MaxDiffEntities); }
+
+    if (Comparable.Num() < 2)
+    { return; }
+
+    for (auto Index = 0; Index < Inspectors.Num(); ++Index)
+    {
+        const auto& Inspector = Inspectors[Index];
+
+        if (NOT Inspector.IsValid())
+        { continue; }
+
+        const auto Filter = InspectorFilters.FindRef(Index);
+
+        auto PerEntityRows = TArray<TMap<FString, FString>>{};
+        PerEntityRows.Reserve(Comparable.Num());
+
+        for (const auto& Entity : Comparable)
+        {
+            // An inspector that cannot inspect this entity contributes an EMPTY map, which makes every
+            // label the others carry read as a difference — the honest answer for "this one has no
+            // Transform at all".
+            if (NOT Inspector->CanInspect(Entity))
+            {
+                PerEntityRows.Emplace();
+                continue;
+            }
+
+            // The scope makes the replay compose nothing; the returned widget is deliberately dropped.
+            const auto Capture = FCkInspector_RowCaptureScope{};
+
+            if (Inspector->IsMultiSection())
+            { Inspector->Get_InspectorSections(Entity); }
+            else if (Inspector->IsFilterable())
+            { Inspector->Build_Inspector(Entity, Filter); }
+            else
+            { Inspector->Build_Inspector(Entity); }
+
+            PerEntityRows.Add(Capture.Get_Rows());
+        }
+
+        auto Differing = FCkInspectorWidgetBuilder::Compute_DifferingLabels(PerEntityRows);
+
+        if (Differing.Num() == 0)
+        { continue; }
+
+        _DiffLabelsByInspector.Add(Index, MoveTemp(Differing));
+    }
 }
 
 // ============================================================================
@@ -938,6 +1097,11 @@ auto SCkDebuggerPanel_Inspector::Build_EntitySubSection(
         ? OuterIndex : InnerIndex;
 
     const auto Filter = InspectorFilters.FindRef(InspectorIndex);
+
+    // Diff verdict for THIS inspector, computed once in Rebuild_DiffLabels. A null set is an inactive
+    // scope, so a non-diff rebuild composes exactly the tree it always did. The scope must outlive
+    // every Build_Inspector call below, which is why it is declared here rather than inline.
+    const auto DiffScope = FCkInspector_DiffMarkScope{_DiffLabelsByInspector.Find(InspectorIndex)};
 
     auto BodyContent = SNew(SVerticalBox);
 

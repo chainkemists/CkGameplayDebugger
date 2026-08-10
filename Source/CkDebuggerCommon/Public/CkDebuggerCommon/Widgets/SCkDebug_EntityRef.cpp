@@ -195,19 +195,48 @@ auto
 
 auto
     SCkDebug_EntityRef::
+    Get_TooltipIdPrefix() const
+    -> FString
+{
+    // NameOnly is the only option whose visible text carries no identifier. Rather than leaving the
+    // user with a name they cannot resolve, the id moves into the tooltip for exactly that option —
+    // every other option already shows it, so their tooltip stays byte-identical.
+    if (UCkDebuggerStyleSettings::Get_Selection().EntityIdStyle != ECkDebugAxis_EntityIdStyle::NameOnly)
+    { return FString{}; }
+
+    const auto Entity = _Entity.Get();
+
+    if (ck::Is_NOT_Valid(Entity))
+    { return FString{}; }
+
+    const auto IdText = ck::Format_UE(TEXT("{}"), Entity.Get_Entity());
+
+    // A nameless entity already renders AS its id under NameOnly — repeating it would be noise.
+    return Get_DisplayText().ToString() == IdText ? FString{} : IdText;
+}
+
+auto
+    SCkDebug_EntityRef::
     Get_Tooltip() const
     -> FText
 {
+    // A caller-supplied tooltip owns the whole surface, id included.
     if (NOT _CustomTooltip.IsEmpty())
     { return _CustomTooltip; }
 
     if (ck::Is_NOT_Valid(_Entity.Get()))
     { return FText::FromString(TEXT("Invalid entity")); }
 
-    if (NOT ck::DebugNav::Has_EntityNavigator())
-    { return FText::FromString(TEXT("Entity ID — right-click to copy")); }
+    const auto Base = ck::DebugNav::Has_EntityNavigator()
+        ? FString{TEXT("Click to open in CK ECS Debugger — right-click to copy")}
+        : FString{TEXT("Entity ID — right-click to copy")};
 
-    return FText::FromString(TEXT("Click to open in CK ECS Debugger — right-click to copy"));
+    const auto IdPrefix = Get_TooltipIdPrefix();
+
+    if (IdPrefix.IsEmpty())
+    { return FText::FromString(Base); }
+
+    return FText::FromString(ck::Format_UE(TEXT("{}\n{}"), IdPrefix, Base));
 }
 
 auto

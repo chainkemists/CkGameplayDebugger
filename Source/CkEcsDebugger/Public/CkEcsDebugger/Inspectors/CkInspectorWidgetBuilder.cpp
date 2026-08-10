@@ -1,5 +1,6 @@
 #include "CkInspectorWidgetBuilder.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -8,19 +9,27 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SComboBox.h"
+#include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace ck_inspector_widget_builder
@@ -108,6 +117,127 @@ namespace ck_inspector_widget_builder
         for (const auto& Component : InComponents)
         { Resolved.Add(Component.Get()); }
         return Resolved;
+    }
+
+    // ----- Interactive rows ---------------------------------------------------
+
+    constexpr auto TextEntryWidth  = 160.0f;
+    constexpr auto ActionButtonGap = 6.0f;
+
+    static auto Format_Bool(bool InValue) -> FText
+    {
+        return FText::FromString(InValue ? TEXT("true") : TEXT("false"));
+    }
+
+    static auto Make_ValueLabel(const TAttribute<FText>& InText, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(STextBlock)
+            .Text(InText)
+            .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+            .ColorAndOpacity(FSlateColor{InColor});
+    }
+
+    // Typing state for the FName / tag entries. Same freeze rule as SCkDebug_NumericEditor: while the
+    // user is mid-word the bound live value must not overwrite the text box.
+    struct FTextEntryState
+    {
+        bool  IsEditing = false;       // focus window — what the edit guard defers on
+        bool  HasChange = false;       // something was actually typed — what a commit needs
+        FText Frozen;
+    };
+
+    static auto Make_TextEntry(
+        TAttribute<FText> InValue,
+        TFunction<void(const FString&)> InCommit,
+        TSharedPtr<FCkInspectorEditScope> InScope) -> TSharedRef<SWidget>
+    {
+        auto State = MakeShared<FTextEntryState>();
+
+        return SNew(SBox)
+            .WidthOverride(TextEntryWidth)
+            [
+                SNew(SEditableTextBox)
+                .Text_Lambda([State, InValue]()
+                {
+                    return State->IsEditing ? State->Frozen : InValue.Get();
+                })
+                .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
+                .SelectAllTextWhenFocused(true)
+                .RevertTextOnEscape(true)
+                .OnBeginTextEdit_Lambda([State, InScope](const FText& InText)
+                {
+                    State->IsEditing = true;
+                    State->Frozen    = InText;
+
+                    if (InScope.IsValid())
+                    { InScope->Set_Active(true); }
+                })
+                .OnTextChanged_Lambda([State, InScope](const FText& InText)
+                {
+                    State->IsEditing = true;
+                    State->HasChange = true;
+                    State->Frozen    = InText;
+
+                    if (InScope.IsValid())
+                    { InScope->Set_Active(true); }
+                })
+                .OnTextCommitted_Lambda([State, InScope, InCommit](const FText& InText, ETextCommit::Type InCommitType)
+                {
+                    const auto HadChange = State->HasChange;
+
+                    State->IsEditing = false;
+                    State->HasChange = false;
+                    State->Frozen    = FText::GetEmpty();
+
+                    if (InScope.IsValid())
+                    { InScope->Set_Active(false); }
+
+                    // Focus passing through a field nobody typed in is not an edit.
+                    if (NOT HadChange)
+                    { return; }
+
+                    if (NOT SCkDebug_NumericEditor::Should_Commit(InCommitType))
+                    { return; }
+
+                    if (NOT InCommit)
+                    { return; }
+
+                    InCommit(InText.ToString());
+                })
+            ];
+    }
+
+    // The GOAP settings drawer's flat verb button, promoted to the shared vocabulary.
+    static auto Make_ActionButton(
+        const FText& InLabel,
+        TAttribute<FText> InTooltip,
+        TAttribute<bool> InIsEnabled,
+        TFunction<void()> InOnClicked) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(CkStyle::GetRoundedBrush())
+            .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+            .Padding(FMargin{1.0f})
+            [
+                SNew(SButton)
+                .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
+                .ContentPadding(FMargin{10.0f, 3.0f})
+                .ToolTipText(InTooltip)
+                .IsEnabled(InIsEnabled)
+                .OnClicked_Lambda([InOnClicked]() -> FReply
+                {
+                    if (InOnClicked)
+                    { InOnClicked(); }
+
+                    return FReply::Handled();
+                })
+                [
+                    SNew(STextBlock)
+                    .Text(InLabel)
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+                ]
+            ];
     }
 }
 
@@ -527,6 +657,564 @@ auto FCkInspectorWidgetBuilder::AddAlignedNumericRow(
 }
 
 // ====================================================================================================================
+// Interactive vocabulary
+
+auto FCkInspectorWidgetBuilder::SetEditGuard(TSharedPtr<FCkInspectorEditGuard> InGuard) -> FCkInspectorWidgetBuilder&
+{
+    _EditGuard = MoveTemp(InGuard);
+    return *this;
+}
+
+auto FCkInspectorWidgetBuilder::DoMakeEditScope() const -> TSharedPtr<FCkInspectorEditScope>
+{
+    return MakeShared<FCkInspectorEditScope>(_EditGuard);
+}
+
+auto FCkInspectorWidgetBuilder::DoMakeGateEnabled(ECk_DebugRequest_Requirement InRequirement) const -> TAttribute<bool>
+{
+    const auto Entity = _GateEntity;
+
+    return TAttribute<bool>::Create([Entity, InRequirement]()
+    {
+        return ck::DebugRequestGate::Evaluate(*Entity, InRequirement).IsEnabled;
+    });
+}
+
+auto FCkInspectorWidgetBuilder::DoMakeGateTooltip(
+    TAttribute<FText> InOwnTooltip,
+    ECk_DebugRequest_Requirement InRequirement) const -> TAttribute<FText>
+{
+    const auto Entity = _GateEntity;
+
+    return TAttribute<FText>::Create([Entity, InRequirement, InOwnTooltip]()
+    {
+        const auto Verdict = ck::DebugRequestGate::Evaluate(*Entity, InRequirement);
+        const auto Own = InOwnTooltip.IsSet() ? InOwnTooltip.Get() : FText::GetEmpty();
+
+        if (Verdict.Reason.IsEmpty())
+        { return Own; }
+
+        if (Own.IsEmpty())
+        { return Verdict.Reason; }
+
+        return FText::FromString(ck::Format_UE(TEXT("{}\n\n{}"), Own.ToString(), Verdict.Reason.ToString()));
+    });
+}
+
+auto FCkInspectorWidgetBuilder::DoApplyGate(
+    TSharedRef<SWidget> InControl,
+    TAttribute<FText> InOwnTooltip,
+    ECk_DebugRequest_Requirement InRequirement) const -> TSharedRef<SWidget>
+{
+    // Enabled-ness propagates to children, so gating the outermost wrapper greys the whole control;
+    // the reason rides along as its tooltip, which is the entire point of gating instead of hiding.
+    InControl->SetEnabled(DoMakeGateEnabled(InRequirement));
+    InControl->SetToolTipText(DoMakeGateTooltip(MoveTemp(InOwnTooltip), InRequirement));
+
+    return InControl;
+}
+
+auto FCkInspectorWidgetBuilder::DoComposeEditControl(
+    TSharedRef<SWidget> InControl,
+    TAttribute<FText> InReadOnlyText) -> TSharedRef<SWidget>
+{
+    if (NOT ck::debug_axes::EditControls_RevealOnHover(UCkDebuggerStyleSettings::Get_Selection()))
+    { return InControl; }
+
+    auto Host = SNew(SBox);
+    const auto HostWeak = TWeakPtr<SBox>{Host};
+
+    const auto Get_IsHovered = [HostWeak]()
+    {
+        const auto Pinned = HostWeak.Pin();
+        return Pinned.IsValid() && Pinned->IsHovered();
+    };
+
+    // Hidden, never Collapsed: both children keep their footprint, so revealing the control on hover
+    // cannot re-flow the row out from under the cursor.
+    auto ReadOnly = ck_inspector_widget_builder::Make_ValueLabel(MoveTemp(InReadOnlyText), CkStyle::TextDim());
+
+    ReadOnly->SetVisibility(TAttribute<EVisibility>::Create([Get_IsHovered]()
+    {
+        return Get_IsHovered() ? EVisibility::Hidden : EVisibility::Visible;
+    }));
+
+    InControl->SetVisibility(TAttribute<EVisibility>::Create([Get_IsHovered]()
+    {
+        return Get_IsHovered() ? EVisibility::Visible : EVisibility::Hidden;
+    }));
+
+    Host->SetContent(
+        SNew(SOverlay)
+
+        + SOverlay::Slot()
+        .VAlign(VAlign_Center)
+        [
+            ReadOnly
+        ]
+
+        + SOverlay::Slot()
+        .VAlign(VAlign_Center)
+        [
+            InControl
+        ]);
+
+    return Host;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddActionRow(
+    const FText& InLabel,
+    const TArray<FCkInspector_Action>& InActions) -> FCkInspectorWidgetBuilder&
+{
+    namespace builder = ck_inspector_widget_builder;
+
+    // An action row has no read-only form: Hidden restores the inspector that existed before this
+    // vocabulary, which simply had no verbs.
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    { return *this; }
+
+    auto Buttons = SNew(SHorizontalBox);
+    auto FilterValue = FString{};
+
+    for (const auto& Action : InActions)
+    {
+        Buttons->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, builder::ActionButtonGap, 0.0f)
+            [
+                builder::Make_ActionButton(
+                    Action.ButtonLabel,
+                    DoMakeGateTooltip(Action.Tooltip, Action.Requirement),
+                    DoMakeGateEnabled(Action.Requirement),
+                    Action.OnClicked)
+            ];
+
+        if (NOT FilterValue.IsEmpty())
+        { FilterValue.AppendChar(TEXT(' ')); }
+
+        FilterValue.Append(Action.ButtonLabel.ToString());
+    }
+
+    const auto ReadOnlyText = FText::FromString(FilterValue);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Buttons, ReadOnlyText),
+        [FilterValue]() { return FilterValue; });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddToggleRow(
+    const FText& InLabel,
+    TAttribute<bool> InGet,
+    TFunction<void(bool)> InSet,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    const auto ReadOnlyText = TAttribute<FText>::Create([InGet]()
+    {
+        return ck_inspector_widget_builder::Format_Bool(InGet.Get());
+    });
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [InGet](const FCk_Handle&) { return ck_inspector_widget_builder::Format_Bool(InGet.Get()); },
+            CkStyle::Text());
+    }
+
+    // A switch flip is ATOMIC — there is no in-flight window a rebuild could eat, so it takes no
+    // edit-guard scope. Only the type-in rows below do.
+    // HAlign_Left keeps the 30x17 switch its natural size; a fill-width slot stretches it.
+    auto Switch = SNew(SBox)
+        .HAlign(HAlign_Left)
+        [
+            SNew(SCkDebug_Switch)
+            .IsOn(InGet)
+            .OnStateChanged_Lambda([InSet](bool InNewState)
+            {
+                if (InSet)
+                { InSet(InNewState); }
+            })
+        ];
+
+    DoApplyGate(Switch, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Switch, ReadOnlyText),
+        [ReadOnlyText]() { return ReadOnlyText.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddNumericRow(
+    const FText& InLabel,
+    TAttribute<float> InGet,
+    TFunction<void(float)> InSet,
+    TOptional<float> InMin,
+    TOptional<float> InMax,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    const auto ReadOnlyText = TAttribute<FText>::Create([InGet]()
+    {
+        return ck_inspector_widget_builder::Format_Numeric(InGet.Get());
+    });
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [InGet](const FCk_Handle&) { return ck_inspector_widget_builder::Format_Numeric(InGet.Get()); },
+            CkStyle::Text());
+    }
+
+    auto Scope = DoMakeEditScope();
+
+    auto Editor = SNew(SCkDebug_NumericEditor)
+        .Value_Lambda([InGet]() { return static_cast<double>(InGet.Get()); })
+        .Kind(ECkDebug_NumericKind::Float)
+        .MinValue(InMin.IsSet() ? TOptional<double>{static_cast<double>(InMin.GetValue())} : TOptional<double>{})
+        .MaxValue(InMax.IsSet() ? TOptional<double>{static_cast<double>(InMax.GetValue())} : TOptional<double>{})
+        .Width(Get_AlignedColumnWidth(1))
+        .OnValueCommitted_Lambda([InSet](double InValue)
+        {
+            if (InSet)
+            { InSet(static_cast<float>(InValue)); }
+        })
+        .OnEditStateChanged_Lambda([Scope](bool InIsEditing)
+        {
+            if (Scope.IsValid())
+            { Scope->Set_Active(InIsEditing); }
+        });
+
+    DoApplyGate(Editor, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Editor, ReadOnlyText),
+        [ReadOnlyText]() { return ReadOnlyText.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddIntegerRow(
+    const FText& InLabel,
+    TAttribute<int32> InGet,
+    TFunction<void(int32)> InSet,
+    TOptional<int32> InMin,
+    TOptional<int32> InMax,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    const auto ReadOnlyText = TAttribute<FText>::Create([InGet]()
+    {
+        return FText::AsNumber(InGet.Get());
+    });
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [InGet](const FCk_Handle&) { return FText::AsNumber(InGet.Get()); },
+            CkStyle::Text());
+    }
+
+    auto Scope = DoMakeEditScope();
+
+    auto Editor = SNew(SCkDebug_NumericEditor)
+        .Value_Lambda([InGet]() { return static_cast<double>(InGet.Get()); })
+        .Kind(ECkDebug_NumericKind::Integer)
+        .MinValue(InMin.IsSet() ? TOptional<double>{static_cast<double>(InMin.GetValue())} : TOptional<double>{})
+        .MaxValue(InMax.IsSet() ? TOptional<double>{static_cast<double>(InMax.GetValue())} : TOptional<double>{})
+        .Width(Get_AlignedColumnWidth(1))
+        .OnValueCommitted_Lambda([InSet](double InValue)
+        {
+            if (InSet)
+            { InSet(static_cast<int32>(FMath::RoundToDouble(InValue))); }
+        })
+        .OnEditStateChanged_Lambda([Scope](bool InIsEditing)
+        {
+            if (Scope.IsValid())
+            { Scope->Set_Active(InIsEditing); }
+        });
+
+    DoApplyGate(Editor, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Editor, ReadOnlyText),
+        [ReadOnlyText]() { return ReadOnlyText.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddVectorRow(
+    const FText& InLabel,
+    TAttribute<FVector> InGet,
+    TFunction<void(const FVector&)> InSet,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    constexpr auto ComponentCount = 3;
+
+    // Read-only projections double as the Hidden fallback, the OnHover text, and the filter value.
+    auto Components = TArray<TAttribute<FText>>{};
+    Components.Reserve(ComponentCount);
+
+    for (auto Axis = 0; Axis < ComponentCount; ++Axis)
+    {
+        Components.Emplace(TAttribute<FText>::Create([InGet, Axis]()
+        {
+            return ck_inspector_widget_builder::Format_Numeric(static_cast<float>(InGet.Get()[Axis]));
+        }));
+    }
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    { return AddAlignedNumericRow(InLabel, Components); }
+
+    const auto ColumnWidth = Get_AlignedColumnWidth(ComponentCount);
+
+    auto Row = SNew(SHorizontalBox);
+
+    for (auto Axis = 0; Axis < ComponentCount; ++Axis)
+    {
+        // One scope PER COMPONENT: tabbing X -> Y interleaves the two editors' begin/end callbacks,
+        // and a shared scope would let X's end cancel the edit Y just started.
+        auto Scope = DoMakeEditScope();
+
+        Row->AddSlot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            [
+                SNew(SCkDebug_NumericEditor)
+                .Value_Lambda([InGet, Axis]() { return InGet.Get()[Axis]; })
+                .Kind(ECkDebug_NumericKind::Float)
+                .Width(ColumnWidth)
+                .ForegroundColor(Get_AxisColor(Axis))
+                // Read-modify-write the WHOLE vector: the setter is a public Request_*/Set_* taking a
+                // vector, and the other two components may have moved since this row was composed.
+                .OnValueCommitted_Lambda([InGet, InSet, Axis](double InValue)
+                {
+                    if (NOT InSet)
+                    { return; }
+
+                    auto Current = InGet.Get();
+                    Current[Axis] = InValue;
+                    InSet(Current);
+                })
+                .OnEditStateChanged_Lambda([Scope](bool InIsEditing)
+                {
+                    if (Scope.IsValid())
+                    { Scope->Set_Active(InIsEditing); }
+                })
+            ];
+    }
+
+    DoApplyGate(Row, TAttribute<FText>{}, InRequirement);
+
+    const auto ReadOnlyText = TAttribute<FText>::Create([Components]()
+    {
+        return Join_NumericComponents(ck_inspector_widget_builder::Resolve_Components(Components));
+    });
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Row, ReadOnlyText),
+        [ReadOnlyText]() { return ReadOnlyText.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddRotatorRow(
+    const FText& InLabel,
+    TAttribute<FRotator> InGet,
+    TFunction<void(const FRotator&)> InSet,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    // (Roll, Pitch, Yaw) so component 0/1/2 colours match the axis each angle turns about — the
+    // convention CkInspector_Transform's read-only "Rotation (R,P,Y)" row already uses.
+    return AddVectorRow(
+        InLabel,
+        TAttribute<FVector>::Create([InGet]()
+        {
+            const auto Rotator = InGet.Get();
+            return FVector{Rotator.Roll, Rotator.Pitch, Rotator.Yaw};
+        }),
+        [InSet](const FVector& InComponents)
+        {
+            if (NOT InSet)
+            { return; }
+
+            // FRotator's constructor order is (Pitch, Yaw, Roll).
+            InSet(FRotator{InComponents.Y, InComponents.Z, InComponents.X});
+        },
+        InRequirement);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddEnumDropdownRow(
+    const FText& InLabel,
+    const TArray<FText>& InOptions,
+    TAttribute<int32> InGetSelectedIndex,
+    TFunction<void(int32)> InSetSelectedIndex,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    const auto Options = InOptions;
+
+    const auto ReadOnlyText = TAttribute<FText>::Create([Options, InGetSelectedIndex]()
+    {
+        const auto Index = InGetSelectedIndex.Get();
+        return Options.IsValidIndex(Index) ? Options[Index] : FText::GetEmpty();
+    });
+
+    if (Options.IsEmpty() || NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [ReadOnlyText](const FCk_Handle&) { return ReadOnlyText.Get(); },
+            CkStyle::Text());
+    }
+
+    // OptionsSource stores a RAW `const TArray<OptionType>*` (SLATE_ITEMS_SOURCE_ARGUMENT) and hands
+    // it to the combo's inner list view, so the array must outlive the widget. GOAP's combo solves
+    // that with a function-static array; these options are per-row, so the array is a shared one that
+    // the combo's own delegates and content attribute capture BY VALUE — its lifetime is the combo's.
+    const auto Items = MakeShared<TArray<TSharedPtr<int32>>>();
+    for (auto Index = 0; Index < Options.Num(); ++Index)
+    { Items->Add(MakeShared<int32>(Index)); }
+
+    const auto InitialIndex = FMath::Clamp(InGetSelectedIndex.Get(), 0, Options.Num() - 1);
+
+    // A dropdown selection is atomic like a switch: the menu is a popup that closes before any other
+    // interaction can trigger a rebuild, so it takes no edit-guard scope (and cannot wedge one open).
+    auto Combo = SNew(SComboBox<TSharedPtr<int32>>)
+        // &Items.Get(): TSharedRef::Get() yields a REFERENCE, and only the pointer overload exists.
+        .OptionsSource(&Items.Get())
+        .InitiallySelectedItem((*Items)[InitialIndex])
+        .OnGenerateWidget_Lambda([Items, Options](TSharedPtr<int32> InItem) -> TSharedRef<SWidget>
+        {
+            const auto Index = InItem.IsValid() ? *InItem : INDEX_NONE;
+
+            return SNew(STextBlock)
+                .Text(Options.IsValidIndex(Index) ? Options[Index] : FText::GetEmpty())
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()));
+        })
+        .OnSelectionChanged_Lambda([Items, InSetSelectedIndex](TSharedPtr<int32> InItem, ESelectInfo::Type InSelectInfo)
+        {
+            // Programmatic restores echo back as Direct — never a user intent, never a request.
+            if (InSelectInfo == ESelectInfo::Direct)
+            { return; }
+
+            if (NOT InItem.IsValid() || NOT InSetSelectedIndex)
+            { return; }
+
+            InSetSelectedIndex(*InItem);
+        })
+        [
+            SNew(STextBlock)
+            // Items rides along here too, so the backing array's lifetime does not hinge on any one
+            // delegate surviving a later edit of this row.
+            .Text_Lambda([Items, ReadOnlyText]() { return ReadOnlyText.Get(); })
+            .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+        ];
+
+    DoApplyGate(Combo, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Combo, ReadOnlyText),
+        [ReadOnlyText]() { return ReadOnlyText.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddNameEntryRow(
+    const FText& InLabel,
+    TAttribute<FText> InGet,
+    TFunction<void(FName)> InCommit,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    namespace builder = ck_inspector_widget_builder;
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [InGet](const FCk_Handle&) { return InGet.Get(); },
+            CkStyle::Text());
+    }
+
+    auto Scope = DoMakeEditScope();
+
+    auto Entry = builder::Make_TextEntry(InGet,
+        [InCommit](const FString& InText)
+        {
+            if (NOT InCommit)
+            { return; }
+
+            InCommit(FName{*InText.TrimStartAndEnd()});
+        },
+        Scope);
+
+    DoApplyGate(Entry, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Entry, InGet),
+        [InGet]() { return InGet.Get().ToString(); });
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::AddTagEntryRow(
+    const FText& InLabel,
+    TAttribute<FText> InGet,
+    TFunction<void(FGameplayTag)> InCommit,
+    ECk_DebugRequest_Requirement InRequirement) -> FCkInspectorWidgetBuilder&
+{
+    namespace builder = ck_inspector_widget_builder;
+
+    if (NOT ck::debug_axes::EditControls_AreVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    {
+        return AddRow(InLabel,
+            [InGet](const FCk_Handle&) { return InGet.Get(); },
+            CkStyle::Value_Tag());
+    }
+
+    auto Scope = DoMakeEditScope();
+
+    auto Entry = builder::Make_TextEntry(InGet,
+        [InCommit](const FString& InText)
+        {
+            if (NOT InCommit)
+            { return; }
+
+            const auto Trimmed = InText.TrimStartAndEnd();
+
+            if (Trimmed.IsEmpty())
+            { return; }
+
+            // A tag that does not exist is a typo, not a request to clear the caller's tag —
+            // ErrorIfNotFound=false so the debugger never ensures on the user's spelling.
+            constexpr auto ErrorIfNotFound = false;
+            const auto Tag = FGameplayTag::RequestGameplayTag(FName{*Trimmed}, ErrorIfNotFound);
+
+            if (NOT Tag.IsValid())
+            { return; }
+
+            InCommit(Tag);
+        },
+        Scope);
+
+    DoApplyGate(Entry, TAttribute<FText>{}, InRequirement);
+
+    return DoAddWidgetValueRow(
+        InLabel,
+        DoComposeEditControl(Entry, InGet),
+        [InGet]() { return InGet.Get().ToString(); });
+}
+
+// ====================================================================================================================
 // Pure helpers
 
 auto FCkInspectorWidgetBuilder::Matches_Filter(
@@ -608,6 +1296,10 @@ auto FCkInspectorWidgetBuilder::Join_NumericComponents(const TArray<FText>& InCo
 
 auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString& InFilter) -> TSharedRef<SWidget>
 {
+    // Interactive rows were composed before the entity was known; they read it live out of this box,
+    // which is what keeps the request gate honest when the inspected world changes underneath them.
+    *_GateEntity = InEntity;
+
     auto Column = SNew(SVerticalBox);
 
     const auto HasFilter = NOT InFilter.IsEmpty();

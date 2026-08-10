@@ -148,6 +148,21 @@ enum class ECkDebugAxis_IconSize : uint8
     Large,
 };
 
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * How an inspector row presents its EDIT affordances (numeric fields, switches, action buttons).
+ * Hidden restores fully read-only inspectors — the builder emits the plain value row instead of the
+ * control, so nothing interactive is composed at all.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_EditControlStyle : uint8
+{
+    Inline,
+    OnHover,
+    Hidden,
+};
+
 // ====================================================================================================================
 
 /**
@@ -212,6 +227,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
         meta = (ToolTip = "Glyph size for every SCkDebug_Icon site: Small 12, Medium 16, Large 20."))
     ECkDebugAxis_IconSize IconSize = ECkDebugAxis_IconSize::Medium;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Inspector edit affordances: always inline, revealed on row hover, or hidden (fully read-only inspectors)."))
+    ECkDebugAxis_EditControlStyle EditControlStyle = ECkDebugAxis_EditControlStyle::Inline;
 };
 
 // ====================================================================================================================

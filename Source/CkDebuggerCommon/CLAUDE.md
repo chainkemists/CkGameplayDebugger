@@ -63,6 +63,7 @@ selectable.
 | A simple boolean display/debug option | `SCkDebug_IconToggle` or `SCkDebug_IconToolbar` | Keep state and persistence with the feature; bind it through `FCkDebug_IconToggleAction`. Use the toolbar for window-wide settings: all actions stay visible immediately to the right of the stable left-anchored debugger title and never collapse behind an overflow control. The action surface owns the flexible header width and wraps at narrow widths, so slack follows the last action without clipping it. Use the individual toggle only when the option is contextual to a local panel. Do not create a feature-local checkbox style or icon registry. |
 | Composite widget that should support right-click → Copy as a unit (group, pill, custom row) | Wrap with `SCkDebug_CopyableContainer` | Pass `.CopyText(...)` with the multi-line clipboard payload. SButton inside the wrapped child still receives left-clicks; right-click bubbles through. |
 | Inspector key/value rows | `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) | Values are already `SEditableText` — automatic. |
+| An editable number anywhere (inspector row, settings drawer) | `SCkDebug_NumericEditor` | **The** numeric field. Commits on Enter / lost focus, never per keystroke; attribute-bound display frozen while typing; optional min/max; Float and Integer kinds; `OnEditStateChanged` brackets the focus window for the edit guard. Never hand-roll an `SEditableTextBox` for a number. |
 | Standalone history row in a fixed-rebuild panel (plan history rail, transition log strip) | `SCkDebug_HistoryRow` with `.CopyText(...)` | Shares tone, accent, selection styling. **Click-trap warning — do NOT use inside `SListView`/`STreeView`/`STableRow`.** Its body is wrapped in an `SButton` that returns `FReply::Handled()` on every left click, so the parent `STableRow` never sees the selection click and the user cannot select rows. See "List / tree rows" section below for the correct pattern. |
 | Graph-style step / node pill | `SCkDebug_NodePill` with `.CopyText(...)` | Same opt-in pattern. |
 
@@ -595,7 +596,9 @@ CkDebuggerCommon/
 │   ├── CkDebuggerAxes.h              (axis render/metric/predicate helpers + domain ramps)
 │   └── CkDebuggerStyleSelection.h    (the axis enum catalog)
 ├── Utils/
-│   └── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
+│   ├── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
+│   ├── CkDebug_InspectorEditGuard.h  (panel-scoped "edit in flight" registry + RAII scope; defers rebuilds)
+│   └── CkDebug_RequestGate.h         (ck::DebugRequestGate — net-mode -> {enabled, reason} for debug write controls)
 ├── Widgets/
 │   ├── SCkDebug_EntityRef.h          (clickable FCk_Handle pill — navigates to ECS Debugger)
 │   ├── SCkDebug_Icon.h               (THE icon widget — glyph + mandatory Meaning tooltip, click-passive)
@@ -605,6 +608,7 @@ CkDebuggerCommon/
 │   ├── SCkDebug_SelectableLabel.h    (STextBlock-shape, copyable)
 │   ├── SCkDebug_CopyableContainer.h  (wrap any widget with right-click → Copy)
 │   ├── SCkDebug_KeyValueRow.h        (inspector row; values selectable)
+│   ├── SCkDebug_NumericEditor.h      (THE numeric entry field — commit on enter/lost focus, float + int)
 │   ├── SCkDebug_SectionHeader.h      (uppercase section header)
 │   ├── SCkDebug_StatusPill.h         (toned status label)
 │   ├── SCkDebug_HistoryRow.h         (history/timeline row + opt-in CopyText)

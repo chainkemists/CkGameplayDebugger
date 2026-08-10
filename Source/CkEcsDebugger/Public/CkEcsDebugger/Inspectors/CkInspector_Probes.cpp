@@ -40,6 +40,7 @@ auto FCkInspector_Probes::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
 auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity);
@@ -74,6 +75,25 @@ auto FCkInspector_Probes::BuildProbeGrid(const FCk_Handle& Entity) -> TSharedRef
             return UCk_Utils_Probe_UE::Get_IsEnabledDisabled(CapturedProbe) == ECk_EnableDisable::Enable
                 ? ECk_Tone::Ok : ECk_Tone::Neutral;
         }));
+
+    // Debug draw — the request this inspector used to fire unconditionally from Tick, now a visible
+    // switch. Handle idiom: the probe handle is captured BY VALUE and ck::IsValid-checked on fire.
+    // CosmeticOnly: a dedicated-server world has nothing to draw the shape on, so the row greys out
+    // there with the reason in its tooltip instead of firing a request nobody will ever see.
+    Builder.AddToggleRow(
+        FText::FromString(TEXT("Debug Draw:")),
+        TAttribute<bool>::CreateLambda([Enabled = _DebugDrawEnabled]() { return *Enabled; }),
+        [Enabled = _DebugDrawEnabled, CapturedProbe](bool InIsEnabled)
+        {
+            *Enabled = InIsEnabled;
+
+            auto MutableProbe = CapturedProbe;
+            if (ck::Is_NOT_Valid(MutableProbe)) { return; }
+
+            UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(MutableProbe,
+                InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable, {});
+        },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
 
     // Overlaps — live badge box stored for in-place updates
     {
@@ -162,7 +182,9 @@ auto FCkInspector_Probes::Tick(const FCk_Handle& Entity, float InDeltaTime) -> v
     auto MutableEntity = Entity;
     if (auto Probe = UCk_Utils_Probe_UE::Cast(MutableEntity); ck::IsValid(Probe))
     {
-        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe, ECk_EnableDisable::Enable, {});
+        // Re-asserts the toggle row's intent rather than the old unconditional Enable.
+        UCk_Utils_Probe_UE::Request_EnableDisableDebugDraw(Probe,
+            *_DebugDrawEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable, {});
         LastInspectedEntity = Entity;
 
         if (_OverlapsBox.IsValid())

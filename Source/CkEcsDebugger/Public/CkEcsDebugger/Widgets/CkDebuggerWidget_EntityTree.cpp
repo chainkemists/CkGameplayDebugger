@@ -69,6 +69,23 @@ namespace ck_debugger_entity_tree
         };
     }
 
+    // IconSize on the two raw glyph boxes in a row. Both are far below the axis' own 12/16/20
+    // scale (a 6px status dot, a 12px feature badge), so the axis applies as its offset rather
+    // than as an absolute — Medium is the default, so the delta is zero and Classic is unchanged.
+    // Bound through DesiredSizeOverride (an SImage attribute) so the flip reaches rows that Slate's
+    // widget generator recycles across a refresh.
+    static auto Get_StatusDotSize() -> TOptional<FVector2D>
+    {
+        const auto Size = ck::debug_axes::Apply_IconSize(6.0f);
+        return FVector2D{Size, Size};
+    }
+
+    static auto Get_FeatureBadgeSize() -> TOptional<FVector2D>
+    {
+        const auto Size = ck::debug_axes::Apply_IconSize(12.0f);
+        return FVector2D{Size, Size};
+    }
+
     // Feature-token table for the query grammar: flag ids + wired inspectors' display
     // names, both prefix-matchable (spec §3.5). Built once — registration is startup-only.
     static auto Get_QueryTokenTable() -> const ck::ecs_debugger_query::FFeatureTokenTable&
@@ -226,7 +243,7 @@ public:
                 SNew(SImage)
                 .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
                 .ColorAndOpacity(this, &SCkDebuggerEntityTreeRow::Get_EntityStatusColor)
-                .DesiredSizeOverride(FVector2D(6.0f, 6.0f))
+                .DesiredSizeOverride_Static(&ck_debugger_entity_tree::Get_StatusDotSize)
             ];
         }
 
@@ -536,7 +553,7 @@ private:
                 SNew(SImage)
                 .Image(Brush)
                 .ColorAndOpacity(Tint)
-                .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+                .DesiredSizeOverride_Static(&ck_debugger_entity_tree::Get_FeatureBadgeSize)
             ];
 
             if (IsRollup)
@@ -772,7 +789,15 @@ auto SCkDebuggerWidget_EntityTree::Tick(
             RebuildPresentation();
 
             if (TreeView.IsValid())
-            { TreeView->RequestTreeRefresh(); }
+            {
+                // RebuildList, not RequestTreeRefresh: the refresh reuses the generated row widget
+                // for any item whose TSharedPtr survived, and stable node identity is exactly what
+                // this tree guarantees — so a row's build-time reads (the Tree_BadgeCap budget in
+                // BuildBadgeStrip) would never re-run. Clearing the widget generator forces every
+                // visible row through Construct again. Selection lives on the list and expansion in
+                // the tree's sparse item info, so neither is disturbed.
+                TreeView->RebuildList();
+            }
         }
         else if (FilterModel.IsValid() && FilterModel->Sync_ExclusionsFromSettings())
         {

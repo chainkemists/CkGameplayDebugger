@@ -35,6 +35,9 @@ public:
     auto Get_ViewportPicker() const -> TSharedPtr<FCkDebuggerModel_ViewportPicker>;
     auto Get_FilterModel() const -> TSharedPtr<FCkDebuggerModel_InspectorFilter>;
 
+protected:
+    virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
     auto Build_MenuActions() -> TSharedRef<SWidget>;
     auto Build_Toolbar() -> TSharedRef<SWidget>;

@@ -39,16 +39,34 @@ namespace FocusCard_Constants
 // ====================================================================================================================
 // STYLE AXES — the card's local renderers.
 //
-// The card rebuilds every slot on every Set_Model, so it needs no attribute plumbing and no
-// revision poll: reading the selection here IS live apply.
+// The card rebuilds every slot on every Set_Model, and the subsystem's FTSTicker calls Set_Model
+// on EVERY engine frame the overlay is active (CkDebugOverlay_Subsystem.cpp — DoTick has no
+// throttle and Push_ToRoot is unconditional). So reading the selection here IS live apply, at rest
+// included: the card does not need attribute plumbing and does not need a revision poll.
 //
-// These deliberately do NOT call the ck::debug_axes::Make_* renderers, and the reason is the
-// same in all three cases: those helpers bake a fixed CkStyle font and take an ECk_Tone, while
-// this card (a) scales every font by the user's PlateFontScale and (b) colors chips from the
-// per-provider HASHED hue, which is not a tone and cannot be reconstructed from one. Routing
-// through them would silently drop font scaling and collapse the provider color coding the
-// legend pairs against. The OPTION enums remain the single source of truth; only the widget
-// construction is local. See the U3 report for the library gap this records.
+// WHY THESE ARE STILL LOCAL after the helper signatures widened (U1 gave Make_Chip / Make_Badge an
+// explicit (Ink, Fill, FontSize) overload). Two of the three original blockers are gone — the
+// per-provider HASHED hue is now expressible as Ink/Fill, and PlateFontScale is expressible by
+// passing the already-scaled size — but each renderer still hits a blocker the library cannot
+// express today:
+//
+//   Make_ProviderChip — reads the ProviderChipStyle axis, which the library exposes only through
+//       an ECk_Tone overload; there is no (Ink, Fill) form of Make_ProviderChip. Worse, the option
+//       branches want DIFFERENT (ink, fill) pairs from the same provider color (Tint: fill=color /
+//       ink=dark; Solid: fill=color / ink=TextStrong), which one Make_Chip call cannot produce
+//       because Make_Chip's Solid branch fills from Ink.
+//   Make_FieldChip — its content is a WIDGET (the key / trail / value SHorizontalBox), and every
+//       library chip helper takes an FText.
+//   Make_Badge / Make_MergeCount — geometry now matches the library exactly (Get_BadgeBrush is the
+//       same rounded-small brush, the ring/fill paddings are the same SpaceS x 1), but the label
+//       FACE does not: every label on this card is Bold (or Italic for the merge suffix) and
+//       ck::debug_axes' label font is hardcoded "Regular". Reclaiming them would flip the card's
+//       chips to Regular, which is a visible Classic regression (R6).
+//
+// The library gap to close before the next attempt is therefore a FACE, not a color or a size:
+// Make_Chip / Make_Badge need the font face alongside the size, and Make_ProviderChip needs the
+// same explicit-color overload the other two got. The OPTION enums remain the single source of
+// truth here; only the widget construction is local.
 // ====================================================================================================================
 
 namespace ck_debugoverlay_focuscard
@@ -77,7 +95,7 @@ namespace ck_debugoverlay_focuscard
                 [
                     SNew(STextBlock)
                         .Text(InText)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                        .Font(ck::debug_axes::ScaledFont("Bold", InFontSize))
                         .ColorAndOpacity(InInk)
                 ];
         };
@@ -95,7 +113,7 @@ namespace ck_debugoverlay_focuscard
             case ECkDebugAxis_ProviderChipStyle::AbbrevOnly:
                 return SNew(STextBlock)
                     .Text(InText)
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                    .Font(ck::debug_axes::ScaledFont("Bold", InFontSize))
                     .ColorAndOpacity(InProviderColor);
         }
 
@@ -162,7 +180,7 @@ namespace ck_debugoverlay_focuscard
         {
             return SNew(STextBlock)
                 .Text(InText)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", InFontSize))
+                .Font(ck::debug_axes::ScaledFont("Bold", InFontSize))
                 .ColorAndOpacity(InInk);
         };
 
@@ -216,7 +234,7 @@ namespace ck_debugoverlay_focuscard
             case ECkDebugAxis_MergeCountDisplay::SuffixText:
                 return SNew(STextBlock)
                     .Text(FText::FromString(FString::Printf(TEXT("×%d"), InCount)))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Italic", InFontSize))
+                    .Font(ck::debug_axes::ScaledFont("Italic", InFontSize))
                     .ColorAndOpacity(CkStyle::TextMute());
 
             case ECkDebugAxis_MergeCountDisplay::CountBadge:
@@ -228,7 +246,7 @@ namespace ck_debugoverlay_focuscard
 
         return SNew(STextBlock)
             .Text(FText::FromString(FString::Printf(TEXT("×%d"), InCount)))
-            .Font(FCoreStyle::GetDefaultFontStyle("Italic", InFontSize))
+            .Font(ck::debug_axes::ScaledFont("Italic", InFontSize))
             .ColorAndOpacity(CkStyle::TextMute());
     }
 }
@@ -301,8 +319,14 @@ auto
 
     // Settings-driven font scaling (PlateFontScale × layout FontScale), floored so
     // text never becomes unreadable.
+    //
+    // Composition order with the suite-wide TextScale axis: this is the INNER factor and produces
+    // a SIZE; ck::debug_axes::ScaledFont then applies TextScale to it and produces the font. That
+    // ordering is deliberate — the project's plate scale is a property of the overlay surface, the
+    // axis is a property of the reader, and the reader's preference is applied last. Under the
+    // Normal option ScaledFont is the identity, so this card renders exactly as it shipped.
     const auto FontScale  = FMath::Clamp(InStyle.FontScale, 0.5f, 3.0f);
-    const auto ScaledFont = [FontScale](int32 InBaseSize) -> int32
+    const auto Get_PlateFontSize = [FontScale](int32 InBaseSize) -> int32
     {
         return FMath::Max(6, FMath::RoundToInt(InBaseSize * FontScale));
     };
@@ -329,7 +353,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(IndexText))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
+                            .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                             .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                     ]
             ];
@@ -341,7 +365,7 @@ auto
             SNew(SCkDebug_EntityRef)
                 .Entity(InModel.Entity)
                 .ShowName(true)
-                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeH3())))
+                .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeH3())))
         ];
 
     // ---- Layout quick-switcher chip (card's top-right corner) ----
@@ -363,7 +387,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(InLayoutLabel)
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
+                            .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                             .ColorAndOpacity(ck_debugoverlay_focuscard::ChipInk)
                     ]
             ];
@@ -454,7 +478,7 @@ auto
             .Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceXS, CkStyle::SpaceXS })
             [
                 ck_debugoverlay_focuscard::Make_ProviderChip(
-                    ProviderName, ProviderColor, ScaledFont(CkStyle::FontSizeMicro()))
+                    ProviderName, ProviderColor, Get_PlateFontSize(CkStyle::FontSizeMicro()))
             ];
 
         // Source chip — dim sub-entity name when the section came from a descendant
@@ -468,7 +492,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(Section.SourceName)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                        .Font(ck::debug_axes::ScaledFont("Italic", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                         .ColorAndOpacity(CkStyle::TextMute())
                 ];
         }
@@ -533,7 +557,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FieldLabel)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
+                        .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                         .ColorAndOpacity(FieldKeyColor)
                 ];
 
@@ -544,7 +568,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TrailText + FocusCard_Constants::BreadcrumbSeparator))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkStyle::FontSizeSmall())))
+                            .Font(ck::debug_axes::ScaledFont("Regular", Get_PlateFontSize(CkStyle::FontSizeSmall())))
                             .ColorAndOpacity(CkStyle::TextMute())
                     ];
             }
@@ -554,7 +578,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(Row.Value)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeSmall())))
+                        .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeSmall())))
                         .ColorAndOpacity(ValueColor)
                 ];
 
@@ -563,7 +587,7 @@ auto
             // shared with the "+N more" overflow line, so it reads as annotation not data.
             // Null means the axis renders nothing — skip the slot rather than pad an empty one.
             if (const auto MergeCount = ck_debugoverlay_focuscard::Make_MergeCount(
-                    Row.MergedCount, ScaledFont(CkStyle::FontSizeMicro()));
+                    Row.MergedCount, Get_PlateFontSize(CkStyle::FontSizeMicro()));
                 MergeCount.IsValid())
             {
                 ChipInner->AddSlot()
@@ -587,7 +611,7 @@ auto
             SectionRow->AddSlot().VAlign(VAlign_Center).Padding(FMargin{ 0.0f, 0.0f, CkStyle::SpaceS, CkStyle::SpaceXS })
             [ SNew(STextBlock)
                 .Text(FText::FromString(FString::Printf(TEXT("+%d more"), Section.OmittedRowCount)))
-                .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                .Font(ck::debug_axes::ScaledFont("Italic", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                 .ColorAndOpacity(CkStyle::TextMute()) ];
         }
 
@@ -629,7 +653,7 @@ auto
         _ContentBox->AddSlot().AutoHeight().Padding(FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS })
         [ SNew(STextBlock)
             .Text(FText::FromString(OmissionText))
-            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+            .Font(ck::debug_axes::ScaledFont("Italic", Get_PlateFontSize(CkStyle::FontSizeMicro())))
             .ColorAndOpacity(CkStyle::TextMute()) ];
     }
 
@@ -656,7 +680,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Entry.Abbrev))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", ScaledFont(CkStyle::FontSizeMicro())))
+                                .Font(ck::debug_axes::ScaledFont("Bold", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                                 .ColorAndOpacity(FLinearColor{ 0.04f, 0.07f, 0.10f, 1.0f })
                         ]
                 ];
@@ -666,7 +690,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(Entry.FullName))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", ScaledFont(CkStyle::FontSizeMicro())))
+                        .Font(ck::debug_axes::ScaledFont("Regular", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                         .ColorAndOpacity(CkStyle::TextMute())
                 ];
 
@@ -680,7 +704,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(FString::Printf(TEXT("×%d"), Entry.SectionCount)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", ScaledFont(CkStyle::FontSizeMicro())))
+                            .Font(ck::debug_axes::ScaledFont("Italic", Get_PlateFontSize(CkStyle::FontSizeMicro())))
                             .ColorAndOpacity(CkStyle::TextMute())
                     ];
             }

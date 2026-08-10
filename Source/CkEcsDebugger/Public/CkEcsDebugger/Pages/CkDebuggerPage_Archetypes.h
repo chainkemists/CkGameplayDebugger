@@ -33,6 +33,7 @@ public:
     auto Tick(float InDeltaTime) -> void override;
     auto IsActive() const -> bool override;
     auto Set_IsActive(bool InIsActive) -> void override;
+    auto OnStyleRevisionChanged() -> void override;
 
 private:
     struct FCardCacheEntry

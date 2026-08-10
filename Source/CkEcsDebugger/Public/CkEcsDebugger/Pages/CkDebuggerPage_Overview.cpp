@@ -115,7 +115,12 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
                 ];
     };
 
-    const auto LegendPadding = ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
+    // Bound, not computed: SBoxPanel slot padding is a TAttribute, so RowDensity reaches a legend
+    // bar that was built long before the flip.
+    const auto LegendPadding = TAttribute<FMargin>::CreateLambda([]() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
+    });
 
     auto LegendBar = SNew(SHorizontalBox)
         .Visibility_Lambda([]()

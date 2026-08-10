@@ -12,16 +12,54 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Styling/AppStyle.h"
+#include "Styling/StyleDefaults.h"
 
 // =====================================================================================================================
 
 namespace ck_debugger_page_activity
 {
     constexpr auto MaxEvents = 200;
+
+    auto Get_RowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small, 1.0f});
+    }
+
+    // RowBanding, split the way the axis defines it: Zebra owns the row's fill, Hairline owns a
+    // rule under the row. Asking for the band brush under Hairline would paint the separator
+    // across the whole row instead of along its edge.
+    auto Get_RowBandFill(int32 InRowIndex) -> const FSlateBrush*
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? ck::debug_axes::Get_RowBandingBrush(InRowIndex)
+            : FStyleDefaults::GetNoBrush();
+    }
+
+    auto Make_RowRule() -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+            })
+            .Visibility_Lambda([]()
+            {
+                return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            [
+                SNew(SBorder)
+                .BorderImage(CkStyle::GetFilledBrush())
+                .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+            ];
+    }
 }
 
 FCkDebuggerPage_Activity::~FCkDebuggerPage_Activity()
@@ -133,9 +171,15 @@ auto FCkDebuggerPage_Activity::HandleCacheDiff(
     // name is best-effort (the tree's cache is gone by the time we hear about it).
     for (const auto& Removed : InRemoved)
     {
+        // The canonical "ID|Version(Raw)" string every EntityRef pill shows, composed through the
+        // EntityIdStyle axis rather than hand-formatted — a destroyed entity has no name left to
+        // read, so the name-bearing compositions correctly degrade to the id alone.
         auto Event = MakeShared<FActivityEvent>();
         Event->IsSpawn = false;
-        Event->DisplayName = ck::Format_UE(TEXT("Entity [{}]"), Removed.Get_Entity().Get_ID());
+        Event->DisplayName = ck::debug_axes::Make_EntityIdText(
+            UCkDebuggerStyleSettings::Get_Selection(),
+            FString{},
+            ck::Format_UE(TEXT("{}"), Removed.Get_Entity())).ToString();
         Event->Timestamp = Now;
         Events.Insert(Event, 0);
     }
@@ -182,36 +226,65 @@ auto FCkDebuggerPage_Activity::OnGenerateRow(
             *InEvent->DisplayName)
         : FString{};
 
+    // RowBanding needs a row ORDINAL, and this feed's source array is the ordering (newest first),
+    // so the item's index in it is the stable band key — it shifts with the feed exactly as the
+    // stripe should.
+    const auto RowIndex = Events.IndexOfByKey(InEvent);
+
     return SNew(STableRow<TSharedPtr<FActivityEvent>>, InOwnerTable)
         .Style(&FCkDebuggerStyle::Get().GetWidgetStyle<FTableRowStyle>("CkDebugger.TableView.Row"))
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small, 1.0f}))
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_debugger_page_activity::Get_RowPadding))
         .ShowSelection(true)
         [
-            SNew(SHorizontalBox)
+            SNew(SVerticalBox)
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+            // Zebra paints an alternating full-bleed fill; Off paints nothing (a no-brush border
+            // with zero padding contributes neither paint nor geometry, so Classic is unchanged).
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(SImage)
-                .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
-                .ColorAndOpacity(IsSpawn ? FSlateColor{CkStyle::Ok()} : FSlateColor{CkStyle::Err()})
-                .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                SNew(SBorder)
+                .BorderImage_Lambda([RowIndex]() -> const FSlateBrush*
                 {
-                    const auto Size = ck::debug_axes::Apply_IconSize(6.0f);
-                    return FVector2D{Size, Size};
+                    return ck_debugger_page_activity::Get_RowBandFill(RowIndex);
                 })
+                .Padding(0.0f)
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
+                    [
+                        SNew(SImage)
+                        .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
+                        .ColorAndOpacity(IsSpawn ? FSlateColor{CkStyle::Ok()} : FSlateColor{CkStyle::Err()})
+                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                        {
+                            const auto Size = ck::debug_axes::Apply_IconSize(6.0f);
+                            return FVector2D{Size, Size};
+                        })
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                        .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
+                        .Text(FText::FromString(Label))
+                        .ColorAndOpacity(IsSpawn ? CkStyle::Text() : CkStyle::TextDim())
+                    ]
+                ]
             ]
 
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
+            // Hairline banding draws a rule under the row instead of filling it; zero thickness
+            // (Off / Zebra, or SeparatorWeight None) collapses the box and its slot together.
+            + SVerticalBox::Slot()
+            .AutoHeight()
             [
-                SNew(STextBlock)
-                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                .Text(FText::FromString(Label))
-                .ColorAndOpacity(IsSpawn ? CkStyle::Text() : CkStyle::TextDim())
+                ck_debugger_page_activity::Make_RowRule()
             ]
         ];
 }

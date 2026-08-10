@@ -32,17 +32,19 @@ public:
 
     auto Get_CurrentInspectedEntity() const -> FCk_Handle;
 
+    /**
+     * The one entry point every rebuild TRIGGER goes through (selection change, panel filter,
+     * display-mode flip, a style-revision bump, a deferred structural request). While an interactive
+     * row reports an active edit the request is parked on the edit guard — deferred, never dropped —
+     * and Tick performs it the moment the edit ends. Construct calls RebuildInspectors directly:
+     * there is nothing to eat. Public because external triggers (the window's style watcher) are
+     * legitimate rebuild sources.
+     */
+    auto Request_RebuildInspectors() -> void;
+
 private:
     auto DeactivateAllInspectors() -> void;
     auto RebuildInspectors() -> void;
-
-    /**
-     * The one entry point every rebuild TRIGGER goes through (selection change, panel filter,
-     * display-mode flip, a deferred structural request). While an interactive row reports an active
-     * edit the request is parked on the edit guard — deferred, never dropped — and Tick performs it
-     * the moment the edit ends. Construct calls RebuildInspectors directly: there is nothing to eat.
-     */
-    auto Request_RebuildInspectors() -> void;
     auto Build_NoSelectionWidget() -> TSharedRef<SWidget>;
     auto Build_SingleEntityInspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>;
     auto Build_InspectorSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 InspectorIndex) -> TSharedRef<SWidget>;

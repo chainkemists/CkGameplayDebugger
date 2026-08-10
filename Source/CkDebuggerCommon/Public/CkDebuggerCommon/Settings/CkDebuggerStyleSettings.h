@@ -26,7 +26,10 @@ public:
     // v2: + EditControlStyle (interactive inspector rows).
     // v3: + TreeComplexity (ECS entity tree declutter dial).
     // v4: + IconTreatment, TextScale, EntityRefStyle, CornerStyle, SurfaceElevation, GraphNodeStyle, RowBanding.
-    static constexpr int32 CurrentSchemaVersion = 4;
+    // v5: - EntityIdStyle::HashTintedChip. The treatment it carried is EntityRefStyle::Pill; EntityIdStyle
+    //     is now composition only. Ini stores entries by NAME, so a v4 config naming HashTintedChip
+    //     falls back to the NameAndId default and keeps whatever EntityRefStyle it already had.
+    static constexpr int32 CurrentSchemaVersion = 5;
 
 public:
     UCkDebuggerStyleSettings();

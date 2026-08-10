@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
@@ -710,8 +711,10 @@ bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Para
 
     Settings->Selection = FCkDebuggerStyleSelection{};
 
-    TestEqual(TEXT("Schema version tracks the v4 catalog"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 4);
+    // v5 split EntityIdStyle (composition) from EntityRefStyle (treatment); the option count below
+    // is what makes the removal of HashTintedChip a test failure rather than a silent revert.
+    TestEqual(TEXT("Schema version tracks the current axis catalog"),
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 5);
 
     // ---- TextScale -----------------------------------------------------------
     const auto RoleSize = CkStyle::FontSizeSmall();
@@ -966,6 +969,155 @@ bool FCkDebuggerStyle_SchemaV4AxesAreLive::RunTest(const FString& Parameters)
     TestTrue(
         TEXT("TextScale Small shrinks the same chip"),
         Repass(Chip).X < ChipLarge.X);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_EntityRefComposesAndTreatsSeparately,
+    "Ck.DebuggerCommon.Style.EntityRefComposesAndTreatsSeparately",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_EntityRefComposesAndTreatsSeparately::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto Guard = FScopedStyleSelection{};
+
+    auto* Settings = UCkDebuggerStyleSettings::Get_Mutable();
+
+    if (Settings == nullptr)
+    {
+        AddError(TEXT("UCkDebuggerStyleSettings default object is unavailable"));
+        return false;
+    }
+
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    const auto SampleName = FString{TEXT("Guard_Patrol_01")};
+    const auto SampleId   = FString{TEXT("412|3(198)")};
+
+    // ---- EntityIdStyle is COMPOSITION, and nothing else -----------------------
+    const auto Compositions = Get_AllOptions<ECkDebugAxis_EntityIdStyle>();
+    TestEqual(TEXT("EntityIdStyle carries three pure compositions"), Compositions.Num(), 3);
+
+    auto ComposedTexts = TSet<FString>{};
+    for (const auto Option : Compositions)
+    {
+        auto Selection = FCkDebuggerStyleSelection{};
+        Selection.EntityIdStyle = Option;
+
+        const auto Text = ck::debug_axes::Make_EntityIdText(Selection, SampleName, SampleId).ToString();
+        const auto Name = Get_OptionName(
+            static_cast<int64>(Option), StaticEnum<ECkDebugAxis_EntityIdStyle>());
+
+        TestFalse(
+            *ck::Format_UE(TEXT("Composition '{}' reads differently from every other"), Name),
+            ComposedTexts.Contains(Text));
+
+        ComposedTexts.Add(Text);
+    }
+
+    // ---- EntityRefStyle is TREATMENT, and its four options are distinguishable --
+    // Flat and Monochrome share a brush and a padding, so neither alone separates them; the tuple
+    // the widget actually composes with does.
+    const auto Treatments = Get_AllOptions<ECkDebugAxis_EntityRefStyle>();
+    TestEqual(TEXT("EntityRefStyle carries four treatments"), Treatments.Num(), 4);
+
+    auto Signatures = TSet<FString>{};
+    for (const auto Option : Treatments)
+    {
+        Settings->Selection.EntityRefStyle = Option;
+
+        const auto Accent = ck::debug_axes::EntityRef_UsesHashTint()
+            ? FLinearColor{0.9f, 0.3f, 0.1f, 1.0f}
+            : CkStyle::EntityId();
+
+        const auto Signature = ck::Format_UE(TEXT("{}|{}|{}"),
+            static_cast<uint64>(reinterpret_cast<UPTRINT>(ck::debug_axes::Get_EntityRefBrush())),
+            ck::debug_axes::Get_EntityRefPadding().Left,
+            ck::debug_axes::Get_EntityRefInk(Accent).ToString());
+
+        const auto Name = Get_OptionName(
+            static_cast<int64>(Option), StaticEnum<ECkDebugAxis_EntityRefStyle>());
+
+        TestFalse(
+            *ck::Format_UE(TEXT("Treatment '{}' draws differently from every other"), Name),
+            Signatures.Contains(Signature));
+
+        Signatures.Add(Signature);
+    }
+
+    // Only the boxed treatments earn a hash hue — a wall of Flat references stays one column.
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Flat;
+    TestFalse(TEXT("Flat keeps the one EntityId role"), ck::debug_axes::EntityRef_UsesHashTint());
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Pill;
+    TestTrue(TEXT("Pill tints from the entity's own hash"), ck::debug_axes::EntityRef_UsesHashTint());
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::OutlinePill;
+    TestTrue(TEXT("OutlinePill rings in that same hash hue"), ck::debug_axes::EntityRef_UsesHashTint());
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Monochrome;
+    TestFalse(TEXT("Monochrome is the deliberate absence of an accent"),
+        ck::debug_axes::EntityRef_UsesHashTint());
+
+    // ---- Both axes on ONE already-built widget, never recreated ---------------
+    // Preview mode is what makes this assertable with no world: an invalid handle would collapse
+    // every treatment onto the same muted "None".
+    Settings->Selection = FCkDebuggerStyleSelection{};
+
+    const auto Ref = SNew(SCkDebug_EntityRef)
+        .PreviewName(SampleName)
+        .PreviewIdText(SampleId);
+
+    const auto AsNameAndId = Repass(Ref);
+    TestTrue(TEXT("A previewed reference occupies real space"), AsNameAndId.X > 0.0f);
+
+    Settings->Selection.EntityIdStyle = ECkDebugAxis_EntityIdStyle::CompactId;
+    const auto AsCompactId = Repass(Ref);
+
+    TestTrue(
+        TEXT("EntityIdStyle CompactId drops the name off an ALREADY-BUILT reference"),
+        AsCompactId.X < AsNameAndId.X);
+
+    Settings->Selection.EntityIdStyle = ECkDebugAxis_EntityIdStyle::NameAndId;
+    TestTrue(
+        TEXT("Returning to NameAndId restores the reference's width"),
+        FMath::IsNearlyEqual(Repass(Ref).X, AsNameAndId.X));
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Pill;
+    const auto AsPill = Repass(Ref);
+
+    TestTrue(
+        TEXT("EntityRefStyle Pill boxes the SAME reference — the treatment is live, not baked"),
+        AsPill.X > AsNameAndId.X && AsPill.Y > AsNameAndId.Y);
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::OutlinePill;
+    TestTrue(TEXT("OutlinePill keeps the boxed footprint"), Repass(Ref).X > AsNameAndId.X);
+
+    Settings->Selection.EntityRefStyle = ECkDebugAxis_EntityRefStyle::Flat;
+    TestTrue(
+        TEXT("Returning to Flat restores the reference's shipped footprint"),
+        FMath::IsNearlyEqual(Repass(Ref).X, AsNameAndId.X));
+
+    // ---- Hover ink ------------------------------------------------------------
+    // Slate hover cannot be produced from an automation test, so the assertion lands on the pure
+    // resolver the widget's color attribute calls once IsHovered() and Is_Clickable() both hold.
+    const auto RestInk  = CkStyle::EntityId();
+    const auto HoverInk = ck::debug_axes::Get_EntityRefHoverInk(RestInk);
+
+    TestTrue(TEXT("A hover only ever lifts the ink, never darkens it"),
+        HoverInk.R >= RestInk.R && HoverInk.G >= RestInk.G && HoverInk.B >= RestInk.B);
+    TestEqual(TEXT("A hover never changes the ink's opacity"), HoverInk.A, RestInk.A);
+
+    if (CkStyle::HoverOverlayAlpha() > 0.0f)
+    {
+        TestTrue(TEXT("A hovered clickable reference reads differently from a resting one"),
+            HoverInk != RestInk);
+    }
 
     return true;
 }

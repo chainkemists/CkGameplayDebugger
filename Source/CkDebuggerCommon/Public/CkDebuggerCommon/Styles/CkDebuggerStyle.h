@@ -76,13 +76,6 @@ public:
     static constexpr float Padding_Medium = 8.0f;
     static constexpr float Padding_Large = 16.0f;
 
-    static constexpr float GraphNode_Width = 180.0f;
-    static constexpr float GraphNode_Height = 40.0f;
-    static constexpr float GraphNode_AccentWidth = 4.0f;
-    static constexpr float GraphNode_CornerRadius = 6.0f;
-    static constexpr float GraphNode_BorderThickness = 2.0f;
-    static constexpr float GraphNode_BorderThickness_Center = 3.0f;
-
 private:
     static TSharedPtr<FSlateStyleSet> StyleInstance;
     static TArray<FName> GeneralIconPool;

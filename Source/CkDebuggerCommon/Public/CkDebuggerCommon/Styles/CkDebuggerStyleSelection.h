@@ -38,13 +38,17 @@ enum class ECkDebugAxis_RowDensity : uint8
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/**
+ * What TEXT an entity reference composes — composition only, never treatment. The box it is drawn
+ * in belongs to EntityRefStyle; a config written before the two were separated names an option
+ * that no longer exists here and falls back to NameAndId.
+ */
 UENUM(BlueprintType)
 enum class ECkDebugAxis_EntityIdStyle : uint8
 {
     NameAndId,
     CompactId,
     NameOnly,
-    HashTintedChip,
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -307,7 +311,7 @@ public:
     ECkDebugAxis_RowDensity RowDensity = ECkDebugAxis_RowDensity::Comfortable;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
-        meta = (ToolTip = "How an entity reference composes its display text on every SCkDebug_EntityRef site."))
+        meta = (ToolTip = "How an entity reference composes its display TEXT on every SCkDebug_EntityRef site. How it is drawn stays with Entity Ref Style."))
     ECkDebugAxis_EntityIdStyle EntityIdStyle = ECkDebugAxis_EntityIdStyle::NameAndId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",

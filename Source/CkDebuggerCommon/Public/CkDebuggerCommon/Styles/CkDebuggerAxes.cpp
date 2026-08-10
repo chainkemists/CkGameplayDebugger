@@ -624,11 +624,6 @@ auto
 
         case ECkDebugAxis_EntityIdStyle::NameOnly:
             return FText::FromString(NameOrId);
-
-        // The hash tint is a widget-level concern; the text stays the full identifier so the chip
-        // remains readable without relying on color alone.
-        case ECkDebugAxis_EntityIdStyle::HashTintedChip:
-            return FText::FromString(NameAndId);
     }
 
     return FText::FromString(NameAndId);
@@ -989,6 +984,41 @@ auto
     }
 
     return InAccent;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    EntityRef_UsesHashTint()
+    -> bool
+{
+    switch (ck_debugger_axes::Get_LiveSelection().EntityRefStyle)
+    {
+        // Flat is the shipped look and Monochrome is the deliberate absence of an accent — both keep
+        // the one EntityId role, so a wall of references reads as one column rather than a rainbow.
+        case ECkDebugAxis_EntityRefStyle::Flat:        return false;
+        case ECkDebugAxis_EntityRefStyle::Pill:        return true;
+        case ECkDebugAxis_EntityRefStyle::OutlinePill: return true;
+        case ECkDebugAxis_EntityRefStyle::Monochrome:  return false;
+    }
+
+    return false;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_EntityRefHoverInk(
+        const FLinearColor& InRestInk)
+    -> FLinearColor
+{
+    auto Hovered = FMath::Lerp(InRestInk, FLinearColor::White, CkStyle::HoverOverlayAlpha());
+
+    // Lifting toward white would also lift the alpha; a hover must not turn a muted reference opaque.
+    Hovered.A = InRestInk.A;
+    return Hovered;
 }
 
 // ====================================================================================================================

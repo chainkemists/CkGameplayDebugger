@@ -163,11 +163,22 @@ namespace ck::debug_axes
 
     // EntityRefStyle — the box SCkDebug_EntityRef draws around its label. Flat is the treatment the
     // widget ships today (no box); Pill fills, OutlinePill rings, Monochrome drops the accent color
-    // for the dim text role. The widget itself adopts these in a later unit.
+    // for the dim text role. Which accent the widget hands over is ITS business (a hash-derived hue
+    // under the tinted treatments, the EntityId role otherwise) — these only shape it.
     CKDEBUGGERCOMMON_API auto Get_EntityRefBrush()   -> const FSlateBrush*;
     CKDEBUGGERCOMMON_API auto Get_EntityRefPadding() -> FMargin;
     CKDEBUGGERCOMMON_API auto Get_EntityRefFill(const FLinearColor& InAccent) -> FLinearColor;
     CKDEBUGGERCOMMON_API auto Get_EntityRefInk(const FLinearColor& InAccent)  -> FLinearColor;
+
+    /** True for the treatments whose accent is the entity's own hash hue rather than the EntityId role. */
+    CKDEBUGGERCOMMON_API auto EntityRef_UsesHashTint() -> bool;
+
+    /**
+     * The hover ink of a CLICKABLE entity reference: the resting ink lifted toward white by the
+     * palette's hover strength, alpha preserved. Pure and axis-independent on purpose — it is the
+     * seam the spec asserts against, since a Slate hover cannot be faked in an automation test.
+     */
+    CKDEBUGGERCOMMON_API auto Get_EntityRefHoverInk(const FLinearColor& InRestInk) -> FLinearColor;
 
     // IconTreatment — the backdrop SCkDebug_Icon composes behind its glyph. Plain draws nothing and
     // costs no padding, which is what keeps the default glyph geometry unchanged. InAccent is the

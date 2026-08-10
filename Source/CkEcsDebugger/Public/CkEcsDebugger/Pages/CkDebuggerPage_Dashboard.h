@@ -77,6 +77,13 @@ private:
     TArray<FName> PresentedFamilies;
     TArray<FString> PresentedSingletonKeys;
 
+    /**
+     * How many Count==1 archetypes the MaxSingletons cap hid at the last re-slot. Part of the
+     * container's change key: the visible keys can be identical while the hidden remainder moves,
+     * and a stale "+N more" is exactly the silent miscount the indicator exists to prevent.
+     */
+    int32 PresentedSingletonOverflow = 0;
+
     /** Lowercased arch: term values currently in the filter — card checked state. */
     TSet<FString> ActiveArchTokens;
     TOptional<FString> LastSeenFilterText;

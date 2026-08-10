@@ -60,6 +60,84 @@ struct FCkInspector_Action
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/**
+ * Per-row change tracking for the FlashOnChange axis.
+ *
+ * ROW-OWNED, like AddSparklineRow's sample ring: the builder allocates one only when the axis is on,
+ * the row's own attributes capture it by value, and it dies with the row widget. Off allocates
+ * nothing and composes the same widget tree as before the axis existed.
+ *
+ * The clock is Slate PAINT time, not a tick count — attributes re-evaluate on paint, so a row that is
+ * filtered out or scrolled away never advances its own flash, and the panel's refresh gate does not
+ * have to know the flash exists.
+ */
+struct FCkInspector_FlashState
+{
+    FString LastValue;
+    double  LastChangeSeconds = 0.0;
+
+    /** The first observation SEEDS; it never flashes, or every rebuild would light the whole panel. */
+    bool    HasSeenValue = false;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Compose-time capture of one builder pass's label -> value pairs — how the inspector panel's
+ * multi-select DIFF mode samples the OTHER selected entities without duplicating any inspector's row
+ * authoring. While a scope is active, Build() records and composes nothing: the returned widget is
+ * the null widget and the caller is expected to discard it.
+ *
+ * Values are sampled BEFORE the row filter, so the map is filter-independent — a row hidden for one
+ * entity and shown for another must not read as "this label is missing".
+ *
+ * Duplicate labels within one pass collapse (last wins), consistently for every entity.
+ * Scopes nest (innermost wins) and are main-thread only, like every other Slate compose path.
+ */
+class FCkInspector_RowCaptureScope
+{
+public:
+    FCkInspector_RowCaptureScope();
+    ~FCkInspector_RowCaptureScope();
+
+    FCkInspector_RowCaptureScope(const FCkInspector_RowCaptureScope&) = delete;
+    auto operator=(const FCkInspector_RowCaptureScope&) -> FCkInspector_RowCaptureScope& = delete;
+
+    auto Get_Rows() const -> const TMap<FString, FString>& { return _Rows; }
+
+private:
+    friend class FCkInspectorWidgetBuilder;
+
+    TMap<FString, FString>        _Rows;
+    FCkInspector_RowCaptureScope* _Previous = nullptr;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Marks the rows whose label compared UNEQUAL across the selected entities. Panel-owned: the set is
+ * computed once per gated rebuild out of FCkInspector_RowCaptureScope samples, then installed around
+ * the REAL Build_Inspector call. A null set is an inactive scope, so the non-diff path costs nothing
+ * and composes the same tree it always did.
+ */
+class FCkInspector_DiffMarkScope
+{
+public:
+    explicit FCkInspector_DiffMarkScope(const TSet<FString>* InDifferingLabels);
+    ~FCkInspector_DiffMarkScope();
+
+    FCkInspector_DiffMarkScope(const FCkInspector_DiffMarkScope&) = delete;
+    auto operator=(const FCkInspector_DiffMarkScope&) -> FCkInspector_DiffMarkScope& = delete;
+
+private:
+    friend class FCkInspectorWidgetBuilder;
+
+    const TSet<FString>*        _Labels   = nullptr;
+    FCkInspector_DiffMarkScope* _Previous = nullptr;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 class FCkInspectorWidgetBuilder
 {
 public:
@@ -369,6 +447,39 @@ public:
 
     static auto Join_NumericComponents(const TArray<FText>& InComponents) -> FText;
 
+    // ----- FlashOnChange (pure state machine) ---------------------------------
+
+    /** Flash window, in seconds — the overlay focus card's 0.4s idiom, shared by both flash scopes. */
+    static constexpr double FlashDurationSeconds = 0.4;
+
+    /**
+     * Fold one observed value into a row's flash state. The FIRST observation only seeds: a rebuild
+     * (selection change, filter keystroke) allocates fresh state, and seeding is what keeps it from
+     * flashing every row at once. Re-observing the SAME value is a no-op, so an attribute evaluated
+     * several times per paint cannot restart or extend a flash.
+     */
+    static auto Observe_FlashChange(
+        FCkInspector_FlashState& InOutState,
+        const FString& InValue,
+        double InNowSeconds) -> void;
+
+    /**
+     * 1 at the instant of change, decaying linearly to 0 at FlashDurationSeconds; 0 when nothing has
+     * changed yet. A clock that ran BACKWARDS (new Slate app, new PIE session) reads as settled
+     * rather than as a permanently lit row.
+     */
+    static auto Get_FlashAlpha(const FCkInspector_FlashState& InState, double InNowSeconds) -> float;
+
+    // ----- Multi-select diff (pure comparison) --------------------------------
+
+    /**
+     * Labels whose value is NOT identical across every sampled entity. A label missing from any one
+     * entity's map counts as differing — inspectors whose row set is dynamic per entity are exactly
+     * the case the user wants surfaced. Fewer than two maps compare to nothing.
+     */
+    static auto Compute_DifferingLabels(
+        const TArray<TMap<FString, FString>>& InPerEntityRows) -> TSet<FString>;
+
     /**
      * Badge text for a count. Grouped ("1,024") so four- and five-digit counts stay readable; a
      * negative count is a caller bug and renders verbatim rather than being clamped away.
@@ -386,6 +497,15 @@ private:
         bool IsHeader = false;
         FFilterValueGetter FilterValueGetter;
     };
+
+    /**
+     * The one value string a row contributes to filtering, diff capture, and flash tracking: its live
+     * ValueGetter when it has one, otherwise its widget-hosted FilterValueGetter. Empty means the row
+     * has no readable value and therefore never filters on value, never flashes, and never diffs.
+     */
+    static auto Resolve_RowValue(
+        const FRowDefinition& InRow,
+        const FCk_Handle& InEntity) -> FString;
 
     auto DoAddWidgetValueRow(
         const FText& InLabel,

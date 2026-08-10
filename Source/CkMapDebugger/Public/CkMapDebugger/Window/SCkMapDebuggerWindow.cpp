@@ -4,11 +4,15 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -32,7 +36,6 @@
 #include "Engine/World.h"
 
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
@@ -47,34 +50,49 @@
 #endif
 
 // --------------------------------------------------------------------------------------------------------------------
-// Local style + helpers (module-unique namespace name — unity builds concatenate TUs).
+// Local helpers (module-unique namespace name — unity builds concatenate TUs). Colors and spacing come
+// from CkStyle:: roles; shape/density comes from the style axes. The only literals left in this file are
+// the canvas-semantic paint colors, which live next to the canvas below with their justification.
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_map_debugger
 {
-    static constexpr auto Pad_S = 4.0f;
-    static constexpr auto Pad_M = 8.0f;
+    // RowDensity applies as a DELTA on this window's own base padding, not as an absolute: the POI list
+    // is deliberately tighter than the ECS entity tree, and only the offset between density options is
+    // the axis' business. Comfortable is the axis default, so the delta is zero and the list renders
+    // exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
+    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
 
-    static const auto Bg_Dark    = FLinearColor(0.01f, 0.01f, 0.01f);
-    static const auto Bg_Medium  = FLinearColor(0.025f, 0.025f, 0.025f);
-    static const auto Bg_Canvas  = FLinearColor(0.008f, 0.008f, 0.010f);
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
 
-    static const auto Text_Primary   = FLinearColor(0.85f, 0.85f, 0.85f);
-    static const auto Text_Secondary = FLinearColor(0.6f, 0.6f, 0.6f);
-    static const auto Text_Highlight = FLinearColor(0.95f, 0.95f, 0.95f);
-    static const auto Text_Muted     = FLinearColor(0.35f, 0.35f, 0.35f);
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 
-    static const auto Color_Disabled  = FLinearColor(0.75f, 0.33f, 0.33f);
-    static const auto Color_Fog       = FLinearColor(0.61f, 0.50f, 0.83f, 0.16f);
-    static const auto Color_Bounds    = FLinearColor(1.0f, 1.0f, 1.0f, 0.25f);
-    static const auto Color_Minimap   = FLinearColor(0.35f, 0.56f, 0.83f);
-    static const auto Color_Compass   = FLinearColor(0.31f, 0.70f, 0.66f);
-    static const auto Color_Observer  = FLinearColor(0.91f, 0.91f, 0.93f);
+    // The category swatch is half an icon so it reads as a marker, not a glyph — but it still tracks
+    // the IconSize axis so a Small/Large flip moves it with every other indicator in the suite.
+    static auto Get_CategoryDotSize() -> float
+    {
+        return ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection()) * 0.5f;
+    }
 
-    static auto Normal(int32 InSize = 9) -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Regular", InSize); }
-    static auto Bold(int32 InSize = 9)   -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Bold", InSize); }
-    static auto Mono(int32 InSize = 9)   -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Mono", InSize); }
+    static auto Get_SeparatorThickness() -> float
+    {
+        return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
 
+    // POI categories are an OPEN set of author-defined gameplay tags, so this stays a full-hue hash
+    // rather than ck::debug_axes::Get_CategoricalColor — that palette wraps at eight and would collide
+    // two unrelated categories onto one swatch on any project with more than eight POI kinds.
     static auto CategoryColor(const FGameplayTag& InCategory) -> FLinearColor
     {
         const auto Hash = GetTypeHash(InCategory.GetTagName());
@@ -126,6 +144,31 @@ namespace ck_map_debugger
 
     // Skip painting individual cells past this budget — a pathological grid should not tank the editor
     static constexpr auto MaxPaintedFogCells = 65536;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// CANVAS-SEMANTIC PAINT COLORS — deliberately local, per the consolidation ruling. Each names something
+// that exists only inside this one visualization; there is no CkStyle:: role that means "unexplored fog"
+// or "compass heading ray", so pointing them at the nearest role would be a mistranslation rather than
+// the convergence the palette migration is after. Every other color in this window is a CkStyle:: role.
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_map_debugger_canvas
+{
+    // Unexplored fog cell wash — must stay translucent so POIs and bounds underneath remain readable.
+    static const auto Color_Fog = FLinearColor(0.61f, 0.50f, 0.83f, 0.16f);
+
+    // Fog-grid bounds outline — neutral by design so it reads as a measurement frame, not as data.
+    static const auto Color_Bounds = FLinearColor(1.0f, 1.0f, 1.0f, 0.25f);
+
+    // Minimap view-extent frame — "what this minimap projector can currently see".
+    static const auto Color_Minimap = FLinearColor(0.35f, 0.56f, 0.83f);
+
+    // Compass heading ray — a separate hue from the minimap frame so overlapping projectors stay apart.
+    static const auto Color_Compass = FLinearColor(0.31f, 0.70f, 0.66f);
+
+    // Observer marker (minimap view origin / compass observer) — the brightest mark on the canvas.
+    static const auto Color_Observer = FLinearColor(0.91f, 0.91f, 0.93f);
 }
 
 // ====================================================================================================================
@@ -236,10 +279,10 @@ auto
     const auto* WhiteBrush = FAppStyle::GetBrush("WhiteBrush");
     const auto PanelSize = InAllottedGeometry.GetLocalSize();
 
-    // Background
+    // Background — the shared canvas-backdrop role (a shade under the window chrome), not a map-specific tone
     FSlateDrawElement::MakeBox(OutDrawElements, InLayerId,
         InAllottedGeometry.ToPaintGeometry(FVector2f(PanelSize), FSlateLayoutTransform(FVector2f::ZeroVector)),
-        WhiteBrush, ESlateDrawEffect::None, ck_map_debugger::Bg_Canvas);
+        WhiteBrush, ESlateDrawEffect::None, CkStyle::Graph_Background());
 
     auto WorldCenter = FVector2D{};
     auto WorldHalfExtent = 0.0;
@@ -314,7 +357,7 @@ auto
 
                     FSlateDrawElement::MakeBox(OutDrawElements, FogLayer,
                         InAllottedGeometry.ToPaintGeometry(FVector2f(Size), FSlateLayoutTransform(FVector2f(TopLeft))),
-                        WhiteBrush, ESlateDrawEffect::None, ck_map_debugger::Color_Fog);
+                        WhiteBrush, ESlateDrawEffect::None, ck_map_debugger_canvas::Color_Fog);
                 }
             }
         }
@@ -322,7 +365,7 @@ auto
         DrawRectOutline(
             {ToPanel({BoundsMin.X, BoundsMin.Y}), ToPanel({BoundsMin.X, BoundsMax.Y}),
              ToPanel({BoundsMax.X, BoundsMax.Y}), ToPanel({BoundsMax.X, BoundsMin.Y})},
-            ck_map_debugger::Color_Bounds, BoundsLayer, 1.0f);
+            ck_map_debugger_canvas::Color_Bounds, BoundsLayer, 1.0f);
     }
 
     // ---- Minimap view frames ----
@@ -340,7 +383,7 @@ auto
             DrawRectOutline(
                 {ToPanel({BoundsMin.X, BoundsMin.Y}), ToPanel({BoundsMin.X, BoundsMax.Y}),
                  ToPanel({BoundsMax.X, BoundsMax.Y}), ToPanel({BoundsMax.X, BoundsMin.Y})},
-                ck_map_debugger::Color_Minimap, FrameLayer, 1.2f);
+                ck_map_debugger_canvas::Color_Minimap, FrameLayer, 1.2f);
 
             continue;
         }
@@ -355,9 +398,9 @@ auto
         DrawRectOutline(
             {ToPanel(Origin + Forward - Right), ToPanel(Origin + Forward + Right),
              ToPanel(Origin - Forward + Right), ToPanel(Origin - Forward - Right)},
-            ck_map_debugger::Color_Minimap, FrameLayer, 1.2f);
+            ck_map_debugger_canvas::Color_Minimap, FrameLayer, 1.2f);
 
-        DrawBoxAt(ToPanel(Origin), FVector2D{6.0, 6.0}, ck_map_debugger::Color_Observer, ObserverLayer);
+        DrawBoxAt(ToPanel(Origin), FVector2D{6.0, 6.0}, ck_map_debugger_canvas::Color_Observer, ObserverLayer);
     }
 
     // ---- Compass observers + heading rays ----
@@ -373,9 +416,9 @@ auto
         const auto PanelDir = FVector2D{WorldDir.Y, -WorldDir.X};
 
         FSlateDrawElement::MakeLines(OutDrawElements, ObserverLayer, InAllottedGeometry.ToPaintGeometry(),
-            {PanelOrigin, PanelOrigin + PanelDir * 46.0}, ESlateDrawEffect::None, ck_map_debugger::Color_Compass, true, 1.5f);
+            {PanelOrigin, PanelOrigin + PanelDir * 46.0}, ESlateDrawEffect::None, ck_map_debugger_canvas::Color_Compass, true, 1.5f);
 
-        DrawBoxAt(PanelOrigin, FVector2D{6.0, 6.0}, ck_map_debugger::Color_Observer, ObserverLayer);
+        DrawBoxAt(PanelOrigin, FVector2D{6.0, 6.0}, ck_map_debugger_canvas::Color_Observer, ObserverLayer);
     }
 
     // ---- POIs ----
@@ -390,7 +433,7 @@ auto
         const auto IsSelected = ck::IsValid(_SelectedPoi) && Poi.Handle == _SelectedPoi;
 
         if (IsSelected)
-        { DrawBoxAt(PanelPos, FVector2D{13.0, 13.0}, ck_map_debugger::Color_Observer, PoiLayer); }
+        { DrawBoxAt(PanelPos, FVector2D{13.0, 13.0}, ck_map_debugger_canvas::Color_Observer, PoiLayer); }
 
         auto Color = ck_map_debugger::CategoryColor(Poi.Category);
         Color.A = Poi.Enabled ? 1.0f : 0.35f;
@@ -535,24 +578,24 @@ auto
     auto Toolbar =
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(ck_map_debugger::Bg_Dark)
-        .Padding(FMargin(ck_map_debugger::Pad_M, ck_map_debugger::Pad_S))
+        .BorderBackgroundColor(CkStyle::BgRoot())
+        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         [
             SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
-                    .Font(ck_map_debugger::Bold(11))
-                    .ColorAndOpacity(ck_map_debugger::Text_Highlight)
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeH2()))
+                    .ColorAndOpacity(CkStyle::TextStrong())
                     .Text(FText::FromString(TEXT("Map Stack")))
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(ck_map_debugger::Pad_M, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(ck_map_debugger::Normal(10))
-                    .ColorAndOpacity(ck_map_debugger::Text_Secondary)
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeH3()))
+                    .ColorAndOpacity(CkStyle::TextDim())
                     .Text_Lambda([this]() -> FText
                     {
                         return _Snapshot->HasWorld
@@ -575,7 +618,7 @@ auto
     auto LeftRail =
         SNew(SVerticalBox)
 
-        + SVerticalBox::Slot().AutoHeight().Padding(ck_map_debugger::Pad_S)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
             [
                 SNew(SCkDebug_DualSearchBar)
                 .FilterHintText(FText::FromString(TEXT("Filter POIs…")))
@@ -603,11 +646,11 @@ auto
                 .SelectionMode(ESelectionMode::Single)
             ]
 
-        + SVerticalBox::Slot().AutoHeight().Padding(ck_map_debugger::Pad_S)
+        + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
             [
                 SNew(STextBlock)
-                .Font(ck_map_debugger::Normal(8))
-                .ColorAndOpacity(ck_map_debugger::Text_Muted)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                .ColorAndOpacity(CkStyle::TextMute())
                 .Text_Lambda([this]() -> FText
                 {
                     return FText::FromString(ck::Format_UE(TEXT("{} / {} POIs shown"),
@@ -641,16 +684,16 @@ auto
     auto RightRail =
         SNew(SScrollBox)
 
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, ck_map_debugger::Pad_S)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [ MakeSectionHeader(TEXT("Selected POI")) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [
                 SNew(SHorizontalBox)
                 + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                        .Font(ck_map_debugger::Normal())
-                        .ColorAndOpacity(ck_map_debugger::Text_Secondary)
+                        .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                        .ColorAndOpacity(CkStyle::TextDim())
                         .Text(FText::FromString(TEXT("Entity:")))
                     ]
                 + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
@@ -660,26 +703,26 @@ auto
                         .ShowName(true)
                     ]
             ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Category:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
                     return FText::FromString(Info != nullptr ? Info->Category.ToString() : TEXT("--"));
                 })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Name:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
                     return FText::FromString(Info != nullptr ? Info->DisplayName : TEXT("--"));
                 })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("State:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(Info->Enabled ? TEXT("Enabled") : TEXT("Disabled"));
                 })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("World Pos:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
@@ -687,14 +730,14 @@ auto
                     return FText::FromString(ck::Format_UE(TEXT("X {:.0f}  Y {:.0f}  Z {:.0f}"),
                         Info->WorldPos.X, Info->WorldPos.Y, Info->WorldPos.Z));
                 })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("State Tags:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
                     if (Info == nullptr) { return FText::FromString(TEXT("--")); }
                     return FText::FromString(Info->StateTags.IsEmpty() ? TEXT("(none)") : Info->StateTags.ToStringSimple());
                 })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Visible On:"), TAttribute<FText>::CreateLambda([this]()
                 {
                     const auto* Info = DoFind_SelectedPoiInfo();
@@ -702,15 +745,15 @@ auto
                     return FText::FromString(ck::Format_UE(TEXT("{} projector(s)"), Info->VisibleOnCount));
                 })) ]
 
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, ck_map_debugger::Pad_S)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [ MakeSectionHeader(TEXT("Projectors")) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Compasses:"), TAttribute<FText>::CreateLambda([this]()
                 { return FText::AsNumber(_Snapshot->Compasses.Num()); })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Minimaps:"), TAttribute<FText>::CreateLambda([this]()
                 { return FText::AsNumber(_Snapshot->Minimaps.Num()); })) ]
-        + SScrollBox::Slot().Padding(ck_map_debugger::Pad_M, 0.0f)
+        + SScrollBox::Slot().Padding(CkStyle::SpaceM, 0.0f)
             [ MakeStatRow(TEXT("Fog Grids:"), TAttribute<FText>::CreateLambda([this]()
                 { return FText::AsNumber(_Snapshot->Fogs.Num()); })) ];
 
@@ -719,12 +762,12 @@ auto
     auto StatusBar =
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(ck_map_debugger::Bg_Dark)
-        .Padding(FMargin(ck_map_debugger::Pad_M, ck_map_debugger::Pad_S))
+        .BorderBackgroundColor(CkStyle::BgRoot())
+        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         [
             SNew(STextBlock)
-            .Font(ck_map_debugger::Mono(9))
-            .ColorAndOpacity(ck_map_debugger::Text_Secondary)
+            .Font(CkStyle::MonoFont(CkStyle::FontSizeBody()))
+            .ColorAndOpacity(CkStyle::TextDim())
             .Text_Lambda([this]() -> FText
             {
                 if (NOT _Snapshot->HasWorld)
@@ -767,7 +810,7 @@ auto
         [
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(ck_map_debugger::Bg_Medium)
+        .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
 
@@ -782,13 +825,13 @@ auto
                         [ SNew(SBox).WidthOverride(250.0f) [ LeftRail ] ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f) ]
+                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(ck_map_debugger::Get_SeparatorThickness()) ]
 
                     + SHorizontalBox::Slot().FillWidth(1.0f)
                         [ _Canvas.ToSharedRef() ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f) ]
+                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(ck_map_debugger::Get_SeparatorThickness()) ]
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [ SNew(SBox).WidthOverride(280.0f) [ RightRail ] ]
@@ -1140,17 +1183,18 @@ auto
     -> TSharedRef<ITableRow>
 {
     const auto WeakRow = TWeakPtr<FCkMapDebug_PoiRow>{InRow};
+    const auto DotSize = ck_map_debugger::Get_CategoryDotSize();
 
     // Plain visual widgets only — no click-consuming children, so STableRow selection bubbles cleanly
     return SNew(STableRow<TSharedPtr<FCkMapDebug_PoiRow>>, InOwnerTable)
-        .Padding(FMargin{2.0f, 1.0f})
+        .Padding(ck_map_debugger::Apply_RowDensity(FMargin{2.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
 
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f)
                 [
-                    SNew(SBox).WidthOverride(8.0f).HeightOverride(8.0f)
+                    SNew(SBox).WidthOverride(DotSize).HeightOverride(DotSize)
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("WhiteBrush"))
@@ -1162,10 +1206,10 @@ auto
                     ]
                 ]
 
-            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(4.0f, 0.0f)
+            + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(ck_map_debugger::Normal())
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
                     .Text_Lambda([WeakRow]() -> FText
                     {
                         const auto Row = WeakRow.Pin();
@@ -1176,20 +1220,20 @@ auto
                         const auto Row = WeakRow.Pin();
 
                         if (NOT Row.IsValid())
-                        { return ck_map_debugger::Text_Primary; }
+                        { return CkStyle::Text(); }
 
                         if (NOT Row->Enabled)
-                        { return ck_map_debugger::Color_Disabled; }
+                        { return CkStyle::State_Disabled(); }
 
-                        return Row->HighlightMatch ? ck_map_debugger::Text_Primary : ck_map_debugger::Text_Muted;
+                        return Row->HighlightMatch ? CkStyle::Text() : CkStyle::TextMute();
                     })
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.0f, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceXS, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Font(ck_map_debugger::Mono(8))
-                    .ColorAndOpacity(ck_map_debugger::Text_Secondary)
+                    .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
+                    .ColorAndOpacity(CkStyle::TextDim())
                     .Text_Lambda([WeakRow]() -> FText
                     {
                         const auto Row = WeakRow.Pin();
@@ -1222,10 +1266,10 @@ auto
         const FString& InText) const
     -> TSharedRef<SWidget>
 {
-    return SNew(STextBlock)
-        .Font(ck_map_debugger::Bold(10))
-        .ColorAndOpacity(ck_map_debugger::Text_Highlight)
-        .Text(FText::FromString(InText));
+    return ck::debug_axes::Make_SectionHeader(
+        UCkDebuggerStyleSettings::Get_Selection(),
+        FText::FromString(InText),
+        ECk_Tone::Neutral);
 }
 
 auto
@@ -1240,16 +1284,16 @@ auto
         + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Font(ck_map_debugger::Normal())
-                .ColorAndOpacity(ck_map_debugger::Text_Secondary)
+                .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                .ColorAndOpacity(CkStyle::TextDim())
                 .Text(FText::FromString(InLabel))
             ]
 
         + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                .Font(ck_map_debugger::Mono())
-                .ColorAndOpacity(ck_map_debugger::Text_Primary)
+                .Font(CkStyle::MonoFont(CkStyle::FontSizeBody()))
+                .ColorAndOpacity(CkStyle::Text())
                 .Text(MoveTemp(InValue))
             ]
         ;

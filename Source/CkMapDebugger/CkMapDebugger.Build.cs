@@ -21,6 +21,7 @@ public class CkMapDebugger : CkModuleRules
             "CkDebuggerCommon",
             "CkEcs",
             "CkEcsExt",
+            "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkEntityTag",
             "CkLabel",
             "CkMinimap",

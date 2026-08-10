@@ -52,6 +52,47 @@ public:
      */
     virtual auto Get_CollectsFromSubSources() const -> bool { return true; }
 
+    /**
+     * How the pre-budget merge pass may collapse this provider's rows across the focus
+     * entity's lifetime subtree. The default is deliberately conservative: identical rows
+     * on two different sub-entities are two distinct facts and both render.
+     *
+     * Override with MergeAcrossSources only when the value is subtree-wide (Label, Team),
+     * or CondensePerSource when sub-entity sections are hierarchical noise that reads
+     * better as one summary line each (Goap, StateMachine).
+     */
+    virtual auto Get_MergeBehavior() const -> ECk_DebugOverlay_MergeBehavior
+    { return ECk_DebugOverlay_MergeBehavior::MergeWithinSource; }
+
+    /**
+     * CondensePerSource only: one summary row standing in for a whole non-primary section.
+     * InSourceName is that source entity's display name, InRows the section's collected rows.
+     *
+     * The generic default joins every non-empty value behind the source name; providers with
+     * a headline field (Goap's status, the SM's current state) override to say it properly
+     * and may move a trail into ExplicitHistory, which the card renders as the muted
+     * breadcrumb under the row.
+     */
+    virtual auto Get_CondensedSourceRow(
+        const FText&                        InSourceName,
+        const TArray<FCk_DebugOverlay_Row>& InRows) const -> FCk_DebugOverlay_Row
+    {
+        auto Values = TArray<FString>{};
+        for (const auto& SourceRow : InRows)
+        {
+            auto Value = SourceRow.Value.ToString();
+            if (NOT Value.IsEmpty())
+            { Values.Add(MoveTemp(Value)); }
+        }
+
+        auto Row     = FCk_DebugOverlay_Row{};
+        Row.FieldTag = InRows.IsEmpty() ? FGameplayTag{} : InRows[0].FieldTag;
+        Row.Value    = FText::FromString(
+            InSourceName.ToString() + TEXT(": ") + FString::Join(Values, TEXT(" · ")));
+        Row.Severity = ck_debugoverlay::Get_MaxSeverity(InRows);
+        return Row;
+    }
+
     /** Return true if this provider has data to show for the given entity. */
     virtual auto CanProvide(const FCk_Handle& Entity) const -> bool = 0;
 

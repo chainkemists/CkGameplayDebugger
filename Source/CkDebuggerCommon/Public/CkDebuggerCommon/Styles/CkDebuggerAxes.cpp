@@ -80,6 +80,39 @@ namespace ck_debugger_axes
     {
         return FText::FromString(InText.ToString().Left(AbbrevLength).ToUpper());
     }
+
+    // --------------------------------------------------------------------------------------------------------------
+
+    // Ramps take an already-normalized value from the caller, but a debugger divides by
+    // live data — a zero range yields inf/NaN. Fold that to the cold end rather than
+    // painting an undefined color.
+    auto Sanitize_Normalized(float InValue) -> float
+    {
+        if (FMath::IsNaN(InValue))
+        { return 0.0f; }
+
+        return FMath::Clamp(InValue, 0.0f, 1.0f);
+    }
+
+    // The categorical palette is rebuilt per call ON PURPOSE: CkStyle:: reads the settings CDO,
+    // so a file-static TArray would both risk static-init order and freeze the palette against
+    // later Editor Preferences edits.
+    constexpr auto CategoricalPaletteSize = 8;
+
+    auto Get_CategoricalEntry(int32 InSlot) -> FLinearColor
+    {
+        switch (InSlot)
+        {
+            case 0:  return CkStyle::CategoryGather();    // green
+            case 1:  return CkStyle::CategoryBuild();     // amber
+            case 2:  return CkStyle::CategoryResearch();  // blue
+            case 3:  return CkStyle::CategoryTrain();     // red
+            case 4:  return CkStyle::CategoryAge();       // purple
+            case 5:  return CkStyle::Accent();            // cyan
+            case 6:  return CkStyle::CategoryTrade();     // gold
+            default: return CkStyle::Relationship();      // pink
+        }
+    }
 }
 
 // ====================================================================================================================
@@ -419,6 +452,78 @@ auto
     -> bool
 {
     return InSelection.ValueAlignment == ECkDebugAxis_ValueAlignment::Right;
+}
+
+// ====================================================================================================================
+// DOMAIN RAMPS
+
+auto
+    ck::debug_axes::
+    Get_HeatColor(
+        float InNormalized)
+    -> FLinearColor
+{
+    using namespace ck_debugger_axes;
+
+    const auto T = Sanitize_Normalized(InNormalized);
+
+    // Two segments so the ramp passes through Warn exactly at the halfway point — that is the
+    // "at budget" reading every consumer wants to be able to point at.
+    return T <= 0.5f
+        ? FMath::Lerp(CkStyle::Ok(),   CkStyle::Warn(), T * 2.0f)
+        : FMath::Lerp(CkStyle::Warn(), CkStyle::Err(),  (T - 0.5f) * 2.0f);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_ScoreColor(
+        float InNormalized)
+    -> FLinearColor
+{
+    using namespace ck_debugger_axes;
+
+    return FMath::Lerp(CkStyle::Info(), CkStyle::Ok(), Sanitize_Normalized(InNormalized));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CategoricalColor(
+        int32 InIndex)
+    -> FLinearColor
+{
+    using namespace ck_debugger_axes;
+
+    // Modulo on a negative operand is negative in C++; fold it back so every int32 is valid.
+    const auto Slot = ((InIndex % CategoricalPaletteSize) + CategoricalPaletteSize) % CategoricalPaletteSize;
+    return Get_CategoricalEntry(Slot);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CategoricalColor(
+        FName InKey)
+    -> FLinearColor
+{
+    using namespace ck_debugger_axes;
+
+    const auto Hash = GetTypeHash(InKey);
+    return Get_CategoricalEntry(static_cast<int32>(Hash % static_cast<uint32>(CategoricalPaletteSize)));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    Get_CategoricalPaletteSize()
+    -> int32
+{
+    return ck_debugger_axes::CategoricalPaletteSize;
 }
 
 // ====================================================================================================================

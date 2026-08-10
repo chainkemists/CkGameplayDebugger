@@ -95,7 +95,8 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
   mutually exclusive choices. Do not promote contextual entity filters into the window chrome.
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
-- `FCkDebuggerStyle` owns ECS-specific Slate brushes, text styles, padding + graph-node size constants. Cross-debugger style tokens live in `CkStyle::` (CkDebuggerCommon).
+- `FCkDebuggerStyle` (Slate brushes, text styles, padding + graph-node size constants, SVG icon registry) **moved to `CkDebuggerCommon/Styles/CkDebuggerStyle.h`** in the 2026-08-09 common-widget consolidation — it is now the whole suite's style set. Include the common path; do NOT call `Initialize`/`Shutdown` from this module (CkDebuggerCommon owns its lifetime). Cross-debugger colour tokens still live in `CkStyle::`.
+- `SCkDebuggerWidget_SearchBar` is now a compatibility alias for the promoted `SCkDebug_SearchBar` (`CkDebuggerCommon/Search/`). New code uses the common spelling; the alias header is deleted in a later unit of that campaign.
 - `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
 - Graph model is pure data with no rendering. Layout strategy is swappable.
 

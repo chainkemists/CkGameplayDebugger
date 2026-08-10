@@ -37,7 +37,7 @@
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_EntityList.h"
 #include "CkEcsDebugger/Panels/CkDebuggerPanel_Inspector.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"

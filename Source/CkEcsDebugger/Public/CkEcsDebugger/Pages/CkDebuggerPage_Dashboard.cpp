@@ -7,7 +7,7 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Presentation/CkEcsDebugger_FeatureVisuals.h"
 #include "CkEcsDebugger/Query/CkEcsDebugger_Query.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Widgets/SCkEcsDebugger_Sparkline.h"
 
 #include "CkEditorTools/Style/CkStyle.h"

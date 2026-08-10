@@ -4,14 +4,23 @@
 #include "Styling/SlateStyle.h"
 #include "Styling/SlateColor.h"
 
-enum class ECk_ObjectiveStatus : uint8;
-
 // ====================================================================================================================
-// Brush/text-style set + spacing constants specific to the ECS debugger.
-// All colors live in CkStyle (Project Settings → CkGameplayDebugger → GOAP).
+// THE brush/text-style set for the CK debugger suite.
+//
+// Promoted out of CkEcsDebugger (2026-08-09, common-widget consolidation P5/U1) — the class name and
+// the "CkDebuggerStyle" style-set name are deliberately unchanged so every existing call site only
+// swaps its #include. Feature modules adopt this set instead of registering module-local equivalents.
+//
+// Division of labour:
+//   CkStyle::                (CkEditorTools) colors + typography tokens — tunable, no Slate objects
+//   FCkDebuggerStyle         registered BRUSHES / text styles / the SVG icon registry (this file)
+//   FCkDebuggerCommonStyle   brushes only the common widgets need (glow halos, flat button, toggle)
+//
+// Everything here is SlateCore-only, so the set builds and registers in a non-editor target — which
+// it must, CkDebuggerCommon being a Runtime module. Nothing in it is WITH_EDITOR gated.
 // ====================================================================================================================
 
-class FCkDebuggerStyle
+class CKDEBUGGERCOMMON_API FCkDebuggerStyle
 {
 public:
     static auto Initialize() -> void;
@@ -19,13 +28,11 @@ public:
     static auto Get() -> const ISlateStyle&;
     static auto GetStyleSetName() -> FName;
 
-    static auto Get_ObjectiveStatusColor(ECk_ObjectiveStatus InStatus) -> FLinearColor;
-
     /**
      * Resolves "CkDebugger.Icon.<InIconId>" — the monochrome feature glyphs registered
      * from Resources/Icons/*.svg. They are white by design: tint per-feature at draw
      * time via SImage.ColorAndOpacity so one asset serves every color/state.
-     * Unknown ids yield Slate's no-brush (renders nothing) — pass registered ids only.
+     * Unknown ids yield nullptr — pass registered ids only.
      */
     static auto Get_IconBrush(FName InIconId) -> const FSlateBrush*;
 
@@ -58,3 +65,5 @@ private:
     static auto CreateColors(TSharedRef<FSlateStyleSet> InStyle) -> void;
     static auto CreateTextStyles(TSharedRef<FSlateStyleSet> InStyle) -> void;
 };
+
+// ====================================================================================================================

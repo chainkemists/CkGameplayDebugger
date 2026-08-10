@@ -1,7 +1,7 @@
 #include "SGraphNode_EcsEntity.h"
 
 #include "CkEcsDebugNode_Entity.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"

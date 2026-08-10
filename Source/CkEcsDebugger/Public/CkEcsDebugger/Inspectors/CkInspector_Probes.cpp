@@ -7,7 +7,7 @@
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 #include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
-#include "CkEcsDebugger/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SGridPanel.h"

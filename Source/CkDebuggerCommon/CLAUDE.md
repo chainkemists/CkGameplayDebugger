@@ -16,11 +16,19 @@ provides:
   under Editor Preferences → Ck → Style) so debuggers and CkFoundation editor
   tools share one look; CkDebuggerCommon re-exports them via its public
   dependency on `CkEditorTools`.
+- **Brush / text style set** (`Styles/CkDebuggerStyle.h` — `FCkDebuggerStyle`) —
+  THE registered brush set for the suite: `CkDebugger.Background.*`,
+  `Panel.*`, `Row.*`, `Graph.*`, `Badge.Rounded`, the `CkDebugger.Text.*` text
+  styles, the translucent `CkDebugger.TableView.Row` selection style, and the
+  SVG icon registry scanned out of the plugin's `Resources/Icons/**`. Promoted
+  out of CkEcsDebugger; `CkDebuggerCommon` owns its `Initialize`/`Shutdown`, so
+  a feature module must never call either. Adopt it instead of registering a
+  module-local `FSlateStyleSet`.
 - **Shared Slate widgets** (`Widgets/`) — composable building blocks for rows,
   pills, headers, status indicators, copy / selectable text.
-- **Dual search bar** (`Search/SCkDebug_DualSearchBar`) — side-by-side Filter
-  + Highlight inputs. Used by every debugger that has a list/tree the user
-  searches.
+- **Search bars** (`Search/`) — `SCkDebug_DualSearchBar` (side-by-side Filter +
+  Highlight) and its light sibling `SCkDebug_SearchBar` (one debounced query +
+  clear). Used by every debugger that has a list/tree the user searches.
 - **Copy-menu helpers** (`Utils/CkDebug_CopyMenu_Utils.h`) — one canonical
   "Copy …" menu shape across schemas, lists, and right-click handlers.
 - **Entity reference widget** (`Widgets/SCkDebug_EntityRef`) — single-line
@@ -236,6 +244,41 @@ The pattern: bind flag-driven visuals via `TAttribute<T>` lambdas with `TWeakObj
 ```
 
 Corollary: `UEdGraph::NotifyGraphChanged` triggers `SGraphPanel::OnGraphChanged` which recreates node widgets. **Never emit `NotifyGraphChanged` from an in-place runtime-update path** — only from the topology rebuild. If your refresh splits into `topology_changed` + `runtime_changed` branches (it should), only the topology branch notifies.
+
+## Domain ramps — never write a heat/score/category hex
+
+Three colour scales live next to the style axes in
+`Styles/CkDebuggerAxes.h` (`namespace ck::debug_axes`). Every stop is derived
+from a `CkStyle::` role, so a palette edit moves all of them at once:
+
+| Helper | Ramp | Replaces |
+|---|---|---|
+| `Get_HeatColor(Normalized)` | `Ok` → `Warn` (at 0.5) → `Err` | Scheduler's four-band `Get_TimingColor`, Insights' budget green/yellow/red |
+| `Get_ScoreColor(Normalized)` | `Info` → `Ok` | Eqs's candidate score gradient |
+| `Get_CategoricalColor(Index)` / `(FName)` | 8 distinct palette roles, wrapping | ECS inspector-filter fallback palette |
+
+All three are **total**: ramps clamp and read NaN as 0, the categorical index
+wraps in both directions. Pass a raw ratio and don't pre-clamp.
+
+Semantic canvas colours that only mean something inside one visualization
+(AStar grid cell states, Crowd navmesh paint, Map fog) stay local to their
+module with a one-line justification comment.
+
+## Time-series widgets
+
+| Use case | Widget |
+|---|---|
+| Per-frame history the user scrubs / freezes (frame times, tick costs) | `SCkDebug_FrameStrip` — heat columns, budget or relative scale, scrub + pan + zoom, highlight bands, marker dots, LIVE/FROZEN gutter label |
+| A run timeline of coloured spans with a cursor (state machine runs, plan history) | `SCkDebug_ScrubTimeline` — segments with optional subdivision cells, Live/Scrub modes, cut / flag / dot / tick marks, widget-owned pan+zoom window, ruler with a caller-supplied label formatter |
+| A capped rolling list of "what just happened" | `SCkDebug_EventLog` — severity tones, optional category chip, timestamps, multi-select right-click copy |
+| Lanes of time-positioned markers + activation spans | `SCkDebug_EventTimeline` |
+| A value trend in a row or card | `SCkDebug_Sparkline` |
+
+`FrameStrip` and `ScrubTimeline` are `SLeafWidget`s: they own no children, so
+their tooltips are hover-tracked through the widget-level tooltip, and their
+right-click copy is opt-in via `.CopyText(...)` (a right-*drag* still pans).
+`EventLog` rows are built from `STextBlock` + the axis chip helper only, so
+they are safe inside `SListView` — see the list-row contract above.
 
 ## Search bars
 
@@ -544,7 +587,13 @@ CkDebuggerCommon/
 │   ├── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
 │   └── CkDebug_SelectionSync.h       (broadcast, ECS provider, and closest-lineage resolver)
 ├── Search/
-│   └── SCkDebug_DualSearchBar.h      (Filter + Highlight side-by-side)
+│   ├── SCkDebug_DualSearchBar.h      (Filter + Highlight side-by-side)
+│   └── SCkDebug_SearchBar.h          (single debounced query + clear)
+├── Styles/
+│   ├── CkDebuggerStyle.h             (THE suite brush/text set + SVG icon registry)
+│   ├── CkDebuggerCommonStyle.h       (glow halos, flat button, icon-toggle checkbox)
+│   ├── CkDebuggerAxes.h              (axis render/metric/predicate helpers + domain ramps)
+│   └── CkDebuggerStyleSelection.h    (the axis enum catalog)
 ├── Utils/
 │   └── CkDebug_CopyMenu_Utils.h      (Handle_RightClickToCopy, AddCopyEntry, AddCopyEntryToToolMenu)
 ├── Widgets/
@@ -559,6 +608,9 @@ CkDebuggerCommon/
 │   ├── SCkDebug_SectionHeader.h      (uppercase section header)
 │   ├── SCkDebug_StatusPill.h         (toned status label)
 │   ├── SCkDebug_HistoryRow.h         (history/timeline row + opt-in CopyText)
+│   ├── SCkDebug_FrameStrip.h         (scrubbable per-frame heat columns)
+│   ├── SCkDebug_ScrubTimeline.h      (segment track + scrub cursor + marks)
+│   ├── SCkDebug_EventLog.h           (capped severity-toned event list)
 │   ├── SCkDebug_NodePill.h           (graph / plan-step pill + opt-in CopyText)
 │   ├── SCkDebug_InspectorPanel.h     (collapsible section)
 │   └── SCkDebug_CountBadge.h

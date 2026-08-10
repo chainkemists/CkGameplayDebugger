@@ -89,6 +89,51 @@ namespace ck::debug_axes
 }
 
 // ====================================================================================================================
+// DOMAIN RAMPS — the three color scales that previously lived as hardcoded per-module blocks
+// (Scheduler's timing heat, Eqs's candidate score gradient, the ECS inspector-filter categorical
+// palette). Every stop is derived from a CkStyle:: role, so a palette edit moves all of them and
+// no consumer ever writes a hex literal for "how hot / how good / which bucket".
+//
+// Semantic canvas colors that only mean something inside ONE visualization (AStar grid cell states,
+// Crowd navmesh paint, Map fog) deliberately stay local to their module.
+//
+// Every entry point is TOTAL: ramps clamp (and treat NaN as 0), the categorical index wraps, so a
+// caller can never produce an undefined color.
+// ====================================================================================================================
+
+namespace ck::debug_axes
+{
+    /**
+     * Cold → hot ramp over a normalized [0,1] cost/time/pressure value.
+     * Stops: Ok (0.0) → Warn (0.5) → Err (1.0); the 0.75 midpoint is the amber-orange the
+     * Scheduler's four-band Get_TimingColor used to hardcode.
+     * Values outside [0,1] clamp; NaN reads as 0 (coldest).
+     */
+    CKDEBUGGERCOMMON_API auto Get_HeatColor(float InNormalized) -> FLinearColor;
+
+    /**
+     * Low → high quality ramp over a normalized [0,1] score.
+     * Stops: Info (0.0, blue) → Ok (1.0, green) — the Eqs candidate gradient.
+     * Values outside [0,1] clamp; NaN reads as 0 (worst).
+     */
+    CKDEBUGGERCOMMON_API auto Get_ScoreColor(float InNormalized) -> FLinearColor;
+
+    /**
+     * Deterministic bucket color for "these things are different, not better or worse"
+     * (inspector badges, group accents, lane tints). Drawn from the palette's six Category
+     * roles plus Accent + Relationship — eight hues chosen to stay distinguishable side by side.
+     * The index wraps (negatives included), so any int is a valid argument.
+     */
+    CKDEBUGGERCOMMON_API auto Get_CategoricalColor(int32 InIndex) -> FLinearColor;
+
+    /** Same palette, keyed by a stable name instead of a caller-managed index. */
+    CKDEBUGGERCOMMON_API auto Get_CategoricalColor(FName InKey) -> FLinearColor;
+
+    /** Number of distinct entries before Get_CategoricalColor wraps. */
+    CKDEBUGGERCOMMON_API auto Get_CategoricalPaletteSize() -> int32;
+}
+
+// ====================================================================================================================
 
 /**
  * A named, curated point in axis space. Applying a profile copies Selection into the settings and

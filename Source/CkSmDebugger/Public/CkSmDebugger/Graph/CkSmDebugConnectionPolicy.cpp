@@ -5,8 +5,9 @@
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugNode_Transition.h"
 #include "CkSmDebugGraph.h"
-#include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -35,7 +36,8 @@ auto
 	OutParams.AssociatedPin1 = InOutputPin;
 	OutParams.AssociatedPin2 = InInputPin;
 	OutParams.WireThickness = 1.5f;
-	OutParams.WireColor = FCkSmDebuggerStyle::Color_Sm_TransitionWire;
+	// Neutral wire: the muted-text role, which is where the suite's low-emphasis lines live.
+	OutParams.WireColor = CkStyle::TextDim();
 	OutParams.bDrawBubbles = false;
 
 	if (NOT InInputPin)
@@ -48,7 +50,7 @@ auto
 	// State -> Compound: sub-SM connector
 	if (Cast<UCkSmDebugNode_Compound>(InInputPin->GetOwningNode()))
 	{
-		OutParams.WireColor = FCkSmDebuggerStyle::Color_Sm_SubSmConnector;
+		OutParams.WireColor = CkStyle::OverlayOf(CkStyle::Accent(), 0.502f);
 		OutParams.WireThickness = 1.5f;
 		return;
 	}
@@ -63,15 +65,15 @@ auto
 
 		if (TransitionNode->Get_IsScrubHighlighted())
 		{
-			OutParams.WireColor = FCkSmDebuggerStyle::Color_Sm_ScrubTransitionWire;
+			OutParams.WireColor = CkStyle::Accent();
 			OutParams.WireThickness = 3.0f;
 		}
 		else if (TransitionNode->Get_LiveFlashAlpha() > 0.0f)
 		{
 			auto Alpha = TransitionNode->Get_LiveFlashAlpha();
 			OutParams.WireColor = FMath::Lerp(
-				FCkSmDebuggerStyle::Color_Sm_TransitionWire,
-				FCkSmDebuggerStyle::Color_Sm_LiveFlashWire,
+				CkStyle::TextDim(),
+				CkStyle::Warn(),
 				Alpha);
 			OutParams.WireThickness = FMath::Lerp(1.5f, 3.5f, Alpha);
 		}

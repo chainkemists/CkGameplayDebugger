@@ -2,7 +2,6 @@
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
 #include "CkSmDebugger/Data/CkSmDebugger_DataCollector.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
-#include "CkSmDebugger/Window/SCkSmDebugger_Timeline.h"
 #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 
@@ -14,16 +13,22 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Styling/AppStyle.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_ScrubTimeline.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "GraphEditor.h"
 #include "Editor.h"
@@ -53,36 +58,46 @@
 
 namespace
 {
-    inline const FLinearColor Color_Detail_SectionHeader = FLinearColor(0.82f, 0.86f, 0.96f);
-    inline const FLinearColor Color_Detail_Label         = FLinearColor(0.58f, 0.60f, 0.67f);
-    inline const FLinearColor Color_Detail_Value         = FLinearColor(0.88f, 0.90f, 0.92f);
-    inline const FLinearColor Color_Detail_ClassName     = FLinearColor(0.56f, 0.64f, 0.78f);
-    inline const FLinearColor Color_Detail_Separator     = FLinearColor(0.18f, 0.20f, 0.27f, 1.0f);
-    inline const FLinearColor Color_Detail_Bullet        = FLinearColor(0.85f, 0.55f, 0.25f);
-    inline const FLinearColor Color_Detail_Arrow         = FLinearColor(0.56f, 0.64f, 0.78f);
+    // Detail-panel roles. Every one of these used to be a hardcoded literal in this block; they are
+    // now thin aliases onto CkStyle:: so a palette edit (Editor Preferences -> Ck -> Style) moves the
+    // panel, and so the SM panel converges on the rest of the suite.
+    auto Color_Detail_Label()     -> FLinearColor { return CkStyle::TextDim(); }
+    auto Color_Detail_Value()     -> FLinearColor { return CkStyle::Text(); }
+    auto Color_Detail_ClassName() -> FLinearColor { return CkStyle::Reference(); }
+    auto Color_Detail_Bullet()    -> FLinearColor { return CkStyle::Warn(); }
+    auto Color_Detail_Arrow()     -> FLinearColor { return CkStyle::TextDim(); }
 
     // -----------------------------------------------------------------------------------------------------------------
-    // Section header: bold title + 1px underline.
+    // Section header: axis-driven title + separator underline. The underline collapses entirely when
+    // the SeparatorWeight axis is None, which is why the slot is conditional rather than zero-height.
     // -----------------------------------------------------------------------------------------------------------------
     auto MakeSectionHeader(const FString& InText) -> TSharedRef<SWidget>
     {
-        return SNew(SVerticalBox)
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+        const auto& Selection = UCkDebuggerStyleSettings::Get_Selection();
+        const auto SeparatorThickness = ck::debug_axes::Get_SeparatorThickness(Selection);
+
+        auto Box = SNew(SVerticalBox);
+
+        Box->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 2.0f)
+        [
+            ck::debug_axes::Make_SectionHeader(
+                Selection, FText::FromString(InText), ECk_Tone::Neutral)
+        ];
+
+        if (SeparatorThickness > 0.0f)
+        {
+            Box->AddSlot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
             [
-                SNew(STextBlock)
-                    .Text(FText::FromString(InText))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_SectionHeader))
-            ]
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 6.0f)
-            [
-                SNew(SBox).HeightOverride(1.0f)
+                SNew(SBox).HeightOverride(SeparatorThickness)
                 [
                     SNew(SBorder)
                         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                        .BorderBackgroundColor(Color_Detail_Separator)
+                        .BorderBackgroundColor(CkStyle::Border())
                 ]
             ];
+        }
+
+        return Box;
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -93,7 +108,7 @@ namespace
     {
         return SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-            .BorderBackgroundColor(FLinearColor(InColor.R, InColor.G, InColor.B, 0.22f))
+            .BorderBackgroundColor(CkStyle::OverlayOf(InColor, 0.22f))
             .Padding(FMargin(6.0f, 1.0f))
             .VAlign(VAlign_Center)
             [
@@ -112,7 +127,7 @@ namespace
         return SNew(SCkDebug_SelectableLabel)
             .Text(FText::FromString(InText))
             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-            .ColorAndOpacity(FSlateColor(Color_Detail_ClassName));
+            .ColorAndOpacity(FSlateColor(Color_Detail_ClassName()));
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -129,7 +144,7 @@ namespace
                     SNew(STextBlock)
                         .Text(FText::FromString(InKey))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                 ]
             ]
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -137,7 +152,7 @@ namespace
                 SNew(SCkDebug_SelectableLabel)
                     .Text(InValue)
                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
             ];
     }
 
@@ -158,24 +173,12 @@ namespace
 
         auto ColorAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
         {
-            switch (InResult.Get())
-            {
-            case ECk_SmTaskResult::Succeeded: return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskSucceeded);
-            case ECk_SmTaskResult::Failed:    return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskFailed);
-            default:                          return FSlateColor(FCkSmDebuggerStyle::Color_Sm_TaskRunning);
-            }
+            return FSlateColor(CkSmDebugger::GetTaskResultColor(InResult.Get()));
         }));
 
         auto BgColorAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
         {
-            auto Base = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
-            switch (InResult.Get())
-            {
-            case ECk_SmTaskResult::Succeeded: Base = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
-            case ECk_SmTaskResult::Failed:    Base = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
-            default: break;
-            }
-            return FSlateColor(FLinearColor(Base.R, Base.G, Base.B, 0.22f));
+            return FSlateColor(CkStyle::OverlayOf(CkSmDebugger::GetTaskResultColor(InResult.Get()), 0.22f));
         }));
 
         return SNew(SBorder)
@@ -194,17 +197,26 @@ namespace
     // -----------------------------------------------------------------------------------------------------------------
     // Condition result pill (Pass / Fail / Undetermined) — static snapshot.
     // -----------------------------------------------------------------------------------------------------------------
-    auto MakeConditionPill(ECk_SmConditionResult InResult) -> TSharedRef<SWidget>
+    auto Get_ConditionResultColor(ECk_SmConditionResult InResult) -> FLinearColor
     {
-        auto Label   = FString{TEXT("?")};
-        auto Color   = FCkSmDebuggerStyle::Color_Sm_ConditionUnknown;
         switch (InResult)
         {
-        case ECk_SmConditionResult::Pass:         Label = TEXT("PASS"); Color = FCkSmDebuggerStyle::Color_Sm_ConditionSatisfied;   break;
-        case ECk_SmConditionResult::Fail:         Label = TEXT("FAIL"); Color = FCkSmDebuggerStyle::Color_Sm_ConditionUnsatisfied; break;
+        case ECk_SmConditionResult::Pass: return CkStyle::Ok();
+        case ECk_SmConditionResult::Fail: return CkStyle::Err();
+        default:                          return CkStyle::TextDim();
+        }
+    }
+
+    auto MakeConditionPill(ECk_SmConditionResult InResult) -> TSharedRef<SWidget>
+    {
+        auto Label = FString{TEXT("?")};
+        switch (InResult)
+        {
+        case ECk_SmConditionResult::Pass: Label = TEXT("PASS"); break;
+        case ECk_SmConditionResult::Fail: Label = TEXT("FAIL"); break;
         default: break;
         }
-        return MakePill(Label, Color);
+        return MakePill(Label, Get_ConditionResultColor(InResult));
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -222,24 +234,13 @@ namespace
             }
         }));
 
-        auto ResolveColor = [InResult]() -> FLinearColor
+        auto FgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
         {
-            switch (InResult.Get())
-            {
-            case ECk_SmConditionResult::Pass: return FCkSmDebuggerStyle::Color_Sm_ConditionSatisfied;
-            case ECk_SmConditionResult::Fail: return FCkSmDebuggerStyle::Color_Sm_ConditionUnsatisfied;
-            default:                          return FCkSmDebuggerStyle::Color_Sm_ConditionUnknown;
-            }
-        };
-
-        auto FgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([ResolveColor]()
-        {
-            return FSlateColor(ResolveColor());
+            return FSlateColor(Get_ConditionResultColor(InResult.Get()));
         }));
-        auto BgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([ResolveColor]()
+        auto BgAttr = TAttribute<FSlateColor>::Create(TAttribute<FSlateColor>::FGetter::CreateLambda([InResult]()
         {
-            auto C = ResolveColor();
-            return FSlateColor(FLinearColor(C.R, C.G, C.B, 0.22f));
+            return FSlateColor(CkStyle::OverlayOf(Get_ConditionResultColor(InResult.Get()), 0.22f));
         }));
 
         return SNew(SBorder)
@@ -296,6 +297,16 @@ auto
 
     _SmSelectorItems.Empty();
     _SmSelectorHandles.Empty();
+
+    // The timeline holds no handles, but it does hold a view window into the OLD run. Drop its
+    // content, re-anchor on the origin the next session starts from at the zoom the user chose
+    // (that mirrored duration is what OnViewChanged is for), then restore live-follow.
+    if (_Timeline.IsValid())
+    {
+        _Timeline->Set_Content({}, {});
+        _Timeline->Set_View(0.0, _TimelineViewDuration);
+        _Timeline->Focus_OnCursor();
+    }
 
     if (_ViewModel.IsValid())
     { _ViewModel->Reset_ForWorldChange(); }
@@ -367,6 +378,200 @@ auto
     auto NewScrubState = ScrubState;
     NewScrubState.ScrubTime = Target - Run.StartTime;
     _ViewModel->Set_ScrubState(NewScrubState);
+
+    // The old timeline re-derived its origin from ScrubTime every paint, so a step always landed
+    // framed. The window is widget-owned now, so a jump has to ask for the re-frame explicitly.
+    FocusTimelineOnCursor();
+}
+
+// ====================================================================================================================
+// Timeline — content feed + view control for the shared SCkDebug_ScrubTimeline
+// ====================================================================================================================
+
+auto
+    SCkSmDebuggerWindow::
+    Get_ScrubbedRun() const
+    -> const FCkSmDebugger_RunInfo*
+{
+    if (NOT _ViewModel.IsValid())
+    { return nullptr; }
+
+    const auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo)
+    { return nullptr; }
+
+    // SelectedRunIndex < 0 (and any stale out-of-range index) means "the live run".
+    const auto RunIndex = _ViewModel->Get_ScrubState().SelectedRunIndex;
+    return SmInfo->CompletedRuns.IsValidIndex(RunIndex)
+        ? &SmInfo->CompletedRuns[RunIndex]
+        : &SmInfo->CurrentRun;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    ComputeFrameAtTime(
+        const FCkSmDebugger_RunInfo& InRun,
+        double InRunRelativeTime)
+    -> int64
+{
+    if (InRun.FrameSegments.IsEmpty())
+    { return 0; }
+
+    const auto& First = InRun.FrameSegments[0];
+    const auto& Last = InRun.FrameSegments.Last();
+
+    if (InRunRelativeTime <= First.StartTime)
+    { return static_cast<int64>(First.StartFrame); }
+
+    if (InRunRelativeTime >= Last.EndTime)
+    { return static_cast<int64>(Last.EndFrame); }
+
+    for (const auto& Segment : InRun.FrameSegments)
+    {
+        if (InRunRelativeTime < Segment.StartTime || InRunRelativeTime > Segment.EndTime)
+        { continue; }
+
+        const auto Span = Segment.EndTime - Segment.StartTime;
+        if (Span <= 0.0)
+        { return static_cast<int64>(Segment.StartFrame); }
+
+        const auto Fraction = (InRunRelativeTime - Segment.StartTime) / Span;
+        const auto FrameSpan = static_cast<int64>(Segment.EndFrame) - static_cast<int64>(Segment.StartFrame);
+
+        // Floor (not round) so the reported frame matches the cell visually under the needle:
+        // cell N covers [N/total, (N+1)/total), and Floor maps any time in that range to N.
+        // Round would tick to N+1 at the cell midpoint, ahead of the needle.
+        return static_cast<int64>(Segment.StartFrame) + FMath::FloorToInt64(Fraction * FrameSpan);
+    }
+
+    return static_cast<int64>(Last.EndFrame);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    FocusTimelineOnCursor()
+    -> void
+{
+    if (NOT _Timeline.IsValid())
+    { return; }
+
+    _Timeline->Focus_OnCursor();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    RefreshTimelineContent()
+    -> void
+{
+    if (NOT _Timeline.IsValid() || NOT _ViewModel.IsValid())
+    { return; }
+
+    const auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+    if (NOT SmInfo)
+    {
+        _Timeline->Set_Content({}, {});
+        return;
+    }
+
+    const auto& ScrubState = _ViewModel->Get_ScrubState();
+    const auto IsLiveRun = NOT SmInfo->CompletedRuns.IsValidIndex(ScrubState.SelectedRunIndex);
+    const auto& SourceRun = IsLiveRun
+        ? SmInfo->CurrentRun
+        : SmInfo->CompletedRuns[ScrubState.SelectedRunIndex];
+
+    // Live-segment freeze: while scrubbing the live run, the trailing segment must stop growing or
+    // its per-frame cells shrink under the needle as real time advances. The override applies only
+    // while the SM is still in the captured state — a transition releases the freeze on its own.
+    auto FrozenRun = FCkSmDebugger_RunInfo{};
+    auto UseFrozenRun = false;
+    if (IsLiveRun && _ViewModel->Get_LiveSegmentFreezeActive())
+    {
+        const auto& SourceSegments = SourceRun.Segments;
+        if (SourceSegments.Num() > 0
+            && SourceSegments.Last().StateName == _ViewModel->Get_LiveSegmentFreezeStateName())
+        {
+            FrozenRun = SourceRun;
+            auto& LastSegment = FrozenRun.Segments.Last();
+            LastSegment.EndTime = _ViewModel->Get_LiveSegmentFreezeEndTime();
+            LastSegment.EndFrame = _ViewModel->Get_LiveSegmentFreezeEndFrame();
+            UseFrozenRun = true;
+        }
+    }
+    const auto& Run = UseFrozenRun ? FrozenRun : SourceRun;
+
+    const auto NameDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+
+    auto Segments = TArray<FCkDebug_ScrubSegment>{};
+    Segments.Reserve(Run.Segments.Num());
+
+    for (const auto& Source : Run.Segments)
+    {
+        auto Segment = FCkDebug_ScrubSegment{};
+        Segment.StartSeconds = Source.StartTime;
+        Segment.EndSeconds = Source.EndTime;
+        Segment.Color = Source.Color;
+        Segment.Label = SCkDebug_NameLabel::Get_ShortName(Source.StateName, NameDepth);
+        Segment.Tooltip = ck::Format_UE(TEXT("{}\nframes {} - {}  ({}s)"),
+            Source.StateName,
+            Source.StartFrame,
+            Source.EndFrame,
+            FString::Printf(TEXT("%.3f"), Source.EndTime - Source.StartTime));
+
+        // One subdivision cell per engine frame the SM spent in this state; the widget suppresses
+        // the boundary lines on its own once the cells fall under ~2px.
+        const auto FrameCount = static_cast<int64>(Source.EndFrame) - static_cast<int64>(Source.StartFrame);
+        Segment.SubdivisionCount = static_cast<int32>(
+            FMath::Clamp<int64>(FrameCount, 1, TNumericLimits<int32>::Max()));
+
+        Segments.Add(MoveTemp(Segment));
+    }
+
+    const auto& Bookmarks = _ViewModel->Get_Bookmarks();
+
+    auto Marks = TArray<FCkDebug_ScrubMark>{};
+    Marks.Reserve(Run.PauseMarkers.Num() + Run.BusyFrames.Num() + Bookmarks.Num());
+
+    for (const auto& Pause : Run.PauseMarkers)
+    {
+        auto Mark = FCkDebug_ScrubMark{};
+        Mark.TimeSeconds = Pause.Time;
+        Mark.Kind = ECkDebug_ScrubMarkKind::Cut;
+        Mark.Color = Pause.IsBreakpoint ? CkStyle::Err() : CkStyle::Accent();
+        Mark.Tooltip = Pause.IsBreakpoint
+            ? FString{TEXT("Breakpoint pause")}
+            : FString{TEXT("Manual pause")};
+        Marks.Add(MoveTemp(Mark));
+    }
+
+    for (const auto& Busy : Run.BusyFrames)
+    {
+        auto Mark = FCkDebug_ScrubMark{};
+        Mark.TimeSeconds = Busy.Time;
+        Mark.Kind = ECkDebug_ScrubMarkKind::Tick;
+        Mark.Color = CkStyle::Warn();
+        Mark.Tooltip = ck::Format_UE(TEXT("Frame {} ran {} transitions"),
+            Busy.FrameNumber, Busy.TransitionCount);
+        Marks.Add(MoveTemp(Mark));
+    }
+
+    for (const auto BookmarkTime : Bookmarks)
+    {
+        auto Mark = FCkDebug_ScrubMark{};
+        Mark.TimeSeconds = BookmarkTime;
+        Mark.Kind = ECkDebug_ScrubMarkKind::Flag;
+        Mark.Color = CkStyle::Warn();
+        Mark.Tooltip = ck::Format_UE(TEXT("Bookmark @ {}s"),
+            FString::Printf(TEXT("%.2f"), BookmarkTime));
+        Marks.Add(MoveTemp(Mark));
+    }
+
+    _Timeline->Set_Content(MoveTemp(Segments), MoveTemp(Marks));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -515,8 +720,64 @@ auto
                                 + SVerticalBox::Slot()
                                     .AutoHeight()
                                     [
-                                        SAssignNew(_Timeline, SCkSmDebugger_Timeline, _ViewModel, _Graph)
+                                        SAssignNew(_Timeline, SCkDebug_ScrubTimeline)
                                             .DesiredHeight(56.0f)
+                                            .InitialViewDuration(_TimelineViewDuration)
+                                            .SegmentHeightFraction(0.5f)
+                                            .RulerLabelCount(5)
+                                            .Mode_Lambda([this]()
+                                            {
+                                                return (_ViewModel.IsValid()
+                                                        && _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+                                                    ? ECkDebug_ScrubMode::Scrub
+                                                    : ECkDebug_ScrubMode::Live;
+                                            })
+                                            .ScrubTime_Lambda([this]() -> double
+                                            {
+                                                return _ViewModel.IsValid()
+                                                    ? _ViewModel->Get_ScrubState().ScrubTime
+                                                    : 0.0;
+                                            })
+                                            // "Now" for the scrubbed run — also the widget's upper
+                                            // clamp, which is what used to be an explicit
+                                            // FMath::Clamp(ScrubTime, 0, RunDuration).
+                                            .LiveTime_Lambda([this]() -> double
+                                            {
+                                                const auto* Run = Get_ScrubbedRun();
+                                                return Run ? Run->Duration : 0.0;
+                                            })
+                                            // Frame labels carry a [mod 1000] tail so nearby labels
+                                            // stay comparable once the absolute frame runs into the
+                                            // millions; the raw number stays greppable against logs.
+                                            .OnFormatTime_Lambda([this](double InTime) -> FString
+                                            {
+                                                const auto ShowFrames = _ViewModel.IsValid()
+                                                    && _ViewModel->Get_ScrubState().ShowFramesOnTimeline;
+
+                                                if (NOT ShowFrames)
+                                                { return FString::Printf(TEXT("%.1fs"), InTime); }
+
+                                                const auto* Run = Get_ScrubbedRun();
+                                                const auto Frame = Run ? ComputeFrameAtTime(*Run, InTime) : int64{0};
+                                                return FString::Printf(TEXT("f%lld [%03lld]"), Frame, Frame % 1000);
+                                            })
+                                            .OnScrubbed_Lambda([this](double InTime)
+                                            {
+                                                if (NOT _ViewModel.IsValid()) { return; }
+
+                                                _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
+
+                                                auto NewScrubState = _ViewModel->Get_ScrubState();
+                                                NewScrubState.ViewMode = ECkSmDebugger_ViewMode::Scrub;
+                                                NewScrubState.ScrubTime = FMath::Max(InTime, 0.0);
+                                                _ViewModel->Set_ScrubState(NewScrubState);
+                                            })
+                                            // The widget owns the window; we only mirror the zoom so
+                                            // a new PIE session can re-anchor to t=0 without losing it.
+                                            .OnViewChanged_Lambda([this](double, double InViewDuration)
+                                            {
+                                                _TimelineViewDuration = InViewDuration;
+                                            })
                                     ]
 
                                 // History | Details (side-by-side, fills remaining)
@@ -546,10 +807,12 @@ auto
             ]
     ];
 
-    // Bind history selection → detail panel
+    // Bind history selection → detail panel. The list has already moved ScrubTime by the time this
+    // fires, so re-centring here is what replaces the old "TimelineScrollX = 0" the list used to do.
     _HistoryList->OnEntrySelected.BindLambda([this](TSharedPtr<FCkSmDebugger_HistoryEntry> InEntry)
     {
         _SelectedHistoryEntry = InEntry;
+        FocusTimelineOnCursor();
     });
 }
 
@@ -640,6 +903,9 @@ auto
 
     // Refresh SM selector combo
     RefreshSmSelector();
+
+    // Push segments + marks into the shared scrub timeline (immediate-mode paint; two array moves).
+    RefreshTimelineContent();
 
     if (_PendingTarget.IsSet())
     {
@@ -769,13 +1035,8 @@ auto
         if (_GraphEditor.IsValid())
         { _GraphEditor->ZoomToFit(false); }
 
-        // Reset timeline scroll to center on scrub cursor / "now"
-        if (_ViewModel.IsValid())
-        {
-            auto NewScrubState = _ViewModel->Get_ScrubState();
-            NewScrubState.TimelineScrollX = 0.0f;
-            _ViewModel->Set_ScrubState(NewScrubState);
-        }
+        // Re-centre the timeline window on the scrub cursor / "now"
+        FocusTimelineOnCursor();
 
         return FReply::Handled();
     }
@@ -803,6 +1064,7 @@ auto
                 auto NS = _ViewModel->Get_ScrubState();
                 NS.ScrubTime = Target;
                 _ViewModel->Set_ScrubState(NS);
+                FocusTimelineOnCursor();
             }
             return FReply::Handled();
         }
@@ -814,6 +1076,7 @@ auto
                 auto NS = _ViewModel->Get_ScrubState();
                 NS.ScrubTime = Target;
                 _ViewModel->Set_ScrubState(NS);
+                FocusTimelineOnCursor();
             }
             return FReply::Handled();
         }
@@ -826,8 +1089,8 @@ auto
         {
             auto NewScrubState = _ViewModel->Get_ScrubState();
             NewScrubState.ScrubTime = 0.0;
-            NewScrubState.TimelineScrollX = 0.0f;
             _ViewModel->Set_ScrubState(NewScrubState);
+            FocusTimelineOnCursor();
             return FReply::Handled();
         }
         if (InKeyEvent.GetKey() == EKeys::End)
@@ -837,8 +1100,8 @@ auto
             {
                 auto NewScrubState = _ViewModel->Get_ScrubState();
                 NewScrubState.ScrubTime = SmInfo->CurrentRun.Duration;
-                NewScrubState.TimelineScrollX = 0.0f;
                 _ViewModel->Set_ScrubState(NewScrubState);
+                FocusTimelineOnCursor();
             }
             return FReply::Handled();
         }
@@ -945,7 +1208,7 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("SM:")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FLinearColor(0.5f, 0.5f, 0.55f))
+                    .ColorAndOpacity(CkStyle::TextDim())
             ]
         + SHorizontalBox::Slot()
             .AutoWidth()
@@ -995,7 +1258,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
+                    .ColorAndOpacity(CkStyle::TextMute())
             ]
 
         // ── Owning entity (clickable → opens in CK ECS Debugger) ─────────
@@ -1029,7 +1292,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
+                    .ColorAndOpacity(CkStyle::TextMute())
             ]
 
         // Name depth — the shared cycler widget; depth lives on the graph's
@@ -1109,7 +1372,7 @@ auto
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("History")))
                                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                                    .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
                                 + SHorizontalBox::Slot()
@@ -1190,7 +1453,7 @@ auto
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("H Spacing")))
                                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                                    .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
                                 + SHorizontalBox::Slot()
@@ -1257,7 +1520,7 @@ auto
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("V Spacing")))
                                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                                    .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
                                 + SHorizontalBox::Slot()
@@ -1324,7 +1587,7 @@ auto
                                                 SNew(STextBlock)
                                                     .Text(FText::FromString(TEXT("Badge Gap")))
                                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                                    .ColorAndOpacity(FLinearColor(0.7f, 0.7f, 0.7f))
+                                                    .ColorAndOpacity(CkStyle::TextDim())
                                             ]
                                     ]
                                 + SHorizontalBox::Slot()
@@ -1384,7 +1647,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(FLinearColor(0.35f, 0.35f, 0.4f))
+                    .ColorAndOpacity(CkStyle::TextMute())
             ]
 
         // ── Playback: mode indicator + buttons ───────────────────────────
@@ -1411,14 +1674,14 @@ auto
                     .ColorAndOpacity_Lambda([this]()
                     {
                         if (_IsTestMode)
-                        { return FSlateColor(FLinearColor(0.85f, 0.55f, 0.25f)); }
+                        { return FSlateColor(CkStyle::Warn()); }
 
                         if (NOT _ViewModel.IsValid())
-                        { return FSlateColor(FLinearColor(0.35f, 0.35f, 0.4f)); }
+                        { return FSlateColor(CkStyle::TextMute()); }
 
                         return (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live)
-                            ? FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f))
-                            : FSlateColor(FLinearColor(0.9f, 0.7f, 0.1f));
+                            ? FSlateColor(CkStyle::Ok())
+                            : FSlateColor(CkStyle::Warn());
                     })
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
             ]
@@ -1570,7 +1833,7 @@ auto
 
                         return FText::GetEmpty();
                     })
-                    .ColorAndOpacity(FLinearColor(0.937f, 0.325f, 0.314f))
+                    .ColorAndOpacity(CkStyle::Err())
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
             ]
 
@@ -1726,8 +1989,8 @@ auto
                                 EnsureScrubMode();
                                 auto NS = _ViewModel->Get_ScrubState();
                                 NS.ScrubTime = 0.0;
-                                NS.TimelineScrollX = 0.0f;
                                 _ViewModel->Set_ScrubState(NS);
+                                FocusTimelineOnCursor();
                             }
                             return FReply::Handled();
                         })
@@ -1839,6 +2102,7 @@ auto
                                 auto NS = _ViewModel->Get_ScrubState();
                                 NS.ScrubTime = Target;
                                 _ViewModel->Set_ScrubState(NS);
+                                FocusTimelineOnCursor();
                             }
                             return FReply::Handled();
                         })
@@ -1862,6 +2126,7 @@ auto
                                 auto NS = _ViewModel->Get_ScrubState();
                                 NS.ScrubTime = Target;
                                 _ViewModel->Set_ScrubState(NS);
+                                FocusTimelineOnCursor();
                             }
                             return FReply::Handled();
                         })
@@ -1882,11 +2147,11 @@ auto
                             {
                                 if (_ViewModel.IsValid())
                                 {
-                                    auto NS = _ViewModel->Get_ScrubState();
-                                    NS.TimelineScrollX = 0.0f;
-                                    _ViewModel->Set_ScrubState(NS);
                                     _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Live);
                                     _ViewModel->ClearScrubTransitionHighlight();
+                                    // Re-attach the widget's live-follow — the user may have
+                                    // panned away while scrubbing.
+                                    FocusTimelineOnCursor();
                                     _SelectedHistoryEntry.Reset();
                                 }
                                 return FReply::Handled();
@@ -1940,9 +2205,9 @@ auto
 
     auto NewScrubState = ScrubState;
     NewScrubState.ScrubTime = FMath::Clamp(Target, 0.0, Run.Duration);
-    NewScrubState.TimelineScrollX = 0.0f;
     _ViewModel->Set_ScrubState(NewScrubState);
     _ViewModel->Set_ViewMode(ECkSmDebugger_ViewMode::Scrub);
+    FocusTimelineOnCursor();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1957,7 +2222,7 @@ auto
     -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
-        .BorderBackgroundColor(FLinearColor(0.08f, 0.08f, 0.12f))
+        .BorderBackgroundColor(CkStyle::Bg1())
         .Padding(FMargin(8.0f))
         [
             SNew(SScrollBox)
@@ -1968,7 +2233,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("No selection")))
-                            .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                            .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     ]
                 ]
@@ -2051,7 +2316,7 @@ auto
         return StaticCastSharedRef<SWidget>(
             SNew(STextBlock)
                 .Text(FText::FromString(TEXT("No selection")))
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9)));
     };
 
@@ -2099,14 +2364,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(ToName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2118,13 +2383,13 @@ auto
             {
                 auto TName = SCkDebug_NameLabel::Get_ShortName(Task.ClassName, Depth);
                 auto IconChar = FString{TEXT("\x25CF")};
-                auto IconColor = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
                 switch (Task.LastResult)
                 {
-                case ECk_SmTaskResult::Succeeded: IconChar = TEXT("\x2713"); IconColor = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
-                case ECk_SmTaskResult::Failed:    IconChar = TEXT("\x2717"); IconColor = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
+                case ECk_SmTaskResult::Succeeded: IconChar = TEXT("\x2713"); break;
+                case ECk_SmTaskResult::Failed:    IconChar = TEXT("\x2717"); break;
                 default: break;
                 }
+                const auto IconColor = CkSmDebugger::GetTaskResultColor(Task.LastResult);
                 Root->AddSlot().AutoHeight().Padding(16.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(SHorizontalBox)
@@ -2139,7 +2404,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                 ];
@@ -2155,14 +2420,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CB")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FromName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2177,7 +2442,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
             }
@@ -2191,13 +2456,13 @@ auto
             {
                 auto TName = SCkDebug_NameLabel::Get_ShortName(Snap.TaskName, Depth);
                 auto Label = FString{TEXT("RUNNING")};
-                auto Color = FCkSmDebuggerStyle::Color_Sm_TaskRunning;
                 switch (Snap.Result)
                 {
-                case ECk_SmTaskResult::Succeeded: Label = TEXT("SUCCEEDED"); Color = FCkSmDebuggerStyle::Color_Sm_TaskSucceeded; break;
-                case ECk_SmTaskResult::Failed:    Label = TEXT("FAILED");    Color = FCkSmDebuggerStyle::Color_Sm_TaskFailed;    break;
+                case ECk_SmTaskResult::Succeeded: Label = TEXT("SUCCEEDED"); break;
+                case ECk_SmTaskResult::Failed:    Label = TEXT("FAILED");    break;
                 default: break;
                 }
+                const auto Color = CkSmDebugger::GetTaskResultColor(Snap.Result);
                 Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(SHorizontalBox)
@@ -2205,7 +2470,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
@@ -2234,7 +2499,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(CName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                 ];
@@ -2246,7 +2511,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("(unconditional)")))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
             ];
         }
@@ -2255,7 +2520,7 @@ auto
         [
             SNew(STextBlock)
                 .Text(FText::FromString(FString::Printf(TEXT("Frame [%llu]"), Entry.FrameNumber)))
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
         ];
 
@@ -2281,21 +2546,21 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(SrcName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x2500\x25B6")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Arrow))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Arrow()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DstName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2316,8 +2581,8 @@ auto
             [](const FCkSmDebugger_ConditionInfo& C){ return C.Mode != ECk_SmConditionMode::EventDriven; });
         auto TransSelModeLabel = TransSelHasPolled ? FString{TEXT("POLLED")} : FString{TEXT("EVENT-DRIVEN")};
         auto TransSelModeColor = TransSelHasPolled
-            ? FCkSmDebuggerStyle::Color_Sm_Polled
-            : FCkSmDebuggerStyle::Color_Sm_EventDriven;
+            ? CkStyle::TextDim()
+            : CkStyle::Warn();
 
         Root->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
         [
@@ -2326,7 +2591,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(CountAttr)
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
@@ -2360,8 +2625,8 @@ auto
             auto CondIsEventDriven = (Cond.Mode == ECk_SmConditionMode::EventDriven);
             auto CondModeLabel = CondIsEventDriven ? FString{TEXT("E")} : FString{TEXT("P")};
             auto CondModeColor = CondIsEventDriven
-                ? FCkSmDebuggerStyle::Color_Sm_EventDriven
-                : FCkSmDebuggerStyle::Color_Sm_Polled;
+                ? CkStyle::Warn()
+                : CkStyle::TextDim();
 
             Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
             [
@@ -2381,7 +2646,7 @@ auto
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(CName))
-                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             ]
                     ]
@@ -2473,7 +2738,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(ScrubFrameAttr)
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                    .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                     .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
             ];
 
@@ -2489,7 +2754,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
             }
@@ -2511,7 +2776,7 @@ auto
                         .Text(FText::FromString(FString::Printf(
                             TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
                             *NextName, FramesAhead, NextEntry.FrameNumber)))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
 
@@ -2533,7 +2798,7 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(CName))
-                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                 ]
                         ];
@@ -2545,7 +2810,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("(unconditional)")))
-                            .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                            .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     ];
                 }
@@ -2556,7 +2821,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                 ];
             }
@@ -2589,14 +2854,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DisplayName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
                 ];
 
@@ -2622,7 +2887,7 @@ auto
                 SNew(SBox)
                     .Visibility(VisibilityAttr)
                     [
-                        MakePill(TEXT("ACTIVE"), FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder)
+                        MakePill(TEXT("ACTIVE"), CkStyle::Warn())
                     ]
             ];
 
@@ -2633,7 +2898,7 @@ auto
             {
                 NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                 [
-                    MakePill(TEXT("HISTORICAL"), FCkSmDebuggerStyle::Color_Sm_Polled)
+                    MakePill(TEXT("HISTORICAL"), CkStyle::TextDim())
                 ];
             }
 
@@ -2661,7 +2926,7 @@ auto
             {
                 NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                 [
-                    MakePill(TEXT("EVENT-DRIVEN"), FCkSmDebuggerStyle::Color_Sm_EventDriven)
+                    MakePill(TEXT("EVENT-DRIVEN"), CkStyle::Warn())
                 ];
             }
             else if (HasCompleteData)
@@ -2670,14 +2935,14 @@ auto
                 {
                     NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                     [
-                        MakePill(TEXT("TICKS"), FCkSmDebuggerStyle::Color_Sm_TaskTick)
+                        MakePill(TEXT("TICKS"), CkStyle::Warn())
                     ];
                 }
                 if (HasAnyPolledCondition)
                 {
                     NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                     [
-                        MakePill(TEXT("POLLED"), FCkSmDebuggerStyle::Color_Sm_Polled)
+                        MakePill(TEXT("POLLED"), CkStyle::TextDim())
                     ];
                 }
             }
@@ -2802,7 +3067,7 @@ auto
 
                 auto IsTickMode = (Task.Mode == ECk_SmTaskMode::Tick);
                 auto ModeLabel = IsTickMode ? FString{TEXT("TICK")} : FString{TEXT("ENTER/EXIT")};
-                auto ModeColor = IsTickMode ? FCkSmDebuggerStyle::Color_Sm_TaskTick : FCkSmDebuggerStyle::Color_Sm_Polled;
+                auto ModeColor = IsTickMode ? CkStyle::Warn() : CkStyle::TextDim();
 
                 Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
                 [
@@ -2814,7 +3079,7 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(TName))
-                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
@@ -2893,8 +3158,8 @@ auto
                     [](const FCkSmDebugger_ConditionInfo& C){ return C.Mode != ECk_SmConditionMode::EventDriven; });
                 auto TransModeLabel = TransHasPolled ? FString{TEXT("POLLED")} : FString{TEXT("EVENT-DRIVEN")};
                 auto TransModeColor = TransHasPolled
-                    ? FCkSmDebuggerStyle::Color_Sm_Polled
-                    : FCkSmDebuggerStyle::Color_Sm_EventDriven;
+                    ? CkStyle::TextDim()
+                    : CkStyle::Warn();
 
                 Root->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
                 [
@@ -2903,21 +3168,21 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x2500\x25B6")))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Arrow))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Arrow()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(DstName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(CountAttr)
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Label))
+                                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
@@ -2975,8 +3240,8 @@ auto
                     auto CondIsEventDriven = (Cond.Mode == ECk_SmConditionMode::EventDriven);
                     auto CondModeLabel = CondIsEventDriven ? FString{TEXT("E")} : FString{TEXT("P")};
                     auto CondModeColor = CondIsEventDriven
-                        ? FCkSmDebuggerStyle::Color_Sm_EventDriven
-                        : FCkSmDebuggerStyle::Color_Sm_Polled;
+                        ? CkStyle::Warn()
+                        : CkStyle::TextDim();
 
                     Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f)
                     [
@@ -2996,7 +3261,7 @@ auto
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::FromString(CName))
-                                            .ColorAndOpacity(FSlateColor(Color_Detail_Value))
+                                            .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                     ]
                             ]

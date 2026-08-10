@@ -9,6 +9,8 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "SGraphPanel.h"
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
@@ -306,7 +308,7 @@ auto
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                 .ColorAndOpacity_Lambda([CompoundNodePtr = _CompoundNode]()
                                 {
-                                    auto Color = FCkSmDebuggerStyle::Color_Sm_SubSmLabel;
+                                    auto Color = CkStyle::OverlayOf(CkStyle::Accent(), 0.753f);
                                     if (CompoundNodePtr && NOT CompoundNodePtr->Get_IsParentStateActive())
                                     { Color.A *= 0.35f; }
                                     return FSlateColor(Color);
@@ -401,7 +403,7 @@ auto
     // eye-catcher, so the bubble stays a subtle grey-blue box that only brightens
     // a little (via alpha) when it holds the active sub-state. No green fill — it
     // never competes with the active state.
-    auto BorderColor = FCkSmDebuggerStyle::Color_Sm_InactiveStateBorder;
+    auto BorderColor = CkStyle::TextDim();
     BorderColor.A = BorderAlpha;
 
     // --- Border ---
@@ -421,7 +423,7 @@ auto
             FVector2f(W - BorderThickness * 2, H - BorderThickness * 2),
             FSlateLayoutTransform(FVector2f(BorderThickness, BorderThickness)));
 
-        auto FillColor = FCkSmDebuggerStyle::Color_Sm_SubSmNodeBackground;
+        auto FillColor = CkStyle::Bg3();
         FillColor.A = FillAlpha;
 
         FSlateDrawElement::MakeBox(

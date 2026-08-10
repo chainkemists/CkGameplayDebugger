@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
@@ -59,11 +61,14 @@ auto
         { NameDepth = Graph->LayoutParams.NameDepth; }
     }
     auto StateName = SCkDebug_NameLabel::Get_ShortName(FullName, NameDepth);
-    auto PinPadding = FCkSmDebuggerStyle::Sm_PinPadding;
-    auto BpStyle = _StateNode ? _StateNode->Get_BreakpointStyle() : 0;
+    const auto BpStyle = _StateNode ? _StateNode->Get_BreakpointStyle() : 0;
 
-    auto BpRed  = FCkSmDebuggerStyle::Color_Sm_Breakpoint;
-    auto BpHollow = FLinearColor(BpRed.R, BpRed.G, BpRed.B, 0.25f);
+    // Breakpoints are the graph's one hard-stop signal — the Err role, hollowed to 25% when unset.
+    const auto BpRed = CkStyle::Err();
+    const auto BpHollow = CkStyle::OverlayOf(BpRed, 0.25f);
+
+    // Inline node indicators read as a glyph at half an icon box; Medium reproduces today's 8px exactly.
+    const auto IndicatorSize = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection()) * 0.5f;
 
     // Style 22/23: breakpoint indicators are INSIDE the widget (replace state-color icon).
     // Hollow when unset, filled when set. Always visible.
@@ -81,8 +86,8 @@ auto
             .Padding(0.0f, 0.0f, 4.0f, 0.0f)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride(IndicatorSize)
+                    .HeightOverride(IndicatorSize)
                     [
                         bUseInlineBreakpoints
                         ? StaticCastSharedRef<SWidget>(
@@ -116,7 +121,7 @@ auto
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::NodeTitleFontSize()))
                     .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                     {
-                        auto Color = FCkSmDebuggerStyle::Color_Sm_TextPrimary;
+                        auto Color = CkStyle::Text();
                         if (StateNodePtr
                             && StateNodePtr->Get_IsSubSmNode()
                             && NOT StateNodePtr->Get_IsParentStateActive())
@@ -132,8 +137,8 @@ auto
             .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             [
                 SNew(SBox)
-                    .WidthOverride(8.0f)
-                    .HeightOverride(8.0f)
+                    .WidthOverride(IndicatorSize)
+                    .HeightOverride(IndicatorSize)
                     .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed)
                     [
                         SNew(SBorder)
@@ -184,7 +189,7 @@ auto
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
                     .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                    .ColorAndOpacity(FSlateColor(FCkSmDebuggerStyle::Color_Sm_EventDriven))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                     .Visibility_Lambda([StateNodePtr = _StateNode]()
                     {
                         return (StateNodePtr
@@ -258,11 +263,11 @@ auto
                             auto Border = CkStyle::NodeFill_Inactive();
                             if (Node->Get_IsCurrentState())
                             {
-                                Border = FMath::Lerp(Border, FCkSmDebuggerStyle::Color_Sm_ActiveOutline, Node->Get_BorderGlowAlpha());
+                                Border = FMath::Lerp(Border, CkStyle::Ok(), Node->Get_BorderGlowAlpha());
                                 // Entry overshoot: brighten toward (green-)white on becoming current.
                                 const auto Pulse = Node->Get_EntryPulseAlpha();
                                 if (Pulse > 0.0f)
-                                { Border = FMath::Lerp(Border, FLinearColor(0.85f, 1.0f, 0.92f), Pulse * 0.7f); }
+                                { Border = FMath::Lerp(Border, CkStyle::TextStrong(), Pulse * 0.7f); }
                             }
                             return Border;
                         })
@@ -351,14 +356,14 @@ auto
     if (_StateNode->Get_IsCurrentState())
     {
         auto DwellStr = FString::Printf(TEXT("Active for %.2f secs"), _StateNode->Get_DwellTimeSeconds());
-        OutPopups.Emplace(nullptr, FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder, DwellStr);
+        OutPopups.Emplace(nullptr, CkStyle::Warn(), DwellStr);
     }
     else if (_StateNode->Get_IsPreviousState())
     {
         auto DwellStr = FString::Printf(TEXT("Was active for %.2f secs"), _StateNode->Get_DwellTimeSeconds());
         // Muted tint so it reads as a historical note next to the live active popup.
-        auto Base = FCkSmDebuggerStyle::Color_Sm_ActiveStateBorder;
-        auto Muted = FLinearColor(Base.R * 0.55f, Base.G * 0.55f, Base.B * 0.55f, 0.75f);
+        auto Muted = CkStyle::Warn() * 0.55f;
+        Muted.A = 0.75f;
         OutPopups.Emplace(nullptr, Muted, DwellStr);
     }
 }
@@ -451,11 +456,11 @@ auto
     //     is current" signal, a green aura a little larger than the node, fading
     //     with the current-state alpha — plus the scrub-mode glows. ---
     {
-        auto GlowRgb = FCkSmDebuggerStyle::Color_Sm_PreviousStateOutline;
+        auto GlowRgb = CkStyle::TextDim();
         auto GlowAlpha = 0.0f;
 
         if (_StateNode->Get_IsScrubActiveState())
-        { GlowRgb = FCkSmDebuggerStyle::Color_Sm_ScrubActiveOutline; GlowAlpha = 0.25f; }
+        { GlowRgb = CkStyle::Ok(); GlowAlpha = 0.25f; }
         else if (_StateNode->Get_IsScrubExitedState())
         { GlowAlpha = 0.25f; }
         else if (_StateNode->Get_IsCurrentState())
@@ -469,7 +474,7 @@ auto
             // grey; only the halo is current-only.
             const auto ActiveGlow = _StateNode->Get_BorderGlowAlpha();
             if (ActiveGlow > 0.001f)
-            { GlowRgb = FCkSmDebuggerStyle::Color_Sm_ActiveOutline; GlowAlpha = 0.34f * ActiveGlow; }
+            { GlowRgb = CkStyle::Ok(); GlowAlpha = 0.34f * ActiveGlow; }
         }
         else
         {
@@ -482,7 +487,7 @@ auto
         if (GlowAlpha > 0.001f)
         {
             constexpr auto Pad = 6.0f;
-            auto GlowColor = FLinearColor(GlowRgb.R, GlowRgb.G, GlowRgb.B, GlowAlpha);
+            const auto GlowColor = CkStyle::OverlayOf(GlowRgb, GlowAlpha);
             static auto GlowBrush = FSlateRoundedBoxBrush(FLinearColor::White, 6.0f);
 
             auto Size = AllottedGeometry.GetLocalSize();
@@ -509,8 +514,9 @@ auto
     auto NodeSize = AllottedGeometry.GetLocalSize();
     auto L = Result + 1;  // draw layer
 
-    auto Red  = FCkSmDebuggerStyle::Color_Sm_Breakpoint;
-    auto Bg   = FCkSmDebuggerStyle::Color_Sm_InactiveStateBody;
+    const auto Red = CkStyle::Err();
+    // Punch-out colour for hollow indicators: the pill's own interior, so the ring reads as a hole.
+    const auto Bg = CkStyle::NodeFill_Inactive();
     auto Style = _StateNode->Get_BreakpointStyle();
 
     auto W = NodeSize.X;
@@ -521,7 +527,7 @@ auto
     auto R = 2.0f;    // ring thickness
     auto G = 2.0f;    // gap between dots
     auto P = 4.0f;    // padding from node edge
-    auto FadedRed = FLinearColor(Red.R, Red.G, Red.B, 0.4f);
+    const auto FadedRed = CkStyle::OverlayOf(Red, 0.4f);
 
     // =============================================================================================================
     // GROUP A: Circles — overlay corners (half-overlapping the node edge)
@@ -784,18 +790,24 @@ auto
 
     auto TaskBox = SNew(SVerticalBox);
 
-    // Separator line below header
-    TaskBox->AddSlot()
-        .AutoHeight()
-        [
-            SNew(SBox)
-                .HeightOverride(1.0f)
-                [
-                    SNew(SBorder)
-                        .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                        .BorderBackgroundColor(FCkSmDebuggerStyle::Color_Sm_HeaderSeparator)
-                ]
-        ];
+    // Separator line below header — collapses entirely when the SeparatorWeight axis is None.
+    const auto SeparatorThickness =
+        ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+
+    if (SeparatorThickness > 0.0f)
+    {
+        TaskBox->AddSlot()
+            .AutoHeight()
+            [
+                SNew(SBox)
+                    .HeightOverride(SeparatorThickness)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                            .BorderBackgroundColor(CkStyle::Border())
+                    ]
+            ];
+    }
 
     for (auto TaskIdx = 0; TaskIdx < _StateNode->Get_Tasks().Num(); ++TaskIdx)
     {
@@ -827,7 +839,7 @@ auto
                                     .BorderBackgroundColor_Lambda([StateNodePtr = _StateNode, TaskIdx, this]()
                                     {
                                         if (NOT StateNodePtr || TaskIdx >= StateNodePtr->Get_Tasks().Num())
-                                        { return FCkSmDebuggerStyle::Color_Text_Muted; }
+                                        { return CkStyle::TextMute(); }
 
                                         auto Color = GetTaskResultBrushColor(StateNodePtr->Get_Tasks()[TaskIdx].LastResult);
 
@@ -850,7 +862,7 @@ auto
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
                             .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                             {
-                                auto Color = FCkSmDebuggerStyle::Color_Sm_TextSecondary;
+                                auto Color = CkStyle::TextDim();
                                 if (StateNodePtr && NOT StateNodePtr->Get_IsCurrentState())
                                 { Color.A *= 0.4f; }
                                 return FSlateColor(Color);
@@ -868,7 +880,7 @@ auto
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
                             .ColorAndOpacity_Lambda([StateNodePtr = _StateNode]()
                             {
-                                auto Color = FCkSmDebuggerStyle::Color_Sm_TaskTick;
+                                auto Color = CkStyle::Warn();
                                 if (StateNodePtr && NOT StateNodePtr->Get_IsCurrentState())
                                 { Color.A *= 0.45f; }
                                 return FSlateColor(Color);
@@ -896,13 +908,7 @@ auto
         ECk_SmTaskResult InResult) const
     -> FLinearColor
 {
-    switch (InResult)
-    {
-    case ECk_SmTaskResult::Running:   return FCkSmDebuggerStyle::Color_Sm_TaskRunning;
-    case ECk_SmTaskResult::Succeeded: return FCkSmDebuggerStyle::Color_Sm_TaskSucceeded;
-    case ECk_SmTaskResult::Failed:    return FCkSmDebuggerStyle::Color_Sm_TaskFailed;
-    default:                          return FCkSmDebuggerStyle::Color_Text_Muted;
-    }
+    return CkSmDebugger::GetTaskResultColor(InResult);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

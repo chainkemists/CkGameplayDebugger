@@ -7,6 +7,11 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Object/CkObject_Utils.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
@@ -72,12 +77,12 @@ auto
 
         + SVerticalBox::Slot()
             .AutoHeight()
-            .Padding(4.0f, 2.0f)
+            .Padding(ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection()))
             [
                 SNew(STextBlock)
                     .Text_Lambda([this]() { return GetStatusText(); })
-                    .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                    .ColorAndOpacity(FLinearColor(0.65f, 0.65f, 0.7f))
+                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
+                    .ColorAndOpacity(CkStyle::TextDim())
             ]
     ];
 }
@@ -156,7 +161,8 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("Initial State:")))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+                    .Font(CkStyle::BoldFont(CkStyle::FontSizeBody()))
+                    .ColorAndOpacity(CkStyle::TextDim())
             ]
 
         + SHorizontalBox::Slot()

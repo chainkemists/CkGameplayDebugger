@@ -3,9 +3,9 @@
 #include "CkSmDebugNode_Transition.h"
 #include "CkSmDebugNode_State.h"
 #include "CkSmDebugGraph.h"
-#include "CkSmDebugger/CkSmDebuggerStyle.h"
-
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
@@ -45,9 +45,10 @@ auto
     RightNodeBox.Reset();
     LeftNodeBox.Reset();
 
-    auto BpRed    = FCkSmDebuggerStyle::Color_Sm_Breakpoint;
-    auto BpHollow = FLinearColor(BpRed.R, BpRed.G, BpRed.B, 0.25f);
-    auto BpStyle  = _TransitionNode ? _TransitionNode->Get_BreakpointStyle() : 0;
+    // Breakpoints are the graph's one hard-stop signal — the Err role, hollowed to 25% when unset.
+    const auto BpRed    = CkStyle::Err();
+    const auto BpHollow = CkStyle::OverlayOf(BpRed, 0.25f);
+    const auto BpStyle  = _TransitionNode ? _TransitionNode->Get_BreakpointStyle() : 0;
 
     // LogicDriverPro pattern: two-layer overlay with ColorSpill background + Icon foreground.
     auto TransOverlay = SNew(SOverlay)
@@ -57,7 +58,7 @@ auto
             [
                 SNew(SImage)
                     .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.ColorSpill")))
-                    .ColorAndOpacity(FCkSmDebuggerStyle::Color_Sm_TransitionBadge)
+                    .ColorAndOpacity(CkStyle::TextStrong())
             ]
 
         // Transition icon (directional arrow)
@@ -259,7 +260,7 @@ auto
                     .BorderBackgroundColor_Lambda([TransNodePtr = _TransitionNode, BpRed]()
                     {
                         return (TransNodePtr && TransNodePtr->Get_HasBreakpoint())
-                            ? FLinearColor(BpRed.R, BpRed.G, BpRed.B, 0.35f)
+                            ? CkStyle::OverlayOf(BpRed, 0.35f)
                             : FLinearColor::Transparent;
                     })
             ];

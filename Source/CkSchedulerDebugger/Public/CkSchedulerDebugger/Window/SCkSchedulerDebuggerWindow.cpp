@@ -2,8 +2,12 @@
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
-#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_FrameHistoryBar.h"
 
+#include "CkCore/Format/CkFormat.h"
+
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_FrameStrip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -23,6 +27,33 @@
 
 #include "Engine/World.h"
 #include "Editor.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_scheduler_debugger_window
+{
+	// RowDensity applies as a DELTA on this surface's own base padding, never as an absolute — the
+	// window chrome is deliberately tighter than a tree row, and only the offset between density
+	// options is the axis' business. Comfortable is the axis default, so under Classic the delta is
+	// zero and the bars render exactly as they shipped. Clamped so Compact can't go negative.
+	// Same contract as CkDebuggerWidget_EntityTree.cpp::Apply_RowDensity.
+	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+	{
+		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+		const auto DeltaX = Current.Left - Baseline.Left;
+		const auto DeltaY = Current.Top  - Baseline.Top;
+
+		return FMargin
+		{
+			FMath::Max(0.0f, InBase.Left   + DeltaX),
+			FMath::Max(0.0f, InBase.Top    + DeltaY),
+			FMath::Max(0.0f, InBase.Right  + DeltaX),
+			FMath::Max(0.0f, InBase.Bottom + DeltaY)
+		};
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -46,7 +77,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("Coming Soon")))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+						.ColorAndOpacity(CkStyle::TextMute())
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
 				];
 		}
@@ -162,10 +193,13 @@ auto
 									.ToolTipText(FText::FromString(TEXT("Outlines history bars whose frames ran a processor matching this text")))
 									.OnTextChanged_Lambda([this](const FText& InText)
 									{
-										if (_FrameHistoryBar.IsValid())
-										{
-											_FrameHistoryBar->Set_HighlightFilter(InText.ToString());
-										}
+										auto NewFilter = InText.ToString();
+										if (_HighlightFilter == NewFilter)
+										{ return; }
+
+										_HighlightFilter = MoveTemp(NewFilter);
+										_HighlightVerdictByFrame.Reset();
+										DoPushFrameSamples(true);
 									})
 							]
 					]
@@ -173,8 +207,33 @@ auto
 				+ SVerticalBox::Slot()
 					.AutoHeight()
 					[
-						SAssignNew(_FrameHistoryBar, SCkSchedulerDebugger_FrameHistoryBar)
-							.ViewModel(_ViewModel)
+						SAssignNew(_FrameStrip, SCkDebug_FrameStrip)
+							.DesiredHeight(44.0f)
+							// Absolute banding, not relative-to-max: 0.15 ms puts Warn exactly on the
+							// scheduler's per-frame budget line and saturates Err at 0.30 ms, which is
+							// what the retired four-band Get_TimingColor drew.
+							.BudgetMs(FCkSchedulerDebuggerStyle::TimingBudgetMs)
+							// Column HEIGHT stays relative to the strip's own range — the old bar
+							// normalized against its tallest sample, and that is the spike-spotting read.
+							.HeightScale(ECkDebug_FrameStripHeightScale::RelativeToMax)
+							.SelectedIndexFromEnd_Lambda([this]() -> int32
+							{
+								return _ViewModel.IsValid() ? _ViewModel->Get_SelectedFrameOffset() : 0;
+							})
+							.MarkerMeaning(FString{TEXT("pumped")})
+							.CopyText_Lambda([this]() -> FString
+							{
+								return DoComposeSelectedFrameText();
+							})
+							.OnScrubbed_Lambda([this](int32 InIndexFromEnd)
+							{
+								if (NOT _ViewModel.IsValid())
+								{ return; }
+
+								// Every navigation path — drag, arrows, Home/End, double-click — funnels
+								// here, exactly as the old widget funnelled into Set_SelectedFrameOffset.
+								_ViewModel->Set_SelectedFrameOffset(InIndexFromEnd);
+							})
 					]
 
 				+ SVerticalBox::Slot()
@@ -259,10 +318,102 @@ auto
 		_ViewModel->Set_FrameHistoryMaxSize(World, _FrameHistoryMaxSize);
 	}
 
+	DoPushFrameSamples(false);
+
 	if (_ActivePageIndex >= 0 && _ActivePageIndex < _Pages.Num())
 	{
 		_Pages[_ActivePageIndex]->Tick(InDeltaTime);
 	}
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoPushFrameSamples(
+		bool InForce)
+	-> void
+{
+	if (NOT _FrameStrip.IsValid() || NOT _ViewModel.IsValid())
+	{ return; }
+
+	const auto& Collector = _ViewModel->Get_DataCollector();
+	const auto& Snapshots = Collector.Get_FrameSnapshots();
+
+	const auto NewestFrame = Snapshots.IsEmpty() ? uint64{0} : Snapshots.Last().FrameNumber;
+
+	// Re-pushing an unchanged history would clear the hovered column (and, with a filter typed,
+	// re-run the per-frame processor scan) for no visible gain — which is exactly what a frozen
+	// history does every gated tick.
+	if (NOT InForce
+		&& Snapshots.Num() == _LastPushedSampleCount
+		&& NewestFrame == _LastPushedNewestFrame)
+	{ return; }
+
+	_LastPushedSampleCount = Snapshots.Num();
+	_LastPushedNewestFrame = NewestFrame;
+
+	const auto HasHighlight = NOT _HighlightFilter.IsEmpty();
+
+	auto Samples = TArray<FCkDebug_FrameSample>{};
+	Samples.Reserve(Snapshots.Num());
+
+	auto FreshVerdicts = TMap<uint64, bool>{};
+	if (HasHighlight)
+	{ FreshVerdicts.Reserve(Snapshots.Num()); }
+
+	for (auto Index = 0; Index < Snapshots.Num(); ++Index)
+	{
+		const auto& Snapshot = Snapshots[Index];
+
+		auto IsHighlighted = false;
+		if (HasHighlight)
+		{
+			if (const auto* Cached = _HighlightVerdictByFrame.Find(Snapshot.FrameNumber))
+			{ IsHighlighted = *Cached; }
+			else
+			{ IsHighlighted = Collector.FrameContainsProcessor(Index, _HighlightFilter); }
+
+			FreshVerdicts.Add(Snapshot.FrameNumber, IsHighlighted);
+		}
+
+		auto Sample = FCkDebug_FrameSample{};
+		Sample.ValueMs = Snapshot.TotalFrameTimeMs;
+		Sample.HasMarker = Snapshot.PumpIterationCount > 0;
+		Sample.IsHighlighted = IsHighlighted;
+
+		Samples.Add(MoveTemp(Sample));
+	}
+
+	// Dropping the old map here is what evicts verdicts for frames the ring buffer discarded.
+	_HighlightVerdictByFrame = MoveTemp(FreshVerdicts);
+
+	_FrameStrip->Set_Samples(MoveTemp(Samples));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	DoComposeSelectedFrameText() const
+	-> FString
+{
+	if (NOT _ViewModel.IsValid())
+	{ return FString{}; }
+
+	const auto& Snapshots = _ViewModel->Get_DataCollector().Get_FrameSnapshots();
+	const auto SnapshotIndex = Snapshots.Num() - 1 - _ViewModel->Get_SelectedFrameOffset();
+
+	if (NOT Snapshots.IsValidIndex(SnapshotIndex))
+	{ return FString{}; }
+
+	const auto& Snapshot = Snapshots[SnapshotIndex];
+
+	return ck::Format_UE(TEXT("Frame #{}  {} ms  pumps {}  dirty {}"),
+		Snapshot.FrameNumber,
+		FString::Printf(TEXT("%.3f"), Snapshot.TotalFrameTimeMs),
+		Snapshot.PumpIterationCount,
+		Snapshot.DirtyProcessorCount);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -274,7 +425,11 @@ auto
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-		.Padding(FMargin(FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small))
+		.Padding_Lambda([]()
+		{
+			return ck_scheduler_debugger_window::Apply_RowDensity(
+				FMargin{FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small});
+		})
 		[
 			SNew(SHorizontalBox)
 
@@ -286,7 +441,7 @@ auto
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("CkScheduler Debugger")))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+						.ColorAndOpacity(CkStyle::Text())
 				]
 
 			+ SHorizontalBox::Slot()
@@ -319,7 +474,7 @@ auto
 							SNew(STextBlock)
 								.Text(FText::FromString(TEXT("History")))
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+								.ColorAndOpacity(CkStyle::TextDim())
 						]
 
 					+ SHorizontalBox::Slot()
@@ -366,7 +521,11 @@ auto
 {
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-		.Padding(FMargin(FCkSchedulerDebuggerStyle::Padding_Small))
+		.Padding_Lambda([]()
+		{
+			return ck_scheduler_debugger_window::Apply_RowDensity(
+				FMargin{FCkSchedulerDebuggerStyle::Padding_Small});
+		})
 		[
 			SNew(SHorizontalBox)
 
@@ -404,8 +563,8 @@ auto
 							constexpr auto PumpWarningThreshold = 3;
 							const auto Count = _ViewModel->Get_DataCollector().Get_PumpCount();
 							return FSlateColor(Count >= PumpWarningThreshold
-								? FCkSchedulerDebuggerStyle::Color_Warning
-								: FCkSchedulerDebuggerStyle::Color_Text_Primary);
+								? CkStyle::Err()
+								: CkStyle::Text());
 						})
 					)
 				]
@@ -420,7 +579,7 @@ auto
 						{
 							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_ProcessorCount());
 						}),
-						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Primary))
+						TAttribute<FSlateColor>(FSlateColor(CkStyle::Text()))
 					)
 				]
 
@@ -434,7 +593,7 @@ auto
 						{
 							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_GhostCount());
 						}),
-						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Ghost))
+						TAttribute<FSlateColor>(FSlateColor(CkStyle::None()))
 					)
 				]
 
@@ -448,7 +607,7 @@ auto
 						{
 							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_DirtyCount());
 						}),
-						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_DirtyMarker))
+						TAttribute<FSlateColor>(FSlateColor(CkStyle::Warn()))
 					)
 				]
 
@@ -462,7 +621,7 @@ auto
 						{
 							return FText::AsNumber(_ViewModel->Get_DataCollector().Get_ParallelCount());
 						}),
-						TAttribute<FSlateColor>(FSlateColor(FCkSchedulerDebuggerStyle::Color_Parallel))
+						TAttribute<FSlateColor>(FSlateColor(CkStyle::Info()))
 					)
 				]
 		];
@@ -499,7 +658,7 @@ auto
 											.ColorAndOpacity_Lambda([this, PageIdx]()
 											{
 												return _ActivePageIndex == PageIdx
-													? FCkSchedulerDebuggerStyle::Color_Selection
+													? CkStyle::Selection()
 													: FLinearColor::Transparent;
 											})
 									]
@@ -525,8 +684,8 @@ auto
 											.ColorAndOpacity_Lambda([this, PageIdx]()
 											{
 												return _ActivePageIndex == PageIdx
-													? FCkSchedulerDebuggerStyle::Color_Text_Highlight
-													: FCkSchedulerDebuggerStyle::Color_Text_Secondary;
+													? CkStyle::TextStrong()
+													: CkStyle::TextDim();
 											})
 									]
 							]

@@ -18,6 +18,7 @@ bool FCkEcsDebuggerDashboard_ContentRebuildInvalidatesPresentation::RunTest(cons
     Dashboard.CardCache.Add(TEXT("SceneNode"));
     Dashboard.PresentedCardKeys.Add(TEXT("SceneNode"));
     Dashboard.PresentedSingletonKeys.Add(TEXT("Actor"));
+    Dashboard.PresentedSingletonOverflow = 3;
 
     Dashboard.Build_Content(FCkDebuggerPageContext{});
 
@@ -29,6 +30,7 @@ bool FCkEcsDebuggerDashboard_ContentRebuildInvalidatesPresentation::RunTest(cons
     TestTrue(TEXT("Content rebuild drops card widgets owned by the previous tree"), Dashboard.CardCache.IsEmpty());
     TestTrue(TEXT("Content rebuild invalidates the presented card keys"), Dashboard.PresentedCardKeys.IsEmpty());
     TestTrue(TEXT("Content rebuild invalidates the presented singleton keys"), Dashboard.PresentedSingletonKeys.IsEmpty());
+    TestEqual(TEXT("Content rebuild invalidates the presented singleton overflow"), Dashboard.PresentedSingletonOverflow, 0);
 
     return true;
 }

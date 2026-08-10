@@ -1,5 +1,6 @@
 #include "CkDebuggerPage_Dashboard.h"
 
+#include "CkCore/Format/CkFormat.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
@@ -10,12 +11,13 @@
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
 #include "CkEcsDebugger/Widgets/SCkEcsDebugger_Sparkline.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Engine/World.h"
-#include "Styling/CoreStyle.h"
+#include "Styling/StyleDefaults.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Layout/SBorder.h"
@@ -56,10 +58,11 @@ namespace ck_debugger_page_dashboard
         }
     }
 
-    static auto MakeSectionHeader(const TCHAR* InLabel) -> TSharedRef<SWidget>
+    static auto MakeSectionHeader(const TCHAR* InLabel, const FText& InToolTip = FText::GetEmpty())
+        -> TSharedRef<SWidget>
     {
         return ck::debug_axes::Make_SectionHeader(
-            UCkDebuggerStyleSettings::Get_Selection(), FText::FromString(InLabel), ECk_Tone::Neutral);
+            UCkDebuggerStyleSettings::Get_Selection(), FText::FromString(InLabel), ECk_Tone::Neutral, InToolTip);
     }
 
     // Icon glyphs on this page are smaller than the axis' own 12/16/20 scale, so IconSize moves
@@ -69,6 +72,15 @@ namespace ck_debugger_page_dashboard
     {
         const auto Size = ck::debug_axes::Apply_IconSize(InBase);
         return FVector2D{Size, Size};
+    }
+
+    // True while SCkDebug_Icon paints no backdrop of its own, which is when a site that wants a
+    // well has to draw one itself. Reads the live selection, so it is safe to call from an
+    // attribute lambda every paint.
+    static auto Is_IconWellLocal() -> bool
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().IconTreatment
+            == ECkDebugAxis_IconTreatment::Plain;
     }
 }
 
@@ -109,6 +121,7 @@ auto FCkDebuggerPage_Dashboard::Build_Content(const FCkDebuggerPageContext& InCo
     CardCache.Reset();
     PresentedCardKeys.Reset();
     PresentedSingletonKeys.Reset();
+    PresentedSingletonOverflow = 0;
 
     WorldModel = InContext.WorldModel;
     RequestEntityFilter = InContext.RequestEntityFilter;
@@ -139,7 +152,10 @@ auto FCkDebuggerPage_Dashboard::Build_Content(const FCkDebuggerPageContext& InCo
                     .AutoHeight()
                     [
                         SAssignNew(HeroCountText, STextBlock)
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 24))
+                        // Deliberate outlier: the hero readout is a display number, twice the
+                        // largest CkStyle role (FontSizeH2 = 12), so it keeps its own size and
+                        // only borrows the TextScale axis from ScaledFont.
+                        .Font_Lambda([]() { return ck::debug_axes::ScaledFont("Bold", 24); })
                         .Text(FText::FromString(TEXT("0")))
                         .ColorAndOpacity(CkStyle::TextStrong())
                     ]
@@ -199,7 +215,7 @@ auto FCkDebuggerPage_Dashboard::Build_Content(const FCkDebuggerPageContext& InCo
             .SlotPadding(FMargin{0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small})
         ]
 
-        // ---- Singletons ----------------------------------------------------------------
+        // ---- Unique archetypes -----------------------------------------------------------
         + SScrollBox::Slot()
         .Padding(FCkDebuggerStyle::Padding_Medium, 0.0f, FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Medium)
         [
@@ -213,7 +229,11 @@ auto FCkDebuggerPage_Dashboard::Build_Content(const FCkDebuggerPageContext& InCo
                 .AutoHeight()
                 .Padding(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small)
                 [
-                    ck_debugger_page_dashboard::MakeSectionHeader(TEXT("SINGLETONS"))
+                    // Renamed from "SINGLETONS": the predicate below is Count==1, a population
+                    // reading, and every reader took the old label for an ECS registry singleton.
+                    ck_debugger_page_dashboard::MakeSectionHeader(
+                        TEXT("UNIQUE ARCHETYPES"),
+                        FText::FromString(TEXT("Archetypes with exactly one live entity in this world right now — a population count, not a registry singleton. Click the pill to open the instance.")))
                 ]
 
                 + SVerticalBox::Slot()
@@ -394,22 +414,32 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
         }
     }
 
-    // ---- Singletons ------------------------------------------------------------------
+    // ---- Unique archetypes -------------------------------------------------------------
+    // "Count == 1" is a POPULATION reading, not an ECS singleton — the section header's tooltip
+    // says so. The whole qualifying set is counted before the cap is applied, so the overflow
+    // indicator below can state what the cap hid instead of dropping it silently.
     auto Singletons = TArray<const ck::ecs_debugger_aggregation::FArchetypeBucket*>{};
+    auto SingletonTotal = 0;
     for (const auto& Bucket : Buckets)
     {
         if (Bucket.Count != 1)
         { continue; }
+
+        ++SingletonTotal;
         if (Singletons.Num() >= dashboard::MaxSingletons)
-        { break; }
+        { continue; }
+
         Singletons.Add(&Bucket);
     }
+
+    const auto SingletonOverflow = SingletonTotal - Singletons.Num();
 
     auto NewSingletonKeys = TArray<FString>{};
     for (const auto* Bucket : Singletons)
     { NewSingletonKeys.Add(Bucket->Key); }
 
-    if (NewSingletonKeys != PresentedSingletonKeys && SingletonsBox.IsValid())
+    if ((NewSingletonKeys != PresentedSingletonKeys || SingletonOverflow != PresentedSingletonOverflow)
+        && SingletonsBox.IsValid())
     {
         SingletonsBox->ClearChildren();
 
@@ -457,7 +487,26 @@ auto FCkDebuggerPage_Dashboard::DoRefresh() -> void
                 ]
             ];
         }
+
+        // Same contract as the inspector's diff cap (CkDebuggerPanel_Inspector.cpp:642): the cap is
+        // stated, never silent, so "eight rows" can't be mistaken for "eight unique archetypes".
+        if (SingletonOverflow > 0)
+        {
+            SingletonsBox->AddSlot()
+            .AutoHeight()
+            .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+            [
+                SNew(STextBlock)
+                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Muted"))
+                .Text(FText::FromString(ck::Format_UE(TEXT("+{} more"), SingletonOverflow)))
+                .ToolTipText(FText::FromString(ck::Format_UE(
+                    TEXT("{} archetypes have exactly one live entity; only the first {} are listed."),
+                    SingletonTotal, ck_debugger_page_dashboard::MaxSingletons)))
+            ];
+        }
+
         PresentedSingletonKeys = MoveTemp(NewSingletonKeys);
+        PresentedSingletonOverflow = SingletonOverflow;
     }
 }
 
@@ -556,7 +605,9 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
     OutEntry.Samples = MakeShared<TArray<float>>();
     OutEntry.CountText =
         SNew(STextBlock)
-        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
+        // Deliberate outlier, same reasoning as the hero count: the card's population number is
+        // sized above every CkStyle role on purpose and only adopts the TextScale axis.
+        .Font_Lambda([]() { return ck::debug_axes::ScaledFont("Bold", 14); })
         .Text(FText::AsNumber(InBucket.Count))
         .ColorAndOpacity(CkStyle::TextStrong());
 
@@ -595,15 +646,37 @@ auto FCkDebuggerPage_Dashboard::DoCreateCard(
                 .VAlign(VAlign_Center)
                 .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
                 [
+                    // The card's icon well predates the IconTreatment axis and must survive Classic
+                    // (whose treatment is Plain, i.e. SCkDebug_Icon draws no backdrop of its own).
+                    // SCkDebug_Icon exposes no per-site treatment override, so the well stays local —
+                    // but only while the axis draws nothing. Under Well/Ring the widget's own backdrop
+                    // takes over and this border collapses to a no-brush, zero-padding shell, so the
+                    // two never stack. All three values are lambda-bound: the flip is live (R1).
                     SNew(SBorder)
-                    .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Card.IconWell"))
-                    .BorderBackgroundColor(FSlateColor{AccentColor.CopyWithNewOpacity(0.15f)})
-                    .Padding(FMargin{4.0f})
+                    .BorderImage_Lambda([]() -> const FSlateBrush*
+                    {
+                        return ck_debugger_page_dashboard::Is_IconWellLocal()
+                            ? FCkDebuggerStyle::Get_IconWellBrush()
+                            : FStyleDefaults::GetNoBrush();
+                    })
+                    .BorderBackgroundColor_Lambda([AccentColor]() -> FSlateColor
+                    {
+                        return FSlateColor{ck_debugger_page_dashboard::Is_IconWellLocal()
+                            ? CkStyle::OverlayOf(AccentColor, CkStyle::IconWellAlpha())
+                            : FLinearColor::Transparent};
+                    })
+                    .Padding_Lambda([]() -> FMargin
+                    {
+                        return ck_debugger_page_dashboard::Is_IconWellLocal()
+                            ? FMargin{CkStyle::SpaceS}
+                            : FMargin{0.0f};
+                    })
                     [
                         SNew(SCkDebug_Icon)
                         .Brush(IconBrush)
                         .Meaning(FText::FromString(InBucket.DisplayName))
                         .ColorAndOpacity(AccentColor)
+                        .Accent(AccentColor)
                         .Size(ck_debugger_page_dashboard::IconSquare(14.0f))
                     ]
                 ]

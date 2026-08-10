@@ -6,6 +6,9 @@
 
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Utils/CkDebug_NameClean_Utils.h"
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
@@ -32,7 +35,20 @@ auto SCkDebug_UseEcsSelection::Get_Label() const -> FText
     if (ck::Is_NOT_Valid(Selection))
     { return FText::FromString(TEXT("Sync from ECS")); }
 
-    return FText::FromString(ck::Format_UE(TEXT("Sync from ECS {}"), Selection.Get_Entity()));
+    // The framing is this button's; the identity inside it is the suite's, so it composes through the
+    // same axis every SCkDebug_EntityRef site does instead of hand-formatting a second dialect.
+    const auto Name = UCk_Utils_Handle_UE::Get_DebugName(Selection);
+
+    const auto CleanName = Name.IsNone()
+        ? FString{}
+        : ck::DebugNameClean::Get_CleanName(Name.ToString());
+
+    const auto Identity = ck::debug_axes::Make_EntityIdText(
+        UCkDebuggerStyleSettings::Get_Selection(),
+        CleanName,
+        ck::Format_UE(TEXT("{}"), Selection.Get_Entity()));
+
+    return FText::FromString(ck::Format_UE(TEXT("Sync from ECS {}"), Identity.ToString()));
 }
 
 auto SCkDebug_UseEcsSelection::Get_Tooltip() const -> FText

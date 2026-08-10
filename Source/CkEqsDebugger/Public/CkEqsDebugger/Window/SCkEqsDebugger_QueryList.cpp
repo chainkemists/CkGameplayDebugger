@@ -25,27 +25,6 @@
 
 namespace ck_eqs_debugger_query_list
 {
-    // RowDensity applies as a DELTA on this panel's own base row padding, not as an absolute — the
-    // list rows are deliberately tighter than the ECS tree, and only the offset between density
-    // options is the axis' business. Comfortable is the axis default, so the delta is zero and the
-    // list renders exactly as it shipped. Clamped at zero so Compact can't produce negative margins.
-    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
     auto BuildTestSummary(const TArray<ECk_Eqs_TestType>& InTestTypes) -> FString
     {
         if (InTestTypes.IsEmpty())
@@ -272,7 +251,7 @@ auto
     // handled by STableRow itself via .ShowSelection(true); right-click context menu is wired via the
     // SListView's OnContextMenuOpening below.
     return SNew(STableRow<TSharedPtr<FRowItem>>, InOwner)
-        .Padding(ck_eqs_debugger_query_list::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)

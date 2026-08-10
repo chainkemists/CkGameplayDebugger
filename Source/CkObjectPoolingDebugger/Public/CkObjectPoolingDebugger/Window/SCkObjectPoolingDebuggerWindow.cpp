@@ -87,27 +87,6 @@ namespace ck_object_pooling_debugger_window
         InRing->Add(InValue);
     }
 
-    // RowDensity applies as a DELTA on this window's own base row padding, not as an absolute — the
-    // pool table is a dense metric grid, deliberately tighter than the ECS tree. Comfortable is the
-    // axis default, so the delta is zero and the table renders exactly as it shipped. Clamped at zero
-    // so Compact can't produce negative margins.
-    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
     static auto Get_SeparatorThickness() -> float
     {
         return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
@@ -535,7 +514,7 @@ auto
     const auto PlainColor = [](const FCkObjectPoolingDebugger_PoolRow&) { return CkStyle::Text(); };
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(Apply_RowDensity(FMargin{0.0f}))
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f}))
         [
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("NoBorder"))

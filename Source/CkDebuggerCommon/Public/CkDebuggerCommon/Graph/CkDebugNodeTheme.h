@@ -1,11 +1,18 @@
 #pragma once
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "CoreMinimal.h"
 #include "Styling/AppStyle.h"
 
 // ====================================================================================================================
 // Shared debug node theme — used by GOAP, SM, and future debuggers.
 // Controls visual appearance of graph nodes across all Ck debug tools.
+//
+// Every color stop resolves from a CkStyle:: role, so a palette edit (Editor Preferences -> Ck ->
+// Style) moves the graph nodes with the rest of the suite. The roles are resolved per-construction
+// rather than cached in statics — CkStyle reads the settings CDO, which is not available at
+// static-init time.
 // ====================================================================================================================
 
 UENUM()
@@ -27,30 +34,30 @@ struct CKDEBUGGERCOMMON_API FCkDebugNodeTheme
 	ECkDebugNodeThemeStyle Style = ECkDebugNodeThemeStyle::Rounded;
 
 	// Node border colors
-	FLinearColor ActiveBorder = FLinearColor(0.15f, 0.45f, 0.85f);
-	FLinearColor InactiveBorder = FLinearColor(0.25f, 0.25f, 0.28f);
-	FLinearColor SelectedBorder = FLinearColor(0.96f, 0.62f, 0.04f);
-	FLinearColor GoalBorder = FLinearColor(0.85f, 0.65f, 0.1f);
-	FLinearColor GoalText = FLinearColor(0.95f, 0.75f, 0.15f);
+	FLinearColor ActiveBorder = CkStyle::NodeBorder_InPlan();
+	FLinearColor InactiveBorder = CkStyle::NodeBorder_Inactive();
+	FLinearColor SelectedBorder = CkStyle::Warn();
+	FLinearColor GoalBorder = CkStyle::NodeBorder_Goal();
+	FLinearColor GoalText = CkStyle::NodeBorder_Goal();
 
 	// Node fill / background
-	FLinearColor ActiveFill = FLinearColor(0.02f, 0.02f, 0.03f);
-	FLinearColor InactiveFill = FLinearColor(0.04f, 0.04f, 0.04f);
+	FLinearColor ActiveFill = CkStyle::BgRoot();
+	FLinearColor InactiveFill = CkStyle::NodeFill_Inactive();
 
 	// Text
-	FLinearColor ActiveText = FLinearColor(0.9f, 0.9f, 0.9f);
-	FLinearColor InactiveText = FLinearColor(0.45f, 0.45f, 0.45f);
-	FLinearColor CostText = FLinearColor(0.96f, 0.62f, 0.04f);
+	FLinearColor ActiveText = CkStyle::Text();
+	FLinearColor InactiveText = CkStyle::TextDim();
+	FLinearColor CostText = CkStyle::Warn();
 
 	// Ports
-	FLinearColor PreconditionSatisfied = FLinearColor(0.13f, 0.77f, 0.37f);
-	FLinearColor PreconditionUnsatisfied = FLinearColor(0.94f, 0.27f, 0.27f);
-	FLinearColor EffectPort = FLinearColor(0.15f, 0.45f, 0.85f);
-	FLinearColor PortLabel = FLinearColor(0.45f, 0.45f, 0.45f);
+	FLinearColor PreconditionSatisfied = CkStyle::Ok();
+	FLinearColor PreconditionUnsatisfied = CkStyle::Err();
+	FLinearColor EffectPort = CkStyle::Info();
+	FLinearColor PortLabel = CkStyle::TextDim();
 
 	// Edges
-	FLinearColor ActiveEdge = FLinearColor(0.13f, 0.77f, 0.37f);
-	FLinearColor InactiveEdge = FLinearColor(0.2f, 0.2f, 0.2f);
+	FLinearColor ActiveEdge = CkStyle::Ok();
+	FLinearColor InactiveEdge = CkStyle::Graph_Edge();
 	float ActiveEdgeThickness = 2.5f;
 	float InactiveEdgeThickness = 1.0f;
 
@@ -100,10 +107,10 @@ struct CKDEBUGGERCOMMON_API FCkDebugNodeTheme
 		auto T = FCkDebugNodeTheme{};
 		T.Name = TEXT("Rounded");
 		T.Style = ECkDebugNodeThemeStyle::Rounded;
-		T.ActiveBorder = FLinearColor(0.15f, 0.45f, 0.85f);
-		T.InactiveBorder = FLinearColor(0.25f, 0.25f, 0.28f);
-		T.ActiveFill = FLinearColor(0.02f, 0.02f, 0.03f);
-		T.InactiveFill = FLinearColor(0.04f, 0.04f, 0.04f);
+		T.ActiveBorder = CkStyle::NodeBorder_InPlan();
+		T.InactiveBorder = CkStyle::NodeBorder_Inactive();
+		T.ActiveFill = CkStyle::BgRoot();
+		T.InactiveFill = CkStyle::NodeFill_Inactive();
 		return T;
 	}
 
@@ -112,15 +119,15 @@ struct CKDEBUGGERCOMMON_API FCkDebugNodeTheme
 		auto T = FCkDebugNodeTheme{};
 		T.Name = TEXT("Flat");
 		T.Style = ECkDebugNodeThemeStyle::Flat;
-		T.ActiveBorder = FLinearColor(0.3f, 0.5f, 1.0f);
-		T.InactiveBorder = FLinearColor(0.2f, 0.2f, 0.22f);
-		T.ActiveFill = FLinearColor(0.08f, 0.10f, 0.16f);
-		T.InactiveFill = FLinearColor(0.06f, 0.06f, 0.07f);
-		T.ActiveText = FLinearColor(0.9f, 0.9f, 0.95f);
-		T.InactiveText = FLinearColor(0.4f, 0.4f, 0.4f);
-		T.CostText = FLinearColor(1.0f, 0.7f, 0.2f);
-		T.ActiveEdge = FLinearColor(0.3f, 0.6f, 1.0f);
-		T.InactiveEdge = FLinearColor(0.15f, 0.15f, 0.17f);
+		T.ActiveBorder = CkStyle::Accent();
+		T.InactiveBorder = CkStyle::NodeBorder_Inactive();
+		T.ActiveFill = CkStyle::NodeFill_InPlan();
+		T.InactiveFill = CkStyle::NodeFill_Inactive();
+		T.ActiveText = CkStyle::Text();
+		T.InactiveText = CkStyle::TextDim();
+		T.CostText = CkStyle::Warn();
+		T.ActiveEdge = CkStyle::Accent();
+		T.InactiveEdge = CkStyle::Border();
 		return T;
 	}
 

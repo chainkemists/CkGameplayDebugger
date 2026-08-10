@@ -56,7 +56,9 @@
 // Detail panel — small widget helpers
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace
+// Named, not anonymous: this module builds with unity on, and a merged TU makes these generic
+// helper names (MakePill, MakeSectionHeader, ...) collide with any other file's local versions.
+namespace ck_sm_debugger_window
 {
     // Detail-panel roles. Every one of these used to be a hardcoded literal in this block; they are
     // now thin aliases onto CkStyle:: so a palette edit (Editor Preferences -> Ck -> Style) moves the
@@ -2233,7 +2235,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("No selection")))
-                            .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                            .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     ]
                 ]
@@ -2316,7 +2318,7 @@ auto
         return StaticCastSharedRef<SWidget>(
             SNew(STextBlock)
                 .Text(FText::FromString(TEXT("No selection")))
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9)));
     };
 
@@ -2356,7 +2358,7 @@ auto
         }
 
         // --- ARRIVED AT ---
-        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("ARRIVED AT")) ];
+        Root->AddSlot().AutoHeight() [ ck_sm_debugger_window::MakeSectionHeader(TEXT("ARRIVED AT")) ];
         Root->AddSlot().AutoHeight()
         [
             SNew(SHorizontalBox)
@@ -2364,14 +2366,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Bullet()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(ToName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2404,7 +2406,7 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                 ];
@@ -2412,7 +2414,7 @@ auto
         }
 
         // --- CAME FROM ---
-        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("CAME FROM")) ];
         Root->AddSlot().AutoHeight()
         [
             SNew(SHorizontalBox)
@@ -2420,14 +2422,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CB")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FromName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2442,7 +2444,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
             }
@@ -2451,7 +2453,7 @@ auto
         // --- TASKS AT TRANSITION ---
         if (Entry.TaskSnapshots.Num() > 0)
         {
-            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TASKS AT TRANSITION")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("TASKS AT TRANSITION")) ];
             for (auto& Snap : Entry.TaskSnapshots)
             {
                 auto TName = SCkDebug_NameLabel::Get_ShortName(Snap.TaskName, Depth);
@@ -2470,19 +2472,19 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                         [
-                            MakePill(Label, Color)
+                            ck_sm_debugger_window::MakePill(Label, Color)
                         ]
                 ];
             }
         }
 
         // --- TRANSITION conditions ---
-        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TRANSITION")) ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("TRANSITION")) ];
         if (Entry.ConditionNames.Num() > 0)
         {
             for (auto& CondName : Entry.ConditionNames)
@@ -2493,13 +2495,13 @@ auto
                     SNew(SHorizontalBox)
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                         [
-                            MakeConditionPill(ECk_SmConditionResult::Pass)
+                            ck_sm_debugger_window::MakeConditionPill(ECk_SmConditionResult::Pass)
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(CName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                 ];
@@ -2511,7 +2513,7 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT("(unconditional)")))
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                    .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                     .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
             ];
         }
@@ -2520,7 +2522,7 @@ auto
         [
             SNew(STextBlock)
                 .Text(FText::FromString(FString::Printf(TEXT("Frame [%llu]"), Entry.FrameNumber)))
-                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
         ];
 
@@ -2534,7 +2536,7 @@ auto
     {
         auto TransIdx = _SelectedTransitionIndex;
 
-        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("TRANSITION")) ];
+        Root->AddSlot().AutoHeight() [ ck_sm_debugger_window::MakeSectionHeader(TEXT("TRANSITION")) ];
 
         auto SrcName = SCkDebug_NameLabel::Get_ShortName(SmInfo->Transitions[TransIdx].SourceStateName, Depth);
         auto DstName = SCkDebug_NameLabel::Get_ShortName(SmInfo->Transitions[TransIdx].TargetStateName, Depth);
@@ -2546,21 +2548,21 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(SrcName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x2500\x25B6")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Arrow()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Arrow()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DstName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
                 ]
         ];
@@ -2591,16 +2593,16 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(CountAttr)
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                 [
-                    MakePill(TransSelModeLabel, TransSelModeColor)
+                    ck_sm_debugger_window::MakePill(TransSelModeLabel, TransSelModeColor)
                 ]
         ];
 
-        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CONDITIONS")) ];
+        Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("CONDITIONS")) ];
 
         auto& Trans = SmInfo->Transitions[TransIdx];
         for (auto i = 0; i < Trans.Conditions.Num(); ++i)
@@ -2636,23 +2638,23 @@ auto
                         SNew(SHorizontalBox)
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                             [
-                                MakeConditionPillLive(ResultAttr)
+                                ck_sm_debugger_window::MakeConditionPillLive(ResultAttr)
                             ]
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                             [
-                                MakePill(CondModeLabel, CondModeColor)
+                                ck_sm_debugger_window::MakePill(CondModeLabel, CondModeColor)
                             ]
                             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                             [
                                 SNew(STextBlock)
                                     .Text(FText::FromString(CName))
-                                    .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                    .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                     .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                             ]
                     ]
                     + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)
                     [
-                        MakeClassName(ClassStr)
+                        ck_sm_debugger_window::MakeClassName(ClassStr)
                     ]
             ];
         }
@@ -2733,12 +2735,12 @@ auto
                     return FText::FromString(FString::Printf(TEXT("Frame [%lld] (%03lld)  \x2022  %.2fs"), Frame, Frame % 1000, T));
                 }));
 
-            Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("SCRUB AT")) ];
+            Root->AddSlot().AutoHeight() [ ck_sm_debugger_window::MakeSectionHeader(TEXT("SCRUB AT")) ];
             Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
                     .Text(ScrubFrameAttr)
-                    .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                    .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                     .Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
             ];
 
@@ -2749,12 +2751,12 @@ auto
                 auto& PrevEntry = SRun.History[CameFromHistIdx];
                 auto FromName = SCkDebug_NameLabel::Get_ShortName(PrevEntry.FromStateName, Depth);
 
-                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("CAME FROM")) ];
+                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("CAME FROM")) ];
                 Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(TEXT("%s  (frame %llu)"), *FromName, PrevEntry.FrameNumber)))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
             }
@@ -2769,14 +2771,14 @@ auto
                 auto NextName = SCkDebug_NameLabel::Get_ShortName(NextEntry.ToStateName, Depth);
                 auto FramesAhead = static_cast<int64>(NextEntry.FrameNumber) - static_cast<int64>(ActiveSegStartFrame);
 
-                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
+                Root->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("NEXT TRANSITION")) ];
                 Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(FString::Printf(
                             TEXT("\x2500\x25B6 %s  (in %lld frames, frame %llu)"),
                             *NextName, FramesAhead, NextEntry.FrameNumber)))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                 ];
 
@@ -2792,13 +2794,13 @@ auto
                             SNew(SHorizontalBox)
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                                 [
-                                    MakeConditionPill(ECk_SmConditionResult::Pass)
+                                    ck_sm_debugger_window::MakeConditionPill(ECk_SmConditionResult::Pass)
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(CName))
-                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                 ]
                         ];
@@ -2810,7 +2812,7 @@ auto
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("(unconditional)")))
-                            .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                            .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                             .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                     ];
                 }
@@ -2821,7 +2823,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("(currently the latest state in this run)")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
                 ];
             }
@@ -2845,7 +2847,7 @@ auto
         auto HasOverride = IsValid(State.RequestedScriptClass) && State.RequestedScriptClass != State.ScriptClass;
         auto OverrideStr = HasOverride ? State.RequestedScriptClass->GetName() : FString{};
 
-        Root->AddSlot().AutoHeight() [ MakeSectionHeader(TEXT("STATE")) ];
+        Root->AddSlot().AutoHeight() [ ck_sm_debugger_window::MakeSectionHeader(TEXT("STATE")) ];
 
         // Name row — bullet + name + ACTIVE pill
         {
@@ -2854,14 +2856,14 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("\x25CF")))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Bullet()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Bullet()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
                 ]
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(DisplayName))
-                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
                 ];
 
@@ -2887,7 +2889,7 @@ auto
                 SNew(SBox)
                     .Visibility(VisibilityAttr)
                     [
-                        MakePill(TEXT("ACTIVE"), CkStyle::Warn())
+                        ck_sm_debugger_window::MakePill(TEXT("ACTIVE"), CkStyle::Warn())
                     ]
             ];
 
@@ -2898,7 +2900,7 @@ auto
             {
                 NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                 [
-                    MakePill(TEXT("HISTORICAL"), CkStyle::TextDim())
+                    ck_sm_debugger_window::MakePill(TEXT("HISTORICAL"), CkStyle::TextDim())
                 ];
             }
 
@@ -2926,7 +2928,7 @@ auto
             {
                 NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                 [
-                    MakePill(TEXT("EVENT-DRIVEN"), CkStyle::Warn())
+                    ck_sm_debugger_window::MakePill(TEXT("EVENT-DRIVEN"), CkStyle::Warn())
                 ];
             }
             else if (HasCompleteData)
@@ -2935,14 +2937,14 @@ auto
                 {
                     NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                     [
-                        MakePill(TEXT("TICKS"), CkStyle::Warn())
+                        ck_sm_debugger_window::MakePill(TEXT("TICKS"), CkStyle::Warn())
                     ];
                 }
                 if (HasAnyPolledCondition)
                 {
                     NameRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                     [
-                        MakePill(TEXT("POLLED"), CkStyle::TextDim())
+                        ck_sm_debugger_window::MakePill(TEXT("POLLED"), CkStyle::TextDim())
                     ];
                 }
             }
@@ -2951,7 +2953,7 @@ auto
         }
 
         // Class name + override info
-        Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f) [ MakeClassName(ClassStr) ];
+        Root->AddSlot().AutoHeight().Padding(20.0f, 2.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeClassName(ClassStr) ];
 
         if (HasOverride)
         {
@@ -2960,18 +2962,18 @@ auto
                 SNew(SHorizontalBox)
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                     [
-                        MakePill(TEXT("OVERRIDE"), FCkSmDebuggerStyle::Color_Sm_Override)
+                        ck_sm_debugger_window::MakePill(TEXT("OVERRIDE"), FCkSmDebuggerStyle::Color_Sm_Override)
                     ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                     [
-                        MakeClassName(OverrideStr)
+                        ck_sm_debugger_window::MakeClassName(OverrideStr)
                     ]
             ];
         }
 
         Root->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
         [
-            MakeKeyValue(TEXT("Dwell"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+            ck_sm_debugger_window::MakeKeyValue(TEXT("Dwell"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
                 [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx]()
                 {
                     auto VM = ViewModelWeak.Pin();
@@ -3002,7 +3004,7 @@ auto
         ];
         Root->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
         [
-            MakeKeyValue(TEXT("Visited"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
+            ck_sm_debugger_window::MakeKeyValue(TEXT("Visited"), TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateLambda(
                 [ViewModelWeak = TWeakPtr<FCkSmDebugger_ViewModel>(_ViewModel), SelectedIdx]()
                 {
                     auto VM = ViewModelWeak.Pin();
@@ -3016,7 +3018,7 @@ auto
         // --- TASKS ---
         if (State.Tasks.Num() > 0)
         {
-            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TASKS")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("TASKS")) ];
             for (auto TaskIdx = 0; TaskIdx < State.Tasks.Num(); ++TaskIdx)
             {
                 auto& Task = State.Tasks[TaskIdx];
@@ -3079,21 +3081,21 @@ auto
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(TName))
-                                        .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                        .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                                 [
-                                    MakePill(ModeLabel, ModeColor)
+                                    ck_sm_debugger_window::MakePill(ModeLabel, ModeColor)
                                 ]
                                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.0f, 0.0f, 0.0f, 0.0f)
                                 [
-                                    MakeTaskResultPill(ResultAttr)
+                                    ck_sm_debugger_window::MakeTaskResultPill(ResultAttr)
                                 ]
                         ]
                         + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)
                         [
-                            MakeClassName(TaskClassStr)
+                            ck_sm_debugger_window::MakeClassName(TaskClassStr)
                         ]
                 ];
             }
@@ -3107,7 +3109,7 @@ auto
         }
         if (HasAnyOutgoing)
         {
-            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ MakeSectionHeader(TEXT("TRANSITIONS")) ];
+            Root->AddSlot().AutoHeight().Padding(0.0f, 12.0f, 0.0f, 0.0f) [ ck_sm_debugger_window::MakeSectionHeader(TEXT("TRANSITIONS")) ];
 
             for (auto TrIdx = 0; TrIdx < SmInfo->Transitions.Num(); ++TrIdx)
             {
@@ -3168,26 +3170,26 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x2500\x25B6")))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Arrow()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Arrow()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(DstName))
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(CountAttr)
-                                .ColorAndOpacity(FSlateColor(Color_Detail_Label()))
+                                .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Label()))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                         ]
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.0f, 0.0f, 0.0f, 0.0f)
                         [
-                            MakePill(TransModeLabel, TransModeColor)
+                            ck_sm_debugger_window::MakePill(TransModeLabel, TransModeColor)
                         ]
                 ];
 
@@ -3251,23 +3253,23 @@ auto
                                 SNew(SHorizontalBox)
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                                     [
-                                        MakeConditionPillLive(CondResultAttr)
+                                        ck_sm_debugger_window::MakeConditionPillLive(CondResultAttr)
                                     ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                                     [
-                                        MakePill(CondModeLabel, CondModeColor)
+                                        ck_sm_debugger_window::MakePill(CondModeLabel, CondModeColor)
                                     ]
                                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                                     [
                                         SNew(STextBlock)
                                             .Text(FText::FromString(CName))
-                                            .ColorAndOpacity(FSlateColor(Color_Detail_Value()))
+                                            .ColorAndOpacity(FSlateColor(ck_sm_debugger_window::Color_Detail_Value()))
                                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
                                     ]
                             ]
                             + SVerticalBox::Slot().AutoHeight().Padding(44.0f, 1.0f, 0.0f, 0.0f)
                             [
-                                MakeClassName(CondClassStr)
+                                ck_sm_debugger_window::MakeClassName(CondClassStr)
                             ]
                     ];
                 }

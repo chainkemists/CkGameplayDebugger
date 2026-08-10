@@ -24,6 +24,8 @@
 #include "CkEcsDebugger/Widgets/CkDebuggerWidget_EntityTree.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 
@@ -283,7 +285,11 @@ auto SCkDebuggerPanel_EntityList::Build_FeatureRail(bool InRightFlank) -> TShare
                     SNew(SImage)
                     .Image(Brush)
                     .ColorAndOpacity(Color)
-                    .DesiredSizeOverride(FVector2D(14.0f, 14.0f))
+                    .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                    {
+                        const auto Size = ck::debug_axes::Apply_IconSize(14.0f);
+                        return FVector2D{Size, Size};
+                    })
                 ]
             ];
         }
@@ -333,10 +339,10 @@ auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void
             .VAlign(VAlign_Center)
             .Padding(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f)
             [
-                SNew(STextBlock)
-                .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Bold"))
-                .Text(FText::FromString(FString::Printf(TEXT("%s (%d)"), InTitle, ValidEntities.Num())))
-                .ColorAndOpacity(CkStyle::TextDim())
+                ck::debug_axes::Make_SectionHeader(
+                    UCkDebuggerStyleSettings::Get_Selection(),
+                    FText::FromString(ck::Format_UE(TEXT("{} ({})"), FString{InTitle}, ValidEntities.Num())),
+                    ECk_Tone::Neutral)
             ]
 
             + SHorizontalBox::Slot()
@@ -344,7 +350,18 @@ auto SCkDebuggerPanel_EntityList::RefreshQuickAccessSections() -> void
             .VAlign(VAlign_Center)
             [
                 SNew(SBox)
-                .HeightOverride(1.0f)
+                .HeightOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection())};
+                })
+                .Visibility_Lambda([]()
+                {
+                    return ck::debug_axes::Get_SeparatorThickness(
+                        UCkDebuggerStyleSettings::Get_Selection()) > 0.0f
+                        ? EVisibility::Visible
+                        : EVisibility::Collapsed;
+                })
                 [
                     SNew(SImage)
                     .Image(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Separator"))
@@ -370,7 +387,7 @@ auto SCkDebuggerPanel_EntityList::DoBuildQuickAccessRows(
 
         InContainer->AddSlot()
         .AutoHeight()
-        .Padding(FCkDebuggerStyle::Padding_Small, 1.0f, 0.0f, 1.0f)
+        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{FCkDebuggerStyle::Padding_Small, 1.0f, 0.0f, 1.0f}))
         [
             SNew(SHorizontalBox)
 
@@ -439,7 +456,11 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.Refresh"))
                         .ColorAndOpacity(CkStyle::TextDim())
-                        .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                        {
+                            const auto Size = ck::debug_axes::Apply_IconSize(16.0f);
+                            return FVector2D{Size, Size};
+                        })
                     ]
                 ]
 
@@ -456,7 +477,11 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.ChevronDown"))
                         .ColorAndOpacity(CkStyle::TextDim())
-                        .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                        {
+                            const auto Size = ck::debug_axes::Apply_IconSize(16.0f);
+                            return FVector2D{Size, Size};
+                        })
                     ]
                 ]
 
@@ -472,7 +497,11 @@ auto SCkDebuggerPanel_EntityList::Build_Toolbar() -> TSharedRef<SWidget>
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.ChevronUp"))
                         .ColorAndOpacity(CkStyle::TextDim())
-                        .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                        {
+                            const auto Size = ck::debug_axes::Apply_IconSize(16.0f);
+                            return FVector2D{Size, Size};
+                        })
                     ]
                 ]
 

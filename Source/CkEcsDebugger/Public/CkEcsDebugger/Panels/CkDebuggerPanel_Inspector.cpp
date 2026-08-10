@@ -39,37 +39,6 @@ namespace ck_debugger_panel_inspector
         return InCanInspect || InWantsTickWhenNotInspectable;
     }
 
-    // The inspector's between-section rule, wired to the SeparatorWeight axis.
-    //
-    // SSeparator::Thickness is a plain SLATE_ARGUMENT with no setter, and this panel's Tick
-    // policy forbids rebuilding structure, so the thickness is carried by an SBox override
-    // instead: the separator fills whatever height the box is given, and a zero-thickness
-    // option collapses the box (SBoxPanel skips collapsed children AND their slot padding).
-    // Hairline == 1.0f == the value every call site passed, so Classic is unchanged.
-    static auto Make_SectionSeparator() -> TSharedRef<SWidget>
-    {
-        const auto Get_Thickness = []()
-        {
-            return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
-        };
-
-        return SNew(SBox)
-            .HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
-            {
-                return FOptionalSize{Get_Thickness()};
-            })
-            .Visibility_Lambda([Get_Thickness]()
-            {
-                return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
-            })
-            [
-                SNew(SSeparator)
-                .Orientation(Orient_Horizontal)
-                .SeparatorImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Separator"))
-                .Thickness(1.0f)
-            ];
-    }
-
     // Feature glyph + accent for an inspector's section header (the debugger-wide
     // icon language). Nullptr brush = inspector declared no glyph; header unchanged.
     static auto Get_InspectorIconBrush(const TSharedPtr<ICkDebuggerComponentInspector_Base>& InInspector) -> const FSlateBrush*
@@ -656,7 +625,7 @@ auto SCkDebuggerPanel_Inspector::Build_SingleEntityInspector(const FCk_Handle& E
                 .AutoHeight()
                 .Padding(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small)
                 [
-                    ck_debugger_panel_inspector::Make_SectionSeparator()
+                    ck::debug_axes::Make_AxisSeparator()
                 ];
         }
         FirstSection = false;
@@ -822,7 +791,7 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByInspector(
                 .AutoHeight()
                 .Padding(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small)
                 [
-                    ck_debugger_panel_inspector::Make_SectionSeparator()
+                    ck::debug_axes::Make_AxisSeparator()
                 ];
         }
         FirstSection = false;
@@ -927,7 +896,7 @@ auto SCkDebuggerPanel_Inspector::Build_MultiEntityInspector_GroupByEntity(
                 .AutoHeight()
                 .Padding(FCkDebuggerStyle::Padding_Medium, FCkDebuggerStyle::Padding_Small)
                 [
-                    ck_debugger_panel_inspector::Make_SectionSeparator()
+                    ck::debug_axes::Make_AxisSeparator()
                 ];
         }
         FirstSection = false;

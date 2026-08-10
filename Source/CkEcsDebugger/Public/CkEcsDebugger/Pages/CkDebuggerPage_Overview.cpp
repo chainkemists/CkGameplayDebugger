@@ -9,6 +9,8 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "GraphEditor.h"
@@ -84,18 +86,18 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
         .GraphToEdit(_Graph)
         .IsEditable(true);
 
-    // Helper to create a legend entry: colored square + label
+    // Helper to create a legend entry: colored swatch + label
     auto MakeLegendEntry = [](const FLinearColor& InColor, const FString& InLabel) -> TSharedRef<SWidget>
     {
         return SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SBox)
-                        .WidthOverride(10.0f)
-                        .HeightOverride(10.0f)
+                        .WidthOverride_Lambda([]() { return FOptionalSize{ck::debug_axes::Apply_IconSize(10.0f)}; })
+                        .HeightOverride_Lambda([]() { return FOptionalSize{ck::debug_axes::Apply_IconSize(10.0f)}; })
                         [
                             SNew(SImage)
                                 .Image(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -109,18 +111,26 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
                     SNew(STextBlock)
                         .Text(FText::FromString(InLabel))
                         .TextStyle(&FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>("CkDebugger.Text.Normal"))
-                        .ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.6f))
+                        .ColorAndOpacity(CkStyle::TextDim())
                 ];
     };
 
+    const auto LegendPadding = ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
+
     auto LegendBar = SNew(SHorizontalBox)
-        + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
+        .Visibility_Lambda([]()
+        {
+            return ck::debug_axes::Legend_IsVisible(UCkDebuggerStyleSettings::Get_Selection())
+                ? EVisibility::Visible
+                : EVisibility::Collapsed;
+        })
+        + SHorizontalBox::Slot().AutoWidth().Padding(LegendPadding)
             [ MakeLegendEntry(CkStyle::Graph_Node_Border_Center(), TEXT("Selected Entity")) ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
+        + SHorizontalBox::Slot().AutoWidth().Padding(LegendPadding)
             [ MakeLegendEntry(CkStyle::Relationship(), TEXT("Lifetime Owner")) ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
+        + SHorizontalBox::Slot().AutoWidth().Padding(LegendPadding)
             [ MakeLegendEntry(CkStyle::Reference(), TEXT("Context Owner")) ]
-        + SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 4.0f)
+        + SHorizontalBox::Slot().AutoWidth().Padding(LegendPadding)
             [ MakeLegendEntry(CkStyle::Transform(), TEXT("Dependent")) ];
 
     auto Result = SNew(SBorder)

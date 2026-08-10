@@ -59,26 +59,6 @@ namespace ck_debugoverlay_focuscard
         return UCkDebuggerStyleSettings::Get_Selection();
     }
 
-    // RowDensity as a DELTA on the card's own base spacing, never as an absolute: the card is
-    // deliberately denser than the editor tree, and Get_RowPadding's absolutes would blow that
-    // compactness apart. Comfortable => zero delta => the card as shipped.
-    auto Apply_RowDensity(const FMargin& InBase) -> FMargin
-    {
-        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
-        const auto Current  = ck::debug_axes::Get_RowPadding(Get_Selection());
-
-        const auto DeltaX = Current.Left - Baseline.Left;
-        const auto DeltaY = Current.Top  - Baseline.Top;
-
-        return FMargin
-        {
-            FMath::Max(0.0f, InBase.Left   + DeltaX),
-            FMath::Max(0.0f, InBase.Top    + DeltaY),
-            FMath::Max(0.0f, InBase.Right  + DeltaX),
-            FMath::Max(0.0f, InBase.Bottom + DeltaY)
-        };
-    }
-
     // ProviderChipStyle. Tint is the pill exactly as the card shipped.
     auto Make_ProviderChip(
         const FText&        InText,
@@ -363,7 +343,7 @@ auto
 
     _ContentBox->AddSlot()
         .AutoHeight()
-        .Padding(ck_debugoverlay_focuscard::Apply_RowDensity(
+        .Padding(ck::debug_axes::Apply_RowDensity(
             FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
         [
             HeaderRow
@@ -569,7 +549,7 @@ auto
 
         _ContentBox->AddSlot()
             .AutoHeight()
-            .Padding(ck_debugoverlay_focuscard::Apply_RowDensity(
+            .Padding(ck::debug_axes::Apply_RowDensity(
                 FMargin{ 0.0f, 0.0f, 0.0f, CkStyle::SpaceXS }))
             [
                 SectionRow

@@ -310,7 +310,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 	const auto WeakPanel = TWeakPtr<SCkCrowdDebugger_AgentListPanel>(SharedThis(this));
 
 	return SNew(STableRow<ItemPtr>, InTable)
-		.Padding(ck::crowd_debugger_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
+		.Padding(ck::debug_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
 		[
 			SNew(SBorder)
 			.BorderImage(CkStyle::GetFilledBrush())

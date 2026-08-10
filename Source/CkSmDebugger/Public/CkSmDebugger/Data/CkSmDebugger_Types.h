@@ -4,6 +4,8 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "CoreMinimal.h"
 
 #include "CkStateMachine/Condition/EntityScripts/CkSmCondition_EntityScript.h"
@@ -272,14 +274,16 @@ struct FCkSmDebugger_ScrubSnapshot
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// NOTE: the timeline's view window (start + duration) is NOT here. `SCkDebug_ScrubTimeline` owns
+// pan/zoom itself and reports through OnViewChanged, so the old TimelineScrollX / TimelineViewDuration
+// pair was deleted rather than rewired — two owners of one window is what made the old widget need a
+// scrub anchor to stop the track sliding under the drag.
 struct FCkSmDebugger_ScrubState
 {
     ECkSmDebugger_ViewMode ViewMode = ECkSmDebugger_ViewMode::Live;
     int32 SelectedRunIndex = -1;
     double ScrubTime = 0.0;
     int32 SelectedHistoryIndex = -1;
-    double TimelineViewDuration = 10.0;
-    float TimelineScrollX = 0.0f;
     bool ShowFramesOnTimeline = true;
 };
 
@@ -309,6 +313,9 @@ struct FCkSmDebugger_Command
 namespace CkSmDebugger
 {
 
+// KEPT LOCAL (semantic canvas colour): per-state identity hue for the graph accent bar and the
+// timeline segments. A palette categorical ramp wraps after 8 entries, which would make distinct
+// states share a colour in exactly the visualization whose whole job is telling them apart.
 inline auto
     ComputeStateColor(
         const FString& InStateName)
@@ -332,10 +339,10 @@ inline auto
 {
     switch (InResult)
     {
-    case ECk_SmTaskResult::Running:   return FLinearColor(1.0f, 0.757f, 0.028f);   // #FFC107 amber
-    case ECk_SmTaskResult::Succeeded: return FLinearColor(0.263f, 0.627f, 0.278f);  // #43A047 green
-    case ECk_SmTaskResult::Failed:    return FLinearColor(0.937f, 0.325f, 0.314f);  // #EF5350 red
-    default:                          return FLinearColor(0.565f, 0.565f, 0.565f);  // grey
+    case ECk_SmTaskResult::Running:   return CkStyle::Warn();
+    case ECk_SmTaskResult::Succeeded: return CkStyle::Ok();
+    case ECk_SmTaskResult::Failed:    return CkStyle::Err();
+    default:                          return CkStyle::TextDim();
     }
 }
 

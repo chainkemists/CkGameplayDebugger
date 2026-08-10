@@ -1,8 +1,9 @@
 #include "SGraphNode_SmEntry.h"
 
 #include "CkSmDebugNode_Entry.h"
-#include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "CkCore/Macros/CkMacros.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
@@ -42,7 +43,7 @@ auto
     RightNodeBox.Reset();
     LeftNodeBox.Reset();
 
-    auto TextColor = FCkSmDebuggerStyle::Color_Sm_EntryText;
+    const auto TextColor = CkStyle::TextDim();
 
     GetOrAddSlot(ENodeZone::Center)
         .HAlign(HAlign_Fill)

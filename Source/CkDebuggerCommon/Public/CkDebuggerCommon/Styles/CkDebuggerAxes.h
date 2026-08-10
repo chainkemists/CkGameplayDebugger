@@ -109,6 +109,34 @@ namespace ck::debug_axes
     CKDEBUGGERCOMMON_API auto EditControls_AreVisible(const FCkDebuggerStyleSelection& InSelection) -> bool;
     CKDEBUGGERCOMMON_API auto EditControls_RevealOnHover(const FCkDebuggerStyleSelection& InSelection) -> bool;
 
+    // ----- TreeComplexity ----------------------------------------------------
+    // The ECS entity tree's structural declutter dial. Like the metric deltas above, these
+    // MODULATE the surface's own base values (the project's fold threshold, its fold toggle,
+    // its badge cap) instead of dictating absolutes — the tree owns what "5 siblings" or
+    // "6 badges" means, the axis only owns the offset between levels. Normal is a no-op on
+    // every one of them, which is the regression bar: an untouched axis renders the tree
+    // exactly as it shipped.
+
+    // Scale applied to the tree's sibling-group threshold. Below 1 the tree coalesces sooner.
+    // Always > 0; the caller still clamps the product to its own minimum group size.
+    CKDEBUGGERCOMMON_API auto Tree_FoldThresholdMultiplier(const FCkDebuggerStyleSelection& InSelection) -> float;
+
+    // True when internal / technical entities must be presented as plain rows — the fold pass
+    // is skipped entirely rather than folding and then revealing. Full only.
+    CKDEBUGGERCOMMON_API auto Tree_ShowsInternalRows(const FCkDebuggerStyleSelection& InSelection) -> bool;
+
+    // False when sibling runs must never coalesce into a synthetic group row, whatever the
+    // project setting says. Full only.
+    CKDEBUGGERCOMMON_API auto Tree_GroupsSiblings(const FCkDebuggerStyleSelection& InSelection) -> bool;
+
+    // True when rows that carry a DERIVED name (no debug name of their own) should coalesce by
+    // that derived name instead of by their archetype — the "N nameless probes" declutter.
+    // Minimal only; implies Tree_GroupsSiblings.
+    CKDEBUGGERCOMMON_API auto Tree_GroupsUnnamedRows(const FCkDebuggerStyleSelection& InSelection) -> bool;
+
+    // The per-row badge budget, modulated from the caller's own base cap. Always >= 1.
+    CKDEBUGGERCOMMON_API auto Tree_BadgeCap(const FCkDebuggerStyleSelection& InSelection, int32 InBaseCap) -> int32;
+
     CKDEBUGGERCOMMON_API auto Legend_IsVisible(const FCkDebuggerStyleSelection& InSelection) -> bool;
     CKDEBUGGERCOMMON_API auto Legend_IsDeduped(const FCkDebuggerStyleSelection& InSelection) -> bool;
     CKDEBUGGERCOMMON_API auto Values_UseAlignedColumns(const FCkDebuggerStyleSelection& InSelection) -> bool;

@@ -62,6 +62,7 @@ auto FCkInspector_FogOfWar::Tick(const FCk_Handle& Entity, float InDeltaTime) ->
 auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto FogHandle = UCk_Utils_FogOfWar_UE::Cast(MutableEntity);
@@ -126,6 +127,77 @@ auto FCkInspector_FogOfWar::Build_Inspector(const FCk_Handle& Entity) -> TShared
         ck_inspector_fog_of_war::Make_BoundsComponents(CapturedFog,
             [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_HalfExtents(); }));
 
+    // ---- Write surface ----
+    //
+    // CosmeticOnly: exploration is what a LOCAL player has seen, so a dedicated server has no fog to
+    // reveal — the controls grey there with the reason rather than firing into nothing.
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Grid:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Reveal All")),
+                FText::FromString(TEXT("UCk_Utils_FogOfWar_UE::Request_RevealAll")),
+                [CapturedFog]()
+                {
+                    auto MutableFog = CapturedFog;
+                    if (ck::Is_NOT_Valid(MutableFog)) { return; }
+                    UCk_Utils_FogOfWar_UE::Request_RevealAll(MutableFog, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Reset")),
+                FText::FromString(TEXT("UCk_Utils_FogOfWar_UE::Request_Reset")),
+                [CapturedFog]()
+                {
+                    auto MutableFog = CapturedFog;
+                    if (ck::Is_NOT_Valid(MutableFog)) { return; }
+                    UCk_Utils_FogOfWar_UE::Request_Reset(MutableFog, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+        });
+
+    // Reveal-at-a-point. The location/radius rows edit inspector-owned scratch (see the header) —
+    // they are the request's PAYLOAD, not fog state, so nothing reads back from the grid.
+    Builder.AddVectorRow(
+        FText::FromString(TEXT("Reveal Location:")),
+        TAttribute<FVector>::CreateLambda([Location = _RevealLocation]() { return *Location; }),
+        [Location = _RevealLocation](const FVector& InLocation) { *Location = InLocation; },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("Reveal Radius:")),
+        TAttribute<float>::CreateLambda([Radius = _RevealRadius]() { return *Radius; }),
+        [Radius = _RevealRadius](float InRadius) { *Radius = InRadius; },
+        0.0f,
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Reveal:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Reveal Here")),
+                FText::FromString(TEXT("UCk_Utils_FogOfWar_UE::Request_RevealLocation (radius 0 = fog params' RevealRadius)")),
+                [CapturedFog, Location = _RevealLocation, Radius = _RevealRadius]()
+                {
+                    auto MutableFog = CapturedFog;
+                    if (ck::Is_NOT_Valid(MutableFog)) { return; }
+
+                    auto Request = FCk_Request_FogOfWar_RevealLocation{*Location};
+                    Request.Set_Radius(*Radius);
+
+                    UCk_Utils_FogOfWar_UE::Request_RevealLocation(MutableFog, Request, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+        });
+
+    // Request_AddRevealer / Request_RemoveRevealer take an FCk_Handle — entity pickers are deferred.
     Builder.AddCountBadgeRow(
         FText::FromString(TEXT("Revealers:")),
         TAttribute<int32>::CreateLambda([CapturedFog]()

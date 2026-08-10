@@ -915,6 +915,54 @@ auto
                     ]
             ]
 
+        // Base-store toggle — the truth table. Set_Value writes the BASE store, which is what every
+        // planner falls through to; the pill beside it writes the DebugUI override layer instead. Two
+        // controls because they are two different writes, not two ways to do one.
+        //
+        // Disabled while a layer shadows this key: the write would land on the base and the row would
+        // not move (the override still wins the read), which reads as a broken control. The tooltip
+        // names the layer to pop.
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(FMargin(0.0f, 0.0f, CkStyle::SpaceS, 0.0f))
+            [
+                SNew(SBox)
+                    .HAlign(HAlign_Left)
+                    .IsEnabled(TAttribute<bool>::Create(
+                        TAttribute<bool>::FGetter::CreateLambda(
+                            [WeakRail, HasOverride]() -> bool
+                            {
+                                const auto Pinned = WeakRail.Pin();
+                                if (NOT Pinned.IsValid() || NOT ck::IsValid(Pinned->_CurrentWorldState)) { return false; }
+                                return NOT HasOverride();
+                            })))
+                    .ToolTipText(TAttribute<FText>::Create(
+                        TAttribute<FText>::FGetter::CreateLambda(
+                            [WeakRail, EntryKey, HasOverride]() -> FText
+                            {
+                                if (NOT HasOverride())
+                                { return FText::FromString(TEXT("Base store (Set_Value). Flips what every planner believes — no layer, nothing to pop.")); }
+
+                                const auto Pinned = WeakRail.Pin();
+                                auto LayerName = FName{};
+                                if (Pinned.IsValid() && ck::IsValid(Pinned->_CurrentWorldState))
+                                { LayerName = UCk_Utils_Goap_WorldState_UE::Get_TopOverrideLayerForKey(Pinned->_CurrentWorldState, EntryKey); }
+
+                                return FText::FromString(FString::Printf(
+                                    TEXT("Base edit disabled: layer '%s' shadows this key, so a base write would not change what anyone reads. Pop the layer first."),
+                                    LayerName.IsNone() ? TEXT("?") : *LayerName.ToString()));
+                            })))
+                    [
+                        SNew(SCkDebug_Switch)
+                            .IsOn(PillValueAttr)
+                            .OnStateChanged(FOnCkDebug_SwitchChanged::CreateSP(
+                                this,
+                                &SCkGoapDebugger_WorldStateRail::HandleBaseValueToggled,
+                                EntryKey))
+                    ]
+            ]
+
         // Value pill — editable only in Sandbox mode.
         + SHorizontalBox::Slot()
             .AutoWidth()
@@ -989,6 +1037,23 @@ auto
 
 auto
     SCkGoapDebugger_WorldStateRail::
+    HandleBaseValueToggled(
+        bool InNewValue,
+        FGameplayTag InKey)
+    -> void
+{
+    if (NOT ck::IsValid(_CurrentWorldState)) { return; }
+    if (NOT InKey.IsValid())                 { return; }
+
+    // Deliberately NOT gated on Sandbox: the sandbox exists so an override layer can be popped to undo
+    // an experiment, and this write has no layer to pop. It is the honest truth-table edit — the same
+    // call gameplay makes — and the row's switch is disabled whenever a layer would hide its effect.
+    auto MutableWs = _CurrentWorldState;
+    UCk_Utils_Goap_WorldState_UE::Set_Value(MutableWs, InKey, InNewValue, {});
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
     HandleSandboxToggled(
         bool InNewState)
     -> void
@@ -1032,6 +1097,23 @@ auto
     UCk_Utils_Goap_WorldState_UE::Pop_Override_ByName(
         MutableWs,
         WsRail_DebugUiLayerName);
+
+    return FReply::Handled();
+}
+
+auto
+    SCkGoapDebugger_WorldStateRail::
+    HandleClick_ClearAllOverrides()
+    -> FReply
+{
+    if (NOT ck::IsValid(_CurrentWorldState)) { return FReply::Handled(); }
+
+    // Clear_Overrides drops the WHOLE stack, gameplay-pushed layers included — that is the point of
+    // having it beside the per-layer Pop, and why it lives on the stack header rather than a row.
+    auto MutableWs = _CurrentWorldState;
+    UCk_Utils_Goap_WorldState_UE::Clear_Overrides(MutableWs);
+
+    _ExpandedLayers.Reset();
 
     return FReply::Handled();
 }
@@ -1082,6 +1164,7 @@ auto
     -> TSharedRef<SWidget>
 {
     const auto LayerNames = UCk_Utils_Goap_WorldState_UE::Get_OverrideLayerNames(InWs);
+    const auto WeakRail   = TWeakPtr<SCkGoapDebugger_WorldStateRail>(SharedThis(this));
 
     auto Section = SNew(SVerticalBox);
 
@@ -1112,6 +1195,41 @@ auto
                                 TEXT("· depth %d"), LayerNames.Num())))
                             .Font(CkStyle::MonoFont(CkStyle::FontSizeMicro()))
                             .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                    ]
+
+                // Clear-all. Visibility is an ATTRIBUTE, not the build-time LayerNames count: pushing a
+                // layer (a sandbox pill flip) deliberately does not rebuild this section, so a static
+                // gate would leave the button hidden exactly when it becomes useful.
+                + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .HAlign(HAlign_Right)
+                    .VAlign(VAlign_Center)
+                    [
+                        SNew(SButton)
+                            .Visibility(TAttribute<EVisibility>::Create(
+                                TAttribute<EVisibility>::FGetter::CreateLambda(
+                                    [WeakRail]() -> EVisibility
+                                    {
+                                        const auto Pinned = WeakRail.Pin();
+                                        if (NOT Pinned.IsValid() || NOT ck::IsValid(Pinned->_CurrentWorldState))
+                                        { return EVisibility::Collapsed; }
+
+                                        return UCk_Utils_Goap_WorldState_UE::Get_OverrideDepth(Pinned->_CurrentWorldState) > 0
+                                            ? EVisibility::Visible : EVisibility::Collapsed;
+                                    })))
+                            .ToolTipText(FText::FromString(TEXT(
+                                "Clear_Overrides — pops EVERY layer at once, including gameplay-pushed ones "
+                                "(a per-layer Pop and the Sandbox switch both leave those alone). Reads fall back to the base store.")))
+                            .OnClicked(FOnClicked::CreateSP(
+                                this,
+                                &SCkGoapDebugger_WorldStateRail::HandleClick_ClearAllOverrides))
+                            .ContentPadding(FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f})
+                            [
+                                SNew(STextBlock)
+                                    .Text(FText::FromString(TEXT("Clear all")))
+                                    .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
+                                    .ColorAndOpacity(FSlateColor(CkStyle::Err()))
+                            ]
                     ]
         ];
 

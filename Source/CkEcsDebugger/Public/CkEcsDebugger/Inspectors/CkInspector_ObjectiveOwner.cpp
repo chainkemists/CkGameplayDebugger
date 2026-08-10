@@ -83,6 +83,8 @@ auto FCkInspector_ObjectiveOwner::Build_Inspector(const FCk_Handle& Entity, cons
 auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const FString& InFilter) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
+
     auto WeakSelectionModel = SelectionModel;
 
     auto MutableEntity = Entity;
@@ -141,6 +143,31 @@ auto FCkInspector_ObjectiveOwner::BuildOwnerGrid(const FCk_Handle& Entity, const
                 {
                     WeakSelectionModel->Set_SelectedEntities({ ObjectiveAsEntity });
                 }
+            });
+
+        // Remove rides the SAME loop as the status pill above — no second enumeration, and Tick's
+        // count check already rebuilds the whole inspector when the objective set changes size.
+        // LocalOk: the ObjectiveOwner request processor carries no authority gate.
+        const auto CapturedOwner = OwnerHandle;
+
+        Builder.AddActionRow(
+            FText::FromString(Name.ToString()),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Remove")),
+                    FText::FromString(ck::Format_UE(TEXT("UCk_Utils_ObjectiveOwner_UE::Request_RemoveObjective({})"),
+                        Name.ToString())),
+                    [CapturedOwner, CapturedObjective]()
+                    {
+                        auto MutableOwner = CapturedOwner;
+                        if (ck::Is_NOT_Valid(MutableOwner) || ck::Is_NOT_Valid(CapturedObjective)) { return; }
+
+                        UCk_Utils_ObjectiveOwner_UE::Request_RemoveObjective(MutableOwner,
+                            FCk_Request_ObjectiveOwner_RemoveObjective{CapturedObjective}, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
             });
     }
 

@@ -8,6 +8,7 @@
 #include "CkInventory/Item/CkItem_Utils.h"
 #include "CkInventory/Item/CkItem_Definition.h"
 #include "CkInventory/ItemTrait/Stackable/CkItemTrait_Stackable_Utils.h"
+#include "CkInventory/ItemTrait/Tags/CkItemTrait_Tags_Utils.h"
 
 #include "CkGrid/2dGridSystem/Grid/Ck2dGridSystem_Utils.h"
 #include "CkGrid/2dGridSystem/Cell/Ck2dGridCell_Utils.h"
@@ -357,6 +358,7 @@ auto FCkInspector_Inventories::PopulateInventoryGrid(
         if (ck::Is_NOT_Valid(InventoryHandle)) { continue; }
 
         auto Builder = FCkInspectorWidgetBuilder();
+        Builder.SetEditGuard(Get_EditGuard());
         auto WeakSelectionModel = SelectionModel;
         const auto Inventory = UCk_Utils_Inventory_UE::CastChecked(InventoryHandle);
 
@@ -488,6 +490,31 @@ auto FCkInspector_Inventories::PopulateInventoryGrid(
                             UCk_Utils_Inventory_UE::Get_NumItems(CapturedInventory), Bound));
                     }));
             }
+
+            // Bound override. AuthorityOnly (BlueprintAuthorityOnly on the Util): the bound lives in an
+            // integer attribute the server owns. -1 is the documented "unbounded" sentinel, hence the min.
+            if (ck::IsValid(DataOnlyHandle))
+            {
+                const auto CapturedDataOnly = DataOnlyHandle;
+
+                Builder.AddIntegerRow(
+                    FText::FromString(TEXT("  Bound Max:")),
+                    TAttribute<int32>::CreateLambda([CapturedDataOnly]()
+                    {
+                        if (ck::Is_NOT_Valid(CapturedDataOnly)) { return -1; }
+                        return UCk_Utils_Inventory_DataOnly_UE::Get_BoundMax(CapturedDataOnly).Get(-1);
+                    }),
+                    [CapturedDataOnly](int32 InNewBound)
+                    {
+                        auto Mutable = CapturedDataOnly;
+                        if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                        UCk_Utils_Inventory_DataOnly_UE::Request_OverrideBounds(Mutable, InNewBound);
+                    },
+                    -1,
+                    TOptional<int32>{},
+                    ECk_DebugRequest_Requirement::AuthorityOnly);
+            }
         }
 
         Host->AddSlot()
@@ -526,6 +553,7 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
     { return; }
 
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
     auto WeakSelectionModel = SelectionModel;
 
     for (const auto& ItemHandle : UCk_Utils_Inventory_UE::Get_Items(Inventory))
@@ -566,6 +594,97 @@ auto FCkInspector_Inventories::PopulateInventoryItemRows(
                 [](const FCk_Handle& E) { return FText::GetEmpty(); },
                 CkStyle::Text(),
                 SelectItemClick);
+        }
+
+        // ---- Per-item verbs. All three are AuthorityOnly (BlueprintAuthorityOnly on the Utils):
+        // inventory mutation is server-owned, and a client press would ensure-and-drop. ----
+
+        const auto CapturedItem = ItemHandle;
+
+        // Consume — staged count + explicit button, because a count field that fired on commit would
+        // eat a unit every time the user tabbed out. The Util REFUSES the whole stack by design
+        // (emptying an entry must go through the inventory's Request_RemoveItem), so a request for
+        // StackCount or more silently changes nothing; the button tooltip says so.
+        if (UCk_Utils_ItemTrait_Stackable_UE::Get_IsStackable(ItemHandle))
+        {
+            const auto PendingConsume = MakeShared<int32>(1);
+
+            Builder.AddIntegerRow(
+                FText::FromString(TEXT("    Consume:")),
+                TAttribute<int32>::CreateLambda([PendingConsume]() { return *PendingConsume; }),
+                [PendingConsume](int32 InCount) { *PendingConsume = InCount; },
+                1,
+                TOptional<int32>{},
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+
+            Builder.AddActionRow(
+                FText::FromString(TEXT("    ")),
+                {
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Consume")),
+                        FText::FromString(TEXT(
+                            "Request_ConsumeFromStack with the count above. Refuses the WHOLE stack by design — "
+                            "a count of StackCount or more changes nothing; remove the entry through the inventory instead.")),
+                        [CapturedItem, PendingConsume]()
+                        {
+                            auto Mutable = CapturedItem;
+                            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                            UCk_Utils_ItemTrait_Stackable_UE::Request_ConsumeFromStack(Mutable, *PendingConsume);
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                });
+        }
+
+        // Item tags — one staged tag, two verbs. Only offered when the item actually carries the
+        // Tags trait; otherwise both requests would land on an item with nowhere to put them.
+        if (UCk_Utils_ItemTrait_Tags_UE::Get_HasTagsFeature(ItemHandle))
+        {
+            const auto PendingItemTag = MakeShared<FGameplayTag>();
+
+            Builder.AddTagEntryRow(
+                FText::FromString(TEXT("    Tag:")),
+                TAttribute<FText>::CreateLambda([PendingItemTag]()
+                {
+                    return PendingItemTag->IsValid()
+                        ? FText::FromName(PendingItemTag->GetTagName())
+                        : FText::FromString(TEXT("(none)"));
+                }),
+                [PendingItemTag](FGameplayTag InTag) { *PendingItemTag = InTag; },
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+
+            Builder.AddActionRow(
+                FText::FromString(TEXT("    ")),
+                {
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Add Tag")),
+                        FText::FromString(TEXT("Request_AddTag with the staged tag.")),
+                        [CapturedItem, PendingItemTag]()
+                        {
+                            auto Mutable = CapturedItem;
+                            if (ck::Is_NOT_Valid(Mutable) || NOT PendingItemTag->IsValid()) { return; }
+
+                            UCk_Utils_ItemTrait_Tags_UE::Request_AddTag(Mutable, *PendingItemTag);
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Remove Tag")),
+                        FText::FromString(TEXT("Request_RemoveTag with the staged tag.")),
+                        [CapturedItem, PendingItemTag]()
+                        {
+                            auto Mutable = CapturedItem;
+                            if (ck::Is_NOT_Valid(Mutable) || NOT PendingItemTag->IsValid()) { return; }
+
+                            UCk_Utils_ItemTrait_Tags_UE::Request_RemoveTag(Mutable, *PendingItemTag);
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                });
         }
     }
 

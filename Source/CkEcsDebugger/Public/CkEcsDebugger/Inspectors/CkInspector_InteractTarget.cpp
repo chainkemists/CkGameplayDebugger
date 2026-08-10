@@ -66,6 +66,8 @@ auto FCkInspector_InteractTarget::Get_InspectorSections(const FCk_Handle& Entity
 auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTarget& InTarget) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
+
     const auto CapturedTarget = InTarget;
 
     // Channel
@@ -94,6 +96,44 @@ auto FCkInspector_InteractTarget::BuildTargetWidget(const FCk_Handle_InteractTar
                 ? ECk_Tone::Ok
                 : ECk_Tone::Err;
         }));
+
+    // Set_Enabled is an IMMEDIATE mutator (no request queue), so the pill above reflects the flip on
+    // the very next paint. LocalOk: no authority gate on the enable flag.
+    Builder.AddToggleRow(
+        FText::FromString(TEXT("Set Enabled:")),
+        TAttribute<bool>::CreateLambda([CapturedTarget]()
+        {
+            if (ck::Is_NOT_Valid(CapturedTarget)) { return false; }
+            return UCk_Utils_InteractTarget_UE::Get_Enabled(CapturedTarget) == ECk_EnableDisable::Enable;
+        }),
+        [CapturedTarget](bool InIsEnabled)
+        {
+            auto MutableTarget = CapturedTarget;
+            if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+
+            UCk_Utils_InteractTarget_UE::Set_Enabled(MutableTarget,
+                InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable);
+        },
+        ECk_DebugRequest_Requirement::LocalOk);
+
+    // Request_CancelInteraction is addressed by an interact SOURCE handle (entity picker, deferred);
+    // the all-at-once form needs no argument, so that is the one exposed here.
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Interactions:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Cancel All")),
+                FText::FromString(TEXT("UCk_Utils_InteractTarget_UE::Request_CancelAllInteractions")),
+                [CapturedTarget]()
+                {
+                    auto MutableTarget = CapturedTarget;
+                    if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                    UCk_Utils_InteractTarget_UE::Request_CancelAllInteractions(MutableTarget);
+                },
+                ECk_DebugRequest_Requirement::LocalOk
+            },
+        });
 
     // Completion Policy
     Builder.AddRow(

@@ -12,6 +12,7 @@
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_GlowWrap.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NumericEditor.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -23,7 +24,6 @@
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -38,6 +38,11 @@
 namespace ck_goap_debugger_agent_column
 {
     constexpr float k_FallbackCostFloor = 900.0f;
+
+    // Width of the settings drawer's numeric fields — the same 90px the drawer's own
+    // file-local editor used before SCkDebug_NumericEditor was promoted, so the rows keep their
+    // established column instead of adopting the widget's narrower shared default.
+    constexpr float SettingsNumericWidth = 90.0f;
 
     auto InitialsOf(const FString& InName) -> FString
     {
@@ -916,28 +921,11 @@ auto
             .ColorAndOpacity(FSlateColor(CkStyle::Text()));
     };
 
-    const auto MakeNumericEditor = [PlannerHandle](
-        const FString& InInitial,
-        TFunction<void(FCk_Handle_Goap_Planner&, float)> InCommit) -> TSharedRef<SWidget>
-    {
-        return SNew(SBox)
-            .WidthOverride(90.0f)
-            [
-                SNew(SEditableTextBox)
-                    .Text(FText::FromString(InInitial))
-                    .Font(CkStyle::MonoFont(CkStyle::FontSizeSmall()))
-                    .OnTextCommitted_Lambda([PlannerHandle, InCommit](const FText& InText, ETextCommit::Type InCommitType)
-                    {
-                        if (InCommitType != ETextCommit::OnEnter && InCommitType != ETextCommit::OnUserMovedFocus)
-                        { return; }
-
-                        auto Mutable = PlannerHandle;
-                        if (ck::Is_NOT_Valid(Mutable)) { return; }
-                        InCommit(Mutable, FCString::Atof(*InText.ToString()));
-                    })
-            ];
-    };
-
+    // The file-local MakeNumericEditor lambda that used to live here is gone: its
+    // commit-on-enter-or-focus-loss behaviour was promoted verbatim into CkDebuggerCommon's
+    // SCkDebug_NumericEditor, which the three settings numerics below now use directly. The widget adds
+    // what the lambda could not: a LIVE value attribute (so a gameplay-side change to an interval shows
+    // without a drawer rebuild), typed float/integer formatting, and an edit-state bracket.
     static const TArray<TSharedPtr<FString>> PolicyOptions = {
         MakeShared<FString>(TEXT("On world-state change")),
         MakeShared<FString>(TEXT("On cost change")),
@@ -1054,27 +1042,67 @@ auto
 
     AddRow(MakeRow(TEXT("Min replan interval"),
         TEXT("Seconds. Dirty events inside this window coalesce into ONE replan at window end — the anti-thrash dial. Request_SetReplanInterval."),
-        MakeNumericEditor(FString::Printf(TEXT("%.2f"), InPlanner.MinReplanIntervalSeconds),
-            [](FCk_Handle_Goap_Planner& InMutable, float InValue)
+        SNew(SCkDebug_NumericEditor)
+            .Value_Lambda([PlannerHandle, Snapshot = InPlanner.MinReplanIntervalSeconds]() -> double
             {
-                UCk_Utils_Goap_Planner_UE::Request_SetReplanInterval(InMutable, FMath::Max(0.0f, InValue), {});
+                return ck::IsValid(PlannerHandle)
+                    ? static_cast<double>(UCk_Utils_Goap_Planner_UE::Get_MinReplanInterval(PlannerHandle))
+                    : static_cast<double>(Snapshot);
+            })
+            .Kind(ECkDebug_NumericKind::Float)
+            .MinValue(0.0)
+            .Width(SettingsNumericWidth)
+            .FractionalDigits(2)
+            .OnValueCommitted_Lambda([PlannerHandle](double InValue)
+            {
+                auto Mutable = PlannerHandle;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_Goap_Planner_UE::Request_SetReplanInterval(Mutable,
+                    FMath::Max(0.0f, static_cast<float>(InValue)), {});
             })));
 
     AddRow(MakeRow(TEXT("Search budget"),
         TEXT("Per-tick A* time slice in microseconds. 0 = finish in one tick. Request_SetSearchBudget."),
-        MakeNumericEditor(FString::Printf(TEXT("%lld"), InPlanner.SearchBudgetMicroseconds),
-            [](FCk_Handle_Goap_Planner& InMutable, float InValue)
+        SNew(SCkDebug_NumericEditor)
+            .Value_Lambda([PlannerHandle, Snapshot = InPlanner.SearchBudgetMicroseconds]() -> double
             {
-                UCk_Utils_Goap_Planner_UE::Request_SetSearchBudget(InMutable,
-                    static_cast<int64>(FMath::Max(0.0f, InValue)), {});
+                return ck::IsValid(PlannerHandle)
+                    ? static_cast<double>(UCk_Utils_Goap_Planner_UE::Get_SearchBudgetMicroseconds(PlannerHandle))
+                    : static_cast<double>(Snapshot);
+            })
+            .Kind(ECkDebug_NumericKind::Integer)
+            .MinValue(0.0)
+            .Width(SettingsNumericWidth)
+            .OnValueCommitted_Lambda([PlannerHandle](double InValue)
+            {
+                auto Mutable = PlannerHandle;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_Goap_Planner_UE::Request_SetSearchBudget(Mutable,
+                    static_cast<int64>(FMath::Max(0.0, InValue)), {});
             })));
 
     AddRow(MakeRow(TEXT("Cost threshold"),
         TEXT("If > 0, the planner reports 'Cost Threshold Reached' instead of committing to a plan more expensive than this. 0 = off. Request_SetCostThreshold."),
-        MakeNumericEditor(FString::Printf(TEXT("%.1f"), InPlanner.CostThreshold),
-            [](FCk_Handle_Goap_Planner& InMutable, float InValue)
+        SNew(SCkDebug_NumericEditor)
+            .Value_Lambda([PlannerHandle, Snapshot = InPlanner.CostThreshold]() -> double
             {
-                UCk_Utils_Goap_Planner_UE::Request_SetCostThreshold(InMutable, FMath::Max(0.0f, InValue), {});
+                return ck::IsValid(PlannerHandle)
+                    ? static_cast<double>(UCk_Utils_Goap_Planner_UE::Get_CostThreshold(PlannerHandle))
+                    : static_cast<double>(Snapshot);
+            })
+            .Kind(ECkDebug_NumericKind::Float)
+            .MinValue(0.0)
+            .Width(SettingsNumericWidth)
+            .FractionalDigits(1)
+            .OnValueCommitted_Lambda([PlannerHandle](double InValue)
+            {
+                auto Mutable = PlannerHandle;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_Goap_Planner_UE::Request_SetCostThreshold(Mutable,
+                    FMath::Max(0.0f, static_cast<float>(InValue)), {});
             })));
 
     AddRow(MakeRow(TEXT("Plan on start"),

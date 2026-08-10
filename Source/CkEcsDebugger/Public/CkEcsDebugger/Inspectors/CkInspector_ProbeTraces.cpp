@@ -89,6 +89,30 @@ auto FCkInspector_ProbeTraces::BuildTraceGrid(const FCk_Handle& Entity) -> TShar
         return Builder.Build(Entity);
     }
 
+    // ---- Enable/Disable — the trace's one arg-free write. LocalOk: the trace runs wherever the
+    // entity does, so a client-side flip is a legitimate local experiment.
+    {
+        auto MutableEntity = Entity;
+        const auto CapturedTrace = UCk_Utils_ProbeTrace_UE::Cast(MutableEntity);
+
+        Builder.AddToggleRow(
+            FText::FromString(TEXT("Enabled:")),
+            TAttribute<bool>::CreateLambda([CapturedTrace]()
+            {
+                if (ck::Is_NOT_Valid(CapturedTrace)) { return false; }
+                return UCk_Utils_ProbeTrace_UE::Get_IsEnabledDisabled(CapturedTrace) == ECk_EnableDisable::Enable;
+            }),
+            [CapturedTrace](bool InIsEnabled)
+            {
+                auto Mutable = CapturedTrace;
+                if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                UCk_Utils_ProbeTrace_UE::Request_EnableDisable(Mutable,
+                    FCk_Request_Probe_EnableDisable{InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable},
+                    {});
+            });
+    }
+
     // ---- Type
 
     Builder.AddRow(

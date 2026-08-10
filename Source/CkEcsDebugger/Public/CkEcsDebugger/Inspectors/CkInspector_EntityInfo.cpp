@@ -1,5 +1,6 @@
 #include "CkInspector_EntityInfo.h"
 
+#include "CkCore/Enums/CkEnums.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkEcs/OwningActor/CkOwningActor_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
@@ -27,10 +28,36 @@ auto FCkInspector_EntityInfo::CanInspect(const FCk_Handle& Entity) const -> bool
 
 auto FCkInspector_EntityInfo::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
-    return FCkInspectorWidgetBuilder()
+    const auto CapturedEntity = Entity;
+
+    auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
+
+    return Builder
         .AddRow(
             FText::FromString(TEXT("Name:")),
             [](const FCk_Handle& E) { return FText::FromString(UCk_Utils_Handle_UE::Get_DebugName(E).ToString()); })
+        // Editable debug name. LocalOk: Set_DebugName is an immediate, purely-descriptive mutator with
+        // no authority gate — the "Name:" row above reads the new value on the next paint.
+        // ECk_Override::Override is passed explicitly: a debugger rename that silently declined to
+        // overwrite an existing name would be indistinguishable from a broken button.
+        //
+        // NO destroy button here: Request_DestroyEntity is destructive and there is no confirmation
+        // affordance in this vocabulary (design doc "Deliberately excluded").
+        .AddNameEntryRow(
+            FText::FromString(TEXT("Set Name:")),
+            TAttribute<FText>::CreateLambda([CapturedEntity]()
+            {
+                if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::GetEmpty(); }
+                return FText::FromName(UCk_Utils_Handle_UE::Get_DebugName(CapturedEntity));
+            }),
+            [CapturedEntity](FName InDebugName)
+            {
+                auto MutableEntity = CapturedEntity;
+                if (ck::Is_NOT_Valid(MutableEntity) || InDebugName.IsNone()) { return; }
+
+                UCk_Utils_Handle_UE::Set_DebugName(MutableEntity, InDebugName, ECk_Override::Override);
+            })
         .AddWidgetRow(
             FText::FromString(TEXT("ID:")),
             SNew(SCkDebug_EntityRef)

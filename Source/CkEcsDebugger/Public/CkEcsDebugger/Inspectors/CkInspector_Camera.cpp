@@ -9,6 +9,7 @@
 #include "CkEcsExt/Transform/CkTransform_Fragment.h"
 
 #include "CkCamera/Camera/CkCamera_Fragment.h"
+#include "CkCamera/Camera/CkCamera_Utils.h"
 #include "CkCamera/Camera/CameraLayer/CkCameraLayer_Fragment.h"
 #include "CkCamera/Camera/CameraLayer/EntityScripts/CkCameraLayer_EntityScript.h"
 
@@ -123,6 +124,7 @@ auto FCkInspector_Camera::CanInspect(const FCk_Handle& Entity) const -> bool
 auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     const auto Cam = Entity;
 
@@ -250,6 +252,172 @@ auto FCkInspector_Camera::Build_Inspector(const FCk_Handle& Entity) -> TSharedRe
                 { return CkStyle::None(); }
                 return DoColor_Flag(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile().Get_HasCollision());
             });
+
+        // ---- Live controls ----
+        //
+        // The seven non-blending bool leaves, the boom snap, the yaw clamp window, and the orbit
+        // intention — every one a public UCk_Utils_Camera_UE Request_*, fired against a typed
+        // FCk_Handle_Camera captured BY VALUE and ck::IsValid-checked on each commit.
+        //
+        // All CosmeticOnly: a dedicated server resolves no local view, so the gate greys these out
+        // there with the reason in the tooltip rather than firing a request nobody can see.
+        //
+        // Reads come from the SAME composed-profile getters the display rows above use, so a toggle
+        // reflects what the camera actually resolved this frame — including a layer overriding the
+        // leaf — rather than the last value this panel wrote.
+        //
+        // The CameraLayer Acquire -> Override modifier protocol is deliberately NOT exposed: acquiring
+        // a tuner modifier is a multi-step layer-scoped lifetime, not a single request.
+        {
+            auto       MutableCameraEntity = Entity;
+            const auto CapturedCamera      = UCk_Utils_Camera_UE::Cast(MutableCameraEntity);
+
+            Builder.AddHeader(FText::FromString(TEXT("Camera Controls")));
+
+            const auto AddFlagToggle = [&Builder, Cam, CapturedCamera](
+                const TCHAR*                              InLabel,
+                TFunction<bool(const FCk_CameraProfile&)> InGet,
+                TFunction<void(FCk_Handle_Camera&, bool)> InSet)
+            {
+                Builder.AddToggleRow(
+                    FText::FromString(InLabel),
+                    TAttribute<bool>::CreateLambda([Cam, InGet]()
+                    {
+                        if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                        { return false; }
+
+                        return InGet(Cam.Get<ck::FFragment_Camera_Current>().Get_ComposedProfile());
+                    }),
+                    [CapturedCamera, InSet](bool InIsEnabled)
+                    {
+                        auto MutableCamera = CapturedCamera;
+
+                        if (ck::Is_NOT_Valid(MutableCamera))
+                        { return; }
+
+                        InSet(MutableCamera, InIsEnabled);
+                    },
+                    ECk_DebugRequest_Requirement::CosmeticOnly);
+            };
+
+            AddFlagToggle(TEXT("Use Fixed Boom Rotation:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_Rig().Get_UseFixedBoomRotation(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_UseFixedBoomRotation(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Constrain Aspect Ratio:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_Sensor().Get_ConstrainAspectRatio(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_ConstrainAspectRatio(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Has Orientation Control:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_HasOrientationControl(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_HasOrientationControl(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Has Auto-Reorient:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_HasAutoReorient(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_HasAutoReorient(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Has Collision:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_HasCollision(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_HasCollision(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Use Async Trace:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_Collision().Get_UseAsyncTrace(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_UseAsyncTrace(InCamera, InIsEnabled, {}); });
+
+            AddFlagToggle(TEXT("Use Post Process:"),
+                [](const FCk_CameraProfile& InProfile) { return InProfile.Get_UsePostProcess(); },
+                [](FCk_Handle_Camera& InCamera, bool InIsEnabled) { UCk_Utils_Camera_UE::Request_Set_UsePostProcess(InCamera, InIsEnabled, {}); });
+
+            // Absolute seed of the persistent boom rotation — the orbit equivalent of a teleport. Reads
+            // the live POV boom rotation, so the row shows where the boom IS before you retarget it.
+            Builder.AddRotatorRow(
+                FText::FromString(TEXT("Snap Boom Rotation (R,P,Y):")),
+                TAttribute<FRotator>::CreateLambda([Cam]()
+                {
+                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                    { return FRotator::ZeroRotator; }
+
+                    return Cam.Get<ck::FFragment_Camera_Current>().Get_PovState()._BoomArmRotation;
+                }),
+                [CapturedCamera](const FRotator& InWorldRotation)
+                {
+                    auto MutableCamera = CapturedCamera;
+
+                    if (ck::Is_NOT_Valid(MutableCamera))
+                    { return; }
+
+                    UCk_Utils_Camera_UE::Request_SnapBoomRotation(MutableCamera, InWorldRotation, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly);
+
+            // Yaw clamp WINDOW (absolute world yaws), not a +/- half-angle. The request takes both edges
+            // at once, so each row re-reads the other edge live at commit time instead of caching it.
+            const auto Read_YawLimits = [Cam]() -> FCk_FloatRange
+            {
+                if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                { return FCk_FloatRange{}; }
+
+                return Cam.Get<ck::FFragment_Camera_Current>()
+                    .Get_ComposedProfile().Get_OrientationControl().Get_Yaw().Get_Limits();
+            };
+
+            Builder.AddNumericRow(
+                FText::FromString(TEXT("Orientation Yaw Min:")),
+                TAttribute<float>::CreateLambda([Read_YawLimits]() { return static_cast<float>(Read_YawLimits().Get_Min()); }),
+                [CapturedCamera, Read_YawLimits](float InMinYaw)
+                {
+                    auto MutableCamera = CapturedCamera;
+
+                    if (ck::Is_NOT_Valid(MutableCamera))
+                    { return; }
+
+                    UCk_Utils_Camera_UE::Request_Set_OrientationYawLimits(
+                        MutableCamera, InMinYaw, static_cast<float>(Read_YawLimits().Get_Max()), {});
+                },
+                TOptional<float>{},
+                TOptional<float>{},
+                ECk_DebugRequest_Requirement::CosmeticOnly);
+
+            Builder.AddNumericRow(
+                FText::FromString(TEXT("Orientation Yaw Max:")),
+                TAttribute<float>::CreateLambda([Read_YawLimits]() { return static_cast<float>(Read_YawLimits().Get_Max()); }),
+                [CapturedCamera, Read_YawLimits](float InMaxYaw)
+                {
+                    auto MutableCamera = CapturedCamera;
+
+                    if (ck::Is_NOT_Valid(MutableCamera))
+                    { return; }
+
+                    UCk_Utils_Camera_UE::Request_Set_OrientationYawLimits(
+                        MutableCamera, static_cast<float>(Read_YawLimits().Get_Min()), InMaxYaw, {});
+                },
+                TOptional<float>{},
+                TOptional<float>{},
+                ECk_DebugRequest_Requirement::CosmeticOnly);
+
+            // A per-frame DELTA that UpdatePOV CONSUMES (resets to zero) after applying — so this row
+            // reads back 0,0,0 on the very next frame. Committing it is a one-frame orbit nudge, not a
+            // setting; the read-only "Orientation Intention" row above shows the same live value.
+            Builder.AddVectorRow(
+                FText::FromString(TEXT("Push Orientation Intention:")),
+                TAttribute<FVector>::CreateLambda([Cam]()
+                {
+                    if (ck::Is_NOT_Valid(Cam) || NOT Cam.Has<ck::FFragment_Camera_Current>())
+                    { return FVector::ZeroVector; }
+
+                    return Cam.Get<ck::FFragment_Camera_Current>().Get_OrientationIntention();
+                }),
+                [CapturedCamera](const FVector& InIntention)
+                {
+                    auto MutableCamera = CapturedCamera;
+
+                    if (ck::Is_NOT_Valid(MutableCamera))
+                    { return; }
+
+                    UCk_Utils_Camera_UE::Request_SetOrientationIntention(MutableCamera, InIntention, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly);
+        }
 
         // ---- Resolved view info ----
         Builder.AddHeader(FText::FromString(TEXT("View Info (resolved)")));

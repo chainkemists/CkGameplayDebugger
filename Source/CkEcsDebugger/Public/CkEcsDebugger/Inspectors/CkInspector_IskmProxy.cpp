@@ -68,6 +68,7 @@ auto FCkInspector_IskmProxy::Build_Inspector(const FCk_Handle& Entity) -> TShare
 auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     auto MutableEntity = Entity;
     const auto ProxyHandle = UCk_Utils_IskmProxy_UE::CastChecked(MutableEntity);
@@ -77,6 +78,18 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
     }
 
     const auto CapturedProxy = ProxyHandle;
+
+    // Row-owned intent mirrors. Visibility and play rate have SET requests but no getter — nothing in
+    // the proxy's Current fragment records either — so these rows show the last value THIS inspector
+    // asked for (seeded at the feature defaults), not an engine read. They die with the row, exactly
+    // like the Inventories occupancy cache; a rebuild reseeds them.
+    const auto VisibilityIntent = MakeShared<bool>(true);
+    const auto PlayRateIntent   = MakeShared<float>(1.0f);
+
+    // Slot / morph selectors: which slot or morph the value editor beside them addresses. Both values
+    // ARE readable, so only the SELECTOR is row-owned state — the value row itself is a live read.
+    const auto CustomDataSlot = MakeShared<int32>(0);
+    const auto MorphName      = MakeShared<FName>(NAME_None);
 
     Builder.AddStatusPillRow(
         FText::FromString(TEXT("Pose Source:")),
@@ -183,6 +196,165 @@ auto FCkInspector_IskmProxy::BuildIskmProxyGrid(const FCk_Handle& Entity) -> TSh
             return FText::FromString(ck::Format_UE(TEXT("{:.3f}"), Value));
         },
         CkStyle::Value_Numeric());
+
+    // ================================================================================================
+    // Controls. Everything an Iskm proxy writes is CosmeticOnly — a dedicated server owns no SKMC, so
+    // these greyed out there rather than firing requests nothing will ever render.
+    // ================================================================================================
+
+    Builder.AddHeader(FText::FromString(TEXT("Controls")));
+
+    Builder.AddToggleRow(
+        FText::FromString(TEXT("Visible:")),
+        TAttribute<bool>::CreateLambda([VisibilityIntent]() { return *VisibilityIntent; }),
+        [CapturedProxy, VisibilityIntent](bool InIsVisible)
+        {
+            *VisibilityIntent = InIsVisible;
+
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_IskmProxy_UE::Request_SetVisibility(Mutable, InIsVisible, {});
+        },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("Play Rate:")),
+        TAttribute<float>::CreateLambda([PlayRateIntent]() { return *PlayRateIntent; }),
+        [CapturedProxy, PlayRateIntent](float InRate)
+        {
+            *PlayRateIntent = InRate;
+
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_IskmProxy_UE::Request_SetPlayRate(Mutable, InRate, {});
+        },
+        TOptional<float>{},
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Actions:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Stop Anim")),
+                FText::FromString(TEXT("Request_StopAnimation — halts the sequence currently driving the proxy.")),
+                [CapturedProxy]()
+                {
+                    auto Mutable = CapturedProxy;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+                    UCk_Utils_IskmProxy_UE::Request_StopAnimation(Mutable, FCk_Request_IskmProxy_StopAnimation{}, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("End Ragdoll")),
+                FText::FromString(TEXT("Request_EndRagdoll — returns the proxy from physics to its authored pose source.")),
+                [CapturedProxy]()
+                {
+                    auto Mutable = CapturedProxy;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+                    UCk_Utils_IskmProxy_UE::Request_EndRagdoll(Mutable, FCk_Request_IskmProxy_EndRagdoll{}, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Clear Morphs")),
+                FText::FromString(TEXT("Request_ClearMorphTargets — drops every recorded morph weight on this proxy.")),
+                [CapturedProxy]()
+                {
+                    auto Mutable = CapturedProxy;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+                    UCk_Utils_IskmProxy_UE::Request_ClearMorphTargets(Mutable, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Clear Materials")),
+                FText::FromString(TEXT("Request_ClearMaterialOverrides — restores the mesh's default material on every slot.")),
+                [CapturedProxy]()
+                {
+                    auto Mutable = CapturedProxy;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+                    UCk_Utils_IskmProxy_UE::Request_ClearMaterialOverrides(Mutable, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Detach Submeshes")),
+                FText::FromString(TEXT("Request_DetachAllSubmeshes — strips every attached outfit submesh.")),
+                [CapturedProxy]()
+                {
+                    auto Mutable = CapturedProxy;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+                    UCk_Utils_IskmProxy_UE::Request_DetachAllSubmeshes(Mutable, {});
+                },
+                ECk_DebugRequest_Requirement::CosmeticOnly
+            },
+        });
+
+    // ---- Morph target: name selector + the weight recorded for it ----
+
+    Builder.AddNameEntryRow(
+        FText::FromString(TEXT("Morph Target:")),
+        TAttribute<FText>::CreateLambda([MorphName]()
+        {
+            return MorphName->IsNone() ? FText::FromString(TEXT("(none)")) : FText::FromName(*MorphName);
+        }),
+        [MorphName](FName InName) { *MorphName = InName; },
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("  Weight:")),
+        TAttribute<float>::CreateLambda([CapturedProxy, MorphName]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy) || MorphName->IsNone()) { return 0.0f; }
+            return UCk_Utils_IskmProxy_UE::Get_MorphTarget(CapturedProxy, *MorphName);
+        }),
+        [CapturedProxy, MorphName](float InValue)
+        {
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable) || MorphName->IsNone()) { return; }
+
+            UCk_Utils_IskmProxy_UE::Request_SetMorphTarget(Mutable, *MorphName, InValue, {});
+        },
+        TOptional<float>{},
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    // ---- Custom data: slot selector + the value recorded in it ----
+
+    Builder.AddIntegerRow(
+        FText::FromString(TEXT("Custom Data Slot:")),
+        TAttribute<int32>::CreateLambda([CustomDataSlot]() { return *CustomDataSlot; }),
+        [CustomDataSlot](int32 InSlot) { *CustomDataSlot = InSlot; },
+        0,
+        TOptional<int32>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
+
+    Builder.AddNumericRow(
+        FText::FromString(TEXT("  Value:")),
+        TAttribute<float>::CreateLambda([CapturedProxy, CustomDataSlot]()
+        {
+            if (ck::Is_NOT_Valid(CapturedProxy)) { return 0.0f; }
+            return UCk_Utils_IskmProxy_UE::Get_CustomDataFloat(CapturedProxy, *CustomDataSlot);
+        }),
+        [CapturedProxy, CustomDataSlot](float InValue)
+        {
+            auto Mutable = CapturedProxy;
+            if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+            UCk_Utils_IskmProxy_UE::Request_SetCustomDataFloat(Mutable, *CustomDataSlot, InValue, {});
+        },
+        TOptional<float>{},
+        TOptional<float>{},
+        ECk_DebugRequest_Requirement::CosmeticOnly);
 
     return Builder.Build(Entity, FString());
 }

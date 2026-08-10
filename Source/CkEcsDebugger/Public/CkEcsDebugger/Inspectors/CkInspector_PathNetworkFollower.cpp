@@ -158,5 +158,29 @@ auto FCkInspector_PathNetworkFollower::Build_Inspector(const FCk_Handle& Entity)
         },
         CkStyle::Value_Numeric());
 
+    // The follower's only arg-free verb. SetNetwork needs an entity picker and FindRoute is server-only
+    // with a multi-field request — both stay out of this wave.
+    //
+    // Remove strips the FEATURE, not the entity: the follower stops routing and this whole inspector
+    // section disappears on the next rebuild. LocalOk — the follower is not authority-gated.
+    Builder.AddActionRow(
+        FText::FromString(TEXT("Feature:")),
+        {
+            FCkInspector_Action
+            {
+                FText::FromString(TEXT("Remove")),
+                FText::FromString(TEXT(
+                    "Remove the PathNetworkFollower feature from this entity. The entity survives; its routing does not, "
+                    "and there is no undo from the debugger.")),
+                [CapturedFollower]()
+                {
+                    auto Mutable = CapturedFollower;
+                    if (ck::Is_NOT_Valid(Mutable)) { return; }
+
+                    UCk_Utils_PathNetworkFollower_UE::Remove(Mutable);
+                }
+            },
+        });
+
     return Builder.Build(Entity, FString());
 }

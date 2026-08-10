@@ -4,7 +4,9 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkAggro/CkAggro_Fragment.h"
+#include "CkAggro/CkAggro_Utils.h"
 #include "CkAggro/CkAggroTarget_Fragment.h"
+#include "CkAggro/CkAggroTarget_Utils.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 
@@ -108,6 +110,7 @@ auto FCkInspector_Aggro::CanInspect(const FCk_Handle& Entity) const -> bool
 auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef<SWidget>
 {
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     // ---- Aggro owner (this entity holds the threat table) ----
     if (Entity.Has<ck::FFragment_Aggro_Current>())
@@ -171,6 +174,64 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
                 return FText::FromString(FString::Printf(TEXT("%lld"), Count));
             },
             CkStyle::Value_Numeric());
+
+        // ---- Owner-side verbs ----
+        // Every Aggro request processor is authority-gated (ensures + drops off-authority), so all of
+        // these are AuthorityOnly. The pill above stays as the live read-back; this row is the write.
+        auto MutableOwnerEntity = Entity;
+        const auto CapturedAggro = UCk_Utils_Aggro_UE::Cast(MutableOwnerEntity);
+
+        if (ck::IsValid(CapturedAggro))
+        {
+            Builder.AddToggleRow(
+                FText::FromString(TEXT("Enable/Disable:")),
+                TAttribute<bool>::CreateLambda([CapturedAggro]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedAggro)) { return false; }
+                    return UCk_Utils_Aggro_UE::Get_IsEnabled(CapturedAggro);
+                }),
+                [CapturedAggro](bool InIsEnabled)
+                {
+                    auto MutableAggro = CapturedAggro;
+                    if (ck::Is_NOT_Valid(MutableAggro)) { return; }
+
+                    UCk_Utils_Aggro_UE::Request_EnableDisable(MutableAggro,
+                        InIsEnabled ? ECk_EnableDisable::Enable : ECk_EnableDisable::Disable, {});
+                },
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+
+            Builder.AddActionRow(
+                FText::FromString(TEXT("Targets:")),
+                {
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Clear All")),
+                        FText::FromString(TEXT("UCk_Utils_Aggro_UE::Request_ClearAllTargets")),
+                        [CapturedAggro]()
+                        {
+                            auto MutableAggro = CapturedAggro;
+                            if (ck::Is_NOT_Valid(MutableAggro)) { return; }
+                            UCk_Utils_Aggro_UE::Request_ClearAllTargets(MutableAggro, {});
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Clear Active")),
+                        FText::FromString(TEXT("UCk_Utils_Aggro_UE::Request_ClearActiveTarget")),
+                        [CapturedAggro]()
+                        {
+                            auto MutableAggro = CapturedAggro;
+                            if (ck::Is_NOT_Valid(MutableAggro)) { return; }
+                            UCk_Utils_Aggro_UE::Request_ClearActiveTarget(MutableAggro, {});
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                });
+
+            // Request_SetActiveTarget / Request_RemoveTarget are addressed BY TRACKED ENTITY — they
+            // need an entity picker, which this vocabulary does not have yet. Deferred, not forgotten.
+        }
     }
 
     // ---- Aggro target (this entity is one tracked target of an owner) ----
@@ -239,6 +300,89 @@ auto FCkInspector_Aggro::Build_Inspector(const FCk_Handle& Entity) -> TSharedRef
             // Left as live text, not chips: these four tags flip continuously (Perceived / retention), and a chips
             // row is a compose-time snapshot that would need a RequestRebuild per flip to stay honest.
             CkStyle::Value_Enum());
+
+        // ---- Per-target verbs ----
+        // This section IS the per-target surface: the owner section above only reports a count, so the
+        // threat/perception controls live here, on the inspected target entity. AuthorityOnly, same
+        // processor gate as the owner requests.
+        auto MutableTargetEntity = Entity;
+        const auto CapturedTarget = UCk_Utils_AggroTarget_UE::Cast(MutableTargetEntity);
+
+        if (ck::IsValid(CapturedTarget))
+        {
+            Builder.AddNumericRow(
+                FText::FromString(TEXT("Set Threat:")),
+                TAttribute<float>::CreateLambda([CapturedTarget]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedTarget)) { return 0.0f; }
+                    return UCk_Utils_AggroTarget_UE::Get_Threat(CapturedTarget);
+                }),
+                [CapturedTarget](float InThreat)
+                {
+                    auto MutableTarget = CapturedTarget;
+                    if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                    UCk_Utils_AggroTarget_UE::Request_SetThreat(MutableTarget, InThreat, {});
+                },
+                TOptional<float>{},
+                TOptional<float>{},
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+
+            // A DELTA field, not a value field — the getter reads 0 because there is no "pending
+            // delta" state to read back; the committed number is the increment that gets applied.
+            Builder.AddNumericRow(
+                FText::FromString(TEXT("Add Threat (delta):")),
+                TAttribute<float>::CreateLambda([]() { return 0.0f; }),
+                [CapturedTarget](float InDelta)
+                {
+                    auto MutableTarget = CapturedTarget;
+                    if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                    UCk_Utils_AggroTarget_UE::Request_AddThreat(MutableTarget, InDelta, {});
+                },
+                TOptional<float>{},
+                TOptional<float>{},
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+
+            Builder.AddActionRow(
+                FText::FromString(TEXT("Perception:")),
+                {
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Mark Unperceived")),
+                        FText::FromString(TEXT("UCk_Utils_AggroTarget_UE::Request_MarkUnperceived")),
+                        [CapturedTarget]()
+                        {
+                            auto MutableTarget = CapturedTarget;
+                            if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                            UCk_Utils_AggroTarget_UE::Request_MarkUnperceived(MutableTarget, {});
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Reset Perception")),
+                        FText::FromString(TEXT("UCk_Utils_AggroTarget_UE::Request_ResetPerception")),
+                        [CapturedTarget]()
+                        {
+                            auto MutableTarget = CapturedTarget;
+                            if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                            UCk_Utils_AggroTarget_UE::Request_ResetPerception(MutableTarget, {});
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                    FCkInspector_Action
+                    {
+                        FText::FromString(TEXT("Forget")),
+                        FText::FromString(TEXT("UCk_Utils_AggroTarget_UE::Request_Forget")),
+                        [CapturedTarget]()
+                        {
+                            auto MutableTarget = CapturedTarget;
+                            if (ck::Is_NOT_Valid(MutableTarget)) { return; }
+                            UCk_Utils_AggroTarget_UE::Request_Forget(MutableTarget, {});
+                        },
+                        ECk_DebugRequest_Requirement::AuthorityOnly
+                    },
+                });
+        }
     }
 
     return Builder.Build(Entity);

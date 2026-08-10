@@ -4,8 +4,11 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkPhysics/Velocity/CkVelocity_Fragment.h"
+#include "CkPhysics/Velocity/CkVelocity_Utils.h"
 #include "CkPhysics/Acceleration/CkAcceleration_Fragment.h"
+#include "CkPhysics/Acceleration/CkAcceleration_Utils.h"
 #include "CkPhysics/EulerIntegrator/CkEulerIntegrator_Fragment.h"
+#include "CkPhysics/EulerIntegrator/CkEulerIntegrator_Utils.h"
 #include "CkPhysics/PredictedVelocity/CkPredictedVelocity_Fragment.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -133,6 +136,7 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
     namespace inspector = ck_inspector_physics;
 
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     const auto CapturedEntity = Entity;
 
@@ -150,6 +154,30 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
             inspector::Make_SpeedSample(CapturedEntity, &inspector::Get_Velocity),
             ECk_Tone::Accent,
             inspector::Make_SpeedText(CapturedEntity, &inspector::Get_Velocity));
+
+        // Editable override on top of the live read-out above. AuthorityOnly: the velocity pipeline's
+        // bulk-modifier processors are authority-gated, so a client-side override is stomped by the
+        // next replicated write — grey it with the reason rather than let it look like it took.
+        auto MutableVelocityEntity = Entity;
+        const auto CapturedVelocity = UCk_Utils_Velocity_UE::Cast(MutableVelocityEntity);
+
+        if (ck::IsValid(CapturedVelocity))
+        {
+            Builder.AddVectorRow(
+                FText::FromString(TEXT("Override:")),
+                TAttribute<FVector>::CreateLambda([CapturedVelocity]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedVelocity)) { return FVector::ZeroVector; }
+                    return UCk_Utils_Velocity_UE::Get_CurrentVelocity(CapturedVelocity);
+                }),
+                [CapturedVelocity](const FVector& InVelocity)
+                {
+                    auto MutableVelocity = CapturedVelocity;
+                    if (ck::Is_NOT_Valid(MutableVelocity)) { return; }
+                    UCk_Utils_Velocity_UE::Request_OverrideVelocity(MutableVelocity, InVelocity, {});
+                },
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+        }
     }
 
     // ---- Acceleration ----
@@ -160,6 +188,27 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Current:")),
             inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_Acceleration));
+
+        auto MutableAccelerationEntity = Entity;
+        const auto CapturedAcceleration = UCk_Utils_Acceleration_UE::Cast(MutableAccelerationEntity);
+
+        if (ck::IsValid(CapturedAcceleration))
+        {
+            Builder.AddVectorRow(
+                FText::FromString(TEXT("Override:")),
+                TAttribute<FVector>::CreateLambda([CapturedAcceleration]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedAcceleration)) { return FVector::ZeroVector; }
+                    return UCk_Utils_Acceleration_UE::Get_CurrentAcceleration(CapturedAcceleration);
+                }),
+                [CapturedAcceleration](const FVector& InAcceleration)
+                {
+                    auto MutableAcceleration = CapturedAcceleration;
+                    if (ck::Is_NOT_Valid(MutableAcceleration)) { return; }
+                    UCk_Utils_Acceleration_UE::Request_OverrideAcceleration(MutableAcceleration, InAcceleration, {});
+                },
+                ECk_DebugRequest_Requirement::AuthorityOnly);
+        }
     }
 
     // ---- Predicted Velocity ----
@@ -202,7 +251,44 @@ auto FCkInspector_Physics::Build_Inspector(const FCk_Handle& Entity) -> TSharedR
         Builder.AddAlignedNumericRow(
             FText::FromString(TEXT("Distance Offset:")),
             inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_DistanceOffset));
+
+        // LocalOk: the Euler start/stop requests carry no authority gate — they toggle whether this
+        // entity's own integrator ticks, which is a legitimate local experiment on any world.
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Integrator:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Start")),
+                    FText::FromString(TEXT("UCk_Utils_EulerIntegrator_UE::Request_Start")),
+                    [CapturedEntity]()
+                    {
+                        auto MutableEntity = CapturedEntity;
+                        if (ck::Is_NOT_Valid(MutableEntity)) { return; }
+                        UCk_Utils_EulerIntegrator_UE::Request_Start(MutableEntity, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Stop")),
+                    FText::FromString(TEXT("UCk_Utils_EulerIntegrator_UE::Request_Stop")),
+                    [CapturedEntity]()
+                    {
+                        auto MutableEntity = CapturedEntity;
+                        if (ck::Is_NOT_Valid(MutableEntity)) { return; }
+                        UCk_Utils_EulerIntegrator_UE::Request_Stop(MutableEntity, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
+            });
     }
+
+    // NO per-modifier Remove rows: this inspector has never listed velocity/acceleration modifiers,
+    // and there is no public enumeration to build such a list from — RecordOfVelocityModifiers_Utils /
+    // RecordOfAccelerationModifiers_Utils are PRIVATE members of their Utils classes, and
+    // UCk_Utils_*Modifier_UE::Remove is addressed by a FGameplayTag the debugger cannot discover.
+    // Deferred until the modifier record gets a public ForEach.
 
     return Builder.Build(Entity);
 }

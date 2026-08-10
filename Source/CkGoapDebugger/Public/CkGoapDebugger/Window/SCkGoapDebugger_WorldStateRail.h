@@ -108,6 +108,15 @@ private:
     auto HandleSandboxToggled(bool InNewState) -> void;
     auto HandleClick_ResetDebugUiLayer() -> FReply;
 
+    // Base-store truth-table edit. Distinct from HandlePillToggled on purpose: the PILL writes the
+    // DebugUI OVERRIDE layer (a shadow you pop to undo), this writes Set_Value — the base store every
+    // read falls through to. Needs no Sandbox arming precisely because it is not a hidden shadow.
+    auto HandleBaseValueToggled(bool InNewValue, FGameplayTag InKey) -> void;
+
+    // Pops EVERY override layer at once (Clear_Overrides), gameplay-pushed ones included — unlike the
+    // per-layer Pop and unlike the Sandbox switch, which only takes DebugUI back off.
+    auto HandleClick_ClearAllOverrides() -> FReply;
+
     // Row click — toggles the cross-pane key trace on the ViewModel.
     auto HandleRowClicked_Trace(FGameplayTag InKey) -> FReply;
 

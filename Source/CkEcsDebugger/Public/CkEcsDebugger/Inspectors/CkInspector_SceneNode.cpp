@@ -146,8 +146,12 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
     namespace inspector = ck_inspector_scenenode;
 
     auto Builder = FCkInspectorWidgetBuilder();
+    Builder.SetEditGuard(Get_EditGuard());
 
     const auto CapturedEntity = Entity;
+
+    auto MutableNodeEntity = Entity;
+    const auto CapturedNode = UCk_Utils_SceneNode_UE::Cast(MutableNodeEntity);
 
     // ----- Parent entity (clickable) -----
     const auto ParentHandle = [&]() -> FCk_Handle
@@ -212,6 +216,96 @@ auto FCkInspector_SceneNode::Build_Inspector(const FCk_Handle& Entity) -> TShare
     Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Scale:")),
         inspector::Make_AxisComponents(CapturedEntity, &inspector::Get_RelativeTransform, &inspector::Get_Scale));
+
+    // ----- Editable relative offset -----
+    //
+    // Request_UpdateOffset carries the WHOLE FTransform, so each of these three rows is a
+    // read-modify-write over the live Get_Offset: commit one component, re-read the other two, send
+    // one composed transform. The read-only rows above stay as the unambiguous display.
+    // LocalOk: the SceneNode request processor has no authority gate.
+    if (ck::IsValid(CapturedNode))
+    {
+        const auto Request_UpdateOffset = [CapturedNode](const FTransform& InNewOffset)
+        {
+            auto MutableNode = CapturedNode;
+            if (ck::Is_NOT_Valid(MutableNode)) { return; }
+
+            UCk_Utils_SceneNode_UE::Request_UpdateOffset(MutableNode,
+                FCk_Request_SceneNode_UpdateRelativeTransform{InNewOffset}, {});
+        };
+
+        Builder.AddVectorRow(
+            FText::FromString(TEXT("Set Location:")),
+            TAttribute<FVector>::CreateLambda([CapturedNode]()
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return FVector::ZeroVector; }
+                return UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode).GetLocation();
+            }),
+            [CapturedNode, Request_UpdateOffset](const FVector& InLocation)
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return; }
+
+                auto Offset = UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode);
+                Offset.SetLocation(InLocation);
+                Request_UpdateOffset(Offset);
+            },
+            ECk_DebugRequest_Requirement::LocalOk);
+
+        Builder.AddRotatorRow(
+            FText::FromString(TEXT("Set Rotation (R,P,Y):")),
+            TAttribute<FRotator>::CreateLambda([CapturedNode]()
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return FRotator::ZeroRotator; }
+                return UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode).GetRotation().Rotator();
+            }),
+            [CapturedNode, Request_UpdateOffset](const FRotator& InRotator)
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return; }
+
+                auto Offset = UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode);
+                Offset.SetRotation(InRotator.Quaternion());
+                Request_UpdateOffset(Offset);
+            },
+            ECk_DebugRequest_Requirement::LocalOk);
+
+        Builder.AddVectorRow(
+            FText::FromString(TEXT("Set Scale:")),
+            TAttribute<FVector>::CreateLambda([CapturedNode]()
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return FVector::OneVector; }
+                return UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode).GetScale3D();
+            }),
+            [CapturedNode, Request_UpdateOffset](const FVector& InScale)
+            {
+                if (ck::Is_NOT_Valid(CapturedNode)) { return; }
+
+                auto Offset = UCk_Utils_SceneNode_UE::Get_Offset(CapturedNode);
+                Offset.SetScale3D(InScale);
+                Request_UpdateOffset(Offset);
+            },
+            ECk_DebugRequest_Requirement::LocalOk);
+
+        // Detach is an IMMEDIATE mutator (links severed inline, delegate fires on this stack), so
+        // there is no request-drain lag. The "Parent:" row above still shows the OLD parent until the
+        // next inspector rebuild — it binds a compose-time handle, not a live getter — which is the
+        // same staleness that row has always had.
+        Builder.AddActionRow(
+            FText::FromString(TEXT("Attachment:")),
+            {
+                FCkInspector_Action
+                {
+                    FText::FromString(TEXT("Detach (Keep World)")),
+                    FText::FromString(TEXT("UCk_Utils_SceneNode_UE::Request_Detach")),
+                    [CapturedNode]()
+                    {
+                        auto MutableNode = CapturedNode;
+                        if (ck::Is_NOT_Valid(MutableNode)) { return; }
+                        UCk_Utils_SceneNode_UE::Request_Detach(MutableNode, {});
+                    },
+                    ECk_DebugRequest_Requirement::LocalOk
+                },
+            });
+    }
 
     // ----- Resolved world transform -----
     Builder.AddHeader(FText::FromString(TEXT("Resolved World Transform")));

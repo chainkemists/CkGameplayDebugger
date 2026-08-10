@@ -6,6 +6,7 @@
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
+#include "CkEcsDebugger/Inspectors/CkInspectorWidgetBuilder.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
@@ -13,6 +14,7 @@
 
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SGridPanel.h"
+#include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
 
@@ -309,7 +311,73 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         Row++;
     }
 
-    return Grid;
+    // ---- Fragment-level verbs -------------------------------------------------
+    // This inspector already holds the fragment's UScriptStruct per section, which is exactly what the
+    // two type-addressed requests take — so the verbs cost nothing to wire. The struct is held WEAKLY
+    // (it is a UObject) and re-resolved on every fire; the entity is captured by value and re-validated.
+    //
+    // Mark-Replication-Dirty is only OFFERED when the fragment was registered as replicated: the Util
+    // ensures otherwise (CkDynamic_Utils.cpp:624), and a button whose only outcome is an ensure is worse
+    // than no button. Replicated-ness is config, so the choice is made once at compose time.
+    const auto CapturedEntity = Entity;
+    const auto WeakStruct    = TWeakObjectPtr<const UScriptStruct>{ScriptStruct};
+
+    const auto IsReplicated = ck::IsValid(Entity) &&
+        Entity.Has<ck::FFragment_DynamicFragment_ReplicatedTypes>() &&
+        Entity.Get<ck::FFragment_DynamicFragment_ReplicatedTypes>().Get_Types().Contains(ScriptStruct);
+
+    auto Actions = TArray<FCkInspector_Action>{};
+
+    Actions.Add(FCkInspector_Action
+    {
+        FText::FromString(TEXT("Remove")),
+        FText::FromString(TEXT("Request_TryRemove — drops this dynamic fragment from the entity. No-op if it is already gone.")),
+        [CapturedEntity, WeakStruct]()
+        {
+            auto MutableEntity = CapturedEntity;
+            const auto* Struct = WeakStruct.Get();
+
+            if (ck::Is_NOT_Valid(MutableEntity) || NOT ck::IsValid(Struct)) { return; }
+
+            UCk_Utils_DynamicFragment_UE::Request_TryRemove(MutableEntity, Struct, {});
+        }
+    });
+
+    if (IsReplicated)
+    {
+        Actions.Add(FCkInspector_Action
+        {
+            FText::FromString(TEXT("Mark Rep Dirty")),
+            FText::FromString(TEXT("Request_MarkReplicationDirty — re-sends this fragment on the next replication pass.")),
+            [CapturedEntity, WeakStruct]()
+            {
+                auto MutableEntity = CapturedEntity;
+                const auto* Struct = WeakStruct.Get();
+
+                if (ck::Is_NOT_Valid(MutableEntity) || NOT ck::IsValid(Struct)) { return; }
+
+                UCk_Utils_DynamicFragment_UE::Request_MarkReplicationDirty(MutableEntity, Struct, {});
+            },
+            ECk_DebugRequest_Requirement::AuthorityOnly
+        });
+    }
+
+    auto ActionBuilder = FCkInspectorWidgetBuilder();
+    ActionBuilder.AddActionRow(FText::FromString(TEXT("Fragment:")), Actions);
+
+    return SNew(SVerticalBox)
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            Grid
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            ActionBuilder.Build(Entity)
+        ];
 }
 
 // =====================================================================================================================

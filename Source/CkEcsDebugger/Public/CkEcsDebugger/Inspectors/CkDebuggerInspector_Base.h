@@ -4,6 +4,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class FCkDebuggerModel_EntitySelection;
+class FCkInspectorEditGuard;
 
 class ICkDebuggerComponentInspector_Base
 {
@@ -94,11 +95,20 @@ public:
     virtual auto Set_SelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> void { SelectionModel = MoveTemp(InModel); }
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection> { return SelectionModel; }
 
+    /**
+     * Panel-scoped edit guard (CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h). An inspector
+     * that builds INTERACTIVE rows forwards it to its FCkInspectorWidgetBuilder via SetEditGuard, so
+     * the panel knows to defer a rebuild while the user is mid-type. Read-only inspectors ignore it.
+     */
+    virtual auto Set_EditGuard(TSharedPtr<FCkInspectorEditGuard> InGuard) -> void { EditGuard = MoveTemp(InGuard); }
+    auto Get_EditGuard() const -> TSharedPtr<FCkInspectorEditGuard> { return EditGuard; }
+
 protected:
     /** Call this from Tick when the inspector detects its data has structurally changed */
     auto RequestRebuild() -> void { IsRebuildPending = true; }
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+    TSharedPtr<FCkInspectorEditGuard> EditGuard;
 
 private:
     bool IsRebuildPending = false;

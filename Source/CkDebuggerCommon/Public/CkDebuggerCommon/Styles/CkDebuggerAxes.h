@@ -82,6 +82,12 @@ namespace ck::debug_axes
     CKDEBUGGERCOMMON_API auto Get_SeparatorThickness(const FCkDebuggerStyleSelection& InSelection) -> float;
 
     // ----- Predicates --------------------------------------------------------
+    // EditControlStyle: the two questions a row builder asks before composing an edit affordance.
+    // False from EditControls_AreVisible means the row must fall back to its READ-ONLY form — the
+    // control is not composed and then hidden, it is never composed.
+    CKDEBUGGERCOMMON_API auto EditControls_AreVisible(const FCkDebuggerStyleSelection& InSelection) -> bool;
+    CKDEBUGGERCOMMON_API auto EditControls_RevealOnHover(const FCkDebuggerStyleSelection& InSelection) -> bool;
+
     CKDEBUGGERCOMMON_API auto Legend_IsVisible(const FCkDebuggerStyleSelection& InSelection) -> bool;
     CKDEBUGGERCOMMON_API auto Legend_IsDeduped(const FCkDebuggerStyleSelection& InSelection) -> bool;
     CKDEBUGGERCOMMON_API auto Values_UseAlignedColumns(const FCkDebuggerStyleSelection& InSelection) -> bool;

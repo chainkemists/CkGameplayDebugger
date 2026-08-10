@@ -98,6 +98,18 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
 - `FCkDebuggerStyle` (Slate brushes, text styles, padding + graph-node size constants, SVG icon registry) **moved to `CkDebuggerCommon/Styles/CkDebuggerStyle.h`** in the 2026-08-09 common-widget consolidation — it is now the whole suite's style set. Include the common path; do NOT call `Initialize`/`Shutdown` from this module (CkDebuggerCommon owns its lifetime). Cross-debugger colour tokens still live in `CkStyle::`.
 - `SCkDebuggerWidget_SearchBar` is now a compatibility alias for the promoted `SCkDebug_SearchBar` (`CkDebuggerCommon/Search/`). New code uses the common spelling; the alias header is deleted in a later unit of that campaign.
 - `FCkInspectorWidgetBuilder` composes rows out of `SCkDebug_KeyValueRow`. `AddHeader` emits `SCkDebug_SectionHeader`.
+- **Interactive rows.** The builder's `AddActionRow` / `AddToggleRow` / `AddNumericRow` / `AddIntegerRow` /
+  `AddVectorRow` / `AddRotatorRow` / `AddEnumDropdownRow` / `AddNameEntryRow` / `AddTagEntryRow` are the
+  only sanctioned way to write from an inspector. Three cross-cutting rules they all honour (details in
+  the header): the `EditControlStyle` axis (Hidden degrades each row to its read-only form), a live
+  `ck::DebugRequestGate` requirement per control (greyed + reason tooltip, never a silently dropped
+  request), and the panel's `FCkInspectorEditGuard` (type-in rows defer the panel rebuild instead of
+  being destroyed mid-edit). Values go out through public Utils `Request_*`/`Set_*` only; capture the
+  typed handle BY VALUE and `ck::IsValid` it on fire. `FCkInspector_Probes` is the reference consumer.
+- The panel owns the edit guard and threads it panel → `ICkDebuggerComponentInspector_Base::Set_EditGuard`
+  → `FCkInspectorWidgetBuilder::SetEditGuard` → row. Every rebuild TRIGGER goes through
+  `SCkDebuggerPanel_Inspector::Request_RebuildInspectors`, which parks the request on the guard while an
+  edit is in flight; `Tick` performs it on the first frame after the edit ends (deferred, never dropped).
 - Graph model is pure data with no rendering. Layout strategy is swappable.
 
 ## Adding a New Inspector

@@ -414,6 +414,28 @@ auto
 
 auto
     ck::debug_axes::
+    EditControls_AreVisible(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.EditControlStyle != ECkDebugAxis_EditControlStyle::Hidden;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
+    EditControls_RevealOnHover(
+        const FCkDebuggerStyleSelection& InSelection)
+    -> bool
+{
+    return InSelection.EditControlStyle == ECkDebugAxis_EditControlStyle::OnHover;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck::debug_axes::
     Legend_IsVisible(
         const FCkDebuggerStyleSelection& InSelection)
     -> bool

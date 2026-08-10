@@ -23,7 +23,8 @@ class CKDEBUGGERCOMMON_API UCkDebuggerStyleSettings : public UDeveloperSettings
 
 public:
     // Bumped by any axis add / remove / reorder in CkDebuggerStyleSelection.h.
-    static constexpr int32 CurrentSchemaVersion = 1;
+    // v2: + EditControlStyle (interactive inspector rows).
+    static constexpr int32 CurrentSchemaVersion = 2;
 
 public:
     UCkDebuggerStyleSettings();

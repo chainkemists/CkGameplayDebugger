@@ -4,7 +4,10 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerStyleSelection.h"
+#include "CkDebuggerCommon/Utils/CkDebug_RequestGate.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
+
+#include "GameplayTagContainer.h"
 
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Layout/SGridPanel.h"
@@ -13,6 +16,8 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 class FCkDebuggerModel_EntitySelection;
+class FCkInspectorEditGuard;
+class FCkInspectorEditScope;
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -36,6 +41,21 @@ enum class ECkInspector_NumericLayout : uint8
     AlignedColumns,
     SingleLine_Left,
     SingleLine_Right,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * One flat button in an AddActionRow. Requirement gates the button against the inspected entity's
+ * world net mode (ck::DebugRequestGate) — a gated-out button renders greyed and carries the reason
+ * appended to its own tooltip, instead of firing a request the processor will ensure-and-drop.
+ */
+struct FCkInspector_Action
+{
+    FText ButtonLabel;
+    FText Tooltip;
+    TFunction<void()> OnClicked;
+    ECk_DebugRequest_Requirement Requirement = ECk_DebugRequest_Requirement::LocalOk;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -191,6 +211,119 @@ public:
         FOnClicked InOnClicked,
         FFilterValueGetter InFilterValueGetter) -> FCkInspectorWidgetBuilder&;
 
+    // ================================================================================================================
+    // INTERACTIVE VOCABULARY
+    //
+    // Everything below composes a CONTROL into the value column. Three cross-cutting rules, honoured
+    // by every one of them so an inspector author never re-derives them:
+    //
+    //  1. EditControlStyle axis (CkDebuggerStyleSelection). Hidden => the row degrades to its
+    //     read-only equivalent (an action row disappears entirely — read-only inspectors, exactly as
+    //     before this vocabulary existed). OnHover => the read-only value is what you see, and the
+    //     control swaps in while the row is hovered. Inline (default) => the control is always there.
+    //     The choice is made when the row is COMPOSED, so a flip takes effect on the next rebuild;
+    //     the hover swap itself is live.
+    //  2. Gate. Every control takes an ECk_DebugRequest_Requirement, evaluated LIVE against the
+    //     inspected entity's world. A gated-out control is greyed AND carries the reason in its
+    //     tooltip — never a live control that silently drops the request.
+    //  3. Edit guard. Rows whose interaction has DURATION — the numeric / vector / name / tag
+    //     type-in fields — register into the builder's FCkInspectorEditGuard for their focus window,
+    //     so the panel DEFERS its rebuild until the edit ends. Atomic controls (switch, button,
+    //     dropdown) take no scope: their input completes within one event, and a control that could
+    //     fail to report its end (a dropdown dismissed without a selection) would wedge the guard,
+    //     which is a worse failure than a rebuild behind an open popup.
+    //
+    // Values are written through the caller's setter, which must call a public Utils Request_*/Set_*
+    // — never a fragment mutation. Capture the typed handle BY VALUE and ck::IsValid it on fire.
+    // ================================================================================================================
+
+    /** Panel-scoped guard, threaded panel -> inspector -> builder -> row. Null is valid (no deferral). */
+    auto SetEditGuard(TSharedPtr<FCkInspectorEditGuard> InGuard) -> FCkInspectorWidgetBuilder&;
+
+    /** A row of flat buttons — the arg-free verbs (Pause, Restart, Clear, ForceRefresh, …). */
+    auto AddActionRow(
+        const FText& InLabel,
+        const TArray<FCkInspector_Action>& InActions) -> FCkInspectorWidgetBuilder&;
+
+    /** Boolean via SCkDebug_Switch. Read-only fallback renders the current state as text. */
+    auto AddToggleRow(
+        const FText& InLabel,
+        TAttribute<bool> InGet,
+        TFunction<void(bool)> InSet,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /** Single float via SCkDebug_NumericEditor (commit on enter / lost focus, never per keystroke). */
+    auto AddNumericRow(
+        const FText& InLabel,
+        TAttribute<float> InGet,
+        TFunction<void(float)> InSet,
+        TOptional<float> InMin = TOptional<float>{},
+        TOptional<float> InMax = TOptional<float>{},
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /** Single int32; same widget in Integer kind (rounds, no fractional part). */
+    auto AddIntegerRow(
+        const FText& InLabel,
+        TAttribute<int32> InGet,
+        TFunction<void(int32)> InSet,
+        TOptional<int32> InMin = TOptional<int32>{},
+        TOptional<int32> InMax = TOptional<int32>{},
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * Three aligned numeric editors sharing the aligned-column width, coloured by the X/Y/Z axis
+     * roles (Get_AxisColor) — the same RGB convention the read-only Transform rows use. Committing
+     * one component re-reads the whole vector and writes back a single modified copy.
+     */
+    auto AddVectorRow(
+        const FText& InLabel,
+        TAttribute<FVector> InGet,
+        TFunction<void(const FVector&)> InSet,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * As AddVectorRow, in the debugger's established (Roll, Pitch, Yaw) component order so index
+     * 0/1/2 colouring matches the axis each angle turns about — label the row accordingly
+     * ("Rotation (R,P,Y):"), exactly as CkInspector_Transform already does.
+     */
+    auto AddRotatorRow(
+        const FText& InLabel,
+        TAttribute<FRotator> InGet,
+        TFunction<void(const FRotator&)> InSet,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * Exclusive choice via SComboBox over caller-supplied display texts. The caller maps index <->
+     * enum; ESelectInfo::Direct is ignored so a programmatic restore never echoes back as a request.
+     */
+    auto AddEnumDropdownRow(
+        const FText& InLabel,
+        const TArray<FText>& InOptions,
+        TAttribute<int32> InGetSelectedIndex,
+        TFunction<void(int32)> InSetSelectedIndex,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /** Text entry committing on enter / lost focus, handed to the caller as an FName. */
+    auto AddNameEntryRow(
+        const FText& InLabel,
+        TAttribute<FText> InGet,
+        TFunction<void(FName)> InCommit,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    /**
+     * Gameplay-tag entry. TEXT ENTRY, deliberately: the real picker (SGameplayTagPicker) lives in
+     * GameplayTagsEditor, which no debugger module depends on — adding that dependency is not
+     * "trivially available" and is left for a later unit. Only a tag that RESOLVES is committed;
+     * unknown text is left uncommitted rather than clearing the caller's tag.
+     */
+    auto AddTagEntryRow(
+        const FText& InLabel,
+        TAttribute<FText> InGet,
+        TFunction<void(FGameplayTag)> InCommit,
+        ECk_DebugRequest_Requirement InRequirement = ECk_DebugRequest_Requirement::LocalOk) -> FCkInspectorWidgetBuilder&;
+
+    // ================================================================================================================
+
     /**
      * Build a clickable entity badge wrap-box. Each handle becomes an
      * SCkDebug_EntityRef pill; clicking opens that entity in the CK ECS
@@ -260,6 +393,39 @@ private:
         FFilterValueGetter InFilterValueGetter,
         FOnClicked InOnClicked = nullptr) -> FCkInspectorWidgetBuilder&;
 
+    // ----- Interactive-row plumbing -------------------------------------------
+
+    /** A fresh RAII scope on the builder's guard; rows capture it BY VALUE so it dies with the widget. */
+    auto DoMakeEditScope() const -> TSharedPtr<FCkInspectorEditScope>;
+
+    /** Live enabled-ness of a control under InRequirement, read against the entity Build was given. */
+    auto DoMakeGateEnabled(ECk_DebugRequest_Requirement InRequirement) const -> TAttribute<bool>;
+
+    /** InOwnTooltip with the gate's reason appended when there is one. */
+    auto DoMakeGateTooltip(
+        TAttribute<FText> InOwnTooltip,
+        ECk_DebugRequest_Requirement InRequirement) const -> TAttribute<FText>;
+
+    /** Applies the gate (enabled + tooltip) to a composed control in place, and returns it. */
+    auto DoApplyGate(
+        TSharedRef<SWidget> InControl,
+        TAttribute<FText> InOwnTooltip,
+        ECk_DebugRequest_Requirement InRequirement) const -> TSharedRef<SWidget>;
+
+    /**
+     * Wraps a control for the EditControlStyle axis. Inline returns the control untouched; OnHover
+     * returns a hover host that shows InReadOnlyText and swaps in the control while hovered (both
+     * children keep their layout footprint, so hovering never re-flows the row).
+     */
+    static auto DoComposeEditControl(
+        TSharedRef<SWidget> InControl,
+        TAttribute<FText> InReadOnlyText) -> TSharedRef<SWidget>;
+
     TArray<FRowDefinition> Rows;
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
+    TSharedPtr<FCkInspectorEditGuard> _EditGuard;
+
+    // Filled by Build. Interactive rows are composed BEFORE the entity is known, so they capture this
+    // box by value and read the handle live — which also keeps the gate honest when the world changes.
+    TSharedRef<FCk_Handle> _GateEntity = MakeShared<FCk_Handle>();
 };

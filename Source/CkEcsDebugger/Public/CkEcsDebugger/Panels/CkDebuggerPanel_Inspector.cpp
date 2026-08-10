@@ -10,6 +10,7 @@
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Utils/CkDebug_InspectorEditGuard.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityDebuggerLinks.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
@@ -153,6 +154,8 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
 {
     SelectionModel = InSelectionModel;
 
+    _EditGuard = MakeShared<FCkInspectorEditGuard>();
+
     RegisterDefaultInspectors();
 
     if (SelectionModel.IsValid())
@@ -193,13 +196,13 @@ auto SCkDebuggerPanel_Inspector::Construct(const FArguments& InArgs, TSharedPtr<
                 {
                     if (_PanelFilterString == InText) { return; }
                     _PanelFilterString = InText;
-                    RebuildInspectors();
+                    Request_RebuildInspectors();
                 })
                 .OnHighlightTextChanged_Lambda([this](const FString& InText)
                 {
                     if (_PanelHighlightString == InText) { return; }
                     _PanelHighlightString = InText;
-                    RebuildInspectors();
+                    Request_RebuildInspectors();
                 })
             ]
 
@@ -225,9 +228,20 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 {
     SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
+    // A rebuild parked while the user was typing fires here, on the first tick after the edit ends.
+    // Deliberately ahead of the refresh gate: this is a one-shot edge, not per-frame work, and the
+    // panel is showing stale structure until it runs.
+    if (_EditGuard.IsValid() && _EditGuard->Consume_PendingRebuild())
+    {
+        RebuildInspectors();
+        return;
+    }
+
     // Honour the user's refresh-mode + rate-cap settings for the ECS debugger.
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(SCkDebuggerWindow_Main::WindowId))
     { return; }
+
+    const auto HasActiveEdit = _EditGuard.IsValid() && _EditGuard->Get_HasActiveEdit();
 
     // POLICY — NEVER rebuild widget structure from Tick.
     //
@@ -266,12 +280,34 @@ auto SCkDebuggerPanel_Inspector::Tick(const FGeometry& AllottedGeometry, const d
 
             Inspector->Tick(Entity, InDeltaTime);
 
+            if (NOT Inspector->NeedsRebuild())
+            { continue; }
+
+            // DEFER, don't drop: while a row is mid-edit the inspector keeps its dirty flag, so the
+            // request survives to the tick after the edit ends instead of being swallowed here.
+            if (HasActiveEdit)
+            { continue; }
+
             // Clear the flag so stale rebuild requests don't accumulate.
-            // This is a no-op data-wise; the panel simply does not rebuild.
-            if (Inspector->NeedsRebuild())
-            { Inspector->ClearRebuildFlag(); }
+            // This is a no-op data-wise; the panel simply does not rebuild (see the POLICY note).
+            Inspector->ClearRebuildFlag();
         }
     }
+}
+
+// ============================================================================
+// Request_RebuildInspectors
+// ============================================================================
+
+auto SCkDebuggerPanel_Inspector::Request_RebuildInspectors() -> void
+{
+    if (_EditGuard.IsValid() && _EditGuard->Get_HasActiveEdit())
+    {
+        _EditGuard->Request_Rebuild();
+        return;
+    }
+
+    RebuildInspectors();
 }
 
 // ============================================================================
@@ -284,6 +320,11 @@ auto SCkDebuggerPanel_Inspector::RebuildInspectors() -> void
     { return; }
 
     DeactivateAllInspectors();
+
+    // Every interactive row is about to be destroyed, taking its edit scope with it. Clearing here
+    // makes that explicit rather than relying on destruction order.
+    if (_EditGuard.IsValid())
+    { _EditGuard->Clear_AllEdits(); }
 
     ScrollBox->ClearChildren();
     _InspectorContentContainers.Empty();
@@ -571,7 +612,7 @@ auto SCkDebuggerPanel_Inspector::OnDisplayModeChanged(ECkInspectorDisplayMode Ne
 {
     if (_DisplayMode == NewMode) { return; }
     _DisplayMode = NewMode;
-    RebuildInspectors();
+    Request_RebuildInspectors();
 }
 
 // ============================================================================
@@ -1020,6 +1061,7 @@ auto SCkDebuggerPanel_Inspector::RegisterDefaultInspectors() -> void
         if (Inspector.IsValid())
         {
             Inspector->Set_SelectionModel(SelectionModel);
+            Inspector->Set_EditGuard(_EditGuard);
         }
     }
 }
@@ -1030,7 +1072,7 @@ auto SCkDebuggerPanel_Inspector::RegisterDefaultInspectors() -> void
 
 auto SCkDebuggerPanel_Inspector::OnSelectionChanged(const TArray<FCk_Handle>& NewSelection) -> void
 {
-    RebuildInspectors();
+    Request_RebuildInspectors();
 }
 
 // ============================================================================
@@ -1040,6 +1082,15 @@ auto SCkDebuggerPanel_Inspector::OnSelectionChanged(const TArray<FCk_Handle>& Ne
 auto SCkDebuggerPanel_Inspector::OnInspectorFilterChanged(int32 InspectorIndex, const FString& InFilterText) -> void
 {
     InspectorFilters.Add(InspectorIndex, InFilterText);
+
+    // The granular path below is still a structural swap of the section's content — it would destroy
+    // an interactive row mid-edit exactly like a full rebuild. The filter text is already stored, so
+    // parking the rebuild loses nothing: it re-runs with this filter once the edit ends.
+    if (_EditGuard.IsValid() && _EditGuard->Get_HasActiveEdit())
+    {
+        _EditGuard->Request_Rebuild();
+        return;
+    }
 
     // Multi-entity: full rebuild to apply filter across all sub-sections
     if (_CurrentInspectedEntities.Num() > 1)

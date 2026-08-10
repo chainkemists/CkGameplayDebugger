@@ -21,6 +21,13 @@ namespace FrameBarChart
     constexpr float DesiredHeight = 200.0f;
     constexpr float TopPadding = 18.0f;     // room for frame number labels
     constexpr float BottomPadding = 4.0f;
+    constexpr float ScreenshotRailTopPadding = 4.0f;
+    constexpr float ScreenshotThumbnailWidth = 40.0f;
+    constexpr float ScreenshotThumbnailHeight = 22.0f;
+    constexpr float ScreenshotThumbnailGap = 2.0f;
+    constexpr float ScreenshotMarkerWidth = 2.0f;
+    constexpr float ScreenshotMarkerCapWidth = 8.0f;
+    constexpr float ScreenshotMarkerCapHeight = 5.0f;
     constexpr float LabelRightMargin = 120.0f;  // room for "100 ms (10 fps)" labels
     constexpr double MinFramesPerPixel = 0.05;   // max zoom in
     constexpr double MaxFramesPerPixel = 500.0;  // max zoom out (allows fitting thousands of frames)
@@ -42,6 +49,8 @@ namespace FrameBarChart
     auto ColorLabel()      -> FLinearColor { return CkStyle::OverlayOf(CkStyle::TextDim(), 0.7f); }
     auto ColorBackground() -> FLinearColor { return CkStyle::BgRoot(); }
     auto ColorGridLine()   -> FLinearColor { return CkStyle::OverlayOf(CkStyle::BorderStrong(), 0.25f); }
+    auto ColorScreenshotMarker() -> FLinearColor { return CkStyle::OverlayOf(CkStyle::Selection(), 0.95f); }
+    auto ColorScreenshotBorder() -> FLinearColor { return CkStyle::OverlayOf(CkStyle::Selection(), 0.7f); }
 
     auto Get_DisplayMaxMs(const TArray<double>& InDurationsMs) -> double
     {
@@ -100,6 +109,7 @@ auto
 {
     _TargetFrameMs = InArgs._TargetFrameMs;
     _OnFrameSelectionChanged = InArgs._OnFrameSelectionChanged;
+    _OnScreenshotMarkerClicked = InArgs._OnScreenshotMarkerClicked;
 
     _FrameTooltip = SNew(SToolTip)
         .TextMargin(FMargin(4.0f))
@@ -164,6 +174,7 @@ auto
     -> void
 {
     _FrameDurationsMs.Empty();
+    ClearScreenshotMarkers();
     _ViewOffset = 0.0;
     _FramesPerPixel = 1.0;
     _DisplayMaxMs = FrameBarChart::MinDisplayMaxMs;
@@ -187,6 +198,40 @@ auto
 {
     _TargetFrameMs = FMath::Max(1.0, InTargetMs);
     Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+auto
+    SCkFrameBarChart::
+    SetScreenshotMarkers(TArray<FCk_FrameScreenshotMarker>&& InMarkers)
+    -> void
+{
+    // Stable ordering makes overlap stacking and hit precedence deterministic across reloads.
+    InMarkers.Sort([](const FCk_FrameScreenshotMarker& Left, const FCk_FrameScreenshotMarker& Right)
+    {
+        if (Left.FrameIndex != Right.FrameIndex)
+        {
+            return Left.FrameIndex < Right.FrameIndex;
+        }
+        if (Left.ScreenshotId != Right.ScreenshotId)
+        {
+            return Left.ScreenshotId < Right.ScreenshotId;
+        }
+        return Left.Label < Right.Label;
+    });
+
+    _ScreenshotMarkers = MoveTemp(InMarkers);
+    Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+}
+
+auto
+    SCkFrameBarChart::
+    ClearScreenshotMarkers()
+    -> void
+{
+    if (_ScreenshotMarkers.IsEmpty()) return;
+
+    _ScreenshotMarkers.Empty();
+    Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -215,6 +260,33 @@ auto
     Invalidate(EInvalidateWidgetReason::Paint);
 }
 
+auto
+    SCkFrameBarChart::
+    EnsureFrameVisible(uint64 FrameIndex)
+    -> void
+{
+    if (_FrameDurationsMs.IsEmpty()) return;
+
+    const uint64 LastFrame = static_cast<uint64>(_FrameDurationsMs.Num() - 1);
+    const uint64 ClampedFrame = FMath::Min(FrameIndex, LastFrame);
+    const FGeometry& CachedGeometry = GetCachedGeometry();
+    const float Width = CachedGeometry.GetLocalSize().X;
+    if (Width <= 0.0f) return;
+
+    const float BarStep = GetBarStep(CachedGeometry);
+    const double VisibleFrameCount = FMath::Max(1.0, static_cast<double>(Width) / static_cast<double>(BarStep));
+    const double FirstVisibleFrame = _ViewOffset;
+    const double LastVisibleFrame = FirstVisibleFrame + VisibleFrameCount - 1.0;
+    if (static_cast<double>(ClampedFrame) >= FirstVisibleFrame && static_cast<double>(ClampedFrame) <= LastVisibleFrame)
+    {
+        return;
+    }
+
+    const double MaxOffset = FMath::Max(0.0, static_cast<double>(_FrameDurationsMs.Num()) - VisibleFrameCount);
+    _ViewOffset = FMath::Clamp(static_cast<double>(ClampedFrame) - VisibleFrameCount * 0.5, 0.0, MaxOffset);
+    Invalidate(EInvalidateWidgetReason::Paint);
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 // SWidget Interface
 // --------------------------------------------------------------------------------------------------------------------
@@ -236,7 +308,8 @@ auto
 {
     const float Width = AllottedGeometry.GetLocalSize().X;
     const float Height = AllottedGeometry.GetLocalSize().Y;
-    const float DrawHeight = Height - FrameBarChart::TopPadding - FrameBarChart::BottomPadding;
+    const float ChartBottom = GetChartBottom(AllottedGeometry);
+    const float DrawHeight = ChartBottom - FrameBarChart::TopPadding;
 
     if (_FrameDurationsMs.Num() == 0 || Width <= 0.0f || DrawHeight <= 0.0f)
     {
@@ -318,7 +391,7 @@ auto
 
             TArray<FVector2D> GridPoints;
             GridPoints.Add(FVector2D(LabelX, FrameBarChart::TopPadding));
-            GridPoints.Add(FVector2D(LabelX, Height - FrameBarChart::BottomPadding));
+            GridPoints.Add(FVector2D(LabelX, ChartBottom));
             FSlateDrawElement::MakeLines(
                 OutDrawElements, LayerId + 1,
                 AllottedGeometry.ToPaintGeometry(),
@@ -361,6 +434,64 @@ auto
             ESlateDrawEffect::None, Color);
     }
 
+    // Screenshot data is pre-decoded by the owner. This pass only places existing brushes, so
+    // neither normal painting nor hover input can introduce hitches while inspecting a trace.
+    if (NOT _ScreenshotMarkers.IsEmpty())
+    {
+        const float RailTop = ChartBottom + FrameBarChart::ScreenshotRailTopPadding;
+        for (int32 MarkerIndex = 0; MarkerIndex < _ScreenshotMarkers.Num(); ++MarkerIndex)
+        {
+            const FCk_FrameScreenshotMarker& Marker = _ScreenshotMarkers[MarkerIndex];
+            if (Marker.FrameIndex >= static_cast<uint64>(_FrameDurationsMs.Num())) continue;
+
+            const float MarkerX = FrameToX(AllottedGeometry, static_cast<int64>(Marker.FrameIndex));
+            if (MarkerX >= -FrameBarChart::ScreenshotMarkerCapWidth && MarkerX <= Width + FrameBarChart::ScreenshotMarkerCapWidth)
+            {
+                FSlateDrawElement::MakeBox(
+                    OutDrawElements, LayerId + 3,
+                    AllottedGeometry.ToPaintGeometry(
+                        FVector2D(FrameBarChart::ScreenshotMarkerWidth, ChartBottom - FrameBarChart::TopPadding),
+                        FSlateLayoutTransform(FVector2D(MarkerX - FrameBarChart::ScreenshotMarkerWidth * 0.5f, FrameBarChart::TopPadding))),
+                    FAppStyle::GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None, FrameBarChart::ColorScreenshotMarker());
+
+                FSlateDrawElement::MakeBox(
+                    OutDrawElements, LayerId + 4,
+                    AllottedGeometry.ToPaintGeometry(
+                        FVector2D(FrameBarChart::ScreenshotMarkerCapWidth, FrameBarChart::ScreenshotMarkerCapHeight),
+                        FSlateLayoutTransform(FVector2D(MarkerX - FrameBarChart::ScreenshotMarkerCapWidth * 0.5f, FrameBarChart::TopPadding))),
+                    FAppStyle::GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None, FrameBarChart::ColorScreenshotMarker());
+            }
+
+            // Do not pin off-screen images to either rail edge: the rail follows the same pan
+            // and zoom mapping as the bars, so an image enters only with its frame marker.
+            if (MarkerX < -FrameBarChart::ScreenshotThumbnailWidth ||
+                MarkerX > Width + FrameBarChart::ScreenshotThumbnailWidth)
+            {
+                continue;
+            }
+
+            const FSlateRect ThumbnailRect = GetScreenshotThumbnailRect(AllottedGeometry, MarkerIndex);
+            if (ThumbnailRect.Right < 0.0f || ThumbnailRect.Left > Width || ThumbnailRect.Bottom < RailTop || ThumbnailRect.Top > Height) continue;
+
+            const FVector2D ThumbnailSize(ThumbnailRect.Right - ThumbnailRect.Left, ThumbnailRect.Bottom - ThumbnailRect.Top);
+            FSlateDrawElement::MakeBox(
+                OutDrawElements, LayerId + 4,
+                AllottedGeometry.ToPaintGeometry(ThumbnailSize, FSlateLayoutTransform(FVector2D(ThumbnailRect.Left, ThumbnailRect.Top))),
+                Marker.ThumbnailBrush.IsValid() ? Marker.ThumbnailBrush.Get() : FAppStyle::GetBrush(TEXT("WhiteBrush")),
+                ESlateDrawEffect::None, FLinearColor::White);
+
+            TArray<FVector2D> BorderPoints;
+            BorderPoints.Add(FVector2D(ThumbnailRect.Left, ThumbnailRect.Top));
+            BorderPoints.Add(FVector2D(ThumbnailRect.Right, ThumbnailRect.Top));
+            BorderPoints.Add(FVector2D(ThumbnailRect.Right, ThumbnailRect.Bottom));
+            BorderPoints.Add(FVector2D(ThumbnailRect.Left, ThumbnailRect.Bottom));
+            BorderPoints.Add(FVector2D(ThumbnailRect.Left, ThumbnailRect.Top));
+            FSlateDrawElement::MakeLines(
+                OutDrawElements, LayerId + 5, AllottedGeometry.ToPaintGeometry(), BorderPoints,
+                ESlateDrawEffect::None, FrameBarChart::ColorScreenshotBorder(), true, 1.0f);
+        }
+    }
+
     if (_bHasSelection)
     {
         const float SelX1 = (static_cast<float>(_SelectionStart) - static_cast<float>(_ViewOffset)) * BarStep;
@@ -395,7 +526,7 @@ auto
         }
     }
 
-    return LayerId + 5;
+    return LayerId + 6;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -413,8 +544,15 @@ auto
 
     if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
     {
+        const FVector2D LocalPosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+        if (const FCk_FrameScreenshotMarker* ScreenshotMarker = FindScreenshotAt(MyGeometry, LocalPosition))
+        {
+            _OnScreenshotMarkerClicked.ExecuteIfBound(ScreenshotMarker->ScreenshotId, ScreenshotMarker->FrameIndex);
+            return FReply::Handled().SetUserFocus(Self, EFocusCause::Mouse);
+        }
+
         _bIsDragging = true;
-        _DragStartFrame = XToFrame(MyGeometry, MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X);
+        _DragStartFrame = XToFrame(MyGeometry, LocalPosition.X);
         return FReply::Handled().CaptureMouse(Self).SetUserFocus(Self, EFocusCause::Mouse);
     }
 
@@ -595,6 +733,169 @@ auto
 {
     const float BarStep = GetBarStep(Geometry);
     return (static_cast<float>(FrameIndex) - static_cast<float>(_ViewOffset)) * BarStep;
+}
+
+auto
+    SCkFrameBarChart::
+    GetScreenshotRailHeight(const FGeometry& Geometry) const
+    -> float
+{
+    if (_ScreenshotMarkers.IsEmpty()) return 0.0f;
+
+    int32 LaneCount = 0;
+    for (int32 MarkerIndex = 0; MarkerIndex < _ScreenshotMarkers.Num(); ++MarkerIndex)
+    {
+        const int32 Lane = GetScreenshotThumbnailLane(Geometry, MarkerIndex);
+        if (Lane != INDEX_NONE)
+        {
+            LaneCount = FMath::Max(LaneCount, Lane + 1);
+        }
+    }
+    if (LaneCount == 0)
+    {
+        return 0.0f;
+    }
+
+    return FrameBarChart::ScreenshotRailTopPadding +
+        static_cast<float>(LaneCount) *
+            (FrameBarChart::ScreenshotThumbnailHeight + FrameBarChart::ScreenshotThumbnailGap) +
+        FrameBarChart::BottomPadding;
+}
+
+auto
+    SCkFrameBarChart::
+    GetChartBottom(const FGeometry& Geometry) const
+    -> float
+{
+    return Geometry.GetLocalSize().Y - FrameBarChart::BottomPadding - GetScreenshotRailHeight(Geometry);
+}
+
+auto
+    SCkFrameBarChart::
+    GetScreenshotThumbnailLane(const FGeometry& Geometry, int32 MarkerIndex) const
+    -> int32
+{
+    check(MarkerIndex >= 0 && MarkerIndex < _ScreenshotMarkers.Num());
+
+    const float Width = Geometry.GetLocalSize().X;
+    auto LaneRightEdges = TArray<float, TInlineAllocator<8>>{};
+    for (int32 CurrentIndex = 0; CurrentIndex <= MarkerIndex; ++CurrentIndex)
+    {
+        const float MarkerX = FrameToX(
+            Geometry,
+            static_cast<int64>(_ScreenshotMarkers[CurrentIndex].FrameIndex));
+        if (MarkerX < -FrameBarChart::ScreenshotThumbnailWidth
+            || MarkerX > Width + FrameBarChart::ScreenshotThumbnailWidth)
+        {
+            if (CurrentIndex == MarkerIndex)
+            {
+                return INDEX_NONE;
+            }
+            continue;
+        }
+
+        const float Left = FMath::Clamp(
+            MarkerX - FrameBarChart::ScreenshotThumbnailWidth * 0.5f,
+            0.0f,
+            FMath::Max(0.0f, Width - FrameBarChart::ScreenshotThumbnailWidth));
+        const float Right = Left + FrameBarChart::ScreenshotThumbnailWidth;
+
+        int32 AssignedLane = INDEX_NONE;
+        for (int32 CandidateLane = 0; CandidateLane < LaneRightEdges.Num(); ++CandidateLane)
+        {
+            if (Left >= LaneRightEdges[CandidateLane])
+            {
+                AssignedLane = CandidateLane;
+                break;
+            }
+        }
+
+        if (AssignedLane == INDEX_NONE)
+        {
+            AssignedLane = LaneRightEdges.Add(Right);
+        }
+        else
+        {
+            LaneRightEdges[AssignedLane] = Right;
+        }
+
+        if (CurrentIndex == MarkerIndex)
+        {
+            return AssignedLane;
+        }
+    }
+
+    checkNoEntry();
+    return 0;
+}
+
+auto
+    SCkFrameBarChart::
+    GetScreenshotThumbnailRect(const FGeometry& Geometry, int32 MarkerIndex) const
+    -> FSlateRect
+{
+    check(MarkerIndex >= 0 && MarkerIndex < _ScreenshotMarkers.Num());
+
+    const float Width = Geometry.GetLocalSize().X;
+    const float ChartBottom = GetChartBottom(Geometry);
+    const FCk_FrameScreenshotMarker& Marker = _ScreenshotMarkers[MarkerIndex];
+    const float MarkerX = FrameToX(Geometry, static_cast<int64>(Marker.FrameIndex));
+    const float Left = FMath::Clamp(
+        MarkerX - FrameBarChart::ScreenshotThumbnailWidth * 0.5f,
+        0.0f,
+        FMath::Max(0.0f, Width - FrameBarChart::ScreenshotThumbnailWidth));
+    const int32 Lane = GetScreenshotThumbnailLane(Geometry, MarkerIndex);
+    check(Lane != INDEX_NONE);
+    const float Top = ChartBottom + FrameBarChart::ScreenshotRailTopPadding +
+        static_cast<float>(Lane) *
+            (FrameBarChart::ScreenshotThumbnailHeight + FrameBarChart::ScreenshotThumbnailGap);
+
+    return FSlateRect(
+        Left,
+        Top,
+        Left + FrameBarChart::ScreenshotThumbnailWidth,
+        Top + FrameBarChart::ScreenshotThumbnailHeight);
+}
+
+auto
+    SCkFrameBarChart::
+    FindScreenshotAt(const FGeometry& Geometry, const FVector2D& LocalPosition) const
+    -> const FCk_FrameScreenshotMarker*
+{
+    if (_ScreenshotMarkers.IsEmpty()) return nullptr;
+
+    const float ChartBottom = GetChartBottom(Geometry);
+    const float MarkerHitHalfWidth = FrameBarChart::ScreenshotMarkerCapWidth * 0.5f;
+
+    // Reverse traversal deliberately matches paint precedence: if overlapping frame markers are
+    // visually stacked, the top-most stable marker is the one that receives the click.
+    for (int32 MarkerIndex = _ScreenshotMarkers.Num() - 1; MarkerIndex >= 0; --MarkerIndex)
+    {
+        const FCk_FrameScreenshotMarker& Marker = _ScreenshotMarkers[MarkerIndex];
+        const float MarkerX = Marker.FrameIndex < static_cast<uint64>(_FrameDurationsMs.Num())
+            ? FrameToX(Geometry, static_cast<int64>(Marker.FrameIndex))
+            : -FrameBarChart::ScreenshotThumbnailWidth - 1.0f;
+        const float Width = Geometry.GetLocalSize().X;
+        if (MarkerX >= -FrameBarChart::ScreenshotThumbnailWidth &&
+            MarkerX <= Width + FrameBarChart::ScreenshotThumbnailWidth)
+        {
+            const FSlateRect ThumbnailRect = GetScreenshotThumbnailRect(Geometry, MarkerIndex);
+            if (LocalPosition.X >= ThumbnailRect.Left && LocalPosition.X <= ThumbnailRect.Right &&
+                LocalPosition.Y >= ThumbnailRect.Top && LocalPosition.Y <= ThumbnailRect.Bottom)
+            {
+                return &Marker;
+            }
+        }
+
+        if (Marker.FrameIndex >= static_cast<uint64>(_FrameDurationsMs.Num())) continue;
+        if (LocalPosition.X >= MarkerX - MarkerHitHalfWidth && LocalPosition.X <= MarkerX + MarkerHitHalfWidth &&
+            LocalPosition.Y >= FrameBarChart::TopPadding && LocalPosition.Y <= ChartBottom)
+        {
+            return &Marker;
+        }
+    }
+
+    return nullptr;
 }
 
 auto

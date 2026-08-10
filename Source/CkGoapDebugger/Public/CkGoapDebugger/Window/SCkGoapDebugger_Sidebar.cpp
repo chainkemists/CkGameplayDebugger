@@ -11,9 +11,14 @@
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
+#include "CkDebuggerCommon/Widgets/SCkDebug_ScrubTimeline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "HAL/PlatformApplicationMisc.h"
@@ -21,18 +26,16 @@
 #include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SLeafWidget.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
-#include "Rendering/DrawElements.h"
 
 // ====================================================================================================================
 // Internal helpers (file-prefixed to dodge anonymous-namespace unity collisions
@@ -42,43 +45,55 @@
 
 namespace
 {
+    // ---- Scrub-track geometry ------------------------------------------------
+    constexpr auto ScrubTrackHeight        = 22.0f;
+    constexpr auto ScrubDefaultViewSeconds = 30.0;
+
+    // A GOAP session outlives the shared widget's 300s default ceiling; the track must still be
+    // able to frame a whole recording.
+    constexpr auto ScrubMaxViewSeconds     = 3600.0;
+
     // ---- Per-Planner status colour (drives left dot) -------------------------
 
     auto ResolveStatusColor_Sidebar(ECk_GoapPlanStatus InStatus) -> FLinearColor
     {
         switch (InStatus)
         {
-        case ECk_GoapPlanStatus::PlanFound:  return FCkGoapDebuggerStyle::Color_Status_PlanFound;
-        case ECk_GoapPlanStatus::Planning:   return FCkGoapDebuggerStyle::Color_Status_Planning;
-        case ECk_GoapPlanStatus::PlanFailed: return FCkGoapDebuggerStyle::Color_Status_Failed;
-        default:                             return FCkGoapDebuggerStyle::Color_Text_Muted;
+        case ECk_GoapPlanStatus::PlanFound:  return CkStyle::Ok();
+        case ECk_GoapPlanStatus::Planning:   return CkStyle::Accent();
+        case ECk_GoapPlanStatus::PlanFailed: return CkStyle::Err();
+        default:                             return CkStyle::TextDim();
         }
     }
 
     // Variant that honours the per-Planner _AllowPlanFailed opt-out: when the
-    // Planner explicitly tolerates PlanFailed, we render the status dot in
-    // amber (Color_Status_Selected) instead of error red, so users don't read
-    // the row as a misconfiguration.
+    // Planner explicitly tolerates PlanFailed, we render the status dot in the
+    // Warn tone instead of Err, so users don't read the row as a misconfiguration.
     auto ResolveStatusColorWithOptOut_Sidebar(
         ECk_GoapPlanStatus InStatus,
         bool InAllowPlanFailed) -> FLinearColor
     {
         if (InStatus == ECk_GoapPlanStatus::PlanFailed && InAllowPlanFailed)
-        { return FCkGoapDebuggerStyle::Color_Status_Selected; }
+        { return CkStyle::Warn(); }
         return ResolveStatusColor_Sidebar(InStatus);
+    }
+
+    auto HistoryEventTone_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> ECk_Tone
+    {
+        switch (InKind)
+        {
+        case ECkGoapDebugger_HistoryEventKind::PlanFailed:        return ECk_Tone::Err;
+        case ECkGoapDebugger_HistoryEventKind::PlanFound:         return ECk_Tone::Ok;
+        case ECkGoapDebugger_HistoryEventKind::ActionSetDisabled: return ECk_Tone::Neutral;
+        case ECkGoapDebugger_HistoryEventKind::ActionSetEnabled:  return ECk_Tone::Ok;
+        case ECkGoapDebugger_HistoryEventKind::ActionDeactivated: return ECk_Tone::Neutral;
+        default:                                                  return ECk_Tone::Accent;
+        }
     }
 
     auto HistoryEventColor_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FLinearColor
     {
-        switch (InKind)
-        {
-        case ECkGoapDebugger_HistoryEventKind::PlanFailed:        return FCkGoapDebuggerStyle::Color_Status_Failed;
-        case ECkGoapDebugger_HistoryEventKind::PlanFound:         return FCkGoapDebuggerStyle::Color_Status_PlanFound;
-        case ECkGoapDebugger_HistoryEventKind::ActionSetDisabled: return FCkGoapDebuggerStyle::Color_Text_Faint;
-        case ECkGoapDebugger_HistoryEventKind::ActionSetEnabled:  return FCkGoapDebuggerStyle::Color_Status_PlanFound;
-        case ECkGoapDebugger_HistoryEventKind::ActionDeactivated: return FCkGoapDebuggerStyle::Color_Text_Muted;
-        default:                                                  return FCkGoapDebuggerStyle::Color_Status_Planning;
-        }
+        return CkStyle::GetToneColor(HistoryEventTone_Sidebar(InKind));
     }
 
     auto HistoryKindShort_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> FString
@@ -97,51 +112,30 @@ namespace
         }
     }
 
-    // Compact toned pill for the event kind (ACT / DEACT / PLAN / ...), so the kind is visually
-    // separable from the action name. Plain SBorder + STextBlock — safe inside an STableRow.
+    // Compact toned badge for the event kind (ACT / DEACT / PLAN / ...), so the kind is visually
+    // separable from the action name. The axis badge is visual-only — safe inside an STableRow.
     auto MakeKindPill_Sidebar(ECkGoapDebugger_HistoryEventKind InKind) -> TSharedRef<SWidget>
     {
-        const auto Tone = HistoryEventColor_Sidebar(InKind);
-        auto Bg = Tone;
-        Bg.A = 0.18f;
         return SNew(SBox)
             .MinDesiredWidth(46.0f)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
             [
-                SNew(SBorder)
-                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                    .BorderBackgroundColor(FSlateColor(Bg))
-                    .HAlign(HAlign_Center)
-                    .VAlign(VAlign_Center)
-                    .Padding(FMargin(5.0f, 1.0f))
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(HistoryKindShort_Sidebar(InKind)))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                            .ColorAndOpacity(FSlateColor(Tone))
-                    ]
+                ck_goap_debugger_axes::Make_Chip(
+                    FText::FromString(HistoryKindShort_Sidebar(InKind)),
+                    HistoryEventTone_Sidebar(InKind))
             ];
     }
 
     auto MakeFlapPill_Sidebar() -> TSharedRef<SWidget>
     {
-        const auto Tone = FCkGoapDebuggerStyle::Color_Status_Selected;   // amber accent for flap storms
-        auto Bg = Tone;
-        Bg.A = 0.18f;
         return SNew(SBox)
             .MinDesiredWidth(46.0f)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
             [
-                SNew(SBorder)
-                    .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                    .BorderBackgroundColor(FSlateColor(Bg))
-                    .HAlign(HAlign_Center)
-                    .VAlign(VAlign_Center)
-                    .Padding(FMargin(5.0f, 1.0f))
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("FLAP")))
-                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 7))
-                            .ColorAndOpacity(FSlateColor(Tone))
-                    ]
+                ck_goap_debugger_axes::Make_Chip(
+                    FText::FromString(TEXT("FLAP")), ECk_Tone::Warn)
             ];
     }
 
@@ -186,244 +180,6 @@ namespace
 }
 
 // ====================================================================================================================
-// SCRUB TRACK — custom leaf widget. Paints chain/failure dots positioned
-// proportionally along a thin horizontal track. Same behaviour as pre-U11.7-B;
-// only renamed where collisions might emerge.
-// ====================================================================================================================
-
-class SCkGoapDebugger_ScrubTrack : public SLeafWidget
-{
-public:
-    DECLARE_DELEGATE_OneParam(FOnEventClicked, int32 /*HistIdx*/);
-
-    SLATE_BEGIN_ARGS(SCkGoapDebugger_ScrubTrack) {}
-        SLATE_EVENT(FOnEventClicked, OnEventClicked)
-    SLATE_END_ARGS()
-
-    auto Construct(const FArguments& InArgs, TWeakPtr<FCkGoapDebugger_ViewModel> InViewModel) -> void
-    {
-        _ViewModel = InViewModel;
-        _OnEventClicked = InArgs._OnEventClicked;
-        SetCanTick(false);
-    }
-
-    virtual auto ComputeDesiredSize(float) const -> FVector2D override
-    { return FVector2D(120.0f, 22.0f); }
-
-    virtual auto OnPaint(
-        const FPaintArgs& Args,
-        const FGeometry& AllottedGeometry,
-        const FSlateRect& MyCullingRect,
-        FSlateWindowElementList& OutDrawElements,
-        int32 LayerId,
-        const FWidgetStyle& InWidgetStyle,
-        bool bParentEnabled) const -> int32 override
-    {
-        const auto Local = AllottedGeometry.GetLocalSize();
-        const auto TrackY = Local.Y * 0.5f;
-        const auto TrackThickness = 2.0f;
-        const auto* WhiteBrush = FAppStyle::GetBrush(TEXT("WhiteBrush"));
-
-        FSlateDrawElement::MakeBox(
-            OutDrawElements,
-            LayerId,
-            AllottedGeometry.ToPaintGeometry(
-                FVector2f(Local.X, TrackThickness),
-                FSlateLayoutTransform(FVector2f(0.0f, TrackY - TrackThickness * 0.5f))),
-            WhiteBrush,
-            ESlateDrawEffect::None,
-            FCkGoapDebuggerStyle::Color_Border_Subtle);
-
-        constexpr auto NowBarWidth = 2.0f;
-        constexpr auto NowBarHeight = 14.0f;
-        FSlateDrawElement::MakeBox(
-            OutDrawElements,
-            LayerId + 1,
-            AllottedGeometry.ToPaintGeometry(
-                FVector2f(NowBarWidth, NowBarHeight),
-                FSlateLayoutTransform(FVector2f(Local.X - NowBarWidth, TrackY - NowBarHeight * 0.5f))),
-            WhiteBrush,
-            ESlateDrawEffect::None,
-            FCkGoapDebuggerStyle::Color_Status_PlanFound);
-
-        const auto VM = _ViewModel.Pin();
-        if (NOT VM.IsValid())
-        { return LayerId + 2; }
-
-        const auto Entity = VM->GetSelectedEntity();
-        if (NOT ck::IsValid(Entity))
-        { return LayerId + 2; }
-
-        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
-        if (Hist.Num() == 0)
-        { return LayerId + 2; }
-
-        const auto SelectedIdx = (VM->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
-            ? VM->GetScrubEventIndex() : INDEX_NONE;
-
-        const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
-
-        // Flap-run bands: a storm renders as one amber band over its true time window instead of
-        // dozens of crushed dots. Computed from the same grouping the list uses.
-        const auto Groups = ck_goap_debugger_history_model::BuildPlannerGroups(Hist,
-            [](const FCk_Handle_Goap_Planner&) { return FString{}; });
-        auto FlapSpans = TArray<TPair<double, double>>{};
-        for (const auto& Group : Groups)
-        {
-            for (const auto& Row : Group.Rows)
-            { if (Row.IsFlap) { FlapSpans.Emplace(Row.FlapTStart, Row.FlapTEnd); } }
-        }
-
-        const auto T0     = Hist[0].WorldTimeSeconds;
-        const auto T1     = Hist.Last().WorldTimeSeconds;
-        const auto TSpan  = FMath::Max(0.001, T1 - T0);
-        constexpr auto EdgePad = 8.0f;
-        const auto Usable = FMath::Max(1.0f, Local.X - EdgePad * 2.0f);
-        const auto TimeToX = [&](double InT) -> float
-        { return EdgePad + Usable * FMath::Clamp(static_cast<float>((InT - T0) / TSpan), 0.0f, 1.0f); };
-
-        constexpr auto BandHeight = 9.0f;
-        for (const auto& Sp : FlapSpans)
-        {
-            const auto X0 = TimeToX(Sp.Key);
-            const auto W  = FMath::Max(2.0f, TimeToX(Sp.Value) - X0);
-            FSlateDrawElement::MakeBox(
-                OutDrawElements, LayerId + 2,
-                AllottedGeometry.ToPaintGeometry(
-                    FVector2f(W, BandHeight),
-                    FSlateLayoutTransform(FVector2f(X0, TrackY - BandHeight * 0.5f))),
-                WhiteBrush, ESlateDrawEffect::None, FCkGoapDebuggerStyle::Color_Status_Selected);
-        }
-
-        const auto IsInFlap = [&](double InT) -> bool
-        {
-            for (const auto& Sp : FlapSpans) { if (InT >= Sp.Key && InT <= Sp.Value) { return true; } }
-            return false;
-        };
-
-        constexpr auto DotRadius = 4.0f;
-        constexpr auto SelectedDotRadius = 6.0f;
-        constexpr auto OutlineThickness = 1.5f;
-
-        for (auto i = 0; i < Hist.Num(); ++i)
-        {
-            const auto& Ev = Hist[i];
-            const auto CenterX = TrackPx[i];
-            const auto IsSelected = (i == SelectedIdx);
-            if (NOT IsSelected && IsInFlap(Ev.WorldTimeSeconds)) { continue; }   // covered by the band
-            const auto R = IsSelected ? SelectedDotRadius : DotRadius;
-
-            const auto Color = HistoryEventColor_Sidebar(Ev.Kind);
-
-            if (IsSelected)
-            {
-                const auto Ring = R + OutlineThickness;
-                FSlateDrawElement::MakeBox(
-                    OutDrawElements,
-                    LayerId + 2,
-                    AllottedGeometry.ToPaintGeometry(
-                        FVector2f(Ring * 2.0f, Ring * 2.0f),
-                        FSlateLayoutTransform(FVector2f(CenterX - Ring, TrackY - Ring))),
-                    WhiteBrush,
-                    ESlateDrawEffect::None,
-                    FCkGoapDebuggerStyle::Color_Text_Primary);
-            }
-
-            FSlateDrawElement::MakeBox(
-                OutDrawElements,
-                LayerId + 3,
-                AllottedGeometry.ToPaintGeometry(
-                    FVector2f(R * 2.0f, R * 2.0f),
-                    FSlateLayoutTransform(FVector2f(CenterX - R, TrackY - R))),
-                WhiteBrush,
-                ESlateDrawEffect::None,
-                Color);
-        }
-
-        return LayerId + 4;
-    }
-
-    virtual auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override
-    {
-        if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
-        { return FReply::Unhandled(); }
-
-        const auto VM = _ViewModel.Pin();
-        if (NOT VM.IsValid())
-        { return FReply::Unhandled(); }
-
-        const auto Entity = VM->GetSelectedEntity();
-        if (NOT ck::IsValid(Entity))
-        { return FReply::Unhandled(); }
-
-        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
-        if (Hist.Num() == 0)
-        { return FReply::Unhandled(); }
-
-        const auto Local   = MyGeometry.GetLocalSize();
-        const auto LocalP  = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
-        const auto TrackPx = ComputeTrackPositions(Hist, Local.X);
-
-        constexpr auto HitRadius = 10.0f;
-        auto BestIdx  = int32{INDEX_NONE};
-        auto BestDist = HitRadius;
-
-        for (auto i = 0; i < TrackPx.Num(); ++i)
-        {
-            const auto Dist = FMath::Abs(static_cast<float>(LocalP.X) - TrackPx[i]);
-            if (Dist < BestDist)
-            {
-                BestDist = Dist;
-                BestIdx  = i;
-            }
-        }
-
-        if (BestIdx != INDEX_NONE && _OnEventClicked.IsBound())
-        {
-            _OnEventClicked.Execute(BestIdx);
-            return FReply::Handled();
-        }
-
-        return FReply::Unhandled();
-    }
-
-private:
-    static auto ComputeTrackPositions(
-        const TArray<FCkGoapDebugger_HistoryEvent>& InHist,
-        float InWidth) -> TArray<float>
-    {
-        auto Out = TArray<float>{};
-        Out.Reserve(InHist.Num());
-
-        if (InHist.Num() == 0) { return Out; }
-
-        constexpr auto EdgePad = 8.0f;
-        const auto Usable = FMath::Max(1.0f, InWidth - EdgePad * 2.0f);
-
-        if (InHist.Num() == 1)
-        {
-            Out.Add(EdgePad + Usable * 0.5f);
-            return Out;
-        }
-
-        const auto T0 = InHist[0].WorldTimeSeconds;
-        const auto T1 = InHist.Last().WorldTimeSeconds;
-        const auto Span = FMath::Max(0.001, T1 - T0);
-
-        for (const auto& Ev : InHist)
-        {
-            const auto Alpha = static_cast<float>((Ev.WorldTimeSeconds - T0) / Span);
-            Out.Add(EdgePad + Usable * FMath::Clamp(Alpha, 0.0f, 1.0f));
-        }
-
-        return Out;
-    }
-
-    TWeakPtr<FCkGoapDebugger_ViewModel> _ViewModel;
-    FOnEventClicked                     _OnEventClicked;
-};
-
-// ====================================================================================================================
 // CONSTRUCT / DESTRUCT
 // ====================================================================================================================
 
@@ -452,10 +208,35 @@ auto
         .OnContextMenuOpening(this, &SCkGoapDebugger_Sidebar::OnHistoryContextMenu)
         .SelectionMode(ESelectionMode::Multi);
 
-    auto ScrubTrack = SAssignNew(_ScrubTrack, SCkGoapDebugger_ScrubTrack,
-                                 TWeakPtr<FCkGoapDebugger_ViewModel>(_ViewModel))
-        .OnEventClicked(SCkGoapDebugger_ScrubTrack::FOnEventClicked::CreateSP(
-            this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent));
+    // The scrub track is the shared SCkDebug_ScrubTimeline: history events are selectable Dot marks
+    // (SelectionId == history index), flap storms are amber segments, and the widget owns its own
+    // pan/zoom window — the ViewModel keeps only mode + scrub index, exactly as before.
+    auto ScrubTrack = SAssignNew(_ScrubTrack, SCkDebug_ScrubTimeline)
+        .DesiredHeight(ScrubTrackHeight)
+        .SegmentHeightFraction(1.0f)
+        .ShowRuler(false)
+        .InitialViewDuration(ScrubDefaultViewSeconds)
+        .MinViewDuration(0.25)
+        .MaxViewDuration(ScrubMaxViewSeconds)
+        .Mode_Lambda([this]()
+        {
+            return (_ViewModel.IsValid() && _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
+                ? ECkDebug_ScrubMode::Scrub
+                : ECkDebug_ScrubMode::Live;
+        })
+        .ScrubTime_Lambda([this]() { return Get_ScrubTimeSeconds(); })
+        .LiveTime_Lambda([this]() { return Get_LiveTimeSeconds(); })
+        .SelectedMarkId_Lambda([this]()
+        {
+            return (_ViewModel.IsValid() && _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
+                ? _ViewModel->GetScrubEventIndex()
+                : INDEX_NONE;
+        })
+        .CopyText_Lambda([this]() { return BuildCopyText(_HistoryItems); })
+        .OnMarkSelected(FOnCkDebug_ScrubTimelineMarkSelected::CreateSP(
+            this, &SCkGoapDebugger_Sidebar::SelectHistoryEvent))
+        .OnScrubbed(FOnCkDebug_ScrubTimelineScrubbed::CreateSP(
+            this, &SCkGoapDebugger_Sidebar::SelectHistoryEventNearestTime));
 
     // History block is built here but parented by the WINDOW into a full-width bottom dock
     // (see Get_HistoryWidget). The sidebar's own ChildSlot holds only the planner tree.
@@ -476,10 +257,13 @@ auto
                                     .FillWidth(1.0f)
                                     .VAlign(VAlign_Center)
                                     [
+                                        // Live count in the label, so this cannot be SCkDebug_SectionHeader
+                                        // (its Label is a plain FText). Same tokens the section-header
+                                        // axis resolves to for the default Uppercase option.
                                         SNew(SCkDebug_SelectableLabel)
                                             .Text_Lambda([this]() { return GetHistoryHeaderText(); })
-                                            .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                            .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                     ]
                                 + SHorizontalBox::Slot()
                                     .AutoWidth()
@@ -531,16 +315,26 @@ auto
                         [
                             SNew(SCkDebug_SelectableLabel)
                                 .Text_Lambda([this]() { return GetPlannerTreeHeaderText(); })
-                                .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                .Font(CkStyle::BoldFont(CkStyle::FontSizeH4()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
 
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(SSeparator)
-                                .Thickness(1.0f)
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
+                            SNew(SBox)
+                                .HeightOverride_Lambda([]() -> FOptionalSize
+                                { return FOptionalSize{ck_goap_debugger_axes::Get_SeparatorThickness()}; })
+                                .Visibility_Lambda([]()
+                                {
+                                    return ck_goap_debugger_axes::Get_SeparatorThickness() > 0.0f
+                                        ? EVisibility::Visible : EVisibility::Collapsed;
+                                })
+                                [
+                                    SNew(SImage)
+                                        .Image(CkStyle::GetFilledBrush())
+                                        .ColorAndOpacity(FSlateColor(CkStyle::Border()))
+                                ]
                         ]
 
                     + SVerticalBox::Slot()
@@ -577,11 +371,14 @@ auto
     _HistoryItemsByKey.Empty();
     _MaterializedEntity     = FCk_Handle{};
     _LastHistoryEntity      = FCk_Handle{};
+    _ScrubFramedEntity      = FCk_Handle{};
     _LastTreeStructureHash  = 0;
     _LastHistoryHash        = 0;
+    _LastScrubHash          = 0;
 
     if (_TreeView.IsValid())        { _TreeView->RequestTreeRefresh(); }
     if (_HistoryListView.IsValid()) { _HistoryListView->RebuildList(); }
+    if (_ScrubTrack.IsValid())      { _ScrubTrack->Set_Content({}, {}); }
 }
 
 auto
@@ -603,8 +400,147 @@ auto
     SyncTreeSelectionFromViewModel();
     SyncHistoryListSelectionFromViewModel();
 
-    if (_ScrubTrack.IsValid())
-    { _ScrubTrack->Invalidate(EInvalidateWidgetReason::Paint); }
+    RebuildScrubContent();
+}
+
+// ====================================================================================================================
+// PRIVATE — scrub track content
+// ====================================================================================================================
+
+auto
+    SCkGoapDebugger_Sidebar::
+    Get_LiveTimeSeconds() const
+    -> double
+{
+    if (NOT _ViewModel.IsValid()) { return 0.0; }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity)) { return 0.0; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    return Hist.Num() > 0 ? Hist.Last().WorldTimeSeconds : 0.0;
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    Get_ScrubTimeSeconds() const
+    -> double
+{
+    if (NOT _ViewModel.IsValid()) { return 0.0; }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity)) { return 0.0; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    const auto Index = _ViewModel->GetScrubEventIndex();
+
+    return Hist.IsValidIndex(Index) ? Hist[Index].WorldTimeSeconds : Get_LiveTimeSeconds();
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    RebuildScrubContent()
+    -> void
+{
+    if (NOT _ScrubTrack.IsValid()) { return; }
+
+    const auto Entity = _ViewModel.IsValid() ? _ViewModel->GetSelectedEntity() : FCk_Handle{};
+    if (NOT ck::IsValid(Entity))
+    {
+        _ScrubTrack->Set_Content({}, {});
+        _ScrubFramedEntity = FCk_Handle{};
+        _LastScrubHash     = 0;
+        return;
+    }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    if (Hist.Num() == 0)
+    {
+        _ScrubTrack->Set_Content({}, {});
+        _ScrubFramedEntity = FCk_Handle{};
+        _LastScrubHash     = 0;
+        return;
+    }
+
+    // Same hash-debounce discipline as the history list: the marks only change when the recording
+    // grows or the selection moves. Mode / cursor / selection ring are attribute-bound and repaint
+    // without any content push.
+    auto NewHash = uint32{0};
+    NewHash = HashCombine(NewHash, ::GetTypeHash(Entity));
+    NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Num()));
+    NewHash = HashCombine(NewHash, ::GetTypeHash(Hist.Last().FrameNumber));
+    NewHash = HashCombine(NewHash, ::GetTypeHash(_ViewModel->GetScrubEventIndex()));
+    NewHash = HashCombine(NewHash, ::GetTypeHash(static_cast<int32>(_ViewModel->GetMode())));
+
+    if (NewHash == _LastScrubHash) { return; }
+    _LastScrubHash = NewHash;
+
+    // Flap-run bands: a storm renders as ONE segment over its true time window instead of dozens of
+    // crushed dots. Same grouping the list uses, so band and rows never disagree.
+    const auto Groups = ck_goap_debugger_history_model::BuildPlannerGroups(Hist,
+        [](const FCk_Handle_Goap_Planner&) { return FString{}; });
+
+    auto Segments = TArray<FCkDebug_ScrubSegment>{};
+    for (const auto& Group : Groups)
+    {
+        for (const auto& Row : Group.Rows)
+        {
+            if (NOT Row.IsFlap) { continue; }
+
+            auto Segment = FCkDebug_ScrubSegment{};
+            Segment.StartSeconds = Row.FlapTStart;
+            Segment.EndSeconds   = Row.FlapTEnd;
+            Segment.Color        = CkStyle::Warn();
+            Segment.Tooltip      = FString::Printf(TEXT("Flap run x%d\n%s  \x2192  %s"),
+                Row.FlapCount, *Row.FlapActionA, *Row.FlapActionB);
+            Segments.Emplace(MoveTemp(Segment));
+        }
+    }
+
+    const auto IsInFlap = [&Segments](double InTime) -> bool
+    {
+        for (const auto& S : Segments)
+        { if (InTime >= S.StartSeconds && InTime <= S.EndSeconds) { return true; } }
+        return false;
+    };
+
+    const auto SelectedIdx = (_ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Scrub)
+        ? _ViewModel->GetScrubEventIndex() : INDEX_NONE;
+
+    auto Marks = TArray<FCkDebug_ScrubMark>{};
+    Marks.Reserve(Hist.Num());
+
+    for (auto Index = 0; Index < Hist.Num(); ++Index)
+    {
+        const auto& Event = Hist[Index];
+
+        // Events inside a storm are represented by the band; only the selected one still shows a dot.
+        if (Index != SelectedIdx && IsInFlap(Event.WorldTimeSeconds)) { continue; }
+
+        auto Mark = FCkDebug_ScrubMark{};
+        Mark.TimeSeconds = Event.WorldTimeSeconds;
+        Mark.Kind        = ECkDebug_ScrubMarkKind::Dot;
+        Mark.Color       = HistoryEventColor_Sidebar(Event.Kind);
+        Mark.SelectionId = Index;
+        Mark.Tooltip     = FString::Printf(TEXT("%s  %s\n%s"),
+            *FormatTimestamp_Sidebar(Event.WorldTimeSeconds),
+            *HistoryKindLabel_Sidebar(Event.Kind),
+            Event.ActionClassName.IsEmpty() ? *Event.Title : *Event.ActionClassName);
+        Marks.Emplace(MoveTemp(Mark));
+    }
+
+    _ScrubTrack->Set_Content(MoveTemp(Segments), MoveTemp(Marks));
+
+    // Frame the whole recording ONCE per entity: after that the window belongs to the user (the
+    // widget owns pan/zoom and re-attaches Live-follow itself).
+    if (Entity != _ScrubFramedEntity)
+    {
+        _ScrubFramedEntity = Entity;
+
+        const auto Start = Hist[0].WorldTimeSeconds;
+        const auto Span  = FMath::Max(1.0, Hist.Last().WorldTimeSeconds - Start);
+        _ScrubTrack->Set_View(Hist.Last().WorldTimeSeconds - Span, Span);
+    }
 }
 
 // ====================================================================================================================
@@ -847,7 +783,7 @@ auto
     }
 
     return SNew(FRowType, InOwnerTable)
-        .Padding(FMargin(2.0f, 2.0f))
+        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 2.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -866,8 +802,8 @@ auto
                     .Padding(0.0f, 0.0f, 6.0f, 0.0f)
                     [
                         SNew(SBox)
-                            .WidthOverride(8.0f)
-                            .HeightOverride(8.0f)
+                            .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
+                            .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
                             [
                                 SNew(SBorder)
                                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -875,7 +811,7 @@ auto
                                     {
                                         const auto Item = WeakItem.Pin();
                                         if (NOT Item.IsValid())
-                                        { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted); }
+                                        { return FSlateColor(CkStyle::TextDim()); }
                                         return FSlateColor(ResolveStatusColorWithOptOut_Sidebar(
                                             Item->PlanStatus, Item->AllowPlanFailed));
                                     })
@@ -896,7 +832,7 @@ auto
                             .Text(FText::FromString(InItem->DisplayName.IsEmpty()
                                 ? TEXT("(no name)") : InItem->DisplayName))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     ]
 
                 // Role badge cluster (right-aligned)
@@ -1174,7 +1110,7 @@ auto
     if (InItem->IsGroupHeader)
     {
         return SNew(FRowType, InOwnerTable)
-            .Padding(FMargin(2.0f, 3.0f, 2.0f, 1.0f))
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 3.0f, 2.0f, 1.0f}))
             .ShowSelection(false)
             [
                 SNew(SHorizontalBox)
@@ -1183,14 +1119,14 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("▼")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                                .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                         ]
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(InItem->PlannerName, Depth)))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
             ];
     }
@@ -1207,7 +1143,7 @@ auto
             *FormatTimestamp_Sidebar(Row.FlapTStart), *FormatTimestamp_Sidebar(Row.FlapTEnd));
 
         return SNew(FRowType, InOwnerTable)
-            .Padding(FMargin(2.0f, 1.0f))
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
             .ShowSelection(true)
             [
                 SNew(SHorizontalBox)
@@ -1218,14 +1154,14 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(Body))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                                .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                         ]
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.0f, 0.0f)
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Span))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                                .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                         ]
             ];
     }
@@ -1239,7 +1175,7 @@ auto
     { NameText = Ev.Title.IsEmpty() ? HistoryKindLabel_Sidebar(Ev.Kind) : Ev.Title; }
 
     return SNew(FRowType, InOwnerTable)
-        .Padding(FMargin(2.0f, 1.0f))
+        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{2.0f, 1.0f}))
         .ShowSelection(true)
         [
             SNew(SHorizontalBox)
@@ -1254,14 +1190,14 @@ auto
                                     SNew(STextBlock)
                                         .Text(FText::FromString(NameText))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                                        .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                                 ]
                             + SVerticalBox::Slot().AutoHeight()
                                 [
                                     SNew(STextBlock)
                                         .Text(FText::FromString(Ev.Meta))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                         .Visibility(Ev.Meta.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
                                 ]
                     ]
@@ -1271,7 +1207,7 @@ auto
                         SNew(STextBlock)
                             .Text(FText::FromString(FormatTimestamp_Sidebar(Ev.WorldTimeSeconds)))
                             .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Faint))
+                            .ColorAndOpacity(FSlateColor(CkStyle::OverlayOf(CkStyle::TextMute(), 0.75f)))
                     ]
         ];
 }
@@ -1375,6 +1311,37 @@ auto
 
     _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Scrub);
     _ViewModel->SetScrubEventIndex(InHistIdx);
+}
+
+auto
+    SCkGoapDebugger_Sidebar::
+    SelectHistoryEventNearestTime(
+        double InTimeSeconds)
+    -> void
+{
+    if (NOT _ViewModel.IsValid()) { return; }
+
+    const auto Entity = _ViewModel->GetSelectedEntity();
+    if (NOT ck::IsValid(Entity)) { return; }
+
+    const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+    if (Hist.Num() == 0) { return; }
+
+    auto BestIdx  = int32{INDEX_NONE};
+    auto BestDist = TNumericLimits<double>::Max();
+
+    for (auto Index = 0; Index < Hist.Num(); ++Index)
+    {
+        const auto Dist = FMath::Abs(Hist[Index].WorldTimeSeconds - InTimeSeconds);
+        if (Dist < BestDist)
+        {
+            BestDist = Dist;
+            BestIdx  = Index;
+        }
+    }
+
+    if (BestIdx != INDEX_NONE)
+    { SelectHistoryEvent(BestIdx); }
 }
 
 auto

@@ -7,6 +7,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Rendering/DrawElements.h"
 
 // ====================================================================================================================
@@ -76,7 +78,11 @@ auto
     // Defaults — muted off-plan edge. Alpha bumped 0.40 → 0.65 so the
     // dependency graph stays readable even when no plan is active (e.g., when
     // the goal is already satisfied and Plan[0] is invalid).
-    OutParams.WireColor     = FCkGoapDebuggerStyle::Color_Border_Subtle;
+    //
+    // Border(), not Graph_Edge(): the GOAP tree deliberately draws its off-plan
+    // wires at divider weight so the in-plan spine is the only thing that reads
+    // at a glance. Graph_Edge is several stops brighter and drowns it out.
+    OutParams.WireColor     = CkStyle::Border();
     OutParams.WireColor.A   = 0.65f;
     OutParams.WireThickness = 1.0f;
 
@@ -98,8 +104,8 @@ auto
         const auto bInPlan = Is_EdgeInPlan_ConnectionPolicy(SrcNodeForTree, DstNodeForTree);
 
         OutParams.WireColor = bInPlan
-            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-            : FCkGoapDebuggerStyle::Color_Status_Composite;
+            ? CkStyle::Ok()
+            : CkStyle::CategoryAge();
         OutParams.WireColor.A   = bInPlan ? 1.0f : 0.55f;
         OutParams.WireThickness = bInPlan ? 2.0f : 1.25f;
         OutParams.bUserFlag1    = true;   // dashed render path
@@ -111,14 +117,14 @@ auto
 
     if (Is_EdgeFailureBlocked_ConnectionPolicy(SrcNode, DstNode))
     {
-        OutParams.WireColor     = FCkGoapDebuggerStyle::Color_Status_Failed;
+        OutParams.WireColor     = CkStyle::Err();
         OutParams.WireThickness = 2.0f;
         return;
     }
 
     if (Is_EdgeInPlan_ConnectionPolicy(SrcNode, DstNode))
     {
-        OutParams.WireColor     = FCkGoapDebuggerStyle::Color_Status_PlanFound;
+        OutParams.WireColor     = CkStyle::Ok();
         OutParams.WireThickness = 2.0f;
         return;
     }

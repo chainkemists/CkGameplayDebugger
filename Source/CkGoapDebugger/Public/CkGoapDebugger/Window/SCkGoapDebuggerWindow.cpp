@@ -32,6 +32,8 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
@@ -47,7 +49,6 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -356,7 +357,9 @@ auto
                         SNew(SHorizontalBox)
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
                             [
-                                SNew(SBox).WidthOverride(9.0f).HeightOverride(9.0f)
+                                SNew(SBox)
+                                    .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
+                                    .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
                                 [
                                     SNew(SImage)
                                         .Image(CkStyle::GetRoundedBrush_Small())

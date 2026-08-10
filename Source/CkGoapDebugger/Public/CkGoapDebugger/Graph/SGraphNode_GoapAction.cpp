@@ -7,6 +7,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 
@@ -21,7 +23,6 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 
 // ====================================================================================================================
 
@@ -37,28 +38,28 @@ namespace
     }
 
     // Outer border color for the action card. Priority: selected > failed >
-    // in-plan > composite > atomic leaf. The atomic-leaf tint matches the
-    // legend's "Leaf — atomic action" swatch (blue #60a5fa). Falls back to
-    // Color_Border_Strong only if the node pointer is null (invariant
-    // violation — every real action node carries the leaf path).
+    // in-plan > composite > atomic leaf. Composite is a TIER distinction, not a severity, so it
+    // reads from the categorical purple role rather than a tone. Falls back to the inactive
+    // node-border role only if the node pointer is null (invariant violation — every real
+    // action node carries the leaf path).
     auto Compute_BorderColor(const UCkGoapDebugNode_Action* InNode) -> FLinearColor
     {
-        if (NOT InNode) { return FCkGoapDebuggerStyle::Color_Border_Strong; }
+        if (NOT InNode) { return CkStyle::NodeBorder_Inactive(); }
 
         if (InNode->Get_IsSelected())
-        { return FCkGoapDebuggerStyle::Color_Status_Selected; }
+        { return CkStyle::Warn(); }
 
         if (InNode->Get_IsFailureBlocked())
-        { return FCkGoapDebuggerStyle::Color_Status_Failed; }
+        { return CkStyle::Err(); }
 
         if (InNode->Get_IsInPlan())
-        { return FCkGoapDebuggerStyle::Color_Status_PlanningBdr; }
+        { return CkStyle::NodeBorder_InPlan(); }
 
         if (InNode->Get_IsComposite())
-        { return FCkGoapDebuggerStyle::Color_Status_Composite; }
+        { return CkStyle::CategoryAge(); }
 
         // Atomic leaf — explicit tint matching the legend.
-        return FCkGoapDebuggerStyle::Color_Status_Planning;
+        return CkStyle::Accent();
     }
 
     // Small filled circle for port indicator dots. Accepts a TAttribute so
@@ -66,8 +67,8 @@ namespace
     auto MakeDot(const TAttribute<FSlateColor>& InColor) -> TSharedRef<SWidget>
     {
         return SNew(SBox)
-            .WidthOverride(7.0f)
-            .HeightOverride(7.0f)
+            .WidthOverride(ck_goap_debugger_axes::Get_DotSize())
+            .HeightOverride(ck_goap_debugger_axes::Get_DotSize())
             [
                 SNew(SBorder)
                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
@@ -127,7 +128,7 @@ auto
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
+                .BorderBackgroundColor(CkStyle::NodeFill_Inactive())
         ];
         return;
     }
@@ -162,15 +163,15 @@ auto
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(SCkDebug_NameLabel::Get_ShortName(Snap.ClassName, OwningDepth)))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Primary))
+                    .Font(CkStyle::BoldFont(CkStyle::NodeTitleFontSize()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
                     .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
             ]
 
         + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
-            .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
+            .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
                     .Text(TAttribute<FText>::CreateLambda([WeakNode]()
@@ -179,8 +180,8 @@ auto
                         if (Node == nullptr) { return FText::GetEmpty(); }
                         return FText::FromString(FString::Printf(TEXT("$%.0f"), Node->Get_Snapshot().Cost));
                     }))
-                    .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                    .Font(CkStyle::BoldFont(CkStyle::NodeCostFontSize()))
+                    .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
             ];
 
     // Role line — the mockup's "◆● ACTION+PLANNER / ● FALLBACK / ● ACTION"
@@ -216,12 +217,8 @@ auto
 
     auto CompositeBar = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FLinearColor(
-            FCkGoapDebuggerStyle::Color_Status_Composite.R,
-            FCkGoapDebuggerStyle::Color_Status_Composite.G,
-            FCkGoapDebuggerStyle::Color_Status_Composite.B,
-            0.15f))
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+        .BorderBackgroundColor(CkStyle::OverlayOf(CkStyle::CategoryAge(), 0.15f))
+        .Padding(FMargin{CkStyle::SpaceS, 1.0f})
         .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
         {
             const auto* Node = WeakNode.Get();
@@ -231,8 +228,8 @@ auto
         [
             SNew(STextBlock)
                 .Text(FText::FromString(CompositeText))
-                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Composite))
+                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                .ColorAndOpacity(FSlateColor(CkStyle::CategoryAge()))
         ];
 
     // Plan-step badge overlay. Visibility and number both come from
@@ -241,8 +238,8 @@ auto
     // produces stale visuals (or, worse, requires NotifyGraphChanged to
     // rebuild the whole node widget, which is the flicker we're fixing).
     auto StepBadge = SNew(SBox)
-        .WidthOverride(18.0f)
-        .HeightOverride(18.0f)
+        .WidthOverride(ck_goap_debugger_axes::Get_IconSize())
+        .HeightOverride(ck_goap_debugger_axes::Get_IconSize())
         .Visibility(TAttribute<EVisibility>::CreateLambda([WeakNode]()
         {
             const auto* Node = WeakNode.Get();
@@ -253,7 +250,7 @@ auto
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Status_PlanningBdr)
+                .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
                 .HAlign(HAlign_Center)
                 .VAlign(VAlign_Center)
                 [
@@ -264,16 +261,17 @@ auto
                             if (Node == nullptr) { return FText::GetEmpty(); }
                             return FText::FromString(FString::FromInt(Node->Get_PlanStepIndex()));
                         }))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                        .ColorAndOpacity(FSlateColor(FLinearColor::White))
+                        .Font(CkStyle::BoldFont(CkStyle::NodeCostFontSize()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))
                 ]
         ];
 
     const auto BodyContent = BuildBody();
 
-    // Card chrome: outer border in the highlight color (live-bound — driven
-    // by IsSelected / IsFailureBlocked / IsInPlan / IsComposite flags that
-    // UpdateRuntimeState mutates per tick), inner panel in surface color.
+    // Card chrome: outer border in the highlight color, inner panel in the matching node-fill
+    // role. Both are live-bound — IsSelected / IsFailureBlocked / IsInPlan / IsComposite are
+    // mutated per tick by UpdateRuntimeState, and a construction-time read would need a node-widget
+    // recreation (the flicker this binding exists to avoid) to show through.
     auto Card = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
         .BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([WeakNode]()
@@ -281,12 +279,20 @@ auto
             const auto* Node = WeakNode.Get();
             return FSlateColor(Compute_BorderColor(Node));
         }))
-        .Padding(FMargin(2.0f))  // border thickness
+        .Padding(FMargin(CkStyle::NodeBorderThickness()))
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
-                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
+                // Fill follows the in-plan flag, so it live-binds exactly like the border does.
+                .BorderBackgroundColor(TAttribute<FSlateColor>::CreateLambda([WeakNode]()
+                {
+                    const auto* Node = WeakNode.Get();
+                    if (Node == nullptr) { return FSlateColor(CkStyle::NodeFill_Inactive()); }
+                    return FSlateColor(Node->Get_IsInPlan()
+                        ? CkStyle::NodeFill_InPlan()
+                        : CkStyle::NodeFill_Inactive());
+                }))
+                .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
                 [
                     SNew(SVerticalBox)
 
@@ -300,12 +306,12 @@ auto
 
                         + SVerticalBox::Slot()
                             .AutoHeight()
-                            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_XSmall, 0.0f, 0.0f)
+                            .Padding(0.0f, CkStyle::SpaceXS, 0.0f, 0.0f)
                             [ CompositeBar ]
 
                         + SVerticalBox::Slot()
                             .AutoHeight()
-                            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f)
+                            .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
                             [ BodyContent ]
                 ]
         ];
@@ -420,17 +426,17 @@ auto
         // current VALUE from the Planner's resolved WS (green/red, dim when
         // the key isn't in the WS). Satisfied reads as "both squares match".
         const auto ExpColor = DesiredValue
-            ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-            : FCkGoapDebuggerStyle::Color_Status_Failed;
+            ? CkStyle::Ok()
+            : CkStyle::Err();
 
         auto CurColorAttr = TAttribute<FSlateColor>::CreateLambda([WeakNode, Key]()
         {
             const auto Current = Query_LiveWorldState(WeakNode, Key);
             if (NOT Current.IsSet())
-            { return FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim); }
+            { return FSlateColor(CkStyle::TextMute()); }
             return FSlateColor(*Current
-                ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-                : FCkGoapDebuggerStyle::Color_Status_Failed);
+                ? CkStyle::Ok()
+                : CkStyle::Err());
         });
 
         auto TooltipAttr = TAttribute<FText>::CreateLambda([WeakNode, Key, DesiredValue]()
@@ -452,7 +458,7 @@ auto
 
         LeftCol->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 1.0f)
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
                     .ToolTipText(TooltipAttr)
@@ -470,8 +476,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("\x2192")))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 7))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                         ]
 
                     // Current-value square (live WS)
@@ -487,8 +493,8 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Compute_TagLeaf(Pre.Key)))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]
             ];
@@ -498,7 +504,7 @@ auto
     {
         RightCol->AddSlot()
             .AutoHeight()
-            .Padding(0.0f, 1.0f)
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
             [
                 SNew(SHorizontalBox)
                     .ToolTipText(FText::FromString(Eff.Key.ToString()))
@@ -509,15 +515,15 @@ auto
                         [
                             SNew(STextBlock)
                                 .Text(FText::FromString(Compute_TagLeaf(Eff.Key)))
-                                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                         ]
                     + SHorizontalBox::Slot()
                         .AutoWidth()
                         .VAlign(VAlign_Center)
                         .Padding(4.0f, 0.0f, 0.0f, 0.0f)
-                        [ MakeDot(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning)) ]
+                        [ MakeDot(FSlateColor(CkStyle::Accent())) ]
             ];
     }
 

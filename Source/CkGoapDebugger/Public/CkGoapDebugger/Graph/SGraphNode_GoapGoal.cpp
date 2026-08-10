@@ -5,6 +5,10 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "SGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBorder.h"
@@ -12,7 +16,6 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 
 // ====================================================================================================================
 
@@ -70,12 +73,12 @@ auto
 
             Conditions->AddSlot()
                 .AutoHeight()
-                .Padding(0.0f, 1.0f)
+                .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(Line))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                        .Font(CkStyle::RegularFont(CkStyle::NodeMetaFontSize()))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
                 ];
         }
@@ -83,18 +86,18 @@ auto
 
     auto Header = SNew(STextBlock)
         .Text(FText::FromString(TEXT("\x25C6 Goal")))   // ◆ Goal (★ tofus in the editor font)
-        .Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
-        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected));
+        .Font(CkStyle::BoldFont(CkStyle::NodeTitleFontSize()))
+        .ColorAndOpacity(FSlateColor(CkStyle::NodeBorder_Goal()));
 
     auto Card = SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-        .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Status_Selected)
-        .Padding(FMargin(2.0f))
+        .BorderBackgroundColor(CkStyle::NodeBorder_Goal())
+        .Padding(FMargin(CkStyle::NodeBorderThickness()))
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                .BorderBackgroundColor(FCkGoapDebuggerStyle::Color_Bg_Surface)
-                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
+                .BorderBackgroundColor(CkStyle::NodeFill_Goal())
+                .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
                 [
                     SNew(SVerticalBox)
                         + SVerticalBox::Slot()
@@ -102,7 +105,7 @@ auto
                             [ Header ]
                         + SVerticalBox::Slot()
                             .AutoHeight()
-                            .Padding(0.0f, FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f)
+                            .Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
                             [ Conditions ]
                 ]
         ];

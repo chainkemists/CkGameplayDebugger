@@ -202,10 +202,20 @@ by the sandbox; per-layer Pop buttons live in the rail's layer stack.
   subscription (window- or SquadTable-side) before deleting it.
 - `SCkGoapDebugger_Sidebar` still owns an internal history widget that is no
   longer slotted (the TimelineDock replaced it); its tree remains the planner
-  selection surface until a chrome planner-picker exists.
-- `FCkGoapDebuggerStyle` (legacy token set) was retuned to the Mission Control
-  palette (hex literals — static-init-safe). New code should use `CkStyle::`
-  tokens + `FCkDebuggerCommonStyle` (glow brushes) directly.
+  selection surface until a chrome planner-picker exists. Its scrub track is the
+  shared `SCkDebug_ScrubTimeline` (history events → selectable Dot marks keyed by
+  history index, flap storms → Warn-toned segments); the widget owns the pan/zoom
+  window, so the ViewModel still stores only mode + scrub index.
+- `FCkGoapDebuggerStyle` now carries **only** brushes, text styles, and layout
+  constants — its `Color_*` palette is gone. Every brush/text style resolves its
+  ink from a `CkStyle::` role at `Initialize()` (module startup, past static
+  init), so the whole style set follows Editor Preferences → Ck → Style.
+  New code uses `CkStyle::` tokens + `FCkDebuggerCommonStyle` (glow brushes)
+  directly, and reaches the shared style axes through
+  `CkGoapDebugger/CkGoapDebugger_Axes.h` (`ck_goap_debugger_axes::` —
+  `Apply_RowDensity`, `Get_IconSize`/`Get_DotSize`, `Get_SeparatorThickness`,
+  `Make_Chip`/`Make_Badge`). Row density is applied as a DELTA on each surface's
+  own base padding, never as an absolute.
 - **Name shortening is the common widget's job.** `SCkDebug_NameLabel`
   (CkDebuggerCommon) renders every pure class-name/tag label (Decision +
   Catalog card titles, plan steps, Planner-tag / World-state settings rows,

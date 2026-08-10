@@ -12,7 +12,7 @@
 class FCkGoapDebugger_ViewModel;
 class STextBlock;
 class SBox;
-class SCkGoapDebugger_ScrubTrack;
+class SCkDebug_ScrubTimeline;
 
 // ====================================================================================================================
 // CkGoap Debugger — Sidebar (U11.7-B).
@@ -22,9 +22,10 @@ class SCkGoapDebugger_ScrubTrack;
 //              selected entity. Recursive — each Planner row is a tree row;
 //              its ChildPlanners are nested children. Role badges (PLANNER /
 //              PLANNER + ACTION for dual-role) sit at the right of each row.
-//   - BOTTOM : SListView of FCkGoapDebugger_HistoryEvent for the selected
-//              entity. Same scrub/history behaviour as before; the splitter
-//              between top and bottom is user-draggable.
+//   - BOTTOM : a shared SCkDebug_ScrubTimeline over the selected entity's
+//              history (events → selectable Dot marks, flap storms → segments)
+//              above an SListView of the same events. The splitter between top
+//              and bottom is user-draggable.
 //
 // Row identity:
 //   Source items are TSharedPtr<FRowItem> keyed by the underlying
@@ -132,7 +133,20 @@ private:
 
     // ---- Scrub interaction ---------------------------------------------------
     auto SelectHistoryEvent(int32 InHistIdx) -> void;
+
+    // Drag-scrub lands on a time, not an event — snap to the nearest recorded event so the panes
+    // downstream keep receiving a concrete history index.
+    auto SelectHistoryEventNearestTime(double InTimeSeconds) -> void;
+
     auto SyncHistoryListSelectionFromViewModel() -> void;
+
+    // ---- Scrub track ---------------------------------------------------------
+    // Push the current entity's history into the shared timeline as marks + flap segments.
+    auto RebuildScrubContent() -> void;
+
+    // "Now" (last recorded event) and the cursor time for the selected event.
+    auto Get_LiveTimeSeconds() const -> double;
+    auto Get_ScrubTimeSeconds() const -> double;
 
     // -----------------------------------------------------------------------------------------------------------------
     // Header text helpers
@@ -177,7 +191,15 @@ private:
     using FHistoryKey = FString;
     TMap<FHistoryKey, FHistoryItemPtr>       _HistoryItemsByKey;
 
-    TSharedPtr<SCkGoapDebugger_ScrubTrack>   _ScrubTrack;
+    TSharedPtr<SCkDebug_ScrubTimeline>       _ScrubTrack;
+
+    // Entity whose history the scrub window was last framed against. The view window belongs to
+    // the widget (and, after the first frame, to the user) — we only reset it on an entity switch.
+    FCk_Handle _ScrubFramedEntity;
+
+    // Content-hash of the last mark/segment push. Mode, cursor and selection ring are
+    // attribute-bound inside the timeline, so only a grown recording or a moved selection re-pushes.
+    uint32 _LastScrubHash = 0;
 
     // Selection-restore guard — suppress OnSelectionChanged echoes that
     // originate from a programmatic SetItemSelection during refresh.

@@ -7,6 +7,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
@@ -63,7 +65,7 @@ auto
                             SNew(STextBlock)
                                 .Text(FText::FromString(TEXT("AGENTS")))
                                 .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                         ]
 
                     + SVerticalBox::Slot()
@@ -250,7 +252,7 @@ auto
     const auto WeakPanel = TWeakPtr<SCkGoapDebugger_AgentListPanel>(SharedThis(this));
 
     return SNew(STableRow<ItemPtr>, InTable)
-        .Padding(FMargin(8.0f, 3.0f))
+        .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
         .ShowSelection(true)
         [
             SNew(SBorder)
@@ -304,8 +306,8 @@ auto
                                 const auto Pinned = WeakItem.Pin();
                                 const auto Dimmed = Pinned.IsValid() && NOT Pinned->IsHighlightMatch;
                                 return FSlateColor(Dimmed
-                                    ? FCkGoapDebuggerStyle::Color_Text_Ghost
-                                    : FCkGoapDebuggerStyle::Color_Text_Primary);
+                                    ? CkStyle::OverlayOf(CkStyle::TextMute(), 0.55f)
+                                    : CkStyle::Text());
                             })
                     ]
 
@@ -323,7 +325,7 @@ auto
                                     Pinned->PlannerCount, Pinned->PlannerCount == 1 ? TEXT("") : TEXT("s")));
                             })
                             .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                     ]
                 ]
         ];

@@ -5,13 +5,12 @@
 #include "Styling/SlateColor.h"
 
 // ====================================================================================================================
-// CkGoap Debugger style — brushes, text styles, layout constants, and palette
-// matching mockup F v2. Owned by the CkGoapDebugger module; registered at
-// StartupModule, unregistered at ShutdownModule.
+// CkGoap Debugger style — brushes, text styles, and layout constants. Owned by the CkGoapDebugger
+// module; registered at StartupModule, unregistered at ShutdownModule.
 //
-// Palette mirrors the mockup tokens exactly (hex → linear). The Color_*
-// statics double as a quick lookup for code that needs the underlying
-// FLinearColor (e.g. node tinting in custom paint paths).
+// Colors are NOT stored here. Every brush and text style resolves its ink from a CkStyle:: role at
+// registration time (StartupModule, well past static init), so an Editor Preferences → Ck → Style
+// edit moves this style set with the rest of the suite.
 // ====================================================================================================================
 
 class FCkGoapDebuggerStyle
@@ -21,33 +20,6 @@ public:
     static auto Shutdown()        -> void;
     static auto Get()             -> const ISlateStyle&;
     static auto GetStyleSetName() -> FName;
-
-    // -- Palette (mockup F v2) -----------------------------------------------
-    // Backgrounds
-    static const FLinearColor Color_Bg_Root;            // #0a0e17  app background
-    static const FLinearColor Color_Bg_Panel;           // #0c1018  sidebar / panels
-    static const FLinearColor Color_Bg_Surface;         // #0f1520  card surfaces
-    static const FLinearColor Color_Bg_Black;           // #000000  mode bar / graph head
-
-    // Borders
-    static const FLinearColor Color_Border_Subtle;      // #1a2332  inner dividers
-    static const FLinearColor Color_Border_Strong;      // #2a3342  outer dividers
-
-    // Text
-    static const FLinearColor Color_Text_Primary;       // #e0e0e0
-    static const FLinearColor Color_Text_Secondary;     // #aaaaaa
-    static const FLinearColor Color_Text_Muted;         // #888888
-    static const FLinearColor Color_Text_Dim;           // #666666
-    static const FLinearColor Color_Text_Faint;         // #555555
-    static const FLinearColor Color_Text_Ghost;         // #444444
-
-    // Status accents
-    static const FLinearColor Color_Status_PlanFound;   // #22c55e  green
-    static const FLinearColor Color_Status_Planning;    // #60a5fa  blue
-    static const FLinearColor Color_Status_PlanningBdr; // #3b82f6  blue (border)
-    static const FLinearColor Color_Status_Failed;      // #ef4444  red
-    static const FLinearColor Color_Status_Selected;    // #f59e0b  amber
-    static const FLinearColor Color_Status_Composite;   // #a855f7  purple
 
     // -- Layout constants -----------------------------------------------------
     static constexpr float Padding_XSmall  = 2.0f;

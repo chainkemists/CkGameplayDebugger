@@ -6,6 +6,8 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
@@ -23,11 +25,11 @@
 #include "Styling/StyleDefaults.h"
 
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -87,9 +89,19 @@ auto
                     + SVerticalBox::Slot()
                         .AutoHeight()
                         [
-                            SNew(SSeparator)
-                                .Thickness(1.0f)
-                                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Border_Subtle))
+                            SNew(SBox)
+                                .HeightOverride_Lambda([]() -> FOptionalSize
+                                { return FOptionalSize{ck_goap_debugger_axes::Get_SeparatorThickness()}; })
+                                .Visibility_Lambda([]()
+                                {
+                                    return ck_goap_debugger_axes::Get_SeparatorThickness() > 0.0f
+                                        ? EVisibility::Visible : EVisibility::Collapsed;
+                                })
+                                [
+                                    SNew(SImage)
+                                        .Image(CkStyle::GetFilledBrush())
+                                        .ColorAndOpacity(FSlateColor(CkStyle::Border()))
+                                ]
                         ]
 
                     // ---- Search + sort (fixed chrome — keeps input focus) ----
@@ -357,7 +369,7 @@ auto
                     SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("(no keys match filter)")))
                         .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
                 ];
         }
     }
@@ -396,7 +408,7 @@ auto
             SNew(SCkDebug_SelectableLabel)
                 .Text(FText::FromString(Message))
                 .Font(FCoreStyle::GetDefaultFontStyle("Italic", 9))
-                .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Dim))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
         ];
 }
 
@@ -686,7 +698,7 @@ auto
                 SNew(SButton)
                     .ToolTipText(FText::FromString(TEXT("Toggle key-row sort order:\nName — alphabetical (default)\nTRUE — true values first, then alphabetical")))
                     .OnClicked(this, &SCkGoapDebugger_WorldStateRail::HandleClick_CycleSortMode)
-                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    .ContentPadding(FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f})
                     [
                         SNew(STextBlock)
                             // Plain text — the ↕ glyph renders poorly in Slate's default font.
@@ -697,7 +709,7 @@ auto
                                     : TEXT("Sort: TRUE"));
                             })
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Planning))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
                     ]
             ];
 }
@@ -934,7 +946,8 @@ auto
         [
             SNew(SButton)
                 .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                    FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
                 .ToolTipText(FText::FromString(TEXT("Click to trace this key across panes (plan chips, decision cards, graph).")))
                 .OnClicked(FOnClicked::CreateSP(
                     this,
@@ -1117,7 +1130,8 @@ auto
     // no layer shadows the key.
     Section->AddSlot()
         .AutoHeight()
-        .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+        .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+            FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
         [
             SNew(SHorizontalBox)
 
@@ -1172,7 +1186,8 @@ auto
             [
                 SNew(SButton)
                     .ButtonStyle(FCoreStyle::Get(), "NoBorder")
-                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    .ContentPadding(ck_goap_debugger_axes::Apply_RowDensity(
+                        FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f}))
                     .ToolTipText(FText::FromString(FString::Printf(
                         TEXT("Click to %s this layer's keys."),
                         IsExpanded ? TEXT("collapse") : TEXT("expand"))))
@@ -1190,7 +1205,7 @@ auto
                                     SNew(STextBlock)
                                         .Text(FText::FromString(IsExpanded ? TEXT("v") : TEXT(">")))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 ]
                             + SHorizontalBox::Slot()
                                 .AutoWidth()
@@ -1199,7 +1214,7 @@ auto
                                     SNew(SCkDebug_SelectableLabel)
                                         .Text(FText::FromString(InLayerName.ToString()))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Selected))
+                                        .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                                 ]
                             + SHorizontalBox::Slot()
                                 .AutoWidth()
@@ -1211,7 +1226,7 @@ auto
                                             TEXT("· %d key%s"),
                                             KeyCount, KeyCount == 1 ? TEXT("") : TEXT("s"))))
                                         .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-                                        .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Muted))
+                                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                                 ]
                     ]
             ]
@@ -1230,12 +1245,12 @@ auto
                         this,
                         &SCkGoapDebugger_WorldStateRail::HandleClick_PopLayer,
                         InLayerName))
-                    .ContentPadding(FMargin(FCkGoapDebuggerStyle::Padding_Small, 1.0f))
+                    .ContentPadding(FMargin{FCkGoapDebuggerStyle::Padding_Small, 1.0f})
                     [
                         SNew(STextBlock)
                             .Text(FText::FromString(TEXT("Pop")))
                             .Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-                            .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Status_Failed))
+                            .ColorAndOpacity(FSlateColor(CkStyle::Err()))
                     ]
             ];
 
@@ -1256,12 +1271,13 @@ auto
         {
             const auto ValueStr = Kv.Value ? FString(TEXT("TRUE")) : FString(TEXT("false"));
             const auto ValueCol = Kv.Value
-                ? FCkGoapDebuggerStyle::Color_Status_PlanFound
-                : FCkGoapDebuggerStyle::Color_Text_Dim;
+                ? CkStyle::Ok()
+                : CkStyle::TextMute();
 
             KeysBox->AddSlot()
                 .AutoHeight()
-                .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, 1.0f, 0.0f, 1.0f))
+                .Padding(ck_goap_debugger_axes::Apply_RowDensity(
+                FMargin{FCkGoapDebuggerStyle::Padding_Medium, 1.0f, 0.0f, 1.0f}))
                 [
                     SNew(SHorizontalBox)
                         + SHorizontalBox::Slot()
@@ -1271,7 +1287,7 @@ auto
                                 SNew(SCkDebug_SelectableLabel)
                                     .Text(FText::FromString(Kv.Key.ToString()))
                                     .Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-                                    .ColorAndOpacity(FSlateColor(FCkGoapDebuggerStyle::Color_Text_Secondary))
+                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                             ]
                         + SHorizontalBox::Slot()
                             .AutoWidth()

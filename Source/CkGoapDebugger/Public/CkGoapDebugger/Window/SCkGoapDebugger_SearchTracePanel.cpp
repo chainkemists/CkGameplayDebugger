@@ -4,6 +4,8 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
+
 #include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 
@@ -147,7 +149,7 @@ auto
     {
         _Body->AddSlot()
             .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+            .Padding(ck_goap_debugger_axes::Apply_RowDensity(FMargin{0.0f, 0.0f, 0.0f, 2.0f}))
             [
                 DoBuildRow(Planner->SearchDebug[Index], Index)
             ];

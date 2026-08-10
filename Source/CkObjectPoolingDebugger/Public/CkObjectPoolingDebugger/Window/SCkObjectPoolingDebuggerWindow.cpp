@@ -6,8 +6,11 @@
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_InspectorPanel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_KeyValueRow.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Sparkline.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatPair.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
@@ -84,80 +87,86 @@ namespace ck_object_pooling_debugger_window
         InRing->Add(InValue);
     }
 
-    // ================================================================================================================
-    // Per-row occupancy bar: parked band (ok, dim) under the in-use fill (info), a high-water tick
-    // (accent), and — for bounded pools at capacity — an err-tinted ground. All rows share one max
-    // scale so widths are comparable across pools. Volatile: reads the live row struct every paint.
-    // ================================================================================================================
-
-    class SOccupancyBar : public SLeafWidget
+    // RowDensity applies as a DELTA on this window's own base row padding, not as an absolute — the
+    // pool table is a dense metric grid, deliberately tighter than the ECS tree. Comfortable is the
+    // axis default, so the delta is zero and the table renders exactly as it shipped. Clamped at zero
+    // so Compact can't produce negative margins.
+    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
     {
-    public:
-        SLATE_BEGIN_ARGS(SOccupancyBar) {}
-            SLATE_ARGUMENT(TSharedPtr<FCkObjectPoolingDebugger_PoolRow>, Item)
-            SLATE_ARGUMENT(TSharedPtr<float>, SharedMax)
-        SLATE_END_ARGS()
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
 
-        auto Construct(const FArguments& InArgs) -> void
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
         {
-            _Item = InArgs._Item;
-            _SharedMax = InArgs._SharedMax;
-            ForceVolatile(true);
-        }
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 
-        auto ComputeDesiredSize(float) const -> FVector2D override
+    static auto Get_SeparatorThickness() -> float
+    {
+        return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
+
+    // ================================================================================================================
+    // Per-row occupancy: two stacked SCkDebug_MeterBar rows on one shared max scale, so widths stay
+    // comparable across pools — in-use on top, live (allocated) underneath. Both fractions and the
+    // in-use fill are attribute-bound, so the live row struct drives them without a rebuild; a bounded
+    // pool sitting at capacity turns the in-use fill Err.
+    // ================================================================================================================
+
+    static constexpr auto OccupancyBarWidth = 90.0f;
+    static constexpr auto OccupancyBarHeight = 4.0f;
+
+    static auto Make_OccupancyBars(
+        const TSharedPtr<FCkObjectPoolingDebugger_PoolRow>& InItem,
+        const TSharedPtr<float>& InSharedMax) -> TSharedRef<SWidget>
+    {
+        const auto Fraction = [InItem, InSharedMax](TFunction<float(const FCkObjectPoolingDebugger_PoolRow&)> InGetter)
         {
-            return FVector2D{90.0f, 9.0f};
-        }
-
-        auto OnPaint(
-            const FPaintArgs& InArgs,
-            const FGeometry& InAllottedGeometry,
-            const FSlateRect& InCullingRect,
-            FSlateWindowElementList& OutDrawElements,
-            int32 InLayerId,
-            const FWidgetStyle& InWidgetStyle,
-            bool InParentEnabled) const -> int32 override
-        {
-            if (NOT _Item.IsValid() || NOT _SharedMax.IsValid())
-            { return InLayerId; }
-
-            const auto& Row = *_Item;
-            const auto Size = InAllottedGeometry.GetLocalSize();
-            const auto Max = FMath::Max(*_SharedMax, 1.0f);
-            const auto* Brush = FCoreStyle::Get().GetBrush("WhiteBrush");
-
-            const auto MakeSegment = [&](float InX, float InWidth, const FLinearColor& InColor, int32 InLayer)
+            return TAttribute<float>::CreateLambda([InItem, InSharedMax, InGetter]() -> float
             {
-                FSlateDrawElement::MakeBox(
-                    OutDrawElements, InLayer,
-                    InAllottedGeometry.ToPaintGeometry(
-                        FVector2f(InWidth, Size.Y),
-                        FSlateLayoutTransform(FVector2f(InX, 0.0f))),
-                    Brush, ESlateDrawEffect::None, InColor);
-            };
+                if (NOT InItem.IsValid() || NOT InSharedMax.IsValid())
+                { return 0.0f; }
 
-            const auto AtCapacity = Row.IsBoundedCapacity && Row.NumLiveInstances >= Row.MaxSize;
-            MakeSegment(0.0f, Size.X, AtCapacity
-                ? CkStyle::OverlayOf(CkStyle::Err(), 0.18f)
-                : CkStyle::Bg3(), InLayerId);
+                return FMath::Clamp(InGetter(*InItem) / FMath::Max(*InSharedMax, 1.0f), 0.0f, 1.0f);
+            });
+        };
 
-            const auto LiveWidth = FMath::Clamp(Row.NumLiveInstances / Max, 0.0f, 1.0f) * Size.X;
-            MakeSegment(0.0f, LiveWidth, CkStyle::OverlayOf(CkStyle::Ok(), 0.35f), InLayerId + 1);
+        return SNew(SVerticalBox)
 
-            const auto InUseWidth = FMath::Clamp(Row.NumInUse / Max, 0.0f, 1.0f) * Size.X;
-            MakeSegment(0.0f, InUseWidth, CkStyle::OverlayOf(CkStyle::Info(), 0.85f), InLayerId + 2);
+            + SVerticalBox::Slot().AutoHeight()
+                [
+                    SNew(SCkDebug_MeterBar)
+                        .DesiredSize(FVector2D(OccupancyBarWidth, OccupancyBarHeight))
+                        .TrackColor(CkStyle::Bg3())
+                        .Fraction(Fraction([](const auto& R) { return static_cast<float>(R.NumInUse); }))
+                        .FillColor_Lambda([InItem]() -> FLinearColor
+                        {
+                            if (NOT InItem.IsValid())
+                            { return CkStyle::OverlayOf(CkStyle::Info(), 0.85f); }
 
-            const auto HighX = FMath::Clamp(Row.HighWaterMark / Max, 0.0f, 1.0f) * (Size.X - 2.0f);
-            MakeSegment(HighX, 2.0f, CkStyle::Accent(), InLayerId + 3);
+                            const auto AtCapacity = InItem->IsBoundedCapacity && InItem->NumLiveInstances >= InItem->MaxSize;
+                            return AtCapacity
+                                ? CkStyle::Err()
+                                : CkStyle::OverlayOf(CkStyle::Info(), 0.85f);
+                        })
+                ]
 
-            return InLayerId + 4;
-        }
-
-    private:
-        TSharedPtr<FCkObjectPoolingDebugger_PoolRow> _Item;
-        TSharedPtr<float> _SharedMax;
-    };
+            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)
+                [
+                    SNew(SCkDebug_MeterBar)
+                        .DesiredSize(FVector2D(OccupancyBarWidth, OccupancyBarHeight))
+                        .TrackColor(CkStyle::Bg3())
+                        .FillColor(CkStyle::OverlayOf(CkStyle::Ok(), 0.35f))
+                        .Fraction(Fraction([](const auto& R) { return static_cast<float>(R.NumLiveInstances); }))
+                ];
+    }
 }
 
 // ====================================================================================================================
@@ -238,7 +247,11 @@ auto
                         ]
 
                     + SHorizontalBox::Slot().AutoWidth()
-                        [ SNew(SSeparator).Orientation(Orient_Vertical).Thickness(1.0f) ]
+                        [
+                            SNew(SSeparator)
+                                .Orientation(Orient_Vertical)
+                                .Thickness(ck_object_pooling_debugger_window::Get_SeparatorThickness())
+                        ]
 
                     + SHorizontalBox::Slot().AutoWidth()
                         [
@@ -394,10 +407,10 @@ auto
 
                                 + SHorizontalBox::Slot().FillWidth(1.0f)
                                     [
-                                        SNew(STextBlock)
-                                            .Text(FText::FromString(TEXT("IN USE — ALL POOLS")))
-                                            .Font(ck_object_pooling_debugger_window::BoldFont(CkStyle::FontSizeMicro()))
-                                            .ColorAndOpacity(CkStyle::TextMute())
+                                        ck::debug_axes::Make_SectionHeader(
+                                            UCkDebuggerStyleSettings::Get_Selection(),
+                                            FText::FromString(TEXT("In use — all pools")),
+                                            ECk_Tone::Neutral)
                                     ]
 
                                 + SHorizontalBox::Slot().AutoWidth()
@@ -522,6 +535,7 @@ auto
     const auto PlainColor = [](const FCkObjectPoolingDebugger_PoolRow&) { return CkStyle::Text(); };
 
     return SNew(STableRow<ItemPtr>, InTable)
+        .Padding(Apply_RowDensity(FMargin{0.0f}))
         [
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("NoBorder"))
@@ -549,16 +563,12 @@ auto
 
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                             [
-                                SNew(SBorder)
-                                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-                                .BorderBackgroundColor(CkStyle::Bg3())
-                                .Padding(FMargin(4.0f, 0.0f))
-                                [
-                                    SNew(STextBlock)
-                                        .Text(FText::FromString(InItem->ArchetypeName))
-                                        .Font(MonoFont(CkStyle::FontSizeMicro()))
-                                        .ColorAndOpacity(InItem->IsArchetypeCDO ? CkStyle::TextMute() : CkStyle::Warn())
-                                ]
+                                // Archetype badge — a non-CDO archetype is the interesting case, so it
+                                // carries the Warn tone. Click-passive, safe inside the STableRow.
+                                ck::debug_axes::Make_Chip(
+                                    UCkDebuggerStyleSettings::Get_Selection(),
+                                    FText::FromString(InItem->ArchetypeName),
+                                    InItem->IsArchetypeCDO ? ECk_Tone::Neutral : ECk_Tone::Warn)
                             ]
                     ]
 
@@ -576,9 +586,7 @@ auto
 
                         + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                             [
-                                SNew(SOccupancyBar)
-                                    .Item(InItem)
-                                    .SharedMax(_SharedMaxLive)
+                                Make_OccupancyBars(InItem, _SharedMaxLive)
                             ]
 
                         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)

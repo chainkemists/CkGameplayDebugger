@@ -2,6 +2,11 @@
 #include "CkAStarDebugger/ViewModel/CkAStarDebugger_ViewModel.h"
 #include "CkAStarDebugger/CkAStarDebuggerStyle.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "Rendering/DrawElements.h"
 #include "Framework/Application/SlateApplication.h"
 
@@ -135,7 +140,7 @@ auto
         InAllottedGeometry.ToPaintGeometry(),
         FAppStyle::GetBrush("WhiteBrush"),
         ESlateDrawEffect::None,
-        FCkAStarDebuggerStyle::Color_Grid_Background);
+        CkStyle::BgRoot());
 
     if (_SearchInfo.GridWidth <= 0 || _SearchInfo.GridHeight <= 0)
     {
@@ -148,9 +153,9 @@ auto
                 InAllottedGeometry.GetLocalSize(),
                 FSlateLayoutTransform(FVector2D(20.0f, InAllottedGeometry.GetLocalSize().Y * 0.5f - 8.0f))),
             NoDataText,
-            FCoreStyle::GetDefaultFontStyle("Regular", 10),
+            CkStyle::RegularFont(CkStyle::FontSizeH3()),
             ESlateDrawEffect::None,
-            FCkAStarDebuggerStyle::Color_Text_Muted);
+            CkStyle::TextMute());
 
         return InLayerId + 1;
     }
@@ -203,6 +208,8 @@ auto
             {
                 auto BorderSize = FVector2D{_CellSize + 2.0f, _CellSize + 2.0f};
                 auto BorderPos = ScreenPos - FVector2D{1.0f, 1.0f};
+                // Stays white rather than CkStyle::Selection(): the selection role is a blue that
+                // vanishes against the blue open-set cells this outline has to read on top of.
                 auto BorderColor = FLinearColor::White;
 
                 // Top
@@ -280,9 +287,14 @@ auto
         int32 InLayerId) const
     -> void
 {
+    // LegendMode axis: Off hides the key entirely. Deduped (the Classic default) and PerSection both
+    // draw it — this canvas has a single section, so they render identically here.
+    if (NOT ck::debug_axes::Legend_IsVisible(UCkDebuggerStyleSettings::Get_Selection()))
+    { return; }
+
     auto WidgetSize = InGeometry.GetLocalSize();
     auto WhiteBrush = FAppStyle::GetBrush("WhiteBrush");
-    auto Font = FCoreStyle::GetDefaultFontStyle("Regular", 9);
+    auto Font = CkStyle::RegularFont(CkStyle::FontSizeSmall());
 
     struct FLegendItem
     {
@@ -318,7 +330,7 @@ auto
                 FVector2D{60.0f, 14.0f},
                 FSlateLayoutTransform(FVector2D{X + SwatchSize + 3.0f, Y - 1.0f})),
             Item.Label, Font, ESlateDrawEffect::None,
-            FCkAStarDebuggerStyle::Color_Text_Secondary);
+            CkStyle::TextDim());
 
         X += SwatchSize + 3.0f + 40.0f + ItemSpacing;
     }

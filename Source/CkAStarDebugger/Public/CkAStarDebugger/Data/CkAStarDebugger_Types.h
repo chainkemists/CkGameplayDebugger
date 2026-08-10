@@ -3,6 +3,7 @@
 #include "CkAStar/CkAStar_Fragment_Data.h"
 
 #include "CkEcs/Handle/CkHandle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CoreMinimal.h"
 
@@ -68,20 +69,30 @@ struct FCkAStarDebugger_HistoryEntry
 namespace CkAStarDebugger
 {
 
+// THE status→appearance mapping for this debugger. Toolbar badge, history rows, and the stats
+// call-out all resolve through the tone, so a palette edit moves every surface at once.
+inline auto
+    GetStatusTone(
+        ECk_AStarSearchStatus InStatus)
+    -> ECk_Tone
+{
+    switch (InStatus)
+    {
+    case ECk_AStarSearchStatus::Idle:                 return ECk_Tone::Neutral;
+    case ECk_AStarSearchStatus::InProgress:           return ECk_Tone::Info;
+    case ECk_AStarSearchStatus::Complete:             return ECk_Tone::Ok;
+    case ECk_AStarSearchStatus::Failed:               return ECk_Tone::Err;
+    case ECk_AStarSearchStatus::CostThresholdReached: return ECk_Tone::Warn;
+    default:                                          return ECk_Tone::Neutral;
+    }
+}
+
 inline auto
     GetStatusColor(
         ECk_AStarSearchStatus InStatus)
     -> FLinearColor
 {
-    switch (InStatus)
-    {
-    case ECk_AStarSearchStatus::Idle:                 return FLinearColor(0.565f, 0.565f, 0.565f);
-    case ECk_AStarSearchStatus::InProgress:           return FLinearColor(0.231f, 0.510f, 0.965f);
-    case ECk_AStarSearchStatus::Complete:             return FLinearColor(0.133f, 0.773f, 0.369f);
-    case ECk_AStarSearchStatus::Failed:               return FLinearColor(0.937f, 0.267f, 0.267f);
-    case ECk_AStarSearchStatus::CostThresholdReached: return FLinearColor(0.961f, 0.620f, 0.043f);
-    default:                                          return FLinearColor(0.565f, 0.565f, 0.565f);
-    }
+    return CkStyle::GetToneColor(GetStatusTone(InStatus));
 }
 
 inline auto

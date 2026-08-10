@@ -2,7 +2,10 @@
 
 #include "CkEqs/Query/CkEqs_Fragment_Data.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "CkEcs/Handle/CkHandle.h"
+#include "CkEditorTools/Style/CkStyle.h"
 
 #include "CoreMinimal.h"
 
@@ -101,21 +104,31 @@ struct FCkEqsDebugger_QueryInfo
 namespace CkEqsDebugger
 {
 
+// THE status→appearance mapping for this debugger. Every surface (list dot, pill, overlay marker)
+// resolves through the tone so a palette edit moves all of them at once.
+inline auto
+    GetStatusTone(
+        ECkEqsDebugger_QueryStatus InStatus)
+    -> ECk_Tone
+{
+    switch (InStatus)
+    {
+    case ECkEqsDebugger_QueryStatus::Pending:    return ECk_Tone::Neutral;
+    case ECkEqsDebugger_QueryStatus::InProgress: return ECk_Tone::Info;
+    case ECkEqsDebugger_QueryStatus::Complete:   return ECk_Tone::Ok;
+    case ECkEqsDebugger_QueryStatus::Failed:     return ECk_Tone::Err;
+    case ECkEqsDebugger_QueryStatus::Cancelled:  return ECk_Tone::Warn;
+    case ECkEqsDebugger_QueryStatus::Unknown:    return ECk_Tone::Neutral;
+    }
+    return ECk_Tone::Neutral;
+}
+
 inline auto
     GetStatusColor(
         ECkEqsDebugger_QueryStatus InStatus)
     -> FLinearColor
 {
-    switch (InStatus)
-    {
-    case ECkEqsDebugger_QueryStatus::Pending:    return FLinearColor(0.565f, 0.565f, 0.565f);
-    case ECkEqsDebugger_QueryStatus::InProgress: return FLinearColor(0.231f, 0.510f, 0.965f);
-    case ECkEqsDebugger_QueryStatus::Complete:   return FLinearColor(0.133f, 0.773f, 0.369f);
-    case ECkEqsDebugger_QueryStatus::Failed:     return FLinearColor(0.937f, 0.267f, 0.267f);
-    case ECkEqsDebugger_QueryStatus::Cancelled:  return FLinearColor(0.961f, 0.620f, 0.043f);
-    case ECkEqsDebugger_QueryStatus::Unknown:    return FLinearColor(0.290f, 0.333f, 0.408f);
-    }
-    return FLinearColor::White;
+    return CkStyle::GetToneColor(GetStatusTone(InStatus));
 }
 
 inline auto
@@ -197,7 +210,8 @@ inline auto
     return TEXT("?");
 }
 
-// Lerp a candidate's score in [0, 1] from low (blue) → high (green). Failed candidates muted gray.
+// Candidate score in [0, 1] through the suite's shared low→high score ramp (Info → Ok).
+// Filter-failed candidates read as muted text so passing candidates dominate the overlay.
 inline auto
     GetScoreColor(
         float InNormalizedScore,
@@ -205,13 +219,9 @@ inline auto
     -> FLinearColor
 {
     if (NOT InPassed)
-    { return FLinearColor(0.290f, 0.333f, 0.408f); }
+    { return CkStyle::TextMute(); }
 
-    const auto T = FMath::Clamp(InNormalizedScore, 0.0f, 1.0f);
-    return FLinearColor::LerpUsingHSV(
-        FLinearColor(0.231f, 0.510f, 0.965f),  // low: blue
-        FLinearColor(0.133f, 0.773f, 0.369f),  // high: green
-        T);
+    return ck::debug_axes::Get_ScoreColor(InNormalizedScore);
 }
 
 } // namespace CkEqsDebugger

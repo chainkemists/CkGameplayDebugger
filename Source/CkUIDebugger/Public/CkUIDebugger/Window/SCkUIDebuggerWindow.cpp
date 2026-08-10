@@ -3,12 +3,19 @@
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/String/CkFuzzyMatch_Utils.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
 #include "CkUI/Layout/CkUI_Layout_Subsystem.h"
 #include "CkUI/Layout/CkUI_PrimaryGameLayout.h"
 #include "CkUI/Layout/CkUI_LayerStack.h"
@@ -20,7 +27,6 @@
 #include "Engine/GameInstance.h"
 
 #include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -33,38 +39,68 @@
 #include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// Local style constants
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace style
-{
-    static constexpr auto Pad_S = 4.0f;
-    static constexpr auto Pad_M = 8.0f;
-    static constexpr auto Pad_L = 16.0f;
-
-    static const auto Bg_Dark       = FLinearColor(0.01f, 0.01f, 0.01f);
-    static const auto Bg_Medium     = FLinearColor(0.025f, 0.025f, 0.025f);
-
-    static const auto Text_Primary   = FLinearColor(0.85f, 0.85f, 0.85f);
-    static const auto Text_Secondary = FLinearColor(0.6f, 0.6f, 0.6f);
-    static const auto Text_Muted     = FLinearColor(0.35f, 0.35f, 0.35f);
-    static const auto Text_Highlight = FLinearColor(0.95f, 0.95f, 0.95f);
-
-    static const auto Accent_Cyan    = FLinearColor(0.51f, 0.69f, 1.0f);
-    static const auto Accent_Warning = FLinearColor(1.0f, 0.8f, 0.01f);
-    static const auto Accent_Success = FLinearColor(0.25f, 0.75f, 0.25f);
-
-    static auto Normal(int32 InSize = 9)  -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Regular", InSize); }
-    static auto Bold(int32 InSize = 9)    -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Bold", InSize); }
-    static auto Mono(int32 InSize = 9)    -> FSlateFontInfo { return FCoreStyle::GetDefaultFontStyle("Mono", InSize); }
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-// Helpers
+// Local style + helpers (module-unique namespace name — unity builds concatenate TUs).
 // --------------------------------------------------------------------------------------------------------------------
 
 namespace ck_ui_debugger
 {
+    static auto Normal(int32 InSize = 9) -> FSlateFontInfo { return CkStyle::RegularFont(InSize); }
+    static auto Bold(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::BoldFont(InSize); }
+    static auto Mono(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::MonoFont(InSize); }
+
+    // RowDensity applies as a DELTA on this surface's own base padding: only the offset between
+    // density options belongs to the axis, and Comfortable (the default) leaves the widget rows
+    // exactly where they shipped. Clamped so Compact cannot produce negative margins.
+    static auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
+
+    // Same delta reading for glyph boxes: the toolbar's icons are larger than the axis' own
+    // 12/16/20 scale, so IconSize moves them by its offset rather than replacing their size.
+    static auto Apply_IconSize(float InBase) -> float
+    {
+        const auto Baseline = ck::debug_axes::Get_IconSize(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
+
+        return FMath::Max(1.0f, InBase + (Current - Baseline));
+    }
+
+    // SSeparator::Thickness is a construction-time argument with no setter, so the axis is carried
+    // by an SBox override instead; a zero-thickness option collapses the box and its slot padding.
+    static auto Make_Separator() -> TSharedRef<SWidget>
+    {
+        const auto Get_Thickness = []()
+        {
+            return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+        };
+
+        return SNew(SBox)
+            .HeightOverride_Lambda([Get_Thickness]() -> FOptionalSize
+            {
+                return FOptionalSize{Get_Thickness()};
+            })
+            .Visibility_Lambda([Get_Thickness]()
+            {
+                return Get_Thickness() > 0.0f ? EVisibility::Visible : EVisibility::Collapsed;
+            })
+            [
+                SNew(SSeparator).Thickness(1.0f)
+            ];
+    }
+
     static auto InputModeToString(ECk_UI_InputMode InMode) -> FString
     {
         switch (InMode)
@@ -140,8 +176,8 @@ auto
     Register_WithGate();
 
     _SummaryText = SNew(STextBlock)
-        .Font(style::Bold(10))
-        .ColorAndOpacity(style::Text_Primary);
+        .Font(ck_ui_debugger::Bold(10))
+        .ColorAndOpacity(CkStyle::Text());
 
     _LayerListBox = SNew(SVerticalBox);
     _HistoryListBox = SNew(SVerticalBox);
@@ -154,20 +190,24 @@ auto
         [
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-            .BorderBackgroundColor(style::Bg_Dark)
-            .Padding(FMargin(style::Pad_S))
+            .BorderBackgroundColor(CkStyle::BgRoot())
+            .Padding(FMargin(CkStyle::SpaceS))
             [
                 SNew(SHorizontalBox)
 
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                     [
                         SNew(SImage)
                         .Image(FAppStyle::GetBrush("Icons.Search"))
-                        .ColorAndOpacity(FSlateColor(style::Text_Muted))
-                        .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                        .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                        {
+                            const auto Size = ck_ui_debugger::Apply_IconSize(16.0f);
+                            return FVector2D{Size, Size};
+                        })
                     ]
 
                 + SHorizontalBox::Slot()
@@ -186,7 +226,7 @@ auto
                 + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
-                    .Padding(style::Pad_S, 0.0f, 0.0f, 0.0f)
+                    .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
                     [
                         SNew(SButton)
                         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -204,8 +244,12 @@ auto
                         [
                             SNew(SImage)
                             .Image(FAppStyle::GetBrush("Icons.X"))
-                            .ColorAndOpacity(FSlateColor(style::Text_Secondary))
-                            .DesiredSizeOverride(FVector2D(12.0f, 12.0f))
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                            .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                            {
+                                const auto Size = ck_ui_debugger::Apply_IconSize(12.0f);
+                                return FVector2D{Size, Size};
+                            })
                         ]
                     ]
             ]
@@ -219,24 +263,28 @@ auto
             .ButtonStyle(FAppStyle::Get(), "SimpleButton")
             .OnClicked(InOnClicked)
             .ToolTipText(InTooltip)
-            .ContentPadding(FMargin(style::Pad_S))
+            .ContentPadding(FMargin(CkStyle::SpaceS))
             [
                 SNew(SImage)
                 .Image(FAppStyle::GetBrush(InBrush))
-                .ColorAndOpacity(FSlateColor(style::Text_Secondary))
-                .DesiredSizeOverride(FVector2D(16.0f, 16.0f))
+                .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
+                {
+                    const auto Size = ck_ui_debugger::Apply_IconSize(16.0f);
+                    return FVector2D{Size, Size};
+                })
             ];
     };
 
     auto Toolbar =
         SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(style::Bg_Dark)
-        .Padding(FMargin(style::Pad_S))
+        .BorderBackgroundColor(CkStyle::BgRoot())
+        .Padding(FMargin(CkStyle::SpaceS))
         [
             SNew(SHorizontalBox)
 
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     MakeIconButton(TEXT("Icons.Refresh"),
                         FText::FromString(TEXT("Force Refresh")),
@@ -250,14 +298,14 @@ auto
                         FOnClicked::CreateLambda([this]() { DoExpandAll(); return FReply::Handled(); }))
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     MakeIconButton(TEXT("Icons.ChevronUp"),
                         FText::FromString(TEXT("Collapse All")),
                         FOnClicked::CreateLambda([this]() { DoCollapseAll(); return FReply::Handled(); }))
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+            + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     MakeIconButton(TEXT("Icons.Delete"),
                         FText::FromString(TEXT("Clear History")),
@@ -265,7 +313,7 @@ auto
                 ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(style::Pad_M, 0.0f, 0.0f, 0.0f)
+                .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
                 [
                     SNew(SCkDebug_NameDepthCycler)
                         .Depth_Lambda([this]() -> int32 { return _NameDepth; })
@@ -285,7 +333,7 @@ auto
                 ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(style::Pad_M, 0.0f, 0.0f, 0.0f)
+                .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
                 [
                     SNew(SCkDebugger_RefreshControls)
                         .WindowId(SCkUIDebuggerWindow::WindowId)
@@ -297,14 +345,14 @@ auto
     _HistoryArea =
         SNew(SExpandableArea)
         .InitiallyCollapsed(true)
-        .BorderBackgroundColor(style::Bg_Dark)
-        .HeaderPadding(FMargin(style::Pad_M, style::Pad_S))
+        .BorderBackgroundColor(CkStyle::BgRoot())
+        .HeaderPadding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
         .HeaderContent()
         [
             SNew(STextBlock)
-            .Font(style::Bold(10))
+            .Font(ck_ui_debugger::Bold(10))
             .Text(FText::FromString(TEXT("Event History")))
-            .ColorAndOpacity(style::Text_Highlight)
+            .ColorAndOpacity(CkStyle::TextStrong())
         ]
         .BodyContent()
         [
@@ -344,27 +392,27 @@ auto
         [
             SNew(SBorder)
         .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(style::Bg_Medium)
+        .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
 
             + SVerticalBox::Slot().AutoHeight()
                 [ Toolbar ]
 
-            + SVerticalBox::Slot().AutoHeight().Padding(style::Pad_M, style::Pad_S)
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [ _SummaryText.ToSharedRef() ]
 
-            + SVerticalBox::Slot().AutoHeight().Padding(style::Pad_M, 0.0f)
-                [ SNew(SSeparator).Thickness(1.0f) ]
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0.0f)
+                [ ck_ui_debugger::Make_Separator() ]
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [
                     SNew(SScrollBox)
-                    + SScrollBox::Slot().Padding(style::Pad_S)
+                    + SScrollBox::Slot().Padding(CkStyle::SpaceS)
                         [ _LayerListBox.ToSharedRef() ]
                 ]
 
-            + SVerticalBox::Slot().AutoHeight().Padding(style::Pad_S)
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceS)
                 [ _HistoryArea.ToSharedRef() ]
         ]
         ]
@@ -612,32 +660,32 @@ auto
 
         // ---- Header widgets ----
 
-        Slot.StatusDot = SNew(SImage)
-            .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
-            .DesiredSizeOverride(FVector2D(8.0f, 8.0f));
+        // A category swatch rather than a pill: the layer's state is encoded by colour alone here,
+        // with the adjacent label carrying the layer TAG, not the state.
+        Slot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(8.0f);
 
-        Slot.TagText = SNew(STextBlock).Font(style::Bold());
-        Slot.PriorityText = SNew(STextBlock).Font(style::Mono());
-        Slot.InputModeText = SNew(STextBlock).Font(style::Normal());
-        Slot.WidgetCountText = SNew(STextBlock).Font(style::Normal());
+        Slot.TagText = SNew(STextBlock).Font(ck_ui_debugger::Bold());
+        Slot.PriorityText = SNew(STextBlock).Font(ck_ui_debugger::Mono());
+        Slot.InputModeText = SNew(STextBlock).Font(ck_ui_debugger::Normal());
+        Slot.WidgetCountText = SNew(STextBlock).Font(ck_ui_debugger::Normal());
 
         auto Header =
             SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [ Slot.StatusDot.ToSharedRef() ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, style::Pad_M, 0.0f)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [ Slot.TagText.ToSharedRef() ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, style::Pad_M, 0.0f)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [ Slot.PriorityText.ToSharedRef() ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(0.0f, 0.0f, style::Pad_M, 0.0f)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                 [ Slot.InputModeText.ToSharedRef() ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -653,35 +701,47 @@ auto
         {
             auto& WSlot = WidgetPool[WidgetIdx];
 
-            WSlot.StatusDot = SNew(SImage)
-                .Image(FAppStyle::GetBrush("Icons.FilledCircle"))
-                .DesiredSizeOverride(FVector2D(6.0f, 6.0f));
+            WSlot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(6.0f);
 
-            WSlot.ClassNameText = SNew(STextBlock).Font(style::Normal())
+            WSlot.ClassNameText = SNew(STextBlock).Font(ck_ui_debugger::Normal())
                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis);
 
-            WSlot.BadgeText = SNew(STextBlock).Font(style::Normal());
+            // The badge IS the row's state label, so it reads as a toned pill. Its text and tone
+            // resolve from a shared cell because the pool's slot structs are relocatable.
+            WSlot.IsWidgetActive = MakeShared<bool>(false);
 
-            const auto BgColor = (WidgetIdx % 2 == 0) ? style::Bg_Dark : style::Bg_Medium;
+            WSlot.Badge = SNew(SCkDebug_StatusPill)
+                .ShowDot(false)
+                .Text_Lambda([Cell = WSlot.IsWidgetActive]()
+                {
+                    return FText::FromString(*Cell ? TEXT("Active") : TEXT("Inactive"));
+                })
+                .Tone_Lambda([Cell = WSlot.IsWidgetActive]()
+                {
+                    return *Cell ? ECk_Tone::Ok : ECk_Tone::Neutral;
+                });
+
+            const auto BgColor = (WidgetIdx % 2 == 0) ? CkStyle::BgRoot() : CkStyle::Bg1();
 
             WSlot.Root = SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(BgColor)
-                .Padding(FMargin(style::Pad_L, style::Pad_S, style::Pad_M, style::Pad_S))
+                .Padding(ck_ui_debugger::Apply_RowDensity(
+                    FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS}))
                 .Visibility(EVisibility::Collapsed)
                 [
                     SNew(SHorizontalBox)
 
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        .Padding(0.0f, 0.0f, style::Pad_S, 0.0f)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                         [ WSlot.StatusDot.ToSharedRef() ]
 
                     + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                         [ WSlot.ClassNameText.ToSharedRef() ]
 
                     + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                        .Padding(style::Pad_S, 0.0f, 0.0f, 0.0f)
-                        [ WSlot.BadgeText.ToSharedRef() ]
+                        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+                        [ WSlot.Badge.ToSharedRef() ]
                 ];
 
             Slot.WidgetListBox->AddSlot().AutoHeight()
@@ -692,8 +752,8 @@ auto
 
         Slot.ExpandableArea = SNew(SExpandableArea)
             .InitiallyCollapsed(false)
-            .BorderBackgroundColor(style::Bg_Dark)
-            .HeaderPadding(FMargin(style::Pad_M, style::Pad_S))
+            .BorderBackgroundColor(CkStyle::BgRoot())
+            .HeaderPadding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
             .HeaderContent() [ Header ]
             .BodyContent() [ Slot.WidgetListBox.ToSharedRef() ];
 
@@ -772,28 +832,28 @@ auto
         });
     }
 
-    auto DotColor = style::Text_Muted;
-    if (IsTransitioning)      { DotColor = style::Accent_Warning; }
-    else if (InIsActive)      { DotColor = style::Accent_Success; }
-    else if (HasWidgetsFlag)  { DotColor = style::Text_Secondary; }
+    auto DotColor = CkStyle::TextMute();
+    if (IsTransitioning)      { DotColor = CkStyle::Warn(); }
+    else if (InIsActive)      { DotColor = CkStyle::Ok(); }
+    else if (HasWidgetsFlag)  { DotColor = CkStyle::TextDim(); }
 
-    InSlot.StatusDot->SetColorAndOpacity(FSlateColor(DotColor));
+    InSlot.StatusDot->SetColorAndOpacity(DotColor);
 
     InSlot.TagText->SetText(FText::FromString(DoShortName(LayerTag.ToString())));
     InSlot.TagText->SetToolTipText(FText::FromString(LayerTag.ToString()));
-    InSlot.TagText->SetColorAndOpacity(InIsActive ? style::Text_Highlight : style::Text_Primary);
+    InSlot.TagText->SetColorAndOpacity(InIsActive ? CkStyle::TextStrong() : CkStyle::Text());
 
     InSlot.PriorityText->SetText(FText::FromString(FString::Printf(TEXT("[%d]"), Priority)));
-    InSlot.PriorityText->SetColorAndOpacity(style::Accent_Cyan);
+    InSlot.PriorityText->SetColorAndOpacity(CkStyle::Accent());
 
     InSlot.InputModeText->SetText(FText::FromString(ck_ui_debugger::InputModeToString(InputMode)));
-    InSlot.InputModeText->SetColorAndOpacity(style::Text_Secondary);
+    InSlot.InputModeText->SetColorAndOpacity(CkStyle::TextDim());
 
     const auto& WidgetList = Stack->GetWidgetList();
     auto* ActiveWidget = Stack->GetActiveWidget();
 
     InSlot.WidgetCountText->SetText(FText::FromString(FString::Printf(TEXT("(%d)"), WidgetList.Num())));
-    InSlot.WidgetCountText->SetColorAndOpacity(style::Text_Muted);
+    InSlot.WidgetCountText->SetColorAndOpacity(CkStyle::TextMute());
 
     // ---- Find this layer's index to access widget pool ----
 
@@ -818,12 +878,14 @@ auto
 
             WSlot.ClassNameText->SetText(FText::FromString(DoShortName(Widget->GetClass()->GetName())));
             WSlot.ClassNameText->SetToolTipText(FText::FromString(Widget->GetClass()->GetName()));
-            WSlot.ClassNameText->SetColorAndOpacity(IsActiveWidget ? style::Text_Primary : style::Text_Secondary);
+            WSlot.ClassNameText->SetColorAndOpacity(IsActiveWidget ? CkStyle::Text() : CkStyle::TextDim());
 
-            WSlot.StatusDot->SetColorAndOpacity(FSlateColor(IsActiveWidget ? style::Accent_Success : style::Text_Muted));
+            WSlot.StatusDot->SetColorAndOpacity(IsActiveWidget ? CkStyle::Ok() : CkStyle::TextMute());
 
-            WSlot.BadgeText->SetText(FText::FromString(IsActiveWidget ? TEXT("Active") : TEXT("Inactive")));
-            WSlot.BadgeText->SetColorAndOpacity(IsActiveWidget ? style::Accent_Success : style::Text_Muted);
+            // Writing the shared cell IS the badge update — the pill reads it through its
+            // attributes on the next paint, so nothing is invalidated or rebuilt.
+            if (WSlot.IsWidgetActive.IsValid())
+            { *WSlot.IsWidgetActive = IsActiveWidget; }
 
             WSlot.Root->SetVisibility(EVisibility::Visible);
         }
@@ -847,29 +909,29 @@ auto
 
     if (_HistoryEvents.IsEmpty())
     {
-        _HistoryListBox->AddSlot().AutoHeight().Padding(style::Pad_M, style::Pad_S)
+        _HistoryListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
-                SNew(STextBlock).Font(style::Normal())
+                SNew(STextBlock).Font(ck_ui_debugger::Normal())
                 .Text(FText::FromString(TEXT("No events yet.")))
-                .ColorAndOpacity(style::Text_Muted)
+                .ColorAndOpacity(CkStyle::TextMute())
             ];
         return;
     }
 
     for (auto Idx = 0; Idx < _HistoryEvents.Num(); ++Idx)
     {
-        const auto BgColor = (Idx % 2 == 0) ? style::Bg_Dark : style::Bg_Medium;
+        const auto BgColor = (Idx % 2 == 0) ? CkStyle::BgRoot() : CkStyle::Bg1();
 
         _HistoryListBox->AddSlot().AutoHeight()
             [
                 SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(BgColor)
-                .Padding(FMargin(style::Pad_M, 2.0f))
+                .Padding(ck_ui_debugger::Apply_RowDensity(FMargin{CkStyle::SpaceM, 2.0f}))
                 [
-                    SNew(STextBlock).Font(style::Normal())
+                    SNew(STextBlock).Font(ck_ui_debugger::Normal())
                     .Text(FText::FromString(_HistoryEvents[Idx].Description))
-                    .ColorAndOpacity(style::Text_Secondary)
+                    .ColorAndOpacity(CkStyle::TextDim())
                 ]
             ];
     }

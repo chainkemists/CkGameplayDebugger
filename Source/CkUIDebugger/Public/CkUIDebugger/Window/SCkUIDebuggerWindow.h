@@ -6,9 +6,10 @@
 #include "GameplayTagContainer.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
+class SCkDebug_CategoryDot;
+class SCkDebug_StatusPill;
 class SEditableTextBox;
 class SExpandableArea;
-class SImage;
 class UCk_UI_Layout_Subsystem_UE;
 class UCk_UI_LayerStack_UE;
 class UCk_UI_PrimaryGameLayout_UE;
@@ -33,7 +34,7 @@ struct FCkUIDebugger_LayerSlot
     UCk_UI_LayerStack_UE* Stack = nullptr;
 
     TSharedPtr<SExpandableArea> ExpandableArea;
-    TSharedPtr<SImage> StatusDot;
+    TSharedPtr<SCkDebug_CategoryDot> StatusDot;
     TSharedPtr<STextBlock> TagText;
     TSharedPtr<STextBlock> PriorityText;
     TSharedPtr<STextBlock> InputModeText;
@@ -48,9 +49,12 @@ struct FCkUIDebugger_LayerSlot
 struct FCkUIDebugger_WidgetSlot
 {
     TSharedPtr<SWidget> Root;
-    TSharedPtr<SImage> StatusDot;
+    TSharedPtr<SCkDebug_CategoryDot> StatusDot;
     TSharedPtr<STextBlock> ClassNameText;
-    TSharedPtr<STextBlock> BadgeText;
+    TSharedPtr<SCkDebug_StatusPill> Badge;
+
+    // Bound cell the badge pill reads through its Text/Tone attributes.
+    TSharedPtr<bool> IsWidgetActive;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

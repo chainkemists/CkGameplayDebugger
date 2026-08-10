@@ -18,6 +18,7 @@ public class CkJoltDebugger : CkModuleRules
             "CkCore",
             "CkDebuggerCommon",
             "CkEcs",
+            "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkJolt",
         });
 

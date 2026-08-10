@@ -3,6 +3,7 @@
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
 
 #include "SGraphPin.h"
@@ -89,7 +90,7 @@ auto
 	CreateMetaRow()
 	-> TSharedRef<SWidget>
 {
-	const auto MetaFont = FCoreStyle::GetDefaultFontStyle("Regular", CkStyle::NodeMetaFontSize());
+	const auto MetaFont = ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize());
 
 	auto Row = SNew(SHorizontalBox);
 

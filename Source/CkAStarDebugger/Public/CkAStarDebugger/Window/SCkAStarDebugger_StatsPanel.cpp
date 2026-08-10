@@ -32,6 +32,21 @@ namespace ck_astar_debugger_stats_panel
     // Height for the two meter rows. SCkDebug_MeterBar has no intrinsic height, so the panel names
     // one — chunky enough to read next to the percent label without dominating the section.
     constexpr auto MeterHeight = 8.0f;
+
+    // RowDensity on the 2x2 stat grid. Value form bakes the margin at construct time and the panel
+    // never rebuilds, so the axis has to ride the slot's attribute instead.
+    auto Get_StatCardPadding() -> FMargin
+    { return ck::debug_axes::Apply_RowDensity(FMargin(8.0f)); }
+
+    // Fonts as attributes so TextScale lands without a rebuild.
+    auto Get_PercentFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    auto Get_EmptyStateFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Italic", CkStyle::FontSizeBody()); }
+
+    auto Get_CellTitleFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); }
 }
 
 
@@ -62,28 +77,28 @@ auto
                             .Padding(0.0f, 0.0f, 0.0f, 12.0f)
                             [
                                 SNew(SHorizontalBox)
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(TAttribute<FMargin>::CreateStatic(&ck_astar_debugger_stats_panel::Get_StatCardPadding))
                                         [
                                             SAssignNew(_IterationsStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("ITERATIONS")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(TAttribute<FMargin>::CreateStatic(&ck_astar_debugger_stats_panel::Get_StatCardPadding))
                                         [
                                             SAssignNew(_OpenStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("OPEN")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(TAttribute<FMargin>::CreateStatic(&ck_astar_debugger_stats_panel::Get_StatCardPadding))
                                         [
                                             SAssignNew(_ClosedStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
                                                 .Value(FText::FromString(TEXT("0")))
                                                 .Label(FText::FromString(TEXT("CLOSED")))
                                         ]
-                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(ck::debug_axes::Apply_RowDensity(FMargin(8.0f)))
+                                    + SHorizontalBox::Slot().FillWidth(1.0f).Padding(TAttribute<FMargin>::CreateStatic(&ck_astar_debugger_stats_panel::Get_StatCardPadding))
                                         [
                                             SAssignNew(_PathStat, SCkDebug_StatPair)
                                                 .Layout(ECkDebug_StatPairLayout::Stacked_ValueOnTop)
@@ -123,7 +138,7 @@ auto
                                                     [
                                                         SAssignNew(_BudgetPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
-                                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                                            .Font_Static(&ck_astar_debugger_stats_panel::Get_PercentFont)
                                                             .ColorAndOpacity(CkStyle::TextDim())
                                                     ]
                                         ]
@@ -157,7 +172,7 @@ auto
                                                     [
                                                         SAssignNew(_ExplorationPctText, SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("0%")))
-                                                            .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
+                                                            .Font_Static(&ck_astar_debugger_stats_panel::Get_PercentFont)
                                                             .ColorAndOpacity(CkStyle::TextDim())
                                                     ]
                                         ]
@@ -222,7 +237,7 @@ auto
                                                     [
                                                         SNew(SCkDebug_SelectableLabel)
                                                             .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
-                                                            .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                                                            .Font_Static(&ck_astar_debugger_stats_panel::Get_EmptyStateFont)
                                                             .ColorAndOpacity(CkStyle::TextMute())
                                                     ]
                                         ]
@@ -269,7 +284,7 @@ auto
                 [
                     SNew(SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("Click a cell on the grid to inspect it")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Italic", CkStyle::FontSizeBody()))
+                        .Font_Static(&ck_astar_debugger_stats_panel::Get_EmptyStateFont)
                         .ColorAndOpacity(CkStyle::TextMute())
                 ];
         }
@@ -303,7 +318,7 @@ auto
                 : FString(TEXT("none"));
 
             auto TitleColor = CkStyle::Accent();
-            auto BoldFont = CkStyle::BoldFont(CkStyle::FontSizeBody());
+            auto BoldFont = TAttribute<FSlateFontInfo>::CreateStatic(&ck_astar_debugger_stats_panel::Get_CellTitleFont);
 
             _CellDetailBox->AddSlot().AutoHeight()
                 [
@@ -333,6 +348,17 @@ auto
             AddDetailRow(TEXT("Parent"), ParentStr);
         }
     }
+}
+
+auto
+    SCkAStarDebugger_StatsPanel::
+    Rebuild_ForStyleChange()
+    -> void
+{
+    // The cell-detail rows are the one sub-tree here that is emitted imperatively, gated on the
+    // selected-cell index changing. Poisoning the cached index makes the next Tick re-emit them with
+    // whatever the new selection composes to.
+    _LastShownCellIndex = MIN_int32;
 }
 
 // ====================================================================================================================

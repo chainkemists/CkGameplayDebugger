@@ -14,7 +14,10 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Styling/StyleDefaults.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STableRow.h"
@@ -25,6 +28,45 @@
 
 namespace ck_eqs_debugger_query_list
 {
+    // TextScale bakes into an FSlateFontInfo, so every font here rides an attribute instead of a
+    // construct-time value — a Style Lab flip then lands on rows that were generated long before it.
+    auto Get_RowNameFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
+
+    auto Get_RowMetaFont() -> FSlateFontInfo
+    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
+
+    // RowBanding, composed the way the Style Lab's list sample does it: Zebra swaps the row's own
+    // fill for the alternating band brush, Hairline leaves the fill alone and draws a rule under the
+    // row, Off does neither. Under the default (Off) the brush is the no-brush and the rule
+    // collapses, so Classic renders exactly what it shipped.
+    auto Get_RowBandBrush(int32 InRowIndex) -> const FSlateBrush*
+    {
+        return UCkDebuggerStyleSettings::Get_Selection().RowBanding == ECkDebugAxis_RowBanding::Zebra
+            ? ck::debug_axes::Get_RowBandingBrush(InRowIndex)
+            : FStyleDefaults::GetNoBrush();
+    }
+
+    auto Make_RowRule() -> TSharedRef<SWidget>
+    {
+        return SNew(SBox)
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck::debug_axes::Get_RowBandingRuleThickness()};
+            })
+            .Visibility_Lambda([]()
+            {
+                return ck::debug_axes::Get_RowBandingRuleThickness() > 0.0f
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            [
+                SNew(SBorder)
+                .BorderImage(CkStyle::GetFilledBrush())
+                .BorderBackgroundColor(FSlateColor{CkStyle::Border()})
+            ];
+    }
+
     auto BuildTestSummary(const TArray<ECk_Eqs_TestType>& InTestTypes) -> FString
     {
         if (InTestTypes.IsEmpty())
@@ -182,6 +224,7 @@ auto
         // on RequestListRefresh below when the entity set changes (new-cycle queries are new entities).
         Item->Info             = Q;
         Item->IsHighlightMatch = ck_eqs_debugger_query_list::MatchesQuery(Q, _HighlightString);
+        Item->RowIndex         = NewItems.Num();
 
         if (ck::IsValid(SelectedHandle) && Item->Info.QueryHandle == SelectedHandle)
         { NewSelection = Item; }
@@ -250,57 +293,85 @@ auto
     // STextBlock plus the click-passive SCkDebug_CategoryDot under STableRow. Selection styling is
     // handled by STableRow itself via .ShowSelection(true); right-click context menu is wired via the
     // SListView's OnContextMenuOpening below.
+    const auto RowIndex = InItem->RowIndex;
+
     return SNew(STableRow<TSharedPtr<FRowItem>>, InOwner)
-        .Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+        .Padding_Lambda([]() { return ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}); })
         .ShowSelection(true)
         [
-            SNew(SHorizontalBox)
+            SNew(SVerticalBox)
 
-            // Status dot
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin{6.0f, 0.0f, 8.0f, 0.0f})
+            + SVerticalBox::Slot().AutoHeight()
             [
-                SNew(SCkDebug_CategoryDot)
-                .Color(ToneColor)
+                SNew(SBorder)
+                .BorderImage_Lambda([RowIndex]() { return ck_eqs_debugger_query_list::Get_RowBandBrush(RowIndex); })
+                .Padding(FMargin{0.0f})
+                [
+                    SNew(SHorizontalBox)
+
+                    // Status dot
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{6.0f, 0.0f, 8.0f, 0.0f})
+                    [
+                        SNew(SCkDebug_CategoryDot)
+                        .Color(ToneColor)
+                    ]
+
+                    // Title + meta (vertical stack)
+                    + SHorizontalBox::Slot()
+                    .FillWidth(1.0f)
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{0.0f, 2.0f})
+                    [
+                        SNew(SVerticalBox)
+                        + SVerticalBox::Slot().AutoHeight()
+                        [
+                            SNew(STextBlock)
+                            .Text(FText::FromString(NameText))
+                            .Font_Static(&ck_eqs_debugger_query_list::Get_RowNameFont)
+                            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
+                        ]
+                        + SVerticalBox::Slot().AutoHeight()
+                        [
+                            SNew(STextBlock)
+                            .Text(FText::FromString(MetaText))
+                            .Font_Static(&ck_eqs_debugger_query_list::Get_RowMetaFont)
+                            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                        ]
+                    ]
+
+                    // Right text
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(FMargin{8.0f, 0.0f, 6.0f, 0.0f})
+                    [
+                        SNew(STextBlock)
+                        .Text(FText::FromString(RightText))
+                        .Font_Static(&ck_eqs_debugger_query_list::Get_RowMetaFont)
+                        .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                    ]
+                ]
             ]
 
-            // Title + meta (vertical stack)
-            + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            .Padding(FMargin{0.0f, 2.0f})
+            + SVerticalBox::Slot().AutoHeight()
             [
-                SNew(SVerticalBox)
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(NameText))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeBody()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::Text()})
-                ]
-                + SVerticalBox::Slot().AutoHeight()
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(MetaText))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
-                ]
-            ]
-
-            // Right text
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin{8.0f, 0.0f, 6.0f, 0.0f})
-            [
-                SNew(STextBlock)
-                .Text(FText::FromString(RightText))
-                .Font(CkStyle::RegularFont(CkStyle::FontSizeMicro()))
-                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                ck_eqs_debugger_query_list::Make_RowRule()
             ]
         ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkEqsDebugger_QueryList::
+    Rebuild_ForStyleChange()
+    -> void
+{
+    if (_ListView.IsValid())
+    { _ListView->RebuildList(); }
 }
 
 auto

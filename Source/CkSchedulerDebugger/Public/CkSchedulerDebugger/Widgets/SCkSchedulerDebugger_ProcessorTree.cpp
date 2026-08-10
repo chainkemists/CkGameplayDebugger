@@ -16,6 +16,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
@@ -74,7 +75,7 @@ namespace
 									return Proc ? FText::FromString(FString::Printf(TEXT("#%d"), Proc->ExecutionOrder))
 									            : FText::GetEmpty();
 								})
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 						]
@@ -87,7 +88,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(NodeName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 						.ColorAndOpacity_Lambda([LookupProc, WeakNode]() -> FSlateColor
 						{
 							// Highlight-mode dim takes precedence so non-matches read clearly.
@@ -111,7 +112,7 @@ namespace
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(FString(TEXT("\u25CF"))))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 					.ColorAndOpacity(CkStyle::Warn())
 					.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
 					.Visibility_Lambda([LookupProc]()
@@ -129,7 +130,7 @@ namespace
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(FString(TEXT("\u25C6"))))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 					.ColorAndOpacity(CkStyle::Info())
 					.ToolTipText(FText::FromString(TEXT("Parallel processor")))
 					.Visibility_Lambda([LookupProc]()
@@ -154,7 +155,7 @@ namespace
 								const auto* Proc = LookupProc();
 								return Proc ? FText::AsNumber(Proc->MainPassEntityCount) : FText::GetEmpty();
 							})
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 							.ColorAndOpacity(CkStyle::TextMute())
 							.Justification(ETextJustify::Right)
 							.ToolTipText(FText::FromString(TEXT("Entity count")))
@@ -174,7 +175,7 @@ namespace
 						return Proc ? FText::FromString(FString::Printf(TEXT("%.3f ms"), Proc->MainPassTimeMs))
 						            : FText::GetEmpty();
 					})
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 					.ColorAndOpacity_Lambda([LookupProc]() -> FSlateColor
 					{
 						const auto* Proc = LookupProc();
@@ -242,7 +243,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(NodeName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 						.ColorAndOpacity_Lambda([LookupGroup]() -> FSlateColor
 						{
 							const auto* Group = LookupGroup();
@@ -257,7 +258,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::AsNumber(ChildCount))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 						.ColorAndOpacity(CkStyle::TextMute())
 				]
 
@@ -279,7 +280,7 @@ namespace
 							return Group ? FText::FromString(FString::Printf(TEXT("%.2f ms"), Group->AggregateTimeMs))
 							             : FText::GetEmpty();
 						})
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 						.ColorAndOpacity(CkStyle::TextDim())
 				];
 	}
@@ -303,7 +304,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(InNode->DisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H3)
 						.ColorAndOpacity(CkStyle::Text())
 				]
 
@@ -319,7 +320,7 @@ namespace
 						[
 							SNew(STextBlock)
 								.Text(FText::AsNumber(TotalChildren))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CkStyle::TextDim())
 						]
 				];
@@ -384,7 +385,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(InDisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 						.ColorAndOpacity(InAccentColor)
 				]
 
@@ -395,7 +396,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::AsNumber(InRunningCount))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 						.ColorAndOpacity(CkStyle::TextMute())
 				]
 
@@ -412,7 +413,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(AggregateText))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 						.ColorAndOpacity(CkStyle::TextDim())
 				];
 	}
@@ -445,7 +446,7 @@ namespace
 						[
 							SNew(SCkDebug_SelectableLabel)
 								.Text(FText::FromString(ExecOrderText))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CkStyle::TextMute())
 						]
 				]
@@ -457,7 +458,7 @@ namespace
 				[
 					SNew(SCkDebug_SelectableLabel)
 						.Text(FText::FromString(InProc.DisplayName))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 						.ColorAndOpacity(NameColor)
 				];
 
@@ -470,7 +471,7 @@ namespace
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(FString(TEXT("\u25CF"))))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 						.ColorAndOpacity(CkStyle::Warn())
 						.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
 				];
@@ -486,7 +487,7 @@ namespace
 					[
 						SNew(SCkDebug_SelectableLabel)
 							.Text(FText::FromString(EntityText))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 							.ColorAndOpacity(CkStyle::TextMute())
 					]
 			];
@@ -498,7 +499,7 @@ namespace
 			[
 				SNew(SCkDebug_SelectableLabel)
 					.Text(FText::FromString(TimingText))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 					.ColorAndOpacity(TimingColor)
 			];
 
@@ -563,7 +564,7 @@ auto
 							{
 								return SNew(STextBlock)
 									.Text(FText::FromString(*InItem))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9));
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body);
 							})
 							.OnSelectionChanged_Lambda([this](TSharedPtr<FString> InItem, ESelectInfo::Type)
 							{
@@ -592,7 +593,7 @@ auto
 										default: return FText::FromString(TEXT("Exec Order"));
 										}
 									})
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 							]
 					]
 			]
@@ -637,7 +638,7 @@ auto
 												[
 													SNew(STextBlock)
 														.Text(FText::FromString(TEXT("Frame Breakdown")))
-														.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+														.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 														.ColorAndOpacity(CkStyle::TextDim())
 												]
 
@@ -848,7 +849,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(InLabel))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 				.ColorAndOpacity(InHeaderColor)
 			]
 
@@ -875,7 +876,7 @@ auto
 						}
 						return FText::AsNumber(Count);
 					})
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 					.ColorAndOpacity(InHeaderColor)
 				]
 			]
@@ -901,7 +902,7 @@ auto
 						? FText::FromString(FString::Printf(TEXT("%.3f ms"), Total))
 						: FText::GetEmpty();
 				})
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 				.ColorAndOpacity(CkStyle::TextDim())
 			]
 		];
@@ -958,7 +959,7 @@ auto
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(GroupName))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 					.ColorAndOpacity(GroupAccent)
 				]
 
@@ -983,7 +984,7 @@ auto
 						}
 						return FText::AsNumber(Count);
 					})
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 					.ColorAndOpacity(CkStyle::TextMute())
 				]
 
@@ -1011,7 +1012,7 @@ auto
 							? FText::FromString(FString::Printf(TEXT("%.2f ms"), Total))
 							: FText::GetEmpty();
 					})
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 					.ColorAndOpacity(CkStyle::TextDim())
 				]
 			];
@@ -1073,7 +1074,7 @@ auto
 										? FText::FromString(FString::Printf(TEXT("#%d"), Arr[CapturedMemberIdx].ExecutionOrder))
 										: FText::GetEmpty();
 								})
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 							]
@@ -1084,7 +1085,7 @@ auto
 						[
 							SNew(SCkDebug_SelectableLabel)
 							.Text(FText::FromString(MemberName))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 							.ColorAndOpacity_Lambda([this, MemberName]() -> FSlateColor
 							{
 								// Dim when the Highlight input is set and this row doesn't match.
@@ -1113,7 +1114,7 @@ auto
 										? FText::AsNumber(InCountGetter(Arr[CapturedMemberIdx]))
 										: FText::GetEmpty();
 								})
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 							]
@@ -1142,7 +1143,7 @@ auto
 									? FSlateColor(FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeGetter(Arr[CapturedMemberIdx])))
 									: FSlateColor(CkStyle::TextMute());
 							})
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 						]
 					]
 				];
@@ -1195,7 +1196,7 @@ auto
 	[
 		SNew(STextBlock)
 		.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
-		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+		.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 		.ColorAndOpacity(CkStyle::Err())
 	];
 
@@ -1218,7 +1219,7 @@ auto
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("No dirty processors")))
-			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+			.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Micro)
 			.ColorAndOpacity(CkStyle::TextMute())
 			.Visibility(NoneVisibleAttr)
 		];
@@ -1294,7 +1295,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString(TEXT("\u25CF"))))
-				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 				.ColorAndOpacity(ColorAttr)
 			]
 
@@ -1302,7 +1303,7 @@ auto
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(CapturedMarkerName))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Micro)
 				.ColorAndOpacity(ColorAttr)
 				.AutoWrapText(true)
 			]
@@ -1349,7 +1350,7 @@ auto
 						return FText::FromString(FString::Printf(TEXT("%s (x%d)"),
 							*MemberName, Arr[CapturedMemberIdx].PumpCountThisFrame));
 					})
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 					.ColorAndOpacity(CkStyle::Selection())
 					.AutoWrapText(true)
 				]
@@ -1429,7 +1430,7 @@ auto
 					[
 						SNew(STextBlock)
 							.Text(FText::FromString(InLabel))
-							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 							.ColorAndOpacity(InColor)
 					]
 
@@ -1445,7 +1446,7 @@ auto
 							[
 								SNew(STextBlock)
 									.Text(FText::AsNumber(InCount))
-									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 									.ColorAndOpacity(InColor)
 							]
 					]
@@ -1465,7 +1466,7 @@ auto
 							.Text(FText::FromString(InTotalMs > 0.0
 								? FString::Printf(TEXT("%.3f ms"), InTotalMs)
 								: FString{}))
-							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+							.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 							.ColorAndOpacity(CkStyle::TextDim())
 					]
 			];
@@ -1630,7 +1631,7 @@ auto
 				SNew(STextBlock)
 					.Text(FText::FromString(FString::Printf(
 						TEXT("... %d more passes (same processors) ..."), PumpCount - PassesToShow)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Micro)
 					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
@@ -1643,7 +1644,7 @@ auto
 		[
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
+				.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Body)
 				.ColorAndOpacity(CkStyle::Err())
 		];
 
@@ -1670,7 +1671,7 @@ auto
 			[
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("No dirty processors")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_Micro)
 					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
@@ -1720,7 +1721,7 @@ auto
 						[
 							SNew(STextBlock)
 								.Text(FText::FromString(FString(TEXT("\u25CF"))))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 								.ColorAndOpacity(CycleColor)
 						]
 
@@ -1730,7 +1731,7 @@ auto
 						[
 							SNew(STextBlock)
 								.Text(FText::FromString(MarkerDisplayName))
-								.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_Micro)
 								.ColorAndOpacity(CycleColor)
 								.AutoWrapText(true)
 						]
@@ -1766,7 +1767,7 @@ auto
 										SNew(STextBlock)
 											.Text(FText::FromString(FString::Printf(TEXT("%s (x%d)"),
 												*Member.DisplayName, Member.PumpCountThisFrame)))
-											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
 											.ColorAndOpacity(CkStyle::Selection())
 											.AutoWrapText(true)
 									]
@@ -1779,6 +1780,24 @@ auto
 	_PumpContainer->SetContent(NewContent);
 }
 #endif // 0 — legacy rebuild block (replaced by DoBuildPumpBreakdown_StableTree)
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebugger_ProcessorTree::
+	Rebuild_ForStyleChange()
+	-> void
+{
+	// RebuildList re-runs DoGenerateRow for every visible item without touching _DisplayRoots, so the
+	// TSharedPtr identity the tree tracks selection and expansion by survives (the pointer-identity
+	// contract in CkDebuggerCommon/CLAUDE.md).
+	if (_TreeView.IsValid())
+	{ _TreeView->RebuildList(); }
+
+	// The pump breakdown is a pre-allocated stable tree keyed on a data hash; poisoning the hash makes
+	// the next refresh re-emit it under the new selection.
+	_LastPumpDataHash = 0;
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -2009,7 +2028,7 @@ auto
 	-> TSharedRef<ITableRow>
 {
 	return SNew(STableRow<TSharedPtr<FCkSchedulerDebugger_TreeNode>>, InOwnerTable)
-		.Padding(ck::debug_axes::Apply_RowDensity(FMargin{0.0f, 1.0f}))
+		.Padding(TAttribute<FMargin>::CreateStatic(&ck::scheduler_debugger_axes::Get_TreeRowPadding))
 		.ShowSelection(true)
 		.Content()
 		[

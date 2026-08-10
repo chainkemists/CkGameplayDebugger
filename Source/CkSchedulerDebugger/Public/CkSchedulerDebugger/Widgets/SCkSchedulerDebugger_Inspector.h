@@ -16,6 +16,9 @@ public:
 	auto Construct(const FArguments& InArgs) -> void;
 	~SCkSchedulerDebugger_Inspector();
 
+	/** Re-emit the inspector body after a Layer-B style revision. Selection is untouched. */
+	auto Rebuild_ForStyleChange() -> void { DoRebuildContent(); }
+
 private:
 	auto DoOnSelectionChanged(int32 InProcessorIndex) -> void;
 	auto DoOnDataRefreshed() -> void;

@@ -48,6 +48,9 @@ public:
 
 	virtual ~SCkCrowdDebuggerWindow();
 
+protected:
+	virtual auto OnStyleRevisionChanged() -> void override;
+
 private:
 	auto BuildToolbar() -> TSharedRef<SWidget>;
 	auto BuildMenuActions() -> TSharedRef<SWidget>;

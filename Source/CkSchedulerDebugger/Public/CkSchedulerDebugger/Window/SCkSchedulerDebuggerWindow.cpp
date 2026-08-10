@@ -1,6 +1,7 @@
 #include "SCkSchedulerDebuggerWindow.h"
 
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
+#include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 #include "CkSchedulerDebugger/Pages/CkSchedulerDebuggerPage_TreeView.h"
 
 #include "CkCore/Format/CkFormat.h"
@@ -51,7 +52,7 @@ namespace ck_scheduler_debugger_window
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("Coming Soon")))
 						.ColorAndOpacity(CkStyle::TextMute())
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_PlaceholderBanner)
 				];
 		}
 
@@ -133,7 +134,7 @@ auto
 									[
 										SNew(STextBlock)
 											.Text(FText::FromString(TEXT("<")))
-											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H3)
 									]
 							]
 
@@ -152,7 +153,7 @@ auto
 									[
 										SNew(STextBlock)
 											.Text(FText::FromString(TEXT(">")))
-											.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H3)
 									]
 							]
 
@@ -270,7 +271,9 @@ auto
 		float InDeltaTime)
 	-> void
 {
-	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+	// MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
+	// style-revision watch that routes into OnStyleRevisionChanged.
+	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	// Honour per-window refresh settings. This gate short-circuits the whole
 	// data-collection + OnDataRefreshed broadcast chain when the window is
@@ -413,7 +416,7 @@ auto
 				[
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("CkScheduler Debugger")))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
+						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_WindowTitle)
 						.ColorAndOpacity(CkStyle::Text())
 				]
 
@@ -446,7 +449,7 @@ auto
 						[
 							SNew(STextBlock)
 								.Text(FText::FromString(TEXT("History")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 								.ColorAndOpacity(CkStyle::TextDim())
 						]
 
@@ -469,7 +472,7 @@ auto
 												_ViewModel->Set_FrameHistoryMaxSize(_CurrentWorld.Get(), InValue);
 											}
 										})
-										.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+										.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
 								]
 						]
 				]
@@ -483,6 +486,24 @@ auto
 						.WindowId(SCkSchedulerDebuggerWindow::WindowId)
 				]
 		];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+	SCkSchedulerDebuggerWindow::
+	OnStyleRevisionChanged()
+	-> void
+{
+	// The chrome, the top bar and the stats strip are attribute-bound and have already moved. Only
+	// the pages own imperative sub-trees (tree rows, inspector rows, graph nodes), so the notification
+	// goes to EVERY page, not just the active one — an inactive page keeps its widgets alive and would
+	// otherwise come back stale when the user switches to it.
+	for (const auto& Page : _Pages)
+	{
+		if (Page.IsValid())
+		{ Page->OnStyleRevisionChanged(); }
+	}
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -653,7 +674,7 @@ auto
 									[
 										SNew(STextBlock)
 											.Text(_Pages[PageIdx]->Get_PageName())
-											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
+											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_H3)
 											.ColorAndOpacity_Lambda([this, PageIdx]()
 											{
 												return _ActivePageIndex == PageIdx

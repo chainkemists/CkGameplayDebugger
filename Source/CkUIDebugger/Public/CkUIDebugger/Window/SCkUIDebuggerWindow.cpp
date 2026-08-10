@@ -5,6 +5,7 @@
 
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Icon.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
@@ -42,9 +43,27 @@
 
 namespace ck_ui_debugger
 {
-    static auto Normal(int32 InSize = 9) -> FSlateFontInfo { return CkStyle::RegularFont(InSize); }
-    static auto Bold(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::BoldFont(InSize); }
-    static auto Mono(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::MonoFont(InSize); }
+    // TextScale-aware counterparts of CkStyle::RegularFont / BoldFont / MonoFont. Bound through
+    // .Font_Static below so a Style Lab flip resizes text that was built long before the flip.
+    static auto Normal(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", InSize); }
+    static auto Bold(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", InSize); }
+    static auto Mono(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", InSize); }
+
+    static auto Font_Heading()  -> FSlateFontInfo { return Bold(CkStyle::FontSizeH3()); }
+    static auto Font_RowLabel() -> FSlateFontInfo { return Bold(CkStyle::FontSizeH4()); }
+    static auto Font_Body()     -> FSlateFontInfo { return Normal(CkStyle::FontSizeSmall()); }
+    static auto Font_Value()    -> FSlateFontInfo { return Mono(CkStyle::FontSizeSmall()); }
+
+    static auto Get_WidgetRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(
+            FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS});
+    }
+
+    static auto Get_HistoryRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 2.0f});
+    }
 
     static auto InputModeToString(ECk_UI_InputMode InMode) -> FString
     {
@@ -121,7 +140,7 @@ auto
     Register_WithGate();
 
     _SummaryText = SNew(STextBlock)
-        .Font(ck_ui_debugger::Bold(10))
+        .Font_Static(&ck_ui_debugger::Font_Heading)
         .ColorAndOpacity(CkStyle::Text());
 
     _LayerListBox = SNew(SVerticalBox);
@@ -145,14 +164,11 @@ auto
                     .VAlign(VAlign_Center)
                     .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                     [
-                        SNew(SImage)
-                        .Image(FAppStyle::GetBrush("Icons.Search"))
+                        SNew(SCkDebug_Icon)
+                        .Brush(FAppStyle::GetBrush("Icons.Search"))
+                        .Meaning(FText::FromString(TEXT("Filter the layer list by tag")))
                         .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-                        .DesiredSizeOverride_Lambda([]() -> TOptional<FVector2D>
-                        {
-                            const auto Size = ck::debug_axes::Apply_IconSize(16.0f);
-                            return FVector2D{Size, Size};
-                        })
+                        .Size(FVector2D{16.0f, 16.0f})
                     ]
 
                 + SHorizontalBox::Slot()
@@ -295,7 +311,7 @@ auto
         .HeaderContent()
         [
             SNew(STextBlock)
-            .Font(ck_ui_debugger::Bold(10))
+            .Font_Static(&ck_ui_debugger::Font_Heading)
             .Text(FText::FromString(TEXT("Event History")))
             .ColorAndOpacity(CkStyle::TextStrong())
         ]
@@ -376,7 +392,7 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -420,6 +436,19 @@ auto
         DoUpdateAllSlots();
         DoBuildHistoryList();
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkUIDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Structural axes reach this window only through the imperatively-built layer slots and history
+    // rows; flagging the existing rebuild path re-stamps them on the next gated tick without
+    // touching the widget tree from inside the revision poll.
+    _StructureDirty = true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -609,10 +638,10 @@ auto
         // with the adjacent label carrying the layer TAG, not the state.
         Slot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(8.0f);
 
-        Slot.TagText = SNew(STextBlock).Font(ck_ui_debugger::Bold());
-        Slot.PriorityText = SNew(STextBlock).Font(ck_ui_debugger::Mono());
-        Slot.InputModeText = SNew(STextBlock).Font(ck_ui_debugger::Normal());
-        Slot.WidgetCountText = SNew(STextBlock).Font(ck_ui_debugger::Normal());
+        Slot.TagText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_RowLabel);
+        Slot.PriorityText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Value);
+        Slot.InputModeText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body);
+        Slot.WidgetCountText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body);
 
         auto Header =
             SNew(SHorizontalBox)
@@ -648,7 +677,7 @@ auto
 
             WSlot.StatusDot = SNew(SCkDebug_CategoryDot).Diameter(6.0f);
 
-            WSlot.ClassNameText = SNew(STextBlock).Font(ck_ui_debugger::Normal())
+            WSlot.ClassNameText = SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
                 .OverflowPolicy(ETextOverflowPolicy::Ellipsis);
 
             // The badge IS the row's state label, so it reads as a toned pill. Its text and tone
@@ -671,8 +700,7 @@ auto
             WSlot.Root = SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(BgColor)
-                .Padding(ck::debug_axes::Apply_RowDensity(
-                    FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS}))
+                .Padding_Static(&ck_ui_debugger::Get_WidgetRowPadding)
                 .Visibility(EVisibility::Collapsed)
                 [
                     SNew(SHorizontalBox)
@@ -856,7 +884,7 @@ auto
     {
         _HistoryListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
-                SNew(STextBlock).Font(ck_ui_debugger::Normal())
+                SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
                 .Text(FText::FromString(TEXT("No events yet.")))
                 .ColorAndOpacity(CkStyle::TextMute())
             ];
@@ -872,9 +900,9 @@ auto
                 SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(BgColor)
-                .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 2.0f}))
+                .Padding_Static(&ck_ui_debugger::Get_HistoryRowPadding)
                 [
-                    SNew(STextBlock).Font(ck_ui_debugger::Normal())
+                    SNew(STextBlock).Font_Static(&ck_ui_debugger::Font_Body)
                     .Text(FText::FromString(_HistoryEvents[Idx].Description))
                     .ColorAndOpacity(CkStyle::TextDim())
                 ]

@@ -42,9 +42,29 @@
 
 namespace ck_input_debugger
 {
-    static auto Normal(int32 InSize = 9) -> FSlateFontInfo { return CkStyle::RegularFont(InSize); }
-    static auto Bold(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::BoldFont(InSize); }
-    static auto Mono(int32 InSize = 9)   -> FSlateFontInfo { return CkStyle::MonoFont(InSize); }
+    // TextScale-aware counterparts of CkStyle::RegularFont / BoldFont / MonoFont. Bound through
+    // .Font_Static below so a Style Lab flip resizes text that was built long before the flip.
+    static auto Normal(int32 InSize) -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", InSize); }
+    static auto Bold(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", InSize); }
+    static auto Mono(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", InSize); }
+
+    static auto Font_Heading()  -> FSlateFontInfo { return Bold(CkStyle::FontSizeH3()); }
+    static auto Font_RowLabel() -> FSlateFontInfo { return Bold(CkStyle::FontSizeH4()); }
+    static auto Font_Body()     -> FSlateFontInfo { return Normal(CkStyle::FontSizeSmall()); }
+    static auto Font_Value()    -> FSlateFontInfo { return Mono(CkStyle::FontSizeSmall()); }
+
+    // RowDensity lands live on the mapping / action rows � SBorder::Padding is an attribute, so the
+    // axis moves rows that were built long before the flip.
+    static auto Get_MappingRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(
+            FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS});
+    }
+
+    static auto Get_ActionRowPadding() -> FMargin
+    {
+        return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS});
+    }
 
     static auto ActivityColor(ECkInputDebugger_ActionActivity InActivity) -> FLinearColor
     {
@@ -79,7 +99,7 @@ auto
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
 
     _SummaryText = SNew(STextBlock)
-        .Font(ck_input_debugger::Bold(10))
+        .Font_Static(&ck_input_debugger::Font_Heading)
         .ColorAndOpacity(CkStyle::Text());
 
     _ContextListBox  = SNew(SVerticalBox);
@@ -184,7 +204,7 @@ auto
                 [
                     SNew(STextBlock)
                         .Text(FText::FromString(TEXT("Player:")))
-                        .Font(ck_input_debugger::Normal())
+                        .Font_Static(&ck_input_debugger::Font_Body)
                         .ColorAndOpacity(CkStyle::TextDim())
                 ]
 
@@ -237,7 +257,7 @@ auto
         float InDeltaTime)
     -> void
 {
-    SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+    SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -267,7 +287,7 @@ auto
             _ContextListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [
                     SNew(STextBlock)
-                        .Font(ck_input_debugger::Normal())
+                        .Font_Static(&ck_input_debugger::Font_Body)
                         .Text(FText::FromString(TEXT("No active Enhanced Input player. Start PIE and possess a pawn.")))
                         .ColorAndOpacity(CkStyle::TextMute())
                 ];
@@ -288,6 +308,18 @@ auto
     }
 
     UpdateLiveValues();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInputDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Clearing the structural signature is this window's existing "rebuild the sections" lever —
+    // the next gated tick re-runs BuildContextSlot / BuildActionSlot with the new selection.
+    _LastSignature.Empty();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -353,7 +385,7 @@ auto
         _PlayerSelectorBox->AddSlot().AutoWidth().VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                    .Font(ck_input_debugger::Mono())
+                    .Font_Static(&ck_input_debugger::Font_Value)
                     .Text(FText::FromString(InNumLocalPlayers == 1 ? TEXT("P0") : TEXT("—")))
                     .ColorAndOpacity(CkStyle::TextDim())
             ];
@@ -381,7 +413,7 @@ auto
                     })
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Mono())
+                            .Font_Static(&ck_input_debugger::Font_Value)
                             .Text(FText::FromString(ck::Format_UE(TEXT("P{}"), Index)))
                             .ColorAndOpacity_Lambda([this, Index]()
                             {
@@ -416,7 +448,7 @@ auto
         _ContextListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
                 SNew(STextBlock)
-                    .Font(ck_input_debugger::Normal())
+                    .Font_Static(&ck_input_debugger::Font_Body)
                     .Text(FText::FromString(TEXT("No mapping contexts applied to this player.")))
                     .ColorAndOpacity(CkStyle::TextMute())
             ];
@@ -436,7 +468,7 @@ auto
         _ResolvedListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
                 SNew(STextBlock)
-                    .Font(ck_input_debugger::Normal())
+                    .Font_Static(&ck_input_debugger::Font_Body)
                     .Text(FText::FromString(TEXT("No resolved action bindings.")))
                     .ColorAndOpacity(CkStyle::TextMute())
             ];
@@ -468,7 +500,7 @@ auto
     // ---- Header ----
 
     Slot.NameText = SNew(STextBlock)
-        .Font(ck_input_debugger::Bold())
+        .Font_Static(&ck_input_debugger::Font_RowLabel)
         .Text(FText::FromString(InContext.ContextName))
         .ColorAndOpacity(CkStyle::Text());
 
@@ -478,7 +510,7 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
             [
                 SNew(STextBlock)
-                    .Font(ck_input_debugger::Mono())
+                    .Font_Static(&ck_input_debugger::Font_Value)
                     .Text(FText::FromString(ck::Format_UE(TEXT("[P{}]"), InContext.Priority)))
                     .ColorAndOpacity(CkStyle::Accent())
                     .ToolTipText(FText::FromString(TEXT("Stack priority (higher wins on key conflicts)")))
@@ -490,7 +522,7 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
-                    .Font(ck_input_debugger::Normal())
+                    .Font_Static(&ck_input_debugger::Font_Body)
                     .Text(FText::FromString(ck::Format_UE(TEXT("{} mappings"), InContext.Mappings.Num())))
                     .ColorAndOpacity(CkStyle::TextMute())
             ];
@@ -518,15 +550,14 @@ auto
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(BgColor)
-            .Padding(ck::debug_axes::Apply_RowDensity(
-                FMargin{CkStyle::SpaceXL, CkStyle::SpaceS, CkStyle::SpaceM, CkStyle::SpaceS}))
+            .Padding_Static(&ck_input_debugger::Get_MappingRowPadding)
             [
                 SNew(SHorizontalBox)
 
                 + SHorizontalBox::Slot().FillWidth(0.42f).VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Mono())
+                            .Font_Static(&ck_input_debugger::Font_Value)
                             .Text(FText::FromString(Mapping.ActionName))
                             .ColorAndOpacity(CkStyle::Text())
                             .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
@@ -535,7 +566,7 @@ auto
                 + SHorizontalBox::Slot().FillWidth(0.32f).VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Mono())
+                            .Font_Static(&ck_input_debugger::Font_Value)
                             .Text(FText::FromString(Mapping.KeyName))
                             .ColorAndOpacity(CkStyle::Accent())
                             .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
@@ -544,7 +575,7 @@ auto
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Normal())
+                            .Font_Static(&ck_input_debugger::Font_Body)
                             .Text(FText::FromString(ck::Format_UE(TEXT("({})"), Mapping.ValueType)))
                             .ColorAndOpacity(CkStyle::TextDim())
                     ]
@@ -552,7 +583,7 @@ auto
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Normal())
+                            .Font_Static(&ck_input_debugger::Font_Body)
                             .Text(FText::FromString(ck::Format_UE(TEXT("T{} M{}"), Mapping.TriggerCount, Mapping.ModifierCount)))
                             .ColorAndOpacity(CkStyle::TextMute())
                             .ToolTipText(FText::FromString(TEXT("Trigger count / Modifier count on this mapping")))
@@ -607,18 +638,18 @@ auto
     Slot.ActivityDot->SetColorAndOpacity(CkStyle::TextMute());
 
     Slot.NameText = SNew(STextBlock)
-        .Font(ck_input_debugger::Bold())
+        .Font_Static(&ck_input_debugger::Font_RowLabel)
         .Text(FText::FromString(InAction.ActionName))
         .ColorAndOpacity(CkStyle::Text())
         .OverflowPolicy(ETextOverflowPolicy::Ellipsis);
 
     Slot.ValueText = SNew(STextBlock)
-        .Font(ck_input_debugger::Mono())
+        .Font_Static(&ck_input_debugger::Font_Value)
         .Text(FText::FromString(TEXT("—")))
         .ColorAndOpacity(CkStyle::TextDim());
 
     Slot.TriggerText = SNew(STextBlock)
-        .Font(ck_input_debugger::Normal())
+        .Font_Static(&ck_input_debugger::Font_Body)
         .Text(FText::FromString(TEXT("—")))
         .ColorAndOpacity(CkStyle::TextMute());
 
@@ -631,7 +662,7 @@ auto
             SNew(SBorder)
             .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
             .BorderBackgroundColor(BgColor)
-            .Padding(ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
+            .Padding_Static(&ck_input_debugger::Get_ActionRowPadding)
             [
                 SNew(SHorizontalBox)
 
@@ -644,7 +675,7 @@ auto
                 + SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Mono())
+                            .Font_Static(&ck_input_debugger::Font_Value)
                             .Text(FText::FromString(InAction.KeysJoined))
                             .ColorAndOpacity(CkStyle::TextDim())
                             .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
@@ -653,7 +684,7 @@ auto
                 + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f)
                     [
                         SNew(STextBlock)
-                            .Font(ck_input_debugger::Normal())
+                            .Font_Static(&ck_input_debugger::Font_Body)
                             .Text(FText::FromString(ck::Format_UE(TEXT("({})"), InAction.ValueType)))
                             .ColorAndOpacity(CkStyle::TextMute())
                     ]

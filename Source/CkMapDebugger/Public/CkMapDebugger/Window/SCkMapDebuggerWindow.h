@@ -169,6 +169,7 @@ private:
     auto OnGenerateRow(TSharedPtr<FCkMapDebug_PoiRow> InRow, const TSharedRef<STableViewBase>& InOwnerTable) -> TSharedRef<ITableRow>;
     auto OnRowSelectionChanged(TSharedPtr<FCkMapDebug_PoiRow> InRow, ESelectInfo::Type InSelectInfo) -> void;
 
+    auto MakeRailSeparator() const -> TSharedRef<SWidget>;
     auto MakeSectionHeader(const FString& InText) const -> TSharedRef<SWidget>;
     auto MakeStatRow(const FString& InLabel, TAttribute<FText> InValue) const -> TSharedRef<SWidget>;
 

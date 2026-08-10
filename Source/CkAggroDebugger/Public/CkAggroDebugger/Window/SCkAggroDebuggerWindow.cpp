@@ -2,6 +2,8 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_MeterBar.h"
@@ -33,6 +35,28 @@ namespace ck_aggro_debugger_window
     constexpr auto k_ValueColumnWidth  = 86.0f;
     constexpr auto k_StateColumnWidth  = 150.0f;
     constexpr auto k_MeterHeight       = 7.0f;
+
+    // RowDensity applies as a DELTA on this surface's own base padding: only the offset between
+    // density options belongs to the axis, and Comfortable (the default) leaves the threat rows
+    // exactly where they shipped. Clamped so Compact cannot produce negative margins.
+    auto Apply_RowDensity(
+        const FMargin& InBase)
+        -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
 
     // Bars are normalised against the OWNER's strongest target, not an absolute ceiling. The threat clamp defaults to
     // 10000, so an absolute scale renders every real fight as a flat row of empty bars. Relative scaling makes the
@@ -474,7 +498,8 @@ auto
 
         _OwnerBox->AddSlot()
             .AutoHeight()
-            .Padding(CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS)
+            .Padding(ck_aggro_debugger_window::Apply_RowDensity(
+                FMargin{CkStyle::SpaceS, 0.0f, 0.0f, CkStyle::SpaceXS}))
             [
                 SAssignNew(OwnerSlot.MetaText, STextBlock)
                 .Font(CkStyle::MonoFont(8))
@@ -487,7 +512,7 @@ auto
         {
             _OwnerBox->AddSlot()
                 .AutoHeight()
-                .Padding(CkStyle::SpaceXL, CkStyle::SpaceXS)
+                .Padding(ck_aggro_debugger_window::Apply_RowDensity(FMargin{CkStyle::SpaceXL, CkStyle::SpaceXS}))
                 [
                     SNew(STextBlock)
                     .Font(CkStyle::MonoFont(9))
@@ -505,7 +530,7 @@ auto
 
             _OwnerBox->AddSlot()
                 .AutoHeight()
-                .Padding(CkStyle::SpaceXL, 1.0f)
+                .Padding(ck_aggro_debugger_window::Apply_RowDensity(FMargin{CkStyle::SpaceXL, 1.0f}))
                 [
                     Row
                 ];
@@ -517,7 +542,7 @@ auto
 
     _OwnerBox->AddSlot()
         .AutoHeight()
-        .Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+        .Padding(ck_aggro_debugger_window::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}))
         [
             SNew(STextBlock)
             .Font(CkStyle::MonoFont(9))

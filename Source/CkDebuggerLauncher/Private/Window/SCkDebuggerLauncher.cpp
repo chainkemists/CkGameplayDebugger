@@ -4,6 +4,9 @@
 
 #include "CkCore/Ensure/CkEnsure.h"
 
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "Styling/AppStyle.h"
@@ -17,6 +20,49 @@
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SCkDebuggerLauncher"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_debugger_launcher
+{
+    // RowDensity and IconSize both apply as a DELTA on the rail's own geometry: the rail is denser
+    // and its glyphs larger than the axes' own absolute scales, so only the offset between options
+    // is the axes' business. The default options leave the rail exactly as it shipped.
+    auto Apply_RowDensity(
+        const FMargin& InBase)
+        -> FMargin
+    {
+        const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+        const auto DeltaX = Current.Left - Baseline.Left;
+        const auto DeltaY = Current.Top  - Baseline.Top;
+
+        return FMargin
+        {
+            FMath::Max(0.0f, InBase.Left   + DeltaX),
+            FMath::Max(0.0f, InBase.Top    + DeltaY),
+            FMath::Max(0.0f, InBase.Right  + DeltaX),
+            FMath::Max(0.0f, InBase.Bottom + DeltaY)
+        };
+    }
+
+    auto Apply_IconSize(
+        float InBase)
+        -> float
+    {
+        const auto Baseline = ck::debug_axes::Get_IconSize(FCkDebuggerStyleSelection{});
+        const auto Current  = ck::debug_axes::Get_IconSize(UCkDebuggerStyleSettings::Get_Selection());
+
+        return FMath::Max(1.0f, InBase + (Current - Baseline));
+    }
+
+    auto Get_SeparatorThickness()
+        -> float
+    {
+        return ck::debug_axes::Get_SeparatorThickness(UCkDebuggerStyleSettings::Get_Selection());
+    }
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -125,7 +171,7 @@ auto SCkDebuggerLauncher::RebuildTools() -> void
         _ToolList->AddSlot()
         .AutoHeight()
         .HAlign(HAlign_Fill)
-        .Padding(FMargin{0.0f, 2.0f})
+        .Padding(ck_debugger_launcher::Apply_RowDensity(FMargin{0.0f, 2.0f}))
         [
             Build_ToolButton(Tool)
         ];
@@ -193,8 +239,14 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
             .Padding(FMargin{7.0f, 0.0f})
             [
                 SNew(SBox)
-                .WidthOverride(28.0f)
-                .HeightOverride(28.0f)
+                .WidthOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck_debugger_launcher::Apply_IconSize(28.0f)};
+                })
+                .HeightOverride_Lambda([]() -> FOptionalSize
+                {
+                    return FOptionalSize{ck_debugger_launcher::Apply_IconSize(28.0f)};
+                })
                 .HAlign(HAlign_Center)
                 .VAlign(VAlign_Center)
                 [
@@ -229,9 +281,24 @@ auto SCkDebuggerLauncher::Build_CategoryHeader(
         .AutoHeight()
         .Padding(FMargin{2.0f, InAddSeparator ? 6.0f : 2.0f, 2.0f, 3.0f})
         [
-            SNew(SSeparator)
-            .SeparatorImage(FCkDebuggerLauncherStyle::Get_SeparatorBrush())
-            .Visibility(InAddSeparator ? EVisibility::Visible : EVisibility::Collapsed)
+            // SSeparator::Thickness is a construction-time argument with no setter, and the rail
+            // only rebuilds when the registry changes, so the axis is carried by an SBox override.
+            SNew(SBox)
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck_debugger_launcher::Get_SeparatorThickness()};
+            })
+            .Visibility_Lambda([InAddSeparator]()
+            {
+                return InAddSeparator && ck_debugger_launcher::Get_SeparatorThickness() > 0.0f
+                    ? EVisibility::Visible
+                    : EVisibility::Collapsed;
+            })
+            [
+                SNew(SSeparator)
+                .SeparatorImage(FCkDebuggerLauncherStyle::Get_SeparatorBrush())
+                .Thickness(1.0f)
+            ]
         ]
         + SVerticalBox::Slot()
         .AutoHeight()

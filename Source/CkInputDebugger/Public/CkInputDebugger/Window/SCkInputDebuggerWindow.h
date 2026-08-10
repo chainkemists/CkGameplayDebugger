@@ -10,7 +10,7 @@
 class SVerticalBox;
 class SHorizontalBox;
 class SExpandableArea;
-class SImage;
+class SCkDebug_CategoryDot;
 class STextBlock;
 class FCkDebuggerModel_WorldSelector;
 class UEnhancedInputLocalPlayerSubsystem;
@@ -46,8 +46,8 @@ struct FCkInputDebugger_ContextSlot
 struct FCkInputDebugger_ActionSlot
 {
     TWeakObjectPtr<const UInputAction> Action;
-    TSharedPtr<SWidget>    Root;
-    TSharedPtr<SImage>     ActivityDot;
+    TSharedPtr<SWidget>              Root;
+    TSharedPtr<SCkDebug_CategoryDot> ActivityDot;
     TSharedPtr<STextBlock> NameText;
     TSharedPtr<STextBlock> ValueText;
     TSharedPtr<STextBlock> TriggerText;

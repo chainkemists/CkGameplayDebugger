@@ -20,6 +20,7 @@ public class CkUIDebugger : CkModuleRules
             "CkCore",
             "CkDebuggerCommon",
             "CkEcs",
+            "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkUI",
         });
 

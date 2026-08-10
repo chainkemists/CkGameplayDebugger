@@ -178,9 +178,44 @@ bool FCkDebuggerLauncherPackaging_DevToolsCompileIntoDevelopmentCookedWin64::Run
                 true));
     };
 
+    const auto TestExpectedEditorOnlyModule = [&TestModule, this](const TCHAR* InModuleName)
+    {
+        const auto* Module = TestModule(TEXT("CkDebugger"), InModuleName);
+        const auto ModuleIsValid = ck::IsValid(Module, ck::IsValid_Policy_NullptrOnly{});
+        if (NOT ModuleIsValid)
+        { return; }
+
+        const auto Prefix = ck::Format_UE(TEXT("CkDebugger:{}"), InModuleName);
+        TestEqual(*ck::Format_UE(TEXT("{} remains an UncookedOnly graph tool"), Prefix),
+            Module->Type, EHostType::UncookedOnly);
+        TestFalse(*ck::Format_UE(TEXT("{} is excluded from Win64 Game Development cooked builds"), Prefix),
+            Module->IsCompiledInConfiguration(
+                TEXT("Win64"),
+                EBuildConfiguration::Development,
+                TEXT("BusterBlock"),
+                EBuildTargetType::Game,
+                true,
+                true));
+    };
+
     TestExpectedModule(TEXT("CkFoundation"), TEXT("CkInsightsAnalyzer"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDialogDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAggroDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkUIDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkAStarDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkCrowdDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkEqsDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInputDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkObjectPoolingDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkJoltDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkMapDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkStyleLabDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
+    TestExpectedEditorOnlyModule(TEXT("CkEcsDebugger"));
+    TestExpectedEditorOnlyModule(TEXT("CkSmDebugger"));
+    TestExpectedEditorOnlyModule(TEXT("CkSchedulerDebugger"));
+    TestExpectedEditorOnlyModule(TEXT("CkGoapDebugger"));
     return true;
 }
 

@@ -20,11 +20,7 @@ public class CkCrowdDebugger : CkModuleRules
 
 			"Slate",
 			"SlateCore",
-			"WorkspaceMenuStructure",
-			"EditorStyle",
 			"AppFramework",
-			"ToolMenus",
-			"EditorWidgets",
 
 			"GameplayTags",
 			"NavigationSystem",
@@ -46,6 +42,13 @@ public class CkCrowdDebugger : CkModuleRules
 
 		if (Target.bBuildEditor)
 		{
+			PublicDependencyModuleNames.AddRange(new string[]
+			{
+				"WorkspaceMenuStructure",
+				"EditorStyle",
+				"ToolMenus",
+				"EditorWidgets",
+			});
 			PrivateDependencyModuleNames.Add("UnrealEd");
 			PrivateDependencyModuleNames.Add("CkVoxelNavEditor");
 		}

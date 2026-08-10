@@ -14,7 +14,6 @@ public class CkMapDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             "CkCompass",
             "CkCore",
@@ -34,7 +33,8 @@ public class CkMapDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure"
             });
         }
     }

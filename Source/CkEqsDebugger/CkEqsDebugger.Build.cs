@@ -14,10 +14,7 @@ public class CkEqsDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
-            "EditorStyle",
             "AppFramework",
-            "ToolMenus",
             "DeveloperSettings", // UCkEqsDebuggerSettings (UDeveloperSettings)
 
             "CkCore",
@@ -35,7 +32,10 @@ public class CkEqsDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure",
+                "EditorStyle",
+                "ToolMenus"
             });
         }
     }

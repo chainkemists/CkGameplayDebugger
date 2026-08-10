@@ -7,7 +7,6 @@
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
 #include "CoreMinimal.h"
-#include "Editor.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 

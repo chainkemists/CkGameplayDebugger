@@ -16,10 +16,7 @@ public class CkSchedulerDebugger : CkModuleRules
             "Slate",
             "SlateCore",
             "GraphEditor",
-            "WorkspaceMenuStructure",
-            "EditorStyle",
             "AppFramework",
-            "ToolMenus",
 
             "CkCore",
             "CkEcs",
@@ -32,7 +29,10 @@ public class CkSchedulerDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+                "WorkspaceMenuStructure",
+                "EditorStyle",
+                "ToolMenus"
             });
         }
     }

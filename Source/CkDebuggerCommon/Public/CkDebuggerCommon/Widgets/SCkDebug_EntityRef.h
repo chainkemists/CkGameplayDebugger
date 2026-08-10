@@ -31,6 +31,8 @@ class STextBlock;
 //   HashTintedChip additionally tints the text from a stable hash of the entity id and
 //   fills a small rounded chip behind it; every other option leaves the chip transparent
 //   at zero padding, which is layout-identical to the plain text block.
+// - NameOnly is the one option that DROPS the identifier from the visible text, so the pill
+//   moves the id into its tooltip instead. Every other option leaves the tooltip untouched.
 // ====================================================================================================================
 
 class CKDEBUGGERCOMMON_API SCkDebug_EntityRef : public SCompoundWidget
@@ -63,6 +65,7 @@ private:
     auto Get_ChipColor() const -> FSlateColor;
     auto Get_ChipPadding() const -> FMargin;
     auto Get_Tooltip() const -> FText;
+    auto Get_TooltipIdPrefix() const -> FString;
     auto Is_Clickable() const -> bool;
     auto Is_HashTinted() const -> bool;
 

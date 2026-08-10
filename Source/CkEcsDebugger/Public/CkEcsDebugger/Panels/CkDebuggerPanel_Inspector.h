@@ -48,6 +48,19 @@ private:
     auto Build_InspectorSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 InspectorIndex) -> TSharedRef<SWidget>;
 
     auto Build_ModeToggle() -> TSharedRef<SWidget>;
+
+    // ----- Multi-select DIFF mode --------------------------------------------
+    // Inspector rows are authored against ONE handle, so cross-entity comparison cannot live inside
+    // a row. It lives here: the panel replays each inspector's own Build path against the other
+    // selected handles into a label -> value snapshot (FCkInspector_RowCaptureScope), diffs the
+    // snapshots, and installs the resulting label set around the real build
+    // (FCkInspector_DiffMarkScope). Recomputed once per gated rebuild, never per paint.
+    //
+    // Off by default and only reachable while more than one entity is selected, so the single-entity
+    // inspector is untouched.
+    auto Build_DiffModeControls() -> TSharedRef<SWidget>;
+    auto Rebuild_DiffLabels(const TArray<FCk_Handle>& InEntities) -> void;
+
     auto Build_MultiEntityInspector_GroupByInspector(const TArray<FCk_Handle>& Entities) -> TSharedRef<SWidget>;
     auto Build_MultiEntityInspector_GroupByEntity(const TArray<FCk_Handle>& Entities) -> TSharedRef<SWidget>;
     auto Build_EntitySubSection(const FCk_Handle& Entity, const TSharedPtr<ICkDebuggerComponentInspector_Base>& Inspector, int32 OuterIndex, int32 InnerIndex) -> TSharedRef<SWidget>;
@@ -85,4 +98,10 @@ private:
     TMap<int32, FString> InspectorFilters;
     TMap<TPair<int32, int32>, TSharedPtr<SBox>> _InspectorContentContainers;
     TArray<FCk_Handle> _CurrentInspectedEntities;
+
+    // Diff-mode state. The label sets hold STRINGS only — nothing here retains a PIE handle, so the
+    // session-invalidation boundary has nothing extra to clear.
+    bool _DiffMode = false;
+    TMap<int32, TSet<FString>> _DiffLabelsByInspector;
+    int32 _DiffSkippedCount = 0;
 };

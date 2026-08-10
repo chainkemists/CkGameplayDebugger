@@ -21,6 +21,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_Switch.h"
 
+#include "Framework/Application/SlateApplication.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -207,6 +208,30 @@ namespace ck_inspector_widget_builder
             ];
     }
 
+    // ----- FlashOnChange / diff tinting ---------------------------------------
+    // Both tints are the Accent role laid over the row's own background at low alpha — a composition
+    // choice, never an opacity wrapper around already-styled children. The flash tint decays; the
+    // diff tint is constant for the life of the composed row (it is a compose-time verdict).
+    constexpr auto FlashRowTintAlpha = 0.30f;
+    constexpr auto FlashTextBlend    = 0.85f;
+    constexpr auto DiffRowTintAlpha  = 0.18f;
+
+    // PAINT time, not tick count: row attributes evaluate on paint, so a scrolled-away or
+    // filtered-out row simply never advances its flash. Falls back to platform time in a headless
+    // process (the specs) where no Slate application exists.
+    static auto Get_PaintClockSeconds() -> double
+    {
+        return FSlateApplication::IsInitialized()
+            ? FSlateApplication::Get().GetCurrentTime()
+            : FPlatformTime::Seconds();
+    }
+
+    // Compose-time context for the panel's multi-select diff mode. Slate composition is
+    // single-threaded and both scopes are RAII with a saved previous pointer, so nesting and early
+    // returns restore correctly.
+    static FCkInspector_RowCaptureScope* GActiveRowCapture = nullptr;
+    static FCkInspector_DiffMarkScope*   GActiveDiffMark   = nullptr;
+
     // The GOAP settings drawer's flat verb button, promoted to the shared vocabulary.
     static auto Make_ActionButton(
         const FText& InLabel,
@@ -240,6 +265,36 @@ namespace ck_inspector_widget_builder
             ];
     }
 }
+
+// ====================================================================================================================
+// Compose-time scopes (diff mode)
+
+FCkInspector_RowCaptureScope::FCkInspector_RowCaptureScope()
+{
+    _Previous = ck_inspector_widget_builder::GActiveRowCapture;
+    ck_inspector_widget_builder::GActiveRowCapture = this;
+}
+
+FCkInspector_RowCaptureScope::~FCkInspector_RowCaptureScope()
+{
+    ck_inspector_widget_builder::GActiveRowCapture = _Previous;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+FCkInspector_DiffMarkScope::FCkInspector_DiffMarkScope(const TSet<FString>* InDifferingLabels)
+    : _Labels(InDifferingLabels)
+{
+    _Previous = ck_inspector_widget_builder::GActiveDiffMark;
+    ck_inspector_widget_builder::GActiveDiffMark = this;
+}
+
+FCkInspector_DiffMarkScope::~FCkInspector_DiffMarkScope()
+{
+    ck_inspector_widget_builder::GActiveDiffMark = _Previous;
+}
+
+// ====================================================================================================================
 
 auto FCkInspectorWidgetBuilder::SetSelectionModel(TSharedPtr<FCkDebuggerModel_EntitySelection> InModel) -> FCkInspectorWidgetBuilder&
 {
@@ -1277,6 +1332,108 @@ auto FCkInspectorWidgetBuilder::Format_Count(int32 InCount) -> FText
     return FText::AsNumber(InCount, &Options);
 }
 
+auto FCkInspectorWidgetBuilder::Resolve_RowValue(
+    const FRowDefinition& InRow,
+    const FCk_Handle& InEntity) -> FString
+{
+    if (InRow.ValueGetter && ck::IsValid(InEntity))
+    { return InRow.ValueGetter(InEntity).ToString(); }
+
+    if (InRow.FilterValueGetter)
+    { return InRow.FilterValueGetter(); }
+
+    return FString{};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::Observe_FlashChange(
+    FCkInspector_FlashState& InOutState,
+    const FString& InValue,
+    double InNowSeconds) -> void
+{
+    if (NOT InOutState.HasSeenValue)
+    {
+        InOutState.LastValue    = InValue;
+        InOutState.HasSeenValue = true;
+        return;
+    }
+
+    if (InOutState.LastValue == InValue)
+    { return; }
+
+    InOutState.LastValue         = InValue;
+    InOutState.LastChangeSeconds = InNowSeconds;
+}
+
+auto FCkInspectorWidgetBuilder::Get_FlashAlpha(
+    const FCkInspector_FlashState& InState,
+    double InNowSeconds) -> float
+{
+    if (InState.LastChangeSeconds <= 0.0)
+    { return 0.0f; }
+
+    const auto Elapsed = InNowSeconds - InState.LastChangeSeconds;
+
+    if (Elapsed < 0.0 || Elapsed >= FlashDurationSeconds)
+    { return 0.0f; }
+
+    return 1.0f - static_cast<float>(Elapsed / FlashDurationSeconds);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkInspectorWidgetBuilder::Compute_DifferingLabels(
+    const TArray<TMap<FString, FString>>& InPerEntityRows) -> TSet<FString>
+{
+    auto Differing = TSet<FString>{};
+
+    // One entity has nothing to differ FROM; zero is the same statement.
+    if (InPerEntityRows.Num() < 2)
+    { return Differing; }
+
+    auto AllLabels = TSet<FString>{};
+    for (const auto& Rows : InPerEntityRows)
+    {
+        for (const auto& Row : Rows)
+        { AllLabels.Add(Row.Key); }
+    }
+
+    for (const auto& Label : AllLabels)
+    {
+        const FString* Reference = nullptr;
+
+        for (const auto& Rows : InPerEntityRows)
+        {
+            const auto* Found = Rows.Find(Label);
+
+            // Absent for this entity — a row set that differs in SHAPE is exactly what the user is
+            // asking about, so it counts as a difference rather than being skipped.
+            if (Found == nullptr)
+            {
+                Differing.Add(Label);
+                break;
+            }
+
+            if (Reference == nullptr)
+            {
+                Reference = Found;
+                continue;
+            }
+
+            if (*Reference != *Found)
+            {
+                Differing.Add(Label);
+                break;
+            }
+        }
+    }
+
+    return Differing;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto FCkInspectorWidgetBuilder::Join_NumericComponents(const TArray<FText>& InComponents) -> FText
 {
     auto Joined = FString{};
@@ -1296,9 +1453,36 @@ auto FCkInspectorWidgetBuilder::Join_NumericComponents(const TArray<FText>& InCo
 
 auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString& InFilter) -> TSharedRef<SWidget>
 {
+    namespace builder = ck_inspector_widget_builder;
+
     // Interactive rows were composed before the entity was known; they read it live out of this box,
     // which is what keeps the request gate honest when the inspected world changes underneath them.
     *_GateEntity = InEntity;
+
+    // ---- DIFF SAMPLING PASS ----
+    // The panel is replaying this inspector against one of the OTHER selected entities purely to read
+    // its values. Record and compose nothing: no widgets, no attributes, no flash state. Sampling sits
+    // ahead of the filter deliberately — see FCkInspector_RowCaptureScope.
+    if (auto* Capture = builder::GActiveRowCapture)
+    {
+        for (const auto& RowDef : Rows)
+        {
+            if (RowDef.IsHeader)
+            { continue; }
+
+            Capture->_Rows.Add(RowDef.Label.ToString(), Resolve_RowValue(RowDef, InEntity));
+        }
+
+        return SNullWidget::NullWidget;
+    }
+
+    const auto* DiffLabels = builder::GActiveDiffMark != nullptr
+        ? builder::GActiveDiffMark->_Labels
+        : nullptr;
+
+    // Read ONCE per pass. The flash wiring is structural (one extra attribute and, under Row, one
+    // border), so an axis flip lands on the next rebuild — and Off composes the pre-axis tree exactly.
+    const auto FlashAxis = UCkDebuggerStyleSettings::Get_Selection().FlashOnChange;
 
     auto Column = SNew(SVerticalBox);
 
@@ -1310,14 +1494,7 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
     {
         if (HasFilter)
         {
-            auto RowValue = FString{};
-
-            if (RowDef.ValueGetter && ck::IsValid(InEntity))
-            { RowValue = RowDef.ValueGetter(InEntity).ToString(); }
-            else if (RowDef.FilterValueGetter)
-            { RowValue = RowDef.FilterValueGetter(); }
-
-            if (NOT Matches_Filter(InFilter, RowDef.Label.ToString(), RowValue))
+            if (NOT Matches_Filter(InFilter, RowDef.Label.ToString(), Resolve_RowValue(RowDef, InEntity)))
             { continue; }
         }
 
@@ -1339,6 +1516,35 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
         const auto HasCustom = RowDef.CustomWidget.IsValid();
         const auto HasOnClicked = static_cast<bool>(RowDef.OnClicked);
         const auto OnClicked = RowDef.OnClicked;
+
+        // ---- FlashOnChange + diff marks ----
+        // Value scope tints the value TEXT, so a widget row (badge box, meter, numeric editor) has
+        // nothing to tint and opts out; Row scope covers both, because it tints the row's own
+        // background. A row with no readable value never tracks anything either way.
+        const auto WantsFlash =
+            (FlashAxis == ECkDebugAxis_FlashOnChange::Value
+                && NOT HasCustom
+                && static_cast<bool>(RowDef.ValueGetter)) ||
+            (FlashAxis == ECkDebugAxis_FlashOnChange::Row
+                && (static_cast<bool>(RowDef.ValueGetter) || static_cast<bool>(RowDef.FilterValueGetter)));
+
+        auto FlashState = TSharedPtr<FCkInspector_FlashState>{};
+
+        if (WantsFlash)
+        { FlashState = MakeShared<FCkInspector_FlashState>(); }
+
+        // A text row observes inside its OWN value attribute — the string is formatted there anyway,
+        // so tracking costs no extra getter call. Only a widget row needs a separate probe, and it
+        // reads the widget's declared filter value rather than re-running any sampling pump.
+        auto FlashProbe = TFunction<FString()>{};
+
+        if (FlashState.IsValid() && HasCustom)
+        {
+            const auto FilterGetter = RowDef.FilterValueGetter;
+            FlashProbe = [FilterGetter]() { return FilterGetter ? FilterGetter() : FString{}; };
+        }
+
+        const auto IsDiffMarked = DiffLabels != nullptr && DiffLabels->Contains(RowDef.Label.ToString());
 
         TSharedRef<SWidget> RowWidget = SNullWidget::NullWidget;
 
@@ -1372,12 +1578,25 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
             const auto ColorGetter = RowDef.ColorGetter;
             const auto CapturedEntity = InEntity;
 
-            auto ValueAttr = TAttribute<FText>::Create([CapturedEntity, ValueGetter]()
-            {
-                if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::GetEmpty(); }
-                if (NOT ValueGetter) { return FText::GetEmpty(); }
-                return ValueGetter(CapturedEntity);
-            });
+            // Two spellings of the same attribute, chosen at compose time: with the axis Off the
+            // original lambda is composed verbatim, so the tracked variant never costs an untaken
+            // branch on the paint path.
+            auto ValueAttr = FlashState.IsValid()
+                ? TAttribute<FText>::Create([CapturedEntity, ValueGetter, FlashState]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::GetEmpty(); }
+                    if (NOT ValueGetter) { return FText::GetEmpty(); }
+
+                    const auto Value = ValueGetter(CapturedEntity);
+                    Observe_FlashChange(*FlashState, Value.ToString(), builder::Get_PaintClockSeconds());
+                    return Value;
+                })
+                : TAttribute<FText>::Create([CapturedEntity, ValueGetter]()
+                {
+                    if (ck::Is_NOT_Valid(CapturedEntity)) { return FText::GetEmpty(); }
+                    if (NOT ValueGetter) { return FText::GetEmpty(); }
+                    return ValueGetter(CapturedEntity);
+                });
 
             auto ColorAttr = TAttribute<FLinearColor>::Create([CapturedEntity, ColorGetter]()
             {
@@ -1385,6 +1604,24 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
                 if (NOT ColorGetter) { return CkStyle::Text(); }
                 return ColorGetter(CapturedEntity);
             });
+
+            if (FlashAxis == ECkDebugAxis_FlashOnChange::Value && FlashState.IsValid())
+            {
+                const auto BaseColor = ColorAttr;
+
+                ColorAttr = TAttribute<FLinearColor>::Create([BaseColor, FlashState]()
+                {
+                    const auto Base  = BaseColor.Get();
+                    const auto Alpha = Get_FlashAlpha(*FlashState, builder::Get_PaintClockSeconds());
+
+                    if (Alpha <= 0.0f)
+                    { return Base; }
+
+                    // Blend toward the Accent role rather than overlaying opacity — the row's own
+                    // semantic colour still shows through as the flash decays.
+                    return FMath::Lerp(Base, CkStyle::Accent(), Alpha * builder::FlashTextBlend);
+                });
+            }
 
             if (HasOnClicked)
             {
@@ -1403,6 +1640,42 @@ auto FCkInspectorWidgetBuilder::Build(const FCk_Handle& InEntity, const FString&
                     .ValueText(ValueAttr)
                     .CustomValueColor(ColorAttr);
             }
+        }
+
+        // ---- Row-scope background tint (flash and/or diff) ----
+        // Zero padding and a rounded-small brush: the border draws BEHIND the row and adds no
+        // geometry, so a tinted row and an untinted one line up exactly. Composed only when there is
+        // something to tint — under Off with diff mode inactive the row is slotted bare, as before.
+        const auto WantsRowTint = IsDiffMarked
+            || (FlashAxis == ECkDebugAxis_FlashOnChange::Row && FlashState.IsValid());
+
+        if (WantsRowTint)
+        {
+            RowWidget = SNew(SBorder)
+                .BorderImage(CkStyle::GetRoundedBrush_Small())
+                .Padding(FMargin{0.0f})
+                .BorderBackgroundColor_Lambda([IsDiffMarked, FlashState, FlashProbe]() -> FSlateColor
+                {
+                    auto Alpha = IsDiffMarked ? builder::DiffRowTintAlpha : 0.0f;
+
+                    if (FlashState.IsValid())
+                    {
+                        const auto Now = builder::Get_PaintClockSeconds();
+
+                        if (FlashProbe)
+                        { Observe_FlashChange(*FlashState, FlashProbe(), Now); }
+
+                        Alpha = FMath::Max(Alpha, builder::FlashRowTintAlpha * Get_FlashAlpha(*FlashState, Now));
+                    }
+
+                    if (Alpha <= 0.0f)
+                    { return FSlateColor{FLinearColor::Transparent}; }
+
+                    return FSlateColor{CkStyle::OverlayOf(CkStyle::Accent(), Alpha)};
+                })
+                [
+                    RowWidget
+                ];
         }
 
         Column->AddSlot()

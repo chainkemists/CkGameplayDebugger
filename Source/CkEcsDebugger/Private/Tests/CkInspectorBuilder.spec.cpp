@@ -168,3 +168,138 @@ bool FCkInspectorBuilder_AxisColor_Test::RunTest(const FString&)
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// The FlashOnChange state machine. The COLOUR it drives is [EDITOR-VERIFY]; the seed / change /
+// decay rules are not, and they are what decides whether a rebuild lights the whole panel up.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorBuilder_Flash_Test,
+    "Ck.EcsDebugger.InspectorBuilder.FlashOnChangeStateMachine",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInspectorBuilder_Flash_Test::RunTest(const FString&)
+{
+    using FBuilder = FCkInspectorWidgetBuilder;
+
+    constexpr auto Duration = FBuilder::FlashDurationSeconds;
+
+    auto State = FCkInspector_FlashState{};
+
+    TestEqual(TEXT("an unobserved row is not flashing"), FBuilder::Get_FlashAlpha(State, 100.0), 0.0f);
+
+    // Seeding: a fresh row widget observes its value for the first time on its first paint. That must
+    // NOT read as a change, or every rebuild would flash every row at once.
+    FBuilder::Observe_FlashChange(State, TEXT("42"), 100.0);
+    TestEqual(TEXT("the first observation only seeds"), FBuilder::Get_FlashAlpha(State, 100.0), 0.0f);
+
+    // Idempotence: attributes evaluate several times per paint (desired size, then paint).
+    FBuilder::Observe_FlashChange(State, TEXT("42"), 100.1);
+    FBuilder::Observe_FlashChange(State, TEXT("42"), 100.2);
+    TestEqual(TEXT("re-observing the same value never starts a flash"), FBuilder::Get_FlashAlpha(State, 100.2), 0.0f);
+
+    // The change itself.
+    FBuilder::Observe_FlashChange(State, TEXT("43"), 200.0);
+    TestEqual(TEXT("a change flashes at full strength"), FBuilder::Get_FlashAlpha(State, 200.0), 1.0f);
+
+    TestTrue(TEXT("the flash decays inside the window"),
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration * 0.5) < 1.0f &&
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration * 0.5) > 0.0f);
+
+    TestTrue(TEXT("the decay is monotonic"),
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration * 0.25) >
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration * 0.75));
+
+    TestEqual(TEXT("the window closes exactly at the duration"),
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration), 0.0f);
+
+    TestEqual(TEXT("a settled row stays settled"),
+        FBuilder::Get_FlashAlpha(State, 200.0 + Duration * 10.0), 0.0f);
+
+    // Re-observing the SAME value after the window does not re-arm — only a genuine change does.
+    FBuilder::Observe_FlashChange(State, TEXT("43"), 300.0);
+    TestEqual(TEXT("a settled repeat does not re-arm"), FBuilder::Get_FlashAlpha(State, 300.0), 0.0f);
+
+    FBuilder::Observe_FlashChange(State, TEXT("44"), 300.0);
+    TestEqual(TEXT("a second change re-arms"), FBuilder::Get_FlashAlpha(State, 300.0), 1.0f);
+
+    // A clock that ran backwards (new Slate app / new PIE session) must read as settled, never as a
+    // row that is permanently lit.
+    TestEqual(TEXT("a backwards clock reads as settled"), FBuilder::Get_FlashAlpha(State, 10.0), 0.0f);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Multi-select diff: the pure comparison the inspector panel tints rows from.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkInspectorBuilder_Diff_Test,
+    "Ck.EcsDebugger.InspectorBuilder.DiffComparesLabelValueMaps",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkInspectorBuilder_Diff_Test::RunTest(const FString&)
+{
+    using FBuilder = FCkInspectorWidgetBuilder;
+    using FRows    = TMap<FString, FString>;
+
+    const auto MakeRows = [](const FString& InName, const TCHAR* InHealth)
+    {
+        auto Rows = FRows{};
+        Rows.Add(TEXT("Name:"), InName);
+
+        // A null health is the "this inspector emitted no such row for this entity" shape.
+        if (InHealth != nullptr)
+        { Rows.Add(TEXT("Health:"), InHealth); }
+
+        return Rows;
+    };
+
+    const auto A = MakeRows(TEXT("Goblin"), TEXT("10"));
+
+    // Degenerate arities compare to nothing — there is no "differs" without something to differ from.
+    TestEqual(TEXT("no entities compare to nothing"),
+        FBuilder::Compute_DifferingLabels({}).Num(), 0);
+
+    TestEqual(TEXT("one entity compares to nothing"),
+        FBuilder::Compute_DifferingLabels({A}).Num(), 0);
+
+    // Identical maps.
+    TestEqual(TEXT("identical rows produce no marks"),
+        FBuilder::Compute_DifferingLabels({A, A}).Num(), 0);
+
+    // One value moved.
+    const auto B = MakeRows(TEXT("Goblin"), TEXT("7"));
+    const auto OneChanged = FBuilder::Compute_DifferingLabels({A, B});
+
+    TestEqual(TEXT("only the changed label is marked"), OneChanged.Num(), 1);
+    TestTrue(TEXT("the changed label is the one that moved"), OneChanged.Contains(TEXT("Health:")));
+    TestFalse(TEXT("the matching label stays unmarked"), OneChanged.Contains(TEXT("Name:")));
+
+    // A row set that differs in SHAPE — the dynamic-per-entity inspector case. A missing label is a
+    // difference, not a skip.
+    const auto C = MakeRows(TEXT("Goblin"), nullptr);
+    const auto MissingLabel = FBuilder::Compute_DifferingLabels({A, C});
+
+    TestTrue(TEXT("a label missing from one entity counts as differing"),
+        MissingLabel.Contains(TEXT("Health:")));
+    TestFalse(TEXT("the shared matching label is still unmarked"),
+        MissingLabel.Contains(TEXT("Name:")));
+
+    // An entity the inspector cannot inspect contributes an empty map: everything differs.
+    const auto AgainstEmpty = FBuilder::Compute_DifferingLabels({A, FRows{}});
+    TestEqual(TEXT("an empty participant marks every label"), AgainstEmpty.Num(), 2);
+
+    // Three-way: a value that matches on two entities but not the third is still a difference.
+    const auto ThreeWay = FBuilder::Compute_DifferingLabels({A, A, B});
+    TestEqual(TEXT("a three-way disagreement marks the label once"), ThreeWay.Num(), 1);
+    TestTrue(TEXT("the three-way mark is the disagreeing label"), ThreeWay.Contains(TEXT("Health:")));
+
+    // Empty-string values are values, not absences: two rows that both read blank AGREE.
+    const auto Blank = MakeRows(TEXT(""), TEXT(""));
+    TestEqual(TEXT("two blank values agree"),
+        FBuilder::Compute_DifferingLabels({Blank, Blank}).Num(), 0);
+
+    TestEqual(TEXT("a blank value still differs from a set one"),
+        FBuilder::Compute_DifferingLabels({Blank, A}).Num(), 2);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------

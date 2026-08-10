@@ -16,9 +16,37 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_scheduler_debugger_processor_tree
+{
+	// RowDensity as a DELTA on the tree's own base row padding, never as an absolute — this tree is
+	// deliberately tighter than an inspector row, and only the offset between density options is the
+	// axis' business. Comfortable is the axis default, so Classic renders exactly as it shipped.
+	// Clamped at zero so Compact can't produce negative margins.
+	auto Apply_RowDensity(const FMargin& InBase) -> FMargin
+	{
+		const auto Baseline = ck::debug_axes::Get_RowPadding(FCkDebuggerStyleSelection{});
+		const auto Current  = ck::debug_axes::Get_RowPadding(UCkDebuggerStyleSettings::Get_Selection());
+
+		const auto DeltaX = Current.Left - Baseline.Left;
+		const auto DeltaY = Current.Top  - Baseline.Top;
+
+		return FMargin
+		{
+			FMath::Max(0.0f, InBase.Left   + DeltaX),
+			FMath::Max(0.0f, InBase.Top    + DeltaY),
+			FMath::Max(0.0f, InBase.Right  + DeltaX),
+			FMath::Max(0.0f, InBase.Bottom + DeltaY)
+		};
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -74,7 +102,7 @@ namespace
 									            : FText::GetEmpty();
 								})
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 						]
 				]
@@ -92,13 +120,13 @@ namespace
 							// Highlight-mode dim takes precedence so non-matches read clearly.
 							if (const auto Node = WeakNode.Pin();
 								Node.IsValid() && NOT Node->IsSearchMatch)
-							{ return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
+							{ return FSlateColor(CkStyle::TextMute()); }
 
 							const auto* Proc = LookupProc();
 							const auto IsGhost = Proc && Proc->IsGhost;
 							return FSlateColor(IsGhost
-								? FCkSchedulerDebuggerStyle::Color_Ghost
-								: FCkSchedulerDebuggerStyle::Color_Text_Primary);
+								? CkStyle::None()
+								: CkStyle::Text());
 						})
 				];
 
@@ -111,7 +139,7 @@ namespace
 				SNew(STextBlock)
 					.Text(FText::FromString(FString(TEXT("\u25CF"))))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+					.ColorAndOpacity(CkStyle::Warn())
 					.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
 					.Visibility_Lambda([LookupProc]()
 					{
@@ -129,7 +157,7 @@ namespace
 				SNew(STextBlock)
 					.Text(FText::FromString(FString(TEXT("\u25C6"))))
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Parallel)
+					.ColorAndOpacity(CkStyle::Info())
 					.ToolTipText(FText::FromString(TEXT("Parallel processor")))
 					.Visibility_Lambda([LookupProc]()
 					{
@@ -154,7 +182,7 @@ namespace
 								return Proc ? FText::AsNumber(Proc->MainPassEntityCount) : FText::GetEmpty();
 							})
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+							.ColorAndOpacity(CkStyle::TextMute())
 							.Justification(ETextJustify::Right)
 							.ToolTipText(FText::FromString(TEXT("Entity count")))
 					]
@@ -179,7 +207,7 @@ namespace
 						const auto* Proc = LookupProc();
 						return FSlateColor(Proc
 							? FCkSchedulerDebuggerStyle::Get_TimingColor(Proc->MainPassTimeMs)
-							: FCkSchedulerDebuggerStyle::Color_Heat_Fast);
+							: CkStyle::Ok());
 					})
 			];
 
@@ -229,7 +257,7 @@ namespace
 								.ColorAndOpacity_Lambda([LookupGroup]() -> FLinearColor
 								{
 									const auto* Group = LookupGroup();
-									return Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Color_Group_Default;
+									return Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Get_GroupColor_Default();
 								})
 						]
 				]
@@ -245,7 +273,7 @@ namespace
 						.ColorAndOpacity_Lambda([LookupGroup]() -> FSlateColor
 						{
 							const auto* Group = LookupGroup();
-							return FSlateColor(Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Color_Group_Default);
+							return FSlateColor(Group ? Group->AccentColor : FCkSchedulerDebuggerStyle::Get_GroupColor_Default());
 						})
 				]
 
@@ -257,7 +285,7 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::AsNumber(ChildCount))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+						.ColorAndOpacity(CkStyle::TextMute())
 				]
 
 			+ SHorizontalBox::Slot()
@@ -279,7 +307,7 @@ namespace
 							             : FText::GetEmpty();
 						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+						.ColorAndOpacity(CkStyle::TextDim())
 				];
 	}
 
@@ -303,7 +331,7 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::FromString(InNode->DisplayName))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Primary)
+						.ColorAndOpacity(CkStyle::Text())
 				]
 
 			+ SHorizontalBox::Slot()
@@ -313,13 +341,13 @@ namespace
 				[
 					SNew(SBorder)
 						.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-						.BorderBackgroundColor(FLinearColor(0.235f, 0.510f, 0.863f, 0.3f))
+						.BorderBackgroundColor(CkStyle::Selection().CopyWithNewOpacity(0.3f))
 						.Padding(FMargin(4.0f, 1.0f))
 						[
 							SNew(STextBlock)
 								.Text(FText::AsNumber(TotalChildren))
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+								.ColorAndOpacity(CkStyle::TextDim())
 						]
 				];
 	}
@@ -395,7 +423,7 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::AsNumber(InRunningCount))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+						.ColorAndOpacity(CkStyle::TextMute())
 				]
 
 			+ SHorizontalBox::Slot()
@@ -412,7 +440,7 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::FromString(AggregateText))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+						.ColorAndOpacity(CkStyle::TextDim())
 				];
 	}
 
@@ -429,8 +457,8 @@ namespace
 		const auto TimingText    = FString::Printf(TEXT("%.3f ms"), InTimeMs);
 		const auto EntityText    = FString::Printf(TEXT("%d"), InEntityCount);
 		const auto bIdle         = InEntityCount == 0;
-		const auto NameColor     = bIdle ? FCkSchedulerDebuggerStyle::Color_Ghost : FCkSchedulerDebuggerStyle::Color_Text_Primary;
-		const auto TimingColor   = bIdle ? FCkSchedulerDebuggerStyle::Color_Ghost : FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeMs);
+		const auto NameColor     = bIdle ? CkStyle::None() : CkStyle::Text();
+		const auto TimingColor   = bIdle ? CkStyle::None() : FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeMs);
 
 		auto Row = SNew(SHorizontalBox)
 
@@ -445,7 +473,7 @@ namespace
 							SNew(SCkDebug_SelectableLabel)
 								.Text(FText::FromString(ExecOrderText))
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.ColorAndOpacity(CkStyle::TextMute())
 						]
 				]
 
@@ -470,7 +498,7 @@ namespace
 					SNew(STextBlock)
 						.Text(FText::FromString(FString(TEXT("\u25CF"))))
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_DirtyMarker)
+						.ColorAndOpacity(CkStyle::Warn())
 						.ToolTipText(FText::FromString(TEXT("Has dirty marker")))
 				];
 		}
@@ -486,7 +514,7 @@ namespace
 						SNew(SCkDebug_SelectableLabel)
 							.Text(FText::FromString(EntityText))
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+							.ColorAndOpacity(CkStyle::TextMute())
 					]
 			];
 
@@ -637,7 +665,7 @@ auto
 													SNew(STextBlock)
 														.Text(FText::FromString(TEXT("Frame Breakdown")))
 														.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-														.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+														.ColorAndOpacity(CkStyle::TextDim())
 												]
 
 											+ SHorizontalBox::Slot()
@@ -901,7 +929,7 @@ auto
 						: FText::GetEmpty();
 				})
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+				.ColorAndOpacity(CkStyle::TextDim())
 			]
 		];
 
@@ -983,7 +1011,7 @@ auto
 						return FText::AsNumber(Count);
 					})
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 				]
 
 				+ SHorizontalBox::Slot().FillWidth(1.0f) [ SNew(SSpacer) ]
@@ -1011,7 +1039,7 @@ auto
 							: FText::GetEmpty();
 					})
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+					.ColorAndOpacity(CkStyle::TextDim())
 				]
 			];
 
@@ -1073,7 +1101,7 @@ auto
 										: FText::GetEmpty();
 								})
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 							]
 						]
@@ -1091,8 +1119,8 @@ auto
 								// because it already passed the Filter input.)
 								if (NOT _BreakdownHighlightString.IsEmpty()
 									&& NOT ck::fuzzy::Match(_BreakdownHighlightString, MemberName, {}).Get_IsMatch())
-								{ return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
-								return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Primary);
+								{ return FSlateColor(CkStyle::TextMute()); }
+								return FSlateColor(CkStyle::Text());
 							})
 						]
 
@@ -1113,7 +1141,7 @@ auto
 										: FText::GetEmpty();
 								})
 								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-								.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+								.ColorAndOpacity(CkStyle::TextMute())
 								.Justification(ETextJustify::Right)
 							]
 						]
@@ -1135,11 +1163,11 @@ auto
 							.ColorAndOpacity_Lambda([WeakVM, CapturedMemberIdx, InTimeGetter]() -> FSlateColor
 							{
 								const auto VM = WeakVM.Pin();
-								if (!VM.IsValid()) { return FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted); }
+								if (!VM.IsValid()) { return FSlateColor(CkStyle::TextMute()); }
 								const auto& Arr = VM->Get_DataCollector().Get_Processors();
 								return Arr.IsValidIndex(CapturedMemberIdx)
 									? FSlateColor(FCkSchedulerDebuggerStyle::Get_TimingColor(InTimeGetter(Arr[CapturedMemberIdx])))
-									: FSlateColor(FCkSchedulerDebuggerStyle::Color_Text_Muted);
+									: FSlateColor(CkStyle::TextMute());
 							})
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 						]
@@ -1156,7 +1184,7 @@ auto
 	// ----------------------------------------------------------------------
 	// MAIN PASS — always visible.
 	// ----------------------------------------------------------------------
-	AddPassSection(TEXT("Main Pass"), -1, true, FCkSchedulerDebuggerStyle::Color_Active,
+	AddPassSection(TEXT("Main Pass"), -1, true, CkStyle::Ok(),
 		[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassTimeMs; },
 		[](const FCkSchedulerDebugger_ProcessorInfo& P) { return P.MainPassEntityCount; });
 
@@ -1169,7 +1197,7 @@ auto
 		const auto PassIdxCopy = PassIdx;
 		AddPassSection(
 			FString::Printf(TEXT("Pass %d"), PassIdx + 1),
-			PassIdx, false, FCkSchedulerDebuggerStyle::Color_Pumped,
+			PassIdx, false, CkStyle::Warn(),
 			[PassIdxCopy](const FCkSchedulerDebugger_ProcessorInfo& P)
 			{
 				return P.PumpPassTimesMs.IsValidIndex(PassIdxCopy)
@@ -1195,7 +1223,7 @@ auto
 		SNew(STextBlock)
 		.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
 		.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-		.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Warning)
+		.ColorAndOpacity(CkStyle::Err())
 	];
 
 	// "No dirty processors" stub — visible when none currently dirty.
@@ -1218,7 +1246,7 @@ auto
 			SNew(STextBlock)
 			.Text(FText::FromString(TEXT("No dirty processors")))
 			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-			.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+			.ColorAndOpacity(CkStyle::TextMute())
 			.Visibility(NoneVisibleAttr)
 		];
 	}
@@ -1266,7 +1294,7 @@ auto
 			[WeakVM, CapturedMemberIndices]() -> FSlateColor
 			{
 				const auto VM = WeakVM.Pin();
-				if (!VM.IsValid()) { return FSlateColor(FCkSchedulerDebuggerStyle::Color_Pumped); }
+				if (!VM.IsValid()) { return FSlateColor(CkStyle::Warn()); }
 				const auto PumpCount = VM->Get_DataCollector().Get_PumpCount();
 				const auto& AllProcs = VM->Get_DataCollector().Get_Processors();
 				auto AllHit = PumpCount > 0;
@@ -1276,8 +1304,8 @@ auto
 					{ AllHit = false; break; }
 				}
 				return FSlateColor(AllHit
-					? FCkSchedulerDebuggerStyle::Color_Warning
-					: FCkSchedulerDebuggerStyle::Color_Pumped);
+					? CkStyle::Err()
+					: CkStyle::Warn());
 			}));
 
 		auto MarkerBox = SNew(SVerticalBox).Visibility(GroupVisAttr);
@@ -1349,7 +1377,7 @@ auto
 							*MemberName, Arr[CapturedMemberIdx].PumpCountThisFrame));
 					})
 					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+					.ColorAndOpacity(CkStyle::Selection())
 					.AutoWrapText(true)
 				]
 			];
@@ -1465,7 +1493,7 @@ auto
 								? FString::Printf(TEXT("%.3f ms"), InTotalMs)
 								: FString{}))
 							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-							.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+							.ColorAndOpacity(CkStyle::TextDim())
 					]
 			];
 	};
@@ -1538,7 +1566,7 @@ auto
 				}
 			}
 		}
-		AddSectionHeader(TEXT("Main Pass"), TotalCount, TotalMs, FCkSchedulerDebuggerStyle::Color_Active);
+		AddSectionHeader(TEXT("Main Pass"), TotalCount, TotalMs, CkStyle::Ok());
 	}
 
 	for (const auto GroupIdx : GroupOrder)
@@ -1587,7 +1615,7 @@ auto
 			AddSectionHeader(
 				FString::Printf(TEXT("Pass %d"), PassIdx + 1),
 				PassCount, PassTotalMs,
-				FCkSchedulerDebuggerStyle::Color_Pumped);
+				CkStyle::Warn());
 		}
 
 		for (const auto GroupIdx : GroupOrder)
@@ -1630,7 +1658,7 @@ auto
 					.Text(FText::FromString(FString::Printf(
 						TEXT("... %d more passes (same processors) ..."), PumpCount - PassesToShow)))
 					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
 
@@ -1643,7 +1671,7 @@ auto
 			SNew(STextBlock)
 				.Text(FText::FromString(TEXT("CYCLE ANALYSIS")))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 9))
-				.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Warning)
+				.ColorAndOpacity(CkStyle::Err())
 		];
 
 	// Group pumped processors by dirty marker
@@ -1670,7 +1698,7 @@ auto
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("No dirty processors")))
 					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 			];
 	}
 	else
@@ -1703,8 +1731,8 @@ auto
 			}();
 
 			auto CycleColor = AllMembersHitAllPasses
-				? FCkSchedulerDebuggerStyle::Color_Warning
-				: FCkSchedulerDebuggerStyle::Color_Pumped;
+				? CkStyle::Err()
+				: CkStyle::Warn();
 
 			NewContent->AddSlot()
 				.AutoHeight()
@@ -1766,7 +1794,7 @@ auto
 											.Text(FText::FromString(FString::Printf(TEXT("%s (x%d)"),
 												*Member.DisplayName, Member.PumpCountThisFrame)))
 											.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-											.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Selection)
+											.ColorAndOpacity(CkStyle::Selection())
 											.AutoWrapText(true)
 									]
 							]
@@ -2008,7 +2036,7 @@ auto
 	-> TSharedRef<ITableRow>
 {
 	return SNew(STableRow<TSharedPtr<FCkSchedulerDebugger_TreeNode>>, InOwnerTable)
-		.Padding(FMargin(0.0f, 1.0f))
+		.Padding(ck_scheduler_debugger_processor_tree::Apply_RowDensity(FMargin{0.0f, 1.0f}))
 		.ShowSelection(true)
 		.Content()
 		[

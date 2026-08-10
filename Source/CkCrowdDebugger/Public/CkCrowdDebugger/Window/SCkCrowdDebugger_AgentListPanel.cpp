@@ -10,6 +10,8 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
+#include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_CategoryDot.h"
@@ -139,10 +141,7 @@ auto SCkCrowdDebugger_AgentListPanel::Construct(const FArguments& InArgs) -> voi
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
 			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("AGENT LIST")))
-				.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+				ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Agent List"))
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, 0, CkStyle::SpaceM, CkStyle::SpaceS)
 			[
@@ -311,7 +310,7 @@ auto SCkCrowdDebugger_AgentListPanel::OnGenerateRow(
 	const auto WeakPanel = TWeakPtr<SCkCrowdDebugger_AgentListPanel>(SharedThis(this));
 
 	return SNew(STableRow<ItemPtr>, InTable)
-		.Padding(FMargin(8, 3))
+		.Padding(ck::crowd_debugger_axes::Apply_RowDensity(FMargin{8.0f, 3.0f}))
 		[
 			SNew(SBorder)
 			.BorderImage(CkStyle::GetFilledBrush())

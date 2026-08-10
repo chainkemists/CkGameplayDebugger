@@ -3,6 +3,8 @@
 #include "CkCrowdDebugger/Commands/CkCrowdDebugger_PathNetworkCommand.h"
 #include "CkCrowdDebugger/ViewModel/CkCrowdDebugger_ViewModel.h"
 
+#include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Focus.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
@@ -51,7 +53,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 		SNew(SBorder)
 		.BorderImage(CkStyle::GetFilledBrush())
 		.BorderBackgroundColor(FSlateColor(CkStyle::Bg1()))
-		.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+		.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 		[
 			SNew(SScrollBox)
 			+ SScrollBox::Slot()
@@ -64,10 +66,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
 					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("AGENT DETAIL")))
-						.ColorAndOpacity(FSlateColor(CkStyle::PaneHeadingColor()))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", CkStyle::PaneHeadingFontSize()))
+						ck::crowd_debugger_axes::Make_PaneHeading(TEXT("Agent Detail"))
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
@@ -207,7 +206,7 @@ auto SCkCrowdDebugger_AgentDetailPanel::Construct(const FArguments& InArgs) -> v
 						const auto Tone = (_HasSelection && Diag_WillOrbit()) ? CkStyle::Err() : CkStyle::Ok();
 						return FSlateColor(CkStyle::OverlayOf(Tone, 0.20f));
 					})
-					.Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
+					.Padding_Lambda([]() { return ck::crowd_debugger_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, CkStyle::SpaceS}); })
 					[
 						SNew(STextBlock)
 						.Justification(ETextJustify::Center)

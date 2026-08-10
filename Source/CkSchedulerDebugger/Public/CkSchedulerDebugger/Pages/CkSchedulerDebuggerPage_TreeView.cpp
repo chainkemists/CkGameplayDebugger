@@ -109,7 +109,7 @@ auto
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("X:")))
 									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-									.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
 								+ SHorizontalBox::Slot()
@@ -139,7 +139,7 @@ auto
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("Y:")))
 									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-									.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
 								+ SHorizontalBox::Slot()
@@ -169,7 +169,7 @@ auto
 									SNew(STextBlock)
 									.Text(FText::FromString(TEXT("Passes:")))
 									.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-									.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Secondary)
+									.ColorAndOpacity(CkStyle::TextDim())
 								]
 
 								+ SHorizontalBox::Slot()
@@ -278,7 +278,7 @@ auto
 					SNew(STextBlock)
 						.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
 						.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
-						.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+						.ColorAndOpacity(CkStyle::TextMute())
 				]
 		);
 		return;
@@ -379,7 +379,7 @@ auto
 				SNew(STextBlock)
 					.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
 					.Font(FCoreStyle::GetDefaultFontStyle("Italic", 11))
-					.ColorAndOpacity(FCkSchedulerDebuggerStyle::Color_Text_Muted)
+					.ColorAndOpacity(CkStyle::TextMute())
 			]
 	);
 	return _DetailGraphContainer.ToSharedRef();

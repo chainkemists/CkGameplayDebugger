@@ -26,7 +26,7 @@ auto
 	OutParams.AssociatedPin1 = InOutputPin;
 	OutParams.AssociatedPin2 = InInputPin;
 	OutParams.WireThickness = 1.5f;
-	OutParams.WireColor = FCkSchedulerDebuggerStyle::Color_Graph_Edge;
+	OutParams.WireColor = CkStyle::Graph_Edge();
 	OutParams.bDrawBubbles = false;
 }
 

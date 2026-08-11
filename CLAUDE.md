@@ -20,7 +20,8 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
   declare native gameplay tags (commit `a4de221`).
 - **Packaged-module contract (2026-08-10):** all 17 DeveloperTool modules are included in
   Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
-  retain their full GraphEditor surfaces in editor targets and use runtime-Slate views in packaged targets.
+  use the same runtime-Slate graph canvases in editor and packaged targets; native GraphEditor
+  adapters remain editor-only and must never become a Game-target dependency.
 - **No AngelScript surface anywhere in this plugin** — no `Script/` dir, zero `.as` files
   (verified via `rg --no-ignore`). **Blueprint surface exists only on the legacy module**
   (`Abstract, Blueprintable, EditInlineNew` filter/submenu/action classes, e.g.

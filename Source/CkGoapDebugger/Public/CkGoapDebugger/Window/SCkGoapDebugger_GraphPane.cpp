@@ -77,7 +77,7 @@ namespace ck_goap_debugger_graph_pane
                                  *Key.ToString(),
                                  Wants ? TEXT("true") : TEXT("false"),
                                  Current == nullptr ? TEXT("(not in WorldState)")
-                                                    : (*Current ? TEXT("true") : TEXT("false")),
+                                                    : (*Current ? TEXT("TRUE") : TEXT("false")),
                                  Current == nullptr ? TEXT("unknown")
                                                     : (*Current == Wants ? TEXT("satisfied")
                                                                          : TEXT("NOT satisfied"))));
@@ -87,16 +87,23 @@ namespace ck_goap_debugger_graph_pane
                  SHorizontalBox::Slot().AutoWidth().Padding(
                      2, 0)[SNew(STextBlock)
                                .Text(FText::FromString(TEXT("→")))
+                               .Font_Lambda(
+                                   []
+                                   {
+                                       return ck::debug_axes::ScaledFont(
+                                           "Regular", CkStyle::FontSizeMicro());
+                                   })
                                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))] +
-                 SHorizontalBox::Slot().AutoWidth()[MakeDot(TAttribute<FSlateColor>::CreateLambda(
-                     [Weak, Key]()
-                     {
-                         const auto P = Weak.Pin();
-                         const bool* Current = P.IsValid() ? P->WorldState.Find(Key) : nullptr;
-                         return FSlateColor(Current == nullptr
-                                                ? CkStyle::TextMute()
-                                                : (*Current ? CkStyle::Ok() : CkStyle::Err()));
-                     }))] +
+                 SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 4, 0)[
+                     MakeDot(TAttribute<FSlateColor>::CreateLambda(
+                         [Weak, Key]()
+                         {
+                             const auto P = Weak.Pin();
+                             const bool* Current = P.IsValid() ? P->WorldState.Find(Key) : nullptr;
+                             return FSlateColor(Current == nullptr
+                                                    ? CkStyle::TextMute()
+                                                    : (*Current ? CkStyle::Ok() : CkStyle::Err()));
+                         }))] +
                  SHorizontalBox::Slot().FillWidth(
                      1)[SNew(STextBlock)
                             .Text(FText::FromString(TagLeaf(Key)))
@@ -622,8 +629,9 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                  1)[SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
                         .Text(FText::FromString(TEXT("Action graph - (no selection)")))
                         .ColorAndOpacity(FSlateColor(CkStyle::Text()))] +
-             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
-                                                    .Text(FText::FromString(TEXT("Fit")))
+              SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                     .Text(FText::FromString(TEXT("Fit")))
+                                                     .ToolTipText(FText::FromString(TEXT("Fit graph to view")))
                                                     .OnClicked_Lambda(
                                                         [this]
                                                         {
@@ -659,8 +667,10 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                  8, 0, 0, 0)[SNew(STextBlock)
                                  .Text(FText::FromString(TEXT("Name")))
                                  .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))] +
-             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
-                                                    .Text(FText::FromString(TEXT("◀")))
+              SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                     .Text(FText::FromString(TEXT("◀")))
+                                                     .ToolTipText(FText::FromString(
+                                                         TEXT("Shorter display name (fewer segments)")))
                                                     .OnClicked_Lambda(
                                                         [this]
                                                         {
@@ -689,8 +699,10 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                                                         })
                                                     .MinDesiredWidth(28.0f)
                                                     .Justification(ETextJustify::Center)] +
-             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
-                                                    .Text(FText::FromString(TEXT("▶")))
+              SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                     .Text(FText::FromString(TEXT("▶")))
+                                                     .ToolTipText(FText::FromString(
+                                                         TEXT("Longer display name (more segments)")))
                                                     .OnClicked_Lambda(
                                                         [this]
                                                         {

@@ -296,6 +296,7 @@ auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards)
         CanvasEdge.Color = CkStyle::Graph_Edge();
         CanvasEdge.Thickness = 1.5f;
         CanvasEdge.LineSeparation = 4.5f;
+        CanvasEdge.DeemphasizeWhenUnrelatedHovered = false;
         Scene.Edges.Add(MoveTemp(CanvasEdge));
     }
 

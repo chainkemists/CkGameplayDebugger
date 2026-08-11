@@ -49,7 +49,7 @@ SCkGoapDebuggerWindow
     │   │   │            steppers (Request_SetChildActionCost) + edited
     │   │   │            badges + reset, cond chips w/ trace highlight,
     │   │   │            cross-tier notes, per-composite sub-groups
-    │   │   │          · SCkGoapDebugger_GraphPane — SGraphEditor tree
+    │   │   │          · SCkGoapDebugger_GraphPane — runtime Slate graph tree
     │   │   │            (glow halo + role line on nodes, exp→cur pre dots,
     │   │   │            live costs, in-plan edge pulse, dashed tree edges)
     │   │   │          · SCkGoapDebugger_SearchTracePanel* — regressive-A*

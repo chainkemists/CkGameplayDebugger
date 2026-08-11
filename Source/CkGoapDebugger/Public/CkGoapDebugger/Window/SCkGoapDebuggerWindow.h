@@ -11,9 +11,7 @@
 class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
 class SCkGoapDebugger_WorldStateRail;
-#if WITH_EDITOR
 class SCkGoapDebugger_GraphPane;
-#endif
 class SCkGoapDebugger_AgentListPanel;
 class SCkGoapDebugger_AgentColumn;
 class SCkGoapDebugger_DecisionPanel;
@@ -78,9 +76,7 @@ public:
 
     // Center-column tabs inside the Inspector view (mockup ".ctabs").
     static const FName CTab_Decision;
-#if WITH_EDITOR
     static const FName CTab_Graph;
-#endif
     static const FName CTab_Search;
 
     // Nerd mode — reveals search internals (nerd strip, Search-trace tab,
@@ -125,9 +121,7 @@ private:
     TSharedPtr<SCkGoapDebugger_Sidebar>     _Sidebar;
     TSharedPtr<SCkGoapDebugger_AgentColumn> _AgentColumn;
     TSharedPtr<SCkGoapDebugger_WorldStateRail> _WorldStateRail;
-#if WITH_EDITOR
     TSharedPtr<SCkGoapDebugger_GraphPane>   _GraphPane;
-#endif
     TSharedPtr<SCkGoapDebugger_DecisionPanel>    _DecisionPanel;
     TSharedPtr<SCkGoapDebugger_SearchTracePanel> _SearchTracePanel;
     TSharedPtr<SCkGoapDebugger_TimelineDock>     _TimelineDock;

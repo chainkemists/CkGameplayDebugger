@@ -1,444 +1,654 @@
-#if WITH_EDITOR
-
 #include "SCkGoapDebugger_GraphPane.h"
 
-#include "CkGoapDebugger/CkGoapDebuggerStyle.h"
-#include "CkGoapDebugger/Graph/CkGoapDebugGraph.h"
-#include "CkGoapDebugger/Graph/CkGoapDebugGraphSchema.h"
-#include "CkGoapDebugger/Graph/CkGoapDebugNode_Action.h"
-#include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
-
-#include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
-
+#include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
-
 #include "CkEditorTools/Style/CkStyle.h"
-
-#include "GraphEditor.h"
-#include "GraphEditorActions.h"
-
-#include "Widgets/SBoxPanel.h"
+#include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
+#include "CkGoapDebugger/Graph/CkGoapRuntimeGraphModel.h"
+#include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
+#include "Styling/AppStyle.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSpacer.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Widgets/Input/SButton.h"
-#include "Styling/AppStyle.h"
-#include "Styling/CoreStyle.h"
 
-#include "UObject/Package.h"
+namespace ck_goap_debugger_graph_pane
+{
+    auto TagLeaf(const FGameplayTag& InTag) -> FString
+    {
+        const FString Full = InTag.ToString();
+        int32 Dot = INDEX_NONE;
+        return Full.FindLastChar(TEXT('.'), Dot) ? Full.Mid(Dot + 1) : Full;
+    }
 
-// ====================================================================================================================
+    auto MakeDot(const TAttribute<FSlateColor>& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SBox).WidthOverride(7.0f).HeightOverride(
+            7.0f)[SNew(SBorder)
+                      .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                      .BorderBackgroundColor(InColor)];
+    }
+
+    auto BuildActionCard(const TSharedPtr<FCkGoapRuntimeGraphNode>& Node, int32 NameDepth)
+        -> TSharedRef<SWidget>
+    {
+        const TWeakPtr<FCkGoapRuntimeGraphNode> Weak = Node;
+        auto Conditions = SNew(SVerticalBox);
+        auto Sorted = Node->Action.Preconditions;
+        Sorted.Sort(
+            [](const auto& A, const auto& B)
+            {
+                return A.Key.ToString() < B.Key.ToString();
+            });
+        for (const auto& Pre : Sorted)
+        {
+            const auto Key = Pre.Key;
+            const bool Wants = Pre.Value;
+            Conditions->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
+                [SNew(SHorizontalBox)
+                     .ToolTipText_Lambda(
+                         [Weak, Key, Wants]()
+                         {
+                             const auto P = Weak.Pin();
+                             const bool* Current = P.IsValid() ? P->WorldState.Find(Key) : nullptr;
+                             return FText::FromString(FString::Printf(
+                                 TEXT("%s\nWants: %s\nCurrent: %s — %s"),
+                                 *Key.ToString(),
+                                 Wants ? TEXT("true") : TEXT("false"),
+                                 Current == nullptr ? TEXT("(not in WorldState)")
+                                                    : (*Current ? TEXT("true") : TEXT("false")),
+                                 Current == nullptr ? TEXT("unknown")
+                                                    : (*Current == Wants ? TEXT("satisfied")
+                                                                         : TEXT("NOT satisfied"))));
+                         }) +
+                 SHorizontalBox::Slot().AutoWidth().VAlign(
+                     VAlign_Center)[MakeDot(FSlateColor(Wants ? CkStyle::Ok() : CkStyle::Err()))] +
+                 SHorizontalBox::Slot().AutoWidth().Padding(
+                     2, 0)[SNew(STextBlock)
+                               .Text(FText::FromString(TEXT("→")))
+                               .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))] +
+                 SHorizontalBox::Slot().AutoWidth()[MakeDot(TAttribute<FSlateColor>::CreateLambda(
+                     [Weak, Key]()
+                     {
+                         const auto P = Weak.Pin();
+                         const bool* Current = P.IsValid() ? P->WorldState.Find(Key) : nullptr;
+                         return FSlateColor(Current == nullptr
+                                                ? CkStyle::TextMute()
+                                                : (*Current ? CkStyle::Ok() : CkStyle::Err()));
+                     }))] +
+                 SHorizontalBox::Slot().FillWidth(
+                     1)[SNew(STextBlock)
+                            .Text(FText::FromString(TagLeaf(Key)))
+                            .Font_Lambda(
+                                []
+                                {
+                                    return ck::debug_axes::ScaledFont("Regular",
+                                                                      CkStyle::NodeMetaFontSize());
+                                })
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                            .OverflowPolicy(ETextOverflowPolicy::Ellipsis)]];
+        }
+        auto Effects = SNew(SVerticalBox);
+        for (const auto& Effect : Node->Action.Effects)
+            Effects->AddSlot().AutoHeight().Padding(
+                0.0f,
+                1.0f)[SNew(SHorizontalBox).ToolTipText(FText::FromString(Effect.Key.ToString())) +
+                      SHorizontalBox::Slot().FillWidth(1).HAlign(
+                          HAlign_Right)[SNew(STextBlock)
+                                            .Text(FText::FromString(TagLeaf(Effect.Key)))
+                                            .Font_Lambda(
+                                                []
+                                                {
+                                                    return ck::debug_axes::ScaledFont(
+                                                        "Regular", CkStyle::NodeMetaFontSize());
+                                                })
+                                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))] +
+                      SHorizontalBox::Slot().AutoWidth().Padding(
+                          4, 0, 0, 0)[MakeDot(FSlateColor(CkStyle::Accent()))]];
+        return SNew(SBox).MinDesiredWidth(180.0f).MaxDesiredWidth(420.0f)
+            [SNew(SOverlay) +
+                 SOverlay::Slot().Padding(
+                     -10.0f)[SNew(SImage)
+                                 .Image(FCkDebuggerCommonStyle::Get_GlowTightBrush())
+                                 .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
+                                 .Visibility_Lambda(
+                                     [Weak]
+                                     {
+                                         const auto P = Weak.Pin();
+                                         return P.IsValid() && P->IsInPlan
+                                                    ? EVisibility::HitTestInvisible
+                                                    : EVisibility::Collapsed;
+                                     })] +
+                 SOverlay::Slot()
+                     [SNew(SBorder)
+                          .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                          .BorderBackgroundColor_Lambda(
+                              [Weak]
+                              {
+                                  const auto P = Weak.Pin();
+                                  return FSlateColor(!P.IsValid() ? CkStyle::NodeBorder_Inactive()
+                                                     : P->IsFailureBlocked ? CkStyle::Err()
+                                                     : P->IsSelected       ? CkStyle::Warn()
+                                                     : P->IsInPlan ? CkStyle::NodeBorder_InPlan()
+                                                     : P->Action.ChildActionHandles.Num() > 0
+                                                         ? CkStyle::CategoryAge()
+                                                         : CkStyle::Accent());
+                              })
+                          .Padding_Lambda(
+                              []
+                              {
+                                  return FMargin(ck::debug_axes::Get_NodeBorderThickness());
+                              })
+                              [SNew(SBorder)
+                                   .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                   .BorderBackgroundColor_Lambda(
+                                       [Weak]
+                                       {
+                                           if (!ck_goap_debugger_axes::Get_NodeDrawsFill())
+                                               return FSlateColor(FLinearColor::Transparent);
+                                           const auto P = Weak.Pin();
+                                           return FSlateColor(P.IsValid() && P->IsInPlan
+                                                                  ? CkStyle::NodeFill_InPlan()
+                                                                  : CkStyle::NodeFill_Inactive());
+                                       })
+                                   .Padding_Lambda(
+                                       []
+                                       {
+                                           return FMargin(
+                                               CkStyle::SpaceM *
+                                                   ck_goap_debugger_axes::Get_NodePaddingScale(),
+                                               CkStyle::SpaceS *
+                                                   ck_goap_debugger_axes::Get_NodePaddingScale());
+                                       })
+                                       [SNew(SVerticalBox) +
+                                        SVerticalBox::Slot().AutoHeight()
+                                            [SNew(SHorizontalBox) +
+                                             SHorizontalBox::Slot().FillWidth(1)
+                                                 [SNew(STextBlock)
+                                                      .Text(FText::FromString(
+                                                          SCkDebug_NameLabel::Get_ShortName(
+                                                              Node->Action.ClassName, NameDepth)))
+                                                      .Font_Lambda(
+                                                          []
+                                                          {
+                                                              return ck::debug_axes::ScaledFont(
+                                                                  "Bold",
+                                                                  CkStyle::NodeTitleFontSize());
+                                                          })
+                                                      .ColorAndOpacity(
+                                                          FSlateColor(CkStyle::Text()))] +
+                                             SHorizontalBox::Slot().AutoWidth()
+                                                 [SNew(STextBlock)
+                                                      .Text_Lambda(
+                                                          [Weak]
+                                                          {
+                                                              const auto P = Weak.Pin();
+                                                              return FText::FromString(
+                                                                  P.IsValid() ? FString::Printf(
+                                                                                    TEXT("$%.0f"),
+                                                                                    P->Action.Cost)
+                                                                              : TEXT(""));
+                                                          })
+                                                      .ColorAndOpacity(
+                                                          FSlateColor(CkStyle::Warn()))]] +
+                                        SVerticalBox::Slot().AutoHeight()
+                                            [SNew(STextBlock)
+                                                 .Text_Lambda(
+                                                     [Weak]()
+                                                     {
+                                                         const auto P = Weak.Pin();
+                                                         if (NOT P.IsValid())
+                                                         {
+                                                             return FText::GetEmpty();
+                                                         }
+                                                         if (P->Action.IsPlannerRole)
+                                                         {
+                                                             return FText::FromString(
+                                                                 TEXT("◆● ACTION+PLANNER"));
+                                                         }
+                                                         if (P->Action.Cost >=
+                                                             ck_goap_debugger_decision_model::
+                                                                 k_FallbackCostFloor)
+                                                         {
+                                                             return FText::FromString(
+                                                                 TEXT("● FALLBACK"));
+                                                         }
+                                                         return FText::FromString(TEXT("● ACTION"));
+                                                     })
+                                                 .Font_Lambda(
+                                                     []
+                                                     {
+                                                         return ck::debug_axes::ScaledFont(
+                                                             "Bold", CkStyle::FontSizeMicro());
+                                                     })
+                                                 .ColorAndOpacity_Lambda(
+                                                     [Weak]()
+                                                     {
+                                                         const auto P = Weak.Pin();
+                                                         return FSlateColor(
+                                                             P.IsValid() &&
+                                                                     P->Action.Cost >=
+                                                                         ck_goap_debugger_decision_model::
+                                                                             k_FallbackCostFloor
+                                                                 ? CkStyle::Warn()
+                                                                 : CkStyle::TextMute());
+                                                     })] +
+                                        SVerticalBox::Slot().AutoHeight().Padding(0,
+                                                                                  CkStyle::SpaceXS)
+                                            [SNew(SBorder)
+                                                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrus"
+                                                                                       "h")))
+                                                 .BorderBackgroundColor(CkStyle::OverlayOf(
+                                                     CkStyle::CategoryAge(), 0.15f))
+                                                 .Visibility_Lambda(
+                                                     [Weak]
+                                                     {
+                                                         const auto P = Weak.Pin();
+                                                         return P.IsValid() &&
+                                                                        P->Action.ChildActionHandles
+                                                                                .Num() > 0
+                                                                    ? EVisibility::
+                                                                          SelfHitTestInvisible
+                                                                    : EVisibility::Collapsed;
+                                                     })[SNew(STextBlock)
+                                                            .Text(FText::FromString(FString::Printf(
+                                                                TEXT("› %s"),
+                                                                *TagLeaf(Node->Action.ActionTag))))
+                                                            .ColorAndOpacity(FSlateColor(
+                                                                CkStyle::CategoryAge()))]] +
+                                        SVerticalBox::Slot().AutoHeight().Padding(0,
+                                                                                  CkStyle::SpaceS)
+                                            [SNew(SHorizontalBox) +
+                                             SHorizontalBox::Slot().AutoWidth()[Conditions] +
+                                             SHorizontalBox::Slot().FillWidth(1)[] +
+                                             SHorizontalBox::Slot().AutoWidth()[Effects]]]]];
+             +SOverlay::Slot()
+                  .HAlign(HAlign_Left)
+                  .VAlign(VAlign_Top)
+                  .Padding(
+                      -6.0f)[SNew(SBorder)
+                                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                 .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
+                                 .Visibility_Lambda(
+                                     [Weak]
+                                     {
+                                         const auto P = Weak.Pin();
+                                         return P.IsValid() && P->IsInPlan && P->PlanStepIndex > 0
+                                                    ? EVisibility::SelfHitTestInvisible
+                                                    : EVisibility::Collapsed;
+                                     })[SNew(STextBlock)
+                                            .Text_Lambda(
+                                                [Weak]
+                                                {
+                                                    const auto P = Weak.Pin();
+                                                    return FText::FromString(
+                                                        P.IsValid()
+                                                            ? FString::FromInt(P->PlanStepIndex)
+                                                            : TEXT(""));
+                                                })
+                                            .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))]]];
+    }
+
+    auto BuildGoalCard(const TSharedPtr<FCkGoapRuntimeGraphNode>& Node) -> TSharedRef<SWidget>
+    {
+        auto Rows = SNew(SVerticalBox);
+        for (const auto& Condition : Node->GoalConditions)
+            Rows->AddSlot().AutoHeight().Padding(ck_goap_debugger_axes::Live_RowDensity(FMargin{
+                0.0f,
+                1.0f}))[SNew(STextBlock)
+                            .Text(FText::FromString(
+                                FString::Printf(TEXT("%s = %s"),
+                                                *TagLeaf(Condition.Key),
+                                                Condition.Value ? TEXT("true") : TEXT("false"))))
+                            .Font_Lambda(
+                                []
+                                {
+                                    return ck::debug_axes::ScaledFont("Regular",
+                                                                      CkStyle::NodeMetaFontSize());
+                                })
+                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                            .OverflowPolicy(ETextOverflowPolicy::Ellipsis)];
+        return SNew(SBox)
+            .MinDesiredWidth(FCkGoapDebuggerStyle::GraphNode_Width)
+            .MaxDesiredWidth(FCkGoapDebuggerStyle::GraphNode_MaxWidth)
+                [SNew(SBorder)
+                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                     .BorderBackgroundColor(CkStyle::NodeBorder_Goal())
+                     .Padding_Lambda(
+                         []
+                         {
+                             return FMargin{ck::debug_axes::Get_NodeBorderThickness()};
+                         })[SNew(SBorder)
+                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                .BorderBackgroundColor_Lambda(
+                                    []
+                                    {
+                                        return ck_goap_debugger_axes::Get_NodeDrawsFill()
+                                                   ? FSlateColor(CkStyle::NodeFill_Goal())
+                                                   : FSlateColor(FLinearColor::Transparent);
+                                    })
+                                .Padding_Lambda(
+                                    []
+                                    {
+                                        const float Scale =
+                                            ck_goap_debugger_axes::Get_NodePaddingScale();
+                                        return FMargin{CkStyle::SpaceM * Scale,
+                                                       CkStyle::SpaceS * Scale};
+                                    })[SNew(SVerticalBox) +
+                                       SVerticalBox::Slot().AutoHeight()
+                                           [SNew(STextBlock)
+                                                .Text(FText::FromString(TEXT("◆ Goal")))
+                                                .Font_Lambda(
+                                                    []
+                                                    {
+                                                        return ck::debug_axes::ScaledFont(
+                                                            "Bold", CkStyle::NodeTitleFontSize());
+                                                    })
+                                                .ColorAndOpacity(
+                                                    FSlateColor(CkStyle::NodeBorder_Goal()))] +
+                                       SVerticalBox::Slot().AutoHeight().Padding(
+                                           0, CkStyle::SpaceS)[Rows]]]];
+    }
+} // namespace ck_goap_debugger_graph_pane
 
 SCkGoapDebugger_GraphPane::SCkGoapDebugger_GraphPane() = default;
-
 SCkGoapDebugger_GraphPane::~SCkGoapDebugger_GraphPane()
 {
+    if (_GraphCanvas.IsValid())
+        _GraphCanvas->Clear_InteractionDelegates();
     if (_OnChangedHandle.IsValid() && _ViewModel.IsValid())
-    {
         _ViewModel->OnChanged.Remove(_OnChangedHandle);
-        _OnChangedHandle.Reset();
-    }
-
-    if (_Graph && UObjectInitialized())
-    {
-        _Graph->ForceClear();
-        _Graph->RemoveFromRoot();
-        _Graph = nullptr;
-    }
+    Reset_ForWorldChange();
 }
 
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_GraphPane::
-    Construct(
-        const FArguments& InArgs)
-    -> void
+auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
 {
     _ViewModel = InArgs._ViewModel;
-
-    // Transient, GC-rooted graph — mirrors CkSmDebugger.
-    _Graph = NewObject<UCkGoapDebugGraph>(GetTransientPackage());
-    _Graph->AddToRoot();
-    _Graph->Schema = UCkGoapDebugGraphSchema::StaticClass();
-
-    SGraphEditor::FGraphEditorEvents Events;
-    Events.OnSelectionChanged = SGraphEditor::FOnSelectionChanged::CreateSP(this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged);
-
-    _GraphEditor = SNew(SGraphEditor)
-        .GraphToEdit(_Graph)
-        .IsEditable(false)
-        .ShowGraphStateOverlay(false)
-        .GraphEvents(Events);
-
-    ChildSlot
-    [
-        SNew(SBorder)
-            .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
-            .Padding(FMargin(0.0f))
-            [
-                SNew(SVerticalBox)
-
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            BuildHeader()
-                        ]
-
-                    + SVerticalBox::Slot()
-                        .FillHeight(1.0f)
-                        [
-                            SAssignNew(_GraphHost, SBox)
-                            [
-                                _GraphEditor.ToSharedRef()
-                            ]
-                        ]
-            ]
-    ];
-
+    _Graph = MakeShared<FCkGoapRuntimeGraphModel>();
+    ChildSlot[SNew(SBorder).BorderImage(
+        FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Surface")))
+                  [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[BuildHeader()] +
+                   SVerticalBox::Slot().FillHeight(
+                       1)[SAssignNew(_GraphCanvas, SCkDebug_GraphCanvas)
+                              .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
+                                  this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged))]]];
     if (_ViewModel.IsValid())
-    {
-        // Seed the graph from the ViewModel's shared name-depth so both stay
-        // in sync on first paint.
-        _Graph->NameDepth = _ViewModel->Get_NameDepth();
-        _OnChangedHandle = _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
-    }
-
-    // Initial population.
+        _OnChangedHandle =
+            _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
     RefreshFromViewModel();
 }
 
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_GraphPane::
-    Reset_ForWorldChange()
-    -> void
+auto SCkGoapDebugger_GraphPane::Reset_ForWorldChange() -> void
 {
-    if (_Graph)
+    if (_Graph.IsValid())
+        _Graph->Reset();
+    if (_GraphCanvas.IsValid())
     {
-        _Graph->ForceClear();
-        _Graph->NotifyGraphChanged();
+        _SuppressSelectionEcho = true;
+        _GraphCanvas->Set_Scene({});
+        _SuppressSelectionEcho = false;
     }
-
-    // Clear the cached topology so the next RefreshFromViewModel hits the
-    // full-rebuild path (the in-place fast-path would mismatch handles
-    // captured before the world swap).
     _LastTopologyHash = 0;
-    _LastSelectedAction = FCk_Handle_Goap_Action{};
-
+    _LastEffectiveGoalHash = 0;
+    _LastNameDepth = INDEX_NONE;
+    _LastSelectedAction = {};
     if (_HeaderText.IsValid())
-    {
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
-    }
+}
+auto SCkGoapDebugger_GraphPane::Get_MaxNameDepth() const -> int32
+{
+    return _Graph.IsValid() ? _Graph->GetMaxNameDepth() : 1;
 }
 
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_GraphPane::
-    Get_MaxNameDepth() const
-    -> int32
+auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
 {
-    return _Graph != nullptr ? _Graph->Get_MaxNameDepth() : 1;
-}
-
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_GraphPane::
-    RefreshFromViewModel()
-    -> void
-{
-    if (NOT _Graph) { return; }
-
-    // Keep the graph's NameDepth in sync with the ViewModel's shared value so
-    // the action card widgets see the active depth at construction time.
-    if (_ViewModel.IsValid() && _Graph->NameDepth != _ViewModel->Get_NameDepth())
+    if (!_Graph.IsValid())
+        return;
+    const auto* Planner = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
+    if (Planner == nullptr)
     {
-        _Graph->NameDepth = _ViewModel->Get_NameDepth();
-        _LastTopologyHash = 0;  // force a rebuild so existing nodes re-render
-    }
-
-    auto SelectedActionName = FString(TEXT("(none)"));
-    auto ActionCount = 0;
-    auto EdgeCount   = 0;
-
-    const auto* PlannerInfo = _ViewModel.IsValid() ? _ViewModel->GetSelectedPlannerInfo() : nullptr;
-    if (PlannerInfo == nullptr)
-    {
-        // No Planner selected — drop everything once, then short-circuit.
-        // Clearing the cached topology hash forces a rebuild when a
-        // Planner eventually arrives.
-        if (_LastTopologyHash != 0)
-        {
-            _Graph->ForceClear();
-            _Graph->NotifyGraphChanged();
-            _LastTopologyHash = 0;
-            _LastSelectedAction = FCk_Handle_Goap_Action{};
-        }
-
+        Reset_ForWorldChange();
         if (_HeaderText.IsValid())
-        {
             _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no Planner selected)")));
-        }
         return;
     }
-
-    const auto SelectedActionHandle = _ViewModel.IsValid()
-        ? _ViewModel->GetSelectedAction()
-        : FCk_Handle_Goap_Action{};
-
-    // ----------------------------------------------------------------------
-    // Topology gate: rebuild from scratch only when the catalog identity /
-    // pin shape / goal owner actually changed. Otherwise update mutable
-    // render hints (plan membership / step index / selection / failure) on
-    // existing nodes in place. This is the central fix for the
-    // action-graph flicker — every ViewModel broadcast (every plan attempt)
-    // was previously tearing down all UEdGraphNodes and forcing the
-    // SGraphEditor to recreate every Slate widget, which read as flicker
-    // and empty viewport during fast replans.
-    // ----------------------------------------------------------------------
-    const auto NewTopologyHash = UCkGoapDebugGraph::ComputeTopologyHash(*PlannerInfo);
-    const auto TopologyChanged = NewTopologyHash != _LastTopologyHash;
-    const auto SelectionChanged = SelectedActionHandle != _LastSelectedAction;
-
-    if (TopologyChanged)
+    const auto Selected = _ViewModel->GetSelectedAction();
+    const auto Hash = FCkGoapRuntimeGraphModel::ComputeTopologyHash(*Planner);
+    const auto* SelectedInfo = _ViewModel->GetSelectedActionInfo();
+    const auto EffectiveGoalHash =
+        FCkGoapRuntimeGraphModel::ComputeEffectiveGoalHash(*Planner, SelectedInfo);
+    const bool TopologyChanged = Hash != _LastTopologyHash;
+    const bool NameDepthChanged = _ViewModel->Get_NameDepth() != _LastNameDepth;
+    const bool SelectedGoalChanged = EffectiveGoalHash != _LastEffectiveGoalHash;
+    const bool SceneStructureChanged = TopologyChanged || NameDepthChanged || SelectedGoalChanged;
+    if (SceneStructureChanged)
     {
-        // Full rebuild — RebuildFromSnapshot un-suppresses notifications
-        // and calls NotifyGraphChanged at the end, so we don't need to
-        // notify again here.
-        _Graph->RebuildFromSnapshot(*PlannerInfo, SelectedActionHandle);
-        _LastTopologyHash = NewTopologyHash;
-        _LastSelectedAction = SelectedActionHandle;
+        // Selection participates because a selected dual-role Action can own
+        // a different effective goal. Rebuild model and goal-producing edges
+        // together so the card and its connections never describe different
+        // selected Actions for a frame.
+        _Graph->Rebuild(*Planner, Selected, _ViewModel->Get_NameDepth());
+        _LastTopologyHash = Hash;
+        _LastEffectiveGoalHash = EffectiveGoalHash;
+        _LastNameDepth = _ViewModel->Get_NameDepth();
+        RebuildCanvasScene();
     }
     else
     {
-        // Mutable per-tick state may have shifted — refresh node hints in
-        // place on the existing nodes. SGraphNode_GoapAction binds its
-        // visuals (border color, plan-step badge, composite bar) via
-        // TAttribute lambdas that read live from the node flags, so the
-        // next paint pass will reflect the new state WITHOUT a
-        // NotifyGraphChanged. Emitting NotifyGraphChanged here would
-        // trigger SGraphPanel::OnGraphChanged → node-widget recreation,
-        // which is the very flicker this fix exists to remove. We still
-        // mirror selection into the SGraphEditor below so the framework's
-        // selection box updates without rebuilding nodes.
-        (void)_Graph->UpdateRuntimeState(*PlannerInfo, SelectedActionHandle);
-        _LastSelectedAction = SelectedActionHandle;
+        // Existing cards bind to these DTOs. Ordinary live broadcasts repaint
+        // them without reinstalling every Slate child in the canvas.
+        _Graph->UpdateRuntimeState(*Planner, Selected);
     }
-
-    ActionCount = _Graph->Get_ActionCount();
-    EdgeCount   = _Graph->Get_EdgeCount();
-
-    if (const auto* ActionInfo = _ViewModel.IsValid() ? _ViewModel->GetSelectedActionInfo() : nullptr)
-    { SelectedActionName = ActionInfo->ClassName; }
-
+    _LastSelectedAction = Selected;
     if (_HeaderText.IsValid())
     {
-        const auto Header = FString::Printf(
-            TEXT("Action graph - selected: %s - %d actions - %d edges"),
-            *SelectedActionName, ActionCount, EdgeCount);
-        _HeaderText->SetText(FText::FromString(Header));
+        const auto* Info = _ViewModel->GetSelectedActionInfo();
+        _HeaderText->SetText(FText::FromString(
+            FString::Printf(TEXT("Action graph - selected: %s - %d actions - %d edges"),
+                            Info ? *Info->ClassName : TEXT("(none)"),
+                            _Graph->GetActionCount(),
+                            _Graph->GetEdgeCount())));
     }
-
-    // Mirror the ViewModel selection into the SGraphEditor only when it
-    // actually drifted (avoids a per-broadcast Clear+SetSelection cycle
-    // that would otherwise echo back through OnGraphSelectionChanged).
-    if (_GraphEditor.IsValid() && (TopologyChanged || SelectionChanged))
+    if (_GraphCanvas.IsValid())
     {
+        TSet<uint64> Selection;
+        const uint64 Id = _Graph->FindActionId(Selected);
+        if (Id)
+            Selection.Add(Id);
         _SuppressSelectionEcho = true;
-        _GraphEditor->ClearSelectionSet();
-        if (ck::IsValid(SelectedActionHandle))
-        {
-            if (auto* Node = _Graph->FindActionNode(SelectedActionHandle))
-            { _GraphEditor->SetNodeSelection(Node, true); }
-        }
+        _GraphCanvas->Set_SelectedNodeIds(MoveTemp(Selection), false);
         _SuppressSelectionEcho = false;
     }
 }
 
-// ====================================================================================================================
-
-auto
-    SCkGoapDebugger_GraphPane::
-    OnGraphSelectionChanged(
-        const TSet<UObject*>& InSelection)
-    -> void
+auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
 {
-    if (_SuppressSelectionEcho) { return; }
-    if (NOT _ViewModel.IsValid()) { return; }
-
-    for (auto* Obj : InSelection)
+    if (!_GraphCanvas.IsValid())
+        return;
+    FCkDebug_GraphCanvasScene Scene;
+    for (const auto& Node : _Graph->GetNodes())
     {
-        if (auto* ActionNode = Cast<UCkGoapDebugNode_Action>(Obj))
-        {
-            _ViewModel->SetSelectedAction(ActionNode->Get_ActionHandle());
-            return;
-        }
+        FCkDebug_GraphCanvasNode CanvasNode;
+        CanvasNode.Id = Node->Id;
+        CanvasNode.Position = Node->Position;
+        CanvasNode.Size = Node->Size;
+        CanvasNode.Widget = Node->Kind == ECkGoapRuntimeGraphNodeKind::Action
+                                ? ck_goap_debugger_graph_pane::BuildActionCard(
+                                      Node, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1)
+                                : ck_goap_debugger_graph_pane::BuildGoalCard(Node);
+        Scene.Nodes.Add(MoveTemp(CanvasNode));
     }
-
-    // Empty selection — clear the ViewModel's Action selection.
-    _ViewModel->SetSelectedAction(FCk_Handle_Goap_Action{});
+    const auto FindNode = [this](uint64 InId) -> const FCkGoapRuntimeGraphNode*
+    {
+        for (const auto& Node : _Graph->GetNodes())
+            if (Node.IsValid() && Node->Id == InId)
+                return Node.Get();
+        return nullptr;
+    };
+    const auto IsEdgeInPlan = [](const FCkGoapRuntimeGraphNode* InSource,
+                                 const FCkGoapRuntimeGraphNode* InTarget) -> bool
+    {
+        return InSource && InTarget && InSource->Kind == ECkGoapRuntimeGraphNodeKind::Action &&
+               InSource->IsInPlan &&
+               (InTarget->Kind == ECkGoapRuntimeGraphNodeKind::Goal || InTarget->IsInPlan);
+    };
+    const auto IsEdgeFailureBlocked = [](const FCkGoapRuntimeGraphNode* InSource,
+                                         const FCkGoapRuntimeGraphNode* InTarget) -> bool
+    {
+        return (InSource && InSource->Kind == ECkGoapRuntimeGraphNodeKind::Action &&
+                InSource->IsFailureBlocked) ||
+               (InTarget && InTarget->Kind == ECkGoapRuntimeGraphNodeKind::Action &&
+                InTarget->IsFailureBlocked);
+    };
+    const float ThicknessScale = ck_goap_debugger_axes::Get_NodeBorderScale();
+    const float DimScale = ck_goap_debugger_axes::Get_NodeDimScale();
+    for (const auto& Edge : _Graph->GetEdges())
+    {
+        const auto* SourceNode = FindNode(Edge.SourceId);
+        const auto* TargetNode = FindNode(Edge.TargetId);
+        const bool IsInPlan = IsEdgeInPlan(SourceNode, TargetNode);
+        FCkDebug_GraphCanvasEdge CanvasEdge;
+        CanvasEdge.SourceId = Edge.SourceId;
+        CanvasEdge.TargetId = Edge.TargetId;
+        CanvasEdge.SourceAnchor = ECkDebug_GraphAnchor::Right;
+        CanvasEdge.TargetAnchor = ECkDebug_GraphAnchor::Left;
+        CanvasEdge.IsDashed = Edge.Kind == ECkGoapRuntimeGraphEdgeKind::Tree;
+        if (CanvasEdge.IsDashed)
+        {
+            CanvasEdge.Color = IsInPlan ? CkStyle::Ok() : CkStyle::CategoryAge();
+            CanvasEdge.Color.A = IsInPlan ? 1.0f : FMath::Clamp(0.55f * DimScale, 0.05f, 1.0f);
+            CanvasEdge.Thickness = (IsInPlan ? 2.0f : 1.25f) * ThicknessScale;
+        }
+        else if (IsEdgeFailureBlocked(SourceNode, TargetNode))
+        {
+            CanvasEdge.Color = CkStyle::Err();
+            CanvasEdge.Thickness = 2.0f * ThicknessScale;
+        }
+        else if (IsInPlan)
+        {
+            CanvasEdge.Color = CkStyle::Ok();
+            CanvasEdge.Thickness = 2.0f * ThicknessScale;
+        }
+        else
+        {
+            CanvasEdge.Color = CkStyle::Border();
+            CanvasEdge.Color.A = FMath::Clamp(0.65f * DimScale, 0.05f, 1.0f);
+            CanvasEdge.Thickness = 1.0f * ThicknessScale;
+        }
+        Scene.Edges.Add(MoveTemp(CanvasEdge));
+    }
+    _SuppressSelectionEcho = true;
+    _GraphCanvas->Set_Scene(MoveTemp(Scene));
+    _SuppressSelectionEcho = false;
 }
 
-// ====================================================================================================================
+auto SCkGoapDebugger_GraphPane::OnGraphSelectionChanged(const TSet<uint64>& InSelection) -> void
+{
+    if (_SuppressSelectionEcho || !_ViewModel.IsValid())
+        return;
+    for (uint64 Id : InSelection)
+        if (const auto* Action = _Graph->FindActionById(Id))
+        {
+            _ViewModel->SetSelectedAction(*Action);
+            return;
+        }
+    _ViewModel->SetSelectedAction({});
+}
 
-auto
-    SCkGoapDebugger_GraphPane::
-    BuildHeader()
-    -> TSharedRef<SWidget>
+auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
         .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Black")))
         .Padding(FMargin(FCkGoapDebuggerStyle::Padding_Medium, FCkGoapDebuggerStyle::Padding_Small))
-        [
-            SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-                    .VAlign(VAlign_Center)
-                    [
-                        SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(TEXT("Action graph - (no selection)")))
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
-                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                    ]
-
-                // Right side action buttons — fit / 1:1 / hide-dimmed (stubs for D5).
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                            // Plain text — every decorative glyph tried here (⊕, ▣)
-                            // renders poorly in Slate's default font. Matches the
-                            // text-only style of the 1:1 / Live / Scrub buttons.
-                            .Text(FText::FromString(TEXT("Fit")))
-                            .ToolTipText(FText::FromString(TEXT("Fit graph to view (D5 stub)")))
-                            .OnClicked_Lambda([this]() -> FReply
-                            {
-                                if (_GraphEditor.IsValid())
-                                { _GraphEditor->ZoomToFit(/*bOnlySelection=*/ false); }
-                                return FReply::Handled();
-                            })
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                            .Text(FText::FromString(TEXT("1:1")))
-                            .ToolTipText(FText::FromString(TEXT("Reset zoom (D5 stub)")))
-                            .OnClicked_Lambda([]() -> FReply
-                            {
-                                return FReply::Handled();
-                            })
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkGoapDebuggerStyle::Padding_Small, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SButton)
-                            .Text(FText::FromString(TEXT("Hide dimmed")))
-                            .ToolTipText(FText::FromString(TEXT("Hide off-plan nodes (D5 stub)")))
-                            .OnClicked_Lambda([]() -> FReply
-                            {
-                                return FReply::Handled();
-                            })
-                    ]
-
-                // ---- Name depth cycler -----------------------------------
-                // Cycle: Full(0) → 1 → 2 → ... → MaxDepth → Full(0). Mirrors
-                // the SM debugger's name-depth control. Setting depth flips
-                // the topology hash via _LastTopologyHash reset so every
-                // action card + the goal label re-render through the rebuild
-                // path. Every other pane that renders class names reads from
-                // the same Get_NameDepth source of truth.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(FCkGoapDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SCkDebug_SelectableLabel)
-                            .Text(FText::FromString(TEXT("Name")))
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); })
-                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                    ]
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(SButton)
-                            .Text(FText::FromString(TEXT("\x25C0")))  // ◀
-                            .ToolTipText(FText::FromString(TEXT("Shorter display name (fewer segments)")))
-                            .OnClicked_Lambda([this]() -> FReply
-                            {
-                                if (_Graph != nullptr)
-                                {
-                                    auto& Depth = _Graph->NameDepth;
-                                    const auto MaxDepth = _Graph->Get_MaxNameDepth();
-                                    Depth = (Depth == 0) ? MaxDepth : (Depth - 1);
-                                    if (_ViewModel.IsValid()) { _ViewModel->Set_NameDepth(Depth); }
-                                    _LastTopologyHash = 0;
-                                    RefreshFromViewModel();
-                                    if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); }
-                                }
-                                return FReply::Handled();
-                            })
-                    ]
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(STextBlock)
-                            .Text_Lambda([this]() -> FText
-                            {
-                                if (_Graph == nullptr) { return FText::FromString(TEXT("1")); }
-                                const auto D = _Graph->NameDepth;
-                                return FText::FromString(D == 0 ? TEXT("Full") : FString::Printf(TEXT("%d"), D));
-                            })
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
-                            .Justification(ETextJustify::Center)
-                            .MinDesiredWidth(28.0f)
-                            .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                    ]
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(SButton)
-                            .Text(FText::FromString(TEXT("\x25B6")))  // ▶
-                            .ToolTipText(FText::FromString(TEXT("Longer display name (more segments)")))
-                            .OnClicked_Lambda([this]() -> FReply
-                            {
-                                if (_Graph != nullptr)
-                                {
-                                    auto& Depth = _Graph->NameDepth;
-                                    const auto MaxDepth = _Graph->Get_MaxNameDepth();
-                                    Depth = (Depth >= MaxDepth) ? 0 : (Depth + 1);
-                                    if (_ViewModel.IsValid()) { _ViewModel->Set_NameDepth(Depth); }
-                                    _LastTopologyHash = 0;
-                                    RefreshFromViewModel();
-                                    if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); }
-                                }
-                                return FReply::Handled();
-                            })
-                    ]
-        ];
+            [SNew(SHorizontalBox) +
+             SHorizontalBox::Slot().FillWidth(
+                 1)[SAssignNew(_HeaderText, SCkDebug_SelectableLabel)
+                        .Text(FText::FromString(TEXT("Action graph - (no selection)")))
+                        .ColorAndOpacity(FSlateColor(CkStyle::Text()))] +
+             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                    .Text(FText::FromString(TEXT("Fit")))
+                                                    .OnClicked_Lambda(
+                                                        [this]
+                                                        {
+                                                            if (_GraphCanvas.IsValid())
+                                                                _GraphCanvas->Frame_All();
+                                                            return FReply::Handled();
+                                                        })] +
+             SHorizontalBox::Slot().AutoWidth().Padding(
+                 4, 0)[SNew(SButton)
+                           .Text(FText::FromString(TEXT("1:1")))
+                           .ToolTipText(FText::FromString(TEXT("Reset zoom (D5 stub)")))
+                           .OnClicked_Lambda(
+                               []
+                               {
+                                   return FReply::Handled();
+                               })] +
+             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                    .Text(FText::FromString(TEXT("Hide dimmed")))
+                                                    .ToolTipText(FText::FromString(
+                                                        TEXT("Hide off-plan nodes (D5 stub)")))
+                                                    .OnClicked_Lambda(
+                                                        []
+                                                        {
+                                                            return FReply::Handled();
+                                                        })] +
+             SHorizontalBox::Slot().AutoWidth().Padding(
+                 8, 0, 0, 0)[SNew(STextBlock)
+                                 .Text(FText::FromString(TEXT("Name")))
+                                 .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))] +
+             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                    .Text(FText::FromString(TEXT("◀")))
+                                                    .OnClicked_Lambda(
+                                                        [this]
+                                                        {
+                                                            if (_ViewModel.IsValid())
+                                                            {
+                                                                const int32 D =
+                                                                    _ViewModel->Get_NameDepth();
+                                                                _ViewModel->Set_NameDepth(
+                                                                    D == 0 ? Get_MaxNameDepth()
+                                                                           : D - 1);
+                                                                _ViewModel->Broadcast_Changed();
+                                                            }
+                                                            return FReply::Handled();
+                                                        })] +
+             SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock)
+                                                    .Text_Lambda(
+                                                        [this]
+                                                        {
+                                                            const int32 D =
+                                                                _ViewModel.IsValid()
+                                                                    ? _ViewModel->Get_NameDepth()
+                                                                    : 1;
+                                                            return FText::FromString(
+                                                                D == 0 ? TEXT("Full")
+                                                                       : FString::FromInt(D));
+                                                        })
+                                                    .MinDesiredWidth(28.0f)
+                                                    .Justification(ETextJustify::Center)] +
+             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                    .Text(FText::FromString(TEXT("▶")))
+                                                    .OnClicked_Lambda(
+                                                        [this]
+                                                        {
+                                                            if (_ViewModel.IsValid())
+                                                            {
+                                                                const int32 D =
+                                                                    _ViewModel->Get_NameDepth();
+                                                                _ViewModel->Set_NameDepth(
+                                                                    D >= Get_MaxNameDepth()
+                                                                        ? 0
+                                                                        : D + 1);
+                                                                _ViewModel->Broadcast_Changed();
+                                                            }
+                                                            return FReply::Handled();
+                                                        })]];
 }
-
-// ====================================================================================================================
-
-#endif

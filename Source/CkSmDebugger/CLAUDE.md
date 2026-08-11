@@ -2,8 +2,8 @@
 
 ## Handle lifetime contract across PIE
 
-CkSmDebugger UI state (Slate window, ViewModel, DataCollector, runtime graph model, and the
-editor-only legacy UEdGraph adapter) can outlive PIE session boundaries. ECS entities and
+CkSmDebugger UI state (Slate window, ViewModel, DataCollector, runtime graph model, and runtime
+Preview model) can outlive PIE session boundaries. ECS entities and
 their backing `FCk_Registry` do not — each PIE session brings up a new world
 with a new registry, and the prior registry is destroyed on PIE Stop.
 
@@ -27,12 +27,10 @@ Handle-bearing state to audit when adding new fields:
   view-model structs.
 - `TArray` / `TMap` whose value types are `FCkSmDebugger_*Info` structs —
   those structs embed handles (see `CkSmDebugger_Types.h`).
-- Cached "last seen" or "selection" handles on UEdGraph subclasses.
+- Cached "last seen" or selection handles on persistent graph models or widgets.
 
 Currently covered by the EndPIE path:
 
-- `UCkSmDebugGraph::_CachedSubSmOwner`, `_TransitionData`, `_CachedSubSmData`
-  (cleared by `ForceRebuild()`).
 - `FCkSmDebugger_ViewModel::_CurrentSmInfo`, `_SelectedSmHandle`
   (cleared by `Reset_ForWorldChange()`).
 - `FCkSmDebugger_DataCollector::_StateMachines`
@@ -40,13 +38,16 @@ Currently covered by the EndPIE path:
 - `FCkSmRuntimeGraphFacade` and `SCkSmRuntimeGraph` handle-bearing scene data
   (cleared by `ResetForWorldChange()` / `Clear()`).
 
+The legacy UEdGraph/SGraphEditor source remains editor-only reference code. The module no longer
+registers its visual-node factory, and the active debugger window does not construct that adapter.
+
 ### Symptom if broken
 
 Editor crash on second (or later) PIE start with the debugger window open.
 Stack shows `~FCk_Handle → TOptional<FCk_Registry>::DestroyValue →
 TReferenceControllerBase::ReleaseSharedReference` with `SharedReferenceCount=0`
 at an access violation. Entry point is usually
-`UCkSmDebugGraph::RebuildFromSmInfo` via the window's `Tick`.
+the shared window refresh or runtime graph rebuild path.
 
 Fix: add the new field's clear/reset to `HandleWorldTornDown()` (directly or
-via an existing cascade like `ForceRebuild`/`Reset_ForWorldChange`/`Reset`).
+via an existing cascade like `ResetForWorldChange`/`Clear`/`Reset_ForWorldChange`/`Reset`).

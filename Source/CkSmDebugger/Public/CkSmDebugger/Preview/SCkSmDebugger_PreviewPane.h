@@ -2,16 +2,18 @@
 
 #include "CkEcs/Handle/CkHandle.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
+#include "CkSmDebugger/Data/CkSmDebugger_Types.h"
 
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class UCkSmDebugGraph;
-class SGraphEditor;
 class UClass;
 class UWorld;
+class SCkSmRuntimeGraph;
+class SComboButton;
+template <typename ItemType> class SListView;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Right-side preview pane for statically walking a state machine asset.
@@ -55,9 +57,26 @@ private:
     auto DestroyPreviewEntity() -> void;
     auto PublishStructuralSmInfo() -> void;
 
-    // Owned graph + editor — independent of the live debugger graph
-    UCkSmDebugGraph*           _PreviewGraph = nullptr;
-    TSharedPtr<SGraphEditor>   _PreviewGraphEditor;
+    struct FClassOption
+    {
+        UClass* Class = nullptr;
+        FString Label;
+        FString Path;
+    };
+
+    auto RefreshClassOptions() -> void;
+    auto RefilterClassOptions(const FString& InFilter) -> void;
+    auto BuildClassPickerMenu() -> TSharedRef<SWidget>;
+    auto HandleClassPicked(TSharedPtr<FClassOption> InOption) -> void;
+    auto GetSelectedClassLabel() const -> FString;
+
+    // Value-owned preview data must outlive SCkSmRuntimeGraph's borrowed SmInfo pointer.
+    FCkSmDebugger_SmInfo _PreviewSmInfo;
+    TSharedPtr<SCkSmRuntimeGraph> _PreviewRuntimeGraph;
+    TArray<TSharedPtr<FClassOption>> _ClassOptions;
+    TArray<TSharedPtr<FClassOption>> _FilteredClassOptions;
+    TSharedPtr<SComboButton> _ClassPicker;
+    TSharedPtr<SListView<TSharedPtr<FClassOption>>> _ClassListView;
 
     TSoftClassPtr<UObject>     _SelectedInitialStateClass;
     FString                    _StatusMessage;
@@ -67,6 +86,7 @@ private:
     // Handle to the throwaway SM entity used to run the walker. Destroyed on reset.
     FCk_Handle_StateMachine    _PreviewSmHandle;
     bool                       _WalkInProgress = false;
+    bool                       _PendingFrameAll = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

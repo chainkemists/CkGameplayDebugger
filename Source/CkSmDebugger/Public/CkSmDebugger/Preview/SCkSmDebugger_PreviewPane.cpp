@@ -1,8 +1,6 @@
-#if WITH_EDITOR
 #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 
-#include "CkSmDebugger/Graph/CkSmDebugGraph.h"
-#include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
+#include "CkSmDebugger/Graph/SCkSmRuntimeGraph.h"
 #include "CkSmDebugger/Data/CkSmDebugger_Types.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -25,25 +23,20 @@
 #endif
 
 #include "Engine/World.h"
-#include "GraphEditor.h"
-#include "PropertyCustomizationHelpers.h"
-
+#include "UObject/UObjectIterator.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Views/SListView.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 SCkSmDebugger_PreviewPane::~SCkSmDebugger_PreviewPane()
 {
     DestroyPreviewEntity();
-
-    if (_PreviewGraph && UObjectInitialized())
-    {
-        _PreviewGraph->RemoveFromRoot();
-        _PreviewGraph = nullptr;
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -54,15 +47,8 @@ auto
         const FArguments& InArgs)
     -> void
 {
-    _PreviewGraph = NewObject<UCkSmDebugGraph>(GetTransientPackage());
-    _PreviewGraph->AddToRoot();
-    _PreviewGraph->Schema = UCkSmDebugGraphSchema::StaticClass();
-
     _StatusMessage = TEXT("Pick a state class to preview its state machine.");
-
-    _PreviewGraphEditor = SNew(SGraphEditor)
-        .GraphToEdit(_PreviewGraph)
-        .IsEditable(true);
+    RefreshClassOptions();
 
     // NOTE: The picker row is built by the host window and placed inline with the
     // main toolbar so both graphs start at the same vertical position.
@@ -73,7 +59,7 @@ auto
         + SVerticalBox::Slot()
             .FillHeight(1.0f)
             [
-                _PreviewGraphEditor.ToSharedRef()
+                SAssignNew(_PreviewRuntimeGraph, SCkSmRuntimeGraph)
             ]
 
         + SVerticalBox::Slot()
@@ -106,6 +92,12 @@ auto
 
     if (_WalkInProgress)
     { PollWalkAndFinalize(); }
+
+    if (_PendingFrameAll && _PreviewRuntimeGraph.IsValid())
+    {
+        _PreviewRuntimeGraph->FrameAll();
+        _PendingFrameAll = false;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -153,10 +145,6 @@ auto
     BuildHeader()
     -> TSharedRef<SWidget>
 {
-    auto* MetaClass = FindObject<UClass>(nullptr, TEXT("/Script/CkStateMachine.Ck_SmState_EntityScript"));
-    if (ck::Is_NOT_Valid(MetaClass))
-    { MetaClass = UObject::StaticClass(); }
-
     return SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot()
@@ -175,19 +163,16 @@ auto
             .FillWidth(1.0f)
             .VAlign(VAlign_Center)
             [
-                SNew(SClassPropertyEntryBox)
-                    .MetaClass(MetaClass)
-                    .AllowAbstract(false)
-                    .AllowNone(true)
-                    .SelectedClass_Lambda([this]() -> const UClass*
-                    {
-                        return _SelectedInitialStateClass.LoadSynchronous();
-                    })
-                    .OnSetClass_Lambda([this](const UClass* InClass)
-                    {
-                        _SelectedInitialStateClass = InClass;
-                        RebuildPreviewGraph();
-                    })
+                SAssignNew(_ClassPicker, SComboButton)
+                    .OnGetMenuContent(this, &SCkSmDebugger_PreviewPane::BuildClassPickerMenu)
+                    .ToolTipText_Lambda([this]()
+                    { return FText::FromString(GetSelectedClassPath()); })
+                    .ButtonContent()
+                    [
+                        SNew(STextBlock)
+                            .Text_Lambda([this]()
+                            { return FText::FromString(GetSelectedClassLabel()); })
+                    ]
             ];
 }
 
@@ -208,16 +193,11 @@ auto
     RebuildPreviewGraph()
     -> void
 {
-    if (ck::Is_NOT_Valid(_PreviewGraph))
-    { return; }
-
     // Drop any in-flight walk — class changed.
     DestroyPreviewEntity();
-
-    _PreviewGraph->SetSuppressNotifications(true);
-    _PreviewGraph->Nodes.Empty();
-    _PreviewGraph->SetSuppressNotifications(false);
-    _PreviewGraph->NotifyGraphChanged();
+    _PreviewSmInfo = FCkSmDebugger_SmInfo{};
+    _PendingFrameAll = false;
+    if (_PreviewRuntimeGraph.IsValid()) { _PreviewRuntimeGraph->Clear(); }
 
     auto* SelectedClass = _SelectedInitialStateClass.LoadSynchronous();
     if (ck::Is_NOT_Valid(SelectedClass))
@@ -321,7 +301,7 @@ auto
     -> void
 {
 #if CK_BUILD_SM_GRAPH_WALK
-    if (ck::Is_NOT_Valid(_PreviewGraph) || ck::Is_NOT_Valid(_PreviewSmHandle))
+    if (NOT _PreviewRuntimeGraph.IsValid() || ck::Is_NOT_Valid(_PreviewSmHandle))
     { return; }
 
     auto SmHandle = static_cast<FCk_Handle>(_PreviewSmHandle);
@@ -485,13 +465,12 @@ auto
         }
     }
 
-    _PreviewGraph->SetSuppressNotifications(true);
-    _PreviewGraph->RebuildFromSmInfo(SmInfo);
-    _PreviewGraph->SetSuppressNotifications(false);
-    _PreviewGraph->NotifyGraphChanged();
+    _PreviewSmInfo = MoveTemp(SmInfo);
+    _PreviewRuntimeGraph->SetSmInfo(&_PreviewSmInfo);
+    _PendingFrameAll = true;
 
     _StatusMessage = ck::Format_UE(TEXT("Walked {} states / {} transitions."),
-        SmInfo.States.Num(), SmInfo.Transitions.Num());
+        _PreviewSmInfo.States.Num(), _PreviewSmInfo.Transitions.Num());
 #endif
 }
 
@@ -521,4 +500,112 @@ auto
 {
     return FText::FromString(_StatusMessage);
 }
-#endif
+
+auto SCkSmDebugger_PreviewPane::RefreshClassOptions() -> void
+{
+    _ClassOptions.Reset();
+    auto NoneOption = MakeShared<FClassOption>();
+    NoneOption->Label = TEXT("None");
+    _ClassOptions.Add(MoveTemp(NoneOption));
+
+    for (TObjectIterator<UClass> It; It; ++It)
+    {
+        auto* Class = *It;
+        if (NOT IsValid(Class) || Class == UCk_SmState_EntityScript::StaticClass() ||
+            NOT Class->IsChildOf(UCk_SmState_EntityScript::StaticClass()) ||
+            Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+        { continue; }
+
+        auto Option = MakeShared<FClassOption>();
+        Option->Class = Class;
+        Option->Label = UCk_Utils_Object_UE::Get_CleanClassName(Class);
+        Option->Path = Class->GetPathName();
+        _ClassOptions.Add(MoveTemp(Option));
+    }
+    _ClassOptions.Sort([](const TSharedPtr<FClassOption>& A, const TSharedPtr<FClassOption>& B)
+    {
+        if (NOT A.IsValid() || NOT B.IsValid())
+        { return A.IsValid(); }
+        if (A->Class == nullptr || B->Class == nullptr)
+        { return A->Class == nullptr && B->Class != nullptr; }
+        const auto LabelOrder = A->Label.Compare(B->Label, ESearchCase::IgnoreCase);
+        return LabelOrder == 0 ? A->Path < B->Path : LabelOrder < 0;
+    });
+    RefilterClassOptions({});
+}
+
+auto SCkSmDebugger_PreviewPane::RefilterClassOptions(const FString& InFilter) -> void
+{
+    _FilteredClassOptions.Reset();
+    for (const auto& Option : _ClassOptions)
+    {
+        if (NOT Option.IsValid())
+        { continue; }
+        if (InFilter.IsEmpty()
+            || Option->Label.Contains(InFilter, ESearchCase::IgnoreCase)
+            || Option->Path.Contains(InFilter, ESearchCase::IgnoreCase))
+        { _FilteredClassOptions.Add(Option); }
+    }
+    if (_ClassListView.IsValid())
+    { _ClassListView->RequestListRefresh(); }
+}
+
+auto SCkSmDebugger_PreviewPane::BuildClassPickerMenu() -> TSharedRef<SWidget>
+{
+    RefreshClassOptions();
+
+    return SNew(SBox)
+        .WidthOverride(520.0f)
+        .HeightOverride(420.0f)
+        [
+            SNew(SVerticalBox)
+            + SVerticalBox::Slot()
+                .AutoHeight()
+                .Padding(4.0f)
+                [
+                    SNew(SSearchBox)
+                        .HintText(FText::FromString(TEXT("Search state classes...")))
+                        .OnTextChanged_Lambda([this](const FText& InText)
+                        { RefilterClassOptions(InText.ToString()); })
+                ]
+            + SVerticalBox::Slot()
+                .FillHeight(1.0f)
+                .Padding(4.0f, 0.0f, 4.0f, 4.0f)
+                [
+                    SAssignNew(_ClassListView, SListView<TSharedPtr<FClassOption>>)
+                        .ListItemsSource(&_FilteredClassOptions)
+                        .SelectionMode(ESelectionMode::Single)
+                        .OnGenerateRow_Lambda([](TSharedPtr<FClassOption> InOption,
+                                                const TSharedRef<STableViewBase>& InOwner)
+                        {
+                            const auto Label = InOption.IsValid() ? InOption->Label : FString{};
+                            const auto Path = InOption.IsValid() ? InOption->Path : FString{};
+                            return SNew(STableRow<TSharedPtr<FClassOption>>, InOwner)
+                                .ToolTipText(FText::FromString(Path))
+                                [SNew(STextBlock).Text(FText::FromString(Label))];
+                        })
+                        .OnSelectionChanged_Lambda([this](TSharedPtr<FClassOption> InOption,
+                                                         ESelectInfo::Type InSelectInfo)
+                        {
+                            if (InSelectInfo != ESelectInfo::Direct)
+                            { HandleClassPicked(MoveTemp(InOption)); }
+                        })
+                ]
+        ];
+}
+
+auto SCkSmDebugger_PreviewPane::HandleClassPicked(TSharedPtr<FClassOption> InOption) -> void
+{
+    _SelectedInitialStateClass = InOption.IsValid() ? InOption->Class : nullptr;
+    if (_ClassPicker.IsValid())
+    { _ClassPicker->SetIsOpen(false); }
+    RebuildPreviewGraph();
+}
+
+auto SCkSmDebugger_PreviewPane::GetSelectedClassLabel() const -> FString
+{
+    auto* SelectedClass = _SelectedInitialStateClass.Get();
+    return ck::IsValid(SelectedClass)
+        ? UCk_Utils_Object_UE::Get_CleanClassName(SelectedClass)
+        : FString(TEXT("None"));
+}

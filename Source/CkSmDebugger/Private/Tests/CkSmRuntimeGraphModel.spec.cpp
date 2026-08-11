@@ -167,4 +167,33 @@ auto FCkSmRuntimeGraphModel_CopyPayloadTest::RunTest(const FString&) -> bool
              NOT Model.BuildCopyPayload(FCkSmRuntimeGraphModel::GetEntryId()).IsSet());
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSmRuntimeGraphModel_ValueOwnedPreviewTest,
+                                 "Ck.SmDebugger.RuntimeGraph.ValueOwnedPreview",
+                                 EAutomationTestFlags::EditorContext |
+                                     EAutomationTestFlags::EngineFilter)
+auto FCkSmRuntimeGraphModel_ValueOwnedPreviewTest::RunTest(const FString&) -> bool
+{
+    // Preview/Test feed the canvas an owned DTO, never a transient UEdGraph. This
+    // remains deterministic in every target which compiles developer tools.
+    auto Preview = FCkSmDebugger_SmInfo{};
+    Preview.States.SetNum(2);
+    Preview.States[0].StateName = TEXT("Preview.Initial");
+    Preview.States[1].StateName = TEXT("Preview.Nested");
+    Preview.States[1].IsSubSmNode = true;
+    Preview.States[1].SubSmParentStateIndex = 0;
+    auto Transition = FCkSmDebugger_TransitionInfo{};
+    Transition.SourceStateIndex = 0;
+    Transition.TargetStateIndex = 1;
+    Transition.IsSubSmTransition = true;
+    Preview.Transitions.Add(MoveTemp(Transition));
+
+    auto Model = FCkSmRuntimeGraphModel{};
+    Model.Rebuild(Preview, true, 1);
+    TestTrue(TEXT("Runtime preview DTO emits nested state"),
+             Model.GetScene().Nodes.ContainsByPredicate([](const FCkSmRuntimeGraphNode& Node)
+             { return Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.Label == TEXT("Preview.Nested"); }));
+    TestTrue(TEXT("Runtime preview DTO emits transition"), NOT Model.GetScene().Edges.IsEmpty());
+    return true;
+}
 #endif

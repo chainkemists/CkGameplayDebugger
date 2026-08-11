@@ -7,6 +7,9 @@
 
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
+#include "Brushes/SlateBorderBrush.h"
+#include "Brushes/SlateBoxBrush.h"
+#include "Brushes/SlateImageBrush.h"
 #include "Styling/AppStyle.h"
 #include "Styling/SlateStyleRegistry.h"
 #include "Styling/CoreStyle.h"
@@ -108,6 +111,24 @@ auto
     InStyle->Set("CkDebugger.Separator", new FSlateColorBrush(CkStyle::Border()));
 
     InStyle->Set("CkDebugger.Graph.Background", new FSlateColorBrush(CkStyle::Graph_Background()));
+
+    // Exact copies of the GraphEditor defaults. Keep these keys Common-local so the runtime
+    // canvas resolves the same resources in Editor and packaged builds without EditorStyle.
+    InStyle->Set("CkDebugger.Graph.Arrow", new FSlateImageBrush(
+        InStyle->RootToContentDir(TEXT("GraphEditor/Old/Graph/Arrow"), TEXT(".png")),
+        FVector2D{16.0f, 16.0f}));
+    InStyle->Set("CkDebugger.Graph.MarqueeSelection", new FSlateBorderBrush(
+        InStyle->RootToContentDir(TEXT("GraphEditor/Old/DashedBorder"), TEXT(".png")),
+        FMargin{6.0f / 32.0f}));
+    InStyle->Set("CkDebugger.Graph.Panel.SolidBackground", new FSlateImageBrush(
+        InStyle->RootToContentDir(TEXT("GraphEditor/Graph/GraphPanel_SolidBackground"), TEXT(".png")),
+        FVector2D{16.0f, 16.0f}, FLinearColor::White, ESlateBrushTileType::Both));
+    InStyle->Set("CkDebugger.Graph.TransitionNode.ColorSpill", new FSlateBoxBrush(
+        InStyle->RootToContentDir(TEXT("GraphEditor/Persona/StateMachineEditor/Trans_Node_ColorSpill"), TEXT(".png")),
+        FMargin{16.0f / 64.0f, 16.0f / 28.0f, 16.0f / 64.0f, 4.0f / 28.0f}));
+    InStyle->Set("CkDebugger.Graph.TransitionNode.Icon", new FSlateImageBrush(
+        InStyle->RootToContentDir(TEXT("GraphEditor/Persona/StateMachineEditor/Trans_Node_Icon"), TEXT(".png")),
+        FVector2D{25.0f, 25.0f}));
 
     InStyle->Set("CkDebugger.Badge.Rounded", new FSlateRoundedBoxBrush(
         FLinearColor::White, CkStyle::RadiusS()));
@@ -328,6 +349,10 @@ auto
     InStyle->Set("CkDebugger.Text.Muted", FTextBlockStyle()
         .SetFont(DefaultFont)
         .SetColorAndOpacity(CkStyle::TextMute()));
+
+    InStyle->Set("CkDebugger.Graph.ZoomText",
+        FTextBlockStyle{FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>("NormalText")}
+            .SetFont(FCoreStyle::GetDefaultFontStyle("BoldCondensed", 16)));
 }
 
 // ====================================================================================================================

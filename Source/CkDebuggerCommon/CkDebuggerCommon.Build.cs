@@ -1,3 +1,4 @@
+using System.IO;
 using UnrealBuildTool;
 
 public class CkDebuggerCommon : CkModuleRules
@@ -46,6 +47,14 @@ public class CkDebuggerCommon : CkModuleRules
                 "GraphEditor",
                 "EditorStyle",
             });
+        }
+
+        foreach (var GraphEditorResource in Directory.EnumerateFiles(
+            Path.Combine(PluginDirectory, "Resources", "GraphEditor"),
+            "*.png",
+            SearchOption.AllDirectories))
+        {
+            RuntimeDependencies.Add(GraphEditorResource, StagedFileType.NonUFS);
         }
     }
 }

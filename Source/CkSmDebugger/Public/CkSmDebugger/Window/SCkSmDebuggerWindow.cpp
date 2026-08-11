@@ -1000,7 +1000,9 @@ auto
                 _RuntimeGraphFacade.GetLayoutParams().UndirectedBFS,
                 _RuntimeGraphFacade.GetLayoutParams().SpacingX,
                 _RuntimeGraphFacade.GetLayoutParams().SpacingY,
-                _RuntimeGraphFacade.GetLayoutParams().NameDepth});
+                _RuntimeGraphFacade.GetLayoutParams().NameDepth,
+                _RuntimeGraphFacade.GetLayoutParams().StateBreakpointStyle,
+                _RuntimeGraphFacade.GetLayoutParams().TransitionBreakpointStyle});
             _RuntimeGraph->SetSmInfo(SmInfo);
         }
 

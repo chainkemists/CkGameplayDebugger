@@ -72,6 +72,13 @@ remain (see Open issues).
   `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common
   closest-lineage helper. This powers both ECS inspector `Open In` links and the common
   `Sync from ECS <id>` status action; do not register a route that only opens a tab.
+- **Viewport picker**: click-to-select in the game viewport is a shared facility
+  (`CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h` + `SCkDebug_ViewportPickerControls`), not an
+  ECS-debugger exclusive. The ECS debugger runs it unfiltered; every other entity-capable debugger
+  runs it with a `TargetFilter` so only its supported entities (plus their owner chain up to the
+  top-most non-transient, non-ActorRelay ancestor) are previewed and pickable. Authoring rules:
+  [Source/CkDebuggerCommon/CLAUDE.md](Source/CkDebuggerCommon/CLAUDE.md) §"Common window chrome
+  and entity targeting".
 - **Legacy submenu/filter/action**: don't — see the Gen-1 status above.
 
 ## Plugin-specific rules

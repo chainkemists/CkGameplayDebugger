@@ -395,6 +395,7 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         CanvasEdge.Color = RuntimeEdge.Color;
         CanvasEdge.Thickness = 1.5f;
         CanvasEdge.LineSeparation = 4.5f;
+        CanvasEdge.DeemphasizeWhenUnrelatedHovered = false;
         CanvasEdge.IsDirected = RuntimeEdge.bIsDirected;
         Scene.Edges.Add(MoveTemp(CanvasEdge));
     }

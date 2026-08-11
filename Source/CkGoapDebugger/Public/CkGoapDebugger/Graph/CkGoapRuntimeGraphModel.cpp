@@ -12,6 +12,14 @@ namespace ck_goap_runtime_graph
 {
     constexpr float NodeWidth = 180.0f, NodeHeight = 110.0f, HorzGap = 70.0f, VertGap = 14.0f,
                     NodeMinX = 40.0f, NodeMinY = 40.0f, GoalGap = 90.0f;
+    constexpr float NodeMaxWidth = 420.0f;
+
+    auto TagLeaf(const FGameplayTag& InTag) -> FString
+    {
+        const FString Full = InTag.ToString();
+        int32 Dot = INDEX_NONE;
+        return Full.FindLastChar(TEXT('.'), Dot) ? Full.Mid(Dot + 1) : Full;
+    }
 
     auto Flatten(const FCkGoapDebugger_PlannerInfo& Planner,
                  TArray<const FCkGoapDebugger_ActionInfo*>& Out,
@@ -53,51 +61,67 @@ namespace ck_goap_runtime_graph
         }
         const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
         const auto HeaderFont = ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH3());
+        const auto CostFont = ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody());
+        const auto CompositeFont = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
         const auto RowFont = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro());
-        const auto Measure = [&FontMeasure](const FString& Text, const FSlateFontInfo& Font)
+        const auto MeasureWidth = [&FontMeasure](const FString& Text, const FSlateFontInfo& Font)
         {
             return static_cast<float>(FontMeasure->Measure(Text, Font).X);
         };
-        float PreWidth = 0.0f, EffectWidth = 0.0f, RowHeight = 0.0f;
+        const auto MeasureHeight = [&FontMeasure](const FString& Text, const FSlateFontInfo& Font)
+        {
+            return static_cast<float>(FontMeasure->Measure(Text, Font).Y);
+        };
+
+        constexpr float DotWidth = 7.0f + 4.0f;
+        constexpr float PreRowPrefix = 32.0f;
+        constexpr float ColumnGap = 12.0f;
+        constexpr float RowVertPad = 2.0f;
+        const float CardChrome =
+            2.0f * ck::debug_axes::Get_NodeBorderThickness() +
+            2.0f * CkStyle::SpaceM * ck_goap_debugger_axes::Get_NodePaddingScale() + 6.0f;
+
+        const FString HeaderName = SCkDebug_NameLabel::Get_ShortName(Action.ClassName, NameDepth);
+        const FString CostText = FString::Printf(TEXT("$%.0f"), Action.Cost);
+        const float HeaderWidth = MeasureWidth(HeaderName, HeaderFont) + 4.0f +
+                                  MeasureWidth(CostText, CostFont);
+        const float HeaderHeight = MeasureHeight(HeaderName, HeaderFont);
+
+        float CompositeWidth = 0.0f;
+        float CompositeHeight = 0.0f;
+        if (Action.ChildActionHandles.Num() > 0)
+        {
+            const FString CompositeText =
+                FString::Printf(TEXT("\x203A %s"), *TagLeaf(Action.ActionTag));
+            CompositeWidth = MeasureWidth(CompositeText, CompositeFont) + 2.0f * 4.0f;
+            CompositeHeight = MeasureHeight(CompositeText, CompositeFont) + 2.0f * 1.0f + 2.0f;
+        }
+
+        float PreWidth = 0.0f;
+        float EffectWidth = 0.0f;
+        float RowHeight = 0.0f;
         for (const auto& Pre : Action.Preconditions)
         {
-            PreWidth = FMath::Max(PreWidth, 32.0f + Measure(Pre.Key.ToString(), RowFont));
-            RowHeight =
-                FMath::Max(RowHeight,
-                           static_cast<float>(FontMeasure->Measure(Pre.Key.ToString(), RowFont).Y) +
-                               2.0f);
+            const FString Leaf = TagLeaf(Pre.Key);
+            PreWidth = FMath::Max(PreWidth, PreRowPrefix + MeasureWidth(Leaf, RowFont));
+            RowHeight = FMath::Max(RowHeight, MeasureHeight(Leaf, RowFont) + RowVertPad);
         }
         for (const auto& Effect : Action.Effects)
         {
-            EffectWidth = FMath::Max(EffectWidth, 11.0f + Measure(Effect.Key.ToString(), RowFont));
-            RowHeight = FMath::Max(
-                RowHeight,
-                static_cast<float>(FontMeasure->Measure(Effect.Key.ToString(), RowFont).Y) + 2.0f);
+            const FString Leaf = TagLeaf(Effect.Key);
+            EffectWidth = FMath::Max(EffectWidth, MeasureWidth(Leaf, RowFont) + DotWidth);
+            RowHeight = FMath::Max(RowHeight, MeasureHeight(Leaf, RowFont) + RowVertPad);
         }
-        const float HeaderWidth =
-            Measure(SCkDebug_NameLabel::Get_ShortName(Action.ClassName, NameDepth), HeaderFont) +
-            42.0f;
-        const float CompositeWidth = Action.ChildActionHandles.Num() > 0
-                                         ? Measure(Action.ActionTag.ToString(), RowFont) + 20.0f
-                                         : 0.0f;
-        const float Chrome =
-            2.0f * ck::debug_axes::Get_NodeBorderThickness() +
-            2.0f * CkStyle::SpaceM * ck_goap_debugger_axes::Get_NodePaddingScale() + 6.0f;
-        const float Width =
-            FMath::Clamp(FMath::Max3(HeaderWidth,
-                                     CompositeWidth,
-                                     PreWidth +
-                                         (PreWidth > 0.0f && EffectWidth > 0.0f ? 12.0f : 0.0f) +
-                                         EffectWidth) +
-                             Chrome,
-                         NodeWidth,
-                         420.0f);
-        const float Height =
-            12.0f + static_cast<float>(FontMeasure->Measure(Action.ClassName, HeaderFont).Y) +
-            (Action.ChildActionHandles.Num() > 0 ? 16.0f : 0.0f) +
-            (FMath::Max(Action.Preconditions.Num(), Action.Effects.Num()) > 0
-                 ? 4.0f + FMath::Max(Action.Preconditions.Num(), Action.Effects.Num()) * RowHeight
-                 : 0.0f);
+
+        const float BodyWidth = PreWidth +
+                                (PreWidth > 0.0f && EffectWidth > 0.0f ? ColumnGap : 0.0f) +
+                                EffectWidth;
+        const float Width = FMath::Clamp(
+            FMath::Max3(HeaderWidth, CompositeWidth, BodyWidth) + CardChrome, NodeWidth, NodeMaxWidth);
+        const float BodyRows =
+            static_cast<float>(FMath::Max(Action.Preconditions.Num(), Action.Effects.Num()));
+        const float Height = 4.0f + 2.0f * 4.0f + HeaderHeight + CompositeHeight +
+                             (BodyRows > 0.0f ? 4.0f + BodyRows * RowHeight : 0.0f);
         return FVector2D{Width, FMath::Max(Height, 60.0f)};
     }
 

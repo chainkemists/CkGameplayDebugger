@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "CkSmDebugGraphFactory.h"
 
 #include "CkSmDebugNode_Compound.h"
@@ -8,8 +9,6 @@
 #include "SGraphNode_SmEntry.h"
 #include "SGraphNode_SmState.h"
 #include "SGraphNode_SmTransition.h"
-
-// --------------------------------------------------------------------------------------------------------------------
 
 auto
     FCkSmDebugGraphFactory::
@@ -41,3 +40,4 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+#endif

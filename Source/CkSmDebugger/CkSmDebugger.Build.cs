@@ -15,7 +15,6 @@ public class CkSmDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "GraphEditor",
             "AppFramework",
 
             "CkCore",
@@ -31,6 +30,7 @@ public class CkSmDebugger : CkModuleRules
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
+                "GraphEditor",
                 "UnrealEd",
                 "PropertyEditor",
                 "WorkspaceMenuStructure",

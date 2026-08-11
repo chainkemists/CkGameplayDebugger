@@ -16,8 +16,13 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
+
+#include "CkAStar/CkAStar_Fragment.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "Widgets/SBoxPanel.h"
@@ -47,6 +52,15 @@ namespace ck_astar_debugger_window
 
 auto
     SCkAStarDebuggerWindow::
+    Is_AStarDebuggerEntity(
+        const FCk_Handle& InCandidate)
+    -> bool
+{
+    return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_AStar_Debug>();
+}
+
+auto
+    SCkAStarDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
@@ -55,6 +69,33 @@ auto
 
     _ViewModel = MakeShared<FCkAStarDebugger_ViewModel>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+
+    // Shared viewport picker, specialized to A* search entities: only entities
+    // with FFragment_AStar_Debug (plus their owner chain up to the NPC
+    // representative) are previewed and pickable. The pick routes through this
+    // module's registered entity-target route (tab id "CkAStarDebugger" — note
+    // WindowId is the distinct "AStarDebugger"), which resolves the lineage and
+    // re-fronts the tab with the entity targeted.
+    _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakWorld = TWeakPtr<FCkDebuggerModel_WorldSelector>(_WorldModel)]() -> UWorld*
+            {
+                const auto Pinned = WeakWorld.Pin();
+                return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.TargetFilter =
+            [](const FCk_Handle& InCandidate) { return Is_AStarDebuggerEntity(InCandidate); };
+        PickerParams.OnEntityPicked =
+            [](const FCk_Handle& InPicked)
+            {
+                ck::DebugSelectionSync::Broadcast(InPicked, TEXT("AStarDebugger"));
+                FCkDebug_EntityTargetRegistry::Get().TryOpenAndTarget(
+                    FName{TEXT("CkAStarDebugger")}, InPicked);
+            };
+        _ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
         this, &SCkAStarDebuggerWindow::HandleWorldChanged);
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -148,6 +189,9 @@ SCkAStarDebuggerWindow::~SCkAStarDebuggerWindow()
 
 auto SCkAStarDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
+    if (_ViewportPicker.IsValid())
+    { _ViewportPicker->Deactivate(); }
+
     _PendingTarget.Reset();
     _CachedWorld = nullptr;
     _EntitySelectorItems.Reset();
@@ -192,6 +236,11 @@ auto
     // MUST be the WindowBase super, not SCompoundWidget — the base Tick drives the gated
     // style-revision watch that routes into OnStyleRevisionChanged.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Viewport-picker ticks stay ungated so input handling keeps working even
+    // when the panel refresh is paused.
+    if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+    { _ViewportPicker->Tick(InDeltaTime); }
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -269,6 +318,19 @@ auto
             [
                 SNew(SCkDebug_WorldSelector, _WorldModel)
                     .ShowHeaderLabel(false)
+            ]
+
+        // Viewport picker (shared) — click an A* search entity in the world.
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f)
+            [
+                SNew(SCkDebug_ViewportPickerControls)
+                    .Picker(_ViewportPicker)
+                    .PickTooltip(FText::FromString(TEXT(
+                        "Enter pick mode: click an A* search entity in the viewport to inspect it.\n"
+                        "Only entities with A* debug state (and their owning NPC) are shown and pickable.")))
             ]
 
         // "Entity:" label

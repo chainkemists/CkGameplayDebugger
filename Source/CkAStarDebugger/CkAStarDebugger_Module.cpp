@@ -9,7 +9,6 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
-#include "CkAStar/CkAStar_Fragment.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -28,10 +27,7 @@ namespace
     {
         return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
             [](const FCk_Handle& InCandidate)
-            {
-                return ck::IsValid(InCandidate)
-                    && InCandidate.Has<ck::FFragment_AStar_Debug>();
-            });
+            { return SCkAStarDebuggerWindow::Is_AStarDebuggerEntity(InCandidate); });
     }
 }
 

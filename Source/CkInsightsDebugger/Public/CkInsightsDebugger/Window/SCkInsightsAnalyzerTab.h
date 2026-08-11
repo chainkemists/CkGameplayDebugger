@@ -138,7 +138,7 @@ private:
     auto DoAnalyzeFrameRange(uint64 StartFrame, uint64 EndFrame) -> void;
     auto DoRerunCurrentSelection() -> void;
     auto DoPopulateMultiFrame(const FCk_MultiFrameStats& Stats) -> void;
-    auto DoGenerateAutomatedCaptureReport() -> void;
+    auto DoGenerateAutomatedCaptureReport() -> bool;
     auto DoLoadScreenshots() -> void;
     auto DoClearScreenshots() -> void;
     auto DoClearScreenshotSelection() -> void;
@@ -233,6 +233,9 @@ private:
     FGuid _PendingAutoOpenTraceGuid;
     FGuid _SuppressedAutoOpenTraceGuid;
     bool _PendingAutoOpenWriterFinalized = false;
+    bool _AutoOpenDelayWarningShown = false;
+    bool _AutoOpenTraceOpeningStarted = false;
+    bool _AutoOpenReportGenerated = false;
     double _AutoOpenDeadlineSeconds = 0.0;
     TSharedPtr<FCk_TraceSession> _PendingSession;
     uint64 _TotalFrameCount = 0;

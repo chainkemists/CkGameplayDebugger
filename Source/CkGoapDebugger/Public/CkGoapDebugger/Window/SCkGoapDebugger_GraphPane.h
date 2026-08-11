@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -89,5 +91,7 @@ private:
     // node update so the highlighted-node tint follows the user's click.
     FCk_Handle_Goap_Action _LastSelectedAction;
 };
+
+#endif
 
 // ====================================================================================================================

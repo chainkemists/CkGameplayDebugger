@@ -5,7 +5,9 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
-#include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
+#if WITH_EDITOR
+    #include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
+#endif
 #include "CkGoapDebugger/Inspector/CkGoapInspector_Gateway.h"
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
@@ -21,7 +23,9 @@
 #include "CkGoap/Planner/CkGoap_Planner_Record_Internal.h"
 #include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 
-#include "EdGraphUtilities.h"
+#if WITH_EDITOR
+    #include "EdGraphUtilities.h"
+#endif
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
@@ -123,8 +127,10 @@ auto
     FCkGoapDebuggerStyle::Initialize();
     FCkGoapDebugger_DataCollector::Initialize();
 
+#if WITH_EDITOR
     _NodeFactory = MakeShared<FCkGoapDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+#endif
 
     // Explicit inspector registration. The CK_REGISTER_DEBUGGER_INSPECTOR macro
     // performs the same registration at file-scope static init, but that
@@ -184,11 +190,13 @@ auto
     _DebuggerWindow.Reset();
     _DebuggerTab.Reset();
 
+#if WITH_EDITOR
     if (_NodeFactory.IsValid())
     {
         FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
         _NodeFactory.Reset();
     }
+#endif
 
     FCkGoapDebugger_DataCollector::Shutdown();
     FCkGoapDebuggerStyle::Shutdown();

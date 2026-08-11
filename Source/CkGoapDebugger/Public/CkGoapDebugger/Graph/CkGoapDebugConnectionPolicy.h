@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CkDebuggerCommon/Graph/CkDebugConnectionPolicyBase.h"
 #include "CoreMinimal.h"
 
@@ -47,5 +49,7 @@ public:
 private:
     UCkGoapDebugGraph* _Graph = nullptr;
 };
+
+#endif
 
 // ====================================================================================================================

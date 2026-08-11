@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "SGraphNode.h"
 #include "CoreMinimal.h"
 
@@ -46,5 +48,7 @@ private:
 
     UCkGoapDebugNode_Action* _ActionNode = nullptr;
 };
+
+#endif
 
 // ====================================================================================================================

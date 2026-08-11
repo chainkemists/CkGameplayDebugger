@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkGoapDebugConnectionPolicy.h"
 
 #include "CkGoapDebugGraph.h"
@@ -206,3 +208,5 @@ auto
 }
 
 // ====================================================================================================================
+
+#endif

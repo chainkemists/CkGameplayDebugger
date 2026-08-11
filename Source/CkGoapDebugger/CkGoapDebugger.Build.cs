@@ -29,7 +29,6 @@ public class CkGoapDebugger : CkModuleRules
 			"CkDebuggerCommon",
             "CkEditorTools",
 
-			"GraphEditor",
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
@@ -42,6 +41,7 @@ public class CkGoapDebugger : CkModuleRules
 
 		if (Target.bBuildEditor)
 		{
+			PublicDependencyModuleNames.Add("GraphEditor");
 			PrivateDependencyModuleNames.Add("UnrealEd");
 			PublicDependencyModuleNames.AddRange(new string[]
 			{

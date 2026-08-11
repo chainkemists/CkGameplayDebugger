@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "SCkGoapDebugger_GraphPane.h"
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
@@ -438,3 +440,5 @@ auto
 }
 
 // ====================================================================================================================
+
+#endif

@@ -15,6 +15,48 @@ namespace
     {
         return FVector2D{static_cast<float>(InIndex) * LayoutSpacingX, 120.0f};
     }
+
+    auto CkSmRuntimeGraph_HasOverride(const FCkSmDebugger_StateInfo& InState) -> bool
+    {
+        return IsValid(InState.ScriptClass) && IsValid(InState.RequestedScriptClass) &&
+               InState.RequestedScriptClass != InState.ScriptClass;
+    }
+
+    auto CkSmRuntimeGraph_IsFullyEventDriven(const FCkSmDebugger_SmInfo& InInfo,
+                                              const int32 InStateIndex) -> bool
+    {
+        if (NOT InInfo.States.IsValidIndex(InStateIndex) ||
+            NOT IsValid(InInfo.States[InStateIndex].ScriptClass))
+        {
+            return false;
+        }
+
+        const auto& State = InInfo.States[InStateIndex];
+        if (State.Tasks.ContainsByPredicate(
+                [](const FCkSmDebugger_TaskInfo& InTask)
+                {
+                    return InTask.Mode == ECk_SmTaskMode::Tick;
+                }))
+        {
+            return false;
+        }
+        for (const auto& Transition : InInfo.Transitions)
+        {
+            if (Transition.SourceStateIndex != InStateIndex)
+            {
+                continue;
+            }
+            if (Transition.Conditions.ContainsByPredicate(
+                    [](const FCkSmDebugger_ConditionInfo& InCondition)
+                    {
+                        return InCondition.Mode != ECk_SmConditionMode::EventDriven;
+                    }))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 } // namespace
 
 auto FCkSmRuntimeGraphModel::GetStateId(const int32 InStateIndex) -> uint64
@@ -168,6 +210,133 @@ auto FCkSmRuntimeGraphModel::EstimateStateSize(const FCkSmDebugger_StateInfo& In
     return FVector2D{Width, Height};
 }
 
+auto FCkSmRuntimeGraphModel::ComputeStructureHash(const FCkSmDebugger_SmInfo& InInfo,
+                                                  const bool bInExpandTasks,
+                                                  const int32 InNameDepth,
+                                                  const int32 InSpacingX,
+                                                  const int32 InSpacingY,
+                                                  const bool bInUndirected) -> uint32
+{
+    auto Hash = ::GetTypeHash(static_cast<FCk_Handle>(InInfo.Handle));
+    Hash = HashCombine(Hash, GetTypeHash(bInExpandTasks));
+    Hash = HashCombine(Hash, GetTypeHash(InNameDepth));
+    Hash = HashCombine(Hash, GetTypeHash(InSpacingX));
+    Hash = HashCombine(Hash, GetTypeHash(InSpacingY));
+    Hash = HashCombine(Hash, GetTypeHash(bInUndirected));
+    Hash = HashCombine(Hash, GetTypeHash(InInfo.States.Num()));
+    Hash = HashCombine(Hash, GetTypeHash(InInfo.Transitions.Num()));
+
+    for (const auto& State : InInfo.States)
+    {
+        Hash = HashCombine(Hash, GetTypeHash(State.StateName));
+        Hash = HashCombine(Hash, GetTypeHash(State.StateClass.Get()));
+        Hash = HashCombine(Hash, GetTypeHash(State.ScriptClass.Get()));
+        Hash = HashCombine(Hash, GetTypeHash(State.RequestedScriptClass.Get()));
+        Hash = HashCombine(Hash, GetTypeHash(State.IsSubSmNode));
+        Hash = HashCombine(Hash, GetTypeHash(State.SubSmParentStateName));
+        Hash = HashCombine(Hash, GetTypeHash(State.SubSmParentStateIndex));
+        Hash = HashCombine(Hash, GetTypeHash(State.HasSubStateMachine));
+        Hash = HashCombine(Hash, GetTypeHash(State.IsHistoricalSubSm));
+        Hash = HashCombine(Hash, GetTypeHash(State.IsCompoundNode));
+        Hash = HashCombine(Hash, GetTypeHash(State.CompoundNodeWidth));
+        Hash = HashCombine(Hash, GetTypeHash(State.CompoundNodeHeight));
+        Hash = HashCombine(Hash, GetTypeHash(State.CompoundNodeParentStateIndex));
+        Hash = HashCombine(Hash, GetTypeHash(State.NodePosition));
+        Hash = HashCombine(Hash, GetTypeHash(State.NodeSize));
+        Hash = HashCombine(Hash, GetTypeHash(State.Tasks.Num()));
+        for (const auto& Task : State.Tasks)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(Task.ClassName));
+            Hash = HashCombine(Hash, GetTypeHash(Task.Mode));
+            Hash = HashCombine(Hash, GetTypeHash(Task.HasSubStateMachine));
+            Hash = HashCombine(Hash, GetTypeHash(Task.SubSmInitialStateClass.Get()));
+        }
+    }
+
+    for (const auto& Transition : InInfo.Transitions)
+    {
+        Hash = HashCombine(Hash, GetTypeHash(Transition.SourceStateIndex));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.TargetStateIndex));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.Order));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.SourceStateName));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.TargetStateName));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.SourceStateClass.Get()));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.TargetStateClass.Get()));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.IsSubSmTransition));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.IsSubSmConnector));
+        Hash = HashCombine(Hash, GetTypeHash(Transition.Conditions.Num()));
+        for (const auto& Condition : Transition.Conditions)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(Condition.ClassName));
+            Hash = HashCombine(Hash, GetTypeHash(Condition.Mode));
+        }
+        for (const auto& Waypoint : Transition.RouteWaypoints)
+        {
+            Hash = HashCombine(Hash, GetTypeHash(Waypoint));
+        }
+    }
+    return Hash;
+}
+
+auto FCkSmRuntimeGraphModel::UpdateRuntimeState(const FCkSmDebugger_SmInfo& InInfo) -> void
+{
+    for (auto& Node : _Scene.Nodes)
+    {
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::State &&
+            InInfo.States.IsValidIndex(Node.StateIndex))
+        {
+            const auto& State = InInfo.States[Node.StateIndex];
+            if (Node.State)
+            {
+                *Node.State = State;
+            }
+            else
+            {
+                Node.State = MakeShared<FCkSmDebugger_StateInfo>(State);
+            }
+            Node.bCurrent = State.IsCurrentState;
+            Node.bParentActive = NOT State.IsSubSmNode
+                                 || (InInfo.States.IsValidIndex(State.SubSmParentStateIndex)
+                                     && InInfo.States[State.SubSmParentStateIndex].IsCurrentState);
+            Node.bBreakpoint = State.HasEntryBreakpoint || State.HasExitBreakpoint ||
+                               State.IsBreakpointHit;
+            Node.bHasOverride = CkSmRuntimeGraph_HasOverride(State);
+            Node.bFullyEventDriven = CkSmRuntimeGraph_IsFullyEventDriven(InInfo, Node.StateIndex);
+        }
+        else if (Node.Kind == ECkSmRuntimeGraphNodeKind::Compound)
+        {
+            Node.bCurrent = InInfo.States.ContainsByPredicate(
+                [&Node](const FCkSmDebugger_StateInfo& InState)
+                {
+                    return InState.IsSubSmNode &&
+                           InState.SubSmParentStateIndex == Node.StateIndex &&
+                           InState.IsCurrentState;
+                });
+        }
+        else if (Node.Kind == ECkSmRuntimeGraphNodeKind::Transition &&
+                 InInfo.Transitions.IsValidIndex(Node.TransitionIndex))
+        {
+            const auto& Transition = InInfo.Transitions[Node.TransitionIndex];
+            if (Node.Transition)
+            {
+                *Node.Transition = Transition;
+            }
+            else
+            {
+                Node.Transition = MakeShared<FCkSmDebugger_TransitionInfo>(Transition);
+            }
+            Node.Label = FString::Printf(TEXT("%d/%d"),
+                                         Transition.SatisfiedCount,
+                                         Transition.TotalCount);
+            Node.Accent = Transition.HasBreakpoint
+                              ? CkStyle::Err()
+                              : (Transition.AreAllConditionsSatisfied ? CkStyle::Ok()
+                                                                      : CkStyle::TextDim());
+            Node.bBreakpoint = Transition.HasBreakpoint;
+        }
+    }
+}
+
 auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
                                      const bool bInExpandTasks,
                                      const int32 InNameDepth,
@@ -268,53 +437,14 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
     auto NewScene = FCkSmRuntimeGraphScene{};
     NewScene.Nodes.Reserve(InInfo.States.Num() * 2 + 1);
 
-    const auto HasOverride = [](const FCkSmDebugger_StateInfo& InState)
-    {
-        return IsValid(InState.ScriptClass) && IsValid(InState.RequestedScriptClass) &&
-               InState.RequestedScriptClass != InState.ScriptClass;
-    };
-    const auto IsFullyEventDriven = [&InInfo](const int32 InStateIndex)
-    {
-        if (NOT InInfo.States.IsValidIndex(InStateIndex) ||
-            NOT IsValid(InInfo.States[InStateIndex].ScriptClass))
-        {
-            return false;
-        }
-
-        const auto& State = InInfo.States[InStateIndex];
-        if (State.Tasks.ContainsByPredicate(
-                [](const FCkSmDebugger_TaskInfo& Task)
-                {
-                    return Task.Mode == ECk_SmTaskMode::Tick;
-                }))
-        {
-            return false;
-        }
-        for (const auto& Transition : InInfo.Transitions)
-        {
-            if (Transition.SourceStateIndex != InStateIndex)
-            {
-                continue;
-            }
-            if (Transition.Conditions.ContainsByPredicate(
-                    [](const FCkSmDebugger_ConditionInfo& Condition)
-                    {
-                        return Condition.Mode != ECk_SmConditionMode::EventDriven;
-                    }))
-            {
-                return false;
-            }
-        }
-        return true;
-    };
     const auto EstimateVisualStateSize = [&](const int32 InStateIndex)
     {
         auto Size = EstimateStateSize(InInfo.States[InStateIndex], bInExpandTasks, InNameDepth);
-        if (HasOverride(InInfo.States[InStateIndex]))
+        if (CkSmRuntimeGraph_HasOverride(InInfo.States[InStateIndex]))
         {
             Size.Y += 18.0f;
         }
-        if (IsFullyEventDriven(InStateIndex))
+        if (CkSmRuntimeGraph_IsFullyEventDriven(InInfo, InStateIndex))
         {
             Size.Y += 18.0f;
         }
@@ -372,10 +502,13 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
                                                   : State.NodeSize;
         Node.Accent = CkSmDebugger::ComputeStateColor(State.StateName);
         Node.bCurrent = State.IsCurrentState;
+        Node.bParentActive = NOT State.IsSubSmNode
+                             || (InInfo.States.IsValidIndex(State.SubSmParentStateIndex)
+                                 && InInfo.States[State.SubSmParentStateIndex].IsCurrentState);
         Node.bBreakpoint = State.HasEntryBreakpoint || State.HasExitBreakpoint ||
                            State.IsBreakpointHit;
-        Node.bHasOverride = HasOverride(State);
-        Node.bFullyEventDriven = IsFullyEventDriven(StateIndex);
+        Node.bHasOverride = CkSmRuntimeGraph_HasOverride(State);
+        Node.bFullyEventDriven = CkSmRuntimeGraph_IsFullyEventDriven(InInfo, StateIndex);
         Node.bExpandTasks = bInExpandTasks;
         Node.State = MakeShared<FCkSmDebugger_StateInfo>(State);
         NewScene.Nodes.Add(MoveTemp(Node));
@@ -523,16 +656,7 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
             Badge.TransitionIndex = TransitionIndex;
             Badge.Label =
                 FString::Printf(TEXT("%d/%d"), Transition.SatisfiedCount, Transition.TotalCount);
-            auto BadgeWidth = 72.0f;
-            for (const auto& Condition : Transition.Conditions)
-            {
-                BadgeWidth = FMath::Max(
-                    BadgeWidth,
-                    SCkDebug_NameLabel::Get_ShortName(Condition.ClassName, InNameDepth).Len() *
-                            6.5f +
-                        38.0f);
-            }
-            Badge.Size = FVector2D{BadgeWidth, 24.0f + Transition.Conditions.Num() * 18.0f};
+            Badge.Size = FVector2D{16.0f, 16.0f};
             const auto DefaultCenter = (SourceNode->Position + SourceNode->Size * 0.5f +
                                         TargetNode->Position + TargetNode->Size * 0.5f) *
                                        0.5f;

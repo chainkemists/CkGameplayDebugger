@@ -6,6 +6,7 @@
 
 class FCkSmDebugger_ViewModel;
 class SCkDebug_GraphCanvas;
+struct FCkSmRuntimeGraphCardPresentation;
 
 struct FCkSmRuntimeGraphLayout
 {
@@ -35,6 +36,9 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     auto SetExpandTasks(bool bInExpandTasks) -> void;
     auto SetNameDepth(int32 InNameDepth) -> void;
     auto SetLayout(const FCkSmRuntimeGraphLayout& InParams) -> void;
+    // Matches the editor graph's breakpoint presentation presets: 22 = inline squares,
+    // 23 = inline diamonds. Other values retain the ordinary state-colour icon.
+    auto SetBreakpointStyle(int32 InBreakpointStyle) -> void;
     auto ApplyScrubHighlight(int32 InActiveStateIndex, int32 InExitedStateIndex) -> void;
     auto ClearPresentation() -> void;
     auto TickLivePresentation(float InDeltaTime,
@@ -47,7 +51,8 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
   private:
     auto RebuildScene() -> void;
     auto InstallScene() -> void;
-    auto MakeCard(const FCkSmRuntimeGraphNode& InNode, bool bInSelected) -> TSharedRef<SWidget>;
+    auto MakeCard(const TSharedRef<FCkSmRuntimeGraphCardPresentation>& InPresentation)
+        -> TSharedRef<SWidget>;
     auto HandleSelectionChanged(const TSet<uint64>& InSelection) -> void;
     auto HandleNodeContextMenu(uint64 InNodeId, const FPointerEvent& InMouseEvent) -> void;
 
@@ -58,6 +63,10 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     FOnCkSmRuntimeGraphSelection _OnSelectionChanged;
     TMap<uint64, TSharedPtr<SWidget>> _CardCache;
     TMap<uint64, uint32> _CardStructureHashes;
+    TMap<uint64, TSharedPtr<FCkSmRuntimeGraphCardPresentation>> _CardPresentations;
     TMap<uint64, TSharedPtr<class SCkDebug_NodePill>> _StatePills;
+    uint32 _StructureHash = 0;
+    bool _HasStructureHash = false;
+    int32 _BreakpointStyle = 23;
     bool _IsInstallingScene = false;
 };

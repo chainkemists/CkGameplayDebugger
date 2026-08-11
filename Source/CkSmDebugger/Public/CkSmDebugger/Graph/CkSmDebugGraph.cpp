@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkSmDebugGraph.h"
 
 #include "CkSmDebugNode_Compound.h"
@@ -1400,3 +1402,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif

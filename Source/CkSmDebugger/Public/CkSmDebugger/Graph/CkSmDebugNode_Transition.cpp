@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkSmDebugNode_Transition.h"
 
 #include "CkSmDebugNode_State.h"
@@ -110,3 +112,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif

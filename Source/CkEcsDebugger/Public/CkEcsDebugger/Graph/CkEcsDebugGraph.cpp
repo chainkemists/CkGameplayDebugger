@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkEcsDebugGraph.h"
 
 #include "CkEcsDebugNode_Entity.h"
@@ -375,3 +377,5 @@ auto
 }
 
 // =====================================================================================================================
+
+#endif

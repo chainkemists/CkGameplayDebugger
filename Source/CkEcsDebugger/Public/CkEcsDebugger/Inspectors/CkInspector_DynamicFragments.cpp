@@ -26,6 +26,29 @@ CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_DynamicFragments)
 
 // =====================================================================================================================
 
+namespace
+{
+    auto GetDisplayName(const UScriptStruct* InStruct) -> FText
+    {
+#if WITH_EDITOR
+        return InStruct->GetDisplayNameText();
+#else
+        return FText::FromName(InStruct->GetFName());
+#endif
+    }
+
+    auto GetDisplayName(const FProperty* InProperty) -> FString
+    {
+#if WITH_EDITOR
+        return InProperty->GetDisplayNameText().ToString();
+#else
+        return InProperty->GetName();
+#endif
+    }
+}
+
+// =====================================================================================================================
+
 auto FCkInspector_DynamicFragments::Get_ComponentName() const -> FText
 {
     return FText::FromString(TEXT("Dynamic Fragments"));
@@ -54,7 +77,7 @@ auto FCkInspector_DynamicFragments::Get_InspectorSections(const FCk_Handle& Enti
 
         Sections.Add(FInspectorSection
         {
-            ScriptStruct->GetDisplayNameText(),
+            GetDisplayName(ScriptStruct),
             BuildFragmentWidget(Entity, Fragment)
         });
     }
@@ -247,7 +270,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
     for (TFieldIterator<FProperty> PropIt(ScriptStruct); PropIt; ++PropIt)
     {
         const auto* Property = *PropIt;
-        const auto PropertyName = Property->GetDisplayNameText().ToString();
+        const auto PropertyName = GetDisplayName(Property);
 
         // ---- FCk_Handle: clickable navigation
 

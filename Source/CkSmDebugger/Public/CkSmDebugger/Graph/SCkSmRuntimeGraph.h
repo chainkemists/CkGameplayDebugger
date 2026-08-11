@@ -51,12 +51,21 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     auto Clear() -> void;
 
   private:
-    auto RebuildScene() -> void;
+    // Position overrides are window-session presentation state. They deliberately never feed back
+    // into the diagnostic DTO or value-model layout.
+    auto RebuildScene(bool bInClearPositionOverrides = true) -> void;
     auto InstallScene() -> void;
     auto MakeCard(const TSharedRef<FCkSmRuntimeGraphCardPresentation>& InPresentation)
         -> TSharedRef<SWidget>;
     auto HandleSelectionChanged(const TSet<uint64>& InSelection) -> void;
+    auto HandleNodeMoved(uint64 InNodeId, const FVector2D& InPosition) -> void;
     auto HandleNodeContextMenu(uint64 InNodeId, const FPointerEvent& InMouseEvent) -> void;
+    auto GetEffectivePosition(const FCkSmRuntimeGraphNode& InNode) const -> FVector2D;
+    auto GetEffectiveRoutePoints(const FCkSmRuntimeGraphEdge& InEdge) const -> TArray<FVector2D>;
+    auto GetEffectiveTransitionBadgePosition(const FCkSmRuntimeGraphNode& InNode) const -> FVector2D;
+    auto IsStateDescendantOf(int32 InStateIndex, int32 InCompoundOwnerStateIndex) const -> bool;
+    auto GetCompoundDescendantIds(int32 InCompoundOwnerStateIndex) const -> TSet<uint64>;
+    auto HasSelectedAncestorCompound(uint64 InNodeId) const -> bool;
 
     const FCkSmDebugger_SmInfo* _SmInfo = nullptr;
     FCkSmRuntimeGraphLayout _Layout;
@@ -67,6 +76,7 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     TMap<uint64, uint32> _CardStructureHashes;
     TMap<uint64, TSharedPtr<FCkSmRuntimeGraphCardPresentation>> _CardPresentations;
     TMap<uint64, TSharedPtr<class SCkDebug_NodePill>> _StatePills;
+    TMap<uint64, FVector2D> _PositionOverrides;
     uint32 _StructureHash = 0;
     bool _HasStructureHash = false;
     int32 _BreakpointStyle = 23;

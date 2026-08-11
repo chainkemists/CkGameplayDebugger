@@ -263,10 +263,13 @@ void SCkSmRuntimeGraph::Construct(const FArguments& InArgs)
 {
     _OnSelectionChanged = InArgs._OnSelectionChanged;
     ChildSlot[SAssignNew(_Canvas, SCkDebug_GraphCanvas)
-                  .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
-                      this, &SCkSmRuntimeGraph::HandleSelectionChanged))
-                  .OnNodeContextMenu(FOnCkDebug_GraphCanvasNodeContextMenu::CreateSP(
-                      this, &SCkSmRuntimeGraph::HandleNodeContextMenu))];
+                   .AllowNodeDragging(true)
+                   .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
+                       this, &SCkSmRuntimeGraph::HandleSelectionChanged))
+                   .OnNodeMoved(FOnCkDebug_GraphCanvasNodeMoved::CreateSP(
+                       this, &SCkSmRuntimeGraph::HandleNodeMoved))
+                   .OnNodeContextMenu(FOnCkDebug_GraphCanvasNodeContextMenu::CreateSP(
+                       this, &SCkSmRuntimeGraph::HandleNodeContextMenu))];
 }
 
 auto SCkSmRuntimeGraph::SetSmInfo(const FCkSmDebugger_SmInfo* InInfo) -> void
@@ -322,10 +325,24 @@ auto SCkSmRuntimeGraph::SetLayout(const FCkSmRuntimeGraphLayout& InParams) -> vo
     {
         return;
     }
+    const auto bGeometryChanged = _Layout.ExpandTasks != InParams.ExpandTasks ||
+                                  _Layout.UndirectedBFS != InParams.UndirectedBFS ||
+                                  _Layout.SpacingX != InParams.SpacingX ||
+                                  _Layout.SpacingY != InParams.SpacingY ||
+                                  _Layout.NameDepth != InParams.NameDepth;
     _Layout = InParams;
     _BreakpointStyle = InParams.StateBreakpointStyle;
     _TransitionBreakpointStyle = InParams.TransitionBreakpointStyle;
-    RebuildScene();
+    if (bGeometryChanged)
+    {
+        RebuildScene();
+    }
+    else
+    {
+        // Style-only changes rebuild retained cards through their card structure hash, but must
+        // not discard an in-session manual arrangement.
+        InstallScene();
+    }
 }
 
 auto SCkSmRuntimeGraph::SetBreakpointStyle(const int32 InBreakpointStyle) -> void
@@ -335,7 +352,7 @@ auto SCkSmRuntimeGraph::SetBreakpointStyle(const int32 InBreakpointStyle) -> voi
         return;
     }
     _BreakpointStyle = InBreakpointStyle;
-    RebuildScene();
+    InstallScene();
 }
 auto SCkSmRuntimeGraph::ApplyScrubHighlight(const int32 InActiveStateIndex,
                                             const int32 InExitedStateIndex) -> void
@@ -374,6 +391,7 @@ auto SCkSmRuntimeGraph::Clear() -> void
     _CardStructureHashes.Reset();
     _CardPresentations.Reset();
     _StatePills.Reset();
+    _PositionOverrides.Reset();
     _StructureHash = 0;
     _HasStructureHash = false;
     if (_Canvas)
@@ -383,7 +401,7 @@ auto SCkSmRuntimeGraph::Clear() -> void
     }
 }
 
-auto SCkSmRuntimeGraph::RebuildScene() -> void
+auto SCkSmRuntimeGraph::RebuildScene(const bool bInClearPositionOverrides) -> void
 {
     if (NOT _Canvas)
     {
@@ -393,6 +411,10 @@ auto SCkSmRuntimeGraph::RebuildScene() -> void
     {
         Clear();
         return;
+    }
+    if (bInClearPositionOverrides)
+    {
+        _PositionOverrides.Reset();
     }
     _Model.Rebuild(*_SmInfo,
                    _Layout.ExpandTasks,
@@ -449,7 +471,9 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         }
         auto CanvasNode = FCkDebug_GraphCanvasNode{};
         CanvasNode.Id = Node.Id;
-        CanvasNode.Position = Node.Position;
+        CanvasNode.Position = Node.Kind == ECkSmRuntimeGraphNodeKind::Transition
+                                  ? GetEffectiveTransitionBadgePosition(Node)
+                                  : GetEffectivePosition(Node);
         CanvasNode.Size = Node.Size;
         CanvasNode.Layer = Node.Kind == ECkSmRuntimeGraphNodeKind::Compound ? 0 : 1;
         CanvasNode.Widget = Card;
@@ -475,7 +499,7 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         CanvasEdge.IsDirected = Edge.bDirected;
         CanvasEdge.IsDashed = Edge.bReverse;
         CanvasEdge.LineSeparation = 4.5f;
-        CanvasEdge.RoutePoints = Edge.RoutePoints;
+        CanvasEdge.RoutePoints = GetEffectiveRoutePoints(Edge);
         CanvasScene.Edges.Add(MoveTemp(CanvasEdge));
     }
     for (auto It = _CardCache.CreateIterator(); It; ++It)
@@ -961,6 +985,228 @@ auto SCkSmRuntimeGraph::HandleSelectionChanged(const TSet<uint64>& InSelection) 
         }
     }
     _OnSelectionChanged.ExecuteIfBound(StateIndex, TransitionIndex);
+}
+
+auto SCkSmRuntimeGraph::GetEffectivePosition(const FCkSmRuntimeGraphNode& InNode) const -> FVector2D
+{
+    if (const auto* Override = _PositionOverrides.Find(InNode.Id))
+    {
+        return *Override;
+    }
+    return InNode.Position;
+}
+
+auto SCkSmRuntimeGraph::GetEffectiveRoutePoints(const FCkSmRuntimeGraphEdge& InEdge) const
+    -> TArray<FVector2D>
+{
+    auto Result = InEdge.RoutePoints;
+    if (Result.IsEmpty())
+    {
+        return Result;
+    }
+
+    const auto* SourceNode = _Model.FindNodeById(InEdge.SourceId);
+    const auto* TargetNode = _Model.FindNodeById(InEdge.TargetId);
+    if (SourceNode == nullptr || TargetNode == nullptr)
+    {
+        return Result;
+    }
+
+    const auto SourceDelta = GetEffectivePosition(*SourceNode) - SourceNode->Position;
+    const auto TargetDelta = GetEffectivePosition(*TargetNode) - TargetNode->Position;
+    if (SourceDelta.Equals(TargetDelta))
+    {
+        // Compound moves are pure translations: preserve every generated/authored point exactly.
+        for (auto& Point : Result)
+        {
+            Point += SourceDelta;
+        }
+        return Result;
+    }
+
+    const auto SourceCenter = SourceNode->Position + SourceNode->Size * 0.5f;
+    const auto TargetCenter = TargetNode->Position + TargetNode->Size * 0.5f;
+    const auto EffectiveSourceCenter = SourceCenter + SourceDelta;
+    const auto EffectiveTargetCenter = TargetCenter + TargetDelta;
+    const auto BaseDirection = TargetCenter - SourceCenter;
+    const auto BaseLength = BaseDirection.Size();
+    if (BaseLength <= KINDA_SMALL_NUMBER)
+    {
+        // Self-loop points are source-relative; when only its one node moves this is still exact.
+        for (auto& Point : Result)
+        {
+            Point += SourceDelta;
+        }
+        return Result;
+    }
+
+    const auto EffectiveDirection = EffectiveTargetCenter - EffectiveSourceCenter;
+    const auto EffectiveLength = EffectiveDirection.Size();
+    const auto BaseNormal = FVector2D{-BaseDirection.Y, BaseDirection.X} / BaseLength;
+    const auto EffectiveNormal = EffectiveLength > KINDA_SMALL_NUMBER
+                                     ? FVector2D{-EffectiveDirection.Y, EffectiveDirection.X} /
+                                           EffectiveLength
+                                     : BaseNormal;
+    const auto PerpendicularScale = EffectiveLength > KINDA_SMALL_NUMBER
+                                        ? EffectiveLength / BaseLength
+                                        : 1.0f;
+    for (auto& Point : Result)
+    {
+        const auto Relative = Point - SourceCenter;
+        const auto Along = FVector2D::DotProduct(Relative, BaseDirection) /
+                           FMath::Square(BaseLength);
+        const auto Perpendicular = FVector2D::DotProduct(Relative, BaseNormal) * PerpendicularScale;
+        Point = EffectiveSourceCenter + EffectiveDirection * Along + EffectiveNormal * Perpendicular;
+    }
+    return Result;
+}
+
+auto SCkSmRuntimeGraph::GetEffectiveTransitionBadgePosition(const FCkSmRuntimeGraphNode& InNode) const
+    -> FVector2D
+{
+    if (_PositionOverrides.Contains(InNode.Id))
+    {
+        return GetEffectivePosition(InNode);
+    }
+
+    const auto* Edge = _Model.GetScene().Edges.FindByPredicate([&InNode](const FCkSmRuntimeGraphEdge& InEdge)
+    {
+        return InEdge.TransitionId == InNode.Id;
+    });
+    if (Edge == nullptr)
+    {
+        return InNode.Position;
+    }
+
+    const auto* SourceNode = _Model.FindNodeById(Edge->SourceId);
+    const auto* TargetNode = _Model.FindNodeById(Edge->TargetId);
+    if (SourceNode == nullptr || TargetNode == nullptr)
+    {
+        return InNode.Position;
+    }
+
+    const auto RoutePoints = GetEffectiveRoutePoints(*Edge);
+    auto Center = (GetEffectivePosition(*SourceNode) + SourceNode->Size * 0.5f +
+                   GetEffectivePosition(*TargetNode) + TargetNode->Size * 0.5f) *
+                  0.5f;
+    if (Edge->bSelfLoop && RoutePoints.Num() >= 2)
+    {
+        Center = RoutePoints[1];
+    }
+    else if (Edge->bReverse && NOT RoutePoints.IsEmpty())
+    {
+        Center = RoutePoints[0];
+    }
+    return Center - InNode.Size * 0.5f;
+}
+
+auto SCkSmRuntimeGraph::IsStateDescendantOf(const int32 InStateIndex,
+                                             const int32 InCompoundOwnerStateIndex) const -> bool
+{
+    const auto* Node = _Model.FindNodeById(FCkSmRuntimeGraphModel::GetStateId(InStateIndex));
+    if (Node == nullptr || NOT Node->State)
+    {
+        return false;
+    }
+
+    auto CurrentParent = Node->State->SubSmParentStateIndex;
+    auto Visited = TSet<int32>{};
+    while (CurrentParent != INDEX_NONE)
+    {
+        if (Visited.Contains(CurrentParent))
+        {
+            return false;
+        }
+        Visited.Add(CurrentParent);
+        if (CurrentParent == InCompoundOwnerStateIndex)
+        {
+            return true;
+        }
+        const auto* ParentNode = _Model.FindNodeById(FCkSmRuntimeGraphModel::GetStateId(CurrentParent));
+        if (ParentNode == nullptr || NOT ParentNode->State)
+        {
+            return false;
+        }
+        CurrentParent = ParentNode->State->SubSmParentStateIndex;
+    }
+    return false;
+}
+
+auto SCkSmRuntimeGraph::GetCompoundDescendantIds(const int32 InCompoundOwnerStateIndex) const
+    -> TSet<uint64>
+{
+    auto DescendantIds = TSet<uint64>{};
+    for (const auto& Node : _Model.GetScene().Nodes)
+    {
+        if ((Node.Kind == ECkSmRuntimeGraphNodeKind::State ||
+             Node.Kind == ECkSmRuntimeGraphNodeKind::Compound) &&
+            IsStateDescendantOf(Node.StateIndex, InCompoundOwnerStateIndex))
+        {
+            DescendantIds.Add(Node.Id);
+        }
+    }
+    for (const auto& Node : _Model.GetScene().Nodes)
+    {
+        if (Node.Kind != ECkSmRuntimeGraphNodeKind::Transition || NOT Node.Transition)
+        {
+            continue;
+        }
+        if (IsStateDescendantOf(Node.Transition->SourceStateIndex, InCompoundOwnerStateIndex) &&
+            IsStateDescendantOf(Node.Transition->TargetStateIndex, InCompoundOwnerStateIndex))
+        {
+            DescendantIds.Add(Node.Id);
+        }
+    }
+    return DescendantIds;
+}
+
+auto SCkSmRuntimeGraph::HasSelectedAncestorCompound(const uint64 InNodeId) const -> bool
+{
+    if (NOT _Canvas)
+    {
+        return false;
+    }
+    for (const auto SelectedId : _Canvas->Get_SelectedNodeIds())
+    {
+        const auto* SelectedNode = _Model.FindNodeById(SelectedId);
+        if (SelectedNode && SelectedNode->Kind == ECkSmRuntimeGraphNodeKind::Compound &&
+            GetCompoundDescendantIds(SelectedNode->StateIndex).Contains(InNodeId))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+auto SCkSmRuntimeGraph::HandleNodeMoved(const uint64 InNodeId, const FVector2D& InPosition) -> void
+{
+    const auto* MovedNode = _Model.FindNodeById(InNodeId);
+    if (MovedNode == nullptr || HasSelectedAncestorCompound(InNodeId))
+    {
+        // The canvas reports selected IDs independently and in stable-ID order. Descendants can
+        // therefore arrive before their selected compound; the compound callback owns that move.
+        return;
+    }
+
+    const auto PreviousPosition = GetEffectivePosition(*MovedNode);
+    const auto Delta = InPosition - PreviousPosition;
+    if (Delta.IsNearlyZero())
+    {
+        return;
+    }
+
+    _PositionOverrides.Add(InNodeId, InPosition);
+    if (MovedNode->Kind == ECkSmRuntimeGraphNodeKind::Compound)
+    {
+        for (const auto DescendantId : GetCompoundDescendantIds(MovedNode->StateIndex))
+        {
+            if (const auto* Descendant = _Model.FindNodeById(DescendantId))
+            {
+                _PositionOverrides.Add(DescendantId, GetEffectivePosition(*Descendant) + Delta);
+            }
+        }
+    }
+    InstallScene();
 }
 
 auto SCkSmRuntimeGraph::HandleNodeContextMenu(const uint64 InNodeId,

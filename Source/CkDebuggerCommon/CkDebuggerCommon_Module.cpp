@@ -4,6 +4,10 @@
 
 #include "CkDebuggerCommon/Gallery/SCkDebuggerGallery_Window.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerSettings.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerWindowSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
@@ -45,6 +49,10 @@ static FAutoConsoleCommand CmdDebuggerGallery(
 
 void FCkDebuggerCommonModule::StartupModule()
 {
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkDebuggerSettings>());
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkDebuggerStyleSettings>());
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkDebuggerWindowSettings>());
+
 	FCkDebuggerCommonStyle::Initialize();
 
 	// The suite-wide brush/text set (promoted out of CkEcsDebugger). Owned here so every

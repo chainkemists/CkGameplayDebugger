@@ -448,7 +448,12 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
         Entry.Position = FVector2D{-180.0f, 120.0f};
         Entry.Size = FVector2D{80.0f, 32.0f};
         NewScene.Nodes.Add(MoveTemp(Entry));
-        NewScene.Edges.Add({GetEntryId(), GetStateId(0), 0, FLinearColor::White, true});
+        auto EntryEdge = FCkSmRuntimeGraphEdge{};
+        EntryEdge.SourceId = GetEntryId();
+        EntryEdge.TargetId = GetStateId(0);
+        EntryEdge.Color = FLinearColor::White;
+        EntryEdge.bDirected = true;
+        NewScene.Edges.Add(MoveTemp(EntryEdge));
     }
 
     for (auto TransitionIndex = 0; TransitionIndex < InInfo.Transitions.Num(); ++TransitionIndex)

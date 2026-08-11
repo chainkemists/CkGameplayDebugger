@@ -6,10 +6,6 @@
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
-#if WITH_EDITOR
-    #include "CkSmDebugger/Graph/CkSmDebugGraphFactory.h"
-    #include "EdGraphUtilities.h"
-#endif
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
@@ -64,11 +60,6 @@ static FAutoConsoleCommand CmdSmDebugger(
 
 auto FCkSmDebuggerModule::StartupModule() -> void
 {
-#if WITH_EDITOR
-    _NodeFactory = MakeShared<FCkSmDebugGraphFactory>();
-    FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
-#endif
-
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkSmDebuggerModule::OnSpawnDebuggerTab))
@@ -145,14 +136,6 @@ auto FCkSmDebuggerModule::ShutdownModule() -> void
     {
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
-
-#if WITH_EDITOR
-    if (_NodeFactory.IsValid())
-    {
-        FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
-        _NodeFactory.Reset();
-    }
-#endif
 
     _DebuggerWindow.Reset();
     _DebuggerTab.Reset();

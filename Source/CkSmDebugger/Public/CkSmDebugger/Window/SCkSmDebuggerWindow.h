@@ -12,13 +12,9 @@ class FCkSmDebugger_DataCollector;
 class SCkSmDebugger_HistoryList;
 class SCkDebug_ScrubTimeline;
 class SCkSmRuntimeGraph;
+class SCkSmDebugger_PreviewPane;
 class SSplitter;
 class SBox;
-#if WITH_EDITOR
-class UCkSmDebugGraph;
-class SCkSmDebugger_PreviewPane;
-class SGraphEditor;
-#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -79,6 +75,7 @@ private:
     auto StepScrubToTransition(int32 InDirection) -> void;
     // Jump to a specific frame number (entered via the toolbar input field).
     auto JumpScrubToFrame(int64 InFrame) -> void;
+    auto BuildTestSmInfo() -> void;
 
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
     TSharedPtr<FCkSmDebugger_DataCollector> _DataCollector;
@@ -86,10 +83,6 @@ private:
     // Graph
     TSharedPtr<SCkSmRuntimeGraph> _RuntimeGraph;
     FCkSmRuntimeGraphFacade _RuntimeGraphFacade;
-#if WITH_EDITOR
-    UCkSmDebugGraph* _Graph = nullptr;
-    TSharedPtr<SGraphEditor> _GraphEditor;
-#endif
 
     // Sub-widgets
     TSharedPtr<SCkSmDebugger_HistoryList> _HistoryList;
@@ -109,13 +102,13 @@ private:
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
     bool _IsTestMode = false;
+    FCkSmDebugger_SmInfo _TestSmInfo;
+    bool _TestFrameAllPending = false;
     TSharedPtr<SSplitter> _RootSplitter;
-#if WITH_EDITOR
     bool _IsPreviewOpen = false;
 
     // Right-side preview pane (50/50 split) — toggled via the PREVIEW toolbar button
     TSharedPtr<SCkSmDebugger_PreviewPane> _PreviewPane;
-#endif
 
     // Common debugger-session boundary — unsubscribed in destructor.
     FDelegateHandle _SessionInvalidatedHandle;

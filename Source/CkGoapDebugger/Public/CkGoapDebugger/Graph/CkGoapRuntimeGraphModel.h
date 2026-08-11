@@ -46,7 +46,8 @@ class CKGOAPDEBUGGER_API FCkGoapRuntimeGraphModel
                  const FCk_Handle_Goap_Action& InSelectedAction,
                  int32 InNameDepth) -> void;
     auto UpdateRuntimeState(const FCkGoapDebugger_PlannerInfo& InPlanner,
-                            const FCk_Handle_Goap_Action& InSelectedAction) -> void;
+                            const FCk_Handle_Goap_Action& InSelectedAction) -> bool;
+    auto Relayout(int32 InNameDepth) -> void;
     auto Reset() -> void;
 
     auto GetTopologyHash() const -> uint32

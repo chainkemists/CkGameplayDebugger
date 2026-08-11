@@ -166,9 +166,30 @@ auto FCkSmRuntimeGraphModel::TickLivePresentation(const float InDeltaTime,
         Node.bScrubActive = false;
         Node.bScrubExited = false;
         Node.bPrevious = Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.Label.Len() > 0 &&
-                         InPreviousStateNames.Contains(Node.State ? Node.State->StateName
-                                                                  : Node.Label) &&
-                         NOT Node.bCurrent;
+                          InPreviousStateNames.Contains(Node.State ? Node.State->StateName
+                                                                   : Node.Label) &&
+                          NOT Node.bCurrent;
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::State)
+        {
+            const auto bEntering = Node.StateIndex == InCurrentStateIndex &&
+                                   InPreviousStateIndex >= 0 &&
+                                   InPreviousStateIndex != InCurrentStateIndex;
+            if (bEntering)
+            {
+                Node.EntryPulseAlpha = 1.0f;
+            }
+            Node.EntryPulseAlpha = FMath::Max(0.0f, Node.EntryPulseAlpha - InDeltaTime * 2.5f);
+            Node.BorderGlowAlpha = FMath::FInterpTo(Node.BorderGlowAlpha,
+                                                     Node.bCurrent ? 1.0f : 0.0f,
+                                                     InDeltaTime,
+                                                     7.0f);
+            // Match the editor: a previously/currently visited card remains readable;
+            // its current-only border is the signal that fades out.
+            if (Node.bCurrent || Node.bPrevious)
+            {
+                Node.CellGlowAlpha = FMath::FInterpTo(Node.CellGlowAlpha, 1.0f, InDeltaTime, 7.0f);
+            }
+        }
     }
     for (auto& Edge : _Scene.Edges)
     {
@@ -474,19 +495,6 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
     for (auto StateIndex = 0; StateIndex < InInfo.States.Num(); ++StateIndex)
     {
         const auto& State = InInfo.States[StateIndex];
-        if (State.IsCompoundNode)
-        {
-            auto Compound = FCkSmRuntimeGraphNode{};
-            Compound.Id = GetCompoundId(State.CompoundNodeParentStateIndex);
-            Compound.Kind = ECkSmRuntimeGraphNodeKind::Compound;
-            Compound.StateIndex = State.CompoundNodeParentStateIndex;
-            Compound.Label = State.SubSmParentStateName;
-            Compound.Position = State.NodePosition;
-            Compound.Size = FVector2D{State.CompoundNodeWidth, State.CompoundNodeHeight};
-            Compound.Accent = FLinearColor(0.30f, 0.45f, 0.75f, 0.35f);
-            NewScene.Nodes.Add(MoveTemp(Compound));
-        }
-
         auto Node = FCkSmRuntimeGraphNode{};
         Node.Id = GetStateId(StateIndex);
         Node.Kind = ECkSmRuntimeGraphNodeKind::State;
@@ -502,6 +510,8 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
                                                   : State.NodeSize;
         Node.Accent = CkSmDebugger::ComputeStateColor(State.StateName);
         Node.bCurrent = State.IsCurrentState;
+        Node.BorderGlowAlpha = State.IsCurrentState ? 1.0f : 0.0f;
+        Node.CellGlowAlpha = State.IsCurrentState || State.HasBeenVisited ? 1.0f : 0.0f;
         Node.bParentActive = NOT State.IsSubSmNode
                              || (InInfo.States.IsValidIndex(State.SubSmParentStateIndex)
                                  && InInfo.States[State.SubSmParentStateIndex].IsCurrentState);
@@ -514,9 +524,9 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
         NewScene.Nodes.Add(MoveTemp(Node));
     }
 
-    // Compound bounds are derived after every child has its final measured
-    // footprint. This mirrors the editor compound's child-AABB placement rule
-    // and naturally handles a sub-SM whose parent is itself a sub-SM child.
+    // Runtime counterpart of the editor graph's compound phases: every sub-SM gets a
+    // local layout, compounds are placed shallowest-first, and nested owners use the
+    // already-finalized position of their parent. This stays entirely value-only.
     auto ChildrenByParent = TMap<int32, TArray<int32>>{};
     for (auto StateIndex = 0; StateIndex < InInfo.States.Num(); ++StateIndex)
     {
@@ -526,15 +536,85 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
             ChildrenByParent.FindOrAdd(State.SubSmParentStateIndex).Add(StateIndex);
         }
     }
-    constexpr auto CompoundPaddingX = 40.0f;
-    constexpr auto CompoundPaddingY = 48.0f;
-    for (const auto& Pair : ChildrenByParent)
+    auto ParentIndices = TArray<int32>{};
+    ChildrenByParent.GenerateKeyArray(ParentIndices);
+    const auto GetDepth = [&InInfo](const int32 InParentIndex)
     {
+        auto Depth = 0;
+        auto Index = InParentIndex;
+        while (InInfo.States.IsValidIndex(Index) && InInfo.States[Index].IsSubSmNode && Depth < 8)
+        {
+            ++Depth;
+            Index = InInfo.States[Index].SubSmParentStateIndex;
+        }
+        return Depth;
+    };
+    ParentIndices.Sort([&GetDepth](const int32 InA, const int32 InB)
+    {
+        const auto DepthA = GetDepth(InA);
+        const auto DepthB = GetDepth(InB);
+        return DepthA == DepthB ? InA < InB : DepthA < DepthB;
+    });
+
+    auto ParentMaxBottom = 0.0f;
+    for (const auto& Node : NewScene.Nodes)
+    {
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.State && NOT Node.State->IsSubSmNode)
+        {
+            ParentMaxBottom = FMath::Max(ParentMaxBottom, Node.Position.Y + Node.Size.Y);
+        }
+    }
+    constexpr auto CompoundPaddingX = 20.0f;
+    constexpr auto CompoundPaddingY = 20.0f;
+    constexpr auto CompoundHeaderHeight = 28.0f;
+    struct FCkSmRuntimePlacedCompound
+    {
+        float Left = 0.0f;
+        float Right = 0.0f;
+        float Bottom = 0.0f;
+    };
+    auto PlacedCompounds = TArray<FCkSmRuntimePlacedCompound>{};
+    for (const auto ParentIndex : ParentIndices)
+    {
+        const auto* Children = ChildrenByParent.Find(ParentIndex);
+        if (Children == nullptr)
+        {
+            continue;
+        }
+        auto LocalIndexByGlobal = TMap<int32, int32>{};
+        auto LocalNodes = TArray<FCkDebugGraphLayoutNode>{};
+        for (auto LocalIndex = 0; LocalIndex < Children->Num(); ++LocalIndex)
+        {
+            const auto ChildIndex = (*Children)[LocalIndex];
+            const auto* Child = NewScene.Nodes.FindByPredicate([ChildIndex](const FCkSmRuntimeGraphNode& Node)
+            {
+                return Node.Id == FCkSmRuntimeGraphModel::GetStateId(ChildIndex);
+            });
+            if (Child == nullptr)
+            {
+                continue;
+            }
+            LocalIndexByGlobal.Add(ChildIndex, LocalIndex);
+            LocalNodes.Add({LocalIndex, FMath::RoundToInt32(Child->Size.X), FMath::RoundToInt32(Child->Size.Y)});
+        }
+        auto LocalEdges = TArray<FCkDebugGraphLayoutEdge>{};
+        for (const auto& Transition : InInfo.Transitions)
+        {
+            const auto* Source = LocalIndexByGlobal.Find(Transition.SourceStateIndex);
+            const auto* Target = LocalIndexByGlobal.Find(Transition.TargetStateIndex);
+            if (Transition.IsSubSmTransition && Source && Target)
+            {
+                LocalEdges.Add({*Source, *Target});
+            }
+        }
+        const auto LocalLayout = FCkDebugGraphLayout::ComputeLayout(
+            LocalNodes, LocalEdges,
+            {FMath::Max(60, InSpacingX / 2), FMath::Max(28, InSpacingY / 3), 4, true, 0});
         auto Min = FVector2D{TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
         auto Max = FVector2D{TNumericLimits<float>::Lowest(), TNumericLimits<float>::Lowest()};
-        for (const auto ChildIndex : Pair.Value)
+        for (const auto ChildIndex : *Children)
         {
-            const auto* Child = NewScene.Nodes.FindByPredicate(
+            auto* Child = NewScene.Nodes.FindByPredicate(
                 [ChildIndex](const FCkSmRuntimeGraphNode& Node)
                 {
                     return Node.Id == FCkSmRuntimeGraphModel::GetStateId(ChildIndex);
@@ -542,6 +622,13 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
             if (NOT Child)
             {
                 continue;
+            }
+            if (const auto* LocalIndex = LocalIndexByGlobal.Find(ChildIndex))
+            {
+                if (const auto* Position = LocalLayout.Positions.Find(*LocalIndex))
+                {
+                    Child->Position = FVector2D{static_cast<float>(Position->X), static_cast<float>(Position->Y)};
+                }
             }
             Min.X = FMath::Min(Min.X, Child->Position.X);
             Min.Y = FMath::Min(Min.Y, Child->Position.Y);
@@ -552,18 +639,46 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
         {
             continue;
         }
+        const auto* Owner = NewScene.Nodes.FindByPredicate([ParentIndex](const FCkSmRuntimeGraphNode& Node)
+        {
+            return Node.Id == FCkSmRuntimeGraphModel::GetStateId(ParentIndex);
+        });
+        auto CompoundSize = FVector2D{FMath::Max(160.0f, Max.X - Min.X + 2.0f * CompoundPaddingX),
+                                      FMath::Max(120.0f, Max.Y - Min.Y + CompoundHeaderHeight + 2.0f * CompoundPaddingY)};
+        auto CompoundPosition = FVector2D{Owner ? Owner->Position.X : 0.0f,
+                                          FMath::Max(ParentMaxBottom + InSpacingY,
+                                                     Owner ? Owner->Position.Y + Owner->Size.Y + InSpacingY : 0.0f)};
+        for (const auto& Placed : PlacedCompounds)
+        {
+            const auto bOverlapsX = CompoundPosition.X < Placed.Right &&
+                                    CompoundPosition.X + CompoundSize.X > Placed.Left;
+            if (bOverlapsX)
+            {
+                CompoundPosition.Y = FMath::Max(CompoundPosition.Y, Placed.Bottom + InSpacingY);
+            }
+        }
+        for (const auto ChildIndex : *Children)
+        {
+            if (auto* Child = NewScene.Nodes.FindByPredicate([ChildIndex](const FCkSmRuntimeGraphNode& Node)
+                { return Node.Id == FCkSmRuntimeGraphModel::GetStateId(ChildIndex); }))
+            {
+                Child->Position += CompoundPosition + FVector2D{CompoundPaddingX - Min.X,
+                                                                  CompoundHeaderHeight + CompoundPaddingY - Min.Y};
+            }
+        }
+        PlacedCompounds.Add({static_cast<float>(CompoundPosition.X),
+                              static_cast<float>(CompoundPosition.X + CompoundSize.X),
+                              static_cast<float>(CompoundPosition.Y + CompoundSize.Y)});
         auto Compound = FCkSmRuntimeGraphNode{};
-        Compound.Id = GetCompoundId(Pair.Key);
+        Compound.Id = GetCompoundId(ParentIndex);
         Compound.Kind = ECkSmRuntimeGraphNodeKind::Compound;
-        Compound.StateIndex = Pair.Key;
-        Compound.Label = InInfo.States.IsValidIndex(Pair.Key) ? InInfo.States[Pair.Key].StateName
-                                                              : TEXT("Sub State Machine");
-        Compound.Position = Min - FVector2D{CompoundPaddingX, CompoundPaddingY};
-        Compound.Size =
-            FVector2D{FMath::Max(160.0f, Max.X - Min.X + 2.0f * CompoundPaddingX),
-                      FMath::Max(120.0f, Max.Y - Min.Y + CompoundPaddingX + CompoundPaddingY)};
+        Compound.StateIndex = ParentIndex;
+        Compound.Label = InInfo.States.IsValidIndex(ParentIndex) ? InInfo.States[ParentIndex].StateName
+                                                               : TEXT("Sub State Machine");
+        Compound.Position = CompoundPosition;
+        Compound.Size = CompoundSize;
         Compound.Accent = FLinearColor(0.30f, 0.45f, 0.75f, 0.35f);
-        Compound.bCurrent = Pair.Value.ContainsByPredicate(
+        Compound.bCurrent = Children->ContainsByPredicate(
             [&InInfo](const int32 ChildIndex)
             {
                 return InInfo.States.IsValidIndex(ChildIndex) &&

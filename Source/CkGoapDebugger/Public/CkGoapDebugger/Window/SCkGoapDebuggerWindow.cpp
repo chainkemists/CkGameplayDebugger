@@ -330,9 +330,10 @@ auto
     // panel's debounce and re-run its normal refresh — same code path as a data change, no new
     // rebuild entry points.
     //
-    // The GraphPane is deliberately NOT invalidated: its node widgets bind every axis-driven visual
-    // through attribute lambdas and repaint each frame, and re-running the topology pass would
-    // recreate node widgets (the flicker the live-bind invariant exists to avoid).
+    // GraphPane needs an in-place geometry pass because its runtime canvas owns fixed card bounds.
+    // That path preserves the model and card widgets, so axis changes update fit/wire geometry
+    // without taking the destructive topology rebuild path.
+    if (_GraphPane.IsValid())         { _GraphPane->Refresh_ForStyleChange(); }
     if (_Sidebar.IsValid())          { _Sidebar->Invalidate_StyleCache(); }
     if (_AgentColumn.IsValid())      { _AgentColumn->Invalidate_StyleCache(); }
     if (_DecisionPanel.IsValid())    { _DecisionPanel->Invalidate_StyleCache(); }

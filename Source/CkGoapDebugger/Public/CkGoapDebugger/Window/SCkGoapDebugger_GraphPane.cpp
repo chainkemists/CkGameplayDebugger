@@ -216,15 +216,21 @@ namespace ck_goap_debugger_graph_pane
                                              [SNew(STextBlock)
                                                   .Text_Lambda(
                                                       [Weak]
-                                                      {
-                                                          const auto P = Weak.Pin();
-                                                          return FText::FromString(
+                                                       {
+                                                           const auto P = Weak.Pin();
+                                                           return FText::FromString(
                                                               P.IsValid()
                                                                   ? FString::Printf(TEXT("$%.0f"),
                                                                                     P->Action.Cost)
-                                                                  : TEXT(""));
-                                                      })
-                                                  .ColorAndOpacity(FSlateColor(CkStyle::Warn()))]] +
+                                                                   : TEXT(""));
+                                                       })
+                                                   .Font_Lambda(
+                                                       []
+                                                       {
+                                                           return ck::debug_axes::ScaledFont(
+                                                               "Bold", CkStyle::NodeCostFontSize());
+                                                       })
+                                                   .ColorAndOpacity(FSlateColor(CkStyle::Warn()))]] +
                                     SVerticalBox::Slot().AutoHeight()
                                         [SNew(STextBlock)
                                              .Text_Lambda(
@@ -283,42 +289,72 @@ namespace ck_goap_debugger_graph_pane
                                                                 ? EVisibility::SelfHitTestInvisible
                                                                 : EVisibility::Collapsed;
                                                  })[SNew(STextBlock)
-                                                        .Text(FText::FromString(FString::Printf(
-                                                            TEXT("› %s"),
-                                                            *TagLeaf(Node->Action.ActionTag))))
-                                                        .ColorAndOpacity(
-                                                            FSlateColor(CkStyle::CategoryAge()))]] +
+                                                         .Text(FText::FromString(FString::Printf(
+                                                             TEXT("› %s"),
+                                                             *TagLeaf(Node->Action.ActionTag))))
+                                                         .Font_Lambda(
+                                                             []
+                                                             {
+                                                                 return ck::debug_axes::ScaledFont(
+                                                                     "Regular",
+                                                                     CkStyle::NodeMetaFontSize());
+                                                             })
+                                                         .ColorAndOpacity(
+                                                             FSlateColor(CkStyle::CategoryAge()))]] +
                                     SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceS)
                                         [SNew(SHorizontalBox) +
                                          SHorizontalBox::Slot().AutoWidth()[Conditions] +
                                          SHorizontalBox::Slot().FillWidth(
                                              1)[SNullWidget::NullWidget] +
                                          SHorizontalBox::Slot().AutoWidth()[Effects]]]]] +
-             SOverlay::Slot()
-                 .HAlign(HAlign_Left)
-                 .VAlign(VAlign_Top)
-                 .Padding(
-                     -6.0f)[SNew(SBorder)
-                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
-                                .Visibility_Lambda(
-                                    [Weak]
-                                    {
-                                        const auto P = Weak.Pin();
-                                        return P.IsValid() && P->IsInPlan && P->PlanStepIndex > 0
-                                                   ? EVisibility::SelfHitTestInvisible
-                                                   : EVisibility::Collapsed;
-                                    })[SNew(STextBlock)
-                                           .Text_Lambda(
-                                               [Weak]
-                                               {
-                                                   const auto P = Weak.Pin();
-                                                   return FText::FromString(
-                                                       P.IsValid()
-                                                           ? FString::FromInt(P->PlanStepIndex)
-                                                           : TEXT(""));
-                                               })
-                                           .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))]]];
+              SOverlay::Slot()
+                  .HAlign(HAlign_Left)
+                  .VAlign(VAlign_Top)
+                  .Padding(
+                      -6.0f)[SNew(SBox)
+                                 .WidthOverride_Lambda(
+                                     []() -> FOptionalSize
+                                     {
+                                         return FOptionalSize{
+                                             ck_goap_debugger_axes::Get_IconSize()};
+                                     })
+                                 .HeightOverride_Lambda(
+                                     []() -> FOptionalSize
+                                     {
+                                         return FOptionalSize{
+                                             ck_goap_debugger_axes::Get_IconSize()};
+                                     })
+                                 .Visibility_Lambda(
+                                     [Weak]
+                                     {
+                                         const auto P = Weak.Pin();
+                                         return P.IsValid() && P->IsInPlan && P->PlanStepIndex > 0
+                                                    ? EVisibility::SelfHitTestInvisible
+                                                    : EVisibility::Collapsed;
+                                     })[SNew(SBorder)
+                                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                            .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
+                                            .HAlign(HAlign_Center)
+                                            .VAlign(VAlign_Center)[SNew(STextBlock)
+                                                                       .Text_Lambda(
+                                                                           [Weak]
+                                                                           {
+                                                                               const auto P = Weak.Pin();
+                                                                               return FText::FromString(
+                                                                                   P.IsValid()
+                                                                                       ? FString::FromInt(
+                                                                                             P->PlanStepIndex)
+                                                                                       : TEXT(""));
+                                                                           })
+                                                                       .Font_Lambda(
+                                                                           []
+                                                                           {
+                                                                               return ck::debug_axes::ScaledFont(
+                                                                                   "Bold",
+                                                                                   CkStyle::NodeCostFontSize());
+                                                                           })
+                                                                       .ColorAndOpacity(
+                                                                           FSlateColor(CkStyle::TextStrong()))]]]];
     }
 
     auto BuildGoalCard(const TSharedPtr<FCkGoapRuntimeGraphNode>& Node) -> TSharedRef<SWidget>
@@ -403,9 +439,11 @@ auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
                   [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[BuildHeader()] +
                    SVerticalBox::Slot().FillHeight(
                        1)[SAssignNew(_GraphCanvas, SCkDebug_GraphCanvas)
-                               .AllowNodeDragging(IsNodeDraggingEnabled)
-                              .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
-                                  this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged))]]];
+                                .AllowNodeDragging(IsNodeDraggingEnabled)
+                               .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
+                                   this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged))
+                               .OnNodeMoved(FOnCkDebug_GraphCanvasNodeMoved::CreateSP(
+                                   this, &SCkGoapDebugger_GraphPane::OnGraphNodeMoved))]]];
     if (_ViewModel.IsValid())
         _OnChangedHandle =
             _ViewModel->OnChanged.AddSP(this, &SCkGoapDebugger_GraphPane::RefreshFromViewModel);
@@ -426,12 +464,24 @@ auto SCkGoapDebugger_GraphPane::Reset_ForWorldChange() -> void
     _LastEffectiveGoalHash = 0;
     _LastNameDepth = INDEX_NONE;
     _LastSelectedAction = {};
+    _CardWidgets.Reset();
+    _NodePositionOverrides.Reset();
     if (_HeaderText.IsValid())
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
 }
 auto SCkGoapDebugger_GraphPane::Get_MaxNameDepth() const -> int32
 {
     return _Graph.IsValid() ? _Graph->GetMaxNameDepth() : 1;
+}
+
+auto SCkGoapDebugger_GraphPane::Refresh_ForStyleChange() -> void
+{
+    if (!_Graph.IsValid())
+    {
+        return;
+    }
+    _Graph->Relayout(_ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1);
+    RebuildCanvasScene();
 }
 
 auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
@@ -461,6 +511,13 @@ auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
         // a different effective goal. Rebuild model and goal-producing edges
         // together so the card and its connections never describe different
         // selected Actions for a frame.
+        _CardWidgets.Reset();
+        if (TopologyChanged)
+        {
+            // Node IDs are topology-local ordinals. Do not carry a drag position
+            // into a replacement graph where the ordinal can describe another Action.
+            _NodePositionOverrides.Reset();
+        }
         _Graph->Rebuild(*Planner, Selected, _ViewModel->Get_NameDepth());
         _LastTopologyHash = Hash;
         _LastEffectiveGoalHash = EffectiveGoalHash;
@@ -471,7 +528,10 @@ auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
     {
         // Existing cards bind to these DTOs. Ordinary live broadcasts repaint
         // them without reinstalling every Slate child in the canvas.
-        _Graph->UpdateRuntimeState(*Planner, Selected);
+        if (_Graph->UpdateRuntimeState(*Planner, Selected))
+        {
+            RebuildCanvasScene();
+        }
     }
     _LastSelectedAction = Selected;
     if (_HeaderText.IsValid())
@@ -509,11 +569,23 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
         FCkDebug_GraphCanvasNode CanvasNode;
         CanvasNode.Id = Node->Id;
         CanvasNode.Position = Node->Position;
+        if (const auto* PositionOverride = _NodePositionOverrides.Find(Node->Id))
+        {
+            CanvasNode.Position = *PositionOverride;
+        }
         CanvasNode.Size = Node->Size;
-        CanvasNode.Widget = Node->Kind == ECkGoapRuntimeGraphNodeKind::Action
-                                ? ck_goap_debugger_graph_pane::BuildActionCard(
-                                      Node, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1)
-                                : ck_goap_debugger_graph_pane::BuildGoalCard(Node);
+        if (const auto* Existing = _CardWidgets.Find(Node->Id))
+        {
+            CanvasNode.Widget = Existing->ToSharedRef();
+        }
+        else
+        {
+            CanvasNode.Widget = Node->Kind == ECkGoapRuntimeGraphNodeKind::Action
+                                    ? ck_goap_debugger_graph_pane::BuildActionCard(
+                                          Node, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1)
+                                    : ck_goap_debugger_graph_pane::BuildGoalCard(Node);
+            _CardWidgets.Add(Node->Id, CanvasNode.Widget);
+        }
         Scene.Nodes.Add(MoveTemp(CanvasNode));
     }
     const auto FindNode = [this](uint64 InId) -> const FCkGoapRuntimeGraphNode*
@@ -606,6 +678,12 @@ auto SCkGoapDebugger_GraphPane::OnGraphSelectionChanged(const TSet<uint64>& InSe
             return;
         }
     _ViewModel->SetSelectedAction({});
+}
+
+auto SCkGoapDebugger_GraphPane::OnGraphNodeMoved(const uint64 InNodeId,
+                                                 const FVector2D& InPosition) -> void
+{
+    _NodePositionOverrides.Add(InNodeId, InPosition);
 }
 
 auto SCkGoapDebugger_GraphPane::Request_SetHideDimmed(bool InHideDimmed) -> void

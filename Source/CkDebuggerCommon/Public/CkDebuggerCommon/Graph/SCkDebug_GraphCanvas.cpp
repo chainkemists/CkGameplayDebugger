@@ -1,21 +1,46 @@
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkCore/Macros/CkMacros.h"
-#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
-#include "CkEditorTools/Style/CkStyle.h"
+#include "Animation/CurveSequence.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
-#include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
 #include "Widgets/SNullWidget.h"
+#include "Widgets/Text/STextBlock.h"
+
+#include <array>
 
 // =====================================================================================================================
 
 namespace ck_debug_graph_canvas
 {
-    constexpr auto ZoomStep = 1.15f;
-    constexpr auto PanDeadZonePx = 3.0f;
-    constexpr auto MarqueeBorderThickness = 1.0f;
     constexpr auto HoverDeemphasisAlpha = 0.25f;
+    constexpr auto LegacyGridSnapSize = 16.0f;
+    constexpr auto LegacyGridRulePeriod = 8;
+    constexpr auto LegacySmallestGridSize = 8.0f;
+    constexpr auto LegacyZoomLevels = std::array{
+        0.100f, 0.125f, 0.150f, 0.175f, 0.200f, 0.225f, 0.250f, 0.375f, 0.500f, 0.675f,
+        0.750f, 0.875f, 1.000f, 1.250f, 1.375f, 1.500f, 1.675f, 1.750f, 1.875f, 2.000f};
+    constexpr auto LegacyZoomTexts = std::array{
+        TEXT("-12"), TEXT("-11"), TEXT("-10"), TEXT("-9"), TEXT("-8"), TEXT("-7"),
+        TEXT("-6"), TEXT("-5"), TEXT("-4"), TEXT("-3"), TEXT("-2"), TEXT("-1"),
+        TEXT("1:1"), TEXT("+1"), TEXT("+2"), TEXT("+3"), TEXT("+4"), TEXT("+5"),
+        TEXT("+6"), TEXT("+7")};
+
+    enum class EMarqueeOperation : uint8 { Replace, Add, Invert, Remove };
+
+    auto Get_MarqueeOperation(const FPointerEvent& InMouseEvent) -> EMarqueeOperation
+    {
+        if (InMouseEvent.IsAltDown()) return EMarqueeOperation::Remove;
+        if (InMouseEvent.IsControlDown()) return EMarqueeOperation::Invert;
+        return InMouseEvent.IsShiftDown() ? EMarqueeOperation::Add : EMarqueeOperation::Replace;
+    }
+
+    auto Fancy_Mod(float InValue, float InSize) -> float
+    {
+        return (InValue >= 0.0f ? 0.0f : InSize) + FMath::Fmod(InValue, InSize);
+    }
 
     auto Get_AnchorPoint(const FSlateRect& InRect, ECkDebug_GraphAnchor InAnchor) -> FVector2D
     {
@@ -103,8 +128,12 @@ auto SCkDebug_GraphCanvas::Construct(const FArguments& InArgs) -> void
     _AllowNodeDragging = InArgs._AllowNodeDragging;
     _OnSelectionChanged = InArgs._OnSelectionChanged;
     _OnNodeDoubleClicked = InArgs._OnNodeDoubleClicked;
+    _OnNodeMoved = InArgs._OnNodeMoved;
     _OnNodeContextMenu = InArgs._OnNodeContextMenu;
     _OnBackgroundContextMenu = InArgs._OnBackgroundContextMenu;
+    _LegacyZoomLevel = Get_LegacyZoomLevel(_Transform.Zoom);
+    _ZoomLevelFade = FCurveSequence(0.0f, 1.0f);
+    _ZoomLevelFade.Play(AsShared());
 }
 
 auto SCkDebug_GraphCanvas::Set_Scene(FCkDebug_GraphCanvasScene InScene) -> void
@@ -175,6 +204,7 @@ auto SCkDebug_GraphCanvas::Set_Transform(const FCkDebug_GraphCanvasTransform& In
 {
     _Transform = InTransform;
     _Transform.Zoom = FMath::Clamp(_Transform.Zoom, _MinZoom, _MaxZoom);
+    _LegacyZoomLevel = Get_LegacyZoomLevel(_Transform.Zoom);
     Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }
 
@@ -229,6 +259,7 @@ auto SCkDebug_GraphCanvas::Clear_InteractionDelegates() -> void
 {
     _OnSelectionChanged.Unbind();
     _OnNodeDoubleClicked.Unbind();
+    _OnNodeMoved.Unbind();
     _OnNodeContextMenu.Unbind();
     _OnBackgroundContextMenu.Unbind();
 }
@@ -405,23 +436,7 @@ auto SCkDebug_GraphCanvas::OnPaint(const FPaintArgs& InArgs,
                                    const FWidgetStyle& InWidgetStyle,
                                    bool InParentEnabled) const -> int32
 {
-    const auto BackgroundBrush = FCkDebuggerStyle::Get().GetBrush(
-        TEXT("CkDebugger.Graph.Background"));
-    if (BackgroundBrush != nullptr)
-    {
-        FSlateDrawElement::MakeBox(
-            OutDrawElements,
-            InLayerId,
-            InAllottedGeometry.ToPaintGeometry(
-                FVector2f{static_cast<float>(InAllottedGeometry.GetLocalSize().X),
-                          static_cast<float>(InAllottedGeometry.GetLocalSize().Y)},
-                FSlateLayoutTransform{}),
-            BackgroundBrush,
-            ESlateDrawEffect::None,
-            InWidgetStyle.GetColorAndOpacityTint());
-    }
-
-    auto EdgeLayer = InLayerId + 1;
+    auto EdgeLayer = Draw_Background(InAllottedGeometry, OutDrawElements, InLayerId);
     for (const auto& Edge : _Scene.Edges)
     {
         const auto* Source = Find_Node(Edge.SourceId);
@@ -440,11 +455,13 @@ auto SCkDebug_GraphCanvas::OnPaint(const FPaintArgs& InArgs,
     }
 
     Draw_Marquee(InAllottedGeometry, OutDrawElements, EdgeLayer + 1);
+    Draw_MarqueePreview(OutDrawElements, EdgeLayer + 2);
+    Draw_ZoomLabel(InAllottedGeometry, OutDrawElements, EdgeLayer + 3);
     return SPanel::OnPaint(InArgs,
                            InAllottedGeometry,
                            InCullingRect,
                            OutDrawElements,
-                           EdgeLayer + 2,
+                           EdgeLayer + 4,
                            InWidgetStyle,
                            InParentEnabled);
 }
@@ -533,6 +550,8 @@ auto SCkDebug_GraphCanvas::OnMouseButtonDown(const FGeometry& InGeometry,
         if (_AllowNodeDragging)
         {
             _IsDraggingNodes = true;
+            _NodeDragExceededDeadZone = false;
+            _DraggedNodeId = HitNodeId;
             _NodeDragStartWorld = Screen_To_World(LocalPosition, _Transform);
             _NodeDragStartPositions.Reset();
             for (const auto SelectedId : _SelectedNodeIds)
@@ -550,7 +569,9 @@ auto SCkDebug_GraphCanvas::OnMouseButtonDown(const FGeometry& InGeometry,
     }
 
     _IsMarqueeSelecting = true;
-    _MarqueeBaseSelection = InMouseEvent.IsControlDown() ? _SelectedNodeIds : TSet<uint64>{};
+    _MarqueeBaseSelection = _SelectedNodeIds;
+    _MarqueePreviewSelection.Reset();
+    _MarqueeOperation = static_cast<uint8>(ck_debug_graph_canvas::Get_MarqueeOperation(InMouseEvent));
     return FReply::Handled()
         .CaptureMouse(SharedThis(this))
         .SetUserFocus(SharedThis(this), EFocusCause::Mouse);
@@ -562,8 +583,26 @@ auto SCkDebug_GraphCanvas::OnMouseButtonUp(const FGeometry& InGeometry,
     const auto LocalPosition = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
     if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton && _IsDraggingNodes)
     {
+        auto MovedNodes = TArray<TPair<uint64, FVector2D>>{};
+        if (_NodeDragExceededDeadZone)
+        {
+            for (const auto& [Id, StartPosition] : _NodeDragStartPositions)
+            {
+                if (const auto* Node = Find_Node(Id); Node != nullptr && NOT Node->Position.Equals(StartPosition))
+                {
+                    MovedNodes.Emplace(Id, Node->Position);
+                }
+            }
+            MovedNodes.Sort([](const auto& InA, const auto& InB) { return InA.Key < InB.Key; });
+        }
         _IsDraggingNodes = false;
         _NodeDragStartPositions.Reset();
+        _DraggedNodeId = 0;
+        _NodeDragExceededDeadZone = false;
+        for (const auto& [Id, Position] : MovedNodes)
+        {
+            _OnNodeMoved.ExecuteIfBound(Id, Position);
+        }
         return FReply::Handled().ReleaseMouseCapture();
     }
 
@@ -592,26 +631,18 @@ auto SCkDebug_GraphCanvas::OnMouseButtonUp(const FGeometry& InGeometry,
     {
         const auto Marquee = ck_debug_graph_canvas::Make_NormalizedRect(_PointerDownLocal,
                                                                         LocalPosition);
-        auto NewSelection = _MarqueeBaseSelection;
+        auto NewSelection = Get_MarqueeSelection();
         const auto MarqueeSize = FVector2D{Marquee.Right - Marquee.Left,
-                                           Marquee.Bottom - Marquee.Top};
+                                            Marquee.Bottom - Marquee.Top};
         const auto IsClick = MarqueeSize.SizeSquared() <=
-                             FMath::Square(ck_debug_graph_canvas::PanDeadZonePx);
+                              FMath::Square(FSlateApplication::Get().GetDragTriggerDistance());
         if (IsClick)
         {
             NewSelection.Empty();
         }
-        else
-        {
-            for (const auto& Node : _Scene.Nodes)
-            {
-                if (ck_debug_graph_canvas::Rects_Intersect(Marquee, Get_ScreenRect(Node)))
-                {
-                    NewSelection.Add(Node.Id);
-                }
-            }
-        }
+        else { NewSelection = Get_MarqueeSelection(); }
         _IsMarqueeSelecting = false;
+        _MarqueePreviewSelection.Reset();
         Set_SelectedNodeIds(MoveTemp(NewSelection));
         return FReply::Handled().ReleaseMouseCapture();
     }
@@ -633,7 +664,7 @@ auto SCkDebug_GraphCanvas::OnMouseMove(const FGeometry& InGeometry,
     if (_IsPanning)
     {
         const auto Delta = LocalPosition - _PointerDownLocal;
-        if (Delta.SizeSquared() > FMath::Square(ck_debug_graph_canvas::PanDeadZonePx))
+        if (Delta.SizeSquared() > FMath::Square(FSlateApplication::Get().GetDragTriggerDistance()))
         {
             _PanWasDragged = true;
         }
@@ -644,12 +675,30 @@ auto SCkDebug_GraphCanvas::OnMouseMove(const FGeometry& InGeometry,
 
     if (_IsDraggingNodes)
     {
+        if (!_NodeDragExceededDeadZone &&
+            (LocalPosition - _PointerDownLocal).SizeSquared() <=
+                FMath::Square(FSlateApplication::Get().GetDragTriggerDistance()))
+        {
+            return FReply::Handled();
+        }
+        _NodeDragExceededDeadZone = true;
         const auto WorldDelta = Screen_To_World(LocalPosition, _Transform) - _NodeDragStartWorld;
+        auto SnappedWorldDelta = WorldDelta;
+        if (const auto* DraggedStartPosition = _NodeDragStartPositions.Find(_DraggedNodeId))
+        {
+            const auto UnsnappedPosition = *DraggedStartPosition + WorldDelta;
+            const auto SnappedPosition = FVector2D{
+                ck_debug_graph_canvas::LegacyGridSnapSize * FMath::RoundToFloat(
+                    UnsnappedPosition.X / ck_debug_graph_canvas::LegacyGridSnapSize),
+                ck_debug_graph_canvas::LegacyGridSnapSize * FMath::RoundToFloat(
+                    UnsnappedPosition.Y / ck_debug_graph_canvas::LegacyGridSnapSize)};
+            SnappedWorldDelta = SnappedPosition - *DraggedStartPosition;
+        }
         for (auto& Node : _Scene.Nodes)
         {
             if (const auto* StartPosition = _NodeDragStartPositions.Find(Node.Id))
             {
-                Node.Position = *StartPosition + WorldDelta;
+                Node.Position = *StartPosition + SnappedWorldDelta;
             }
         }
         Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
@@ -658,6 +707,7 @@ auto SCkDebug_GraphCanvas::OnMouseMove(const FGeometry& InGeometry,
 
     if (_IsMarqueeSelecting)
     {
+        _MarqueePreviewSelection = Get_MarqueeSelection();
         Invalidate(EInvalidateWidgetReason::Paint);
         return FReply::Handled();
     }
@@ -688,13 +738,9 @@ auto SCkDebug_GraphCanvas::OnMouseWheel(const FGeometry& InGeometry,
                                         const FPointerEvent& InMouseEvent) -> FReply
 {
     const auto LocalPosition = InGeometry.AbsoluteToLocal(InMouseEvent.GetScreenSpacePosition());
-    const auto WorldAtCursor = Screen_To_World(LocalPosition, _Transform);
-    _Transform.Zoom = FMath::Clamp(_Transform.Zoom * FMath::Pow(ck_debug_graph_canvas::ZoomStep,
-                                                                InMouseEvent.GetWheelDelta()),
-                                   _MinZoom,
-                                   _MaxZoom);
-    _Transform.Pan = LocalPosition - WorldAtCursor * _Transform.Zoom;
-    Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+    Apply_LegacyZoom(FMath::TruncToInt(FMath::RoundFromZero(InMouseEvent.GetWheelDelta())),
+                     LocalPosition,
+                     InMouseEvent.IsControlDown());
     return FReply::Handled();
 }
 
@@ -721,7 +767,10 @@ auto SCkDebug_GraphCanvas::OnMouseCaptureLost(const FCaptureLostEvent& InCapture
     _IsDraggingNodes = false;
     _PanWasDragged = false;
     _ContextNodeId = 0;
+    _MarqueePreviewSelection.Reset();
     _NodeDragStartPositions.Reset();
+    _DraggedNodeId = 0;
+    _NodeDragExceededDeadZone = false;
     SPanel::OnMouseCaptureLost(InCaptureLostEvent);
 }
 
@@ -850,8 +899,8 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
     }
 
     // Match FConnectionDrawingPolicy: the 16 px Graph.Arrow brush is centered on the endpoint and
-    // rotated along the final segment. FAppStyle is already a runtime dependency of Common.
-    const auto* ArrowImage = FAppStyle::GetBrush(TEXT("Graph.Arrow"));
+    // rotated along the final segment. The Common-local key keeps Editor and packaged output equal.
+    const auto* ArrowImage = FCkDebuggerStyle::Get().GetBrush(TEXT("CkDebugger.Graph.Arrow"));
     if (ArrowImage == nullptr || ArrowImage->GetDrawType() == ESlateBrushDrawType::NoDrawType)
     {
         return;
@@ -875,8 +924,8 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
 }
 
 auto SCkDebug_GraphCanvas::Draw_Marquee(const FGeometry& InGeometry,
-                                        FSlateWindowElementList& OutDrawElements,
-                                        int32 InLayerId) const -> void
+                                         FSlateWindowElementList& OutDrawElements,
+                                         int32 InLayerId) const -> void
 {
     if (NOT _IsMarqueeSelecting)
     {
@@ -886,15 +935,178 @@ auto SCkDebug_GraphCanvas::Draw_Marquee(const FGeometry& InGeometry,
     const auto LocalPointer = InGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
     const auto Rect = ck_debug_graph_canvas::Make_NormalizedRect(_PointerDownLocal, LocalPointer);
     const auto Size = FVector2D{Rect.Right - Rect.Left, Rect.Bottom - Rect.Top};
-    if (Size.SizeSquared() <= FMath::Square(ck_debug_graph_canvas::PanDeadZonePx))
+    if (Size.SizeSquared() <= FMath::Square(FSlateApplication::Get().GetDragTriggerDistance()))
     {
         return;
     }
 
+    const auto* MarqueeBrush = FCkDebuggerStyle::Get().GetBrush(TEXT("CkDebugger.Graph.MarqueeSelection"));
     FSlateDrawElement::MakeBox(OutDrawElements,
                                InLayerId,
                                FPaintGeometry(FVector2D{Rect.Left, Rect.Top}, Size, 1.0f),
-                               CkStyle::GetFilledBrush(),
-                               ESlateDrawEffect::None,
-                               CkStyle::Info().CopyWithNewOpacity(0.25f));
+                               MarqueeBrush);
+}
+
+auto SCkDebug_GraphCanvas::Draw_MarqueePreview(FSlateWindowElementList& OutDrawElements,
+                                                int32 InLayerId) const -> void
+{
+    if (NOT _IsMarqueeSelecting)
+    {
+        return;
+    }
+
+    const auto PreviewColor = FLinearColor(0.828f, 0.364f, 0.003f, 0.35f);
+    for (const auto& Node : _Scene.Nodes)
+    {
+        if (NOT _MarqueePreviewSelection.Contains(Node.Id))
+        {
+            continue;
+        }
+        const auto Rect = Get_ScreenRect(Node);
+        FSlateDrawElement::MakeBox(OutDrawElements,
+                                   InLayerId,
+                                   FPaintGeometry(FVector2D{Rect.Left - 2.0f, Rect.Top - 2.0f},
+                                                  FVector2D{Rect.Right - Rect.Left + 4.0f,
+                                                            Rect.Bottom - Rect.Top + 4.0f},
+                                                  1.0f),
+                                   FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")),
+                                   ESlateDrawEffect::None,
+                                   PreviewColor);
+    }
+}
+
+auto SCkDebug_GraphCanvas::Draw_Background(const FGeometry& InGeometry,
+                                           FSlateWindowElementList& OutDrawElements,
+                                           int32 InLayerId) const -> int32
+{
+    const auto* BackgroundBrush = FCkDebuggerStyle::Get().GetBrush(
+        TEXT("CkDebugger.Graph.Panel.SolidBackground"));
+    FSlateDrawElement::MakeBox(OutDrawElements,
+                               InLayerId,
+                               InGeometry.ToPaintGeometry(),
+                               BackgroundBrush);
+
+    const auto ViewportSize = InGeometry.GetLocalSize();
+    auto Inflation = 1.0f;
+    while (_Transform.Zoom * Inflation * ck_debug_graph_canvas::LegacyGridSnapSize <=
+           ck_debug_graph_canvas::LegacySmallestGridSize)
+    {
+        Inflation *= 2.0f;
+    }
+
+    const auto GridCellSize = ck_debug_graph_canvas::LegacyGridSnapSize * _Transform.Zoom * Inflation;
+    const auto ViewOffset = -_Transform.Pan / FMath::Max(KINDA_SMALL_NUMBER, _Transform.Zoom);
+    auto GridX = ck_debug_graph_canvas::Fancy_Mod(
+        static_cast<float>(ViewOffset.X),
+        Inflation * ck_debug_graph_canvas::LegacyGridSnapSize * ck_debug_graph_canvas::LegacyGridRulePeriod) *
+                 -_Transform.Zoom;
+    auto GridY = ck_debug_graph_canvas::Fancy_Mod(
+        static_cast<float>(ViewOffset.Y),
+        Inflation * ck_debug_graph_canvas::LegacyGridSnapSize * ck_debug_graph_canvas::LegacyGridRulePeriod) *
+                 -_Transform.Zoom;
+    const auto ZeroSpace = World_To_Screen(FVector2D::ZeroVector, _Transform);
+    const auto RegularColor = FLinearColor(0.024f, 0.024f, 0.024f);
+    const auto RuleColor = FLinearColor(0.010f, 0.010f, 0.010f);
+    const auto CenterColor = FLinearColor(0.005f, 0.005f, 0.005f);
+    auto LinePoints = TArray<FVector2D>{FVector2D::ZeroVector, FVector2D::ZeroVector};
+
+    for (auto Index = 0; GridY < ViewportSize.Y; GridY += GridCellSize, ++Index)
+    {
+        if (GridY < 0.0f) continue;
+        const auto IsRule = Index % ck_debug_graph_canvas::LegacyGridRulePeriod == 0;
+        const auto& Color = FMath::IsNearlyEqual(static_cast<float>(ZeroSpace.Y), GridY, 1.0f)
+                                ? CenterColor
+                                : (IsRule ? RuleColor : RegularColor);
+        LinePoints[0] = FVector2D{0.0f, GridY};
+        LinePoints[1] = FVector2D{ViewportSize.X, GridY};
+        FSlateDrawElement::MakeLines(OutDrawElements, InLayerId + (IsRule ? 1 : 0),
+                                     InGeometry.ToPaintGeometry(), LinePoints,
+                                     ESlateDrawEffect::None, Color, true);
+    }
+    for (auto Index = 0; GridX < ViewportSize.X; GridX += GridCellSize, ++Index)
+    {
+        if (GridX < 0.0f) continue;
+        const auto IsRule = Index % ck_debug_graph_canvas::LegacyGridRulePeriod == 0;
+        const auto& Color = FMath::IsNearlyEqual(static_cast<float>(ZeroSpace.X), GridX, 1.0f)
+                                ? CenterColor
+                                : (IsRule ? RuleColor : RegularColor);
+        LinePoints[0] = FVector2D{GridX, 0.0f};
+        LinePoints[1] = FVector2D{GridX, ViewportSize.Y};
+        FSlateDrawElement::MakeLines(OutDrawElements, InLayerId + (IsRule ? 1 : 0),
+                                     InGeometry.ToPaintGeometry(), LinePoints,
+                                     ESlateDrawEffect::None, Color, true);
+    }
+    return InLayerId + 2;
+}
+
+auto SCkDebug_GraphCanvas::Draw_ZoomLabel(const FGeometry& InGeometry,
+                                          FSlateWindowElementList& OutDrawElements,
+                                          int32 InLayerId) const -> void
+{
+    const auto& TextStyle = FCkDebuggerStyle::Get().GetWidgetStyle<FTextBlockStyle>(
+        TEXT("CkDebugger.Graph.ZoomText"));
+    const auto Font = TextStyle.Font;
+    const auto Text = FText::FromString(ck_debug_graph_canvas::LegacyZoomTexts[_LegacyZoomLevel]);
+    FSlateDrawElement::MakeText(OutDrawElements,
+                                InLayerId,
+                                InGeometry.ToPaintGeometry(
+                                    FVector2f{40.0f, 20.0f},
+                                    FSlateLayoutTransform{FVector2f{InGeometry.GetLocalSize().X - 45.0f, 5.0f}}),
+                                Text,
+                                Font,
+                                ESlateDrawEffect::None,
+                                FLinearColor(1.0f, 1.0f, 1.0f, 1.25f - _ZoomLevelFade.GetLerp()));
+}
+
+auto SCkDebug_GraphCanvas::Get_MarqueeSelection() const -> TSet<uint64>
+{
+    const auto LocalPointer = GetCachedGeometry().AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
+    const auto Marquee = ck_debug_graph_canvas::Make_NormalizedRect(_PointerDownLocal, LocalPointer);
+    auto Affected = TSet<uint64>{};
+    for (const auto& Node : _Scene.Nodes)
+    {
+        if (ck_debug_graph_canvas::Rects_Intersect(Marquee, Get_ScreenRect(Node))) Affected.Add(Node.Id);
+    }
+
+    auto Result = _MarqueeBaseSelection;
+    switch (static_cast<ck_debug_graph_canvas::EMarqueeOperation>(_MarqueeOperation))
+    {
+        default:
+        case ck_debug_graph_canvas::EMarqueeOperation::Replace: return Affected;
+        case ck_debug_graph_canvas::EMarqueeOperation::Add: Result.Append(Affected); return Result;
+        case ck_debug_graph_canvas::EMarqueeOperation::Remove:
+            for (const auto Id : Affected) Result.Remove(Id);
+            return Result;
+        case ck_debug_graph_canvas::EMarqueeOperation::Invert:
+            for (const auto Id : Affected) { if (Result.Contains(Id)) Result.Remove(Id); else Result.Add(Id); }
+            return Result;
+    }
+}
+
+auto SCkDebug_GraphCanvas::Get_LegacyZoomLevel(float InZoom) const -> int32
+{
+    for (auto Index = 0; Index < static_cast<int32>(ck_debug_graph_canvas::LegacyZoomLevels.size()); ++Index)
+    {
+        if (InZoom <= ck_debug_graph_canvas::LegacyZoomLevels[Index]) return Index;
+    }
+    return 12;
+}
+
+auto SCkDebug_GraphCanvas::Apply_LegacyZoom(int32 InZoomDelta,
+                                             const FVector2D& InLocalZoomOrigin,
+                                             bool bInAllowFullRange) -> void
+{
+    const auto WorldAtCursor = Screen_To_World(InLocalZoomOrigin, _Transform);
+    const auto DefaultZoomLevel = 12;
+    const auto CanZoomPastDefault = (_LegacyZoomLevel == DefaultZoomLevel && InZoomDelta > 0 && bInAllowFullRange) ||
+                                    _LegacyZoomLevel > DefaultZoomLevel;
+    const auto MaxZoomLevel = CanZoomPastDefault
+                                  ? static_cast<int32>(ck_debug_graph_canvas::LegacyZoomLevels.size()) - 1
+                                  : DefaultZoomLevel;
+    _LegacyZoomLevel = FMath::Clamp(_LegacyZoomLevel + InZoomDelta, 0, MaxZoomLevel);
+    _Transform.Zoom = FMath::Clamp(ck_debug_graph_canvas::LegacyZoomLevels[_LegacyZoomLevel], _MinZoom, _MaxZoom);
+    _LegacyZoomLevel = Get_LegacyZoomLevel(_Transform.Zoom);
+    _Transform.Pan = InLocalZoomOrigin - WorldAtCursor * _Transform.Zoom;
+    _ZoomLevelFade.Play(AsShared());
+    Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }

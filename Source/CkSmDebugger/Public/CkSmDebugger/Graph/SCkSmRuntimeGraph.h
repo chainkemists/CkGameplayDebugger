@@ -15,6 +15,8 @@ struct FCkSmRuntimeGraphLayout
     int32 SpacingX = 350;
     int32 SpacingY = 120;
     int32 NameDepth = 1;
+    int32 StateBreakpointStyle = 23;
+    int32 TransitionBreakpointStyle = 5;
 
     friend auto operator==(const FCkSmRuntimeGraphLayout&, const FCkSmRuntimeGraphLayout&)
         -> bool = default;
@@ -36,8 +38,8 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     auto SetExpandTasks(bool bInExpandTasks) -> void;
     auto SetNameDepth(int32 InNameDepth) -> void;
     auto SetLayout(const FCkSmRuntimeGraphLayout& InParams) -> void;
-    // Matches the editor graph's breakpoint presentation presets: 22 = inline squares,
-    // 23 = inline diamonds. Other values retain the ordinary state-colour icon.
+    // Matches the editor graph's configurable state breakpoint presets (0-23).
+    // The independent transition preset (0-8) is carried by SetLayout.
     auto SetBreakpointStyle(int32 InBreakpointStyle) -> void;
     auto ApplyScrubHighlight(int32 InActiveStateIndex, int32 InExitedStateIndex) -> void;
     auto ClearPresentation() -> void;
@@ -68,5 +70,6 @@ class CKSMDEBUGGER_API SCkSmRuntimeGraph : public SCompoundWidget
     uint32 _StructureHash = 0;
     bool _HasStructureHash = false;
     int32 _BreakpointStyle = 23;
+    int32 _TransitionBreakpointStyle = 5;
     bool _IsInstallingScene = false;
 };

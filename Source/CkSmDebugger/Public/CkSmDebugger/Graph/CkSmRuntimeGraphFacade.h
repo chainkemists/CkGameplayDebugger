@@ -20,6 +20,8 @@ struct FCkSmRuntimeGraphLayoutParams
     int32 CrossingReductionPasses = 4;
     int32 NameDepth = 1;
     float BadgeSpread = 20.0f;
+    int32 StateBreakpointStyle = 23;
+    int32 TransitionBreakpointStyle = 5;
     ECkSmRuntimeHistoryStyle HistoryStyle = ECkSmRuntimeHistoryStyle::ClassicArrows;
 };
 

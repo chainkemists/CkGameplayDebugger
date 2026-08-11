@@ -8,6 +8,7 @@
 
 // ====================================================================================================================
 
+class FCkDebug_ViewportPicker;
 class FCkGoapDebugger_ViewModel;
 class SCkGoapDebugger_Sidebar;
 class SCkGoapDebugger_WorldStateRail;
@@ -131,6 +132,11 @@ private:
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
+
+    // Shared viewport picker (CkDebuggerCommon), specialized to GOAP: only
+    // roster entities (and their owner chain up to the NPC representative)
+    // are previewed and pickable.
+    TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
 
     // Agent list (replaces the old combo-box entity picker)
     TSharedPtr<SCkGoapDebugger_AgentListPanel> _AgentList;

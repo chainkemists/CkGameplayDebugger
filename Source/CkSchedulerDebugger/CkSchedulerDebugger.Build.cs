@@ -15,7 +15,6 @@ public class CkSchedulerDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "GraphEditor",
             "AppFramework",
 
             "CkCore",
@@ -32,7 +31,8 @@ public class CkSchedulerDebugger : CkModuleRules
                 "UnrealEd",
                 "WorkspaceMenuStructure",
                 "EditorStyle",
-                "ToolMenus"
+                "ToolMenus",
+                "GraphEditor"
             });
         }
     }

@@ -9,7 +9,9 @@
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 
-#include "GraphEditor.h"
+#if WITH_EDITOR
+    #include "GraphEditor.h"
+#endif
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -17,6 +19,28 @@
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSpinBox.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+FCkSchedulerDebuggerPage_TreeView::~FCkSchedulerDebuggerPage_TreeView()
+{
+	if (_ViewModel.IsValid() && _SelectionChangedHandle.IsValid())
+	{ _ViewModel->OnSelectionChanged.Remove(_SelectionChangedHandle); }
+
+	if (UObjectInitialized())
+	{
+		if (_FullGraph)
+		{
+			_FullGraph->RemoveFromRoot();
+			_FullGraph = nullptr;
+		}
+		if (_DetailGraph)
+		{
+			_DetailGraph->RemoveFromRoot();
+			_DetailGraph = nullptr;
+		}
+	}
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -377,11 +401,24 @@ auto
 	_DetailGraph->ForceRebuild();
 	_DetailGraph->RebuildFromData(SubsetProcessors);
 
+#if WITH_EDITOR
 	_DetailGraphEditor = SNew(SGraphEditor)
 		.GraphToEdit(_DetailGraph)
 		.IsEditable(false);
 
 	_DetailGraphContainer->SetContent(_DetailGraphEditor.ToSharedRef());
+#else
+	_DetailGraphContainer->SetContent(
+		SNew(SBox)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+					.Text(FText::FromString(TEXT("Dependency graph is available in the editor. Use the processor tree and inspector to inspect this selection.")))
+					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
+					.ColorAndOpacity(CkStyle::TextMute())
+			]);
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

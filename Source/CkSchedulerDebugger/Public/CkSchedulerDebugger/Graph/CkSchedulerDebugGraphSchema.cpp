@@ -1,10 +1,12 @@
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphSchema.h"
-#include "CkSchedulerDebugger/Graph/CkSchedulerDebugConnectionPolicy.h"
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 
 #include "EdGraph/EdGraphNode.h"
 
-#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#if WITH_EDITOR
+    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugConnectionPolicy.h"
+    #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -59,7 +61,8 @@ auto
 		UGraphNodeContextMenuContext* InContext) const
 	-> void
 {
-	if (InMenu == nullptr || InContext == nullptr || InContext->Node == nullptr)
+#if WITH_EDITOR
+    if (InMenu == nullptr || InContext == nullptr || InContext->Node == nullptr)
 	{ return; }
 
 	const auto* Node = Cast<UCkSchedulerDebugNode_Processor>(InContext->Node);
@@ -123,8 +126,9 @@ auto
 	ck::DebugCopyMenu::AddCopyEntryToToolMenu(InMenu,
 		TEXT("CopyAll"),
 		FText::FromString(TEXT("Copy All")),
-		FText::FromString(TEXT("Copy a multi-line summary of this node")),
-		AllStr);
+        FText::FromString(TEXT("Copy a multi-line summary of this node")),
+        AllStr);
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -140,12 +144,16 @@ auto
 		UEdGraph* InGraphObj) const
 	-> FConnectionDrawingPolicy*
 {
-	return new FCkSchedulerDebugConnectionPolicy(
+#if WITH_EDITOR
+    return new FCkSchedulerDebugConnectionPolicy(
 		InBackLayerID,
 		InFrontLayerID,
 		InZoomFactor,
-		InClippingRect,
-		InDrawElements);
+        InClippingRect,
+        InDrawElements);
+#else
+    return nullptr;
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

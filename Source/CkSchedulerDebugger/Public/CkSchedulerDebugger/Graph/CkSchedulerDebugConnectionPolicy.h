@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CkDebuggerCommon/Graph/CkDebugConnectionPolicyBase.h"
 #include "CoreMinimal.h"
 
@@ -22,3 +24,5 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

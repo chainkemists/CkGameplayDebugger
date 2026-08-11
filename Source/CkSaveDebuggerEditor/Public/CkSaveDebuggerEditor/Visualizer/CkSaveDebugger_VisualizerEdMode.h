@@ -2,10 +2,8 @@
 
 #include <CoreMinimal.h>
 
-#if WITH_EDITOR
 #include <HitProxies.h>
 #include <Tools/LegacyEdModeWidgetHelpers.h>
-#endif
 
 #include "CkSaveDebugger_VisualizerEdMode.generated.h"
 
@@ -17,13 +15,11 @@ struct FViewportClick;
 
 // --------------------------------------------------------------------------------------------------------------------
 
-#if WITH_EDITOR
-
 /** One clickable diamond of the save visualizer. Carries the raw saved id — the only entity reference this module
  *  ever holds — so a viewport click can select the matching row in the open Save Debugger window. */
 struct HCkSaveDebuggerViz_HitProxy : HHitProxy
 {
-    DECLARE_HIT_PROXY(CKSAVEDEBUGGER_API);
+    DECLARE_HIT_PROXY(CKSAVEDEBUGGEREDITOR_API);
 
     uint32 SavedId;
 
@@ -41,13 +37,11 @@ struct HCkSaveDebuggerViz_HitProxy : HHitProxy
  *  ck::save_debugger_viz, and clicks are pushed back through the same slot. Subclasses UBaseLegacyWidgetEdMode,
  *  not UEdMode, for the overridable Render/HandleClick. */
 UCLASS()
-class CKSAVEDEBUGGER_API UCk_SaveDebugger_VisualizerEdMode : public UBaseLegacyWidgetEdMode
+class CKSAVEDEBUGGEREDITOR_API UCk_SaveDebugger_VisualizerEdMode : public UBaseLegacyWidgetEdMode
 {
     GENERATED_BODY()
 
 public:
-    static const FEditorModeID EM_CkSaveDebuggerVisualizerModeId;
-
     UCk_SaveDebugger_VisualizerEdMode();
 
     auto
@@ -61,7 +55,5 @@ public:
         HHitProxy* InHitProxy,
         const FViewportClick& InClick) override;
 };
-
-#endif // WITH_EDITOR
 
 // --------------------------------------------------------------------------------------------------------------------

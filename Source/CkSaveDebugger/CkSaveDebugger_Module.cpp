@@ -4,10 +4,6 @@
 
 #include "CkSaveDebugger/Window/SCkSaveDebuggerWindow.h"
 
-#if WITH_EDITOR
-#include "CkSaveDebugger/Visualizer/CkSaveDebugger_VisualizerEdMode.h"
-#endif
-
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -49,12 +45,6 @@ static FAutoConsoleCommand CmdSaveDebugger(
 
 auto FCkSaveDebuggerModule::StartupModule() -> void
 {
-#if WITH_EDITOR
-    // The visualizer UEdMode registers by AUTO-DISCOVERY (UAssetEditorSubsystem iterates every non-abstract UEdMode
-    // CDO once all modules load) — this reference only stops the linker stripping the TU, and with it the CDO.
-    (void)UCk_SaveDebugger_VisualizerEdMode::StaticClass();
-#endif
-
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkSaveDebuggerModule::OnSpawnDebuggerTab))

@@ -1,11 +1,14 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "ConnectionDrawingPolicy.h"
 #include "CoreMinimal.h"
 
 class UCkEcsDebugGraph;
 
 // --------------------------------------------------------------------------------------------------------------------
+
 // Connection drawing policy for the ECS entity graph.
 // Colors wires based on relationship type (lifetime owner, context owner, dependent).
 // Draws straight lines with arrows between entity nodes.
@@ -71,3 +74,5 @@ private:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

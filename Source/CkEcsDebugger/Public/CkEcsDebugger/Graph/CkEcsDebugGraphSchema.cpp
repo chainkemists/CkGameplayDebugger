@@ -1,11 +1,13 @@
 #include "CkEcsDebugGraphSchema.h"
-#include "CkEcsDebugConnectionPolicy.h"
 #include "CkEcsDebugNode_Entity.h"
 
-#include "ConnectionDrawingPolicy.h"
 #include "EdGraph/EdGraphNode.h"
 
-#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#if WITH_EDITOR
+    #include "CkEcsDebugConnectionPolicy.h"
+    #include "ConnectionDrawingPolicy.h"
+    #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -38,6 +40,7 @@ auto
         UGraphNodeContextMenuContext* InContext) const
     -> void
 {
+#if WITH_EDITOR
     if (InMenu == nullptr || InContext == nullptr || InContext->Node == nullptr)
     { return; }
 
@@ -52,6 +55,7 @@ auto
         FText::FromString(TEXT("Copy Text")),
         FText::FromString(TEXT("Copy this node's display text to the clipboard")),
         NodeText);
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -91,8 +95,12 @@ auto
         UEdGraph* InGraphObj) const
     -> FConnectionDrawingPolicy*
 {
+#if WITH_EDITOR
     return new FCkEcsDebugConnectionPolicy(
         InBackLayerID, InFrontLayerID, InZoomFactor, InClippingRect, InDrawElements, InGraphObj);
+#else
+    return nullptr;
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -5,6 +5,8 @@
 
 #include "CkEcsDebugGraphSchema.generated.h"
 
+class FConnectionDrawingPolicy;
+
 // --------------------------------------------------------------------------------------------------------------------
 
 UCLASS()

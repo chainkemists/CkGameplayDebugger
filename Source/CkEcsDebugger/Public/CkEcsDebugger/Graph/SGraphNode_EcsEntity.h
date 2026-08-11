@@ -1,9 +1,12 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "SGraphNode.h"
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
+
 // Slate visual for UCkEcsDebugNode_Entity. Wraps the common SCkDebug_NodePill
 // and feeds it the node's accent color + edge-type border override, plus a
 // per-frame dim tint driven by the inspector filter.
@@ -43,3 +46,5 @@ private:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

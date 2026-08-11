@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CkDebuggerPage_Base.h"
 #include "CkEcs/Handle/CkHandle.h"
 
@@ -45,3 +47,5 @@ private:
 
     bool _bNavigatingFromGraph = false;
 };
+
+#endif // WITH_EDITOR

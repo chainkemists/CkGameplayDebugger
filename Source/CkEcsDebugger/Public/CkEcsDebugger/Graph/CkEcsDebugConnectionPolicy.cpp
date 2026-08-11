@@ -1,5 +1,7 @@
 #include "CkEcsDebugConnectionPolicy.h"
 
+#if WITH_EDITOR
+
 #include "CkEcsDebugGraph.h"
 #include "CkEcsDebugNode_Entity.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
@@ -264,3 +266,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

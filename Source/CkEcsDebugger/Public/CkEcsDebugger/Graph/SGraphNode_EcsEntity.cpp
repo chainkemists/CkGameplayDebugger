@@ -1,5 +1,7 @@
 #include "SGraphNode_EcsEntity.h"
 
+#if WITH_EDITOR
+
 #include "CkEcsDebugNode_Entity.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
@@ -215,3 +217,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

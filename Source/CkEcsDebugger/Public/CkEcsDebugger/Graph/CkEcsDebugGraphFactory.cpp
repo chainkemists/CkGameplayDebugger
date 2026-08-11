@@ -1,5 +1,7 @@
 #include "CkEcsDebugGraphFactory.h"
 
+#if WITH_EDITOR
+
 #include "CkEcsDebugGraph.h"
 #include "CkEcsDebugNode_Entity.h"
 #include "SGraphNode_EcsEntity.h"
@@ -36,3 +38,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

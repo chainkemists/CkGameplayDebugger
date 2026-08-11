@@ -4,13 +4,10 @@
 
 #include "CkVoxelNav/Debug/CkVoxelNav_DebugSnapshot.h"
 
-#if WITH_EDITOR
-#include "SEditorViewport.h"
-#else
-#include "Widgets/SCompoundWidget.h"
-#endif
+#include "Widgets/SViewport.h"
 
 class FPreviewScene;
+class FSceneViewport;
 class FCkCrowdDebugger_3dViewportClient;
 
 DECLARE_DELEGATE_OneParam(FOnCkCrowdDebugger_AgentPicked, int32 /*AgentIndex*/);
@@ -33,13 +30,7 @@ enum class ECkCrowdDebugger_CameraPreset : uint8
 	FrameSelection
 };
 
-#if WITH_EDITOR
-using SCkCrowdDebugger_ViewportBase = SEditorViewport;
-#else
-using SCkCrowdDebugger_ViewportBase = SCompoundWidget;
-#endif
-
-class SCkCrowdDebugger_3dViewport final : public SCkCrowdDebugger_ViewportBase
+class SCkCrowdDebugger_3dViewport final : public SViewport
 {
 public:
 	SLATE_BEGIN_ARGS(SCkCrowdDebugger_3dViewport) {}
@@ -59,16 +50,13 @@ public:
 		const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>& InRibbons) -> void;
 	auto Apply_CameraPreset(ECkCrowdDebugger_CameraPreset InPreset) -> void;
 
-#if WITH_EDITOR
-protected:
-	virtual auto MakeEditorViewportClient() -> TSharedRef<FEditorViewportClient> override;
+	virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 private:
 	TSharedPtr<FPreviewScene> _PreviewScene;
 	TSharedPtr<FCkCrowdDebugger_3dViewportClient> _ViewportClient;
-#endif
+	TSharedPtr<FSceneViewport> _SceneViewport;
 
-private:
 	FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
 };
 

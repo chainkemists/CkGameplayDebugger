@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkSmDebugNode_State.h"
 
 #include "CkCore/Macros/CkMacros.h"
@@ -100,3 +102,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif

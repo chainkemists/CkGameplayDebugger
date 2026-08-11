@@ -31,11 +31,13 @@ public:
 
 	// ----
 
+#if WITH_EDITOR
 	virtual auto AllocateDefaultPins() -> void override;
 	virtual auto GetNodeTitle(ENodeTitleType::Type InTitleType) const -> FText override;
 
 	auto GetInputPin() const -> UEdGraphPin* { return Pins.IsValidIndex(0) ? Pins[0] : nullptr; }
 	auto GetOutputPin() const -> UEdGraphPin* { return Pins.IsValidIndex(1) ? Pins[1] : nullptr; }
+#endif
 };
 
 // --------------------------------------------------------------------------------------------------------------------

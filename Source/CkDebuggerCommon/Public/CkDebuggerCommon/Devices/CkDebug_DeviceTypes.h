@@ -33,6 +33,10 @@ struct FCkDebug_DeviceKeyState
     // renders the difference (bezel brightness) because it is a diagnostic fact: a minted key that never lights is
     // a dead pipeline, an unwitnessed unminted key is merely unwatched.
     bool IsMinted = false;
+
+    // A key the game actually listens to — minted as a button or named by a layer capture. Outlined so a reader
+    // can see the game's live input surface on the device at a glance.
+    bool IsActionable = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

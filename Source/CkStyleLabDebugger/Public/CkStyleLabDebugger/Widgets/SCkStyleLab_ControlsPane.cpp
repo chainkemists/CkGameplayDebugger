@@ -1,5 +1,7 @@
 #include "CkStyleLabDebugger/Widgets/SCkStyleLab_ControlsPane.h"
 
+#include "CkStyleLabDebugger/Styles/CkStyleLab_AxisMetadata.h"
+
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 
@@ -53,27 +55,6 @@ namespace ck_style_lab_controls
         return Options;
     }
 
-    // The reflected display name / tooltip live behind WITH_EDITORONLY_DATA; an uncooked non-editor
-    // target still has to compile this module, so both have a name-derived fallback.
-    auto Get_AxisDisplayName(const FProperty* InProperty) -> FText
-    {
-#if WITH_EDITORONLY_DATA
-        return InProperty->GetDisplayNameText();
-#else
-        constexpr auto IsBool = false;
-        return FText::FromString(FName::NameToDisplayString(InProperty->GetName(), IsBool));
-#endif
-    }
-
-    auto Get_AxisToolTip(const FProperty* InProperty) -> FText
-    {
-#if WITH_EDITORONLY_DATA
-        return InProperty->GetToolTipText();
-#else
-        return FText::GetEmpty();
-#endif
-    }
-
     auto Get_AxisValue(const FProperty* InProperty, const void* InContainer) -> int64
     {
         const auto* ValuePtr = InProperty->ContainerPtrToValuePtr<void>(InContainer);
@@ -121,17 +102,41 @@ auto
         if (AxisEnum == nullptr)
         { continue; }
 
+        const auto* Metadata = ck::style_lab::Find_AxisMetadata((*PropertyIt)->GetFName());
+        checkf(Metadata != nullptr,
+               TEXT("Every FCkDebuggerStyleSelection axis requires CkStyleLab runtime metadata: %s"),
+               *(*PropertyIt)->GetName());
+        if (Metadata == nullptr)
+        { continue; }
+
         auto Axis         = MakeShared<FCkStyleLab_AxisRow>();
         Axis->Property    = *PropertyIt;
-        Axis->DisplayName = ck_style_lab_controls::Get_AxisDisplayName(*PropertyIt);
-        Axis->ToolTip     = ck_style_lab_controls::Get_AxisToolTip(*PropertyIt);
+        Axis->DisplayName = Metadata->DisplayName;
+        Axis->ToolTip     = Metadata->ToolTip;
         Axis->Options     = ck_style_lab_controls::Get_AxisOptions(AxisEnum);
 
         if (Axis->Options.IsEmpty())
         { continue; }
 
         for (const auto Option : Axis->Options)
-        { Axis->OptionLabels.Add(AxisEnum->GetDisplayNameTextByValue(Option)); }
+        {
+            const auto* OptionLabel =
+                ck::style_lab::Find_AxisOptionLabel(Axis->Property->GetFName(), Option);
+            checkf(OptionLabel != nullptr,
+                   TEXT("Every Style Lab axis option requires runtime metadata: %s=%lld"),
+                   *Axis->Property->GetName(),
+                   Option);
+            if (OptionLabel == nullptr)
+            {
+                // Do not expose a partly-labelled axis in a packaged build.
+                Axis->Options.Reset();
+                Axis->OptionLabels.Reset();
+                break;
+            }
+            Axis->OptionLabels.Add(*OptionLabel);
+        }
+        if (Axis->Options.IsEmpty())
+        { continue; }
 
         _Axes.Add(MoveTemp(Axis));
     }

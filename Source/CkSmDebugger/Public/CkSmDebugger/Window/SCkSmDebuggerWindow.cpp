@@ -1,15 +1,17 @@
-#if WITH_EDITOR
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
+#include "CkSmDebugger/Graph/SCkSmRuntimeGraph.h"
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
 #include "CkSmDebugger/Data/CkSmDebugger_DataCollector.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
-#include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 
-#include "CkSmDebugger/Graph/CkSmDebugGraph.h"
-#include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
-#include "CkSmDebugger/Graph/CkSmDebugNode_State.h"
-#include "CkSmDebugger/Graph/CkSmDebugNode_Transition.h"
+#if WITH_EDITOR
+    #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
+    #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
+    #include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
+    #include "CkSmDebugger/Graph/CkSmDebugNode_State.h"
+    #include "CkSmDebugger/Graph/CkSmDebugNode_Transition.h"
+#endif
 
 #include "Widgets/Layout/SBorder.h"
 #include "Styling/AppStyle.h"
@@ -17,6 +19,7 @@
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -31,9 +34,9 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#include "GraphEditor.h"
 #if WITH_EDITOR
-#include "Editor.h"
+    #include "GraphEditor.h"
+    #include "Editor.h"
 #endif
 
 #include "Widgets/SBoxPanel.h"
@@ -48,6 +51,7 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameDepthCycler.h"
@@ -292,11 +296,13 @@ SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
     if (_SessionInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 
+#if WITH_EDITOR
     if (_Graph && UObjectInitialized())
     {
         _Graph->RemoveFromRoot();
         _Graph = nullptr;
     }
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -313,9 +319,11 @@ auto
     _AutoSelectActiveState = true;
     _LastDetailSig = FDetailSignature{};
 
+#if WITH_EDITOR
     // Preview walker uses the PIE world — tear down its entity too.
     if (_PreviewPane.IsValid())
     { _PreviewPane->Set_WorldContext(TWeakObjectPtr<UWorld>()); }
+#endif
 
     _SmSelectorItems.Empty();
     _SmSelectorHandles.Empty();
@@ -336,12 +344,18 @@ auto
     if (_DataCollector.IsValid())
     { _DataCollector->Reset(); }
 
+    _RuntimeGraphFacade.ResetForWorldChange();
+
+#if WITH_EDITOR
     if (ck::IsValid(_Graph))
     {
         _Graph->ForceRebuild();
         _Graph->Nodes.Empty();
         _Graph->NotifyGraphChanged();
     }
+#endif
+    if (_RuntimeGraph.IsValid())
+    { _RuntimeGraph->Clear(); }
 
     // Force the detail panel to repaint its "No selection" state now. Both the
     // pre- and post-reset signatures are default-initialized, so RefreshDetailContent's
@@ -353,6 +367,29 @@ auto
 auto SCkSmDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
     HandleWorldTornDown();
+}
+
+auto SCkSmDebuggerWindow::Get_IsExecutionPaused() const -> bool
+{
+#if WITH_EDITOR
+    return UCk_Utils_EditorOnly_UE::Get_IsDebugPauseExecution();
+#else
+    const auto* World = _CachedWorld.Get();
+    return ck::IsValid(World) && UGameplayStatics::IsGamePaused(World);
+#endif
+}
+
+auto SCkSmDebuggerWindow::Set_ExecutionPaused(const bool InPaused) -> void
+{
+#if WITH_EDITOR
+    if (InPaused)
+        UCk_Utils_EditorOnly_UE::Request_DebugPauseExecution();
+    else
+        UCk_Utils_EditorOnly_UE::Request_DebugResumeExecution();
+#else
+    if (auto* World = _CachedWorld.Get(); ck::IsValid(World))
+        UGameplayStatics::SetGamePaused(World, InPaused);
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -527,7 +564,7 @@ auto
     }
     const auto& Run = UseFrozenRun ? FrozenRun : SourceRun;
 
-    const auto NameDepth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    const auto NameDepth = _RuntimeGraphFacade.GetLayoutParams().NameDepth;
 
     auto Segments = TArray<FCkDebug_ScrubSegment>{};
     Segments.Reserve(Run.Segments.Num());
@@ -615,14 +652,10 @@ auto
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
         this, &SCkSmDebuggerWindow::HandleWorldChanged);
 
+#if WITH_EDITOR
     // Create the preview pane eagerly so its picker can live in the main toolbar
     // (keeps the preview graph top aligned with the live graph top on the left).
     _PreviewPane = SNew(SCkSmDebugger_PreviewPane);
-
-    // Common emits on both BeginPIE and EndPIE. The feature keeps ownership of
-    // what must be cleared; Tick repopulates after the new world begins play.
-    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
-        this, &SCkSmDebuggerWindow::HandleWorldTornDown);
 
     // Create the debug graph — prevent GC
     _Graph = NewObject<UCkSmDebugGraph>(GetTransientPackage());
@@ -672,6 +705,21 @@ auto
         .GraphToEdit(_Graph)
         .IsEditable(true)
         .GraphEvents(GraphEvents);
+#endif
+
+    // Common emits on both BeginPIE and EndPIE. The feature keeps ownership of
+    // what must be cleared; Tick repopulates after the new world begins play.
+    _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
+        this, &SCkSmDebuggerWindow::HandleWorldTornDown);
+
+    _RuntimeGraph = SNew(SCkSmRuntimeGraph)
+        .OnSelectionChanged(FOnCkSmRuntimeGraphSelection::CreateLambda([this](const int32 InStateIndex, const int32 InTransitionIndex)
+        {
+            if (NOT _ViewModel.IsValid()) { return; }
+            _ViewModel->Set_SelectedNodeIndex(InStateIndex);
+            _SelectedTransitionIndex = InTransitionIndex;
+            _AutoSelectActiveState = InStateIndex == INDEX_NONE && InTransitionIndex == INDEX_NONE;
+        }));
 
     // Build the full layout
     //
@@ -721,7 +769,7 @@ auto
                         + SSplitter::Slot()
                             .Value(0.65f)
                             [
-                                _GraphEditor.ToSharedRef()
+                                _RuntimeGraph.ToSharedRef()
                             ]
 
                         // Bottom area (~35%): timeline + history|details
@@ -813,7 +861,14 @@ auto
                                             + SSplitter::Slot()
                                                 .Value(0.6f)
                                                 [
-                                                    SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel, _Graph)
+                                                    SAssignNew(
+                                                        _HistoryList,
+                                                        SCkSmDebugger_HistoryList,
+                                                        _ViewModel,
+                                                        TAttribute<int32>::CreateLambda([this]
+                                                        {
+                                                            return _RuntimeGraphFacade.GetLayoutParams().NameDepth;
+                                                        }))
                                                 ]
 
                                             // Detail panel (right, 40%)
@@ -870,10 +925,12 @@ auto
     _WorldModel->Ensure_AutoSelect();
     _CachedWorld = _WorldModel->Get_SelectedWorld();
 
+#if WITH_EDITOR
     // Keep the preview pane in sync with the current PIE world so its walker can
     // spawn a throwaway SM entity to discover the graph when a class is picked.
     if (_PreviewPane.IsValid())
     { _PreviewPane->Set_WorldContext(_CachedWorld); }
+#endif
 
     auto* World = _CachedWorld.Get();
     if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
@@ -945,21 +1002,44 @@ auto
 
     // Update graph from SmInfo
     auto SmInfo = _ViewModel->Get_CurrentSmInfo();
-    if (SmInfo && _Graph)
+    if (SmInfo)
     {
+#if WITH_EDITOR
         _Graph->SetSuppressNotifications(false);
         _Graph->UpdateFromSmInfo(*SmInfo);
+#endif
+        if (_RuntimeGraph.IsValid())
+        {
+            _RuntimeGraphFacade.UpdateFromSmInfo(*SmInfo);
+            _RuntimeGraph->SetLayout(FCkSmRuntimeGraphLayout{
+                _RuntimeGraphFacade.GetLayoutParams().ExpandTasks,
+                _RuntimeGraphFacade.GetLayoutParams().UndirectedBFS,
+                _RuntimeGraphFacade.GetLayoutParams().SpacingX,
+                _RuntimeGraphFacade.GetLayoutParams().SpacingY,
+                _RuntimeGraphFacade.GetLayoutParams().NameDepth});
+            _RuntimeGraph->SetSmInfo(SmInfo);
+        }
 
         // ----- Highlight pass: scrub mode or live flash -----
         if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
         {
             auto HighlightTarget = _ViewModel->Get_ScrubHighlightTarget();
             auto HighlightSource = _ViewModel->Get_ScrubHighlightSource();
+            _RuntimeGraphFacade.SetScrubHighlight(HighlightTarget, HighlightSource);
+            if (_RuntimeGraph.IsValid())
+                _RuntimeGraph->ApplyScrubHighlight(HighlightTarget, HighlightSource);
+#if WITH_EDITOR
             _Graph->ApplyScrubHighlight(HighlightTarget, HighlightSource);
+#endif
         }
         else
         {
+            _RuntimeGraphFacade.ClearScrubHighlight();
+            if (_RuntimeGraph.IsValid())
+                _RuntimeGraph->ClearPresentation();
+#if WITH_EDITOR
             _Graph->ClearScrubHighlight();
+#endif
 
             // Compute one "previous state" per hierarchy level (outer SM +
             // each sub-SM) by walking history backwards and keeping the first
@@ -985,56 +1065,31 @@ auto
                 PreviousStateNames.Add(Entry.FromStateName);
             }
 
-            _Graph->TickLiveFlash(InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
+            _RuntimeGraphFacade.TickLivePresentation(
+                InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
+            if (_RuntimeGraph.IsValid())
+                _RuntimeGraph->TickLivePresentation(
+                    InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
+#if WITH_EDITOR
+            _Graph->TickLiveFlash(
+                InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
+#endif
         }
 
         // ----- Breakpoint detection: pause PIE on state entry/exit -----
         auto CurrentStateIdx = SmInfo->CurrentStateIndex;
         if (CurrentStateIdx != _LastCurrentStateIdx && _LastCurrentStateIdx >= 0)
         {
-            // Check EXIT breakpoint on the state we just left
-            if (auto* OldNode = _Graph->FindStateNode(_LastCurrentStateIdx))
-            {
-                if (OldNode->Get_HasExitBreakpoint())
-                {
-#if WITH_EDITOR
-                    if (GEditor && GEditor->PlayWorld)
-                    { GEditor->PlayWorld->bDebugPauseExecution = true; }
-#endif
-                }
-            }
-
-            // Check ENTRY breakpoint on the state we just entered
-            if (auto* NewNode = _Graph->FindStateNode(CurrentStateIdx))
-            {
-                if (NewNode->Get_HasEntryBreakpoint())
-                {
-#if WITH_EDITOR
-                    if (GEditor && GEditor->PlayWorld)
-                    { GEditor->PlayWorld->bDebugPauseExecution = true; }
-#endif
-                }
-            }
-
-            // Check TRANSITION breakpoints — any transition from old→new state
-            for (auto Node : _Graph->Nodes)
-            {
-                if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Node))
-                {
-                    if (NOT TransNode->Get_HasBreakpoint()) { continue; }
-                    auto* Src = TransNode->GetSourceNode();
-                    auto* Dst = TransNode->GetTargetNode();
-                    if (Src && Dst
-                        && Src->Get_StateIndex() == _LastCurrentStateIdx
-                        && Dst->Get_StateIndex() == CurrentStateIdx)
-                    {
-#if WITH_EDITOR
-                        if (GEditor && GEditor->PlayWorld)
-                        { GEditor->PlayWorld->bDebugPauseExecution = true; }
-#endif
-                    }
-                }
-            }
+            bool ShouldPause = SmInfo->States.IsValidIndex(_LastCurrentStateIdx) &&
+                               SmInfo->States[_LastCurrentStateIdx].HasExitBreakpoint;
+            ShouldPause |= SmInfo->States.IsValidIndex(CurrentStateIdx) &&
+                           SmInfo->States[CurrentStateIdx].HasEntryBreakpoint;
+            for (const auto& Transition : SmInfo->Transitions)
+                ShouldPause |= Transition.HasBreakpoint &&
+                               Transition.SourceStateIndex == _LastCurrentStateIdx &&
+                               Transition.TargetStateIndex == CurrentStateIdx;
+            if (ShouldPause)
+                Set_ExecutionPaused(true);
         }
         _LastCurrentStateIdx = CurrentStateIdx;
     }
@@ -1062,8 +1117,10 @@ auto
     // Graph nodes bind their axis-driven visuals through attribute lambdas and repaint every frame,
     // so they need nothing here. The one structural consumer is the task-row separator inside a
     // state node, which ForceRebuild re-emits along with the layout pass.
+#if WITH_EDITOR
     if (ck::IsValid(_Graph))
     { _Graph->ForceRebuild(); }
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1087,8 +1144,12 @@ auto
     if (InKeyEvent.GetKey() == EKeys::F)
     {
         // Zoom graph to fit all nodes
+#if WITH_EDITOR
         if (_GraphEditor.IsValid())
         { _GraphEditor->ZoomToFit(false); }
+#endif
+        if (_RuntimeGraph.IsValid())
+        { _RuntimeGraph->FrameAll(); }
 
         // Re-centre the timeline window on the scrub cursor / "now"
         FocusTimelineOnCursor();
@@ -1182,17 +1243,17 @@ auto
             FText::FromString(TEXT("Show task nodes in the state machine graph.")),
             TAttribute<bool>::CreateLambda([this]() -> bool
             {
-                return _Graph && _Graph->LayoutParams.ExpandTasks;
+                return _RuntimeGraphFacade.GetLayoutParams().ExpandTasks;
             }),
             FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
             {
-                if (_Graph)
+                if (_RuntimeGraph.IsValid())
                 {
-                    _Graph->LayoutParams.ExpandTasks = InIsOn;
-                    _Graph->ForceRebuild();
+                    _RuntimeGraphFacade.EditLayoutParams().ExpandTasks = InIsOn;
+                    _RuntimeGraphFacade.RequestRelayout();
                 }
             }),
-            TAttribute<bool>::CreateLambda([this]() -> bool { return _Graph != nullptr; })},
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _RuntimeGraph.IsValid(); })},
         FCkDebug_IconToggleAction{
             TEXT("CompactLayout"),
             TEXT("Grid"),
@@ -1200,17 +1261,17 @@ auto
             FText::FromString(TEXT("Use a compact, undirected layout for the state machine graph.")),
             TAttribute<bool>::CreateLambda([this]() -> bool
             {
-                return _Graph && _Graph->LayoutParams.UndirectedBFS;
+                return _RuntimeGraphFacade.GetLayoutParams().UndirectedBFS;
             }),
             FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
             {
-                if (_Graph)
+                if (_RuntimeGraph.IsValid())
                 {
-                    _Graph->LayoutParams.UndirectedBFS = InIsOn;
-                    _Graph->ForceRebuild();
+                    _RuntimeGraphFacade.EditLayoutParams().UndirectedBFS = InIsOn;
+                    _RuntimeGraphFacade.RequestRelayout();
                 }
             }),
-            TAttribute<bool>::CreateLambda([this]() -> bool { return _Graph != nullptr; })},
+            TAttribute<bool>::CreateLambda([this]() -> bool { return _RuntimeGraph.IsValid(); })},
         FCkDebug_IconToggleAction{
             TEXT("ShowFrames"),
             TEXT("Calendar"),
@@ -1353,8 +1414,7 @@ auto
                     .ColorAndOpacity(CkStyle::TextMute())
             ]
 
-        // Name depth — the shared cycler widget; depth lives on the graph's
-        // LayoutParams and a change forces a graph relayout.
+        // Name depth — the shared cycler widget. Runtime presentation owns this value.
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(4.0f, 0.0f, 0.0f, 0.0f)
@@ -1363,17 +1423,16 @@ auto
                 SNew(SCkDebug_NameDepthCycler)
                     .Depth_Lambda([this]() -> int32
                     {
-                        return _Graph ? _Graph->LayoutParams.NameDepth : 1;
+                        return _RuntimeGraphFacade.GetLayoutParams().NameDepth;
                     })
                     .MaxDepth_Lambda([this]() -> int32
                     {
-                        return _Graph ? _Graph->Get_MaxNameDepth() : 1;
+                        return _RuntimeGraphFacade.GetMaxNameDepth();
                     })
                     .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
                     {
-                        if (NOT _Graph) { return; }
-                        _Graph->LayoutParams.NameDepth = InNewDepth;
-                        _Graph->ForceRebuild();
+                        _RuntimeGraphFacade.EditLayoutParams().NameDepth = InNewDepth;
+                        _RuntimeGraphFacade.RequestRelayout();
                     }))
             ]
 
@@ -1387,8 +1446,10 @@ auto
                     .Text(FText::FromString(TEXT("Relayout")))
                     .OnClicked_Lambda([this]()
                     {
+#if WITH_EDITOR
                         if (_Graph)
                         { _Graph->ForceRebuild(); }
+#endif
                         if (_ViewModel.IsValid())
                         { _ViewModel->RequestRelayout(); }
                         return FReply::Handled();
@@ -1443,10 +1504,10 @@ auto
                                             .Text(FText::FromString(TEXT("\x25C0")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    auto& S = _Graph->LayoutParams.HistoryStyle;
-                                                    S = static_cast<ECkSmDebugger_HistoryStyle>(
+                                                    auto& S = _RuntimeGraphFacade.EditLayoutParams().HistoryStyle;
+                                                    S = static_cast<ECkSmRuntimeHistoryStyle>(
                                                         (static_cast<int32>(S) + 2) % 3);
                                                 }
                                                 return FReply::Handled();
@@ -1459,16 +1520,13 @@ auto
                                         SNew(STextBlock)
                                             .Text_Lambda([this]()
                                             {
-                                                if (NOT _Graph)
-                                                { return FText::FromString(TEXT("Classic")); }
-
-                                                switch (_Graph->LayoutParams.HistoryStyle)
+                                                switch (_RuntimeGraphFacade.GetLayoutParams().HistoryStyle)
                                                 {
-                                                case ECkSmDebugger_HistoryStyle::ArrowCards:
+                                                case ECkSmRuntimeHistoryStyle::ArrowCards:
                                                     return FText::FromString(TEXT("Cards"));
-                                                case ECkSmDebugger_HistoryStyle::ClassicArrows:
+                                                case ECkSmRuntimeHistoryStyle::ClassicArrows:
                                                     return FText::FromString(TEXT("Classic"));
-                                                case ECkSmDebugger_HistoryStyle::CompactBlocks:
+                                                case ECkSmRuntimeHistoryStyle::CompactBlocks:
                                                     return FText::FromString(TEXT("Compact"));
                                                 default:
                                                     return FText::FromString(TEXT("Classic"));
@@ -1487,10 +1545,10 @@ auto
                                             .Text(FText::FromString(TEXT("\x25B6")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    auto& S = _Graph->LayoutParams.HistoryStyle;
-                                                    S = static_cast<ECkSmDebugger_HistoryStyle>(
+                                                    auto& S = _RuntimeGraphFacade.EditLayoutParams().HistoryStyle;
+                                                    S = static_cast<ECkSmRuntimeHistoryStyle>(
                                                         (static_cast<int32>(S) + 1) % 3);
                                                 }
                                                 return FReply::Handled();
@@ -1526,10 +1584,11 @@ auto
                                             .Text(FText::FromString(TEXT("-")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.SpacingX = FMath::Max(100, _Graph->LayoutParams.SpacingX - 50);
-                                                    _Graph->ForceRebuild();
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.SpacingX = FMath::Max(100, LayoutParams.SpacingX - 50);
+                                                    _RuntimeGraphFacade.RequestRelayout();
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1541,8 +1600,7 @@ auto
                                         SNew(STextBlock)
                                             .Text_Lambda([this]()
                                             {
-                                                if (NOT _Graph) { return FText::FromString(TEXT("350")); }
-                                                return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingX));
+                                                return FText::FromString(FString::Printf(TEXT("%d"), _RuntimeGraphFacade.GetLayoutParams().SpacingX));
                                             })
                                             .Font_Lambda([]() -> FSlateFontInfo
                                             { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
@@ -1557,10 +1615,11 @@ auto
                                             .Text(FText::FromString(TEXT("+")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.SpacingX = FMath::Min(800, _Graph->LayoutParams.SpacingX + 50);
-                                                    _Graph->ForceRebuild();
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.SpacingX = FMath::Min(800, LayoutParams.SpacingX + 50);
+                                                    _RuntimeGraphFacade.RequestRelayout();
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1595,10 +1654,11 @@ auto
                                             .Text(FText::FromString(TEXT("-")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.SpacingY = FMath::Max(40, _Graph->LayoutParams.SpacingY - 20);
-                                                    _Graph->ForceRebuild();
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.SpacingY = FMath::Max(40, LayoutParams.SpacingY - 20);
+                                                    _RuntimeGraphFacade.RequestRelayout();
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1610,8 +1670,7 @@ auto
                                         SNew(STextBlock)
                                             .Text_Lambda([this]()
                                             {
-                                                if (NOT _Graph) { return FText::FromString(TEXT("120")); }
-                                                return FText::FromString(FString::Printf(TEXT("%d"), _Graph->LayoutParams.SpacingY));
+                                                return FText::FromString(FString::Printf(TEXT("%d"), _RuntimeGraphFacade.GetLayoutParams().SpacingY));
                                             })
                                             .Font_Lambda([]() -> FSlateFontInfo
                                             { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
@@ -1626,10 +1685,11 @@ auto
                                             .Text(FText::FromString(TEXT("+")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.SpacingY = FMath::Min(400, _Graph->LayoutParams.SpacingY + 20);
-                                                    _Graph->ForceRebuild();
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.SpacingY = FMath::Min(400, LayoutParams.SpacingY + 20);
+                                                    _RuntimeGraphFacade.RequestRelayout();
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1664,9 +1724,10 @@ auto
                                             .Text(FText::FromString(TEXT("-")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.BadgeSpread = FMath::Max(0.0f, _Graph->LayoutParams.BadgeSpread - 5.0f);
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.BadgeSpread = FMath::Max(0.0f, LayoutParams.BadgeSpread - 5.0f);
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1678,8 +1739,7 @@ auto
                                         SNew(STextBlock)
                                             .Text_Lambda([this]()
                                             {
-                                                if (NOT _Graph) { return FText::FromString(TEXT("20")); }
-                                                return FText::FromString(FString::Printf(TEXT("%.0f"), _Graph->LayoutParams.BadgeSpread));
+                                                return FText::FromString(FString::Printf(TEXT("%.0f"), _RuntimeGraphFacade.GetLayoutParams().BadgeSpread));
                                             })
                                             .Font_Lambda([]() -> FSlateFontInfo
                                             { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
@@ -1694,9 +1754,10 @@ auto
                                             .Text(FText::FromString(TEXT("+")))
                                             .OnClicked_Lambda([this]()
                                             {
-                                                if (_Graph)
+                                                if (_RuntimeGraph.IsValid())
                                                 {
-                                                    _Graph->LayoutParams.BadgeSpread = FMath::Min(80.0f, _Graph->LayoutParams.BadgeSpread + 5.0f);
+                                                    auto& LayoutParams = _RuntimeGraphFacade.EditLayoutParams();
+                                                    LayoutParams.BadgeSpread = FMath::Min(80.0f, LayoutParams.BadgeSpread + 5.0f);
                                                 }
                                                 return FReply::Handled();
                                             })
@@ -1764,12 +1825,10 @@ auto
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
-                    .Text_Lambda([]()
+                    .Text_Lambda([this]()
                     {
-#if WITH_EDITOR
-                        if (GEditor && GEditor->PlayWorld && GEditor->PlayWorld->bDebugPauseExecution)
+                        if (Get_IsExecutionPaused())
                         { return FText::FromString(TEXT("\x25B6 Resume")); }
-#endif
                         // ASCII bars, not U+23F8 ⏸ — that codepoint misses the whole
                         // editor font chain and forces a synchronous LastResort.ttf
                         // load mid-paint (log-confirmed; also the prime suspect for a
@@ -1778,17 +1837,12 @@ auto
                     })
                     .OnClicked_Lambda([this]()
                     {
-#if WITH_EDITOR
-                        if (GEditor && GEditor->PlayWorld)
-                        {
-                            GEditor->PlayWorld->bDebugPauseExecution =
-                                !GEditor->PlayWorld->bDebugPauseExecution;
-                        }
-#endif
+                        Set_ExecutionPaused(NOT Get_IsExecutionPaused());
                         return FReply::Handled();
                     })
             ]
 
+#if WITH_EDITOR
         // Preview — toggles a right-side pane for statically previewing any SM asset
         + SHorizontalBox::Slot()
             .AutoWidth()
@@ -1885,6 +1939,7 @@ auto
                         _PreviewPane->BuildPickerRow()
                     ]
             ]
+#endif
 
         // ── Breakpoint status (right-aligned) ───────────────────────────
 
@@ -2403,7 +2458,7 @@ auto
     if (NOT SmInfo)
     { return MakeNoSelection(); }
 
-    auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    auto Depth = _RuntimeGraphFacade.GetLayoutParams().NameDepth;
     auto Root = SNew(SVerticalBox);
 
     // ───────────────────────────────────────────────────────────────────
@@ -3386,4 +3441,3 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
-#endif

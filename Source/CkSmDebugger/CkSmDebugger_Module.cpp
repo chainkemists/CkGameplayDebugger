@@ -5,12 +5,10 @@
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
+#include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 #if WITH_EDITOR
-    #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
     #include "CkSmDebugger/Graph/CkSmDebugGraphFactory.h"
     #include "EdGraphUtilities.h"
-#else
-    #include "CkSmDebugger/Window/SCkSmDebuggerPackagedWindow.h"
 #endif
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
@@ -206,11 +204,7 @@ auto FCkSmDebuggerModule::IsDebuggerOpen() const -> bool
 
 auto FCkSmDebuggerModule::OnSpawnDebuggerTab(const FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>
 {
-#if WITH_EDITOR
     _DebuggerWindow = SNew(SCkSmDebuggerWindow);
-#else
-    _DebuggerWindow = SNew(SCkSmDebuggerPackagedWindow);
-#endif
 
     _DebuggerTab = SNew(SDockTab)
         .TabRole(ETabRole::NomadTab)

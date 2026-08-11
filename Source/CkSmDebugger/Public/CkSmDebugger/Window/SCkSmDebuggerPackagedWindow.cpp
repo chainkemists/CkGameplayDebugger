@@ -2,6 +2,7 @@
 
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
+#include "CkSmDebugger/Graph/SCkSmRuntimeGraph.h"
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -67,31 +68,18 @@ auto SCkSmDebuggerPackagedWindow::Construct(const FArguments& InArgs) -> void
         + SVerticalBox::Slot().FillHeight(1.0f).Padding(6.0f, 0.0f)
         [
             SNew(SSplitter)
-            + SSplitter::Slot().Value(0.30f)
+            + SSplitter::Slot().Value(0.68f)
             [
-                SNew(SBorder).Padding(4.0f)
-                [
-                    SAssignNew(_StateList, SListView<FIndexedItemPtr>)
-                        .ListItemsSource(&_StateItems)
-                        .HeaderRow(SNew(SHeaderRow) + SHeaderRow::Column(TEXT("State")).DefaultLabel(FText::FromString(TEXT("States"))))
-                        .OnGenerateRow(this, &SCkSmDebuggerPackagedWindow::GenerateStateRow)
-                        .OnSelectionChanged(this, &SCkSmDebuggerPackagedWindow::OnStateSelectionChanged)
-                ]
-            ]
-            + SSplitter::Slot().Value(0.38f)
-            [
-                SNew(SBorder).Padding(4.0f)
-                [
-                    SAssignNew(_TransitionList, SListView<FIndexedItemPtr>)
-                        .ListItemsSource(&_TransitionItems)
-                        .HeaderRow(SNew(SHeaderRow) + SHeaderRow::Column(TEXT("Transition")).DefaultLabel(FText::FromString(TEXT("Transitions and Conditions"))))
-                        .OnGenerateRow(this, &SCkSmDebuggerPackagedWindow::GenerateTransitionRow)
-                ]
+                SAssignNew(_RuntimeGraph, SCkSmRuntimeGraph)
+                    .OnSelectionChanged(FOnCkSmRuntimeGraphSelection::CreateLambda([this](const int32 InStateIndex, const int32 /*InTransitionIndex*/)
+                    {
+                        if (_ViewModel.IsValid()) { _ViewModel->Set_SelectedNodeIndex(InStateIndex); }
+                    }))
             ]
             + SSplitter::Slot().Value(0.32f)
             [
                 SNew(SBorder).Padding(4.0f)
-                [ SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel, nullptr) ]
+                [ SAssignNew(_HistoryList, SCkSmDebugger_HistoryList, _ViewModel) ]
             ]
         ]
     ];
@@ -150,11 +138,22 @@ auto SCkSmDebuggerPackagedWindow::Tick(const FGeometry& InAllottedGeometry, doub
     }
 
     RefreshDetailLists();
+    if (_RuntimeGraph.IsValid()) { _RuntimeGraph->SetSmInfo(_ViewModel->Get_CurrentSmInfo()); }
 }
 
 auto SCkSmDebuggerPackagedWindow::TargetEntity(const FCk_Handle& InEntity) -> void
 {
     if (ck::IsValid(InEntity)) { _PendingTarget = InEntity.Get_Entity(); }
+}
+
+auto SCkSmDebuggerPackagedWindow::OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply
+{
+    if (InKeyEvent.GetKey() == EKeys::F && _RuntimeGraph.IsValid())
+    {
+        _RuntimeGraph->FrameAll();
+        return FReply::Handled();
+    }
+    return SCkDebugger_WindowBase::OnKeyDown(InGeometry, InKeyEvent);
 }
 
 auto SCkSmDebuggerPackagedWindow::HandleWorldChanged(UWorld* InWorld) -> void
@@ -177,6 +176,7 @@ auto SCkSmDebuggerPackagedWindow::HandleSessionInvalidated() -> void
     if (_SmSelector.IsValid()) { _SmSelector->RefreshOptions(); }
     if (_StateList.IsValid()) { _StateList->RequestListRefresh(); }
     if (_TransitionList.IsValid()) { _TransitionList->RequestListRefresh(); }
+    if (_RuntimeGraph.IsValid()) { _RuntimeGraph->Clear(); }
 }
 
 auto SCkSmDebuggerPackagedWindow::RefreshSmSelector() -> void

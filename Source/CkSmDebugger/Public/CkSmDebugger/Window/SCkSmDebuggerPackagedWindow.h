@@ -8,6 +8,7 @@
 class FCkSmDebugger_ViewModel;
 class FCkDebuggerModel_WorldSelector;
 class SCkSmDebugger_HistoryList;
+class SCkSmRuntimeGraph;
 class STextBlock;
 class STableViewBase;
 class ITableRow;
@@ -30,6 +31,8 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto TargetEntity(const FCk_Handle& InEntity) -> void;
+    auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
+    auto SupportsKeyboardFocus() const -> bool override { return true; }
 
     auto Get_WindowId() const -> FName override { return WindowId; }
     auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK SM Debugger")); }
@@ -68,6 +71,7 @@ private:
     TSharedPtr<SListView<FIndexedItemPtr>> _StateList;
     TSharedPtr<SListView<FIndexedItemPtr>> _TransitionList;
     TSharedPtr<SCkSmDebugger_HistoryList> _HistoryList;
+    TSharedPtr<SCkSmRuntimeGraph> _RuntimeGraph;
     FCk_Handle_StateMachine _LastDetailHandle;
     int32 _LastStateCount = INDEX_NONE;
     int32 _LastTransitionCount = INDEX_NONE;

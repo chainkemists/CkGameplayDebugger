@@ -2,8 +2,8 @@
 
 ## Handle lifetime contract across PIE
 
-CkSmDebugger UI state (Slate window, ViewModel, DataCollector, UEdGraph) lives
-in the editor process and survives PIE session boundaries. ECS entities and
+CkSmDebugger UI state (Slate window, ViewModel, DataCollector, runtime graph model, and the
+editor-only legacy UEdGraph adapter) can outlive PIE session boundaries. ECS entities and
 their backing `FCk_Registry` do not — each PIE session brings up a new world
 with a new registry, and the prior registry is destroyed on PIE Stop.
 
@@ -37,6 +37,8 @@ Currently covered by the EndPIE path:
   (cleared by `Reset_ForWorldChange()`).
 - `FCkSmDebugger_DataCollector::_StateMachines`
   (cleared by `Reset()`).
+- `FCkSmRuntimeGraphFacade` and `SCkSmRuntimeGraph` handle-bearing scene data
+  (cleared by `ResetForWorldChange()` / `Clear()`).
 
 ### Symptom if broken
 

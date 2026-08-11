@@ -17,6 +17,10 @@
 #include "CkInput/CkInputSource_Utils.h"
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -51,6 +55,20 @@ const FName SCkIntentDebuggerWindow::WindowId = FName(TEXT("IntentDebugger"));
 
 auto
     SCkIntentDebuggerWindow::
+    Is_IntentDebuggerEntity(
+        const FCk_Handle& InCandidate)
+    -> bool
+{
+    if (ck::Is_NOT_Valid(InCandidate))
+    { return false; }
+
+    return UCk_Utils_InputLayer_UE::Has(InCandidate) || UCk_Utils_InputSource_UE::Has(InCandidate);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkIntentDebuggerWindow::
     Construct(
         const FArguments& InArgs)
     -> void
@@ -58,6 +76,36 @@ auto
     Register_WithGate();
 
     _ViewModel = MakeShared<FCkIntentDebugger_ViewModel>();
+
+    // Shared viewport picker, specialized to input sources/layers: only those
+    // entities (plus their owner chain up to the pawn/NPC representative) are
+    // previewed and pickable. The pick routes through this module's registered
+    // entity-target route, which reduces the target to plain values and
+    // re-fronts the tab.
+    _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakViewModel = TWeakPtr<FCkIntentDebugger_ViewModel>(_ViewModel)]() -> UWorld*
+            {
+                const auto Pinned = WeakViewModel.Pin();
+                if (NOT Pinned.IsValid())
+                { return nullptr; }
+
+                const auto WorldModel = Pinned->Get_WorldModel();
+                return WorldModel.IsValid() ? WorldModel->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.TargetFilter =
+            [](const FCk_Handle& InCandidate) { return Is_IntentDebuggerEntity(InCandidate); };
+        PickerParams.OnEntityPicked =
+            [](const FCk_Handle& InPicked)
+            {
+                ck::DebugSelectionSync::Broadcast(InPicked, TEXT("IntentDebugger"));
+                FCkDebug_EntityTargetRegistry::Get().TryOpenAndTarget(
+                    FName{TEXT("CkIntentDebugger")}, InPicked);
+            };
+        _ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
 
     _ViewModelChangedHandle = _ViewModel->OnChanged.AddSP(
         this, &SCkIntentDebuggerWindow::HandleViewModelChanged);
@@ -109,6 +157,17 @@ auto
             [
                 SNew(SCkDebug_WorldSelector, _ViewModel->Get_WorldModel())
                     .ShowHeaderLabel(false)
+            ]
+
+            // Viewport picker (shared) — click an input source/layer entity.
+            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                .Padding(ck_intent_debugger_window::PadS, 0.0f)
+            [
+                SNew(SCkDebug_ViewportPickerControls)
+                    .Picker(_ViewportPicker)
+                    .PickTooltip(FText::FromString(TEXT(
+                        "Enter pick mode: click an entity carrying an input source or input layer.\n"
+                        "Only those entities (and their owning pawn) are shown and pickable.")))
             ]
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -283,6 +342,11 @@ auto
     -> void
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Viewport-picker ticks stay ungated so input handling keeps working even
+    // when the panel refresh is paused.
+    if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+    { _ViewportPicker->Tick(InDeltaTime); }
 
     if (NOT _ViewModel.IsValid())
     { return; }

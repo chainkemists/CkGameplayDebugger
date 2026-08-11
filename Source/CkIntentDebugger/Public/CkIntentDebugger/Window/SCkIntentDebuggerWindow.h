@@ -8,6 +8,7 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class FCkDebug_ViewportPicker;
 class FCkIntentDebugger_ViewModel;
 class SCkIntentDebugger_DevicesPanel;
 class SCkIntentDebugger_KeyStatePanel;
@@ -56,6 +57,10 @@ public:
      */
     static auto OpenForEntity(const FCk_Handle& InEntity) -> void;
 
+    // The ONE definition of "an entity this debugger lists" — shared by the
+    // module's FCkDebug_EntityTargetRoute and the window's viewport picker.
+    static auto Is_IntentDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
+
     auto Set_PendingTarget(int32 InLocalPlayerIndex, int32 InLayerPriority) -> void;
 
 private:
@@ -69,6 +74,9 @@ private:
 
 private:
     TSharedPtr<FCkIntentDebugger_ViewModel> _ViewModel;
+
+    // Shared viewport picker (CkDebuggerCommon), specialized to input sources/layers.
+    TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
 
     TSharedPtr<SCkIntentDebugger_LayerStackPanel> _LayerStackPanel;
     TSharedPtr<SCkIntentDebugger_TimelineDock>    _TimelineDock;

@@ -9,8 +9,6 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
-#include "CkInput/CkInputLayer_Utils.h"
-#include "CkInput/CkInputSource_Utils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -27,27 +25,16 @@ const FName FCkIntentDebuggerModule::_DebuggerTabName = FName("CkIntentDebugger"
 
 namespace ck_intent_debugger_module
 {
-    // Both halves of what this debugger shows are entities: the input SOURCE owns the frame record and the button
-    // map, and each LAYER owns its captures and (maybe) a matcher. Either one is a legitimate target, and the
-    // window derives the other from it.
-    auto
-        Is_IntentDebuggerEntity(
-            const FCk_Handle& InCandidate)
-        -> bool
-    {
-        if (ck::Is_NOT_Valid(InCandidate))
-        { return false; }
-
-        return UCk_Utils_InputLayer_UE::Has(InCandidate) || UCk_Utils_InputSource_UE::Has(InCandidate);
-    }
-
+    // The roster predicate lives on the window (SCkIntentDebuggerWindow::Is_IntentDebuggerEntity)
+    // so the viewport picker and this route resolve the same real target.
     auto
         Resolve_IntentTarget(
             const FCk_Handle& InSelected)
         -> FCk_Handle
     {
         return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
-            [](const FCk_Handle& InCandidate) { return Is_IntentDebuggerEntity(InCandidate); });
+            [](const FCk_Handle& InCandidate)
+            { return SCkIntentDebuggerWindow::Is_IntentDebuggerEntity(InCandidate); });
     }
 }
 

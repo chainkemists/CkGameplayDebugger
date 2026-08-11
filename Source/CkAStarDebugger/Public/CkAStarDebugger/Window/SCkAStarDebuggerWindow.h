@@ -9,6 +9,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkAStarDebugger_ViewModel;
+class FCkDebug_ViewportPicker;
 class SCkAStarDebugger_GridView;
 class SCkAStarDebugger_StatsPanel;
 class SCkAStarDebugger_SearchHistory;
@@ -31,6 +32,10 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto TargetEntity(const FCk_Handle& InEntity) -> void;
 
+    // The ONE definition of "an entity this debugger lists" — shared by the
+    // module's FCkDebug_EntityTargetRoute and the window's viewport picker.
+    static auto Is_AStarDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
+
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK A* Debugger")); }
 
@@ -50,6 +55,9 @@ private:
     TSharedPtr<SCkAStarDebugger_SearchHistory> _SearchHistory;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
+
+    // Shared viewport picker (CkDebuggerCommon), specialized to A* search entities.
+    TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
 
     TArray<TSharedPtr<FString>> _EntitySelectorItems;
     TArray<FCk_Handle> _EntitySelectorHandles;

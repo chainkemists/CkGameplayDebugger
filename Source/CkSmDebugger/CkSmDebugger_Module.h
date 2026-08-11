@@ -4,7 +4,6 @@
 #include "Modules/ModuleManager.h"
 
 class SCkSmDebuggerWindow;
-class SCkSmDebuggerPackagedWindow;
 class SDockTab;
 #if WITH_EDITOR
 struct FGraphPanelNodeFactory;
@@ -29,11 +28,9 @@ private:
         TSharedPtr<SDockTab> InNewForegroundTab,
         TSharedPtr<SDockTab>) -> void;
 
-#if WITH_EDITOR
     TSharedPtr<SCkSmDebuggerWindow> _DebuggerWindow;
+#if WITH_EDITOR
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
-#else
-    TSharedPtr<SCkSmDebuggerPackagedWindow> _DebuggerWindow;
 #endif
     TSharedPtr<SDockTab> _DebuggerTab;
 

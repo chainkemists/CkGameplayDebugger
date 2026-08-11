@@ -5,16 +5,20 @@
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkSmDebugger/Graph/CkSmRuntimeGraphFacade.h"
 
 class FCkSmDebugger_ViewModel;
 class FCkSmDebugger_DataCollector;
-class UCkSmDebugGraph;
 class SCkSmDebugger_HistoryList;
 class SCkDebug_ScrubTimeline;
-class SCkSmDebugger_PreviewPane;
-class SGraphEditor;
+class SCkSmRuntimeGraph;
 class SSplitter;
 class SBox;
+#if WITH_EDITOR
+class UCkSmDebugGraph;
+class SCkSmDebugger_PreviewPane;
+class SGraphEditor;
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -54,6 +58,8 @@ private:
     auto BuildDetailContent() -> TSharedRef<SWidget>;
     auto RefreshDetailContent() -> void;
     auto RefreshSmSelector() -> void;
+    auto Get_IsExecutionPaused() const -> bool;
+    auto Set_ExecutionPaused(bool InPaused) -> void;
 
     // Push the current run's segments + marks into the shared scrub timeline.
     auto RefreshTimelineContent() -> void;
@@ -78,8 +84,12 @@ private:
     TSharedPtr<FCkSmDebugger_DataCollector> _DataCollector;
 
     // Graph
+    TSharedPtr<SCkSmRuntimeGraph> _RuntimeGraph;
+    FCkSmRuntimeGraphFacade _RuntimeGraphFacade;
+#if WITH_EDITOR
     UCkSmDebugGraph* _Graph = nullptr;
     TSharedPtr<SGraphEditor> _GraphEditor;
+#endif
 
     // Sub-widgets
     TSharedPtr<SCkSmDebugger_HistoryList> _HistoryList;
@@ -99,11 +109,13 @@ private:
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
     bool _IsTestMode = false;
+    TSharedPtr<SSplitter> _RootSplitter;
+#if WITH_EDITOR
     bool _IsPreviewOpen = false;
 
     // Right-side preview pane (50/50 split) — toggled via the PREVIEW toolbar button
     TSharedPtr<SCkSmDebugger_PreviewPane> _PreviewPane;
-    TSharedPtr<SSplitter> _RootSplitter;
+#endif
 
     // Common debugger-session boundary — unsubscribed in destructor.
     FDelegateHandle _SessionInvalidatedHandle;

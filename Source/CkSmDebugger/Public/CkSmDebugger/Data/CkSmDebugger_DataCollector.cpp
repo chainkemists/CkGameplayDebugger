@@ -4,6 +4,7 @@
 #include "CkCore/Object/CkObject_Utils.h"
 
 #include "HAL/PlatformTime.h"
+#include "Kismet/GameplayStatics.h"
 
 #include "CkEcs/ContextOwner/CkContextOwner_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -40,7 +41,11 @@ auto
 
     // Track PIE debug pause state for logical time computation
     {
+#if WITH_EDITOR
         const auto IsPausedNow = UCk_Utils_EditorOnly_UE::Get_IsDebugPauseExecution();
+#else
+        const auto IsPausedNow = ck::IsValid(InWorld) && UGameplayStatics::IsGamePaused(InWorld);
+#endif
 
         if (IsPausedNow && NOT _WasPausedLastTick)
         {

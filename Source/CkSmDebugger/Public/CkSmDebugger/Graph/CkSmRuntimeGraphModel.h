@@ -24,6 +24,7 @@ struct FCkSmRuntimeGraphNode
     FVector2D Size = FVector2D{140.0f, 44.0f};
     FLinearColor Accent = FLinearColor::White;
     bool bCurrent = false;
+    bool bParentActive = true;
     bool bBreakpoint = false;
     bool bScrubActive = false;
     bool bScrubExited = false;
@@ -82,6 +83,7 @@ class CKSMDEBUGGER_API FCkSmRuntimeGraphModel
                  int32 InSpacingX = 350,
                  int32 InSpacingY = 120,
                  bool bInUndirected = false) -> void;
+    auto UpdateRuntimeState(const FCkSmDebugger_SmInfo& InInfo) -> void;
     auto Clear() -> void
     {
         _Scene = {};
@@ -111,6 +113,12 @@ class CKSMDEBUGGER_API FCkSmRuntimeGraphModel
     static auto EstimateStateSize(const FCkSmDebugger_StateInfo& InState,
                                   bool bInExpandTasks,
                                   int32 InNameDepth) -> FVector2D;
+    static auto ComputeStructureHash(const FCkSmDebugger_SmInfo& InInfo,
+                                     bool bInExpandTasks,
+                                     int32 InNameDepth,
+                                     int32 InSpacingX,
+                                     int32 InSpacingY,
+                                     bool bInUndirected) -> uint32;
 
   private:
     struct FCachedSubSmData

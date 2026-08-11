@@ -36,6 +36,76 @@ auto FCkSmRuntimeGraphModel_IdTest::RunTest(const FString&) -> bool
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSmRuntimeGraphModel_StructureHashTest,
+                                 "Ck.SmDebugger.RuntimeGraph.StructureHash",
+                                 EAutomationTestFlags::EditorContext |
+                                     EAutomationTestFlags::EngineFilter)
+auto FCkSmRuntimeGraphModel_StructureHashTest::RunTest(const FString&) -> bool
+{
+    auto Info = FCkSmDebugger_SmInfo{};
+    Info.States.SetNum(2);
+    Info.States[0].StateName = TEXT("A");
+    Info.States[1].StateName = TEXT("B");
+    Info.States[0].Tasks.Add({});
+    Info.States[0].Tasks[0].ClassName = TEXT("Task");
+    Info.Transitions.SetNum(1);
+    Info.Transitions[0].SourceStateIndex = 0;
+    Info.Transitions[0].TargetStateIndex = 1;
+    Info.Transitions[0].Conditions.Add({});
+    Info.Transitions[0].Conditions[0].ClassName = TEXT("Condition");
+
+    const auto Initial = FCkSmRuntimeGraphModel::ComputeStructureHash(
+        Info, true, 1, 350, 120, false);
+    Info.States[0].IsCurrentState = true;
+    Info.States[0].DwellTimeSeconds = 7.5;
+    Info.States[0].HasBeenVisited = true;
+    Info.States[0].HasEntryBreakpoint = true;
+    Info.States[0].Tasks[0].LastResult = ECk_SmTaskResult::Succeeded;
+    Info.Transitions[0].Conditions[0].Result = ECk_SmConditionResult::Pass;
+    Info.Transitions[0].SatisfiedCount = 1;
+    Info.Transitions[0].TotalCount = 1;
+    Info.Transitions[0].HasBreakpoint = true;
+    TestEqual(TEXT("Live values retain the existing card structure"),
+              FCkSmRuntimeGraphModel::ComputeStructureHash(
+                  Info, true, 1, 350, 120, false),
+              Initial);
+
+    Info.States[0].Tasks[0].Mode = ECk_SmTaskMode::Tick;
+    TestNotEqual(TEXT("Task mode invalidates the geometry-bearing structure"),
+                 FCkSmRuntimeGraphModel::ComputeStructureHash(
+                     Info, true, 1, 350, 120, false),
+                 Initial);
+    Info.States[0].Tasks[0].Mode = ECk_SmTaskMode::EnterExitOnly;
+
+    Info.Transitions[0].Conditions[0].Mode = ECk_SmConditionMode::EventDriven;
+    TestNotEqual(TEXT("Condition mode invalidates the geometry-bearing structure"),
+                 FCkSmRuntimeGraphModel::ComputeStructureHash(
+                     Info, true, 1, 350, 120, false),
+                 Initial);
+    Info.Transitions[0].Conditions[0].Mode = ECk_SmConditionMode::Polled;
+
+    Info.States[0].ScriptClass = UCk_SmState_EntityScript::StaticClass();
+    TestNotEqual(TEXT("Effective state script invalidates the override structure"),
+                 FCkSmRuntimeGraphModel::ComputeStructureHash(
+                     Info, true, 1, 350, 120, false),
+                 Initial);
+    Info.States[0].ScriptClass = nullptr;
+
+    Info.States[0].RequestedScriptClass = UCk_SmState_EntityScript::StaticClass();
+    TestNotEqual(TEXT("Requested state script invalidates the override structure"),
+                 FCkSmRuntimeGraphModel::ComputeStructureHash(
+                     Info, true, 1, 350, 120, false),
+                 Initial);
+    Info.States[0].RequestedScriptClass = nullptr;
+
+    Info.States[0].StateName = TEXT("Renamed");
+    TestNotEqual(TEXT("Topology-facing state names invalidate the structure"),
+                 FCkSmRuntimeGraphModel::ComputeStructureHash(
+                     Info, true, 1, 350, 120, false),
+                 Initial);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkSmRuntimeGraphModel_EdgeKindsTest,
                                  "Ck.SmDebugger.RuntimeGraph.EdgeKinds",
                                  EAutomationTestFlags::EditorContext |
@@ -69,6 +139,15 @@ auto FCkSmRuntimeGraphModel_EdgeKindsTest::RunTest(const FString&) -> bool
     TestEqual(TEXT("Self transition receives a three-segment loop route"),
               Edges[3].RoutePoints.Num(),
               3);
+    const auto* Badge = Model.GetScene().Nodes.FindByPredicate(
+        [](const FCkSmRuntimeGraphNode& Node)
+        {
+            return Node.Kind == ECkSmRuntimeGraphNodeKind::Transition;
+        });
+    TestNotNull(TEXT("Transition emits an editor-sized badge"), Badge);
+    TestEqual<double>(TEXT("Transition badge keeps the 16px editor footprint"),
+                      Badge ? Badge->Size.X : 0.0,
+                      16.0);
     return true;
 }
 

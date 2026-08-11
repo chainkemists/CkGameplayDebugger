@@ -9,12 +9,20 @@
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
+
+struct FCkSmRuntimeGraphCardPresentation
+{
+    FCkSmRuntimeGraphNode Node;
+    bool bSelected = false;
+};
 
 namespace ck_sm_runtime_graph
 {
@@ -38,40 +46,28 @@ namespace ck_sm_runtime_graph
 
     auto GetCardStructureHash(const FCkSmRuntimeGraphNode& InNode) -> uint32
     {
-        auto Hash = HashCombine(GetTypeHash(InNode.Kind), GetTypeHash(InNode.Label));
+        auto Hash = GetTypeHash(InNode.Kind);
         Hash = HashCombine(Hash, GetTypeHash(InNode.bExpandTasks));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bHasOverride));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bFullyEventDriven));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bCurrent));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bBreakpoint));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bScrubActive));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bScrubExited));
-        Hash = HashCombine(Hash, GetTypeHash(InNode.bPrevious));
-        if (InNode.State)
+        if (InNode.State && InNode.bExpandTasks)
         {
-            if (InNode.bExpandTasks)
+            for (const auto& Task : InNode.State->Tasks)
             {
-                for (const auto& Task : InNode.State->Tasks)
-                {
-                    Hash = HashCombine(Hash, GetTypeHash(Task.ClassName));
-                    Hash = HashCombine(Hash, GetTypeHash(Task.LastResult));
-                }
+                Hash = HashCombine(Hash, GetTypeHash(Task.ClassName));
             }
-            Hash = HashCombine(Hash, GetTypeHash(InNode.State->DwellTimeSeconds));
-            Hash = HashCombine(Hash, GetTypeHash(InNode.State->HasBeenVisited));
-            Hash = HashCombine(Hash, GetTypeHash(InNode.State->HasEntryBreakpoint));
-            Hash = HashCombine(Hash, GetTypeHash(InNode.State->HasExitBreakpoint));
-            Hash = HashCombine(Hash, GetTypeHash(InNode.State->IsBreakpointHit));
         }
         if (InNode.Transition)
         {
             for (const auto& Condition : InNode.Transition->Conditions)
             {
                 Hash = HashCombine(Hash, GetTypeHash(Condition.ClassName));
-                Hash = HashCombine(Hash, GetTypeHash(Condition.Result));
             }
         }
         return Hash;
+    }
+
+    auto IsInlineBreakpointStyle(const int32 InBreakpointStyle) -> bool
+    {
+        return InBreakpointStyle == 22 || InBreakpointStyle == 23;
     }
 } // namespace ck_sm_runtime_graph
 
@@ -87,12 +83,31 @@ void SCkSmRuntimeGraph::Construct(const FArguments& InArgs)
 
 auto SCkSmRuntimeGraph::SetSmInfo(const FCkSmDebugger_SmInfo* InInfo) -> void
 {
-    if (_SmInfo == InInfo && InInfo == nullptr)
+    if (InInfo == nullptr)
     {
+        if (_SmInfo != nullptr)
+        {
+            Clear();
+        }
         return;
     }
+
     _SmInfo = InInfo;
-    RebuildScene();
+    const auto NewStructureHash = FCkSmRuntimeGraphModel::ComputeStructureHash(
+        *InInfo,
+        _Layout.ExpandTasks,
+        _Layout.NameDepth,
+        _Layout.SpacingX,
+        _Layout.SpacingY,
+        _Layout.UndirectedBFS);
+    if (NOT _HasStructureHash || _StructureHash != NewStructureHash)
+    {
+        RebuildScene();
+        return;
+    }
+
+    _Model.UpdateRuntimeState(*InInfo);
+    InstallScene();
 }
 auto SCkSmRuntimeGraph::SetExpandTasks(const bool bInExpandTasks) -> void
 {
@@ -120,6 +135,16 @@ auto SCkSmRuntimeGraph::SetLayout(const FCkSmRuntimeGraphLayout& InParams) -> vo
         return;
     }
     _Layout = InParams;
+    RebuildScene();
+}
+
+auto SCkSmRuntimeGraph::SetBreakpointStyle(const int32 InBreakpointStyle) -> void
+{
+    if (_BreakpointStyle == InBreakpointStyle)
+    {
+        return;
+    }
+    _BreakpointStyle = InBreakpointStyle;
     RebuildScene();
 }
 auto SCkSmRuntimeGraph::ApplyScrubHighlight(const int32 InActiveStateIndex,
@@ -157,7 +182,10 @@ auto SCkSmRuntimeGraph::Clear() -> void
     _Model.Clear();
     _CardCache.Reset();
     _CardStructureHashes.Reset();
+    _CardPresentations.Reset();
     _StatePills.Reset();
+    _StructureHash = 0;
+    _HasStructureHash = false;
     if (_Canvas)
     {
         const auto InstallingGuard = TGuardValue<bool>(_IsInstallingScene, true);
@@ -182,6 +210,13 @@ auto SCkSmRuntimeGraph::RebuildScene() -> void
                    _Layout.SpacingX,
                    _Layout.SpacingY,
                    _Layout.UndirectedBFS);
+    _StructureHash = FCkSmRuntimeGraphModel::ComputeStructureHash(*_SmInfo,
+                                                                  _Layout.ExpandTasks,
+                                                                  _Layout.NameDepth,
+                                                                  _Layout.SpacingX,
+                                                                  _Layout.SpacingY,
+                                                                  _Layout.UndirectedBFS);
+    _HasStructureHash = true;
     InstallScene();
 }
 
@@ -197,17 +232,23 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
     for (const auto& Node : _Model.GetScene().Nodes)
     {
         PresentIds.Add(Node.Id);
-        auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
-        if (Node.Kind == ECkSmRuntimeGraphNodeKind::Transition)
+        auto Presentation = _CardPresentations.FindRef(Node.Id);
+        if (NOT Presentation)
         {
-            StructureHash = HashCombine(StructureHash, GetTypeHash(SelectedIds.Contains(Node.Id)));
+            Presentation = MakeShared<FCkSmRuntimeGraphCardPresentation>();
+            _CardPresentations.Add(Node.Id, Presentation);
         }
+        Presentation->Node = Node;
+        Presentation->bSelected = SelectedIds.Contains(Node.Id);
+
+        auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
+        StructureHash = HashCombine(StructureHash, GetTypeHash(_BreakpointStyle));
         const auto* CachedHash = _CardStructureHashes.Find(Node.Id);
         auto Card = _CardCache.FindRef(Node.Id);
         if (NOT Card || CachedHash == nullptr || *CachedHash != StructureHash)
         {
             _StatePills.Remove(Node.Id);
-            Card = MakeCard(Node, SelectedIds.Contains(Node.Id));
+            Card = MakeCard(Presentation.ToSharedRef());
             _CardCache.Add(Node.Id, Card);
             _CardStructureHashes.Add(Node.Id, StructureHash);
         }
@@ -251,6 +292,7 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         if (NOT PresentIds.Contains(It.Key()))
         {
             _CardStructureHashes.Remove(It.Key());
+            _CardPresentations.Remove(It.Key());
             _StatePills.Remove(It.Key());
             It.RemoveCurrent();
         }
@@ -259,23 +301,46 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
     _Canvas->Set_Scene(MoveTemp(CanvasScene));
 }
 
-auto SCkSmRuntimeGraph::MakeCard(const FCkSmRuntimeGraphNode& InNode, const bool bInSelected)
+auto SCkSmRuntimeGraph::MakeCard(
+    const TSharedRef<FCkSmRuntimeGraphCardPresentation>& InPresentation)
     -> TSharedRef<SWidget>
 {
+    const auto& InNode = InPresentation->Node;
+    const auto WeakPresentation = TWeakPtr<FCkSmRuntimeGraphCardPresentation>{InPresentation};
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Compound)
     {
         return SNew(SBorder)
             .BorderImage(ck_sm_runtime_graph::GetCompoundBorderBrush())
-            .BorderBackgroundColor(InNode.bCurrent ? CkStyle::Warn() : InNode.Accent)
+            .BorderBackgroundColor_Lambda([WeakPresentation]() -> FSlateColor
+            {
+                const auto Presentation = WeakPresentation.Pin();
+                if (NOT Presentation)
+                {
+                    return CkStyle::TextDim();
+                }
+                return Presentation->Node.bCurrent ? CkStyle::Warn()
+                                                   : Presentation->Node.Accent;
+            })
             .Padding(
                 1.0f)[SNew(SBorder)
                           .BorderImage(ck_sm_runtime_graph::GetCompoundFillBrush())
                           .BorderBackgroundColor(CkStyle::NodeFill_Inactive())
                           .Padding(
                               8.0f)[SNew(STextBlock)
-                                        .Text(FText::FromString(InNode.Label))
-                                        .ColorAndOpacity(InNode.bCurrent ? CkStyle::Warn()
-                                                                         : CkStyle::TextDim())]];
+                                        .Text_Lambda([WeakPresentation]()
+                                        {
+                                            const auto Presentation = WeakPresentation.Pin();
+                                            return Presentation
+                                                       ? FText::FromString(Presentation->Node.Label)
+                                                       : FText::GetEmpty();
+                                        })
+                                        .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
+                                        {
+                                            const auto Presentation = WeakPresentation.Pin();
+                                            return Presentation && Presentation->Node.bCurrent
+                                                       ? CkStyle::Warn()
+                                                       : CkStyle::TextDim();
+                                        })]];
     }
 
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Entry)
@@ -287,117 +352,390 @@ auto SCkSmRuntimeGraph::MakeCard(const FCkSmRuntimeGraphNode& InNode, const bool
 
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Transition)
     {
-        auto TransitionBody = SNew(SVerticalBox);
-        TransitionBody->AddSlot().AutoHeight()[SNew(STextBlock)
-                                                   .Text(FText::FromString(InNode.Label))
-                                                   .ColorAndOpacity(CkStyle::TextStrong())];
-        if (InNode.Transition)
+        const auto BreakpointRed = CkStyle::Err();
+        const auto BreakpointHollow = CkStyle::OverlayOf(BreakpointRed, 0.25f);
+        const auto IndicatorSize = TAttribute<FOptionalSize>::CreateLambda([]()
         {
-            for (const auto& Condition : InNode.Transition->Conditions)
-            {
-                TransitionBody->AddSlot().AutoHeight().Padding(
-                    0.0f, 1.0f)[SNew(STextBlock)
-                                    .Text(FText::FromString(FString::Printf(
-                                        TEXT("%s %s"),
-                                        CkSmDebugger::GetConditionResultLabel(Condition.Result),
-                                        *SCkDebug_NameLabel::Get_ShortName(Condition.ClassName,
-                                                                           _Layout.NameDepth))))
-                                    .ColorAndOpacity(
-                                        Condition.Result == ECk_SmConditionResult::Pass
-                                            ? CkStyle::Ok()
-                                            : (Condition.Result == ECk_SmConditionResult::Fail
-                                                   ? CkStyle::Err()
-                                                   : CkStyle::TextDim()))];
-            }
-        }
-        return SNew(SBorder)
-            .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-            .BorderBackgroundColor(InNode.Accent)
-            .Padding(bInSelected ? 1.0f : 3.0f)
-            [
-                SNew(SBorder)
-                    .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-                    .BorderBackgroundColor(bInSelected ? CkStyle::Accent() : InNode.Accent)
-                    .Padding(bInSelected ? 2.0f : 0.0f)
-                    [TransitionBody]
-            ];
+            return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()};
+        });
+        // The editor transition node is a compact ColorSpill/Icon badge. Conditions belong to the
+        // existing Details surface; retaining them here changed the graph topology and obscured wires.
+        return SNew(SBox)
+            .WidthOverride(16.0f)
+            .HeightOverride(16.0f)
+            [SNew(SOverlay)
+             + SOverlay::Slot()[SNew(SImage)
+                                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.ColorSpill")))
+                                    .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
+                                    {
+                                        const auto Presentation = WeakPresentation.Pin();
+                                        return Presentation && Presentation->bSelected
+                                                   ? CkStyle::Accent()
+                                                   : CkStyle::TextStrong();
+                                    })]
+             + SOverlay::Slot()[SNew(SImage)
+                                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.Icon")))]
+             + SOverlay::Slot()
+                   .HAlign(HAlign_Left)
+                   .VAlign(VAlign_Top)
+                       [SNew(SBox)
+                            .WidthOverride(IndicatorSize)
+                            .HeightOverride(IndicatorSize)
+                                [SNew(SBorder)
+                                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                     .BorderBackgroundColor_Lambda(
+                                         [WeakPresentation,
+                                          BreakpointRed,
+                                          BreakpointHollow]() -> FSlateColor
+                                         {
+                                             const auto Presentation = WeakPresentation.Pin();
+                                             return Presentation && Presentation->Node.Transition
+                                                            && Presentation->Node.Transition->HasBreakpoint
+                                                        ? BreakpointRed
+                                                        : BreakpointHollow;
+                                         })
+                                     .RenderTransformPivot(FVector2D(0.5f, 0.5f))
+                                     .RenderTransform(
+                                         FSlateRenderTransform(FQuat2D(PI / 4.0)))]]];
     }
 
     auto Body = SNew(SVerticalBox);
-    if (InNode.bHasOverride || InNode.bFullyEventDriven)
+    const auto BreakpointRed = CkStyle::Err();
+    const auto BreakpointHollow = CkStyle::OverlayOf(BreakpointRed, 0.25f);
+    const auto IndicatorSize = TAttribute<FOptionalSize>::CreateLambda([]()
     {
-        auto Flags = FString{};
-        if (InNode.bHasOverride)
-        {
-            Flags += TEXT("OVERRIDE");
-        }
-        if (InNode.bFullyEventDriven)
-        {
-            Flags += Flags.IsEmpty() ? TEXT("EVENT-DRIVEN") : TEXT("  EVENT-DRIVEN");
-        }
-        Body->AddSlot().AutoHeight()
-            [SNew(STextBlock).Text(FText::FromString(Flags)).ColorAndOpacity(CkStyle::TextDim())];
-    }
+        return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()};
+    });
+    const auto bUseInlineBreakpoints = ck_sm_runtime_graph::IsInlineBreakpointStyle(_BreakpointStyle);
+    const auto bUseDiamondBreakpoints = _BreakpointStyle == 23;
+    const auto BreakpointTransform = bUseDiamondBreakpoints
+                                         ? FSlateRenderTransform(FQuat2D(PI / 4.0))
+                                         : FSlateRenderTransform();
+    const auto LeftIndicator = bUseInlineBreakpoints
+                                   ? StaticCastSharedRef<SWidget>(
+                                         SNew(SBorder)
+                                             .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+                                             .BorderBackgroundColor_Lambda(
+                                                 [WeakPresentation,
+                                                  BreakpointRed,
+                                                  BreakpointHollow]() -> FSlateColor
+                                                 {
+                                                     const auto Presentation = WeakPresentation.Pin();
+                                                     return Presentation && Presentation->Node.State
+                                                                    && Presentation->Node.State->HasEntryBreakpoint
+                                                                ? BreakpointRed
+                                                                : BreakpointHollow;
+                                                 })
+                                             .RenderTransformPivot(FVector2D(0.5f, 0.5f))
+                                             .RenderTransform(BreakpointTransform))
+                                   : StaticCastSharedRef<SWidget>(
+                                         SNew(SBorder)
+                                             .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+                                             .BorderBackgroundColor_Lambda([WeakPresentation]() -> FSlateColor
+                                             {
+                                                 const auto Presentation = WeakPresentation.Pin();
+                                                 return Presentation ? Presentation->Node.Accent
+                                                                     : CkStyle::TextMute();
+                                             }));
+    auto TitleRow = SNew(SHorizontalBox)
+        + SHorizontalBox::Slot()
+              .AutoWidth()
+              .VAlign(VAlign_Center)
+              .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                   [SNew(SBox)
+                        .WidthOverride(IndicatorSize)
+                        .HeightOverride(IndicatorSize)
+                            [LeftIndicator]]
+        + SHorizontalBox::Slot()
+              .AutoWidth()
+              .VAlign(VAlign_Center)
+                  [SNew(STextBlock)
+                       .Text_Lambda([WeakPresentation]()
+                       {
+                           const auto Presentation = WeakPresentation.Pin();
+                           return Presentation ? FText::FromString(Presentation->Node.Label)
+                                               : FText::GetEmpty();
+                       })
+                       .Font_Lambda([]()
+                       {
+                           return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize());
+                       })
+                       .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
+                       {
+                           const auto Presentation = WeakPresentation.Pin();
+                           auto Color = CkStyle::Text();
+                           if (Presentation && Presentation->Node.State
+                               && Presentation->Node.State->IsSubSmNode
+                               && NOT Presentation->Node.bParentActive)
+                           {
+                               Color.A *= 0.35f;
+                           }
+                           return Color;
+                       })]
+         + SHorizontalBox::Slot()
+               .AutoWidth()
+               .VAlign(VAlign_Center)
+               .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                   [SNew(SBox)
+                        .WidthOverride(IndicatorSize)
+                        .HeightOverride(IndicatorSize)
+                        .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible
+                                                          : EVisibility::Collapsed)
+                            [SNew(SBorder)
+                                .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+                                .BorderBackgroundColor_Lambda(
+                                    [WeakPresentation,
+                                     BreakpointRed,
+                                     BreakpointHollow]() -> FSlateColor
+                                    {
+                                        const auto Presentation = WeakPresentation.Pin();
+                                        return Presentation && Presentation->Node.State
+                                                       && Presentation->Node.State->HasExitBreakpoint
+                                                   ? BreakpointRed
+                                                   : BreakpointHollow;
+                                    })
+                                 .RenderTransformPivot(FVector2D(0.5f, 0.5f))
+                                  .RenderTransform(BreakpointTransform)]]
+         + SHorizontalBox::Slot()
+               .AutoWidth()
+               .VAlign(VAlign_Center)
+               .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                   [SNew(SBox)
+                        // Reserve this small slot so a live breakpoint hit never changes card geometry.
+                        .WidthOverride(18.0f)
+                            [SNew(STextBlock)
+                                 .Text(FText::FromString(TEXT("HIT")))
+                                 .Font_Lambda([]() { return ck::debug_axes::ScaledFont("Bold", 7); })
+                                 .ColorAndOpacity(CkStyle::Err())
+                                 .Visibility_Lambda([WeakPresentation]()
+                                 {
+                                     const auto Presentation = WeakPresentation.Pin();
+                                     return Presentation && Presentation->Node.State
+                                                        && Presentation->Node.State->IsBreakpointHit
+                                                ? EVisibility::SelfHitTestInvisible
+                                                : EVisibility::Collapsed;
+                                 })]];
+    Body->AddSlot().AutoHeight()[TitleRow];
+    Body->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
+        [SNew(STextBlock)
+             .Text(FText::FromString(TEXT("OVERRIDE")))
+             .Font_Lambda([]() { return ck::debug_axes::ScaledFont("Bold", 7); })
+             .ColorAndOpacity(FCkSmDebuggerStyle::Color_Sm_Override)
+             .Visibility_Lambda([WeakPresentation]()
+             {
+                 const auto Presentation = WeakPresentation.Pin();
+                 return Presentation && Presentation->Node.bHasOverride
+                            ? EVisibility::SelfHitTestInvisible
+                            : EVisibility::Collapsed;
+             })];
+    Body->AddSlot().AutoHeight().Padding(0.0f, 1.0f, 0.0f, 0.0f)
+        [SNew(STextBlock)
+             .Text(FText::FromString(TEXT("EVENT-DRIVEN")))
+             .Font_Lambda([]() { return ck::debug_axes::ScaledFont("Bold", 7); })
+             .ColorAndOpacity(CkStyle::Warn())
+             .Visibility_Lambda([WeakPresentation]()
+             {
+                 const auto Presentation = WeakPresentation.Pin();
+                 return Presentation && Presentation->Node.bFullyEventDriven
+                            ? EVisibility::SelfHitTestInvisible
+                            : EVisibility::Collapsed;
+             })];
     if (InNode.State && InNode.bExpandTasks)
     {
-        for (const auto& Task : InNode.State->Tasks)
+        for (auto TaskIndex = 0; TaskIndex < InNode.State->Tasks.Num(); ++TaskIndex)
         {
-            Body->AddSlot().AutoHeight().Padding(
-                0.0f,
-                1.0f)[SNew(STextBlock)
-                          .Text(FText::FromString(
-                              SCkDebug_NameLabel::Get_ShortName(Task.ClassName, _Layout.NameDepth)))
-                          .ColorAndOpacity(CkSmDebugger::GetTaskResultColor(Task.LastResult))];
-        }
-    }
-    if (InNode.State)
-    {
-        const auto& State = *InNode.State;
-        const auto Status = State.IsCurrentState
-                                ? FString::Printf(TEXT("Active %.2fs"), State.DwellTimeSeconds)
-                                : (State.HasBeenVisited ? FString::Printf(TEXT("Visited  %.2fs"),
-                                                                          State.DwellTimeSeconds)
-                                                        : TEXT("Not visited"));
-        Body->AddSlot().AutoHeight().Padding(0.0f, 2.0f, 0.0f, 0.0f)
-            [SNew(STextBlock)
-                 .Text(FText::FromString(Status))
-                 .ColorAndOpacity(State.IsCurrentState ? CkStyle::Warn() : CkStyle::TextDim())];
-        if (State.HasEntryBreakpoint || State.HasExitBreakpoint || State.IsBreakpointHit)
-        {
-            auto BreakpointText = FString{};
-            if (State.HasEntryBreakpoint)
-            {
-                BreakpointText += TEXT("ENTRY ");
-            }
-            if (State.HasExitBreakpoint)
-            {
-                BreakpointText += TEXT("EXIT ");
-            }
-            if (State.IsBreakpointHit)
-            {
-                BreakpointText += TEXT("HIT");
-            }
-            Body->AddSlot().AutoHeight()[SNew(STextBlock)
-                                             .Text(FText::FromString(BreakpointText.TrimEnd()))
-                                             .ColorAndOpacity(CkStyle::Err())];
+            Body->AddSlot()
+                .AutoHeight()
+                .Padding(FCkSmDebuggerStyle::Sm_NodePadding, 2.0f)
+                    [SNew(SHorizontalBox)
+                     + SHorizontalBox::Slot()
+                           .AutoWidth()
+                           .VAlign(VAlign_Center)
+                           .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                               [SNew(SBox)
+                                    .WidthOverride(FCkSmDebuggerStyle::Sm_StateIconSize)
+                                    .HeightOverride(FCkSmDebuggerStyle::Sm_StateIconSize)
+                                        [SNew(SBorder)
+                                             .BorderImage(FCoreStyle::Get().GetBrush(
+                                                 TEXT("WhiteBrush")))
+                                             .BorderBackgroundColor_Lambda(
+                                                 [WeakPresentation,
+                                                  TaskIndex]() -> FSlateColor
+                                                 {
+                                                     const auto Presentation =
+                                                         WeakPresentation.Pin();
+                                                     if (NOT Presentation
+                                                         || NOT Presentation->Node.State
+                                                         || NOT Presentation->Node.State->Tasks
+                                                                    .IsValidIndex(TaskIndex))
+                                                     {
+                                                         return CkStyle::TextMute();
+                                                     }
+                                                     auto Color = CkSmDebugger::GetTaskResultColor(
+                                                         Presentation->Node.State->Tasks[TaskIndex]
+                                                             .LastResult);
+                                                     if (NOT Presentation->Node.State->IsCurrentState)
+                                                     {
+                                                         Color.A *= 0.3f;
+                                                     }
+                                                     return Color;
+                                                 })]]
+                     + SHorizontalBox::Slot()
+                           .FillWidth(1.0f)
+                           .VAlign(VAlign_Center)
+                               [SNew(STextBlock)
+                                    .Text_Lambda([WeakPresentation,
+                                                  TaskIndex,
+                                                  NameDepth = _Layout.NameDepth]()
+                                    {
+                                        const auto Presentation = WeakPresentation.Pin();
+                                        if (NOT Presentation || NOT Presentation->Node.State
+                                            || NOT Presentation->Node.State->Tasks.IsValidIndex(
+                                                TaskIndex))
+                                        {
+                                            return FText::GetEmpty();
+                                        }
+                                        return FText::FromString(
+                                            SCkDebug_NameLabel::Get_ShortName(
+                                                Presentation->Node.State->Tasks[TaskIndex]
+                                                    .ClassName,
+                                                NameDepth));
+                                    })
+                                    .Font_Lambda([]()
+                                    {
+                                        return ck::debug_axes::ScaledFont(
+                                            "Regular", CkStyle::FontSizeMicro());
+                                    })
+                                    .ColorAndOpacity_Lambda(
+                                        [WeakPresentation]() -> FSlateColor
+                                        {
+                                            const auto Presentation = WeakPresentation.Pin();
+                                            auto Color = CkStyle::TextDim();
+                                            if (Presentation && Presentation->Node.State
+                                                && NOT Presentation->Node.State->IsCurrentState)
+                                            {
+                                                Color.A *= 0.4f;
+                                            }
+                                            return Color;
+                                        })]
+                     + SHorizontalBox::Slot()
+                           .AutoWidth()
+                           .VAlign(VAlign_Center)
+                           .Padding(4.0f, 0.0f, 0.0f, 0.0f)
+                               [SNew(STextBlock)
+                                    .Text(FText::FromString(TEXT("TICK")))
+                                    .Font_Lambda([]()
+                                    {
+                                        return ck::debug_axes::ScaledFont("Bold", 7);
+                                    })
+                                    .ColorAndOpacity_Lambda(
+                                        [WeakPresentation]() -> FSlateColor
+                                        {
+                                            const auto Presentation = WeakPresentation.Pin();
+                                            auto Color = CkStyle::Warn();
+                                            if (Presentation && Presentation->Node.State
+                                                && NOT Presentation->Node.State->IsCurrentState)
+                                            {
+                                                Color.A *= 0.45f;
+                                            }
+                                            return Color;
+                                        })
+                                    .Visibility_Lambda([WeakPresentation, TaskIndex]()
+                                    {
+                                        const auto Presentation = WeakPresentation.Pin();
+                                        return Presentation && Presentation->Node.State
+                                                       && Presentation->Node.State->Tasks
+                                                              .IsValidIndex(TaskIndex)
+                                                       && Presentation->Node.State->Tasks[TaskIndex]
+                                                                  .Mode
+                                                              == ECk_SmTaskMode::Tick
+                                                   ? EVisibility::SelfHitTestInvisible
+                                                   : EVisibility::Collapsed;
+                                    })]];
         }
     }
     auto Pill = TSharedPtr<SCkDebug_NodePill>{};
     auto Card =
         SAssignNew(Pill, SCkDebug_NodePill)
-            .Variant((InNode.bCurrent || InNode.bScrubActive) ? ECkDebug_NodePillVariant::InPlan
-                                                              : ECkDebug_NodePillVariant::Inactive)
-            .Title(FText::FromString(InNode.Label))
+            .Variant(ECkDebug_NodePillVariant::Inactive)
+            .Title(FText::GetEmpty())
             .ShowCost(false)
-            .AccentColor(InNode.Accent)
-            .BorderColorOverride(
-                InNode.bBreakpoint ? CkStyle::Err()
-                                   : (InNode.bScrubActive ? CkStyle::Ok()
-                                                          : (InNode.bScrubExited || InNode.bPrevious
-                                                                 ? CkStyle::TextDim()
-                                                                 : FLinearColor::Transparent)))
-            .Selected(bInSelected)
+            .AccentColor_Lambda([WeakPresentation]()
+            {
+                const auto Presentation = WeakPresentation.Pin();
+                if (NOT Presentation)
+                {
+                    return FLinearColor::Transparent;
+                }
+                auto Accent = Presentation->Node.Accent;
+                if (Presentation->Node.State && Presentation->Node.State->IsSubSmNode
+                    && NOT Presentation->Node.bParentActive)
+                {
+                    Accent.A *= 0.35f;
+                }
+                return Accent;
+            })
+            .AccentWidth_Lambda([]() { return FCkSmDebuggerStyle::Sm_AccentBarWidth; })
+            .BorderColorOverride_Lambda([WeakPresentation]()
+            {
+                const auto Presentation = WeakPresentation.Pin();
+                if (NOT Presentation)
+                {
+                    return CkStyle::NodeFill_Inactive();
+                }
+                return Presentation->Node.bCurrent || Presentation->Node.bScrubActive
+                           ? CkStyle::Ok()
+                           : (Presentation->Node.bPrevious
+                                      || Presentation->Node.bScrubExited
+                                  ? CkStyle::TextDim()
+                                  : CkStyle::NodeFill_Inactive());
+            })
+            .FillColorOverride_Lambda([WeakPresentation]()
+            {
+                const auto Presentation = WeakPresentation.Pin();
+                return Presentation
+                               && (Presentation->Node.bCurrent
+                                   || Presentation->Node.bScrubActive)
+                           ? CkStyle::NodeFill_InPlan()
+                           : CkStyle::NodeFill_Inactive();
+            })
+            .OpacityOverride_Lambda([WeakPresentation]()
+            {
+                const auto Presentation = WeakPresentation.Pin();
+                return Presentation
+                               && (Presentation->Node.bCurrent
+                                   || Presentation->Node.bScrubActive
+                                   || Presentation->Node.bPrevious
+                                   || Presentation->Node.bScrubExited)
+                           ? 1.0f
+                           : ck::debug_axes::Get_NodeInactiveOpacity();
+            })
+            .BorderThickness_Lambda([]()
+            {
+                return ck::debug_axes::Get_NodeBorderThickness();
+            })
+            .Selected(InPresentation->bSelected)
             .BodyContent()[Body];
+    Card->SetToolTipText(TAttribute<FText>::CreateLambda([WeakPresentation]()
+    {
+        const auto Presentation = WeakPresentation.Pin();
+        if (NOT Presentation || NOT Presentation->Node.State)
+        {
+            return FText::GetEmpty();
+        }
+        const auto& State = *Presentation->Node.State;
+        if (State.IsCurrentState)
+        {
+            return FText::FromString(
+                FString::Printf(TEXT("Active for %.2f secs"), State.DwellTimeSeconds));
+        }
+        if (Presentation->Node.bPrevious)
+        {
+            return FText::FromString(
+                FString::Printf(TEXT("Was active for %.2f secs"), State.DwellTimeSeconds));
+        }
+        return FText::GetEmpty();
+    }));
     _StatePills.Add(InNode.Id, Pill);
     return Card;
 }
@@ -407,6 +745,14 @@ auto SCkSmRuntimeGraph::HandleSelectionChanged(const TSet<uint64>& InSelection) 
     if (_IsInstallingScene)
     {
         return;
+    }
+    for (auto& Pair : _CardPresentations)
+    {
+        Pair.Value->bSelected = InSelection.Contains(Pair.Key);
+    }
+    for (auto& Pair : _StatePills)
+    {
+        Pair.Value->Set_Selected(InSelection.Contains(Pair.Key));
     }
     int32 StateIndex = INDEX_NONE;
     int32 TransitionIndex = INDEX_NONE;

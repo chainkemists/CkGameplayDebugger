@@ -40,6 +40,10 @@ public:
     Construct(
         const FArguments& InArgs) -> void;
 
+    // The editor-viewport visualizer outlives no window: the EdMode and the published row snapshot are torn down
+    // with the Slate that owns them.
+    virtual ~SCkSaveDebuggerWindow() override;
+
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Save Debugger")); }
 
@@ -62,6 +66,8 @@ private:
     auto DoOnExportJsonClicked() -> FReply;
     auto DoOnCopyReportClicked() -> FReply;
     auto DoOnCompareAgainstClicked() -> FReply;
+    auto DoOnVisualizeClicked() -> FReply;
+    auto DoOnFrameSelectedClicked() -> FReply;
     auto DoOnCloseDiffClicked() -> FReply;
     auto DoOnCopyDiffReportClicked() -> FReply;
     auto DoOnTryDecodeClicked() -> FReply;
@@ -140,6 +146,22 @@ private:
         TSharedPtr<FCk_SnapshotInspection_ValueNode> InItem,
         TArray<TSharedPtr<FCk_SnapshotInspection_ValueNode>>& OutChildren) -> void;
 
+    // ---- Editor-viewport visualizer (bodies are no-ops outside WITH_EDITOR) ----
+
+    /** Projects the current document into visualization rows and publishes them to the EdMode. Returns false when
+     *  the save carries nothing placeable — the caller decides whether that stops the visualizer or blocks a start. */
+    auto DoVisualize_Publish() -> bool;
+    auto DoVisualize_Stop() -> void;
+    auto DoVisualize_SyncSelection() -> void;
+
+    /** Rebuilds the model's SaveKey -> "ActorName (Class)" map from the open editor level: an EngineOwned row's key
+     *  is a deterministic hash of (level package + actor name), so the world can be asked what the file cannot say. */
+    auto DoRefresh_ActorAnnotations() -> void;
+
+    auto DoOnTreeKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply;
+    auto DoOnEditorSelectionChanged(UObject* InSelectionObject) -> void;
+    auto DoOnMapOpened(const FString& InFilename, bool InAsTemplate) -> void;
+
     // ---- Helpers ----
     auto DoSet_Status(const FString& InText, ECk_Tone InTone) -> void;
 
@@ -195,6 +217,9 @@ private:
     // payload list and the recipe rows show. 0 = full path. The ceiling is recomputed per document, never per paint.
     int32 _NameDepth = 1;
     int32 _MaxNameDepth = 1;
+
+    // What the last retained-visuals rebuild produced ("N previews, M ghost meshes, ..."), for the status line.
+    FString _VisualizeSummary;
 
     // True while a programmatic selection is being applied, so the view's echo does not re-enter the rebuild path.
     bool _SuppressSelectionEcho = false;

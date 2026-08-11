@@ -9,6 +9,7 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Engine/World.h"
 #include "Policies/PrettyJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -227,10 +228,10 @@ auto
         if (LayoutNode.Kind == ECkSaveDebugger_NodeKind::Entity && Entities.IsValidIndex(LayoutNode.EntityIndex))
         {
             const auto& Summary = Entities[LayoutNode.EntityIndex];
-            Item->DisplayText = Build_EntityDisplayText(Summary);
+            Item->DisplayText = Build_EntityDisplayText(Summary, _SaveKeyAnnotations);
             Item->ProvenanceText = ck::snapshot::Get_ProvenanceText(Summary.Get_Entry().Get_Provenance());
             Item->IconId = Get_ProvenanceIconId(Summary.Get_Entry().Get_Provenance());
-            Item->SearchText = Build_EntitySearchText(Summary);
+            Item->SearchText = Build_EntitySearchText(Summary, _SaveKeyAnnotations);
             Item->HasProblems = Summary.Get_HasProblems();
         }
         else
@@ -639,12 +640,30 @@ namespace ck_save_debugger_model
             const FCk_SnapshotInspection_EntitySummary& InSummary)
         -> FString
     {
+        return Build_EntityDisplayText(InSummary, {});
+    }
+
+    auto
+        Build_EntityDisplayText(
+            const FCk_SnapshotInspection_EntitySummary& InSummary,
+            const TMap<FGuid, FString>& InSaveKeyAnnotations)
+        -> FString
+    {
         const auto Entity = FCk_Entity{static_cast<FCk_Entity::IdType>(InSummary.Get_Entry().Get_SavedId())};
 
-        return ck::Format_UE(TEXT("[{}|v{}] {}"),
+        auto Text = ck::Format_UE(TEXT("[{}|v{}] {}"),
             static_cast<int32>(Entity.Get_EntityNumber()),
             static_cast<int32>(Entity.Get_VersionNumber()),
             InSummary.Get_IdentityText());
+
+        if (const auto& SaveKey = InSummary.Get_Entry().Get_SaveKey();
+            SaveKey.IsValid())
+        {
+            if (const auto* Annotation = InSaveKeyAnnotations.Find(SaveKey))
+            { Text = ck::Format_UE(TEXT("{} — {}"), Text, *Annotation); }
+        }
+
+        return Text;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -652,6 +671,15 @@ namespace ck_save_debugger_model
     auto
         Build_EntitySearchText(
             const FCk_SnapshotInspection_EntitySummary& InSummary)
+        -> FString
+    {
+        return Build_EntitySearchText(InSummary, {});
+    }
+
+    auto
+        Build_EntitySearchText(
+            const FCk_SnapshotInspection_EntitySummary& InSummary,
+            const TMap<FGuid, FString>& InSaveKeyAnnotations)
         -> FString
     {
         const auto& Entry = InSummary.Get_Entry();
@@ -666,7 +694,12 @@ namespace ck_save_debugger_model
         Parts.Add(Entry.Get_PlayerId());
 
         if (Entry.Get_SaveKey().IsValid())
-        { Parts.Add(Entry.Get_SaveKey().ToString(EGuidFormats::DigitsWithHyphens)); }
+        {
+            Parts.Add(Entry.Get_SaveKey().ToString(EGuidFormats::DigitsWithHyphens));
+
+            if (const auto* Annotation = InSaveKeyAnnotations.Find(Entry.Get_SaveKey()))
+            { Parts.Add(*Annotation); }
+        }
 
         for (const auto& Step : Entry.Get_BuildRecipe())
         {
@@ -1046,6 +1079,151 @@ namespace ck_save_debugger_model
             { ++Count; }
         }
         return Count;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        TryGet_VisualizationTransform(
+            const FCk_Snapshot_V3_EntityEntry& InEntry)
+        -> TOptional<FTransform>
+    {
+        if (const auto& Saved = InEntry.Get_SavedWorldTransform();
+            NOT Saved.Equals(FTransform::Identity))
+        { return Saved; }
+
+        if (const auto& SpawnSeed = InEntry.Get_ActorSpawnTransform();
+            NOT SpawnSeed.Equals(FTransform::Identity))
+        { return SpawnSeed; }
+
+        return {};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Build_VisualizationRows(
+            const FCk_SnapshotInspection_Document& InDocument,
+            const TMap<FGuid, FString>& InSaveKeyAnnotations)
+        -> TArray<FCkSaveDebugger_VisualizationRow>
+    {
+        const auto& Entities = InDocument.Get_Entities();
+
+        auto Rows = TArray<FCkSaveDebugger_VisualizationRow>{};
+        auto RowIndexBySavedId = TMap<uint32, int32>{};
+
+        for (auto EntityIndex = 0; EntityIndex < Entities.Num(); ++EntityIndex)
+        {
+            const auto& Summary = Entities[EntityIndex];
+            const auto& Entry = Summary.Get_Entry();
+
+            const auto Transform = TryGet_VisualizationTransform(Entry);
+            if (NOT Transform.IsSet())
+            { continue; }
+
+            auto& Row = Rows.AddDefaulted_GetRef();
+            Row.SavedId = Entry.Get_SavedId();
+            Row.EntityIndex = EntityIndex;
+            Row.WorldTransform = *Transform;
+            Row.DisplayText = Build_EntityDisplayText(Summary, InSaveKeyAnnotations);
+            Row.Provenance = Entry.Get_Provenance();
+            Row.HasProblems = Summary.Get_HasProblems();
+            Row.ActorClassPath = Entry.Get_ActorClassPath();
+            Row.ScriptClassPath = Entry.Get_ScriptClassPath();
+            Row.VisualKind = Get_VisualKind(Entry);
+
+            RowIndexBySavedId.Add(Entry.Get_SavedId(), Rows.Num() - 1);
+        }
+
+        for (auto RowIndex = 0; RowIndex < Rows.Num(); ++RowIndex)
+        {
+            auto& Row = Rows[RowIndex];
+            const auto OwnerSavedId = Entities[Row.EntityIndex].Get_Entry().Get_LifetimeOwnerSavedId();
+
+            // A save is untrusted input: a row naming itself as owner would otherwise draw a zero-length chain line.
+            if (const auto* OwnerRowIndex = RowIndexBySavedId.Find(OwnerSavedId);
+                OwnerRowIndex != nullptr && *OwnerRowIndex != RowIndex)
+            { Row.OwnerRowIndex = *OwnerRowIndex; }
+        }
+
+        return Rows;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_VisualKind(
+            const FCk_Snapshot_V3_EntityEntry& InEntry)
+        -> ECkSaveDebugger_VisualKind
+    {
+        if (NOT InEntry.Get_ActorClassPath().IsEmpty())
+        { return ECkSaveDebugger_VisualKind::MeshGhost; }
+
+        if (InEntry.Get_Provenance() == ECk_Snapshot_V3_Provenance::RuntimeSpawned
+            && NOT InEntry.Get_ScriptClassPath().IsEmpty())
+        { return ECkSaveDebugger_VisualKind::ConstructionPreview; }
+
+        return ECkSaveDebugger_VisualKind::DiamondOnly;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        TryGet_SavedIdForSaveKey(
+            const FCk_SnapshotInspection_Document& InDocument,
+            const FGuid& InSaveKey)
+        -> uint32
+    {
+        if (NOT InSaveKey.IsValid())
+        { return ck::snapshot::k_NoSavedEntity; }
+
+        for (const auto& Summary : InDocument.Get_Entities())
+        {
+            if (Summary.Get_Entry().Get_SaveKey() == InSaveKey)
+            { return Summary.Get_Entry().Get_SavedId(); }
+        }
+
+        return ck::snapshot::k_NoSavedEntity;
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_ProvenanceVisualizationColor(
+            ECk_Snapshot_V3_Provenance InProvenance)
+        -> FLinearColor
+    {
+        switch (InProvenance)
+        {
+            case ECk_Snapshot_V3_Provenance::EngineOwned:      return CkStyle::Info();
+            case ECk_Snapshot_V3_Provenance::ConstructSpawned: return CkStyle::Ok();
+            case ECk_Snapshot_V3_Provenance::RuntimeSpawned:   return CkStyle::Accent();
+            case ECk_Snapshot_V3_Provenance::DefinitionBuilt:  return CkStyle::Network();
+            default:                                           return CkStyle::TextDim();
+        }
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_LevelMatch(
+            const FCk_SnapshotInspection_Document& InDocument,
+            const FString& InCurrentWorldPackageName)
+        -> ECkSaveDebugger_LevelMatch
+    {
+        const auto SavedPackage = UWorld::RemovePIEPrefix(
+            InDocument.Get_Header().Get_WorldAssetPath().GetLongPackageName());
+
+        if (SavedPackage.IsEmpty())
+        { return ECkSaveDebugger_LevelMatch::SaveHasNoWorld; }
+
+        const auto CurrentPackage = UWorld::RemovePIEPrefix(InCurrentWorldPackageName);
+        if (CurrentPackage.IsEmpty())
+        { return ECkSaveDebugger_LevelMatch::NoCurrentWorld; }
+
+        return SavedPackage.Equals(CurrentPackage, ESearchCase::IgnoreCase)
+            ? ECkSaveDebugger_LevelMatch::Match
+            : ECkSaveDebugger_LevelMatch::Mismatch;
     }
 
     // ----------------------------------------------------------------------------------------------------------------

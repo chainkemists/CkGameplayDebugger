@@ -1,458 +1,468 @@
 #include "CkSchedulerDebuggerPage_TreeView.h"
 
-#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_ProcessorTree.h"
-#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_Inspector.h"
-#include "CkSchedulerDebugger/ViewModel/CkSchedulerDebugger_ViewModel.h"
+#include "CkCore/Format/CkFormat.h"
+#include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
+#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkSchedulerDebugger/Graph/SCkSchedulerProcessorCard.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
-
-#if WITH_EDITOR
-    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraph.h"
-    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphSchema.h"
-    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
-    #include "GraphEditor.h"
-#endif
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SSplitter.h"
-#include "Widgets/Layout/SSpacer.h"
-#include "Widgets/Text/STextBlock.h"
+#include "CkSchedulerDebugger/ViewModel/CkSchedulerDebugger_ViewModel.h"
+#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_Inspector.h"
+#include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_ProcessorTree.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSpinBox.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SSpacer.h"
+#include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Text/STextBlock.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 FCkSchedulerDebuggerPage_TreeView::~FCkSchedulerDebuggerPage_TreeView()
 {
-	if (_ViewModel.IsValid() && _SelectionChangedHandle.IsValid())
-	{ _ViewModel->OnSelectionChanged.Remove(_SelectionChangedHandle); }
-
-#if WITH_EDITOR
-	if (UObjectInitialized())
-	{
-		if (_FullGraph)
-		{
-			_FullGraph->RemoveFromRoot();
-			_FullGraph = nullptr;
-		}
-		if (_DetailGraph)
-		{
-			_DetailGraph->RemoveFromRoot();
-			_DetailGraph = nullptr;
-		}
-	}
-#endif
+    if (_DetailGraphCanvas.IsValid())
+    {
+        _DetailGraphCanvas->Clear_InteractionDelegates();
+    }
+    if (_ViewModel.IsValid() && _SelectionChangedHandle.IsValid())
+    {
+        _ViewModel->OnSelectionChanged.Remove(_SelectionChangedHandle);
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	Get_PageName() const
-	-> FText
+auto FCkSchedulerDebuggerPage_TreeView::Get_PageName() const -> FText
 {
-	return FText::FromString(TEXT("Tree View"));
+    return FText::FromString(TEXT("Tree View"));
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	Build_Content(
-		TSharedPtr<FCkSchedulerDebugger_ViewModel> InViewModel)
-	-> TSharedRef<SWidget>
+auto FCkSchedulerDebuggerPage_TreeView::Build_Content(
+    TSharedPtr<FCkSchedulerDebugger_ViewModel> InViewModel) -> TSharedRef<SWidget>
 {
-	_ViewModel = InViewModel;
-	_DetailGraphContainer = SNew(SBox);
+    _ViewModel = InViewModel;
+    _DetailGraphContainer = SNew(SBox);
 
-#if WITH_EDITOR
-	_FullGraph = NewObject<UCkSchedulerDebugGraph>();
-	_FullGraph->AddToRoot();
-	_FullGraph->Schema = UCkSchedulerDebugGraphSchema::StaticClass();
+    if (_ViewModel.IsValid())
+    {
+        _SelectionChangedHandle = _ViewModel->OnSelectionChanged.AddRaw(
+            this, &FCkSchedulerDebuggerPage_TreeView::DoOnSelectionChanged);
+    }
 
-	_DetailGraph = NewObject<UCkSchedulerDebugGraph>();
-	_DetailGraph->AddToRoot();
-	_DetailGraph->Schema = UCkSchedulerDebugGraphSchema::StaticClass();
-#endif
+    DoBuildDetailGraph();
 
-	if (_ViewModel.IsValid())
-	{
-		_SelectionChangedHandle = _ViewModel->OnSelectionChanged.AddRaw(
-			this, &FCkSchedulerDebuggerPage_TreeView::DoOnSelectionChanged);
-	}
+    return SNew(SSplitter).Orientation(Orient_Horizontal)
 
-	DoBuildDetailGraph();
+           +
+           SSplitter::Slot().Value(0.25f).MinSize(
+               240.0f)[SNew(SBorder)
+                           .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+                           .Padding(
+                               0.0f)[SAssignNew(_ProcessorTree, SCkSchedulerDebugger_ProcessorTree)
+                                         .ViewModel(InViewModel)]]
 
-	return SNew(SSplitter)
-		.Orientation(Orient_Horizontal)
+           + SSplitter::Slot().Value(0.50f).MinSize(400.0f)
+                 [SNew(SBorder)
+                      .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+                      .Padding(0.0f)
+                          [SNew(SVerticalBox)
 
-		+ SSplitter::Slot()
-			.Value(0.25f)
-			.MinSize(240.0f)
-			[
-				SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-					.Padding(0.0f)
-					[
-						SAssignNew(_ProcessorTree, SCkSchedulerDebugger_ProcessorTree)
-							.ViewModel(InViewModel)
-					]
-			]
+                           + SVerticalBox::Slot().AutoHeight().Padding(
+                                 FCkSchedulerDebuggerStyle::Padding_Small,
+                                 0.0f)[SNew(SHorizontalBox)
 
-		+ SSplitter::Slot()
-			.Value(0.50f)
-			.MinSize(400.0f)
-			[
-				SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-					.Padding(0.0f)
-					[
-						SNew(SVerticalBox)
+                                       + SHorizontalBox::Slot()
+                                             .AutoWidth()
+                                             .VAlign(VAlign_Center)
+                                             .Padding(FCkSchedulerDebuggerStyle::Padding_Small)
+                                                 [SNew(SButton)
+                                                      .Text(FText::FromString(TEXT("Relayout")))
+                                                      .OnClicked_Lambda(
+                                                          [this]() -> FReply
+                                                          {
+                                                              DoRebuildDetailGraph(false, true);
+                                                              return FReply::Handled();
+                                                          })]
 
-#if WITH_EDITOR
-						+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
-							[
-								SNew(SHorizontalBox)
+                                       + SHorizontalBox::Slot()
+                                             .AutoWidth()
+                                             .VAlign(VAlign_Center)
+                                             .Padding(FCkSchedulerDebuggerStyle::Padding_Small)
+                                                 [SNew(STextBlock)
+                                                      .Text(FText::FromString(TEXT("X:")))
+                                                      .Font_Static(&ck::scheduler_debugger_axes::
+                                                                       Get_Font_Regular_Micro)
+                                                      .ColorAndOpacity(CkStyle::TextDim())]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-								[
-									SNew(SButton)
-									.Text(FText::FromString(TEXT("Relayout")))
-									.OnClicked_Lambda([this]() -> FReply
-									{
-										if (_DetailGraph)
-										{ _DetailGraph->RequestRelayout(); }
-										return FReply::Handled();
-									})
-								]
+                                       + SHorizontalBox::Slot().AutoWidth().VAlign(
+                                             VAlign_Center)[SNew(SBox).WidthOverride(
+                                             60.0f)[SNew(SSpinBox<int32>)
+                                                        .MinValue(100)
+                                                        .MaxValue(600)
+                                                        .Value_Lambda(
+                                                            [this]()
+                                                            {
+                                                                return _LayoutParams.SpacingX;
+                                                            })
+                                                        .OnValueChanged_Lambda(
+                                                            [this](int32 InValue)
+                                                            {
+                                                                _LayoutParams.SpacingX = InValue;
+                                                            })]]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(TEXT("X:")))
-									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
-									.ColorAndOpacity(CkStyle::TextDim())
-								]
+                                       + SHorizontalBox::Slot()
+                                             .AutoWidth()
+                                             .VAlign(VAlign_Center)
+                                             .Padding(FCkSchedulerDebuggerStyle::Padding_Small)
+                                                 [SNew(STextBlock)
+                                                      .Text(FText::FromString(TEXT("Y:")))
+                                                      .Font_Static(&ck::scheduler_debugger_axes::
+                                                                       Get_Font_Regular_Micro)
+                                                      .ColorAndOpacity(CkStyle::TextDim())]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								[
-									SNew(SBox)
-									.WidthOverride(60.0f)
-									[
-										SNew(SSpinBox<int32>)
-										.MinValue(100)
-										.MaxValue(600)
-										.Value_Lambda([this]() { return _FullGraph ? _FullGraph->LayoutParams.SpacingX : 300; })
-										.OnValueChanged_Lambda([this](int32 InValue)
-										{
-											if (_FullGraph) { _FullGraph->LayoutParams.SpacingX = InValue; }
-											if (_DetailGraph) { _DetailGraph->LayoutParams.SpacingX = InValue; }
-										})
-									]
-								]
+                                       + SHorizontalBox::Slot().AutoWidth().VAlign(
+                                             VAlign_Center)[SNew(SBox).WidthOverride(
+                                             60.0f)[SNew(SSpinBox<int32>)
+                                                        .MinValue(50)
+                                                        .MaxValue(250)
+                                                        .Value_Lambda(
+                                                            [this]()
+                                                            {
+                                                                return _LayoutParams.SpacingY;
+                                                            })
+                                                        .OnValueChanged_Lambda(
+                                                            [this](int32 InValue)
+                                                            {
+                                                                _LayoutParams.SpacingY = InValue;
+                                                            })]]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(TEXT("Y:")))
-									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
-									.ColorAndOpacity(CkStyle::TextDim())
-								]
+                                       + SHorizontalBox::Slot()
+                                             .AutoWidth()
+                                             .VAlign(VAlign_Center)
+                                             .Padding(FCkSchedulerDebuggerStyle::Padding_Small)
+                                                 [SNew(STextBlock)
+                                                      .Text(FText::FromString(TEXT("Passes:")))
+                                                      .Font_Static(&ck::scheduler_debugger_axes::
+                                                                       Get_Font_Regular_Micro)
+                                                      .ColorAndOpacity(CkStyle::TextDim())]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								[
-									SNew(SBox)
-									.WidthOverride(60.0f)
-									[
-										SNew(SSpinBox<int32>)
-										.MinValue(50)
-										.MaxValue(250)
-										.Value_Lambda([this]() { return _FullGraph ? _FullGraph->LayoutParams.SpacingY : 100; })
-										.OnValueChanged_Lambda([this](int32 InValue)
-										{
-											if (_FullGraph) { _FullGraph->LayoutParams.SpacingY = InValue; }
-											if (_DetailGraph) { _DetailGraph->LayoutParams.SpacingY = InValue; }
-										})
-									]
-								]
+                                       + SHorizontalBox::Slot().AutoWidth().VAlign(
+                                             VAlign_Center)[SNew(SBox).WidthOverride(
+                                             50.0f)[SNew(SSpinBox<int32>)
+                                                        .MinValue(0)
+                                                        .MaxValue(8)
+                                                        .Value_Lambda(
+                                                            [this]()
+                                                            {
+                                                                return _LayoutParams
+                                                                    .CrossingReductionPasses;
+                                                            })
+                                                        .OnValueChanged_Lambda(
+                                                            [this](int32 InValue)
+                                                            {
+                                                                _LayoutParams
+                                                                    .CrossingReductionPasses =
+                                                                    InValue;
+                                                            })]]]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								.Padding(FCkSchedulerDebuggerStyle::Padding_Small)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(TEXT("Passes:")))
-									.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Micro)
-									.ColorAndOpacity(CkStyle::TextDim())
-								]
+                           + SVerticalBox::Slot().FillHeight(
+                                 1.0f)[_DetailGraphContainer.ToSharedRef()]]]
 
-								+ SHorizontalBox::Slot()
-								.AutoWidth()
-								.VAlign(VAlign_Center)
-								[
-									SNew(SBox)
-									.WidthOverride(50.0f)
-									[
-										SNew(SSpinBox<int32>)
-										.MinValue(0)
-										.MaxValue(8)
-										.Value_Lambda([this]() { return _FullGraph ? _FullGraph->LayoutParams.CrossingReductionPasses : 4; })
-										.OnValueChanged_Lambda([this](int32 InValue)
-										{
-											if (_FullGraph) { _FullGraph->LayoutParams.CrossingReductionPasses = InValue; }
-											if (_DetailGraph) { _DetailGraph->LayoutParams.CrossingReductionPasses = InValue; }
-										})
-									]
-								]
-							]
-#endif
-
-						+ SVerticalBox::Slot()
-							.FillHeight(1.0f)
-							[
-								_DetailGraphContainer.ToSharedRef()
-							]
-					]
-			]
-
-		+ SSplitter::Slot()
-			.Value(0.25f)
-			.MinSize(260.0f)
-			[
-				SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-					.Padding(0.0f)
-					[
-						SAssignNew(_Inspector, SCkSchedulerDebugger_Inspector)
-							.ViewModel(InViewModel)
-					]
-			];
+           + SSplitter::Slot().Value(0.25f).MinSize(
+                 260.0f)[SNew(SBorder)
+                             .BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+                             .Padding(0.0f)[SAssignNew(_Inspector, SCkSchedulerDebugger_Inspector)
+                                                .ViewModel(InViewModel)]];
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	Tick(
-		float InDeltaTime)
-	-> void
+auto FCkSchedulerDebuggerPage_TreeView::Tick(float InDeltaTime) -> void
 {
-#if WITH_EDITOR
-	if (NOT _ViewModel.IsValid() || NOT _FullGraph)
-	{ return; }
+    (void)InDeltaTime;
+    if (NOT _ViewModel.IsValid() || NOT _DetailGraphCanvas.IsValid())
+    {
+        return;
+    }
 
-	const auto& Collector = _ViewModel->Get_DataCollector();
-	const auto& Processors = Collector.Get_Processors();
+    const auto& Collector = _ViewModel->Get_DataCollector();
+    const auto& Processors = Collector.Get_Processors();
+    if (_RuntimeGraphModel.Update_LiveState(Processors))
+    {
+        _DetailGraphCanvas->Invalidate(EInvalidateWidgetReason::Paint);
+    }
 
-	if (Processors.Num() > 0)
-	{
-		_FullGraph->RebuildFromData(Processors);
-	}
-#else
-	(void)InDeltaTime;
-#endif
+    if (_PendingFrameAll && _DetailGraphCanvas->GetCachedGeometry().GetLocalSize().X > 0.0f)
+    {
+        _DetailGraphCanvas->Frame_All();
+        _PendingFrameAll = false;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	OnSelectionChanged(
-		int32 InProcessorIndex)
-	-> void
+auto FCkSchedulerDebuggerPage_TreeView::OnSelectionChanged(int32 InProcessorIndex) -> void
 {
-	DoOnSelectionChanged(InProcessorIndex);
+    DoOnSelectionChanged(InProcessorIndex);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	OnStyleRevisionChanged()
-	-> void
+auto FCkSchedulerDebuggerPage_TreeView::OnStyleRevisionChanged() -> void
 {
-	if (_ProcessorTree.IsValid())
-	{ _ProcessorTree->Rebuild_ForStyleChange(); }
+    if (_ProcessorTree.IsValid())
+    {
+        _ProcessorTree->Rebuild_ForStyleChange();
+    }
 
-	if (_Inspector.IsValid())
-	{ _Inspector->Rebuild_ForStyleChange(); }
+    if (_Inspector.IsValid())
+    {
+        _Inspector->Rebuild_ForStyleChange();
+    }
 
-	// The detail graph's node widgets bake their fill/border at construction (the SGraphNode live-bind
-	// invariant only covers the flag-driven visuals), so the graph is re-emitted rather than repainted.
-	// DoRebuildDetailGraph already forces past the graph's own topology hash.
-	DoRebuildDetailGraph();
+    // Static style choices are baked into the cards; live timing and dirty state remain
+    // attribute-bound.
+    DoRebuildDetailGraph(true, false);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	DoOnSelectionChanged(
-		int32 InProcessorIndex)
-	-> void
+auto FCkSchedulerDebuggerPage_TreeView::DoOnSelectionChanged(int32 InProcessorIndex) -> void
 {
-	DoRebuildDetailGraph();
+    (void)InProcessorIndex;
+    DoRebuildDetailGraph(false, true);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	DoRebuildDetailGraph()
-	-> void
+auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, bool InFrameAll)
+    -> void
 {
-#if WITH_EDITOR
-	if (NOT _ViewModel.IsValid() || NOT _DetailGraph || NOT _DetailGraphContainer.IsValid())
-	{ return; }
+    if (NOT _ViewModel.IsValid() || NOT _DetailGraphContainer.IsValid())
+    {
+        return;
+    }
 
-	const auto SelectedIdx = _ViewModel->Get_SelectedProcessorIndex();
+    const auto SelectedArrayIndex = _ViewModel->Get_SelectedProcessorIndex();
+    const auto& AllProcessors = _ViewModel->Get_DataCollector().Get_Processors();
 
-	if (SelectedIdx == INDEX_NONE)
-	{
-		_DetailGraphContainer->SetContent(
-			SNew(SBox)
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
-						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
-						.ColorAndOpacity(CkStyle::TextMute())
-				]
-		);
-		return;
-	}
+    if (NOT AllProcessors.IsValidIndex(SelectedArrayIndex))
+    {
+        _RuntimeGraphModel.Reset();
+        _ProcessorCards.Reset();
+        _DetailGraphCanvas.Reset();
+        _PendingFrameAll = false;
+        DoShowEmptyState();
+        return;
+    }
 
-	const auto& Collector = _ViewModel->Get_DataCollector();
-	const auto& AllProcessors = Collector.Get_Processors();
+    const auto SelectedProcessorId = AllProcessors[SelectedArrayIndex].NodeIndex;
+    const auto TopologyChanged =
+        _RuntimeGraphModel.Rebuild(AllProcessors, SelectedProcessorId, _LayoutParams);
+    if (NOT TopologyChanged && NOT InForceCards && _DetailGraphCanvas.IsValid())
+    {
+        if (InFrameAll)
+        {
+            _PendingFrameAll = true;
+        }
+        return;
+    }
 
-	if (NOT AllProcessors.IsValidIndex(SelectedIdx))
-	{ return; }
+    _ProcessorCards.Reset();
+    auto Scene = FCkDebug_GraphCanvasScene{};
+    for (const auto& RuntimeNode : _RuntimeGraphModel.Get_Nodes())
+    {
+        if (NOT RuntimeNode.IsValid())
+        {
+            continue;
+        }
 
-	const auto& Selected = AllProcessors[SelectedIdx];
+        auto Card = SNew(SCkSchedulerProcessorCard).Node(RuntimeNode);
+        Card->SlatePrepass();
+        const auto DesiredSize = Card->GetDesiredSize();
+        _ProcessorCards.Add(RuntimeNode->StableId, Card);
 
-	auto NeighborIndices = TSet<int32>{};
-	NeighborIndices.Add(SelectedIdx);
+        auto CanvasNode = FCkDebug_GraphCanvasNode{};
+        CanvasNode.Id = static_cast<uint64>(static_cast<uint32>(RuntimeNode->StableId)) + 1;
+        CanvasNode.Position = FVector2D{static_cast<double>(RuntimeNode->Position.X),
+                                        static_cast<double>(RuntimeNode->Position.Y)};
+        CanvasNode.Size = DesiredSize;
+        CanvasNode.Widget = Card;
+        Scene.Nodes.Add(MoveTemp(CanvasNode));
+    }
 
-	for (const auto InEdge : Selected.InEdges)
-	{
-		for (auto Idx = 0; Idx < AllProcessors.Num(); ++Idx)
-		{
-			if (AllProcessors[Idx].NodeIndex == InEdge)
-			{
-				NeighborIndices.Add(Idx);
-				break;
-			}
-		}
-	}
+    for (const auto& RuntimeEdge : _RuntimeGraphModel.Get_Edges())
+    {
+        auto CanvasEdge = FCkDebug_GraphCanvasEdge{};
+        CanvasEdge.SourceId = static_cast<uint64>(static_cast<uint32>(RuntimeEdge.SourceId)) + 1;
+        CanvasEdge.TargetId = static_cast<uint64>(static_cast<uint32>(RuntimeEdge.TargetId)) + 1;
+        CanvasEdge.Color = CkStyle::Graph_Edge();
+        CanvasEdge.Thickness = 1.5f;
+        Scene.Edges.Add(MoveTemp(CanvasEdge));
+    }
 
-	for (const auto OutEdge : Selected.OutEdges)
-	{
-		for (auto Idx = 0; Idx < AllProcessors.Num(); ++Idx)
-		{
-			if (AllProcessors[Idx].NodeIndex == OutEdge)
-			{
-				NeighborIndices.Add(Idx);
-				break;
-			}
-		}
-	}
+    if (NOT _DetailGraphCanvas.IsValid())
+    {
+        _DetailGraphCanvas =
+            SNew(SCkDebug_GraphCanvas)
+                .OnSelectionChanged_Raw(
+                    this, &FCkSchedulerDebuggerPage_TreeView::DoOnCanvasSelectionChanged)
+                .OnNodeContextMenu_Raw(
+                    this, &FCkSchedulerDebuggerPage_TreeView::DoOnCanvasNodeContextMenu);
+        _DetailGraphContainer->SetContent(_DetailGraphCanvas.ToSharedRef());
+    }
 
-	auto SubsetProcessors = TArray<FCkSchedulerDebugger_ProcessorInfo>{};
-	auto IndexRemapping = TMap<int32, int32>{};
-
-	for (const auto Idx : NeighborIndices)
-	{
-		if (AllProcessors.IsValidIndex(Idx))
-		{
-			IndexRemapping.Add(AllProcessors[Idx].NodeIndex, SubsetProcessors.Num());
-			SubsetProcessors.Add(AllProcessors[Idx]);
-		}
-	}
-
-	for (auto& Proc : SubsetProcessors)
-	{
-		auto RemappedIn = TArray<int32>{};
-		for (const auto Edge : Proc.InEdges)
-		{
-			if (const auto* Found = IndexRemapping.Find(Edge))
-			{
-				RemappedIn.Add(SubsetProcessors[*Found].NodeIndex);
-			}
-		}
-		Proc.InEdges = RemappedIn;
-
-		auto RemappedOut = TArray<int32>{};
-		for (const auto Edge : Proc.OutEdges)
-		{
-			if (const auto* Found = IndexRemapping.Find(Edge))
-			{
-				RemappedOut.Add(SubsetProcessors[*Found].NodeIndex);
-			}
-		}
-		Proc.OutEdges = RemappedOut;
-	}
-
-	_DetailGraph->ForceRebuild();
-	_DetailGraph->RebuildFromData(SubsetProcessors);
-
-	_DetailGraphEditor = SNew(SGraphEditor)
-		.GraphToEdit(_DetailGraph)
-		.IsEditable(false);
-
-	_DetailGraphContainer->SetContent(_DetailGraphEditor.ToSharedRef());
-#else
-	if (NOT _DetailGraphContainer.IsValid())
-	{ return; }
-
-	_DetailGraphContainer->SetContent(
-		SNew(SBox)
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-					.Text(FText::FromString(TEXT("Dependency graph is available in the editor. Use the processor tree and inspector to inspect this selection.")))
-					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
-					.ColorAndOpacity(CkStyle::TextMute())
-			]);
-#endif
+    _DetailGraphCanvas->Set_Scene(MoveTemp(Scene));
+    if (InFrameAll)
+    {
+        _PendingFrameAll = true;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	FCkSchedulerDebuggerPage_TreeView::
-	DoBuildDetailGraph()
-	-> TSharedRef<SWidget>
+auto FCkSchedulerDebuggerPage_TreeView::DoBuildDetailGraph() -> TSharedRef<SWidget>
 {
-	_DetailGraphContainer->SetContent(
-		SNew(SBox)
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-					.Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
-					.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
-					.ColorAndOpacity(CkStyle::TextMute())
-			]
-	);
-	return _DetailGraphContainer.ToSharedRef();
+    DoShowEmptyState();
+    return _DetailGraphContainer.ToSharedRef();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkSchedulerDebuggerPage_TreeView::DoOnCanvasSelectionChanged(
+    const TSet<uint64>& InSelectedNodeIds) -> void
+{
+    for (const auto& Card : _ProcessorCards)
+    {
+        const auto CanvasId = static_cast<uint64>(static_cast<uint32>(Card.Key)) + 1;
+        if (Card.Value.IsValid())
+        {
+            Card.Value->Set_Selected(InSelectedNodeIds.Contains(CanvasId));
+        }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkSchedulerDebuggerPage_TreeView::DoOnCanvasNodeContextMenu(uint64 InNodeId,
+                                                                  const FPointerEvent& InMouseEvent)
+    -> void
+{
+    if (InNodeId == 0)
+    {
+        return;
+    }
+
+    const auto ProcessorId = static_cast<int32>(static_cast<uint32>(InNodeId - 1));
+    const auto Node = _RuntimeGraphModel.Get_NodeById(ProcessorId);
+    if (NOT Node.IsValid())
+    {
+        return;
+    }
+
+    const auto& Info = Node->Processor;
+    const auto DisplayName = Info.DisplayName;
+    const auto ClassName = Info.ProcessorName.ToString();
+    const auto GroupName = Info.GroupName.ToString();
+    const auto ExecOrder = ck::Format_UE(TEXT("#{}"), Info.ExecutionOrder);
+    const auto Timing = ck::Format_UE(TEXT("{:.3f} ms"), Info.MainPassTimeMs);
+
+    auto Flags = TArray<FString>{};
+    if (Info.IsGhost)
+    {
+        Flags.Add(TEXT("Ghost"));
+    }
+    if (Info.IsParallel)
+    {
+        Flags.Add(TEXT("Parallel"));
+    }
+    if (Info.HasDirtyMarker)
+    {
+        Flags.Add(TEXT("Dirty"));
+    }
+    if (Info.IsGroupStart)
+    {
+        Flags.Add(TEXT("GroupStart"));
+    }
+    if (Info.IsGroupEnd)
+    {
+        Flags.Add(TEXT("GroupEnd"));
+    }
+    const auto FlagsText = FString::Join(Flags, TEXT(" "));
+    auto Summary =
+        ck::Format_UE(TEXT("{}\nClass: {}\nGroup: {}\nExec Order: {}\nTiming: {}\nPump Count: {}"),
+                      DisplayName,
+                      ClassName,
+                      GroupName,
+                      ExecOrder,
+                      Timing,
+                      Info.PumpCountThisFrame);
+    if (NOT FlagsText.IsEmpty())
+    {
+        Summary += ck::Format_UE(TEXT("\nFlags: {}"), FlagsText);
+    }
+
+    auto Menu = FMenuBuilder(true, nullptr);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy Display Name")),
+                                    FText::FromString(TEXT("Copy the visible node title")),
+                                    DisplayName);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy Processor Class Name")),
+                                    FText::FromString(
+                                        TEXT("Copy the underlying processor class name")),
+                                    ClassName);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy Group Name")),
+                                    FText::FromString(
+                                        TEXT("Copy the group this processor belongs to")),
+                                    GroupName);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy Exec Order")),
+                                    FText::FromString(
+                                        TEXT("Copy this processor's execution order")),
+                                    ExecOrder);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy Timing")),
+                                    FText::FromString(
+                                        TEXT("Copy last frame's timing for this processor")),
+                                    Timing);
+    ck::DebugCopyMenu::AddCopyEntry(Menu,
+                                    FText::FromString(TEXT("Copy All")),
+                                    FText::FromString(
+                                        TEXT("Copy a multi-line summary of this node")),
+                                    Summary);
+    FSlateApplication::Get().PushMenu(_DetailGraphCanvas.ToSharedRef(),
+                                      FWidgetPath{},
+                                      Menu.MakeWidget(),
+                                      InMouseEvent.GetScreenSpacePosition(),
+                                      FPopupTransitionEffect{FPopupTransitionEffect::ContextMenu});
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto FCkSchedulerDebuggerPage_TreeView::DoShowEmptyState() -> void
+{
+    if (NOT _DetailGraphContainer.IsValid())
+    {
+        return;
+    }
+
+    _DetailGraphContainer->SetContent(
+        SNew(SBox)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
+                [SNew(STextBlock)
+                     .Text(FText::FromString(TEXT("Select a processor to view its dependencies")))
+                     .Font_Static(&ck::scheduler_debugger_axes::Get_Font_Italic_EmptyState)
+                     .ColorAndOpacity(CkStyle::TextMute())]);
 }
 
 // --------------------------------------------------------------------------------------------------------------------

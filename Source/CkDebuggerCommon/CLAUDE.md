@@ -564,6 +564,20 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 - Entity-capable debuggers register one generation-token-protected
   `FCkDebug_EntityTargetRoute` after their tab spawner and unregister it before teardown. The
   predicate and open callback must resolve the same real target; an open-only route is invalid.
+- **Viewport picker (shared).** `Picker/CkDebug_ViewportPicker.h` is the suite-wide
+  "click-to-select in the viewport" mode; `Picker/SCkDebug_ViewportPickerControls.h` is its
+  toolbar surface (Pick button + gear popover). A debugger window owns one picker, constructs it
+  with `Get_TargetWorld` / `OnEntityPicked` / optional `TargetFilter`, ticks it UNGATED from its
+  own `Tick`, and deactivates it in its world/session reset. `TargetFilter` restricts the preview
+  to entities the debugger supports **plus their lifetime-owner chain up to the top-most
+  non-transient, non-ActorRelay ancestor** (the conceptual NPC) — see
+  `FCkDebug_EntityMarkers::FGatherParams::TargetMatch`. Keep the predicate as ONE public static on
+  the window class and reuse it from the module's `FCkDebug_EntityTargetRoute`, so picker and
+  route resolve the same real target; `OnEntityPicked` typically broadcasts SelectionSync and
+  routes through `FCkDebug_EntityTargetRegistry::TryOpenAndTarget`. The overlay focus card +
+  world tags come via the `ck::DebugPickerCards` factory slot that `CkEntityDebugOverlay` fills
+  at module startup — consumers need no extra module deps. The ECS debugger is the one
+  unfiltered consumer; GOAP / Crowd / AStar / SM / Intent are the specialized exemplars.
 - Resolve parent/child selections with `DebugSelectionSync::Resolve_ClosestLineageMatch`. It
   checks exact, ancestor, and descendant entities, excludes sibling branches/transient-root
   cross-matches, and uses stable entity-id tie-breaking.
@@ -587,6 +601,11 @@ CkDebuggerCommon/
 │   ├── CkDebug_EntityTarget.h        (feature-owned open-and-target route registry)
 │   ├── CkDebug_Navigator.h           (Register/Goto_Entity for cross-debugger nav)
 │   └── CkDebug_SelectionSync.h       (broadcast, ECS provider, and closest-lineage resolver)
+├── Picker/
+│   ├── CkDebug_ViewportPicker.h      (shared click-to-select viewport pick mode; host-configured world/pick/filter)
+│   ├── CkDebug_ViewportPickerInputProcessor.h (Slate pre-input processor while pick mode is active)
+│   ├── CkDebug_PickerOverlayCards.h  (focus-card/world-tag hook — CkEntityDebugOverlay fills the factory slot)
+│   └── SCkDebug_ViewportPickerControls.h (the toolbar Pick button + settings popover)
 ├── Search/
 │   ├── SCkDebug_DualSearchBar.h      (Filter + Highlight side-by-side)
 │   └── SCkDebug_SearchBar.h          (single debounced query + clear)

@@ -2,11 +2,11 @@
 
 ## Current state
 
-**As of 2026-08-10:** the shared canvas and all four debugger adapters are implemented and partitioned into reviewable commits. Static boundary and whitespace checks are complete; the build-machine gate remains pending by CTO instruction.
+**As of 2026-08-10:** the shared canvas and all four debugger adapters are implemented. Development Editor and Win64 Development Game compile successfully through UnrealToolbox. Static boundary and whitespace checks are complete; manual side-by-side visual and interaction acceptance remains.
 
-**Baseline being diffed against:** ECS omitted its Graph page, Scheduler showed a packaged fallback message, GOAP omitted its Plan graph tab, and State Machine substituted a three-list packaged window. The new adapters use the same runtime Slate surfaces in Editor and packaged builds. The unrelated untracked `CONTINUATION_PROMPT_DebuggerUsability.md` remains excluded; no local build was run because the BM remains the packaged-build authority.
+**Baseline being diffed against:** ECS omitted its Graph page, Scheduler showed a packaged fallback message, GOAP omitted its Plan graph tab, and State Machine substituted a three-list packaged window. The new adapters use the same runtime Slate surfaces in Editor and packaged builds. The State Machine Preview and Test controls now use the same value-owned runtime graph surface in both targets. The unrelated untracked `CONTINUATION_PROMPT_DebuggerUsability.md` remains excluded.
 
-**Next action:** publish the debugger submodule and root gitlink, then use the BM Development package for compile and visual-interaction acceptance.
+**Next action:** publish the debugger submodule and root gitlinks, then use the BM Development package for matched Editor/package visual-interaction acceptance.
 
 **Blocked on:** nothing.
 
@@ -27,13 +27,20 @@
 - Confirmed: `FCkDebugGraphLayout` is a runtime-safe shared layout primitive already used by Scheduler and SM.
 - Inferred: a shared arbitrary-child Slate panel plus semantic edge painter can preserve all four card designs; Gate 0 tests and first adapter will confirm it.
 
+### 2026-08-10 — compile gates complete
+
+- Confirmed: Development Editor build succeeds through UnrealToolbox.
+- Confirmed: Win64 Development Game build succeeds through UnrealToolbox with the DeveloperTool debugger modules and no GraphEditor or UnrealEd dependency closure.
+- Confirmed: the packaged State Machine path compiles with runtime pause/resume, Preview class selection, transient topology walking, and Test data rendered through `SCkSmRuntimeGraph`.
+- Authored deterministic canvas/model coverage compiled in both targets. Automation tests were not launched by explicit CTO instruction.
+
 ## Open items
 
 | Item | Status | Next step |
 |---|---|---|
-| Shared graph viewport | Implemented, pending BM | Exercise stable slots, transforms, culling, edge geometry, selection, pan/zoom, and frame-all in the package. |
-| ECS parity | Implemented, pending BM | Compare relationship topology, layout, card state, selection, drag, copy, and frame-all. |
-| Scheduler parity | Implemented, pending BM | Compare the full/detail processor graphs, live timing state, selection, copy, and layout controls. |
-| GOAP parity | Implemented, pending BM | Compare action/goal cards, plan/failure/tree edge styles, selection, name depth, and fit. |
-| SM parity | Implemented, pending BM | Compare compound/state/transition rendering, scrub/live highlights, timeline, history, details, and breakpoint state. Editor-only preview/test authoring controls remain editor-only. |
+| Shared graph viewport | Build verified | Exercise stable slots, transforms, culling, edge geometry, selection, pan/zoom, and frame-all in the package. |
+| ECS parity | Build verified | Compare relationship topology, layout, card state, selection, drag, copy, and frame-all. |
+| Scheduler parity | Build verified | Compare the detail processor graph, live timing state, selection, copy, and layout controls. |
+| GOAP parity | Build verified | Compare action/goal cards, plan/failure/tree edge styles, selection, name depth, hide-dimmed, 1:1 reset, and fit. |
+| SM parity | Build verified | Compare compound/state/transition rendering, scrub/live highlights, timeline, history, details, breakpoints, runtime pause, Preview, and Test mode. |
 | Visual acceptance | Pending | Capture matched Editor/package screenshots and run the interaction checklist on BM output. |

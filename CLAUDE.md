@@ -10,15 +10,15 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **20-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 17 DeveloperTool (`CkEcsDebugger`, `CkSmDebugger`,
+- **22-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 18 DeveloperTool (`CkEcsDebugger`, `CkSmDebugger`,
   `CkSchedulerDebugger`, `CkGoapDebugger`, `CkDialogDebugger`,
   `CkAggroDebugger`, `CkUIDebugger`, `CkAStarDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
   `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
-  `CkStyleLabDebugger`, `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
-  (`CkDebugger.uplugin:160-164`). The Runtime type on overlay + common is load-bearing — they
+  `CkStyleLabDebugger`, `CkSaveDebugger`, `CkDebuggerLauncher`) + 1 explicitly deferred UncookedOnly
+  module (`CkIntentDebugger`). Plugin dependency: **CkFoundation only**. The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
-- **Packaged-module contract (2026-08-10):** all 17 DeveloperTool modules are included in
+- **Packaged-module contract (2026-08-11):** all 18 DeveloperTool modules are included in
   Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
   use the same runtime-Slate graph canvases in editor and packaged targets; native GraphEditor
   adapters remain editor-only and must never become a Game-target dependency.
@@ -33,7 +33,7 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 16 feature debugger modules + `CkDebuggerLauncher` | 17 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open them as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
+| 2 (2025→) | 17 packaged feature debugger modules + `CkDebuggerLauncher`; Intent deferred | 18 DeveloperTool + 1 UncookedOnly | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open DeveloperTool windows as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
 | 3 (2026, current flagship) | `CkEntityDebugOverlay` | Runtime | In-game on-screen overlay: `ULocalPlayerSubsystem` (`Subsystem/CkDebugOverlay_Subsystem.h:48`), self-registering providers, focus card + world pills + diamond markers. Compiled under `WITH_CK_DEBUG_OVERLAY`, non-Shipping only (`CkEntityDebugOverlay.Build.cs:36-39`); driven by `ck.DebugOverlay*` cvars/commands (`Subsystem/CkDebugOverlay_Subsystem.cpp:159-213`). | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces
@@ -117,9 +117,9 @@ remain (see Open issues).
 
 Facts above verified against code on **2026-07-14** (launcher branch based on `7fd41c8`). Re-verify with:
 
-- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **20** = 19 modules + the
+- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **23** = 22 modules + the
   CkFoundation entry in the `Plugins` dependency array), or count modules only:
-  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 19); read the
+  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 22); read the
   `"Type"` fields.
 - Registration macros: `rg -n 'define CK_REGISTER_DEBUG_OVERLAY_PROVIDER' Source/CkEntityDebugOverlay` · `rg -n 'define CK_REGISTER_DEBUGGER_INSPECTOR' Source/CkEcsDebugger`.
 - Settings Config attributes: `rg -n 'UCLASS\(Config' Source/CkEntityDebugOverlay/Public/CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h`.

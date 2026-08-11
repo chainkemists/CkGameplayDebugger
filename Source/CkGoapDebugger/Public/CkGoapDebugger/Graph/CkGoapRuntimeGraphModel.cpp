@@ -157,6 +157,23 @@ auto FCkGoapRuntimeGraphModel::ComputeEffectiveGoalHash(
     return Hash;
 }
 
+auto FCkGoapRuntimeGraphModel::ComputeMaxNameDepth(const FString& InClassName) -> int32
+{
+    auto Name = InClassName;
+    if (Name.StartsWith(TEXT("Default__")))
+    {
+        Name = Name.RightChop(9);
+    }
+    if (Name.EndsWith(TEXT("_C")))
+    {
+        Name = Name.LeftChop(2);
+    }
+
+    auto Segments = TArray<FString>{};
+    Name.ParseIntoArray(Segments, TEXT("_"), true);
+    return FMath::Max(1, Segments.Num());
+}
+
 auto FCkGoapRuntimeGraphModel::Rebuild(const FCkGoapDebugger_PlannerInfo& InPlanner,
                                        const FCk_Handle_Goap_Action& InSelectedAction,
                                        int32 InNameDepth) -> void
@@ -253,9 +270,7 @@ auto FCkGoapRuntimeGraphModel::Rebuild(const FCkGoapDebugger_PlannerInfo& InPlan
         LayerY[Layers[I]] += static_cast<float>(NodeSizes[I].Y) + VertGap;
         _Nodes.Add(Node);
         _ActionById.Add(Id, Node->Action.Handle);
-        auto NameSegments = TArray<FString>{};
-        Node->Action.ClassName.ParseIntoArray(NameSegments, TEXT("."), true);
-        _MaxNameDepth = FMath::Max(_MaxNameDepth, FMath::Max(1, NameSegments.Num()));
+        _MaxNameDepth = FMath::Max(_MaxNameDepth, ComputeMaxNameDepth(Node->Action.ClassName));
     }
     auto FindCatalogIndex = [&Catalog](const FCk_Handle_Goap_Action& InHandle) -> int32
     {

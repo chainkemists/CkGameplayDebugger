@@ -47,8 +47,13 @@ struct FCkDebug_GraphCanvasEdge
     ECkDebug_GraphAnchor TargetAnchor = ECkDebug_GraphAnchor::Center;
     FLinearColor Color = FLinearColor::White;
     float Thickness = 1.5f;
+    float LineSeparation = 0.0f;
+    float ArrowRadius = 8.0f;
+    float DashLength = 8.0f;
+    float DashGap = 5.0f;
     bool IsDirected = true;
     bool IsDashed = false;
+    bool DeemphasizeWhenUnrelatedHovered = true;
     TArray<FVector2D> RoutePoints;
 };
 

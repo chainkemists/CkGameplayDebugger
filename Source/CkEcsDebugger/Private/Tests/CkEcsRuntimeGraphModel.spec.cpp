@@ -57,6 +57,26 @@ auto FCkEcsRuntimeGraphLayout_EstimatesLegacyNodeWidth::RunTest(const FString& /
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkEcsRuntimeGraphLayout_PreservesDependentInputOrder,
+                                 "Ck.EcsDebugger.RuntimeGraph.Layout.PreservesDependentInputOrder",
+                                 EAutomationTestFlags::EditorContext |
+                                     EAutomationTestFlags::EngineFilter)
+
+auto FCkEcsRuntimeGraphLayout_PreservesDependentInputOrder::RunTest(const FString& /*InParameters*/)
+    -> bool
+{
+    auto Input = FCkEcsRuntimeGraphLayoutInput{};
+    Input.CenterLabel = TEXT("Center");
+    Input.DependentLabels = {FString::ChrN(30, TEXT('L')), TEXT("Short")};
+
+    const auto Layout = ck::ecs_runtime_graph::BuildLayout(Input);
+    TestTrue(TEXT("First returned dependent remains left of the second"),
+             Layout.DependentPositions[0].X < Layout.DependentPositions[1].X);
+    TestEqual(TEXT("First dependent keeps its measured width"), Layout.DependentWidths[0], 280);
+    TestEqual(TEXT("Second dependent keeps its measured width"), Layout.DependentWidths[1], 200);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkEcsRuntimeGraphTopologyHash_DetectsSameCountDependentReplacement,
     "Ck.EcsDebugger.RuntimeGraph.TopologyHash.DetectsSameCountDependentReplacement",

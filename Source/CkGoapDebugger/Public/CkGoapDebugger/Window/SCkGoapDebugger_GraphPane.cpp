@@ -4,6 +4,7 @@
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkEditorTools/Style/CkStyle.h"
@@ -33,10 +34,18 @@ namespace ck_goap_debugger_graph_pane
 
     auto MakeDot(const TAttribute<FSlateColor>& InColor) -> TSharedRef<SWidget>
     {
-        return SNew(SBox).WidthOverride(7.0f).HeightOverride(
-            7.0f)[SNew(SBorder)
-                      .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                      .BorderBackgroundColor(InColor)];
+        return SNew(SBox)
+            .WidthOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()};
+            })
+            .HeightOverride_Lambda([]() -> FOptionalSize
+            {
+                return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()};
+            })
+            [SNew(SBorder)
+                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                 .BorderBackgroundColor(InColor)];
     }
 
     auto BuildActionCard(const TSharedPtr<FCkGoapRuntimeGraphNode>& Node, int32 NameDepth)
@@ -45,16 +54,18 @@ namespace ck_goap_debugger_graph_pane
         const TWeakPtr<FCkGoapRuntimeGraphNode> Weak = Node;
         auto Conditions = SNew(SVerticalBox);
         auto Sorted = Node->Action.Preconditions;
-        Sorted.Sort(
-            [](const auto& A, const auto& B)
-            {
-                return A.Key.ToString() < B.Key.ToString();
-            });
+        Sorted.Sort([](const auto& A, const auto& B)
+        {
+            const auto ALeaf = TagLeaf(A.Key);
+            const auto BLeaf = TagLeaf(B.Key);
+            return ALeaf == BLeaf ? A.Key.ToString() < B.Key.ToString() : ALeaf < BLeaf;
+        });
         for (const auto& Pre : Sorted)
         {
             const auto Key = Pre.Key;
             const bool Wants = Pre.Value;
-            Conditions->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
+            Conditions->AddSlot().AutoHeight().Padding(
+                ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))
                 [SNew(SHorizontalBox)
                      .ToolTipText_Lambda(
                          [Weak, Key, Wants]()
@@ -99,10 +110,17 @@ namespace ck_goap_debugger_graph_pane
                             .OverflowPolicy(ETextOverflowPolicy::Ellipsis)]];
         }
         auto Effects = SNew(SVerticalBox);
-        for (const auto& Effect : Node->Action.Effects)
+        auto SortedEffects = Node->Action.Effects;
+        SortedEffects.Sort([](const auto& A, const auto& B)
+        {
+            const auto ALeaf = TagLeaf(A.Key);
+            const auto BLeaf = TagLeaf(B.Key);
+            return ALeaf == BLeaf ? A.Key.ToString() < B.Key.ToString() : ALeaf < BLeaf;
+        });
+        for (const auto& Effect : SortedEffects)
             Effects->AddSlot().AutoHeight().Padding(
-                0.0f,
-                1.0f)[SNew(SHorizontalBox).ToolTipText(FText::FromString(Effect.Key.ToString())) +
+                ck_goap_debugger_axes::Live_RowDensity(FMargin{0.0f, 1.0f}))[
+                SNew(SHorizontalBox).ToolTipText(FText::FromString(Effect.Key.ToString())) +
                       SHorizontalBox::Slot().FillWidth(1).HAlign(
                           HAlign_Right)[SNew(STextBlock)
                                             .Text(FText::FromString(TagLeaf(Effect.Key)))
@@ -370,6 +388,7 @@ SCkGoapDebugger_GraphPane::~SCkGoapDebugger_GraphPane()
 
 auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
 {
+    constexpr auto IsNodeDraggingEnabled = true;
     _ViewModel = InArgs._ViewModel;
     _Graph = MakeShared<FCkGoapRuntimeGraphModel>();
     ChildSlot[SNew(SBorder).BorderImage(
@@ -377,6 +396,7 @@ auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void
                   [SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[BuildHeader()] +
                    SVerticalBox::Slot().FillHeight(
                        1)[SAssignNew(_GraphCanvas, SCkDebug_GraphCanvas)
+                               .AllowNodeDragging(IsNodeDraggingEnabled)
                               .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
                                   this, &SCkGoapDebugger_GraphPane::OnGraphSelectionChanged))]]];
     if (_ViewModel.IsValid())
@@ -475,6 +495,10 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
     FCkDebug_GraphCanvasScene Scene;
     for (const auto& Node : _Graph->GetNodes())
     {
+        if (_HideDimmed && Node->Kind == ECkGoapRuntimeGraphNodeKind::Action && NOT Node->IsInPlan)
+        {
+            continue;
+        }
         FCkDebug_GraphCanvasNode CanvasNode;
         CanvasNode.Id = Node->Id;
         CanvasNode.Position = Node->Position;
@@ -509,10 +533,20 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
     };
     const float ThicknessScale = ck_goap_debugger_axes::Get_NodeBorderScale();
     const float DimScale = ck_goap_debugger_axes::Get_NodeDimScale();
+    const auto IsVisibleNode = [this](const FCkGoapRuntimeGraphNode* InNode) -> bool
+    {
+        return InNode != nullptr &&
+               (NOT _HideDimmed || InNode->Kind != ECkGoapRuntimeGraphNodeKind::Action ||
+                InNode->IsInPlan);
+    };
     for (const auto& Edge : _Graph->GetEdges())
     {
         const auto* SourceNode = FindNode(Edge.SourceId);
         const auto* TargetNode = FindNode(Edge.TargetId);
+        if (NOT IsVisibleNode(SourceNode) || NOT IsVisibleNode(TargetNode))
+        {
+            continue;
+        }
         const bool IsInPlan = IsEdgeInPlan(SourceNode, TargetNode);
         FCkDebug_GraphCanvasEdge CanvasEdge;
         CanvasEdge.SourceId = Edge.SourceId;
@@ -520,24 +554,29 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
         CanvasEdge.SourceAnchor = ECkDebug_GraphAnchor::Right;
         CanvasEdge.TargetAnchor = ECkDebug_GraphAnchor::Left;
         CanvasEdge.IsDashed = Edge.Kind == ECkGoapRuntimeGraphEdgeKind::Tree;
+        CanvasEdge.DeemphasizeWhenUnrelatedHovered = false;
         if (CanvasEdge.IsDashed)
         {
+            CanvasEdge.DashGap = 6.0f;
             CanvasEdge.Color = IsInPlan ? CkStyle::Ok() : CkStyle::CategoryAge();
             CanvasEdge.Color.A = IsInPlan ? 1.0f : FMath::Clamp(0.55f * DimScale, 0.05f, 1.0f);
             CanvasEdge.Thickness = (IsInPlan ? 2.0f : 1.25f) * ThicknessScale;
         }
         else if (IsEdgeFailureBlocked(SourceNode, TargetNode))
         {
+            CanvasEdge.LineSeparation = 4.5f;
             CanvasEdge.Color = CkStyle::Err();
             CanvasEdge.Thickness = 2.0f * ThicknessScale;
         }
         else if (IsInPlan)
         {
+            CanvasEdge.LineSeparation = 4.5f;
             CanvasEdge.Color = CkStyle::Ok();
             CanvasEdge.Thickness = 2.0f * ThicknessScale;
         }
         else
         {
+            CanvasEdge.LineSeparation = 4.5f;
             CanvasEdge.Color = CkStyle::Border();
             CanvasEdge.Color.A = FMath::Clamp(0.65f * DimScale, 0.05f, 1.0f);
             CanvasEdge.Thickness = 1.0f * ThicknessScale;
@@ -562,6 +601,17 @@ auto SCkGoapDebugger_GraphPane::OnGraphSelectionChanged(const TSet<uint64>& InSe
     _ViewModel->SetSelectedAction({});
 }
 
+auto SCkGoapDebugger_GraphPane::Request_SetHideDimmed(bool InHideDimmed) -> void
+{
+    if (_HideDimmed == InHideDimmed)
+    {
+        return;
+    }
+
+    _HideDimmed = InHideDimmed;
+    RebuildCanvasScene();
+}
+
 auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
 {
     return SNew(SBorder)
@@ -581,24 +631,30 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                                                                 _GraphCanvas->Frame_All();
                                                             return FReply::Handled();
                                                         })] +
-             SHorizontalBox::Slot().AutoWidth().Padding(
-                 4, 0)[SNew(SButton)
-                           .Text(FText::FromString(TEXT("1:1")))
-                           .ToolTipText(FText::FromString(TEXT("Reset zoom (D5 stub)")))
-                           .OnClicked_Lambda(
-                               []
-                               {
-                                   return FReply::Handled();
-                               })] +
-             SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
-                                                    .Text(FText::FromString(TEXT("Hide dimmed")))
-                                                    .ToolTipText(FText::FromString(
-                                                        TEXT("Hide off-plan nodes (D5 stub)")))
-                                                    .OnClicked_Lambda(
-                                                        []
-                                                        {
-                                                            return FReply::Handled();
-                                                        })] +
+              SHorizontalBox::Slot().AutoWidth().Padding(
+                  4, 0)[SNew(SButton)
+                            .Text(FText::FromString(TEXT("1:1")))
+                            .ToolTipText(FText::FromString(TEXT("Reset pan and zoom")))
+                            .OnClicked_Lambda(
+                                [this]
+                                {
+                                    if (_GraphCanvas.IsValid())
+                                    {
+                                        _GraphCanvas->Reset_View();
+                                    }
+                                    return FReply::Handled();
+                                })] +
+              SHorizontalBox::Slot().AutoWidth()[SNew(SCkDebug_IconToggle)
+                                                     .IconId(TEXT("Moon"))
+                                                     .Label(FText::FromString(TEXT("Hide dimmed")))
+                                                     .ToolTip(FText::FromString(
+                                                         TEXT("Hide off-plan nodes and their edges.")))
+                                                     .IsOn_Lambda([this]() -> bool { return _HideDimmed; })
+                                                     .OnStateChanged(
+                                                         FOnCkDebug_IconToggleChanged::CreateSP(
+                                                             this,
+                                                             &SCkGoapDebugger_GraphPane::Request_SetHideDimmed))
+                                                     .ShowLabel(true)] +
              SHorizontalBox::Slot().AutoWidth().Padding(
                  8, 0, 0, 0)[SNew(STextBlock)
                                  .Text(FText::FromString(TEXT("Name")))

@@ -59,6 +59,7 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     auto BuildHeader() -> TSharedRef<SWidget>;
     auto OnGraphSelectionChanged(const TSet<uint64>& InSelection) -> void;
     auto RebuildCanvasScene() -> void;
+    auto Request_SetHideDimmed(bool InHideDimmed) -> void;
 
   private:
     TSharedPtr<FCkGoapDebugger_ViewModel> _ViewModel;
@@ -82,6 +83,7 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     uint32 _LastTopologyHash = 0;
     uint32 _LastEffectiveGoalHash = 0;
     int32 _LastNameDepth = INDEX_NONE;
+    bool _HideDimmed = false;
 
     // Track selection identity separately from the topology hash. A selection
     // change inside an otherwise-stable topology still needs the in-place

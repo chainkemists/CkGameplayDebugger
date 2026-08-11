@@ -12,6 +12,16 @@ namespace ck_scheduler_runtime_graph_model
             });
     }
 
+    auto FindProcessorIndexById(const TArray<FCkSchedulerDebugger_ProcessorInfo>& InProcessors,
+                                const int32 InProcessorId) -> int32
+    {
+        return InProcessors.IndexOfByPredicate(
+            [InProcessorId](const FCkSchedulerDebugger_ProcessorInfo& InInfo)
+            {
+                return InInfo.NodeIndex == InProcessorId;
+            });
+    }
+
     auto HasSameLiveState(const FCkSchedulerDebugger_ProcessorInfo& InA,
                           const FCkSchedulerDebugger_ProcessorInfo& InB) -> bool
     {
@@ -58,23 +68,35 @@ auto FCkSchedulerRuntimeGraphModel::Rebuild(
         return bWasPopulated;
     }
 
-    auto IncludedIds = TSet<int32>{InSelectedProcessorId};
+    // Preserve the previous detail graph's construction order exactly: it collected array indices
+    // into a TSet and then iterated that set to create the subset passed to the graph layout.
+    const auto SelectedArrayIndex =
+        ck_scheduler_runtime_graph_model::FindProcessorIndexById(InProcessors, InSelectedProcessorId);
+    auto IncludedArrayIndices = TSet<int32>{SelectedArrayIndex};
     for (const auto Id : Selected->InEdges)
     {
-        IncludedIds.Add(Id);
+        const auto ArrayIndex = ck_scheduler_runtime_graph_model::FindProcessorIndexById(InProcessors, Id);
+        if (ArrayIndex != INDEX_NONE)
+        {
+            IncludedArrayIndices.Add(ArrayIndex);
+        }
     }
     for (const auto Id : Selected->OutEdges)
     {
-        IncludedIds.Add(Id);
-    }
-
-    auto SubgraphProcessors = TArray<const FCkSchedulerDebugger_ProcessorInfo*>{};
-    for (const auto& Processor : InProcessors)
-    {
-        if (IncludedIds.Contains(Processor.NodeIndex))
+        const auto ArrayIndex = ck_scheduler_runtime_graph_model::FindProcessorIndexById(InProcessors, Id);
+        if (ArrayIndex != INDEX_NONE)
         {
-            SubgraphProcessors.Add(&Processor);
+            IncludedArrayIndices.Add(ArrayIndex);
         }
+    }
+    auto SubgraphProcessors = TArray<const FCkSchedulerDebugger_ProcessorInfo*>{};
+    SubgraphProcessors.Reserve(IncludedArrayIndices.Num());
+    auto IncludedIds = TSet<int32>{};
+    for (const auto ArrayIndex : IncludedArrayIndices)
+    {
+        const auto& Processor = InProcessors[ArrayIndex];
+        SubgraphProcessors.Add(&Processor);
+        IncludedIds.Add(Processor.NodeIndex);
     }
 
     const auto NewHash = Compute_TopologyHash(InProcessors, InSelectedProcessorId);

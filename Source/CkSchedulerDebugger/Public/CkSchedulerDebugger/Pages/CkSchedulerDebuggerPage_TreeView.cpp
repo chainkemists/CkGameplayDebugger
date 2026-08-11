@@ -87,7 +87,7 @@ auto FCkSchedulerDebuggerPage_TreeView::Build_Content(
                                                       .OnClicked_Lambda(
                                                           [this]() -> FReply
                                                           {
-                                                              DoRebuildDetailGraph(false, true);
+                                                              DoRebuildDetailGraph();
                                                               return FReply::Handled();
                                                           })]
 
@@ -199,11 +199,6 @@ auto FCkSchedulerDebuggerPage_TreeView::Tick(float InDeltaTime) -> void
         _DetailGraphCanvas->Invalidate(EInvalidateWidgetReason::Paint);
     }
 
-    if (_PendingFrameAll && _DetailGraphCanvas->GetCachedGeometry().GetLocalSize().X > 0.0f)
-    {
-        _DetailGraphCanvas->Frame_All();
-        _PendingFrameAll = false;
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -229,7 +224,7 @@ auto FCkSchedulerDebuggerPage_TreeView::OnStyleRevisionChanged() -> void
 
     // Static style choices are baked into the cards; live timing and dirty state remain
     // attribute-bound.
-    DoRebuildDetailGraph(true, false);
+    DoRebuildDetailGraph(true);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -237,12 +232,12 @@ auto FCkSchedulerDebuggerPage_TreeView::OnStyleRevisionChanged() -> void
 auto FCkSchedulerDebuggerPage_TreeView::DoOnSelectionChanged(int32 InProcessorIndex) -> void
 {
     (void)InProcessorIndex;
-    DoRebuildDetailGraph(false, true);
+    DoRebuildDetailGraph();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, bool InFrameAll)
+auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards)
     -> void
 {
     if (NOT _ViewModel.IsValid() || NOT _DetailGraphContainer.IsValid())
@@ -258,7 +253,6 @@ auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, 
         _RuntimeGraphModel.Reset();
         _ProcessorCards.Reset();
         _DetailGraphCanvas.Reset();
-        _PendingFrameAll = false;
         DoShowEmptyState();
         return;
     }
@@ -268,10 +262,6 @@ auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, 
         _RuntimeGraphModel.Rebuild(AllProcessors, SelectedProcessorId, _LayoutParams);
     if (NOT TopologyChanged && NOT InForceCards && _DetailGraphCanvas.IsValid())
     {
-        if (InFrameAll)
-        {
-            _PendingFrameAll = true;
-        }
         return;
     }
 
@@ -305,6 +295,7 @@ auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, 
         CanvasEdge.TargetId = static_cast<uint64>(static_cast<uint32>(RuntimeEdge.TargetId)) + 1;
         CanvasEdge.Color = CkStyle::Graph_Edge();
         CanvasEdge.Thickness = 1.5f;
+        CanvasEdge.LineSeparation = 4.5f;
         Scene.Edges.Add(MoveTemp(CanvasEdge));
     }
 
@@ -320,10 +311,6 @@ auto FCkSchedulerDebuggerPage_TreeView::DoRebuildDetailGraph(bool InForceCards, 
     }
 
     _DetailGraphCanvas->Set_Scene(MoveTemp(Scene));
-    if (InFrameAll)
-    {
-        _PendingFrameAll = true;
-    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------

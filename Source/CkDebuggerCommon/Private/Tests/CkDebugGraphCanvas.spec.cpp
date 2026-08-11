@@ -91,9 +91,18 @@ bool FCkDebugGraphCanvas_EdgeAnchorsAndRoutes::RunTest(const FString&)
                                                                    Target,
                                                                    Edge,
                                                                    FCkDebug_GraphCanvasTransform{});
-    TestEqual(TEXT("Explicit right anchor starts at source right"), Direct.Start.X, 100.0f);
-    TestEqual(TEXT("Explicit left anchor ends at target left"), Direct.End.X, 240.0f);
+    TestEqual(TEXT("Explicit right anchor starts at source right"), Direct.Start.X, 100.0);
+    TestEqual(TEXT("Explicit left anchor ends at target left"), Direct.End.X, 240.0);
 
+    Edge.LineSeparation = 4.5f;
+    Edge.ArrowRadius = 8.0f;
+    const auto Biased = SCkDebug_GraphCanvas::Compute_EdgeGeometry(
+        Source, Target, Edge, FCkDebug_GraphCanvasTransform{});
+    TestEqual(TEXT("Legacy line bias shortens the source by arrow radius"), Biased.Start.X, 108.0);
+    TestEqual(TEXT("Legacy line bias shortens the target by arrow radius"), Biased.End.X, 232.0);
+    TestEqual(TEXT("Legacy line bias separates reciprocal wires"), Biased.Start.Y, 15.5);
+
+    Edge.LineSeparation = 0.0f;
     Edge.RoutePoints = {FVector2D{160.0f, 80.0f}};
     const auto Routed = SCkDebug_GraphCanvas::Compute_EdgeGeometry(Source,
                                                                    Target,

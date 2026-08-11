@@ -5,7 +5,7 @@
 
 class FCkDebuggerModel_EntitySelection;
 class FCkDebuggerModel_WorldContext;
-class FCkDebuggerModel_ViewportPicker;
+class FCkDebug_ViewportPicker;
 class FCkDebuggerModel_InspectorFilter;
 class ICkDebuggerPage_Base;
 class SBox;
@@ -32,7 +32,7 @@ public:
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
-    auto Get_ViewportPicker() const -> TSharedPtr<FCkDebuggerModel_ViewportPicker>;
+    auto Get_ViewportPicker() const -> TSharedPtr<FCkDebug_ViewportPicker>;
     auto Get_FilterModel() const -> TSharedPtr<FCkDebuggerModel_InspectorFilter>;
 
 protected:
@@ -41,7 +41,7 @@ protected:
 private:
     auto Build_MenuActions() -> TSharedRef<SWidget>;
     auto Build_Toolbar() -> TSharedRef<SWidget>;
-    auto Build_PickerSettingsPopover() -> TSharedRef<SWidget>;
+    auto Build_PickerExtraSettings() -> TSharedRef<SWidget>;
     auto Build_OverlayPopover() -> TSharedRef<SWidget>;
     auto Build_FilterPopover() -> TSharedRef<SWidget>;
     auto Refresh_FilterBadgeStrip() -> void;
@@ -56,7 +56,7 @@ private:
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
-    TSharedPtr<FCkDebuggerModel_ViewportPicker> ViewportPicker;
+    TSharedPtr<FCkDebug_ViewportPicker> ViewportPicker;
     TSharedPtr<FCkDebuggerModel_InspectorFilter> FilterModel;
     TArray<TSharedPtr<ICkDebuggerPage_Base>> Pages;
     int32 ActivePageIndex = 0;
@@ -65,7 +65,6 @@ private:
     TSharedPtr<SCkDebuggerPanel_EntityList> EntityListPanel;
     TSharedPtr<SCkDebuggerPanel_Inspector> InspectorPanel;
 
-    TSharedPtr<SMenuAnchor> PickerSettingsAnchor;
     TSharedPtr<SMenuAnchor> OverlayAnchor;
     TSharedPtr<SMenuAnchor> FilterAnchor;
     TSharedPtr<SHorizontalBox> FilterBadgeStrip;

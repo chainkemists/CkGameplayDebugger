@@ -1,8 +1,9 @@
 #include "CkGoapDebugGraphSchema.h"
 
-#include "CkGoapDebugConnectionPolicy.h"
-
-#include "ConnectionDrawingPolicy.h"
+#if WITH_EDITOR
+    #include "CkGoapDebugConnectionPolicy.h"
+    #include "ConnectionDrawingPolicy.h"
+#endif
 
 // ====================================================================================================================
 
@@ -77,8 +78,18 @@ auto
         UEdGraph* InGraphObj) const
     -> FConnectionDrawingPolicy*
 {
+#if WITH_EDITOR
     return new FCkGoapDebugConnectionPolicy(
         InBackLayerID, InFrontLayerID, InZoomFactor, InClippingRect, InDrawElements, InGraphObj);
+#else
+    (void)InBackLayerID;
+    (void)InFrontLayerID;
+    (void)InZoomFactor;
+    (void)InClippingRect;
+    (void)InDrawElements;
+    (void)InGraphObj;
+    return nullptr;
+#endif
 }
 
 // ====================================================================================================================

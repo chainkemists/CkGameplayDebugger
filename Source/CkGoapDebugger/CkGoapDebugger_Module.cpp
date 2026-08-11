@@ -5,6 +5,7 @@
 
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_Targeting.h"
 #if WITH_EDITOR
     #include "CkGoapDebugger/Graph/CkGoapDebugGraphFactory.h"
 #endif
@@ -13,15 +14,9 @@
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
-#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
 
-#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
-#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
-#include "CkGoap/Action/CkGoap_Action_Fragment.h"
-#include "CkGoap/Planner/CkGoap_Planner_Record_Internal.h"
-#include "CkGoap/Planner/CkGoap_Planner_Utils.h"
 
 #if WITH_EDITOR
     #include "EdGraphUtilities.h"
@@ -43,56 +38,8 @@ const FName FCkGoapDebuggerModule::_DebuggerTabName = FName("CkGoapDebugger");
 // in a single named constant so Startup/Shutdown can't drift.
 static const FName GGoapInspectorID = FName(TEXT("FCkGoapInspector_Gateway"));
 
-namespace
-{
-    auto IsRegisteredPlannerChild(const FCk_Handle& InCandidate) -> bool
-    {
-        if (ck::Is_NOT_Valid(InCandidate)
-            || NOT InCandidate.Has<ck::FFragment_LifetimeOwner>())
-        { return false; }
-
-        auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(InCandidate);
-        if (ck::Is_NOT_Valid(Owner)
-            || NOT Owner.Has<ck::FFragment_RecordOfGoapPlanners>())
-        { return false; }
-
-        auto IsRegistered = false;
-        ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
-            Owner,
-            [&IsRegistered, &InCandidate](FCk_Handle_Goap_Planner InPlanner)
-            {
-                IsRegistered = IsRegistered
-                    || static_cast<FCk_Handle>(InPlanner) == InCandidate;
-            });
-        return IsRegistered;
-    }
-
-    auto IsGoapRosterEntity(const FCk_Handle& InCandidate) -> bool
-    {
-        if (ck::Is_NOT_Valid(InCandidate))
-        { return false; }
-
-        if (InCandidate.Has<ck::FFragment_RecordOfGoapPlanners>())
-        {
-            auto MutableOwner = InCandidate;
-            auto HasPlanner = false;
-            ck::goap::internal_planner_record::FRecordOfGoapPlanners_Utils::ForEach_ValidEntry(
-                MutableOwner,
-                [&HasPlanner](FCk_Handle_Goap_Planner) { HasPlanner = true; });
-            return HasPlanner;
-        }
-
-        return UCk_Utils_Goap_Planner_UE::Has(InCandidate)
-            && NOT InCandidate.Has<ck::FFragment_Goap_Action_Definition>()
-            && NOT IsRegisteredPlannerChild(InCandidate);
-    }
-
-    auto ResolveGoapTarget(const FCk_Handle& InSelected) -> FCk_Handle
-    {
-        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
-            [](const FCk_Handle& InCandidate) { return IsGoapRosterEntity(InCandidate); });
-    }
-}
+// Roster predicate + lineage resolver moved to CkGoapDebugger_Targeting.h —
+// shared with the window's specialized viewport picker.
 
 // ====================================================================================================================
 
@@ -165,8 +112,8 @@ auto
 
     _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
         TEXT("CkGoapDebugger"), _DebuggerTabName,
-        [](const FCk_Handle& InEntity) { return ck::IsValid(ResolveGoapTarget(InEntity)); },
-        [](const FCk_Handle& InEntity) { SCkGoapDebuggerWindow::OpenForEntity(ResolveGoapTarget(InEntity)); }});
+        [](const FCk_Handle& InEntity) { return ck::IsValid(ck_goap_debugger::ResolveGoapTarget(InEntity)); },
+        [](const FCk_Handle& InEntity) { SCkGoapDebuggerWindow::OpenForEntity(ck_goap_debugger::ResolveGoapTarget(InEntity)); }});
 }
 
 auto

@@ -1,6 +1,6 @@
 # Gate 0 — contract and shared canvas
 
-> **Status:** Implemented, pending build-machine verification
+> **Status:** Build verified; manual visual acceptance pending
 > **Depends on:** packaged debugger feature branch
 > **Estimate:** re-date after the Scheduler vertical slice exposes integration cost
 
@@ -35,8 +35,9 @@ needed to replace SGraphEditor in both Editor and packaged builds.
 
 ## Exit criteria
 
-- [ ] Shared canvas compiles in Editor and packaged Development targets.
+- [x] Shared canvas compiles in Editor and packaged Development targets.
 - [ ] Focused automation tests pass on the final Gate 0 artifact.
+- [x] Scheduler graph compiles through the shared surface in Editor and packaged builds.
 - [ ] Scheduler graph renders through the shared surface in Editor and packaged builds with matching behavior.
 - [x] Comment audit complete.
 - [x] `PLAN.md`, this status header, `PROGRESS.md`, and `CkDebuggerCommon/CLAUDE.md` updated in the landing commit.

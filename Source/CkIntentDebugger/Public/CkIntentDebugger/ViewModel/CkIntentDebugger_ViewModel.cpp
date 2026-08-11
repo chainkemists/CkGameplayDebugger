@@ -10,6 +10,7 @@
 #include "CkInput/CkInputLayer_Utils.h"
 #include "CkInput/Subsystem/CkInputSource_Subsystem.h"
 
+#include "CkIntent/Debug/CkIntentDebugHistory_Utils.h"
 #include "CkIntent/CkIntentSampler_Utils.h"
 
 #include "Editor.h"
@@ -21,9 +22,6 @@
 
 namespace ck_intent_debugger_viewmodel
 {
-    // The sampler's own ring is 120 rows at its default capacity; a debugger window that pulled more than it can
-    // legibly draw would pay for rows nobody reads.
-    constexpr auto MaxRecordedFrames = 240;
 
     // Bounded for the same reason the matcher's diagnostic ring is: this is a list a human scrolls after feeling a
     // move not come out, not a trace.
@@ -87,8 +85,7 @@ auto
 {
     _WorldModel->Ensure_AutoSelect();
 
-    _Snapshot = FCkIntentDebugger_DataCollector::Collect(
-        _WorldModel->Get_SelectedWorld(), ck_intent_debugger_viewmodel::MaxRecordedFrames);
+    _Snapshot = FCkIntentDebugger_DataCollector::Collect(_WorldModel->Get_SelectedWorld());
 
     if (NOT _Snapshot.Sources.IsValidIndex(_SelectedSourceIndex))
     { _SelectedSourceIndex = 0; }
@@ -168,6 +165,26 @@ auto
     { return; }
 
     _ScrubFrame = InFrame;
+
+    OnChanged.Broadcast();
+}
+
+auto
+    FCkIntentDebugger_ViewModel::
+    Request_SetHistoryCapacity(
+        int32 InFrames)
+    -> void
+{
+    const auto* Source = TryGet_SelectedSource();
+    if (Source == nullptr || NOT Source->HasHistory)
+    { return; }
+
+    auto History = Source->History;
+    if (ck::Is_NOT_Valid(History))
+    { return; }
+
+    UCk_Utils_IntentDebugHistory_UE::Request_SetCapacity(History,
+        FCk_Request_IntentDebugHistory_SetCapacity{FMath::Max(InFrames, 120)}, {});
 
     OnChanged.Broadcast();
 }
@@ -295,7 +312,14 @@ auto
     { return; }
 
     const auto LiveFrame = NOT Source->Frames.IsEmpty() ? Source->Frames.Last().FrameIndex : INDEX_NONE;
-    _DeviceSnapshot.LiveFrame = LiveFrame;
+
+    // Scrubbing moves the DEVICES too: the snapshot is built as-of the displayed frame, so the caps light,
+    // fill and flash exactly as they did on that frame — the whole window tells one frame's story.
+    const auto IsLive = _ScrubFrame == INDEX_NONE;
+    const auto DisplayFrame = IsLive || LiveFrame == INDEX_NONE
+        ? LiveFrame
+        : FMath::Min(_ScrubFrame, LiveFrame);
+    _DeviceSnapshot.LiveFrame = DisplayFrame;
 
     // The hold-verdict threshold per resolved key, off the selected layer's bake — this is what turns a cap's
     // fill into the matcher's own verdict point rather than a decoration.
@@ -315,6 +339,7 @@ auto
     {
         auto State = FCkDebug_DeviceKeyState{};
         State.IsMinted = true;
+        State.IsActionable = true;
 
         if (const auto* Verdict = VerdictByKey.Find(Key))
         { State.HoldVerdictFrames = *Verdict; }
@@ -324,6 +349,10 @@ auto
         for (auto Index = Source->Frames.Num() - 1; Index >= 0; --Index)
         {
             const auto& Row = Source->Frames[Index];
+
+            if (Row.FrameIndex > DisplayFrame)
+            { continue; }
+
             const auto* Button = Row.Held.FindByPredicate(
                 [&Key](const FCkIntentDebugger_ButtonState& InButton) { return InButton.Key == Key; });
 
@@ -361,15 +390,58 @@ auto
         { continue; }
 
         auto State = FCkDebug_DeviceKeyState{};
-        State.LatestPressFrame = Pair.Value.LastPressFrame;
-        State.LatestReleaseFrame = Pair.Value.LastReleaseFrame;
 
-        State.HeldRunFrames =
-            Pair.Value.IsDown && LiveFrame != INDEX_NONE && Pair.Value.LastPressFrame != INDEX_NONE
-                ? FMath::Max(1, LiveFrame - Pair.Value.LastPressFrame)
-                : 0;
+        if (IsLive)
+        {
+            State.LatestPressFrame = Pair.Value.LastPressFrame;
+            State.LatestReleaseFrame = Pair.Value.LastReleaseFrame;
+
+            State.HeldRunFrames =
+                Pair.Value.IsDown && LiveFrame != INDEX_NONE && Pair.Value.LastPressFrame != INDEX_NONE
+                    ? FMath::Max(1, LiveFrame - Pair.Value.LastPressFrame)
+                    : 0;
+        }
+        else
+        {
+            // A witnessed key carries only its LATEST edge pair — no ring — so scrubbed rendering is
+            // best-effort: shown only when that pair overlaps the scrubbed frame. Minted keys are the
+            // exact-history tier; this is the declared difference between the tiers.
+            if (Pair.Value.LastPressFrame == INDEX_NONE || Pair.Value.LastPressFrame > DisplayFrame)
+            { continue; }
+
+            const auto ReleasedByThen =
+                Pair.Value.LastReleaseFrame != INDEX_NONE &&
+                Pair.Value.LastReleaseFrame >= Pair.Value.LastPressFrame &&
+                Pair.Value.LastReleaseFrame <= DisplayFrame;
+
+            State.LatestPressFrame = Pair.Value.LastPressFrame;
+            State.LatestReleaseFrame = ReleasedByThen ? Pair.Value.LastReleaseFrame : int32{INDEX_NONE};
+            State.HeldRunFrames = ReleasedByThen ? 0 : FMath::Max(1, DisplayFrame - Pair.Value.LastPressFrame);
+        }
 
         _DeviceSnapshot.Keys.Add(Key, State);
+    }
+
+    // Every key ANY layer of this source listens to gets the actionable rim — including keys never pressed, which
+    // need an entry minted here just to carry the flag. "The game's live input surface", not "keys with history".
+    for (const auto& Layer : Source->Layers)
+    {
+        auto MarkActionable = [this](const FKey& InKey)
+        {
+            if (NOT InKey.IsValid())
+            { return; }
+
+            _DeviceSnapshot.Keys.FindOrAdd(InKey).IsActionable = true;
+        };
+
+        for (const auto& Capture : Layer.Captures)
+        {
+            if (Capture.MatchMode == ECk_InputLayer_CaptureMatch::Key)
+            { MarkActionable(Capture.Key); }
+        }
+
+        for (const auto& Key : Layer.RegisteredCaptureKeys)
+        { MarkActionable(Key); }
     }
 }
 

@@ -76,6 +76,11 @@ public:
     // the Devices panel's paint reads it by pointer.
     auto Get_DeviceSnapshot() const -> const FCkDebug_DeviceSnapshot& { return _DeviceSnapshot; }
 
+    // The one deliberate exception to this module's never-mutate contract: retuning the DEBUG history's
+    // retention ([P11-D15]). It touches only the IntentDebugHistory recording — tooling state that cannot perturb
+    // the sampler, router or matcher being measured. No-op when the selected source carries no history.
+    auto Request_SetHistoryCapacity(int32 InFrames) -> void;
+
 public:
     FCkIntentDebugger_OnChanged OnChanged;
 

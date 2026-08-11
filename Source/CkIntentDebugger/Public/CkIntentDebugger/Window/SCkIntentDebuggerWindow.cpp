@@ -139,16 +139,16 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 // Everything at once, no tabs, and EVERY boundary is a splitter handle — a fixed proportion is a proportion the
-// user cannot fix. The tables live under the layer stack because the stack is deep in a real game and shallow in
-// a gym; sharing its column is what keeps neither case wasteful. The splitters also keep every list at a bounded
-// height, which SListView needs.
+// user cannot fix. The three tables share the TOP row because they are shallow-but-wide reads; the timeline and
+// the key/state + devices pair get the full window width below, which is where the horizontal room is needed.
+// The splitters also keep every list at a bounded height, which SListView needs.
 auto
     SCkIntentDebuggerWindow::
     Build_Body()
     -> TSharedRef<SWidget>
 {
     return SNew(SSplitter)
-        .Orientation(Orient_Horizontal)
+        .Orientation(Orient_Vertical)
 
         + SSplitter::Slot().Value(0.30f)
         [
@@ -157,9 +157,9 @@ auto
                 .BorderBackgroundColor(CkStyle::Bg2())
             [
                 SNew(SSplitter)
-                    .Orientation(Orient_Vertical)
+                    .Orientation(Orient_Horizontal)
 
-                + SSplitter::Slot().Value(0.40f)
+                + SSplitter::Slot().Value(0.34f)
                 [
                     SNew(SVerticalBox)
 
@@ -178,7 +178,7 @@ auto
                     ]
                 ]
 
-                + SSplitter::Slot().Value(0.32f)
+                + SSplitter::Slot().Value(0.36f)
                 [
                     SNew(SVerticalBox)
 
@@ -196,7 +196,7 @@ auto
                     ]
                 ]
 
-                + SSplitter::Slot().Value(0.28f)
+                + SSplitter::Slot().Value(0.30f)
                 [
                     SNew(SVerticalBox)
 
@@ -221,13 +221,13 @@ auto
             SNew(SSplitter)
                 .Orientation(Orient_Vertical)
 
-            + SSplitter::Slot().Value(0.32f)
+            + SSplitter::Slot().Value(0.35f)
             [
                 SAssignNew(_TimelineDock, SCkIntentDebugger_TimelineDock)
                     .ViewModel(_ViewModel)
             ]
 
-            + SSplitter::Slot().Value(0.68f)
+            + SSplitter::Slot().Value(0.65f)
             [
                 SNew(SSplitter)
                     .Orientation(Orient_Horizontal)
@@ -258,7 +258,7 @@ auto
                     [
                         SNew(SCkDebug_SectionHeader)
                             .Label(FText::FromString(TEXT("Devices")))
-                            .SubText(FText::FromString(TEXT("flash = press · fill = hold toward the verdict · bright bezel = minted · dim = not connected")))
+                            .SubText(FText::FromString(TEXT("flash = press · fill = hold toward the verdict · outline = the game listens to it · dim = not connected")))
                             .Underline(true)
                     ]
 

@@ -9,7 +9,9 @@
 #include "CkGoapDebugger/Window/SCkGoapDebugger_AgentListPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_CatalogPanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_DecisionPanel.h"
-#include "CkGoapDebugger/Window/SCkGoapDebugger_GraphPane.h"
+#if WITH_EDITOR
+    #include "CkGoapDebugger/Window/SCkGoapDebugger_GraphPane.h"
+#endif
 #include "CkGoapDebugger/Window/SCkGoapDebugger_SearchTracePanel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_Sidebar.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_SquadTable.h"
@@ -68,7 +70,9 @@ const FName SCkGoapDebuggerWindow::Tab_Inspector = FName(TEXT("Inspector"));
 const FName SCkGoapDebuggerWindow::Tab_Catalog   = FName(TEXT("Catalog"));
 
 const FName SCkGoapDebuggerWindow::CTab_Decision = FName(TEXT("Decision"));
+#if WITH_EDITOR
 const FName SCkGoapDebuggerWindow::CTab_Graph    = FName(TEXT("Graph"));
+#endif
 const FName SCkGoapDebuggerWindow::CTab_Search   = FName(TEXT("Search"));
 
 // ====================================================================================================================
@@ -123,11 +127,13 @@ auto
     if (_CatalogPanel.IsValid())
     { _CatalogPanel->Reset_ForWorldChange(); }
 
+#if WITH_EDITOR
     // Clear the graph BEFORE the ViewModel resets — graph node snapshots
     // hold FCk_Handle copies, and they must be released while the registry
     // is still live.
     if (_GraphPane.IsValid())
     { _GraphPane->Reset_ForWorldChange(); }
+#endif
 
     if (_ViewModel.IsValid())
     { _ViewModel->Reset_ForWorldChange(); }
@@ -620,7 +626,11 @@ auto
                             })
                             .MaxDepth_Lambda([this]() -> int32
                             {
+#if WITH_EDITOR
                                 return _GraphPane.IsValid() ? _GraphPane->Get_MaxNameDepth() : 1;
+#else
+                                return 1;
+#endif
                             })
                             .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
                             {
@@ -1226,12 +1236,14 @@ auto
         Decision.Label = FText::FromString(TEXT("Decision"));
         CenterTabs.Add(MoveTemp(Decision));
     }
+#if WITH_EDITOR
     {
         auto Graph = FCkDebug_UnderlineTabDesc{};
         Graph.Id = CTab_Graph;
         Graph.Label = FText::FromString(TEXT("Plan graph"));
         CenterTabs.Add(MoveTemp(Graph));
     }
+#endif
     {
         auto Search = FCkDebug_UnderlineTabDesc{};
         Search.Id = CTab_Search;
@@ -1245,8 +1257,10 @@ auto
         .ViewModel(_ViewModel);
     SAssignNew(_SearchTracePanel, SCkGoapDebugger_SearchTracePanel)
         .ViewModel(_ViewModel);
+#if WITH_EDITOR
     SAssignNew(_GraphPane, SCkGoapDebugger_GraphPane)
         .ViewModel(_ViewModel);
+#endif
 
     return SNew(SBorder)
         .BorderImage(FCkGoapDebuggerStyle::Get().GetBrush(TEXT("CkGoap.Bg.Root")))
@@ -1282,13 +1296,19 @@ auto
                         SNew(SWidgetSwitcher)
                             .WidgetIndex_Lambda([this]() -> int32
                             {
+#if WITH_EDITOR
                                 if (_CenterTab == CTab_Graph)               { return 1; }
                                 if (_CenterTab == CTab_Search && _NerdMode) { return 2; }
+#else
+                                if (_CenterTab == CTab_Search && _NerdMode) { return 1; }
+#endif
                                 return 0;
                             })
 
                             + SWidgetSwitcher::Slot() [ _DecisionPanel.ToSharedRef() ]
+#if WITH_EDITOR
                             + SWidgetSwitcher::Slot() [ _GraphPane.ToSharedRef() ]
+#endif
                             + SWidgetSwitcher::Slot() [ _SearchTracePanel.ToSharedRef() ]
                     ]
         ];

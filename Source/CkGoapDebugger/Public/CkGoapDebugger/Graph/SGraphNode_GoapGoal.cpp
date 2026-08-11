@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "SGraphNode_GoapGoal.h"
 
 #include "CkGoapDebugNode_Goal.h"
@@ -203,3 +205,5 @@ auto
 }
 
 // ====================================================================================================================
+
+#endif

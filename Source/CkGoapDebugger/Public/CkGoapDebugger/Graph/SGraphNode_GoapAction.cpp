@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "SGraphNode_GoapAction.h"
 
 #include "CkGoapDebugNode_Action.h"
@@ -625,3 +627,5 @@ auto
 }
 
 // ====================================================================================================================
+
+#endif

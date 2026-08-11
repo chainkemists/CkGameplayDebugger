@@ -3,7 +3,6 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
-#include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 
@@ -28,10 +27,7 @@ namespace
     {
         return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
             [](const FCk_Handle& InCandidate)
-            {
-                return ck::IsValid(InCandidate)
-                    && InCandidate.Has_All<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>();
-            });
+            { return SCkSmDebuggerWindow::Is_SmDebuggerEntity(InCandidate); });
     }
 }
 

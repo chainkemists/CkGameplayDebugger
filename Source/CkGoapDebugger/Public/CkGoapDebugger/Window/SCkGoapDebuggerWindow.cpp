@@ -18,6 +18,7 @@
 
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
+#include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
@@ -58,6 +59,11 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
+
+#if WITH_EDITOR
+    #include "Editor.h"
+#endif
 
 // ====================================================================================================================
 
@@ -136,6 +142,25 @@ auto
 auto SCkGoapDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
     HandleWorldTornDown();
+}
+
+auto SCkGoapDebuggerWindow::Request_PauseExecution() -> void
+{
+#if WITH_EDITOR
+    // Keep the PIE breakpoint pause semantics unchanged while proving both
+    // prerequisites before entering the editor-only helper.
+    if (GEditor != nullptr && GEditor->PlayWorld != nullptr)
+    { UCk_Utils_EditorOnly_UE::Request_DebugPauseExecution(); }
+#else
+    auto* World = _CachedWorld.Get();
+    const auto IsWorldValid = ck::IsValid(World);
+    CK_ENSURE_IF_NOT(IsWorldValid, TEXT("GOAP pause-on event requires the selected runtime world"))
+    {}
+    if (NOT IsWorldValid)
+    { return; }
+
+    UGameplayStatics::SetGamePaused(World, true);
+#endif
 }
 
 // ====================================================================================================================
@@ -1196,6 +1221,7 @@ auto
                     .ViewModel(_ViewModel)
                     .PauseOnReplan_Lambda([this]() -> bool { return _PauseOnReplan; })
                     .PauseOnPlanFailed_Lambda([this]() -> bool { return _PauseOnPlanFailed; })
+                    .PauseExecution(FSimpleDelegate::CreateSP(this, &SCkGoapDebuggerWindow::Request_PauseExecution))
             ]
     ;
 }

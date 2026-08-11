@@ -115,6 +115,7 @@ private:
     // PIE lifecycle — drop handle-bearing state.
     auto HandleWorldTornDown() -> void;
     auto HandleWorldChanged(UWorld* InWorld) -> void;
+    auto Request_PauseExecution() -> void;
 
 private:
     TSharedPtr<FCkGoapDebugger_ViewModel>   _ViewModel;

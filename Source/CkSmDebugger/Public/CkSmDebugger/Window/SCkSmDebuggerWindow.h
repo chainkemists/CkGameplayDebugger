@@ -7,6 +7,7 @@
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 #include "CkSmDebugger/Graph/CkSmRuntimeGraphFacade.h"
 
+class FCkDebug_ViewportPicker;
 class FCkSmDebugger_ViewModel;
 class FCkSmDebugger_DataCollector;
 class SCkSmDebugger_HistoryList;
@@ -34,6 +35,11 @@ public:
     auto Construct(const FArguments& InArgs) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
     auto TargetEntity(const FCk_Handle& InEntity) -> void;
+
+    // The ONE definition of "an entity this debugger lists" — shared by the
+    // module's FCkDebug_EntityTargetRoute and the window's viewport picker.
+    static auto Is_SmDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
+
     auto OnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) -> FReply override;
     auto SupportsKeyboardFocus() const -> bool override { return true; }
 
@@ -101,6 +107,10 @@ private:
 
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
     TWeakObjectPtr<UWorld> _CachedWorld;
+
+    // Shared viewport picker (CkDebuggerCommon), specialized to state-machine entities.
+    TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
+
     bool _IsTestMode = false;
     FCkSmDebugger_SmInfo _TestSmInfo;
     bool _TestFrameAllPending = false;

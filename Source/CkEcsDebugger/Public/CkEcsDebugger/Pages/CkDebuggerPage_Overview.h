@@ -1,20 +1,17 @@
 #pragma once
 
-#if WITH_EDITOR
-
 #include "CkDebuggerPage_Base.h"
-#include "CkEcs/Handle/CkHandle.h"
+#include "CkEcsDebugger/Graph/CkEcsRuntimeGraphModel.h"
 
-class UCkEcsDebugGraph;
-class UCkEcsDebugNode_Entity;
-class SGraphEditor;
 class FCkDebuggerModel_EntitySelection;
-class FCkDebuggerModel_WorldContext;
 class FCkDebuggerModel_InspectorFilter;
+class FCkDebuggerModel_WorldContext;
+class SCkDebug_GraphCanvas;
+class SCkEcsEntityGraphCard;
 
 class FCkDebuggerPage_Overview : public ICkDebuggerPage_Base
 {
-public:
+  public:
     FCkDebuggerPage_Overview();
     ~FCkDebuggerPage_Overview();
 
@@ -25,18 +22,25 @@ public:
     auto IsActive() const -> bool override;
     auto Set_IsActive(bool InIsActive) -> void override;
 
-private:
+  private:
     auto OnSelectionChanged(const TArray<FCk_Handle>& InEntities) -> void;
     auto OnWorldChanged(UWorld* InWorld) -> void;
     auto OnInspectorFilterChanged() -> void;
-    auto OnGraphNodeDoubleClicked(UCkEcsDebugNode_Entity* InNode) -> void;
-    auto RebuildGraph() -> void;
+    auto OnCanvasSelectionChanged(const TSet<uint64>& InSelectedNodeIds) -> void;
+    auto OnCanvasNodeDoubleClicked(uint64 InNodeId) -> void;
+    auto OnCanvasNodeContextMenu(uint64 InNodeId, const FPointerEvent& InMouseEvent) -> void;
+    auto RebuildGraph(bool InForceCards = false) -> void;
+    auto RebuildCanvasScene(bool InFrameAll) -> void;
     auto Apply_InspectorFilterToGraph() -> void;
+    auto ClearGraph() -> void;
 
     bool IsActivePage = false;
 
-    UCkEcsDebugGraph* _Graph = nullptr;
-    TSharedPtr<SGraphEditor> _GraphEditor;
+    FCkEcsRuntimeGraphModel _RuntimeGraphModel;
+    TSharedPtr<SCkDebug_GraphCanvas> _GraphCanvas;
+    TMap<uint64, TSharedPtr<SCkEcsEntityGraphCard>> _EntityCards;
+    TMap<uint64, TSharedPtr<FCkEcsRuntimeGraphNode>> _CanvasNodes;
+    bool _PendingFrameAll = false;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;
     TSharedPtr<FCkDebuggerModel_WorldContext> WorldModel;
@@ -47,5 +51,3 @@ private:
 
     bool _bNavigatingFromGraph = false;
 };
-
-#endif // WITH_EDITOR

@@ -40,6 +40,7 @@ public:
         SLATE_ARGUMENT(TSharedPtr<FCkGoapDebugger_ViewModel>, ViewModel)
         SLATE_ATTRIBUTE(bool, PauseOnReplan)
         SLATE_ATTRIBUTE(bool, PauseOnPlanFailed)
+        SLATE_EVENT(FSimpleDelegate, PauseExecution)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -84,6 +85,7 @@ private:
 
     TAttribute<bool> _PauseOnReplan;
     TAttribute<bool> _PauseOnPlanFailed;
+    FSimpleDelegate    _PauseExecution;
 
     // High-water mark for pause-on detection (events at/below are old).
     int32 _SeenEventCount = 0;

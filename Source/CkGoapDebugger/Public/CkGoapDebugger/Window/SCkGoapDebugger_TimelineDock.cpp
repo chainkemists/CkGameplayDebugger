@@ -16,10 +16,6 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#if WITH_EDITOR
-#include "Editor.h"
-#endif
-
 #include "Styling/CoreStyle.h"
 
 #include "Widgets/SBoxPanel.h"
@@ -93,6 +89,7 @@ auto
     _ViewModel = InArgs._ViewModel;
     _PauseOnReplan = InArgs._PauseOnReplan;
     _PauseOnPlanFailed = InArgs._PauseOnPlanFailed;
+    _PauseExecution = InArgs._PauseExecution;
 
     ChildSlot
     [
@@ -722,12 +719,7 @@ auto
 
         if (NOT Match) { continue; }
 
-        // The blueprint-breakpoint pause — same pattern as CkSmDebugger's
-        // pause-on-transition (SCkSmDebuggerWindow.cpp).
-#if WITH_EDITOR
-        if (GEditor != nullptr && GEditor->PlayWorld != nullptr)
-        { GEditor->PlayWorld->bDebugPauseExecution = true; }
-#endif
+        _PauseExecution.ExecuteIfBound();
         break;
     }
 }

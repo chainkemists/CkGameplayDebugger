@@ -23,10 +23,12 @@ class UWorld;
 class CKINTENTDEBUGGER_API FCkIntentDebugger_DataCollector
 {
 public:
+    // The frame pull is bounded by the sampler's own ring and nothing else — a second, collector-side cap is
+    // exactly how the timeline once showed 240 frames of a 1800-frame ring and read as "pan is broken"
+    // ([P11-D12]). The ring capacity is the one knob, and it is the feature's.
     static auto
     Collect(
-        UWorld* InWorld,
-        int32 InMaxRecordedFrames) -> FCkIntentDebugger_Snapshot;
+        UWorld* InWorld) -> FCkIntentDebugger_Snapshot;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

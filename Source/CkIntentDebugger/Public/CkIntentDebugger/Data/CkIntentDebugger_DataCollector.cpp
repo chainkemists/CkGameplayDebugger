@@ -14,6 +14,7 @@
 #include "CkInput/Subsystem/CkInputSource_Subsystem.h"
 
 #include "CkIntent/CkIntentGrammar_Utils.h"
+#include "CkIntent/Debug/CkIntentDebugHistory_Utils.h"
 #include "CkIntent/CkIntentMatcher_Fragment.h"
 #include "CkIntent/CkIntentMatcher_Utils.h"
 #include "CkIntent/CkIntentSampler_Fragment.h"
@@ -118,21 +119,28 @@ namespace ck_intent_debugger_collector
     auto
         Collect_Frames(
             const FCk_Handle_IntentSampler& InSampler,
+            const FCk_Handle_IntentDebugHistory& InHistory,
             const FCk_Handle_InputButtonMap& InMap,
-            const TArray<FCkIntentDebugger_LayerRow>& InLayers,
-            int32 InMaxFrames)
+            const TArray<FCkIntentDebugger_LayerRow>& InLayers)
         -> TArray<FCkIntentDebugger_FrameRow>
     {
         auto Rows = TArray<FCkIntentDebugger_FrameRow>{};
 
-        const auto FrameCount = UCk_Utils_IntentSampler_UE::Get_FrameCount(InSampler);
-        const auto Wanted = FMath::Min(FrameCount, InMaxFrames);
+        // The debug-depth recording, when the source carries one; the sampler's own working window otherwise.
+        // Same addressing on both, so one walk serves either.
+        const auto UseHistory = ck::IsValid(InHistory);
+
+        const auto Wanted = UseHistory
+            ? UCk_Utils_IntentDebugHistory_UE::Get_FrameCount(InHistory)
+            : UCk_Utils_IntentSampler_UE::Get_FrameCount(InSampler);
 
         Rows.Reserve(Wanted);
 
         for (auto Offset = Wanted - 1; Offset >= 0; --Offset)
         {
-            const auto Record = UCk_Utils_IntentSampler_UE::TryGet_FrameAtOffset(InSampler, Offset);
+            const auto Record = UseHistory
+                ? UCk_Utils_IntentDebugHistory_UE::TryGet_FrameAtOffset(InHistory, Offset)
+                : UCk_Utils_IntentSampler_UE::TryGet_FrameAtOffset(InSampler, Offset);
             if (Record.Get_FrameIndex() < 0)
             { continue; }
 
@@ -368,8 +376,7 @@ namespace ck_intent_debugger_collector
 auto
     FCkIntentDebugger_DataCollector::
     Collect(
-        UWorld* InWorld,
-        int32 InMaxRecordedFrames)
+        UWorld* InWorld)
     -> FCkIntentDebugger_Snapshot
 {
     auto Snapshot = FCkIntentDebugger_Snapshot{};
@@ -436,8 +443,14 @@ auto
             Entry.OctantNeutralRadius = SamplerParams.Get_OctantNeutralRadius();
             Entry.OctantHysteresisMarginDegrees = SamplerParams.Get_OctantHysteresisMarginDegrees();
 
+            Entry.History = UCk_Utils_IntentDebugHistory_UE::Cast(SourceHandle);
+            Entry.HasHistory = ck::IsValid(Entry.History);
+            Entry.HistoryCapacity = Entry.HasHistory
+                ? UCk_Utils_IntentDebugHistory_UE::Get_Capacity(Entry.History)
+                : 0;
+
             Entry.Frames = ck_intent_debugger_collector::Collect_Frames(
-                Sampler, ButtonMap, Entry.Layers, InMaxRecordedFrames);
+                Sampler, Entry.History, ButtonMap, Entry.Layers);
         }
 
         Snapshot.Sources.Add(MoveTemp(Entry));

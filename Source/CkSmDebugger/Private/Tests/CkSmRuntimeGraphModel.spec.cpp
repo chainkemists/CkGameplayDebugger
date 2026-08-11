@@ -268,7 +268,10 @@ auto FCkSmRuntimeGraphModel_ValueOwnedPreviewTest::RunTest(const FString&) -> bo
     Preview.Transitions.Add(MoveTemp(Transition));
 
     auto Model = FCkSmRuntimeGraphModel{};
-    Model.Rebuild(Preview, true, 1);
+    // NameDepth 0 = full names: the assertion below matches the state's full
+    // "Preview.Nested" label, which any positive depth would shorten to
+    // "Nested" via SCkDebug_NameLabel::Get_ShortName and fail spuriously.
+    Model.Rebuild(Preview, true, 0);
     TestTrue(TEXT("Runtime preview DTO emits nested state"),
              Model.GetScene().Nodes.ContainsByPredicate([](const FCkSmRuntimeGraphNode& Node)
              { return Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.Label == TEXT("Preview.Nested"); }));

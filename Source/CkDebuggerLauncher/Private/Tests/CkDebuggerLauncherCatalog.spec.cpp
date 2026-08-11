@@ -194,6 +194,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkJoltDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkMapDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkStyleLabDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkSaveDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
     return true;

@@ -14,7 +14,6 @@ public class CkSaveDebugger : CkModuleRules
 
             "Slate",
             "SlateCore",
-            "WorkspaceMenuStructure",
 
             // Neither is transitive through CkDebuggerCommon: DesktopPlatform drives the Open/Save file dialogs and
             // Json builds the deterministic export document.
@@ -27,12 +26,6 @@ public class CkSaveDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
-
-            // The retained editor-world visuals (all transitive through CkDebuggerCommon; declared for direct use):
-            // Transform requests on preview entities, ISM mesh ghosts, and the PMG gizmo set's shape types.
-            "CkEcsExt",
-            "CkIsmRenderer",
-            "CkPmg",
         });
 
         if (Target.bBuildEditor)
@@ -40,10 +33,17 @@ public class CkSaveDebugger : CkModuleRules
             PublicDependencyModuleNames.AddRange(new string[]
             {
                 "UnrealEd",
+                "WorkspaceMenuStructure",
 
                 // The save visualizer's hidden EdMode (UBaseLegacyWidgetEdMode + GLevelEditorModeTools).
                 "EditorFramework",
                 "LevelEditor",
+
+                // The retained editor-world visuals (all transitive through CkDebuggerCommon; declared for direct
+                // use): transform requests on preview entities, ISM mesh ghosts, and PMG gizmo shape types.
+                "CkEcsExt",
+                "CkIsmRenderer",
+                "CkPmg",
             });
         }
     }

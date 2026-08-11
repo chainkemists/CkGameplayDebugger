@@ -1,13 +1,15 @@
 # CkSaveDebugger
 
-**Purpose:** UncookedOnly Slate debugger for CK `.sav` snapshot files. It is an **offline** inspector: it opens a
+**Purpose:** DeveloperTool Slate debugger for CK `.sav` snapshot files. It is available in editor and packaged
+Development/DebugGame targets, while Test and Shipping remain excluded. It is an **offline** inspector: it opens a
 save off disk, hands the bytes to `CkSnapshot`'s inspection API, and renders the resulting document — census,
 ownership tree, per-entity recipe, per-payload blobs, and diagnostics. Opened via the `ck.SaveDebugger` console
 command or the shared debugger launcher (**Tools** category, slot 30).
 
 **Depends on:** `CkCore`, `CkEcs`, `CkSnapshot`, `CkDebuggerCommon`, `CkEditorTools`, plus `DesktopPlatform` (file
 dialogs) and `Json` (export) — neither of which is transitive — and `UnrealEd` behind `Target.bBuildEditor`.
-Mirrors `CkAggroDebugger`'s module registration.
+Mirrors `CkAggroDebugger`'s module registration. Editor workspace-menu dependencies remain behind
+`Target.bBuildEditor` / `WITH_EDITOR`; packaged builds use the same window and DesktopPlatform file dialogs.
 
 ---
 
@@ -218,8 +220,9 @@ EdMode pulls an immutable snapshot of plain rows and pushes raw saved ids back.
   (`Visualizer/CkSaveDebugger_VisualizerEdMode`, linker-anchored by a `StaticClass()` reference in
   `StartupModule`) renders and forwards `HandleClick` hit-proxy hits; the `ck::save_debugger_viz` function-slot
   state (`Visualizer/CkSaveDebugger_Visualizer`) carries the published rows, selected id and click handler
-  between the window and the mode. Everything is `#if WITH_EDITOR` — this module stays UncookedOnly, per the
-  suite's editor-only-code rule.
+  between the window and the mode. The visualizer and its dependencies stay behind `#if WITH_EDITOR` /
+  `Target.bBuildEditor`; packaged Development/DebugGame builds retain the offline inspector but omit this
+  level-editor-only viewport surface.
 - **Lifecycle:** the visualizer follows the document — open/reload republishes (or stops when the new file has
   nothing placeable), and the window destructor deactivates the mode and drops the published state. Both draw
   paths and the mode toggle guard on `GEditor->PlayWorld`, so the visualizer goes quiet during PIE.

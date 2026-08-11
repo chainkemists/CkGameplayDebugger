@@ -253,7 +253,9 @@ auto FCkGoapRuntimeGraphModel::Rebuild(const FCkGoapDebugger_PlannerInfo& InPlan
         LayerY[Layers[I]] += static_cast<float>(NodeSizes[I].Y) + VertGap;
         _Nodes.Add(Node);
         _ActionById.Add(Id, Node->Action.Handle);
-        _MaxNameDepth = FMath::Max(_MaxNameDepth, Node->Action.ClassName.CountChar(TEXT('.')) + 1);
+        auto NameSegments = TArray<FString>{};
+        Node->Action.ClassName.ParseIntoArray(NameSegments, TEXT("."), true);
+        _MaxNameDepth = FMath::Max(_MaxNameDepth, FMath::Max(1, NameSegments.Num()));
     }
     auto FindCatalogIndex = [&Catalog](const FCk_Handle_Goap_Action& InHandle) -> int32
     {

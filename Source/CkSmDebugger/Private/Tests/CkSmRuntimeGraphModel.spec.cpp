@@ -12,12 +12,12 @@ auto FCkSmRuntimeGraphModel_SizeTest::RunTest(const FString&) -> bool
     auto State = FCkSmDebugger_StateInfo{};
     State.StateName = TEXT("Test.State");
     const auto MinimumSize = FCkSmRuntimeGraphModel::EstimateStateSize(State, false, 1);
-    TestEqual(TEXT("State uses editor minimum width"), MinimumSize.X, 140.0f);
-    TestEqual(TEXT("State reserves the dwell/status row"), MinimumSize.Y, 62.0f);
+    TestEqual<double>(TEXT("State uses editor minimum width"), MinimumSize.X, 140.0);
+    TestEqual<double>(TEXT("State reserves the dwell/status row"), MinimumSize.Y, 62.0);
     State.Tasks.Add({});
-    TestEqual(TEXT("Expanded task row uses editor height rule"),
-              FCkSmRuntimeGraphModel::EstimateStateSize(State, true, 1).Y,
-              83.0f);
+    TestEqual<double>(TEXT("Expanded task row uses editor height rule"),
+                      FCkSmRuntimeGraphModel::EstimateStateSize(State, true, 1).Y,
+                      83.0);
     return true;
 }
 

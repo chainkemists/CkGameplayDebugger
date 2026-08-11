@@ -175,7 +175,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     class FSlot : public TSlotBase<FSlot>
     {
       public:
-        SLATE_SLOT_BEGIN_ARGS(FSlot, TSlotBase<FSlot>) {}
+        SLATE_SLOT_BEGIN_ARGS(FSlot, TSlotBase<FSlot>)
         SLATE_SLOT_END_ARGS()
     };
 

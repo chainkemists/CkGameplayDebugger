@@ -326,7 +326,7 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
     for (auto Index = 0; Index < InInfo.States.Num(); ++Index)
     {
         const auto Size = EstimateVisualStateSize(Index);
-        LayoutNodes.Add({Index, FMath::RoundToInt(Size.X), FMath::RoundToInt(Size.Y)});
+        LayoutNodes.Add({Index, FMath::RoundToInt32(Size.X), FMath::RoundToInt32(Size.Y)});
     }
     for (const auto& Transition : InInfo.Transitions)
     {

@@ -8,6 +8,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
+#include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
 #include "CkGoapDebugger/Graph/CkGoapRuntimeGraphModel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
@@ -17,6 +18,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -115,186 +117,183 @@ namespace ck_goap_debugger_graph_pane
                           4, 0, 0, 0)[MakeDot(FSlateColor(CkStyle::Accent()))]];
         return SNew(SBox).MinDesiredWidth(180.0f).MaxDesiredWidth(420.0f)
             [SNew(SOverlay) +
-                 SOverlay::Slot().Padding(
-                     -10.0f)[SNew(SImage)
-                                 .Image(FCkDebuggerCommonStyle::Get_GlowTightBrush())
-                                 .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
-                                 .Visibility_Lambda(
-                                     [Weak]
-                                     {
-                                         const auto P = Weak.Pin();
-                                         return P.IsValid() && P->IsInPlan
-                                                    ? EVisibility::HitTestInvisible
-                                                    : EVisibility::Collapsed;
-                                     })] +
-                 SOverlay::Slot()
-                     [SNew(SBorder)
-                          .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                          .BorderBackgroundColor_Lambda(
-                              [Weak]
-                              {
-                                  const auto P = Weak.Pin();
-                                  return FSlateColor(!P.IsValid() ? CkStyle::NodeBorder_Inactive()
-                                                     : P->IsFailureBlocked ? CkStyle::Err()
-                                                     : P->IsSelected       ? CkStyle::Warn()
-                                                     : P->IsInPlan ? CkStyle::NodeBorder_InPlan()
-                                                     : P->Action.ChildActionHandles.Num() > 0
-                                                         ? CkStyle::CategoryAge()
-                                                         : CkStyle::Accent());
-                              })
-                          .Padding_Lambda(
-                              []
-                              {
-                                  return FMargin(ck::debug_axes::Get_NodeBorderThickness());
-                              })
-                              [SNew(SBorder)
-                                   .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                   .BorderBackgroundColor_Lambda(
-                                       [Weak]
-                                       {
-                                           if (!ck_goap_debugger_axes::Get_NodeDrawsFill())
-                                               return FSlateColor(FLinearColor::Transparent);
-                                           const auto P = Weak.Pin();
-                                           return FSlateColor(P.IsValid() && P->IsInPlan
-                                                                  ? CkStyle::NodeFill_InPlan()
-                                                                  : CkStyle::NodeFill_Inactive());
-                                       })
-                                   .Padding_Lambda(
-                                       []
-                                       {
-                                           return FMargin(
-                                               CkStyle::SpaceM *
-                                                   ck_goap_debugger_axes::Get_NodePaddingScale(),
-                                               CkStyle::SpaceS *
-                                                   ck_goap_debugger_axes::Get_NodePaddingScale());
-                                       })
-                                       [SNew(SVerticalBox) +
-                                        SVerticalBox::Slot().AutoHeight()
-                                            [SNew(SHorizontalBox) +
-                                             SHorizontalBox::Slot().FillWidth(1)
-                                                 [SNew(STextBlock)
-                                                      .Text(FText::FromString(
-                                                          SCkDebug_NameLabel::Get_ShortName(
-                                                              Node->Action.ClassName, NameDepth)))
-                                                      .Font_Lambda(
-                                                          []
-                                                          {
-                                                              return ck::debug_axes::ScaledFont(
-                                                                  "Bold",
-                                                                  CkStyle::NodeTitleFontSize());
-                                                          })
-                                                      .ColorAndOpacity(
-                                                          FSlateColor(CkStyle::Text()))] +
-                                             SHorizontalBox::Slot().AutoWidth()
-                                                 [SNew(STextBlock)
-                                                      .Text_Lambda(
-                                                          [Weak]
-                                                          {
-                                                              const auto P = Weak.Pin();
-                                                              return FText::FromString(
-                                                                  P.IsValid() ? FString::Printf(
-                                                                                    TEXT("$%.0f"),
+             SOverlay::Slot().Padding(
+                 -10.0f)[SNew(SImage)
+                             .Image(FCkDebuggerCommonStyle::Get_GlowTightBrush())
+                             .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
+                             .Visibility_Lambda(
+                                 [Weak]
+                                 {
+                                     const auto P = Weak.Pin();
+                                     return P.IsValid() && P->IsInPlan
+                                                ? EVisibility::HitTestInvisible
+                                                : EVisibility::Collapsed;
+                                 })] +
+             SOverlay::Slot()
+                 [SNew(SBorder)
+                      .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                      .BorderBackgroundColor_Lambda(
+                          [Weak]
+                          {
+                              const auto P = Weak.Pin();
+                              return FSlateColor(!P.IsValid() ? CkStyle::NodeBorder_Inactive()
+                                                 : P->IsFailureBlocked ? CkStyle::Err()
+                                                 : P->IsSelected       ? CkStyle::Warn()
+                                                 : P->IsInPlan ? CkStyle::NodeBorder_InPlan()
+                                                 : P->Action.ChildActionHandles.Num() > 0
+                                                     ? CkStyle::CategoryAge()
+                                                     : CkStyle::Accent());
+                          })
+                      .Padding_Lambda(
+                          []
+                          {
+                              return FMargin(ck::debug_axes::Get_NodeBorderThickness());
+                          })
+                          [SNew(SBorder)
+                               .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                               .BorderBackgroundColor_Lambda(
+                                   [Weak]
+                                   {
+                                       if (!ck_goap_debugger_axes::Get_NodeDrawsFill())
+                                           return FSlateColor(FLinearColor::Transparent);
+                                       const auto P = Weak.Pin();
+                                       return FSlateColor(P.IsValid() && P->IsInPlan
+                                                              ? CkStyle::NodeFill_InPlan()
+                                                              : CkStyle::NodeFill_Inactive());
+                                   })
+                               .Padding_Lambda(
+                                   []
+                                   {
+                                       return FMargin(
+                                           CkStyle::SpaceM *
+                                               ck_goap_debugger_axes::Get_NodePaddingScale(),
+                                           CkStyle::SpaceS *
+                                               ck_goap_debugger_axes::Get_NodePaddingScale());
+                                   })
+                                   [SNew(SVerticalBox) +
+                                    SVerticalBox::Slot().AutoHeight()
+                                        [SNew(SHorizontalBox) +
+                                         SHorizontalBox::Slot().FillWidth(1)
+                                             [SNew(STextBlock)
+                                                  .Text(FText::FromString(
+                                                      SCkDebug_NameLabel::Get_ShortName(
+                                                          Node->Action
+                                                              .ClassName,
+                                                          NameDepth)))
+                                                  .Font_Lambda(
+                                                      []
+                                                      {
+                                                          return ck::debug_axes::ScaledFont(
+                                                              "Bold", CkStyle::NodeTitleFontSize());
+                                                      })
+                                                  .ColorAndOpacity(FSlateColor(CkStyle::Text()))] +
+                                         SHorizontalBox::Slot().AutoWidth()
+                                             [SNew(STextBlock)
+                                                  .Text_Lambda(
+                                                      [Weak]
+                                                      {
+                                                          const auto P = Weak.Pin();
+                                                          return FText::FromString(
+                                                              P.IsValid()
+                                                                  ? FString::Printf(TEXT("$%.0f"),
                                                                                     P->Action.Cost)
-                                                                              : TEXT(""));
-                                                          })
-                                                      .ColorAndOpacity(
-                                                          FSlateColor(CkStyle::Warn()))]] +
-                                        SVerticalBox::Slot().AutoHeight()
-                                            [SNew(STextBlock)
-                                                 .Text_Lambda(
-                                                     [Weak]()
+                                                                  : TEXT(""));
+                                                      })
+                                                  .ColorAndOpacity(FSlateColor(CkStyle::Warn()))]] +
+                                    SVerticalBox::Slot().AutoHeight()
+                                        [SNew(STextBlock)
+                                             .Text_Lambda(
+                                                 [Weak]()
+                                                 {
+                                                     const auto P = Weak.Pin();
+                                                     if (NOT P.IsValid())
                                                      {
-                                                         const auto P = Weak.Pin();
-                                                         if (NOT P.IsValid())
-                                                         {
-                                                             return FText::GetEmpty();
-                                                         }
-                                                         if (P->Action.IsPlannerRole)
-                                                         {
-                                                             return FText::FromString(
-                                                                 TEXT("◆● ACTION+PLANNER"));
-                                                         }
-                                                         if (P->Action.Cost >=
-                                                             ck_goap_debugger_decision_model::
-                                                                 k_FallbackCostFloor)
-                                                         {
-                                                             return FText::FromString(
-                                                                 TEXT("● FALLBACK"));
-                                                         }
-                                                         return FText::FromString(TEXT("● ACTION"));
-                                                     })
-                                                 .Font_Lambda(
-                                                     []
+                                                         return FText::GetEmpty();
+                                                     }
+                                                     if (P->Action.IsPlannerRole)
                                                      {
-                                                         return ck::debug_axes::ScaledFont(
-                                                             "Bold", CkStyle::FontSizeMicro());
-                                                     })
-                                                 .ColorAndOpacity_Lambda(
-                                                     [Weak]()
+                                                         return FText::FromString(
+                                                             TEXT("◆● ACTION+PLANNER"));
+                                                     }
+                                                     if (P->Action.Cost >=
+                                                         ck_goap_debugger_decision_model::
+                                                             k_FallbackCostFloor)
                                                      {
-                                                         const auto P = Weak.Pin();
-                                                         return FSlateColor(
-                                                             P.IsValid() &&
-                                                                     P->Action.Cost >=
-                                                                         ck_goap_debugger_decision_model::
-                                                                             k_FallbackCostFloor
-                                                                 ? CkStyle::Warn()
-                                                                 : CkStyle::TextMute());
-                                                     })] +
-                                        SVerticalBox::Slot().AutoHeight().Padding(0,
-                                                                                  CkStyle::SpaceXS)
-                                            [SNew(SBorder)
-                                                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrus"
-                                                                                       "h")))
-                                                 .BorderBackgroundColor(CkStyle::OverlayOf(
-                                                     CkStyle::CategoryAge(), 0.15f))
-                                                 .Visibility_Lambda(
-                                                     [Weak]
-                                                     {
-                                                         const auto P = Weak.Pin();
-                                                         return P.IsValid() &&
-                                                                        P->Action.ChildActionHandles
-                                                                                .Num() > 0
-                                                                    ? EVisibility::
-                                                                          SelfHitTestInvisible
-                                                                    : EVisibility::Collapsed;
-                                                     })[SNew(STextBlock)
-                                                            .Text(FText::FromString(FString::Printf(
-                                                                TEXT("› %s"),
-                                                                *TagLeaf(Node->Action.ActionTag))))
-                                                            .ColorAndOpacity(FSlateColor(
-                                                                CkStyle::CategoryAge()))]] +
-                                        SVerticalBox::Slot().AutoHeight().Padding(0,
-                                                                                  CkStyle::SpaceS)
-                                            [SNew(SHorizontalBox) +
-                                             SHorizontalBox::Slot().AutoWidth()[Conditions] +
-                                             SHorizontalBox::Slot().FillWidth(1)[] +
-                                             SHorizontalBox::Slot().AutoWidth()[Effects]]]]];
-             +SOverlay::Slot()
-                  .HAlign(HAlign_Left)
-                  .VAlign(VAlign_Top)
-                  .Padding(
-                      -6.0f)[SNew(SBorder)
-                                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                 .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
-                                 .Visibility_Lambda(
-                                     [Weak]
-                                     {
-                                         const auto P = Weak.Pin();
-                                         return P.IsValid() && P->IsInPlan && P->PlanStepIndex > 0
-                                                    ? EVisibility::SelfHitTestInvisible
-                                                    : EVisibility::Collapsed;
-                                     })[SNew(STextBlock)
-                                            .Text_Lambda(
-                                                [Weak]
-                                                {
-                                                    const auto P = Weak.Pin();
-                                                    return FText::FromString(
-                                                        P.IsValid()
-                                                            ? FString::FromInt(P->PlanStepIndex)
-                                                            : TEXT(""));
-                                                })
-                                            .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))]]];
+                                                         return FText::FromString(
+                                                             TEXT("● FALLBACK"));
+                                                     }
+                                                     return FText::FromString(TEXT("● ACTION"));
+                                                 })
+                                             .Font_Lambda(
+                                                 []
+                                                 {
+                                                     return ck::debug_axes::ScaledFont(
+                                                         "Bold", CkStyle::FontSizeMicro());
+                                                 })
+                                             .ColorAndOpacity_Lambda(
+                                                 [Weak]()
+                                                 {
+                                                     const auto P = Weak.Pin();
+                                                     return FSlateColor(
+                                                         P.IsValid() &&
+                                                                 P->Action.Cost >=
+                                                                     ck_goap_debugger_decision_model::
+                                                                         k_FallbackCostFloor
+                                                             ? CkStyle::Warn()
+                                                             : CkStyle::TextMute());
+                                                 })] +
+                                    SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceXS)
+                                        [SNew(SBorder)
+                                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrus"
+                                                                                   "h")))
+                                             .BorderBackgroundColor(
+                                                 CkStyle::OverlayOf(CkStyle::CategoryAge(), 0.15f))
+                                             .Visibility_Lambda(
+                                                 [Weak]
+                                                 {
+                                                     const auto P = Weak.Pin();
+                                                     return P.IsValid() &&
+                                                                    P->Action.ChildActionHandles
+                                                                            .Num() > 0
+                                                                ? EVisibility::SelfHitTestInvisible
+                                                                : EVisibility::Collapsed;
+                                                 })[SNew(STextBlock)
+                                                        .Text(FText::FromString(FString::Printf(
+                                                            TEXT("› %s"),
+                                                            *TagLeaf(Node->Action.ActionTag))))
+                                                        .ColorAndOpacity(
+                                                            FSlateColor(CkStyle::CategoryAge()))]] +
+                                    SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceS)
+                                        [SNew(SHorizontalBox) +
+                                         SHorizontalBox::Slot().AutoWidth()[Conditions] +
+                                         SHorizontalBox::Slot().FillWidth(
+                                             1)[SNullWidget::NullWidget] +
+                                         SHorizontalBox::Slot().AutoWidth()[Effects]]]]] +
+             SOverlay::Slot()
+                 .HAlign(HAlign_Left)
+                 .VAlign(VAlign_Top)
+                 .Padding(
+                     -6.0f)[SNew(SBorder)
+                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
+                                .Visibility_Lambda(
+                                    [Weak]
+                                    {
+                                        const auto P = Weak.Pin();
+                                        return P.IsValid() && P->IsInPlan && P->PlanStepIndex > 0
+                                                   ? EVisibility::SelfHitTestInvisible
+                                                   : EVisibility::Collapsed;
+                                    })[SNew(STextBlock)
+                                           .Text_Lambda(
+                                               [Weak]
+                                               {
+                                                   const auto P = Weak.Pin();
+                                                   return FText::FromString(
+                                                       P.IsValid()
+                                                           ? FString::FromInt(P->PlanStepIndex)
+                                                           : TEXT(""));
+                                               })
+                                           .ColorAndOpacity(FSlateColor(CkStyle::TextStrong()))]]];
     }
 
     auto BuildGoalCard(const TSharedPtr<FCkGoapRuntimeGraphNode>& Node) -> TSharedRef<SWidget>
@@ -423,8 +422,8 @@ auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
     const auto Selected = _ViewModel->GetSelectedAction();
     const auto Hash = FCkGoapRuntimeGraphModel::ComputeTopologyHash(*Planner);
     const auto* SelectedInfo = _ViewModel->GetSelectedActionInfo();
-    const auto EffectiveGoalHash =
-        FCkGoapRuntimeGraphModel::ComputeEffectiveGoalHash(*Planner, SelectedInfo);
+    const auto EffectiveGoalHash = FCkGoapRuntimeGraphModel::ComputeEffectiveGoalHash(*Planner,
+                                                                                      SelectedInfo);
     const bool TopologyChanged = Hash != _LastTopologyHash;
     const bool NameDepthChanged = _ViewModel->Get_NameDepth() != _LastNameDepth;
     const bool SelectedGoalChanged = EffectiveGoalHash != _LastEffectiveGoalHash;

@@ -22,7 +22,12 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
+#include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
+
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ScrubTimeline.h"
 
@@ -295,6 +300,11 @@ auto
     HandleWorldTornDown()
     -> void
 {
+    // Stop picker reads first — it holds a sticky focus handle and reads the
+    // marker snapshot every tick.
+    if (_ViewportPicker.IsValid())
+    { _ViewportPicker->Deactivate(); }
+
     _CachedWorld.Reset();
     _SelectedTransitionIndex = -1;
     _SelectedHistoryEntry.Reset();
@@ -672,6 +682,18 @@ auto
 
 const FName SCkSmDebuggerWindow::WindowId = FName(TEXT("SmDebugger"));
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    Is_SmDebuggerEntity(
+        const FCk_Handle& InCandidate)
+    -> bool
+{
+    return ck::IsValid(InCandidate)
+        && InCandidate.Has_All<ck::FFragment_Sm_Current, ck::FFragment_Sm_Params>();
+}
+
 auto
     SCkSmDebuggerWindow::
     Construct(
@@ -683,6 +705,32 @@ auto
     _ViewModel = MakeShared<FCkSmDebugger_ViewModel>();
     _DataCollector = MakeShared<FCkSmDebugger_DataCollector>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+
+    // Shared viewport picker, specialized to state-machine entities: only
+    // entities carrying SM state (plus their owner chain up to the NPC
+    // representative) are previewed and pickable. The pick routes through this
+    // module's registered entity-target route, which resolves the lineage and
+    // re-fronts the tab with the SM targeted.
+    _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakWorld = TWeakPtr<FCkDebuggerModel_WorldSelector>(_WorldModel)]() -> UWorld*
+            {
+                const auto Pinned = WeakWorld.Pin();
+                return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.TargetFilter =
+            [](const FCk_Handle& InCandidate) { return Is_SmDebuggerEntity(InCandidate); };
+        PickerParams.OnEntityPicked =
+            [](const FCk_Handle& InPicked)
+            {
+                ck::DebugSelectionSync::Broadcast(InPicked, TEXT("SmDebugger"));
+                FCkDebug_EntityTargetRegistry::Get().TryOpenAndTarget(
+                    FName{TEXT("CkSmDebugger")}, InPicked);
+            };
+        _ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
 
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
         this, &SCkSmDebuggerWindow::HandleWorldChanged);
@@ -891,6 +939,11 @@ auto
     // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
     // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Viewport-picker ticks stay ungated so input handling keeps working even
+    // when the panel refresh is paused.
+    if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+    { _ViewportPicker->Tick(InDeltaTime); }
 
     if (_IsTestMode)
     {
@@ -1280,6 +1333,20 @@ auto
             [
                 SNew(SCkDebug_WorldSelector, _WorldModel)
                     .ShowHeaderLabel(false)
+            ]
+
+        // ── Viewport picker (shared) — click an SM-carrying entity ───────
+
+        + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, 8.0f, 0.0f)
+            [
+                SNew(SCkDebug_ViewportPickerControls)
+                    .Picker(_ViewportPicker)
+                    .PickTooltip(FText::FromString(TEXT(
+                        "Enter pick mode: click a state-machine entity in the viewport to inspect it.\n"
+                        "Only entities with a state machine (and their owning NPC) are shown and pickable.")))
             ]
 
         // ── SM Selector ──────────────────────────────────────────────────

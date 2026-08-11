@@ -16,8 +16,8 @@ class UWorld;
 // Shared in-world entity marker preview — the "layered connected diamonds".
 //
 // One implementation of the marker display used by both the On-Screen Overlay
-// (UCk_DebugOverlay_Subsystem) and the ECS Debugger's viewport picker
-// (FCkDebuggerModel_ViewportPicker):
+// (UCk_DebugOverlay_Subsystem) and the shared viewport picker
+// (FCkDebug_ViewportPicker):
 //
 //   - Gather:      snapshot every transform-bearing entity (pending-kill and
 //                  PMG debug-shape entities excluded), compute its hierarchy
@@ -78,6 +78,20 @@ public:
         // built-in exclusions (pending-kill, PMG debug shapes, depth gate).
         TFunction<bool(const FCk_Handle&)> Filter;
 
+        // Optional TARGET mode (feature-specialized pickers, e.g. "only GOAP
+        // agents"): when bound, the snapshot becomes every entity accepted by
+        // this predicate PLUS its lifetime-owner chain up to the representative
+        // root — the top-most ancestor that is neither the registry transient
+        // nor an ActorRelay entity (the raw relay check, independent of the
+        // depth-transparency user setting). The matched entity may be a
+        // transform-less sub-entity; its transform-bearing ancestors still
+        // surface, which is how "GOAP lives on a sub-entity but the NPC root is
+        // what you pick" works. MaxDepth and FullDepthRoots do NOT apply in
+        // this mode (the predicate is the gate); CullOrigin/CullRadius and
+        // Filter still do. Evaluated over ALL live entities, so keep it cheap
+        // (fragment Has checks).
+        TFunction<bool(const FCk_Handle&)> TargetMatch;
+
         // Optional distance cull: entities farther than CullRadius from
         // CullOrigin are excluded entirely (markers, links, and the entry list).
         TOptional<FVector> CullOrigin;
@@ -129,6 +143,12 @@ public:
     auto Contains(const FCk_Handle& InEntity) const -> bool;
 
 private:
+    // Target-mode gather (FGatherParams::TargetMatch bound) — matches + their
+    // owner chains up to the representative root. See FGatherParams::TargetMatch.
+    auto DoGather_Targeted(
+        const FCk_Handle&    InTransientEntity,
+        const FGatherParams& InParams) -> int32;
+
     TArray<FEntry> _Entries;
     TSet<uint32>   _EntryNums;
 

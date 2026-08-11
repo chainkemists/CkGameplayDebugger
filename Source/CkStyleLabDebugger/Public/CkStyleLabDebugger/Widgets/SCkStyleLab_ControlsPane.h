@@ -12,8 +12,8 @@ DECLARE_DELEGATE(FOnCkStyleLab_SelectionChanged);
 
 /**
  * One axis row in the always-visible HUD. Discovered by reflecting over
- * FCkDebuggerStyleSelection, so an axis added in a later phase shows up here with no edit to
- * this file — which is the whole reason the Lab is the iteration vehicle.
+ * FCkDebuggerStyleSelection. The reflected property remains the source of value and declaration
+ * order; CkStyleLab_AxisMetadata owns its packaged-safe label and tooltip contract.
  */
 struct FCkStyleLab_AxisRow
 {

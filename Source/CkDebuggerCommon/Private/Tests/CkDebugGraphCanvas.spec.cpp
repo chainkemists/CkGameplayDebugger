@@ -3,6 +3,7 @@
 #if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS
 
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "Widgets/Text/STextBlock.h"
 
 // =====================================================================================================================
 
@@ -114,11 +115,11 @@ bool FCkDebugGraphCanvas_EdgeAnchorsAndRoutes::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FCkDebugGraphCanvas_SceneReplacementRehydratesSelection,
-    "Ck.DebuggerCommon.GraphCanvas.SceneReplacementRehydratesSelection",
+    FCkDebugGraphCanvas_SceneReconciliationPreservesSelection,
+    "Ck.DebuggerCommon.GraphCanvas.SceneReconciliationPreservesSelection",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FCkDebugGraphCanvas_SceneReplacementRehydratesSelection::RunTest(const FString&)
+bool FCkDebugGraphCanvas_SceneReconciliationPreservesSelection::RunTest(const FString&)
 {
     auto CallbackCount = 0;
     auto LastSelection = TSet<uint64>{};
@@ -136,10 +137,15 @@ bool FCkDebugGraphCanvas_SceneReplacementRehydratesSelection::RunTest(const FStr
     Scene.Nodes.Add(Node);
     Canvas->Set_Scene(Scene);
     Canvas->Set_SelectedNodeIds({7});
-    Canvas->Set_Scene(MoveTemp(Scene));
+    Canvas->Set_Scene(Scene);
 
-    TestEqual(TEXT("Each scene install re-emits selection for recreated cards"), CallbackCount, 3);
+    TestEqual(TEXT("Stable child slots do not re-emit selection"), CallbackCount, 2);
     TestTrue(TEXT("Stable selected ID survives the scene replacement"), LastSelection.Contains(7));
+
+    Scene.Nodes[0].Widget = SNew(STextBlock).Text(FText::FromString(TEXT("Replacement")));
+    Canvas->Set_Scene(MoveTemp(Scene));
+    TestEqual(TEXT("Replacing a card re-emits selection for the new widget"), CallbackCount, 3);
+    TestTrue(TEXT("Selected ID survives card replacement"), LastSelection.Contains(7));
     Canvas->Clear_InteractionDelegates();
     return true;
 }

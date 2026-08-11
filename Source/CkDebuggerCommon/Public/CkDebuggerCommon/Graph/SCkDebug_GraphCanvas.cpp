@@ -109,6 +109,27 @@ auto SCkDebug_GraphCanvas::Construct(const FArguments& InArgs) -> void
 
 auto SCkDebug_GraphCanvas::Set_Scene(FCkDebug_GraphCanvasScene InScene) -> void
 {
+    InScene.Nodes.StableSort(
+        [](const FCkDebug_GraphCanvasNode& InA, const FCkDebug_GraphCanvasNode& InB)
+        {
+            return InA.Layer < InB.Layer;
+        });
+
+    auto CanReuseChildSlots = _Scene.Nodes.Num() == InScene.Nodes.Num();
+    if (CanReuseChildSlots)
+    {
+        for (auto Index = 0; Index < InScene.Nodes.Num(); ++Index)
+        {
+            const auto& Previous = _Scene.Nodes[Index];
+            const auto& Next = InScene.Nodes[Index];
+            if (Previous.Id != Next.Id || Previous.Widget != Next.Widget)
+            {
+                CanReuseChildSlots = false;
+                break;
+            }
+        }
+    }
+
     auto PresentIds = TSet<uint64>{};
     for (const auto& Node : InScene.Nodes)
     {
@@ -125,30 +146,27 @@ auto SCkDebug_GraphCanvas::Set_Scene(FCkDebug_GraphCanvasScene InScene) -> void
     }
 
     _Scene = MoveTemp(InScene);
-    _Scene.Nodes.StableSort(
-        [](const FCkDebug_GraphCanvasNode& InA, const FCkDebug_GraphCanvasNode& InB)
-        {
-            return InA.Layer < InB.Layer;
-        });
     _SelectedNodeIds = MoveTemp(PreservedSelection);
-    _Children.Empty();
-
-    for (const auto& Node : _Scene.Nodes)
+    if (NOT CanReuseChildSlots)
     {
-        auto Slot = FSlot::FSlotArguments(MakeUnique<FSlot>());
-        if (Node.Widget.IsValid())
+        _Children.Empty();
+        for (const auto& Node : _Scene.Nodes)
         {
-            _Children.AddSlot(MoveTemp(Slot[Node.Widget.ToSharedRef()]));
+            auto Slot = FSlot::FSlotArguments(MakeUnique<FSlot>());
+            if (Node.Widget.IsValid())
+            {
+                _Children.AddSlot(MoveTemp(Slot[Node.Widget.ToSharedRef()]));
+            }
+            else
+            {
+                _Children.AddSlot(MoveTemp(Slot[SNullWidget::NullWidget]));
+            }
         }
-        else
-        {
-            _Children.AddSlot(MoveTemp(Slot[SNullWidget::NullWidget]));
-        }
-    }
 
-    // Scene consumers commonly recreate their card widgets while preserving stable IDs. Re-emit
-    // even when the ID set is unchanged so those new cards rehydrate their selected visual state.
-    Notify_SelectionChanged();
+        // Scene consumers may replace card widgets while preserving stable IDs. Re-emit only when
+        // the child slots actually changed so new cards rehydrate their selected visual state.
+        Notify_SelectionChanged();
+    }
 
     Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
 }

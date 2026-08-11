@@ -1,4 +1,7 @@
 #include "CkSchedulerDebugger/Graph/SGraphNode_SchedulerProcessor.h"
+
+#if WITH_EDITOR
+
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 
@@ -217,3 +220,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

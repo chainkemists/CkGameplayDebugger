@@ -1,4 +1,7 @@
 #include "CkSchedulerDebugger/Graph/CkSchedulerDebugConnectionPolicy.h"
+
+#if WITH_EDITOR
+
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -31,3 +34,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

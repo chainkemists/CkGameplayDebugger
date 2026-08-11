@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CoreMinimal.h"
 #include "EdGraphUtilities.h"
 
@@ -12,3 +14,5 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

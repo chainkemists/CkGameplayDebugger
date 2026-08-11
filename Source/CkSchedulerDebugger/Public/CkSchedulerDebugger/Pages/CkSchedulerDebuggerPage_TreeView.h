@@ -7,13 +7,17 @@
 class SCkSchedulerDebugger_ProcessorTree;
 class SCkSchedulerDebugger_Inspector;
 class UCkSchedulerDebugGraph;
+#if WITH_EDITOR
 class SGraphEditor;
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkSchedulerDebuggerPage_TreeView : public ICkSchedulerDebuggerPage
 {
 public:
+	~FCkSchedulerDebuggerPage_TreeView() override;
+
 	auto Get_PageName() const -> FText override;
 	auto Build_Content(TSharedPtr<FCkSchedulerDebugger_ViewModel> InViewModel) -> TSharedRef<SWidget> override;
 	auto Tick(float InDeltaTime) -> void override;
@@ -32,7 +36,9 @@ private:
 	UCkSchedulerDebugGraph* _FullGraph = nullptr;
 
 	UCkSchedulerDebugGraph* _DetailGraph = nullptr;
+#if WITH_EDITOR
 	TSharedPtr<SGraphEditor> _DetailGraphEditor;
+#endif
 	TSharedPtr<SBox> _DetailGraphContainer;
 	int32 _LastDetailProcessorIndex = INDEX_NONE;
 

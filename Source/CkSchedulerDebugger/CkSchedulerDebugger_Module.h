@@ -5,7 +5,9 @@
 
 class SCkSchedulerDebuggerWindow;
 class SDockTab;
+#if WITH_EDITOR
 struct FGraphPanelNodeFactory;
+#endif
 
 class FCkSchedulerDebuggerModule : public IModuleInterface
 {
@@ -25,7 +27,9 @@ private:
 
     TSharedPtr<SCkSchedulerDebuggerWindow> _DebuggerWindow;
     TSharedPtr<SDockTab> _DebuggerTab;
+#if WITH_EDITOR
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
+#endif
 
     uint64 _DebuggerToolRegistrationId = 0;
 

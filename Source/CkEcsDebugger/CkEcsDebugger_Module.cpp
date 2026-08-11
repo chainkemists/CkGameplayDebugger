@@ -4,19 +4,21 @@
 
 #include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
-#include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
+#if WITH_EDITOR
+    #include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
+#endif
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
-#include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
+    #include "EdGraphUtilities.h"
     #include "WorkspaceMenuStructure.h"
     #include "WorkspaceMenuStructureModule.h"
 #endif
@@ -57,8 +59,10 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
     // Registration is inert until a registry is enabled (world observation).
     ck::ecs_debugger_feature_flags::RegisterAll();
 
+#if WITH_EDITOR
     _NodeFactory = MakeShared<FCkEcsDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+#endif
 
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         DebuggerTabName,
@@ -198,11 +202,13 @@ auto FCkEcsDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(DebuggerTabName);
     }
 
+#if WITH_EDITOR
     if (_NodeFactory.IsValid())
     {
         FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
         _NodeFactory.Reset();
     }
+#endif
 
     // These should already have been released in HandleEnginePreExit during a
     // normal editor shutdown. Reset again here as a safety net (e.g. live module

@@ -1,5 +1,7 @@
 #include "CkDebuggerPage_Overview.h"
 
+#if WITH_EDITOR
+
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Macros/CkMacros.h"
 
@@ -352,3 +354,5 @@ auto FCkDebuggerPage_Overview::RebuildGraph() -> void
 }
 
 // =====================================================================================================================
+
+#endif // WITH_EDITOR

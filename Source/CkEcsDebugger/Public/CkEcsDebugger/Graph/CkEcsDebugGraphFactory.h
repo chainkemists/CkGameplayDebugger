@@ -1,9 +1,12 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "EdGraphUtilities.h"
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
+
 // Node factory — maps UCkEcsDebugNode_Entity to SGraphNode_EcsEntity so the graph
 // editor instantiates the correct Slate widgets.
 //
@@ -17,3 +20,5 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

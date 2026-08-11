@@ -5,7 +5,9 @@
 
 class SCkDebuggerWindow_Main;
 class SDockTab;
+#if WITH_EDITOR
 struct FGraphPanelNodeFactory;
+#endif
 
 class FCkEcsDebuggerModule : public IModuleInterface
 {
@@ -27,7 +29,9 @@ private:
 
 	TSharedPtr<SCkDebuggerWindow_Main> DebuggerWindow;
 	TSharedPtr<SDockTab> DebuggerTab;
-	TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
+#if WITH_EDITOR
+    TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
+#endif
 
 	FDelegateHandle _EnginePreExitHandle;
 	FDelegateHandle _SelectionSyncHandle;

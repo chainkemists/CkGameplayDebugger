@@ -20,7 +20,6 @@
 
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_WorldContext.h"
-#include "CkEcsDebugger/Models/CkDebuggerModel_ViewportPicker.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Dashboard.h"
@@ -33,7 +32,10 @@
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Markers/CkDebug_EntityMarkers.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -87,9 +89,39 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
 
     SelectionModel = MakeShared<FCkDebuggerModel_EntitySelection>();
     WorldModel = MakeShared<FCkDebuggerModel_WorldContext>();
-    ViewportPicker = MakeShared<FCkDebuggerModel_ViewportPicker>();
-    ViewportPicker->Construct(SelectionModel, WorldModel);
     FilterModel = MakeShared<FCkDebuggerModel_InspectorFilter>();
+
+    // Shared viewport picker (CkDebuggerCommon), adapted to this window's models.
+    // No TargetFilter — the ECS debugger previews every entity.
+    ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakWorld = TWeakPtr<FCkDebuggerModel_WorldContext>(WorldModel)]() -> UWorld*
+            {
+                const auto Pinned = WeakWorld.Pin();
+                return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.OnEntityPicked =
+            [WeakSelection = TWeakPtr<FCkDebuggerModel_EntitySelection>(SelectionModel)](const FCk_Handle& InPicked)
+            {
+                if (const auto Pinned = WeakSelection.Pin())
+                {
+                    const auto NewSelection = TArray<FCk_Handle>{InPicked};
+                    Pinned->Set_SelectedEntities(NewSelection);
+                }
+
+                // The entity tree applies model changes as ESelectInfo::Direct and deliberately never
+                // re-broadcasts those, so a world-picked entity would stay invisible to Crowd/GOAP.
+                // Broadcast here — this IS the user-driven selection.
+                ck::DebugSelectionSync::Broadcast(InPicked, TEXT("EcsDebugger"));
+
+                // Bring the debugger tab back to front — the game viewport took focus while
+                // picking, so a successful pick would otherwise land in a background tab.
+                ck::DebugNav::Goto_Entity(InPicked);
+            };
+        ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
 
     WorldChangedHandle = WorldModel->OnWorldChanged.AddSP(
         this, &SCkDebuggerWindow_Main::HandleWorldChanged);
@@ -353,41 +385,10 @@ auto SCkDebuggerWindow_Main::Build_MenuActions() -> TSharedRef<SWidget>
             TEXT("EcsFullDepth"), TEXT("Tree"), TEXT("Full depth for focus"),
             ck::DebugMarkers::Get_FocusFullDepthCVarName(),
             TEXT("Show the complete lifetime subtree for the current hovered, locked, or pinned entity.\n"
-                 "Unrelated entities still obey Max Depth.")),
-        FCkDebug_IconToggleAction{
-            TEXT("EcsPickerIgnoreSelf"),
-            TEXT("Ghost"),
-            FText::FromString(TEXT("Ignore Self")),
-            FText::FromString(TEXT("Ignore entities that belong to the locally controlled pawn\n"
-                                   "(including attached actors and child ECS entities).\n"
-                                   "Useful to avoid picking your own first-person viewpoint entity.")),
-            TAttribute<bool>::CreateLambda([this]() -> bool
-            {
-                return ViewportPicker.IsValid() && ViewportPicker->Get_IgnoreLocalPawn();
-            }),
-            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
-            {
-                if (ViewportPicker.IsValid())
-                { ViewportPicker->Set_IgnoreLocalPawn(InIsOn); }
-            }),
-            TAttribute<bool>::CreateLambda([this]() -> bool { return ViewportPicker.IsValid(); })},
-        FCkDebug_IconToggleAction{
-            TEXT("EcsPickerMeshesFirst"),
-            TEXT("SceneNode"),
-            FText::FromString(TEXT("Meshes First")),
-            FText::FromString(TEXT("Hide the diamond billboards of entities that are pickable by their\n"
-                                   "rendered geometry (ISM-instance- or actor-backed). Diamonds remain only\n"
-                                   "on meshless entities; everything stays pickable.")),
-            TAttribute<bool>::CreateLambda([this]() -> bool
-            {
-                return ViewportPicker.IsValid() && ViewportPicker->Get_MeshesFirst();
-            }),
-            FOnCkDebug_IconToggleChanged::CreateLambda([this](bool InIsOn)
-            {
-                if (ViewportPicker.IsValid())
-                { ViewportPicker->Set_MeshesFirst(InIsOn); }
-            }),
-            TAttribute<bool>::CreateLambda([this]() -> bool { return ViewportPicker.IsValid(); })}};
+                 "Unrelated entities still obey Max Depth."))};
+    // The picker's own options (Ignore Self, Meshes First, radii) live in the
+    // shared SCkDebug_ViewportPickerControls gear popover in the toolbar —
+    // contextual picker filters don't belong in the window chrome.
 
     return SNew(SCkDebug_IconToolbar)
         .Actions(IconActions);
@@ -401,105 +402,17 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
         [
             SNew(SHorizontalBox)
 
-            // ---- Pick toggle button ----
+            // ---- Pick button + picker settings (shared picker controls) ----
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
             .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
             [
-                SNew(SButton)
-                .ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
-                {
-                    return ViewportPicker.IsValid() && ViewportPicker->IsActive()
-                        ? CkStyle::Selection()
-                        : CkStyle::Bg2();
-                })
-                .ForegroundColor_Lambda([this]() -> FSlateColor
-                {
-                    return ViewportPicker.IsValid() && ViewportPicker->IsActive()
-                        ? FSlateColor(CkStyle::TextStrong())
-                        : FSlateColor(CkStyle::TextDim());
-                })
-                .IsEnabled_Lambda([this]() -> bool
-                {
-                    if (NOT ViewportPicker.IsValid())
-                    { return false; }
-
-                    if (ViewportPicker->IsActive())
-                    { return true; }
-
-                    return ViewportPicker->CanActivate();
-                })
-                .ToolTipText_Lambda([this]() -> FText
-                {
-                    if (NOT ViewportPicker.IsValid())
-                    { return FText::GetEmpty(); }
-
-                    if (ViewportPicker->IsActive())
-                    {
-                        return FText::FromString(TEXT("Exit pick mode (Esc)"));
-                    }
-
-                    if (NOT ViewportPicker->CanActivate())
-                    {
-                        return FText::FromString(TEXT(
-                            "Pick mode unavailable — select a running PIE or Game world first.\n"
-                            "(Simulate-in-Editor is not supported.)"));
-                    }
-
-                    return FText::FromString(TEXT(
-                        "Enter pick mode: click an entity in the viewport to select it in the debugger."));
-                })
-                .OnClicked_Lambda([this]() -> FReply
-                {
-                    if (ViewportPicker.IsValid())
-                    {
-                        ViewportPicker->Toggle();
-                    }
-                    return FReply::Handled();
-                })
+                SNew(SCkDebug_ViewportPickerControls)
+                .Picker(ViewportPicker)
+                .ExtraSettingsContent()
                 [
-                    SNew(STextBlock)
-                    .Text_Lambda([this]() -> FText
-                    {
-                        return ViewportPicker.IsValid() && ViewportPicker->IsActive()
-                            ? FText::FromString(TEXT("Picking..."))
-                            : FText::FromString(TEXT("Pick"));
-                    })
-                    .Font_Static(&ck_debugger_window_main::Get_LabelFont)
-                ]
-            ]
-
-            // ---- Contextual attribute-filter settings ----
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-            [
-                SAssignNew(PickerSettingsAnchor, SMenuAnchor)
-                .Placement(MenuPlacement_BelowAnchor)
-                .OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
-                {
-                    return Build_PickerSettingsPopover();
-                })
-                [
-                    SNew(SButton)
-                    .ButtonColorAndOpacity(CkStyle::Bg2())
-                    .ToolTipText(FText::FromString(TEXT("Overlay attribute filter settings")))
-                    .OnClicked_Lambda([this]() -> FReply
-                    {
-                        if (PickerSettingsAnchor.IsValid())
-                        {
-                            PickerSettingsAnchor->SetIsOpen(NOT PickerSettingsAnchor->IsOpen());
-                        }
-                        return FReply::Handled();
-                    })
-                    [
-                        SNew(STextBlock)
-                        .Text(FText::FromString(TEXT("\u2699"))) // gear glyph
-                        .Font_Static(&ck_debugger_window_main::Get_GlyphFont)
-                        .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                    ]
+                    Build_PickerExtraSettings()
                 ]
             ]
 
@@ -648,235 +561,88 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
         ];
 }
 
-auto SCkDebuggerWindow_Main::Build_PickerSettingsPopover() -> TSharedRef<SWidget>
+auto SCkDebuggerWindow_Main::Build_PickerExtraSettings() -> TSharedRef<SWidget>
 {
-    return SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
-        .Padding(FCkDebuggerStyle::Padding_Medium)
+    // ECS-specific rows appended below the shared picker rows in the picker's
+    // gear popover (SCkDebug_ViewportPickerControls).
+    return SNew(SVerticalBox)
+
+        // ---- Overlay attribute filter (focus-card volume control) ----
+        // Persisted on UCk_DebugOverlay_Settings; the overlay's attribute providers
+        // consult it per row, so edits apply live during PIE.
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f))
         [
-            SNew(SVerticalBox)
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("OVERLAY ATTRIBUTES")))
+            .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
+            .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
+        ]
 
-            // ---- Overlay attribute filter (focus-card volume control) ----
-            // Persisted on UCk_DebugOverlay_Settings; the overlay's attribute providers
-            // consult it per row, so edits apply live during PIE.
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, FCkDebuggerStyle::Padding_Small, 0.0f, 2.0f))
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
+        [
+            SNew(SBox)
+            .WidthOverride(240.0f)
             [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("OVERLAY ATTRIBUTES")))
-                .Font_Static(&ck_debugger_window_main::Get_TinyLabelFont)
-                .ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, 2.0f))
-            [
-                SNew(SBox)
-                .WidthOverride(240.0f)
-                [
-                    SNew(SEditableTextBox)
-                    .HintText(FText::FromString(TEXT("patterns, comma-separated")))
-                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
-                    .ToolTipText(FText::FromString(TEXT(
-                        "Case-insensitive SUBSTRING patterns matched against attribute names\n"
-                        "on the overlay focus card ('Health' catches 'Attr.Health.Max').\n"
-                        "Empty = show all. Mode below flips between show-only and hide.")))
-                    .Text_Lambda([]() -> FText
-                    {
-                        const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-                        return FText::FromString(Settings != nullptr
-                            ? FString::Join(Settings->AttributeFilterPatterns, TEXT(", "))
-                            : FString{});
-                    })
-                    .OnTextCommitted_Lambda([](const FText& InText, ETextCommit::Type)
-                    {
-                        auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
-                        if (Settings == nullptr)
-                        { return; }
-
-                        auto Patterns = TArray<FString>{};
-                        InText.ToString().ParseIntoArray(Patterns, TEXT(","));
-                        for (auto& Pattern : Patterns)
-                        { Pattern.TrimStartAndEndInline(); }
-                        Patterns.RemoveAll([](const FString& InPattern) { return InPattern.IsEmpty(); });
-
-                        Settings->AttributeFilterPatterns = MoveTemp(Patterns);
-                        Settings->SaveConfig();
-                    })
-                ]
-            ]
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SCkDebug_IconToggle)
-                .IconId(TEXT("Attribute"))
-                .Label(FText::FromString(TEXT("Exclude listed")))
-                .ToolTip(FText::FromString(TEXT(
-                    "Unchecked: show ONLY attributes matching a pattern.\n"
-                    "Checked: show all EXCEPT matching (deny-list mode).")))
-                .IsOn_Lambda([]() -> bool
+                SNew(SEditableTextBox)
+                .HintText(FText::FromString(TEXT("patterns, comma-separated")))
+                .Font_Static(&ck_debugger_window_main::Get_BodyFont)
+                .ToolTipText(FText::FromString(TEXT(
+                    "Case-insensitive SUBSTRING patterns matched against attribute names\n"
+                    "on the overlay focus card ('Health' catches 'Attr.Health.Max').\n"
+                    "Empty = show all. Mode below flips between show-only and hide.")))
+                .Text_Lambda([]() -> FText
                 {
                     const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
-                    return Settings != nullptr && Settings->bAttributeFilterIsExclusion;
+                    return FText::FromString(Settings != nullptr
+                        ? FString::Join(Settings->AttributeFilterPatterns, TEXT(", "))
+                        : FString{});
                 })
-                .OnStateChanged_Lambda([](bool InIsOn)
+                .OnTextCommitted_Lambda([](const FText& InText, ETextCommit::Type)
                 {
                     auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
                     if (Settings == nullptr)
                     { return; }
 
-                    Settings->bAttributeFilterIsExclusion = InIsOn;
+                    auto Patterns = TArray<FString>{};
+                    InText.ToString().ParseIntoArray(Patterns, TEXT(","));
+                    for (auto& Pattern : Patterns)
+                    { Pattern.TrimStartAndEndInline(); }
+                    Patterns.RemoveAll([](const FString& InPattern) { return InPattern.IsEmpty(); });
+
+                    Settings->AttributeFilterPatterns = MoveTemp(Patterns);
                     Settings->SaveConfig();
                 })
-                .ShowLabel(true)
             ]
+        ]
 
-            // ---- Cull Radius spinbox ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SHorizontalBox)
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Cull Radius:")))
-                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    SNew(SBox)
-                    .WidthOverride(120.0f)
-                    [
-                        SNew(SSpinBox<float>)
-                        .MinValue(100.0f)
-                        .MaxValue(100000.0f)
-                        .MinSliderValue(500.0f)
-                        .MaxSliderValue(20000.0f)
-                        .Delta(100.0f)
-                        .Value_Lambda([this]() -> float
-                        {
-                            return ViewportPicker.IsValid() ? ViewportPicker->Get_CullRadius() : 0.0f;
-                        })
-                        .OnValueChanged_Lambda([this](float InValue)
-                        {
-                            if (ViewportPicker.IsValid())
-                            {
-                                ViewportPicker->Set_CullRadius(InValue);
-                            }
-                        })
-                        .ToolTipText(FText::FromString(TEXT(
-                            "Maximum distance (cm) from the camera at which entities are\n"
-                            "drawn and considered for picking. Lower values reduce clutter\n"
-                            "in large worlds.")))
-                    ]
-                ]
-            ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Attribute"))
+            .Label(FText::FromString(TEXT("Exclude listed")))
+            .ToolTip(FText::FromString(TEXT(
+                "Unchecked: show ONLY attributes matching a pattern.\n"
+                "Checked: show all EXCEPT matching (deny-list mode).")))
+            .IsOn_Lambda([]() -> bool
+            {
+                const auto* Settings = GetDefault<UCk_DebugOverlay_Settings>();
+                return Settings != nullptr && Settings->bAttributeFilterIsExclusion;
+            })
+            .OnStateChanged_Lambda([](bool InIsOn)
+            {
+                auto* Settings = GetMutableDefault<UCk_DebugOverlay_Settings>();
+                if (Settings == nullptr)
+                { return; }
 
-            // ---- Billboard Size spinbox ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            .Padding(FMargin(0.0f, 0.0f, 0.0f, FCkDebuggerStyle::Padding_Small))
-            [
-                SNew(SHorizontalBox)
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Billboard Size:")))
-                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    SNew(SBox)
-                    .WidthOverride(120.0f)
-                    [
-                        SNew(SSpinBox<float>)
-                        .MinValue(8.0f)
-                        .MaxValue(128.0f)
-                        .MinSliderValue(8.0f)
-                        .MaxSliderValue(128.0f)
-                        .Delta(1.0f)
-                        .Value_Lambda([this]() -> float
-                        {
-                            return ViewportPicker.IsValid() ? ViewportPicker->Get_BillboardSize() : 0.0f;
-                        })
-                        .OnValueChanged_Lambda([this](float InValue)
-                        {
-                            if (ViewportPicker.IsValid())
-                            {
-                                ViewportPicker->Set_BillboardSize(InValue);
-                            }
-                        })
-                        .ToolTipText(FText::FromString(TEXT(
-                            "Size (pixels) of each entity billboard. Billboards keep the same\n"
-                            "screen size regardless of distance to the camera.")))
-                    ]
-                ]
-            ]
-
-            // ---- Max Depth spinbox (shared cvar — linked to the On-Screen Overlay) ----
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                SNew(SHorizontalBox)
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-                [
-                    SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("Max Depth:")))
-                    .Font_Static(&ck_debugger_window_main::Get_BodyFont)
-                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                ]
-                + SHorizontalBox::Slot()
-                .AutoWidth()
-                .VAlign(VAlign_Center)
-                [
-                    SNew(SBox)
-                    .WidthOverride(120.0f)
-                    [
-                        SNew(SSpinBox<int32>)
-                        .MinValue(-1)
-                        .MaxValue(16)
-                        .Delta(1)
-                        .Value_Lambda([]() -> int32
-                        {
-                            const auto* CVar = IConsoleManager::Get().FindConsoleVariable(
-                                ck::DebugMarkers::Get_MaxDepthCVarName());
-                            return CVar != nullptr ? CVar->GetInt() : 0;
-                        })
-                        .OnValueChanged_Lambda([](int32 InValue)
-                        {
-                            if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(
-                                ck::DebugMarkers::Get_MaxDepthCVarName()))
-                            {
-                                CVar->Set(InValue, ECVF_SetByConsole);
-                            }
-                        })
-                        .ToolTipText(FText::FromString(TEXT(
-                            "Max hierarchy depth of previewed/pickable entities\n"
-                            "(ck.Debug.EntityMarkers.MaxDepth — shared with the On-Screen Overlay).\n"
-                            "-1 = unlimited, 0 = top-level entities only, N = up to N levels deep.")))
-                    ]
-                ]
-            ]
+                Settings->bAttributeFilterIsExclusion = InIsOn;
+                Settings->SaveConfig();
+            })
+            .ShowLabel(true)
         ];
 }
 
@@ -1696,7 +1462,7 @@ auto SCkDebuggerWindow_Main::Get_WorldModel() const -> TSharedPtr<FCkDebuggerMod
     return WorldModel;
 }
 
-auto SCkDebuggerWindow_Main::Get_ViewportPicker() const -> TSharedPtr<FCkDebuggerModel_ViewportPicker>
+auto SCkDebuggerWindow_Main::Get_ViewportPicker() const -> TSharedPtr<FCkDebug_ViewportPicker>
 {
     return ViewportPicker;
 }

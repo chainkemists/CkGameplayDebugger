@@ -162,8 +162,8 @@ namespace ck_goap_debugger_graph_pane
                           {
                               const auto P = Weak.Pin();
                               return FSlateColor(!P.IsValid() ? CkStyle::NodeBorder_Inactive()
-                                                 : P->IsFailureBlocked ? CkStyle::Err()
-                                                 : P->IsSelected       ? CkStyle::Warn()
+                                                  : P->IsSelected       ? CkStyle::Warn()
+                                                  : P->IsFailureBlocked ? CkStyle::Err()
                                                  : P->IsInPlan ? CkStyle::NodeBorder_InPlan()
                                                  : P->Action.ChildActionHandles.Num() > 0
                                                      ? CkStyle::CategoryAge()

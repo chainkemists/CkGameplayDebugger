@@ -38,7 +38,7 @@
 		},
 		{
 			"Name": "CkEcsDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -48,7 +48,7 @@
 		},
 		{
 			"Name": "CkSmDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -98,7 +98,7 @@
 		},
 		{
 			"Name": "CkSchedulerDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",
@@ -118,7 +118,7 @@
 		},
 		{
 			"Name": "CkGoapDebugger",
-			"Type": "UncookedOnly",
+			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",
 			"WhitelistPlatforms": [
 				"Win64",

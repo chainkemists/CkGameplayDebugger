@@ -1,5 +1,7 @@
 #pragma once
 
+#if WITH_EDITOR
+
 #include "CoreMinimal.h"
 #include "SGraphNode.h"
 
@@ -29,3 +31,5 @@ private:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif // WITH_EDITOR

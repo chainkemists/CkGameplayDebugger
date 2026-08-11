@@ -3,14 +3,16 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkSchedulerDebugger/Window/SCkSchedulerDebuggerWindow.h"
-#include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphFactory.h"
+#if WITH_EDITOR
+    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphFactory.h"
+#endif
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 
-#include "EdGraphUtilities.h"
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
+    #include "EdGraphUtilities.h"
     #include "WorkspaceMenuStructure.h"
     #include "WorkspaceMenuStructureModule.h"
 #endif
@@ -46,8 +48,10 @@ static FAutoConsoleCommand CmdSchedulerDebugger(
 
 auto FCkSchedulerDebuggerModule::StartupModule() -> void
 {
+#if WITH_EDITOR
     _NodeFactory = MakeShared<FCkSchedulerDebugGraphFactory>();
     FEdGraphUtilities::RegisterVisualNodeFactory(_NodeFactory);
+#endif
 
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
@@ -78,11 +82,13 @@ auto FCkSchedulerDebuggerModule::ShutdownModule() -> void
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
     }
 
+#if WITH_EDITOR
     if (_NodeFactory.IsValid())
     {
         FEdGraphUtilities::UnregisterVisualNodeFactory(_NodeFactory);
         _NodeFactory.Reset();
     }
+#endif
 
     _DebuggerWindow.Reset();
     _DebuggerTab.Reset();

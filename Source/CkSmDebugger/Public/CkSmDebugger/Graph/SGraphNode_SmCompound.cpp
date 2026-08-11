@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "SGraphNode_SmCompound.h"
 
 #include "CkSmDebugNode_Compound.h"
@@ -465,3 +466,4 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+#endif

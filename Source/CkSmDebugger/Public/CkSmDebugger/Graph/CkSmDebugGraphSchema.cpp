@@ -1,16 +1,17 @@
 #include "CkSmDebugGraphSchema.h"
-#include "CkSmDebugConnectionPolicy.h"
 #include "CkSmDebugGraph.h"
 #include "CkSmDebugNode_Compound.h"
 #include "CkSmDebugNode_State.h"
 
-#include "ConnectionDrawingPolicy.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
-#include "ToolMenu.h"
-
-#include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#if WITH_EDITOR
+    #include "CkSmDebugConnectionPolicy.h"
+    #include "ConnectionDrawingPolicy.h"
+    #include "ToolMenu.h"
+    #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+    #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -43,6 +44,7 @@ auto
         UGraphNodeContextMenuContext* InContext) const
     -> void
 {
+#if WITH_EDITOR
     // Intentionally not calling Super — the default pin/link actions caused the
     // graph to freeze after right-click. Only the Copy Text entry is exposed here;
     // all other actions live in the detail panel.
@@ -139,6 +141,7 @@ auto
         FText::FromString(TEXT("Copy State Class Name")),
         FText::FromString(TEXT("Copy the full underlying state class name")),
         FullName);
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -178,7 +181,11 @@ auto
         UEdGraph* InGraphObj) const
     -> FConnectionDrawingPolicy*
 {
+#if WITH_EDITOR
     return new FCkSmDebugConnectionPolicy(InBackLayerID, InFrontLayerID, InZoomFactor, InClippingRect, InDrawElements, InGraphObj);
+#else
+    return nullptr;
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------

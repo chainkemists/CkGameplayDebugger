@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "CkSmDebugConnectionPolicy.h"
 
 #include "CkSmDebugNode_Compound.h"
@@ -8,8 +9,6 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
-
-// --------------------------------------------------------------------------------------------------------------------
 
 FCkSmDebugConnectionPolicy::FCkSmDebugConnectionPolicy(
 	int32 InBackLayerID,
@@ -22,8 +21,6 @@ FCkSmDebugConnectionPolicy::FCkSmDebugConnectionPolicy(
 	, _Graph(Cast<UCkSmDebugGraph>(InGraphObj))
 {
 }
-
-// --------------------------------------------------------------------------------------------------------------------
 
 auto
 	FCkSmDebugConnectionPolicy::
@@ -140,3 +137,4 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+#endif

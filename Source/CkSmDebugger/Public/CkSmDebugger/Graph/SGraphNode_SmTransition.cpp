@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "SGraphNode_SmTransition.h"
 
 #include "CkSmDebugNode_Transition.h"
@@ -515,3 +516,4 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+#endif

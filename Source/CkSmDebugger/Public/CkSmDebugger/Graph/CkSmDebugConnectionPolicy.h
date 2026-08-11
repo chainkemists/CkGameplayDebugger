@@ -1,7 +1,8 @@
 #pragma once
 
-#include "CkDebuggerCommon/Graph/CkDebugConnectionPolicyBase.h"
-#include "CoreMinimal.h"
+#if WITH_EDITOR
+    #include "CkDebuggerCommon/Graph/CkDebugConnectionPolicyBase.h"
+    #include "CoreMinimal.h"
 
 class UCkSmDebugGraph;
 
@@ -38,5 +39,6 @@ public:
 private:
 	UCkSmDebugGraph* _Graph = nullptr;
 };
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------

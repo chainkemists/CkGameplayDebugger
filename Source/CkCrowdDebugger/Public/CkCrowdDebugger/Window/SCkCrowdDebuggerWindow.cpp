@@ -17,6 +17,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_ToggleSurface.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -31,6 +32,7 @@
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Input/SSlider.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -41,6 +43,17 @@
 
 #include "HAL/IConsoleManager.h"
 #include "Styling/AppStyle.h"
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_crowd_debugger_window
+{
+	constexpr auto LeftRailStatsMinHeight         = 152.0f;
+	constexpr auto LeftRailSplitterHandleSize     = 5.0f;
+	constexpr auto LeftRailMinHeight =
+		(LeftRailStatsMinHeight / 0.14f)
+		+ (3.0f * LeftRailSplitterHandleSize);
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -104,11 +117,29 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 			// Left rail: navmesh status + agent list + stats + event log.
 			+ SSplitter::Slot().Value(0.20f)
 			[
-				SNew(SSplitter).Orientation(Orient_Vertical)
-				+ SSplitter::Slot().Value(0.22f) [ _NavmeshStatusPanel.ToSharedRef() ]
-				+ SSplitter::Slot().Value(0.46f) [ _AgentListPanel.ToSharedRef() ]
-				+ SSplitter::Slot().Value(0.14f) [ _StatsPanel.ToSharedRef() ]
-				+ SSplitter::Slot().Value(0.18f) [ _EventLogPanel.ToSharedRef() ]
+				SNew(SScrollBox)
+				.Orientation(Orient_Vertical)
+				.ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
+				+ SScrollBox::Slot()
+				.FillSize(1.0f)
+				.MinSize(ck_crowd_debugger_window::LeftRailMinHeight)
+				[
+					SNew(SSplitter)
+					.Orientation(Orient_Vertical)
+					.PhysicalSplitterHandleSize(ck_crowd_debugger_window::LeftRailSplitterHandleSize)
+					+ SSplitter::Slot()
+					.Value(0.22f)
+					[ _NavmeshStatusPanel.ToSharedRef() ]
+					+ SSplitter::Slot()
+					.Value(0.46f)
+					[ _AgentListPanel.ToSharedRef() ]
+					+ SSplitter::Slot()
+					.Value(0.14f)
+					[ _StatsPanel.ToSharedRef() ]
+					+ SSplitter::Slot()
+					.Value(0.18f)
+					[ _EventLogPanel.ToSharedRef() ]
+				]
 			]
 			// Center: the viewport, full height (the mockup's centerpiece).
 			+ SSplitter::Slot().Value(0.52f)
@@ -541,7 +572,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			[ SNew(STextBlock).Text(FText::FromString(InLabel)) ];
 	};
 
-	const auto MakeCameraButton = [this](const TCHAR* InIconName, const TCHAR* InTooltip, ECkCrowdDebugger_CameraPreset InPreset) -> TSharedRef<SWidget>
+	const auto MakeCameraButton = [this](FName InIconId, const TCHAR* InTooltip, ECkCrowdDebugger_CameraPreset InPreset) -> TSharedRef<SWidget>
 	{
 		return SNew(SButton)
 			.ButtonStyle(FAppStyle::Get(), "SimpleButton")
@@ -554,7 +585,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 				return FReply::Handled();
 			})
 			[
-				SNew(SImage).Image(FAppStyle::Get().GetBrush(InIconName))
+				SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(InIconId))
 			];
 	};
 
@@ -746,23 +777,23 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 				SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd diagnostic settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Diagnostics")))].MenuContent()[DiagnosticsMenu]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Perspective"), TEXT("Perspective camera"), ECkCrowdDebugger_CameraPreset::Perspective) ]
+			[ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkCrowdDebugger_CameraPreset::Perspective) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Top"), TEXT("Top orthographic camera"), ECkCrowdDebugger_CameraPreset::Top) ]
+			[ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkCrowdDebugger_CameraPreset::Top) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Bottom"), TEXT("Bottom orthographic camera"), ECkCrowdDebugger_CameraPreset::Bottom) ]
+			[ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkCrowdDebugger_CameraPreset::Bottom) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Left"), TEXT("Left orthographic camera"), ECkCrowdDebugger_CameraPreset::Left) ]
+			[ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkCrowdDebugger_CameraPreset::Left) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Right"), TEXT("Right orthographic camera"), ECkCrowdDebugger_CameraPreset::Right) ]
+			[ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkCrowdDebugger_CameraPreset::Right) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Front"), TEXT("Front orthographic camera"), ECkCrowdDebugger_CameraPreset::Front) ]
+			[ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkCrowdDebugger_CameraPreset::Front) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("EditorViewport.Back"), TEXT("Back orthographic camera"), ECkCrowdDebugger_CameraPreset::Back) ]
+			[ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkCrowdDebugger_CameraPreset::Back) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("Icons.FrameActor"), TEXT("Frame all VoxelNav and crowd-agent bounds"), ECkCrowdDebugger_CameraPreset::FrameAll) ]
+			[ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame all VoxelNav and crowd-agent bounds"), ECkCrowdDebugger_CameraPreset::FrameAll) ]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("Icons.SelectInViewport"), TEXT("Frame the selected crowd agent"), ECkCrowdDebugger_CameraPreset::FrameSelection) ]
+			[ MakeCameraButton(TEXT("SelectInViewport"), TEXT("Frame the selected crowd agent"), ECkCrowdDebugger_CameraPreset::FrameSelection) ]
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(8, 0)
 			[
 				SNew(STextBlock)

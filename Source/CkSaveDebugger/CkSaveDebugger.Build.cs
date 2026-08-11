@@ -27,13 +27,23 @@ public class CkSaveDebugger : CkModuleRules
 
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
+
+            // The retained editor-world visuals (all transitive through CkDebuggerCommon; declared for direct use):
+            // Transform requests on preview entities, ISM mesh ghosts, and the PMG gizmo set's shape types.
+            "CkEcsExt",
+            "CkIsmRenderer",
+            "CkPmg",
         });
 
         if (Target.bBuildEditor)
         {
             PublicDependencyModuleNames.AddRange(new string[]
             {
-                "UnrealEd"
+                "UnrealEd",
+
+                // The save visualizer's hidden EdMode (UBaseLegacyWidgetEdMode + GLevelEditorModeTools).
+                "EditorFramework",
+                "LevelEditor",
             });
         }
     }

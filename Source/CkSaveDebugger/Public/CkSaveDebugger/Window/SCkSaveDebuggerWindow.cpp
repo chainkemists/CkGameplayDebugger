@@ -1,8 +1,15 @@
 #include "CkSaveDebugger/Window/SCkSaveDebuggerWindow.h"
 
+#include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/MessageDialog/CkMessageDialog_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
+
+#include "CkEcs/Snapshot/CkSaveKey_Fragment.h"
+
+#include "CkSaveDebugger/Visualizer/CkSaveDebugger_Visualizer.h"
+#include "CkSaveDebugger/Visualizer/CkSaveDebugger_VisualizerRetained.h"
 
 #include "CkSnapshot/Inspection/CkSnapshot_Inspection.h"
 #include "CkSnapshot/Inspection/CkSnapshot_Inspection_Diff.h"
@@ -30,11 +37,21 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include <DesktopPlatformModule.h>
+#include <Engine/World.h>
 #include <Framework/Application/SlateApplication.h>
 #include <Framework/MultiBox/MultiBoxBuilder.h>
 #include <HAL/PlatformApplicationMisc.h>
 #include <Misc/FileHelper.h>
+#include <Misc/PackageName.h>
 #include <Misc/Paths.h>
+
+#if WITH_EDITOR
+#include <Editor.h>
+#include <EngineUtils.h>
+#include <FileHelpers.h>
+#include <GameFramework/Actor.h>
+#include <Selection.h>
+#endif
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
@@ -284,6 +301,33 @@ auto
     ];
 
     Register_WithGate();
+
+#if WITH_EDITOR
+    // AddSP self-unbinds when the widget dies; the explicit RemoveAll in the destructor is just determinism.
+    USelection::SelectionChangedEvent.AddSP(this, &SCkSaveDebuggerWindow::DoOnEditorSelectionChanged);
+    FEditorDelegates::OnMapOpened.AddSP(this, &SCkSaveDebuggerWindow::DoOnMapOpened);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+SCkSaveDebuggerWindow::~SCkSaveDebuggerWindow()
+{
+#if WITH_EDITOR
+    USelection::SelectionChangedEvent.RemoveAll(this);
+    FEditorDelegates::OnMapOpened.RemoveAll(this);
+
+    // On engine exit the level-editor mode stack is already tearing down — the auto-discovered EdMode is
+    // unregistered by UAssetEditorSubsystem itself, so only the published state needs dropping.
+    if (NOT IsEngineExitRequested())
+    {
+        ck::save_debugger_viz::Set_VisualizerEnabled(false);
+        ck::save_debugger_viz_retained::Clear();
+    }
+
+    ck::save_debugger_viz::Unregister_OnRowClicked();
+    ck::save_debugger_viz::Clear_Rows();
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -369,6 +413,65 @@ auto
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCompareAgainstClicked),
                 HasFile)
         ]
+
+#if WITH_EDITOR
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SButton)
+            .ToolTipText(FText::FromString(TEXT(
+                "Draw every placed entity of this save as a diamond in the level-editor viewport, with owner-chain "
+                "lines. Click a diamond to select its row here; prompts to load the captured level when a different "
+                "one is open")))
+            .IsEnabled(HasFile)
+            .OnClicked(FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnVisualizeClicked))
+            .ContentPadding(FMargin{CkStyle::SpaceM, CkStyle::SpaceXS})
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [
+                    SNew(SCkDebug_Icon)
+                    .Brush(Get_IconBrush(FName{TEXT("Pin")}))
+                    .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+                    .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
+                ]
+
+                + SHorizontalBox::Slot()
+                .AutoWidth()
+                .VAlign(VAlign_Center)
+                [
+                    SNew(STextBlock)
+                    .Text_Lambda([]() -> FText
+                    {
+                        return FText::FromString(ck::save_debugger_viz::Get_IsVisualizerEnabled()
+                            ? TEXT("Stop Visualizing")
+                            : TEXT("Visualize"));
+                    })
+                ]
+            ]
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            Build_CommandButton(FName{TEXT("Crosshair")},
+                TEXT("Frame"),
+                TEXT("Move the level-editor camera to the selected entity's diamond"),
+                FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnFrameSelectedClicked),
+                TAttribute<bool>::CreateLambda([]() -> bool
+                {
+                    return ck::save_debugger_viz::Get_IsVisualizerEnabled();
+                }))
+        ]
+#endif
 
         + SHorizontalBox::Slot()
         .AutoWidth()
@@ -618,6 +721,7 @@ auto
                     .OnGetChildren(this, &SCkSaveDebuggerWindow::DoGet_EntityChildren)
                     .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnEntitySelectionChanged)
                     .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnEntityContextMenu)
+                    .OnKeyDownHandler(this, &SCkSaveDebuggerWindow::DoOnTreeKeyDown)
                     .SelectionMode(ESelectionMode::Single)
                 ]
             ]
@@ -1323,6 +1427,320 @@ auto
 
 auto
     SCkSaveDebuggerWindow::
+    DoOnVisualizeClicked()
+    -> FReply
+{
+#if WITH_EDITOR
+    if (ck::save_debugger_viz::Get_IsVisualizerEnabled())
+    {
+        DoVisualize_Stop();
+        DoSet_Status(TEXT("Visualizer stopped."), ECk_Tone::Neutral);
+        return FReply::Handled();
+    }
+
+    const auto* EditorWorld = UCk_Utils_EditorOnly_UE::Get_OpenedEditorLevelWorld();
+    const auto CurrentPackage = ck::IsValid(EditorWorld) ? EditorWorld->GetOutermost()->GetName() : FString{};
+
+    const auto Match = ck_save_debugger_model::Get_LevelMatch(_Model.Get_Document(), CurrentPackage);
+    if (Match == ECkSaveDebugger_LevelMatch::Mismatch)
+    {
+        const auto SavedPackage = UWorld::RemovePIEPrefix(
+            _Model.Get_Document().Get_Header().Get_WorldAssetPath().GetLongPackageName());
+
+        auto Buttons = TArray<UCk_Utils_MessageDialog_UE::DialogButton>{};
+        Buttons.Add(UCk_Utils_MessageDialog_UE::DialogButton{
+            FText::FromString(ck::Format_UE(TEXT("Load {}"), FPackageName::GetShortName(SavedPackage)))}
+            .Set_IsPrimary(true));
+        Buttons.Add(UCk_Utils_MessageDialog_UE::DialogButton{FText::FromString(TEXT("View unanchored"))});
+        Buttons.Add(UCk_Utils_MessageDialog_UE::DialogButton{FText::FromString(TEXT("Cancel"))});
+
+        const auto Choice = UCk_Utils_MessageDialog_UE::CustomDialog(
+            FText::FromString(ck::Format_UE(
+                TEXT("This save was captured in [{}] but the open level is [{}].\n\n"
+                     "Load the captured level so the diamonds sit in their real surroundings, or view them "
+                     "unanchored in the current level?"),
+                SavedPackage, CurrentPackage)),
+            FText::FromString(TEXT("Save Debugger — Visualize")),
+            Buttons);
+
+        constexpr auto ChoiceLoadLevel = 0;
+        constexpr auto ChoiceUnanchored = 1;
+
+        if (Choice == ChoiceLoadLevel)
+        {
+            constexpr auto LoadAsTemplate = false;
+            constexpr auto ShowProgress = true;
+
+            if (NOT FEditorFileUtils::LoadMap(SavedPackage, LoadAsTemplate, ShowProgress))
+            {
+                DoSet_Status(ck::Format_UE(TEXT("Failed to load level [{}]."), SavedPackage), ECk_Tone::Err);
+                return FReply::Handled();
+            }
+
+            // The OnMapOpened path also refreshes, but the delegate order vs this handler is not a contract worth
+            // leaning on — re-derive here so the publish below sees the new level's actors either way.
+            DoRefresh_ActorAnnotations();
+            DoRebuild_Tree();
+        }
+        else if (Choice != ChoiceUnanchored)
+        { return FReply::Handled(); }
+    }
+
+    if (NOT DoVisualize_Publish())
+    {
+        DoSet_Status(TEXT("Nothing to visualize — no entity in this save carries a world transform."), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    const auto WeakWindow = TWeakPtr<SCkSaveDebuggerWindow>{StaticCastSharedRef<SCkSaveDebuggerWindow>(AsShared())};
+    ck::save_debugger_viz::Register_OnRowClicked([WeakWindow](const uint32 InSavedId)
+    {
+        if (const auto Window = WeakWindow.Pin())
+        { Window->DoSelect_Entity(InSavedId); }
+    });
+
+    if (NOT ck::save_debugger_viz::Set_VisualizerEnabled(true))
+    {
+        ck::save_debugger_viz::Unregister_OnRowClicked();
+        ck::save_debugger_viz::Clear_Rows();
+        DoSet_Status(TEXT("Visualizer unavailable during PIE — stop the session first."), ECk_Tone::Warn);
+        return FReply::Handled();
+    }
+
+    const auto PlacedCount = ck::save_debugger_viz::Get_Rows()->Num();
+    DoSet_Status(ck::Format_UE(TEXT("Visualizing {} of {} entities ({}) — click a diamond to select its row."),
+        PlacedCount, _Model.Get_Document().Get_Entities().Num(),
+        _VisualizeSummary.IsEmpty() ? FString{TEXT("diamonds only")} : _VisualizeSummary), ECk_Tone::Ok);
+#endif
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoOnFrameSelectedClicked()
+    -> FReply
+{
+#if WITH_EDITOR
+    if (ck::save_debugger_viz::Frame_SelectedRow())
+    { DoSet_Status(TEXT("Viewport framed on the selected entity."), ECk_Tone::Ok); }
+    else
+    { DoSet_Status(TEXT("Nothing to frame — select a PLACED entity while the visualizer is on."), ECk_Tone::Warn); }
+#endif
+
+    return FReply::Handled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoVisualize_Publish()
+    -> bool
+{
+#if WITH_EDITOR
+    auto Rows = MakeShared<TArray<FCkSaveDebugger_VisualizationRow>>(
+        ck_save_debugger_model::Build_VisualizationRows(_Model.Get_Document(), _Model.Get_SaveKeyAnnotations()));
+
+    if (Rows->IsEmpty())
+    {
+        ck::save_debugger_viz_retained::Clear();
+        ck::save_debugger_viz::Clear_Rows();
+        return false;
+    }
+
+    ck::save_debugger_viz::Publish_Rows(Rows);
+    ck::save_debugger_viz::Set_SelectedSavedId(_Model.Get_SelectedEntitySavedId());
+
+    _VisualizeSummary.Reset();
+    if (auto* EditorWorld = UCk_Utils_EditorOnly_UE::Get_OpenedEditorLevelWorld();
+        ck::IsValid(EditorWorld))
+    {
+        if (const auto Stats = ck::save_debugger_viz_retained::Rebuild(EditorWorld, _Model.Get_Document(), *Rows);
+            Stats.IsSet())
+        {
+            _VisualizeSummary = ck::Format_UE(TEXT("{} previews, {} ghost meshes"),
+                Stats->PreviewCount, Stats->GhostMeshCount);
+
+            if (const auto Skipped = Stats->UnresolvedClassCount + Stats->GhostsWithoutMeshCount;
+                Skipped > 0)
+            { _VisualizeSummary += ck::Format_UE(TEXT(", {} without visuals"), Skipped); }
+
+            if (Stats->UnresolvedClassSamples.Num() > 0)
+            {
+                _VisualizeSummary += ck::Format_UE(TEXT(" — missing in this editor: {}"),
+                    FString::Join(Stats->UnresolvedClassSamples, TEXT(", ")));
+            }
+
+            if (Stats->ParamsDecodeFailureCount > 0)
+            { _VisualizeSummary += ck::Format_UE(TEXT(", {} params blobs undecodable"), Stats->ParamsDecodeFailureCount); }
+        }
+        else
+        { _VisualizeSummary = TEXT("previews pending — editor ECS busy, re-click Visualize"); }
+    }
+
+    DoVisualize_SyncSelection();
+    return true;
+#else
+    return false;
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoVisualize_Stop()
+    -> void
+{
+#if WITH_EDITOR
+    ck::save_debugger_viz::Set_VisualizerEnabled(false);
+    ck::save_debugger_viz::Unregister_OnRowClicked();
+    ck::save_debugger_viz::Clear_Rows();
+    ck::save_debugger_viz_retained::Clear();
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoVisualize_SyncSelection()
+    -> void
+{
+#if WITH_EDITOR
+    if (NOT ck::save_debugger_viz::Get_IsVisualizerEnabled())
+    { return; }
+
+    ck::save_debugger_viz::Set_SelectedSavedId(_Model.Get_SelectedEntitySavedId());
+
+    auto SelectedTransform = TOptional<FTransform>{};
+    if (const auto Rows = ck::save_debugger_viz::Get_Rows();
+        Rows.IsValid())
+    {
+        for (const auto& Row : *Rows)
+        {
+            if (Row.SavedId == _Model.Get_SelectedEntitySavedId())
+            {
+                SelectedTransform = Row.WorldTransform;
+                break;
+            }
+        }
+    }
+
+    ck::save_debugger_viz_retained::Update_SelectionGizmo(
+        UCk_Utils_EditorOnly_UE::Get_OpenedEditorLevelWorld(), SelectedTransform);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoRefresh_ActorAnnotations()
+    -> void
+{
+#if WITH_EDITOR
+    auto Annotations = TMap<FGuid, FString>{};
+
+    if (auto* EditorWorld = UCk_Utils_EditorOnly_UE::Get_OpenedEditorLevelWorld();
+        ck::IsValid(EditorWorld))
+    {
+        for (auto It = TActorIterator<AActor>{EditorWorld}; It; ++It)
+        {
+            const auto* Actor = *It;
+
+            const auto Identity = ck::save_key::Get_LevelPlacedIdentity(Actor);
+            if (Identity.IsEmpty())
+            { continue; }
+
+            Annotations.Add(
+                FGuid::NewDeterministicGuid(Identity),
+                ck::Format_UE(TEXT("{} ({})"), Actor->GetFName(), Actor->GetClass()->GetName()));
+        }
+    }
+
+    _Model.Set_SaveKeyAnnotations(Annotations);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoOnTreeKeyDown(
+        const FGeometry& InGeometry,
+        const FKeyEvent& InKeyEvent)
+    -> FReply
+{
+#if WITH_EDITOR
+    if (InKeyEvent.GetKey() == EKeys::F && ck::save_debugger_viz::Frame_SelectedRow())
+    { return FReply::Handled(); }
+#endif
+
+    return FReply::Unhandled();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoOnEditorSelectionChanged(
+        UObject* InSelectionObject)
+    -> void
+{
+#if WITH_EDITOR
+    if (NOT ck::save_debugger_viz::Get_IsVisualizerEnabled())
+    { return; }
+
+    if (GEditor == nullptr || InSelectionObject != GEditor->GetSelectedActors())
+    { return; }
+
+    const auto* TopActor = GEditor->GetSelectedActors()->GetTop<AActor>();
+    if (ck::Is_NOT_Valid(TopActor, ck::IsValid_Policy_NullptrOnly{}))
+    { return; }
+
+    const auto Identity = ck::save_key::Get_LevelPlacedIdentity(TopActor);
+    if (Identity.IsEmpty())
+    { return; }
+
+    const auto SavedId = ck_save_debugger_model::TryGet_SavedIdForSaveKey(
+        _Model.Get_Document(), FGuid::NewDeterministicGuid(Identity));
+
+    if (SavedId == ck::snapshot::k_NoSavedEntity)
+    { return; }
+
+    DoSelect_Entity(SavedId);
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoOnMapOpened(
+        const FString& InFilename,
+        bool InAsTemplate)
+    -> void
+{
+#if WITH_EDITOR
+    if (_CurrentPath.IsEmpty())
+    { return; }
+
+    DoRefresh_ActorAnnotations();
+    DoRebuild_Tree();
+
+    if (ck::save_debugger_viz::Get_IsVisualizerEnabled())
+    { DoVisualize_Publish(); }
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
     DoOnCloseDiffClicked()
     -> FReply
 {
@@ -1488,7 +1906,18 @@ auto
     if (ck::IsValid(_PathLabel))
     { _PathLabel->SetText(FText::FromString(InAbsolutePath)); }
 
+    DoRefresh_ActorAnnotations();
     DoRebuild_All();
+
+#if WITH_EDITOR
+    // A live visualizer follows the document: republish the new file's rows, or shut down when it has none — a
+    // viewport still showing the previous file's diamonds would be a lie.
+    if (ck::save_debugger_viz::Get_IsVisualizerEnabled())
+    {
+        if (NOT DoVisualize_Publish())
+        { DoVisualize_Stop(); }
+    }
+#endif
 
     const auto Tone = ck_save_debugger_model::Get_CompatibilityTone(_Model.Get_Document());
     DoSet_Status(ck::Format_UE(TEXT("{}: {} entities, {} payloads, {} errors, {} warnings"),
@@ -1833,6 +2262,12 @@ auto
     AddRow(IdentityRows, TEXT("Save key"), Entry.Get_SaveKey().IsValid()
         ? Entry.Get_SaveKey().ToString(EGuidFormats::DigitsWithHyphens)
         : FString{TEXT("(unset)")});
+
+    // The save records only the rendezvous key for an EngineOwned row; the NAME lives in the level. When the
+    // matching level is open, the window's reverse map answers what the file cannot.
+    if (const auto* Annotation = _Model.Get_SaveKeyAnnotations().Find(Entry.Get_SaveKey());
+        Annotation != nullptr && Entry.Get_SaveKey().IsValid())
+    { AddRow(IdentityRows, TEXT("Editor actor"), *Annotation); }
     AddRow(IdentityRows, TEXT("Player id"), Entry.Get_PlayerId());
 
     AddLinkRow(TEXT("Lifetime owner"), Entry.Get_LifetimeOwnerSavedId());
@@ -2491,6 +2926,8 @@ auto
         }
     }
 
+    DoVisualize_SyncSelection();
+
     DoRebuild_EntityDetail();
     DoRebuild_BlobDetail();
 }
@@ -2676,6 +3113,8 @@ auto
 
     _Model.Set_SelectedEntitySavedId(InItem->SavedId);
     _Model.Set_SelectedPayloadIndex(INDEX_NONE);
+
+    DoVisualize_SyncSelection();
 
     DoRebuild_EntityDetail();
     DoRebuild_BlobDetail();

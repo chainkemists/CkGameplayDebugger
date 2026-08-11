@@ -103,7 +103,8 @@ specific to this module:
   diff (toolbar command, panel header, group detail) with `Door` closing it and `Anchor` the show-unchanged
   toggle; `Key` identity,
   `Web` ownership, `Book` recipe, `Compass` transforms, `Package` payloads, `Lock` raw/opaque bytes, `Gear` decode,
-  `Bulb` load-the-type, `Bug` diagnostics, `TreasureMap` the empty ownership selection.
+  `Bulb` load-the-type, `Bug` diagnostics, `TreasureMap` the empty ownership selection; `Pin` the viewport
+  visualizer and `Crosshair` its frame-selected command.
 - **Provenance and node-kind glyphs are model rules, not widget rules.**
   `ck_save_debugger_model::Get_ProvenanceIconId` maps the four provenances to four DISTINCT ids and
   `Get_NodeKindIconId` gives the synthetic roots their own (`Ghost` non-persisted, `Trap` cycle). Rows carry the
@@ -189,6 +190,94 @@ erroring); right-click → Copy Group on a multi-selection joins with newlines; 
 deltas, the group table and the payload-type table; **Close Diff** restores the blob column with the previously
 selected payload still shown; **Reload** with a diff open drops it (the column returns to blobs by itself). Point
 it at an unreadable file and confirm the panel shows the `DIFF UNAVAILABLE` pill and the reason, with no list.
+
+---
+
+## Editor-viewport visualizer
+
+**Visualize** (toolbar, `Pin` glyph, editor builds only) draws every PLACED entity of the open save into the
+level-editor viewport: a wire diamond per entity (octahedron, hand-drawn PDI lines), dashed owner-chain lines,
+and a `Selection`-toned highlight ring on the window's selected row. **Frame** (`Crosshair`) moves the editor
+cameras to the selected diamond. Click a diamond → its row selects in this window; select a row here → its
+diamond highlights. The visualizer holds no world, registry or handle — the no-live-handle invariant stands: the
+EdMode pulls an immutable snapshot of plain rows and pushes raw saved ids back.
+
+- **Placement mirrors the loader, never invents.** `ck_save_debugger_model::TryGet_VisualizationTransform` uses
+  the format's own rule (identity == "no Transform fragment", `_ActorSpawnTransform` as the bridged-actor
+  fallback) — an entity the loader would not place draws no diamond, and the status line states the
+  placed/total split rather than pretending coverage. `Ck.SaveDebugger.Viz.PlacementRule` pins it.
+- **Diamond tint is a model rule**: `Get_ProvenanceVisualizationColor` maps the four provenances to four
+  DISTINCT `CkStyle::` tokens (same reasoning as `Get_ProvenanceIconId`); `HasProblems` overrides to
+  `CkStyle::Err()` at the draw site. `Ck.SaveDebugger.Viz.ProvenanceColors` pins the distinctness.
+- **The level prompt** compares the header's `_WorldAssetPath` package against the open editor level
+  (`Get_LevelMatch`, PIE-prefix-stripped on both sides — `Ck.SaveDebugger.Viz.LevelMatch`). Only a genuine
+  MISMATCH prompts (`CustomDialog`: Load level / View unanchored / Cancel); match, a world-less header, or no
+  open level all proceed without asking — viewing a save unanchored costs nothing and must never force a level
+  load.
+- **Architecture** (the CkVoxelNavPreview shape): a hidden auto-discovered `UBaseLegacyWidgetEdMode`
+  (`Visualizer/CkSaveDebugger_VisualizerEdMode`, linker-anchored by a `StaticClass()` reference in
+  `StartupModule`) renders and forwards `HandleClick` hit-proxy hits; the `ck::save_debugger_viz` function-slot
+  state (`Visualizer/CkSaveDebugger_Visualizer`) carries the published rows, selected id and click handler
+  between the window and the mode. Everything is `#if WITH_EDITOR` — this module stays UncookedOnly, per the
+  suite's editor-only-code rule.
+- **Lifecycle:** the visualizer follows the document — open/reload republishes (or stops when the new file has
+  nothing placeable), and the window destructor deactivates the mode and drops the published state. Both draw
+  paths and the mode toggle guard on `GEditor->PlayWorld`, so the visualizer goes quiet during PIE.
+- **SaveKey → editor-actor annotations.** A save records ONLY the rendezvous key for an EngineOwned row — the
+  loader never re-creates one, so the file has no reason to carry a name, which is why those rows read as bare
+  GUIDs. The key is `FGuid::NewDeterministicGuid` of `ck::save_key::Get_LevelPlacedIdentity` (level package +
+  actor name), so the window reverses it whenever a level is open: `DoRefresh_ActorAnnotations` maps every
+  level-placed actor's would-be key to "ActorName (Class)" and hands the map to the model
+  (`Set_SaveKeyAnnotations`), which merges it into row display/search text, the Identity panel ("Editor actor"
+  row) and the visualizer rows. Refreshed on open, on the Visualize level-load, and on `OnMapOpened`. The map is
+  WORLD data the window derives; the model only merges strings — that split keeps the projection pure.
+  `Ck.SaveDebugger.Viz.SaveKeyAnnotations` pins enrichment and the `TryGet_SavedIdForSaveKey` lookup.
+- **Selection sync is two-way + keyboard.** Editor→debugger: `USelection::SelectionChangedEvent` (bound while
+  the window lives, acting only while the visualizer is on) resolves the top selected actor through the same
+  key derivation to its row and selects it. Debugger→editor: `f` on the ownership tree frames the viewport on
+  the selected diamond (same path as the Frame button; unhandled when nothing placed is selected, so tree
+  navigation keeps the key otherwise).
+- **Retained visuals** (`Visualizer/CkSaveDebugger_VisualizerRetained`) put real content behind the diamonds,
+  classified by `ck_save_debugger_model::Get_VisualKind` (spec-pinned in `Ck.SaveDebugger.Viz.PlacementRule`):
+  - *ConstructionPreview* (plain RuntimeSpawned script rows): the real EntityScript is spawned in the editor
+    registry — the `ACk_EntitySpawner_UE` preview mechanism — with the saved spawn params decoded from
+    `_SpawnParamsBytes` and every handle ref NULLED (a raw saved id would alias an unrelated editor entity).
+    The saved transform is injected into a transient per-row archetype (spawner fallback property names) AND
+    re-applied post-spawn once the Transform fragment exists, mirroring the loader. Construct + OnConstructed
+    run; **BeginPlay never does** (editor Layer-1 truncation) — BeginPlay-composed visuals are absent by
+    design. ConstructSpawned children reappear via the replayed construction.
+  - *MeshGhost* (bridged actor rows): NEVER previewed — a WithActor Construct ensures without an owning actor,
+    and spawning real actors would dirty the level. The actor class's static-mesh component templates (native
+    CDO + Blueprint SCS chain, closest inherited-component override wins) render as shared-ISM instances at
+    the saved transform. A UserConstructionScript's runtime components are invisible to this walk by design.
+  - *DiamondOnly*: EngineOwned rows (the real actor is already in the level) and DefinitionBuilt rows (recipe
+    replay not built yet — `Request_TryBuildAndReplicate` would work in the editor world, so this is scope,
+    not a wall).
+  Everything hangs off one root entity under the editor transient (cascade-destroy, inherited
+  `FTag_EditorOnlyEntity`), built only while `Get_IsEditorEcsMutationSafe`, torn down on stop/republish/window
+  close. Class resolution may LOAD classes — Visualize is an explicit user action, same standing as its
+  level-load prompt. The selected row additionally gets an `FCkDebug_PmgGizmoSet` transform gizmo (solid
+  three-axis; the flat PMG arrow gizmo reads edge-on invisible, per that header's own warning).
+
+### `[EDITOR-VERIFY]`
+
+Open a real save captured in a known level while a DIFFERENT level is open, click **Visualize**, confirm the
+three-way prompt appears and **Cancel** does nothing. Re-click and pick **Load <map>**: the captured level loads
+and diamonds appear at sensible positions with dashed lines to their owners; the toolbar button now reads
+**Stop Visualizing** and **Frame** enables. Click a diamond → the ownership tree selects the row (echo-free);
+select a different row in the tree → the highlight ring moves; **Frame** flies the camera to it. Open the SAME
+level's save with it already loaded → no prompt. **Reload** keeps the diamonds; opening a save with no
+transforms shows the "Nothing to visualize" status and stops. Enter PIE → diamonds vanish; exit PIE → they
+return on the next redraw. Close the tab with the visualizer on → the viewport is clean (no orphaned mode).
+With the captured level open: EngineOwned rows show "— ActorName (Class)" in the tree and an **Editor actor**
+row in the Identity panel, and typing the actor's name in Filter finds them; select a row and press **`f`** →
+the camera frames its diamond; click a level actor in the viewport or outliner (visualizer on) → its row
+selects in the debugger; open a DIFFERENT level → annotations update (rows with no match lose theirs).
+Retained visuals: bridged rows (world items/props) show their actual meshes at the saved spot; plain script
+rows spawn editor previews (whatever Construct composes appears — a BeginPlay-composed visual will NOT);
+selecting a row places the three-axis gizmo on it; the status line reports "N previews, M ghost meshes"
+plus skip counts; **Stop Visualizing** removes every mesh, preview and gizmo (viewport clean, level NOT
+dirtied — verify no asterisk on the level tab); re-Visualize after editing the save reproduces them.
 
 ---
 

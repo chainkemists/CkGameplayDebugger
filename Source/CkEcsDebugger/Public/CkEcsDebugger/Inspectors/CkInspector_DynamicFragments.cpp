@@ -2,6 +2,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDynamic/CkDynamic_Fragment.h"
+#include "CkDynamic/CkDynamic_FragmentDisplaySchema.h"
 #include "CkDynamic/CkDynamic_Utils.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 
@@ -23,29 +24,6 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 CK_REGISTER_DEBUGGER_INSPECTOR(FCkInspector_DynamicFragments)
-
-// =====================================================================================================================
-
-namespace
-{
-    auto GetDisplayName(const UScriptStruct* InStruct) -> FText
-    {
-#if WITH_EDITOR
-        return InStruct->GetDisplayNameText();
-#else
-        return FText::FromName(InStruct->GetFName());
-#endif
-    }
-
-    auto GetDisplayName(const FProperty* InProperty) -> FString
-    {
-#if WITH_EDITOR
-        return InProperty->GetDisplayNameText().ToString();
-#else
-        return InProperty->GetName();
-#endif
-    }
-}
 
 // =====================================================================================================================
 
@@ -77,7 +55,7 @@ auto FCkInspector_DynamicFragments::Get_InspectorSections(const FCk_Handle& Enti
 
         Sections.Add(FInspectorSection
         {
-            GetDisplayName(ScriptStruct),
+            FText::FromString(ck::dynamic::Resolve_FragmentDisplayName(ScriptStruct)),
             BuildFragmentWidget(Entity, Fragment)
         });
     }
@@ -103,6 +81,7 @@ namespace
     };
 
     auto FormatProperty(
+        const UScriptStruct* InFragmentType,
         const FProperty* InProperty,
         const void* InContainer) -> FPropertyDisplay
     {
@@ -123,7 +102,7 @@ namespace
             const auto* Enum = EnumProp->GetEnum();
             auto NumericValue = int64{};
             EnumProp->GetUnderlyingProperty()->GetValue_InContainer(InContainer, &NumericValue);
-            const auto DisplayName = Enum->GetDisplayNameTextByValue(NumericValue).ToString();
+            const auto DisplayName = ck::dynamic::Resolve_EnumValueDisplayName(InFragmentType, Enum, NumericValue);
             return { DisplayName, CkStyle::Value_Enum() };
         }
 
@@ -131,7 +110,7 @@ namespace
             ByteProp && ByteProp->Enum)
         {
             const auto ByteValue = *static_cast<const uint8*>(ValuePtr);
-            const auto DisplayName = ByteProp->Enum->GetDisplayNameTextByValue(ByteValue).ToString();
+            const auto DisplayName = ck::dynamic::Resolve_EnumValueDisplayName(InFragmentType, ByteProp->Enum, ByteValue);
             return { DisplayName, CkStyle::Value_Enum() };
         }
 
@@ -270,7 +249,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
     for (TFieldIterator<FProperty> PropIt(ScriptStruct); PropIt; ++PropIt)
     {
         const auto* Property = *PropIt;
-        const auto PropertyName = GetDisplayName(Property);
+        const auto PropertyName = ck::dynamic::Resolve_PropertyDisplayName(ScriptStruct, Property);
 
         // ---- FCk_Handle: clickable navigation
 
@@ -309,7 +288,7 @@ auto FCkInspector_DynamicFragments::BuildFragmentWidget(
         {
             // ---- All other types: format with type-aware coloring
 
-            const auto [ValueStr, ValueColor] = FormatProperty(Property, StructMemory);
+            const auto [ValueStr, ValueColor] = FormatProperty(ScriptStruct, Property, StructMemory);
 
             Grid->AddSlot(0, Row)
                 .Padding(FCkDebuggerStyle::Padding_Small)

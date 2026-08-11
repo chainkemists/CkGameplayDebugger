@@ -11,16 +11,16 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
 - **20-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
-  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 13 DeveloperTool (`CkDialogDebugger`,
+  `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 17 DeveloperTool (`CkEcsDebugger`, `CkSmDebugger`,
+  `CkSchedulerDebugger`, `CkGoapDebugger`, `CkDialogDebugger`,
   `CkAggroDebugger`, `CkUIDebugger`, `CkAStarDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
   `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
-  `CkStyleLabDebugger`, `CkDebuggerLauncher`) + 4 UncookedOnly (`CkEcsDebugger`, `CkSmDebugger`,
-  `CkSchedulerDebugger`, `CkGoapDebugger`). Plugin dependency: **CkFoundation only**
+  `CkStyleLabDebugger`, `CkDebuggerLauncher`). Plugin dependency: **CkFoundation only**
   (`CkDebugger.uplugin:160-164`). The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
-- **Packaged-module contract (2026-08-10):** all 13 DeveloperTool modules are included in
-  Development/DebugGame and excluded from Test/Shipping. The 4 GraphEditor-based tools remain
-  UncookedOnly until their editor graph surfaces have packaged Slate fallbacks.
+- **Packaged-module contract (2026-08-10):** all 17 DeveloperTool modules are included in
+  Development/DebugGame and excluded from Test/Shipping. ECS, State Machine, Scheduler, and GOAP
+  retain their full GraphEditor surfaces in editor targets and use runtime-Slate views in packaged targets.
 - **No AngelScript surface anywhere in this plugin** — no `Script/` dir, zero `.as` files
   (verified via `rg --no-ignore`). **Blueprint surface exists only on the legacy module**
   (`Abstract, Blueprintable, EditInlineNew` filter/submenu/action classes, e.g.
@@ -32,7 +32,7 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 | Gen | Module(s) | Type | What it is | Status |
 |---|---|---|---|---|
 | 1 (2023) | `CkGameplayDebugger` | Runtime | Single UE-GameplayDebugger category: DebugProfile data assets, Blueprint Filters/Submenus/Actions, canvas draw. Compiles out of Shipping via self-defined `WITH_GAMEPLAY_DEBUGGER` (`CkGameplayDebugger.Build.cs:33-39`). | Frozen since early 2024 — **maintenance-only; do not add new features here** (deprecation not proclaimed; maintainer's call). |
-| 2 (2025→) | 16 feature debugger modules + `CkDebuggerLauncher` | 13 DeveloperTool + 4 UncookedOnly | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open packaged-capable tools as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
+| 2 (2025→) | 16 feature debugger modules + `CkDebuggerLauncher` | 17 DeveloperTool | Slate debugger tabs on the shared `CkDebuggerCommon` widget base, plus the discovery/launch rail. Editor targets dock them under Tools > Debug; packaged Development/DebugGame targets open them as floating Slate windows. Test/Shipping exclude DeveloperTool modules. | **Extend when you need a standalone analysis tool. Preserve packaged support.** |
 | 3 (2026, current flagship) | `CkEntityDebugOverlay` | Runtime | In-game on-screen overlay: `ULocalPlayerSubsystem` (`Subsystem/CkDebugOverlay_Subsystem.h:48`), self-registering providers, focus card + world pills + diamond markers. Compiled under `WITH_CK_DEBUG_OVERLAY`, non-Shipping only (`CkEntityDebugOverlay.Build.cs:36-39`); driven by `ck.DebugOverlay*` cvars/commands (`Subsystem/CkDebugOverlay_Subsystem.cpp:159-213`). | **Extend when you need in-game/on-screen debug info.** |
 
 The 2024-2025 Cog-based EcsDebugger era is dead — removed from `Source/`; only stale traces

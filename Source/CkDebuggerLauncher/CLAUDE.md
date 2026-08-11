@@ -23,10 +23,10 @@
 
 `CkInsightsDebugger` owns the Insights Analyzer tab spawner and registers its own descriptor.
 The Foundation analysis module supplies trace parsing and report data; it does not own debugger UI.
-In packaged Development/DebugGame targets, 11 feature debugger modules and Insights Analyzer
+In packaged Development/DebugGame targets, all 16 feature debugger modules and Insights Analyzer
 register with the catalog. Their editor workspace-menu wiring is compiled out; the launcher invokes
-their runtime Slate tab spawners in floating windows. ECS, State Machine, Scheduler, and GOAP remain
-editor-only until their GraphEditor surfaces have packaged Slate fallbacks.
+their runtime Slate tab spawners in floating windows. ECS, State Machine, Scheduler, and GOAP retain
+their graph canvases in editor targets and expose runtime-Slate views of the same data when packaged.
 
 ## Adding another standalone debugger
 

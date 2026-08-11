@@ -197,7 +197,11 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
     for (const auto& Node : _Model.GetScene().Nodes)
     {
         PresentIds.Add(Node.Id);
-        const auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
+        auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::Transition)
+        {
+            StructureHash = HashCombine(StructureHash, GetTypeHash(SelectedIds.Contains(Node.Id)));
+        }
         const auto* CachedHash = _CardStructureHashes.Find(Node.Id);
         auto Card = _CardCache.FindRef(Node.Id);
         if (NOT Card || CachedHash == nullptr || *CachedHash != StructureHash)
@@ -238,6 +242,7 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         }
         CanvasEdge.IsDirected = Edge.bDirected;
         CanvasEdge.IsDashed = Edge.bReverse;
+        CanvasEdge.LineSeparation = 4.5f;
         CanvasEdge.RoutePoints = Edge.RoutePoints;
         CanvasScene.Edges.Add(MoveTemp(CanvasEdge));
     }
@@ -308,7 +313,14 @@ auto SCkSmRuntimeGraph::MakeCard(const FCkSmRuntimeGraphNode& InNode, const bool
         return SNew(SBorder)
             .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
             .BorderBackgroundColor(InNode.Accent)
-            .Padding(3.0f)[TransitionBody];
+            .Padding(bInSelected ? 1.0f : 3.0f)
+            [
+                SNew(SBorder)
+                    .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+                    .BorderBackgroundColor(bInSelected ? CkStyle::Accent() : InNode.Accent)
+                    .Padding(bInSelected ? 2.0f : 0.0f)
+                    [TransitionBody]
+            ];
     }
 
     auto Body = SNew(SVerticalBox);

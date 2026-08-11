@@ -15,9 +15,8 @@ class ITableRow;
 template <typename OptionType> class SComboBox;
 template <typename ItemType> class SListView;
 
-// Packaged-game state-machine debugger. The editor keeps the graph canvas; this
-// widget exposes the same collected state, transition and history information
-// using runtime Slate only.
+// Tombstoned list-only packaged fallback retained as migration reference. The module always constructs
+// SCkSmDebuggerWindow in Editor and packaged Development builds; do not add new behavior here.
 class SCkSmDebuggerPackagedWindow : public SCkDebugger_WindowBase
 {
 public:

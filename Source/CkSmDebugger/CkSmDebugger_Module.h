@@ -5,9 +5,6 @@
 
 class SCkSmDebuggerWindow;
 class SDockTab;
-#if WITH_EDITOR
-struct FGraphPanelNodeFactory;
-#endif
 
 class FCkSmDebuggerModule : public IModuleInterface
 {
@@ -29,9 +26,6 @@ private:
         TSharedPtr<SDockTab>) -> void;
 
     TSharedPtr<SCkSmDebuggerWindow> _DebuggerWindow;
-#if WITH_EDITOR
-    TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
-#endif
     TSharedPtr<SDockTab> _DebuggerTab;
 
     uint64 _DebuggerToolRegistrationId = 0;

@@ -5,13 +5,7 @@
 #include "CkSmDebugger/Window/SCkSmDebugger_HistoryList.h"
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 
-#if WITH_EDITOR
-    #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
-    #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
-    #include "CkSmDebugger/Graph/CkSmDebugGraphSchema.h"
-    #include "CkSmDebugger/Graph/CkSmDebugNode_State.h"
-    #include "CkSmDebugger/Graph/CkSmDebugNode_Transition.h"
-#endif
+#include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Styling/AppStyle.h"
@@ -34,10 +28,6 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
-#if WITH_EDITOR
-    #include "GraphEditor.h"
-    #include "Editor.h"
-#endif
 
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
@@ -296,13 +286,6 @@ SCkSmDebuggerWindow::~SCkSmDebuggerWindow()
     if (_SessionInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 
-#if WITH_EDITOR
-    if (_Graph && UObjectInitialized())
-    {
-        _Graph->RemoveFromRoot();
-        _Graph = nullptr;
-    }
-#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -319,11 +302,9 @@ auto
     _AutoSelectActiveState = true;
     _LastDetailSig = FDetailSignature{};
 
-#if WITH_EDITOR
     // Preview walker uses the PIE world — tear down its entity too.
     if (_PreviewPane.IsValid())
     { _PreviewPane->Set_WorldContext(TWeakObjectPtr<UWorld>()); }
-#endif
 
     _SmSelectorItems.Empty();
     _SmSelectorHandles.Empty();
@@ -346,14 +327,6 @@ auto
 
     _RuntimeGraphFacade.ResetForWorldChange();
 
-#if WITH_EDITOR
-    if (ck::IsValid(_Graph))
-    {
-        _Graph->ForceRebuild();
-        _Graph->Nodes.Empty();
-        _Graph->NotifyGraphChanged();
-    }
-#endif
     if (_RuntimeGraph.IsValid())
     { _RuntimeGraph->Clear(); }
 
@@ -441,6 +414,68 @@ auto
     // The old timeline re-derived its origin from ScrubTime every paint, so a step always landed
     // framed. The window is widget-owned now, so a jump has to ask for the re-frame explicitly.
     FocusTimelineOnCursor();
+}
+
+auto SCkSmDebuggerWindow::BuildTestSmInfo() -> void
+{
+    _TestSmInfo = FCkSmDebugger_SmInfo{};
+    _TestSmInfo.DebugName = TEXT("Test State Machine");
+    _TestSmInfo.RunStatus = ECk_SmRunStatus::Running;
+    _TestSmInfo.CurrentStateIndex = 3;
+
+    constexpr auto CurrentStateIndex = 3;
+    const auto StateNames = TArray<FString>{
+        TEXT("Idle"),
+        TEXT("Walking"),
+        TEXT("IdleJump"),
+        TEXT("IdleLanding"),
+        TEXT("CrouchIdle"),
+        TEXT("IdleToCrouch"),
+        TEXT("CrouchToIdle")};
+    for (auto StateIndex = 0; StateIndex < StateNames.Num(); ++StateIndex)
+    {
+        auto State = FCkSmDebugger_StateInfo{};
+        State.StateName = StateNames[StateIndex];
+        State.IsCurrentState = StateIndex == CurrentStateIndex;
+        State.HasBeenVisited = StateIndex == 1 || StateIndex == 2 || State.IsCurrentState;
+        State.DwellTimeSeconds = State.IsCurrentState ? 14.44 : 0.0;
+        State.IsCurrentDwellLive = State.IsCurrentState;
+        State.HasEntryBreakpoint = StateIndex == 0 || StateIndex == 4;
+        State.HasExitBreakpoint = StateIndex == 1 || StateIndex == 4;
+        _TestSmInfo.States.Add(MoveTemp(State));
+    }
+
+    struct FMockTransition
+    {
+        int32 Source;
+        int32 Target;
+    };
+    const auto Transitions = TArray<FMockTransition>{
+        {0, 1}, {1, 0},
+        {0, 2}, {2, 0},
+        {3, 0},
+        {0, 5}, {5, 0},
+        {0, 6}, {6, 0},
+        {5, 4}, {4, 5},
+        {4, 6}, {6, 4}};
+    for (auto TransitionIndex = 0; TransitionIndex < Transitions.Num(); ++TransitionIndex)
+    {
+        const auto& Definition = Transitions[TransitionIndex];
+        auto Transition = FCkSmDebugger_TransitionInfo{};
+        Transition.SourceStateIndex = Definition.Source;
+        Transition.TargetStateIndex = Definition.Target;
+        Transition.SourceStateName = StateNames[Definition.Source];
+        Transition.TargetStateName = StateNames[Definition.Target];
+        Transition.Order = TransitionIndex;
+        _TestSmInfo.Transitions.Add(MoveTemp(Transition));
+    }
+
+    _TestFrameAllPending = true;
+    if (_RuntimeGraph.IsValid())
+    {
+        _RuntimeGraph->SetSmInfo(&_TestSmInfo);
+        _RuntimeGraph->ApplyScrubHighlight(1, 2);
+    }
 }
 
 // ====================================================================================================================
@@ -652,60 +687,10 @@ auto
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
         this, &SCkSmDebuggerWindow::HandleWorldChanged);
 
-#if WITH_EDITOR
     // Create the preview pane eagerly so its picker can live in the main toolbar
     // (keeps the preview graph top aligned with the live graph top on the left).
     _PreviewPane = SNew(SCkSmDebugger_PreviewPane);
 
-    // Create the debug graph — prevent GC
-    _Graph = NewObject<UCkSmDebugGraph>(GetTransientPackage());
-    _Graph->AddToRoot();
-    _Graph->Schema = UCkSmDebugGraphSchema::StaticClass();
-
-    // Wire command callback so context menu actions reach the ViewModel
-    _Graph->OnIssueCommand = [this](const FCkSmDebugger_Command& InCommand)
-    {
-        if (_ViewModel.IsValid())
-        { _ViewModel->IssueCommand(InCommand); }
-    };
-
-    // Create graph editor with selection callback
-    SGraphEditor::FGraphEditorEvents GraphEvents;
-    GraphEvents.OnSelectionChanged = SGraphEditor::FOnSelectionChanged::CreateLambda(
-        [this](const TSet<UObject*>& InSelection)
-        {
-            if (NOT _ViewModel.IsValid())
-            { return; }
-
-            for (auto* Obj : InSelection)
-            {
-                if (auto* StateNode = Cast<UCkSmDebugNode_State>(Obj))
-                {
-                    _ViewModel->Set_SelectedNodeIndex(StateNode->Get_StateIndex());
-                    _SelectedTransitionIndex = -1;
-                    _AutoSelectActiveState = false;
-                    return;
-                }
-
-                if (auto* TransNode = Cast<UCkSmDebugNode_Transition>(Obj))
-                {
-                    _SelectedTransitionIndex = TransNode->Get_TransitionIndex();
-                    _ViewModel->Set_SelectedNodeIndex(-1);
-                    _AutoSelectActiveState = false;
-                    return;
-                }
-            }
-
-            _ViewModel->Set_SelectedNodeIndex(-1);
-            _SelectedTransitionIndex = -1;
-            _AutoSelectActiveState = true;
-        });
-
-    _GraphEditor = SNew(SGraphEditor)
-        .GraphToEdit(_Graph)
-        .IsEditable(true)
-        .GraphEvents(GraphEvents);
-#endif
 
     // Common emits on both BeginPIE and EndPIE. The feature keeps ownership of
     // what must be cleared; Tick repopulates after the new world begins play.
@@ -910,6 +895,11 @@ auto
     if (_IsTestMode)
     {
         UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(false);
+        if (_TestFrameAllPending && _RuntimeGraph.IsValid())
+        {
+            _RuntimeGraph->FrameAll();
+            _TestFrameAllPending = false;
+        }
         return;
     }
 
@@ -925,12 +915,10 @@ auto
     _WorldModel->Ensure_AutoSelect();
     _CachedWorld = _WorldModel->Get_SelectedWorld();
 
-#if WITH_EDITOR
     // Keep the preview pane in sync with the current PIE world so its walker can
     // spawn a throwaway SM entity to discover the graph when a class is picked.
     if (_PreviewPane.IsValid())
     { _PreviewPane->Set_WorldContext(_CachedWorld); }
-#endif
 
     auto* World = _CachedWorld.Get();
     if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
@@ -1004,10 +992,6 @@ auto
     auto SmInfo = _ViewModel->Get_CurrentSmInfo();
     if (SmInfo)
     {
-#if WITH_EDITOR
-        _Graph->SetSuppressNotifications(false);
-        _Graph->UpdateFromSmInfo(*SmInfo);
-#endif
         if (_RuntimeGraph.IsValid())
         {
             _RuntimeGraphFacade.UpdateFromSmInfo(*SmInfo);
@@ -1028,18 +1012,12 @@ auto
             _RuntimeGraphFacade.SetScrubHighlight(HighlightTarget, HighlightSource);
             if (_RuntimeGraph.IsValid())
                 _RuntimeGraph->ApplyScrubHighlight(HighlightTarget, HighlightSource);
-#if WITH_EDITOR
-            _Graph->ApplyScrubHighlight(HighlightTarget, HighlightSource);
-#endif
         }
         else
         {
             _RuntimeGraphFacade.ClearScrubHighlight();
             if (_RuntimeGraph.IsValid())
                 _RuntimeGraph->ClearPresentation();
-#if WITH_EDITOR
-            _Graph->ClearScrubHighlight();
-#endif
 
             // Compute one "previous state" per hierarchy level (outer SM +
             // each sub-SM) by walking history backwards and keeping the first
@@ -1070,10 +1048,6 @@ auto
             if (_RuntimeGraph.IsValid())
                 _RuntimeGraph->TickLivePresentation(
                     InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
-#if WITH_EDITOR
-            _Graph->TickLiveFlash(
-                InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
-#endif
         }
 
         // ----- Breakpoint detection: pause PIE on state entry/exit -----
@@ -1117,10 +1091,6 @@ auto
     // Graph nodes bind their axis-driven visuals through attribute lambdas and repaint every frame,
     // so they need nothing here. The one structural consumer is the task-row separator inside a
     // state node, which ForceRebuild re-emits along with the layout pass.
-#if WITH_EDITOR
-    if (ck::IsValid(_Graph))
-    { _Graph->ForceRebuild(); }
-#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1144,10 +1114,6 @@ auto
     if (InKeyEvent.GetKey() == EKeys::F)
     {
         // Zoom graph to fit all nodes
-#if WITH_EDITOR
-        if (_GraphEditor.IsValid())
-        { _GraphEditor->ZoomToFit(false); }
-#endif
         if (_RuntimeGraph.IsValid())
         { _RuntimeGraph->FrameAll(); }
 
@@ -1446,10 +1412,6 @@ auto
                     .Text(FText::FromString(TEXT("Relayout")))
                     .OnClicked_Lambda([this]()
                     {
-#if WITH_EDITOR
-                        if (_Graph)
-                        { _Graph->ForceRebuild(); }
-#endif
                         if (_ViewModel.IsValid())
                         { _ViewModel->RequestRelayout(); }
                         return FReply::Handled();
@@ -1842,7 +1804,6 @@ auto
                     })
             ]
 
-#if WITH_EDITOR
         // Preview — toggles a right-side pane for statically previewing any SM asset
         + SHorizontalBox::Slot()
             .AutoWidth()
@@ -1898,16 +1859,11 @@ auto
                     {
                         _IsTestMode = !_IsTestMode;
 
-                        if (_IsTestMode)
-                        {
-                            _Graph->SetSuppressNotifications(true);
-                            _Graph->BuildMockup();
-                            _Graph->SetSuppressNotifications(false);
-                            _Graph->NotifyGraphChanged();
-                        }
+                        if (_IsTestMode) { BuildTestSmInfo(); }
                         else
                         {
-                            _Graph->ForceRebuild();
+                            _TestFrameAllPending = false;
+                            if (_RuntimeGraph.IsValid()) { _RuntimeGraph->Clear(); }
                         }
 
                         return FReply::Handled();
@@ -1939,7 +1895,6 @@ auto
                         _PreviewPane->BuildPickerRow()
                     ]
             ]
-#endif
 
         // ── Breakpoint status (right-aligned) ───────────────────────────
 

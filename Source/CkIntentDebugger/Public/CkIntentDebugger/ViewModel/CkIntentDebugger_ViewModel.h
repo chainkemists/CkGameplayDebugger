@@ -2,6 +2,8 @@
 
 #include "CkIntentDebugger/Data/CkIntentDebugger_Types.h"
 
+#include "CkDebuggerCommon/Devices/CkDebug_DeviceTypes.h"
+
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -35,6 +37,12 @@ public:
 public:
     auto Tick() -> void;
 
+    // Called every widget frame, OUTSIDE the refresh gate, because it captures EDGES: the router's per-pass event
+    // array holds one pass's events, and a release read at a capped cadence is a release missed — which latches a
+    // witnessed key down forever. Edge capture is truth, not presentation, so it cannot be rate-limited; it reads
+    // two public values per source and stores plain values only.
+    auto Tick_WitnessDeviceEdges() -> void;
+
     // Drops every handle-bearing row synchronously. Called from EndPIE and from the world-selector's own
     // teardown notification, both of which fire while the registry is still alive.
     auto Reset_ForWorldChange() -> void;
@@ -63,11 +71,17 @@ public:
     // The record row the panels display: the scrubbed one while scrubbing, the newest one while live.
     auto TryGet_DisplayedFrame() const -> const FCkIntentDebugger_FrameRow*;
 
+    // The selected source's devices, reduced to the device-widget contract (plain values, one frame clock).
+    // One snapshot serves every desktop device — each widget looks up only its own keys. Rebuilt every Tick;
+    // the Devices panel's paint reads it by pointer.
+    auto Get_DeviceSnapshot() const -> const FCkDebug_DeviceSnapshot& { return _DeviceSnapshot; }
+
 public:
     FCkIntentDebugger_OnChanged OnChanged;
 
 private:
     auto DoRecord_PhaseEvents() -> void;
+    auto DoRefresh_DeviceSnapshot() -> void;
 
 private:
     TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
@@ -86,6 +100,20 @@ private:
 
     // The still-open span per key, so a new transition can close its predecessor without a scan.
     TMap<TPair<int32, FName>, int32> _OpenEventIndexByKey;
+
+    // The last edge witnessed per (source index, key) for keys the record carries no row for — same doctrine as
+    // the phase ring: what the debugger SAW while open, stamped with the runtime's frame, never replayed history.
+    // Fed by Tick_WitnessDeviceEdges (ungated), read by the gated snapshot rebuild.
+    struct FWitnessedKeyEdge
+    {
+        int32 LastPressFrame = INDEX_NONE;
+        int32 LastReleaseFrame = INDEX_NONE;
+        bool IsDown = false;
+    };
+
+    TMap<TPair<int32, FKey>, FWitnessedKeyEdge> _WitnessedKeys;
+
+    FCkDebug_DeviceSnapshot _DeviceSnapshot;
 
     FDelegateHandle _EndPieHandle;
     FDelegateHandle _SessionInvalidatedHandle;

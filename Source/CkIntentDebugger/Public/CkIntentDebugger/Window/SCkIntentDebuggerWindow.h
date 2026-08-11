@@ -9,20 +9,21 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkIntentDebugger_ViewModel;
+class SCkIntentDebugger_DevicesPanel;
 class SCkIntentDebugger_KeyStatePanel;
 class SCkIntentDebugger_LayerStackPanel;
 class SCkIntentDebugger_NearMissPanel;
 class SCkIntentDebugger_ResolutionPanel;
 class SCkIntentDebugger_TimelineDock;
 class SHorizontalBox;
-class SWidgetSwitcher;
 
 // --------------------------------------------------------------------------------------------------------------------
 // CK Intent Debugger window.
 //
 //   toolbar   world selector · local-player source selector · refresh controls
 //   left      layer stack (the selection surface)
-//   right     timeline dock over { Key/State · Resolution table · Near misses }
+//   right     timeline dock over two splitter rows, everything visible at once (no tabs):
+//             { Key/State | Devices } over { Resolution table | Near misses }
 //
 // The window owns the ViewModel and fans its OnChanged out to every panel; panels never poll the runtime.
 // --------------------------------------------------------------------------------------------------------------------
@@ -74,11 +75,10 @@ private:
     TSharedPtr<SCkIntentDebugger_KeyStatePanel>   _KeyStatePanel;
     TSharedPtr<SCkIntentDebugger_ResolutionPanel> _ResolutionPanel;
     TSharedPtr<SCkIntentDebugger_NearMissPanel>   _NearMissPanel;
+    TSharedPtr<SCkIntentDebugger_DevicesPanel>    _DevicesPanel;
 
     TSharedPtr<SHorizontalBox>  _SourceSelectorBox;
-    TSharedPtr<SWidgetSwitcher> _DetailSwitcher;
 
-    FName _ActiveTabId;
     int32 _LastSourceCount = INDEX_NONE;
 
     // Plain values, never a handle — see OpenForEntity.

@@ -22,8 +22,15 @@ namespace ck_intent_debugger_timeline
 {
     constexpr auto PadS = 4.0f;
     constexpr auto PadM = 8.0f;
-    constexpr auto LaneHeight = 16.0f;
-    constexpr auto MinTimelineHeight = 96.0f;
+    // Enough vertical step that a micro-font label never overlaps its neighbour — 16 was not, and ten lanes of
+    // intent names rendered as one scrunched column.
+    constexpr auto LaneHeight = 22.0f;
+
+    // A terminal phase is a FACT that persists (the matcher keeps one phase per intent), but drawing it to the
+    // live edge renders a stale fact as a perpetual alarm bar. Terminal spans clamp to this width — a PULSE at
+    // the frame it happened — and the marker + tooltip carry the full truth; only in-flight phases draw open.
+    constexpr auto TerminalPhasePulseFrames = 20;
+    constexpr auto MinTimelineHeight = 140.0f;
 
     auto
         Get_LaneLabels(
@@ -122,7 +129,7 @@ auto
                 ]
         ]
 
-        + SVerticalBox::Slot().AutoHeight().Padding(ck_intent_debugger_timeline::PadM, ck_intent_debugger_timeline::PadS)
+        + SVerticalBox::Slot().FillHeight(1.0f).Padding(ck_intent_debugger_timeline::PadM, ck_intent_debugger_timeline::PadS)
         [
             SAssignNew(_TimelineHost, SBox)
         ]
@@ -291,12 +298,19 @@ auto
             if (Lane == nullptr)
             { continue; }
 
+            const auto IsTerminal =
+                Event.Phase == ECk_Intent_Phase::Completed || Event.Phase == ECk_Intent_Phase::Failed;
+
             const auto EndFrame = Event.Get_IsOpen() ? LatestFrame : Event.EndFrame;
+
+            const auto DrawnEndFrame = IsTerminal
+                ? FMath::Min(EndFrame, Event.StartFrame + ck_intent_debugger_timeline::TerminalPhasePulseFrames)
+                : EndFrame;
 
             auto Span = FCkDebug_TimelineSpan{};
             Span.LaneIndex = *Lane;
             Span.StartSeconds = static_cast<double>(Event.StartFrame);
-            Span.EndSeconds = static_cast<double>(EndFrame) + 1.0;
+            Span.EndSeconds = static_cast<double>(DrawnEndFrame) + 1.0;
             Span.Color = ck::intent_debugger::Get_PhaseColor(Event.Phase);
             Span.Tooltip = ck::Format_UE(TEXT("{} · {} · frames {}..{}"),
                 Event.IntentName, ck::intent_debugger::Get_Label(Event.Phase), Event.StartFrame, EndFrame);

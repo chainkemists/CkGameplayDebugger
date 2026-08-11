@@ -413,6 +413,17 @@ auto
 
         Entry.Layers = ck_intent_debugger_collector::Collect_Layers(Source, ButtonMap);
 
+        if (Entry.HasButtonMap)
+        {
+            for (const auto& Button : UCk_Utils_InputButtonMap_UE::Get_AllButtons(ButtonMap))
+            {
+                const auto Key = UCk_Utils_InputButtonMap_UE::TryGet_KeyForButton(ButtonMap, Button);
+
+                if (Key.IsValid())
+                { Entry.MintedKeys.AddUnique(Key); }
+            }
+        }
+
         const auto Sampler = UCk_Utils_IntentSampler_UE::Cast(SourceHandle);
         if (ck::IsValid(Sampler))
         {

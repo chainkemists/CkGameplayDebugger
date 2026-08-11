@@ -54,6 +54,15 @@ public:
 	bool bActorRelayDepthTransparency = true;
 
 	// ----------------------------------------------------------------------------------------------------------------
+	// VIEWPORT PICKER
+	// ----------------------------------------------------------------------------------------------------------------
+
+	UPROPERTY(config, EditAnywhere, Category = "Viewport Picker",
+		meta = (DisplayName = "Meshes First",
+			ToolTip = "Hide the diamond billboards of entities that are pickable by their rendered geometry (ISM-instance- or actor-backed). Diamonds remain only on meshless entities; everything stays pickable. Shared by every debugger's viewport picker."))
+	bool PickerMeshesFirst = false;
+
+	// ----------------------------------------------------------------------------------------------------------------
 	// ACCESSORS
 	// ----------------------------------------------------------------------------------------------------------------
 

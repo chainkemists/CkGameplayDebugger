@@ -26,6 +26,7 @@ public class CkDebuggerCommon : CkModuleRules
             "CkEcsExt",    // FFragment_Transform view in the shared entity-marker preview
             "CkEditorTools", // Shared CkStyle:: tokens + UCk_Style_UserSettings_UE (migrated from this module)
             "CkIsmRenderer", // ISM-proxy mesh bounds in the shared focus-entity helper (CkDebug_Focus)
+            "CkIskmRenderer", // ISKM-proxy detection in the shared viewport picker (CkDebug_ViewportPicker)
             "CkPmg",       // PMG debug-shape exclusion in the shared entity-marker preview + gizmo set
             "CkSettings",
         });

@@ -3,8 +3,10 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkEqsDebugger/Window/SCkEqsDebuggerWindow.h"
+#include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -45,7 +47,9 @@ auto
     StartupModule()
     -> void
 {
-    auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkEqsDebuggerSettings>());
+
+	auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
         _DebuggerTabName,
         FOnSpawnTab::CreateRaw(this, &FCkEqsDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK EQS Debugger")))

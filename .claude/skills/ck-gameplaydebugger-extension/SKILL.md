@@ -61,7 +61,7 @@ Section numbers cited elsewhere in this skill point into these files.
 | Class | Config | Edited in | Holds |
 |---|---|---|---|
 | `UCk_DebugOverlay_Settings` (`Settings/CkDebugOverlay_Settings.h:11-19`) | `Config=Game, DefaultConfig` | **Project Settings → Ck → Ck On-Screen Debugger** (committed, shared) | Layouts/layout assets/StartingLayout, plate anchor/width/font, diamond scale, world-tag distances, fan-out |
-| `UCk_DebugOverlay_InputSettings` (same file `:136-143`) | `Config=EditorPerProjectUserSettings` | **Editor Preferences → Ck → Ck On-Screen Debugger (Input)** (per-user, not committed) | Double-tap gesture keys (LockKey, EcsDebuggerFocusKey, CycleCoLocatedKey, UnpinAllKey, HelpKey), co-located radii, double-tap window |
+| `UCk_DebugOverlay_InputSettings` (same file) | `Config=GameUserSettings` | **Editor Preferences → Ck → Ck On-Screen Debugger (Input)** in editor; the same per-user store is available to packaged tools | Double-tap gesture keys (LockKey, EcsDebuggerFocusKey, CycleCoLocatedKey, UnpinAllKey, HelpKey), co-located radii, double-tap window, remembered layout |
 | `UCk_GameplayDebugger_ProjectSettings_UE` / `_UserSettings_UE` (`Source/CkGameplayDebugger/.../Settings/CkDebugger_Settings.h:33/:15`) | defaultconfig / user | Project Settings ↔ Editor Preferences ("Gameplay Debugger") | Legacy default profile / per-user profile override |
 
 Rule (plugin root `CLAUDE.md` §rules): **new overlay gesture keybinds go in the Input class,
@@ -96,13 +96,12 @@ refresh-rate and node-theme settings are a fourth class (`UCkDebuggerSettings`,
 
 ## Open questions (do not silently resolve)
 
-- `[EDITOR-VERIFY]` **Packaged non-Shipping overlay**: `CkEntityDebugOverlay` is a Runtime module
-  and compiles in for Development/Test packages, but the double-tap keybinds live in
-  `UCk_DebugOverlay_InputSettings` (`Config=EditorPerProjectUserSettings`) which does not ship.
-  Untested whether the overlay is usable there (console commands should work; gestures likely
-  dead). To verify: package a Development client, run, console `ck.DebugOverlay 1`, observe
-  card/pills, then try the LShift×2 pin gesture. Maintainer question tracked in plugin root
-  `CLAUDE.md` §open issues — record the answer there.
+- `[PACKAGED-VERIFY]` **Packaged non-Shipping overlay**: `CkEntityDebugOverlay` is a Runtime module
+  and `UCk_DebugOverlay_InputSettings` now uses the packaged-capable per-user `GameUserSettings`
+  store while retaining its Editor Preferences placement. Live acceptance is still required:
+  package a Development client, run `ck.DebugOverlay 1`, observe card/pills, exercise the LShift×2
+  pin gesture, change a binding/layout, restart, and confirm the choice persists. Track the result
+  in plugin root `CLAUDE.md` §open issues.
 
 ## Provenance and maintenance
 

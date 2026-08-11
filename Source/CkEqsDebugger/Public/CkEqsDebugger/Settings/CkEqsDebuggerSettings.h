@@ -5,17 +5,22 @@
 #include "CkEqsDebuggerSettings.generated.h"
 
 // ====================================================================================================================
-// Per-user (editor-local) settings for the EQS debugger. Lives in EditorPerProjectUserSettings so toggles persist
-// across editor sessions but are NOT checked into source. Read via GetDefault<>; mutate via GetMutableDefault<> +
+// Per-user settings for the EQS debugger. Lives in GameUserSettings so toggles persist in Editor and packaged tools
+// without touching shared project config. Read via GetDefault<>; mutate via GetMutableDefault<> +
 // SaveConfig() (the toolbar's View-menu checkboxes do exactly that on click).
 // ====================================================================================================================
 
-UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Ck EQS Debugger"))
+UCLASS(Config = GameUserSettings, meta = (DisplayName = "Ck EQS Debugger"))
 class CKEQSDEBUGGER_API UCkEqsDebuggerSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
 
 public:
+    virtual auto
+    GetContainerName() const -> FName override
+    {
+        return TEXT("Editor");
+    }
     virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
     // ---- Master overlay toggle ------------------------------------------------------------------------------------

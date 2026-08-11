@@ -16,12 +16,18 @@
  * `Get_Revision()` is a transient counter that `NotifyChanged()` bumps; panels cache it and rebuild
  * when it moves. Nothing is broadcast, so there is no delegate lifetime to manage.
  */
-UCLASS(config=EditorPerProjectUserSettings, meta=(DisplayName="Ck Debugger Style"))
+UCLASS(config=GameUserSettings, meta=(DisplayName="Ck Debugger Style"))
 class CKDEBUGGERCOMMON_API UCkDebuggerStyleSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
 
 public:
+	virtual auto
+	GetContainerName() const -> FName override
+	{
+		return TEXT("Editor");
+	}
+
     // Bumped by any axis add / remove / reorder in CkDebuggerStyleSelection.h.
     // v2: + EditControlStyle (interactive inspector rows).
     // v3: + TreeComplexity (ECS entity tree declutter dial).

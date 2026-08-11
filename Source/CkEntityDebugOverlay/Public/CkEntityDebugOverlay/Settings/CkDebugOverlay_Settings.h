@@ -166,7 +166,7 @@ public:
     int32 MaxWorldTagNameChars = 24;
 
     // NOTE: input keybinds + co-located radii + the double-tap window now live in the per-USER
-    // editor settings class UCk_DebugOverlay_InputSettings (below) so each developer can rebind
+    // runtime settings class UCk_DebugOverlay_InputSettings (below) so each developer can rebind
     // without touching shared project config.
 
     // ---- Co-located fan-out (gradual, distance-driven) ----
@@ -189,13 +189,13 @@ public:
 };
 
 // --------------------------------------------------------------------------------------------------------------------
-// Per-USER editor settings for the on-screen debugger's input gestures. Stored in
-// EditorPerProjectUserSettings (per-user, NOT committed) and shown under
+// Per-USER runtime settings for the on-screen debugger's input gestures. Stored in
+// GameUserSettings (per-user, NOT committed) and shown under
 // Editor → Editor Preferences (GetContainerName == "Editor"), so each developer can rebind the
 // gestures independently of the shared project config.
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(Config=EditorPerProjectUserSettings, meta=(DisplayName="Ck On-Screen Debugger (Input)"))
+UCLASS(Config=GameUserSettings, meta=(DisplayName="Ck On-Screen Debugger (Input)"))
 class CKENTITYDEBUGOVERLAY_API UCk_DebugOverlay_InputSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
@@ -236,7 +236,7 @@ public:
 
     // Per-USER memory of the layout the quick-switcher last selected, re-seeded on the next
     // session. It lives here rather than next to the layout definitions because this is the
-    // overlay's only per-user config slot (EditorPerProjectUserSettings): the project class is
+    // overlay's only per-user config slot (GameUserSettings): the project class is
     // Config=Game/DefaultConfig and a runtime gesture must never dirty shared project config.
     // Unset / unknown falls back to the project's StartingLayout.
     UPROPERTY(Config, EditAnywhere, Category="Layout", meta=(Categories="Ck.OnScreenDebugger.Layout"))

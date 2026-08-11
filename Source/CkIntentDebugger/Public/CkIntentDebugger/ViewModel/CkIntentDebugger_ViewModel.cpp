@@ -7,7 +7,15 @@
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 
+#include "CkInput/CkInputLayer_Utils.h"
+#include "CkInput/Subsystem/CkInputSource_Subsystem.h"
+
+#include "CkIntent/CkIntentSampler_Utils.h"
+
 #include "Editor.h"
+#include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -94,6 +102,7 @@ auto
     }
 
     DoRecord_PhaseEvents();
+    DoRefresh_DeviceSnapshot();
 
     OnChanged.Broadcast();
 }
@@ -109,6 +118,8 @@ auto
     _PhaseEvents.Reset();
     _LastWitnessedPhase.Reset();
     _OpenEventIndexByKey.Reset();
+    _WitnessedKeys.Reset();
+    _DeviceSnapshot = {};
     _ScrubFrame = INDEX_NONE;
     _SelectedSourceIndex = 0;
     _SelectedLayerPriority = MIN_int32;
@@ -267,6 +278,173 @@ auto
 
         if (It.Value() < 0)
         { It.RemoveCurrent(); }
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkIntentDebugger_ViewModel::
+    DoRefresh_DeviceSnapshot()
+    -> void
+{
+    _DeviceSnapshot = {};
+
+    const auto* Source = TryGet_SelectedSource();
+    if (Source == nullptr)
+    { return; }
+
+    const auto LiveFrame = NOT Source->Frames.IsEmpty() ? Source->Frames.Last().FrameIndex : INDEX_NONE;
+    _DeviceSnapshot.LiveFrame = LiveFrame;
+
+    // The hold-verdict threshold per resolved key, off the selected layer's bake — this is what turns a cap's
+    // fill into the matcher's own verdict point rather than a decoration.
+    auto VerdictByKey = TMap<FKey, int32>{};
+
+    if (const auto* Layer = TryGet_SelectedLayer())
+    {
+        for (const auto& Resolution : Layer->Resolutions)
+        {
+            if (Resolution.ResolvedKey.IsValid() && Resolution.HoldSiblingFrames > 0)
+            { VerdictByKey.Add(Resolution.ResolvedKey, Resolution.HoldSiblingFrames); }
+        }
+    }
+
+    // Minted keys read the record ring — exact at any refresh cadence, because the ring is the module's memory.
+    for (const auto& Key : Source->MintedKeys)
+    {
+        auto State = FCkDebug_DeviceKeyState{};
+        State.IsMinted = true;
+
+        if (const auto* Verdict = VerdictByKey.Find(Key))
+        { State.HoldVerdictFrames = *Verdict; }
+
+        auto CountingRun = true;
+
+        for (auto Index = Source->Frames.Num() - 1; Index >= 0; --Index)
+        {
+            const auto& Row = Source->Frames[Index];
+            const auto* Button = Row.Held.FindByPredicate(
+                [&Key](const FCkIntentDebugger_ButtonState& InButton) { return InButton.Key == Key; });
+
+            if (CountingRun)
+            {
+                if (Button != nullptr && NOT Button->WentUp)
+                { State.HeldRunFrames++; }
+                else
+                { CountingRun = false; }
+            }
+
+            if (State.LatestPressFrame == INDEX_NONE && Button != nullptr && Button->WentDown)
+            { State.LatestPressFrame = Row.FrameIndex; }
+
+            if (State.LatestReleaseFrame == INDEX_NONE && Button != nullptr && Button->WentUp)
+            { State.LatestReleaseFrame = Row.FrameIndex; }
+
+            if (NOT CountingRun && State.LatestPressFrame != INDEX_NONE && State.LatestReleaseFrame != INDEX_NONE)
+            { break; }
+        }
+
+        _DeviceSnapshot.Keys.Add(Key, State);
+    }
+
+    // Unminted keys render the witnessed edges — captured every widget frame by Tick_WitnessDeviceEdges, so a
+    // release cannot land unseen and latch a key down (the slice-11-1 stuck-key defect).
+    for (const auto& Pair : _WitnessedKeys)
+    {
+        if (Pair.Key.Get<0>() != _SelectedSourceIndex)
+        { continue; }
+
+        const auto& Key = Pair.Key.Get<1>();
+
+        if (_DeviceSnapshot.Keys.Contains(Key))
+        { continue; }
+
+        auto State = FCkDebug_DeviceKeyState{};
+        State.LatestPressFrame = Pair.Value.LastPressFrame;
+        State.LatestReleaseFrame = Pair.Value.LastReleaseFrame;
+
+        State.HeldRunFrames =
+            Pair.Value.IsDown && LiveFrame != INDEX_NONE && Pair.Value.LastPressFrame != INDEX_NONE
+                ? FMath::Max(1, LiveFrame - Pair.Value.LastPressFrame)
+                : 0;
+
+        _DeviceSnapshot.Keys.Add(Key, State);
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkIntentDebugger_ViewModel::
+    Tick_WitnessDeviceEdges()
+    -> void
+{
+    auto* World = _WorldModel.IsValid() ? _WorldModel->Get_SelectedWorld() : nullptr;
+
+    if (ck::Is_NOT_Valid(World) || NOT World->HasBegunPlay())
+    { return; }
+
+    auto* GameInstance = World->GetGameInstance();
+
+    if (GameInstance == nullptr)
+    { return; }
+
+    // Source indices here must match the collector's enumeration — both walk the local-player list with the same
+    // skip conditions, which is what keys the witnessed map and the snapshot to the same source.
+    auto SourceIndex = 0;
+
+    for (auto* LocalPlayer : GameInstance->GetLocalPlayers())
+    {
+        if (LocalPlayer == nullptr)
+        { continue; }
+
+        auto* SourceSubsystem = LocalPlayer->GetSubsystem<UCk_InputSource_Subsystem>();
+
+        if (SourceSubsystem == nullptr)
+        { continue; }
+
+        const auto Source = SourceSubsystem->Get_InputSource();
+
+        if (ck::Is_NOT_Valid(Source))
+        { continue; }
+
+        const auto RoutedEvents = UCk_Utils_InputLayer_UE::Get_RoutedEventsThisFrame(Source);
+
+        if (NOT RoutedEvents.IsEmpty())
+        {
+            auto SourceHandle = Source.ConvertToHandle();
+            auto LiveFrame = int32{INDEX_NONE};
+
+            const auto Sampler = UCk_Utils_IntentSampler_UE::Cast(SourceHandle);
+
+            if (ck::IsValid(Sampler) && UCk_Utils_IntentSampler_UE::Get_FrameCount(Sampler) > 0)
+            { LiveFrame = UCk_Utils_IntentSampler_UE::Get_LatestFrame(Sampler).Get_FrameIndex(); }
+
+            for (const auto& Routed : RoutedEvents)
+            {
+                const auto& Event = Routed.Get_Event();
+                const auto EventType = Event.Get_EventType();
+
+                if (EventType == ECk_InputSource_EventType::AnalogAxis)
+                { continue; }
+
+                auto& Edge = _WitnessedKeys.FindOrAdd(MakeTuple(SourceIndex, Event.Get_Key()));
+
+                if (EventType == ECk_InputSource_EventType::Pressed)
+                {
+                    Edge.LastPressFrame = LiveFrame;
+                    Edge.IsDown = true;
+                }
+                else
+                {
+                    Edge.LastReleaseFrame = LiveFrame;
+                    Edge.IsDown = false;
+                }
+            }
+        }
+
+        SourceIndex++;
     }
 }
 

@@ -189,6 +189,11 @@ struct FCkIntentDebugger_SourceSnapshot
     TArray<FCkIntentDebugger_FrameRow> Frames;
 
     TArray<FCkIntentDebugger_LayerRow> Layers;
+
+    // Every key the button map mints — the set the record carries rows for, which is the set the device
+    // visualizer can render with exact history. (Unminted keys are witnessed by the ViewModel's ungated
+    // edge-capture tick, not through this snapshot — an edge sampled at refresh cadence is an edge missed.)
+    TArray<FKey> MintedKeys;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

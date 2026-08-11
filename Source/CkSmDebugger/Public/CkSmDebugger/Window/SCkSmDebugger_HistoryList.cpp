@@ -28,11 +28,11 @@ auto
     Construct(
         const FArguments& InArgs,
         TSharedPtr<FCkSmDebugger_ViewModel> InViewModel,
-        UCkSmDebugGraph* InGraph)
+        TAttribute<int32> InNameDepth)
     -> void
 {
     _ViewModel = InViewModel;
-    _Graph = InGraph;
+    _NameDepth = MoveTemp(InNameDepth);
 
     ChildSlot
     [
@@ -178,7 +178,7 @@ auto
     // title + right-text + subtitle-below shape), so the row is assembled
     // manually from the shared style tokens instead.
 
-    const auto Depth   = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    const auto Depth   = _NameDepth.Get();
     const auto Index   = _Items.IndexOfByKey(InItem);
     const auto FromName = SCkDebug_NameLabel::Get_ShortName(InItem->FromStateName, Depth);
     const auto ToName   = SCkDebug_NameLabel::Get_ShortName(InItem->ToStateName,   Depth);
@@ -396,7 +396,7 @@ auto
     if (InSnapshots.Num() == 0)
     { return SNullWidget::NullWidget; }
 
-    const auto Depth = _Graph ? _Graph->LayoutParams.NameDepth : 1;
+    const auto Depth = _NameDepth.Get();
     auto Box = SNew(SHorizontalBox);
 
     for (const auto& Snap : InSnapshots)

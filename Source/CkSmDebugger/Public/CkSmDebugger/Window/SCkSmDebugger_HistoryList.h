@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
-#include "CkSmDebugger/Graph/CkSmDebugGraph.h"
 
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
@@ -21,7 +20,7 @@ public:
 
     FOnHistoryEntrySelected OnEntrySelected;
 
-    auto Construct(const FArguments& InArgs, TSharedPtr<FCkSmDebugger_ViewModel> InViewModel, UCkSmDebugGraph* InGraph = nullptr) -> void;
+    auto Construct(const FArguments& InArgs, TSharedPtr<FCkSmDebugger_ViewModel> InViewModel, TAttribute<int32> InNameDepth = 1) -> void;
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     /**
@@ -41,7 +40,7 @@ private:
 
 private:
     TSharedPtr<FCkSmDebugger_ViewModel> _ViewModel;
-    UCkSmDebugGraph* _Graph = nullptr;
+    TAttribute<int32> _NameDepth = 1;
     TSharedPtr<SListView<FHistoryItemPtr>> _ListView;
     TArray<FHistoryItemPtr> _Items;
     FDelegateHandle _SmDataRefreshedHandle;

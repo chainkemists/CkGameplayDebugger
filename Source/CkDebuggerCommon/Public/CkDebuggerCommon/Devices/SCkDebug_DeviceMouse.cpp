@@ -105,10 +105,11 @@ auto
     const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 
     const auto BaseLayer = InLayerId;
-    const auto RegionLayer = InLayerId + 1;
-    const auto FillLayer = InLayerId + 2;
-    const auto FlashLayer = InLayerId + 3;
-    const auto LabelLayer = InLayerId + 4;
+    const auto RimLayer = InLayerId + 1;
+    const auto RegionLayer = InLayerId + 2;
+    const auto FillLayer = InLayerId + 3;
+    const auto FlashLayer = InLayerId + 4;
+    const auto LabelLayer = InLayerId + 5;
 
     // The body shell behind the regions — not a key, just the silhouette that makes it read as a mouse.
     {
@@ -133,6 +134,24 @@ auto
 
         const auto* State = Snapshot != nullptr ? Snapshot->TryGet_Key(Region.Key) : nullptr;
         const auto IsMinted = State != nullptr && State->IsMinted;
+        const auto IsActionable = State != nullptr && State->IsActionable;
+
+        if (IsActionable)
+        {
+            const auto RimPx = FMath::Max(1.0f, 1.2f * Scale);
+            auto RimTint = CkStyle::Accent();
+            RimTint.A *= 0.9f * DeviceAlpha;
+
+            FSlateDrawElement::MakeBox(
+                OutDrawElements,
+                RimLayer,
+                InAllottedGeometry.ToPaintGeometry(
+                    FVector2f{RegionSize.X + RimPx * 2.0f, RegionSize.Y + RimPx * 2.0f},
+                    FSlateLayoutTransform{FVector2f{RegionPos.X - RimPx, RegionPos.Y - RimPx}}),
+                Brush,
+                ESlateDrawEffect::None,
+                RimTint);
+        }
 
         auto BaseTint = IsMinted ? CkStyle::Bg3() : CkStyle::Bg2();
         BaseTint.A *= DeviceAlpha;

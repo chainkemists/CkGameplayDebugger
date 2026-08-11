@@ -54,7 +54,12 @@ while a neighbour is lit **is** the hysteresis, rendered rather than re-derived.
   readings.
 
 All of it goes through `Data/CkIntentDebugger_DataCollector` and nowhere else. **Never mutate,
-never add or remove a fragment, never call a `Request_*` from this module.**
+never add or remove a fragment, never call a `Request_*` from this module** — with ONE ruled
+carve-out ([P11-D15]): the timeline's "history" field calls
+`UCk_Utils_IntentDebugHistory_UE::Request_SetCapacity` on the source's IntentDebugHistory fragment.
+That fragment is tooling state (compiled out in Shipping) whose retuning cannot perturb the
+sampler, router or matcher being measured — which is the property the contract exists to protect.
+Production CkIntent/CkInput state remains untouchable.
 
 ---
 

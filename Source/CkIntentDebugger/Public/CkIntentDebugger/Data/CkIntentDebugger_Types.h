@@ -7,6 +7,7 @@
 #include "CkInput/CkInputSource_Fragment_Data.h"
 
 #include "CkIntent/CkIntentGrammar_Data.h"
+#include "CkIntent/Debug/CkIntentDebugHistory_Fragment_Data.h"
 #include "CkIntent/CkIntentMatcher_Fragment_Data.h"
 #include "CkIntent/CkIntentSampler_Fragment_Data.h"
 
@@ -171,6 +172,12 @@ struct FCkIntentDebugger_SourceSnapshot
 {
     FCk_Handle_InputSource Source;
     FCk_Handle_IntentSampler Sampler;
+
+    // The optional debug-depth recording ([P11-D15]) — when present, Frames below carries ITS rows instead of
+    // the sampler ring's, and the timeline's "history" field retunes its capacity.
+    FCk_Handle_IntentDebugHistory History;
+    bool HasHistory = false;
+    int32 HistoryCapacity = 0;
 
     int32 LocalPlayerIndex = INDEX_NONE;
     FString Label;

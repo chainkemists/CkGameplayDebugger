@@ -82,10 +82,11 @@ auto
     const auto CapFont = CkStyle::RegularFont(CkStyle::FontSizeMicro());
     const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 
-    const auto BaseLayer = InLayerId;
-    const auto FillLayer = InLayerId + 1;
-    const auto FlashLayer = InLayerId + 2;
-    const auto LabelLayer = InLayerId + 3;
+    const auto RimLayer = InLayerId;
+    const auto BaseLayer = InLayerId + 1;
+    const auto FillLayer = InLayerId + 2;
+    const auto FlashLayer = InLayerId + 3;
+    const auto LabelLayer = InLayerId + 4;
 
     for (const auto& Def : Layout)
     {
@@ -95,6 +96,26 @@ auto
         const auto* State = Snapshot != nullptr ? Snapshot->TryGet_Key(Def.Key) : nullptr;
         const auto IsLightable = Def.Key.IsValid();
         const auto IsMinted = State != nullptr && State->IsMinted;
+        const auto IsActionable = State != nullptr && State->IsActionable;
+
+        if (IsActionable)
+        {
+            // A rounded rim: the same badge brush drawn one step larger UNDER the cap, so the outline keeps the
+            // cap's corner radius without a dedicated border brush.
+            const auto RimPx = FMath::Max(1.0f, Gap * 0.5f);
+            auto RimTint = CkStyle::Accent();
+            RimTint.A *= 0.9f * BoardAlpha;
+
+            FSlateDrawElement::MakeBox(
+                OutDrawElements,
+                RimLayer,
+                InAllottedGeometry.ToPaintGeometry(
+                    FVector2f{CapSize.X + RimPx * 2.0f, CapSize.Y + RimPx * 2.0f},
+                    FSlateLayoutTransform{FVector2f{CapPos.X - RimPx, CapPos.Y - RimPx}}),
+                CapBrush,
+                ESlateDrawEffect::None,
+                RimTint);
+        }
 
         auto BaseTint = IsMinted ? CkStyle::Bg3() : CkStyle::Bg2();
         BaseTint.A *= IsLightable ? BoardAlpha : BoardAlpha * 0.6f;

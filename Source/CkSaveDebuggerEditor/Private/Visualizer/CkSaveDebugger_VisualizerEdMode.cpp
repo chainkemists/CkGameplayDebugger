@@ -1,6 +1,4 @@
-#include "CkSaveDebugger_VisualizerEdMode.h"
-
-#if WITH_EDITOR
+#include "CkSaveDebuggerEditor/Visualizer/CkSaveDebugger_VisualizerEdMode.h"
 
 #include "CkSaveDebugger/Visualizer/CkSaveDebugger_Visualizer.h"
 
@@ -19,12 +17,10 @@
 
 IMPLEMENT_HIT_PROXY(HCkSaveDebuggerViz_HitProxy, HHitProxy);
 
-const FEditorModeID UCk_SaveDebugger_VisualizerEdMode::EM_CkSaveDebuggerVisualizerModeId = TEXT("Ck.SaveDebugger.Visualizer");
-
-// --------------------------------------------------------------------------------------------------------------------
-
 namespace ck_save_debugger_visualizer_edmode
 {
+    const FEditorModeID VisualizerModeId = TEXT("Ck.SaveDebugger.Visualizer");
+
     constexpr auto DiamondHalfHeight = 32.0f;
     constexpr auto SelectedScale = 1.6f;
     constexpr auto DiamondThickness = 1.5f;
@@ -72,7 +68,7 @@ namespace ck_save_debugger_visualizer_edmode
 UCk_SaveDebugger_VisualizerEdMode::UCk_SaveDebugger_VisualizerEdMode()
 {
     Info = FEditorModeInfo(
-        EM_CkSaveDebuggerVisualizerModeId,
+        ck_save_debugger_visualizer_edmode::VisualizerModeId,
         LOCTEXT("CkSaveDebuggerVisualizerMode", "Save Debugger Visualizer"),
         FSlateIcon(),
         /*bVisibleInUI*/ false);
@@ -170,5 +166,3 @@ bool
 // --------------------------------------------------------------------------------------------------------------------
 
 #undef LOCTEXT_NAMESPACE
-
-#endif // WITH_EDITOR

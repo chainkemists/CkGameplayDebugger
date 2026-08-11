@@ -2,8 +2,6 @@
 
 #if WITH_EDITOR
 
-#include "CkSaveDebugger/Visualizer/CkSaveDebugger_VisualizerEdMode.h"
-
 #include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
 #include "CkCore/Macros/CkMacros.h"
 
@@ -14,6 +12,8 @@
 
 namespace ck_save_debugger_visualizer
 {
+    const FEditorModeID VisualizerModeId = TEXT("Ck.SaveDebugger.Visualizer");
+
     auto GRows = ck::save_debugger_viz::FRowsPtr{};
     auto GSelectedSavedId = ck::snapshot::k_NoSavedEntity;
     auto GOnRowClicked = ck::save_debugger_viz::FOnRowClicked{};
@@ -108,13 +108,13 @@ namespace ck::save_debugger_viz
         auto& ModeTools = GLevelEditorModeTools();
 
         if (InEnabled)
-        { ModeTools.ActivateMode(UCk_SaveDebugger_VisualizerEdMode::EM_CkSaveDebuggerVisualizerModeId); }
+        { ModeTools.ActivateMode(ck_save_debugger_visualizer::VisualizerModeId); }
         else
-        { ModeTools.DeactivateMode(UCk_SaveDebugger_VisualizerEdMode::EM_CkSaveDebuggerVisualizerModeId); }
+        { ModeTools.DeactivateMode(ck_save_debugger_visualizer::VisualizerModeId); }
 
         GEditor->RedrawLevelEditingViewports();
 
-        return ModeTools.IsModeActive(UCk_SaveDebugger_VisualizerEdMode::EM_CkSaveDebuggerVisualizerModeId) == InEnabled;
+        return ModeTools.IsModeActive(ck_save_debugger_visualizer::VisualizerModeId) == InEnabled;
     }
 
     auto
@@ -124,7 +124,7 @@ namespace ck::save_debugger_viz
         if (GEditor == nullptr)
         { return false; }
 
-        return GLevelEditorModeTools().IsModeActive(UCk_SaveDebugger_VisualizerEdMode::EM_CkSaveDebuggerVisualizerModeId);
+        return GLevelEditorModeTools().IsModeActive(ck_save_debugger_visualizer::VisualizerModeId);
     }
 
     // ----------------------------------------------------------------------------------------------------------------

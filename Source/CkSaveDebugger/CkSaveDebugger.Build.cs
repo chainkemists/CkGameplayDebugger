@@ -35,8 +35,7 @@ public class CkSaveDebugger : CkModuleRules
                 "UnrealEd",
                 "WorkspaceMenuStructure",
 
-                // The save visualizer's hidden EdMode (UBaseLegacyWidgetEdMode + GLevelEditorModeTools).
-                "EditorFramework",
+                // The save visualizer bridge activates its Editor-companion EdMode through GLevelEditorModeTools.
                 "LevelEditor",
 
                 // The retained editor-world visuals (all transitive through CkDebuggerCommon; declared for direct

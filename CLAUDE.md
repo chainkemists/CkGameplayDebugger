@@ -10,12 +10,13 @@ here. Full extension runbooks live in the `ck-gameplaydebugger-extension` skill 
 - **Naming surprise, up front:** the repo/folder is `CkGameplayDebugger`, but the plugin it ships
   is **`CkDebugger.uplugin`** (FriendlyName "Ck Gameplay Debugger"). One *module* inside also
   carries the repo name — that module is the legacy generation, not the plugin.
-- **22-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
+- **23-module debugger suite** for the CkFoundation ECS: 3 Runtime (`CkGameplayDebugger`,
   `CkDebuggerCommon`, `CkEntityDebugOverlay`) + 18 DeveloperTool (`CkEcsDebugger`, `CkSmDebugger`,
   `CkSchedulerDebugger`, `CkGoapDebugger`, `CkDialogDebugger`,
   `CkAggroDebugger`, `CkUIDebugger`, `CkAStarDebugger`, `CkCrowdDebugger`, `CkEqsDebugger`, `CkInputDebugger`,
   `CkObjectPoolingDebugger`, `CkJoltDebugger`, `CkMapDebugger`, `CkInsightsDebugger`,
-  `CkStyleLabDebugger`, `CkSaveDebugger`, `CkDebuggerLauncher`) + 1 explicitly deferred UncookedOnly
+  `CkStyleLabDebugger`, `CkSaveDebugger`, `CkDebuggerLauncher`) + 1 Editor companion
+  (`CkSaveDebuggerEditor`) + 1 explicitly deferred UncookedOnly
   module (`CkIntentDebugger`). Plugin dependency: **CkFoundation only**. The Runtime type on overlay + common is load-bearing — they
   declare native gameplay tags (commit `a4de221`).
 - **Packaged-module contract (2026-08-11):** all 18 DeveloperTool modules are included in
@@ -117,9 +118,9 @@ remain (see Open issues).
 
 Facts above verified against code on **2026-07-14** (launcher branch based on `7fd41c8`). Re-verify with:
 
-- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **23** = 22 modules + the
+- Module count/types: `rg -c '"Name"' CkDebugger.uplugin` (expect **24** = 23 modules + the
   CkFoundation entry in the `Plugins` dependency array), or count modules only:
-  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 22); read the
+  `(Get-Content CkDebugger.uplugin -Raw | ConvertFrom-Json).Modules.Count` (expect 23); read the
   `"Type"` fields.
 - Registration macros: `rg -n 'define CK_REGISTER_DEBUG_OVERLAY_PROVIDER' Source/CkEntityDebugOverlay` · `rg -n 'define CK_REGISTER_DEBUGGER_INSPECTOR' Source/CkEcsDebugger`.
 - Settings Config attributes: `rg -n 'UCLASS\(Config' Source/CkEntityDebugOverlay/Public/CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h`.

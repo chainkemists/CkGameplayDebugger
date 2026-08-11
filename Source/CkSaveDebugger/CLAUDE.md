@@ -217,11 +217,13 @@ EdMode pulls an immutable snapshot of plain rows and pushes raw saved ids back.
   open level all proceed without asking — viewing a save unanchored costs nothing and must never force a level
   load.
 - **Architecture** (the CkVoxelNavPreview shape): a hidden auto-discovered `UBaseLegacyWidgetEdMode`
-  (`Visualizer/CkSaveDebugger_VisualizerEdMode`, linker-anchored by a `StaticClass()` reference in
-  `StartupModule`) renders and forwards `HandleClick` hit-proxy hits; the `ck::save_debugger_viz` function-slot
+  (`CkSaveDebuggerEditor/Visualizer/CkSaveDebugger_VisualizerEdMode`, linker-anchored by a `StaticClass()`
+  reference in the companion's `StartupModule`) renders and forwards `HandleClick` hit-proxy hits; the
+  `ck::save_debugger_viz` function-slot
   state (`Visualizer/CkSaveDebugger_Visualizer`) carries the published rows, selected id and click handler
-  between the window and the mode. The visualizer and its dependencies stay behind `#if WITH_EDITOR` /
-  `Target.bBuildEditor`; packaged Development/DebugGame builds retain the offline inspector but omit this
+  between the window and the mode. The reflected EdMode lives in the Editor-only `CkSaveDebuggerEditor`
+  companion module; the visualizer bridge and its dependencies stay behind `#if WITH_EDITOR` /
+  `Target.bBuildEditor`. Packaged Development/DebugGame builds retain the offline inspector but omit this
   level-editor-only viewport surface.
 - **Lifecycle:** the visualizer follows the document — open/reload republishes (or stops when the new file has
   nothing placeable), and the window destructor deactivates the mode and drops the published state. Both draw

@@ -556,7 +556,11 @@ namespace ck_goap_debugger_data_collector_internal
         }
 
         Info.SearchStats = UCk_Utils_Goap_Planner_UE::Get_LastSearchStats(InPlannerHandle);
-        UCk_Utils_Goap_Planner_UE::TryGet_LastSearchDebug(InPlannerHandle, Info.SearchDebug);
+        if (ck::IsValid(WsForDisplay) &&
+            WsForDisplay.Has<ck::FFragment_Goap_WorldState_KeyRegistry>())
+        {
+            Info.SearchDebug = UCk_Utils_Goap_Planner_UE::Get_LastSearchDebug(InPlannerHandle);
+        }
 
         if (ck::IsValid(WsForDisplay) &&
             WsForDisplay.Has<ck::FFragment_Goap_WorldState_ChangeLog>())

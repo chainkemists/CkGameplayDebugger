@@ -21,10 +21,12 @@ class CKGOAPDEBUGGER_API UCkGoapDebugNode_Goal : public UEdGraphNode
 
 public:
     // UEdGraphNode
+#if WITH_EDITOR
     virtual auto AllocateDefaultPins() -> void override;
     virtual auto GetNodeTitle(ENodeTitleType::Type InTitleType) const -> FText override;
     virtual auto CanUserDeleteNode() const -> bool override { return false; }
     virtual auto CanDuplicateNode() const -> bool override { return false; }
+#endif
 
     auto PopulateFromGoal(
         const FString& InOwningActionName,

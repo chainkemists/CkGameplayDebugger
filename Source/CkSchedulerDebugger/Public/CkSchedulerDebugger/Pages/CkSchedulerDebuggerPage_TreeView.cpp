@@ -2,14 +2,14 @@
 
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_ProcessorTree.h"
 #include "CkSchedulerDebugger/Widgets/SCkSchedulerDebugger_Inspector.h"
-#include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraph.h"
-#include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphSchema.h"
-#include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
 #include "CkSchedulerDebugger/ViewModel/CkSchedulerDebugger_ViewModel.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebuggerStyle.h"
 #include "CkSchedulerDebugger/Styles/CkSchedulerDebugger_Axes.h"
 
 #if WITH_EDITOR
+    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraph.h"
+    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugGraphSchema.h"
+    #include "CkSchedulerDebugger/Graph/CkSchedulerDebugNode_Processor.h"
     #include "GraphEditor.h"
 #endif
 #include "Widgets/Layout/SBorder.h"
@@ -27,6 +27,7 @@ FCkSchedulerDebuggerPage_TreeView::~FCkSchedulerDebuggerPage_TreeView()
 	if (_ViewModel.IsValid() && _SelectionChangedHandle.IsValid())
 	{ _ViewModel->OnSelectionChanged.Remove(_SelectionChangedHandle); }
 
+#if WITH_EDITOR
 	if (UObjectInitialized())
 	{
 		if (_FullGraph)
@@ -40,6 +41,7 @@ FCkSchedulerDebuggerPage_TreeView::~FCkSchedulerDebuggerPage_TreeView()
 			_DetailGraph = nullptr;
 		}
 	}
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -63,6 +65,7 @@ auto
 	_ViewModel = InViewModel;
 	_DetailGraphContainer = SNew(SBox);
 
+#if WITH_EDITOR
 	_FullGraph = NewObject<UCkSchedulerDebugGraph>();
 	_FullGraph->AddToRoot();
 	_FullGraph->Schema = UCkSchedulerDebugGraphSchema::StaticClass();
@@ -70,6 +73,7 @@ auto
 	_DetailGraph = NewObject<UCkSchedulerDebugGraph>();
 	_DetailGraph->AddToRoot();
 	_DetailGraph->Schema = UCkSchedulerDebugGraphSchema::StaticClass();
+#endif
 
 	if (_ViewModel.IsValid())
 	{
@@ -105,6 +109,7 @@ auto
 					[
 						SNew(SVerticalBox)
 
+#if WITH_EDITOR
 						+ SVerticalBox::Slot()
 							.AutoHeight()
 							.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
@@ -216,6 +221,7 @@ auto
 									]
 								]
 							]
+#endif
 
 						+ SVerticalBox::Slot()
 							.FillHeight(1.0f)
@@ -247,6 +253,7 @@ auto
 		float InDeltaTime)
 	-> void
 {
+#if WITH_EDITOR
 	if (NOT _ViewModel.IsValid() || NOT _FullGraph)
 	{ return; }
 
@@ -257,6 +264,9 @@ auto
 	{
 		_FullGraph->RebuildFromData(Processors);
 	}
+#else
+	(void)InDeltaTime;
+#endif
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -307,6 +317,7 @@ auto
 	DoRebuildDetailGraph()
 	-> void
 {
+#if WITH_EDITOR
 	if (NOT _ViewModel.IsValid() || NOT _DetailGraph || NOT _DetailGraphContainer.IsValid())
 	{ return; }
 
@@ -401,13 +412,15 @@ auto
 	_DetailGraph->ForceRebuild();
 	_DetailGraph->RebuildFromData(SubsetProcessors);
 
-#if WITH_EDITOR
 	_DetailGraphEditor = SNew(SGraphEditor)
 		.GraphToEdit(_DetailGraph)
 		.IsEditable(false);
 
 	_DetailGraphContainer->SetContent(_DetailGraphEditor.ToSharedRef());
 #else
+	if (NOT _DetailGraphContainer.IsValid())
+	{ return; }
+
 	_DetailGraphContainer->SetContent(
 		SNew(SBox)
 			.HAlign(HAlign_Center)

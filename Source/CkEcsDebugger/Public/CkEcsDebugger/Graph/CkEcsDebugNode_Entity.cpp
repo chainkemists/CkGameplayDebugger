@@ -1,3 +1,5 @@
+#if WITH_EDITOR
+
 #include "CkEcsDebugNode_Entity.h"
 
 #include "EdGraph/EdGraphPin.h"
@@ -44,3 +46,5 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+
+#endif

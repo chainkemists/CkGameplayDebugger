@@ -6,8 +6,8 @@
 
 class SCkSchedulerDebugger_ProcessorTree;
 class SCkSchedulerDebugger_Inspector;
-class UCkSchedulerDebugGraph;
 #if WITH_EDITOR
+class UCkSchedulerDebugGraph;
 class SGraphEditor;
 #endif
 
@@ -33,10 +33,10 @@ private:
 	TSharedPtr<SCkSchedulerDebugger_ProcessorTree> _ProcessorTree;
 	TSharedPtr<SCkSchedulerDebugger_Inspector> _Inspector;
 	TSharedPtr<FCkSchedulerDebugger_ViewModel> _ViewModel;
+#if WITH_EDITOR
 	UCkSchedulerDebugGraph* _FullGraph = nullptr;
 
 	UCkSchedulerDebugGraph* _DetailGraph = nullptr;
-#if WITH_EDITOR
 	TSharedPtr<SGraphEditor> _DetailGraphEditor;
 #endif
 	TSharedPtr<SBox> _DetailGraphContainer;

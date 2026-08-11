@@ -56,10 +56,10 @@ namespace ck_debug_graph_canvas
 
     auto Make_NormalizedRect(const FVector2D& InA, const FVector2D& InB) -> FSlateRect
     {
-        return FSlateRect{FMath::Min(InA.X, InB.X),
-                          FMath::Min(InA.Y, InB.Y),
-                          FMath::Max(InA.X, InB.X),
-                          FMath::Max(InA.Y, InB.Y)};
+        return FSlateRect{static_cast<float>(FMath::Min(InA.X, InB.X)),
+                          static_cast<float>(FMath::Min(InA.Y, InB.Y)),
+                          static_cast<float>(FMath::Max(InA.X, InB.X)),
+                          static_cast<float>(FMath::Max(InA.Y, InB.Y))};
     }
 
     auto Rects_Intersect(const FSlateRect& InA, const FSlateRect& InB) -> bool
@@ -280,16 +280,18 @@ auto SCkDebug_GraphCanvas::Compute_EdgeGeometry(const FCkDebug_GraphCanvasNodeGe
                                                 const FCkDebug_GraphCanvasTransform& InTransform)
     -> FCkDebug_GraphCanvasEdgeGeometry
 {
-    const auto SourceRect =
-        FSlateRect{World_To_Screen(InSource.Position, InTransform).X,
-                   World_To_Screen(InSource.Position, InTransform).Y,
-                   World_To_Screen(InSource.Position + InSource.Size, InTransform).X,
-                   World_To_Screen(InSource.Position + InSource.Size, InTransform).Y};
-    const auto TargetRect =
-        FSlateRect{World_To_Screen(InTarget.Position, InTransform).X,
-                   World_To_Screen(InTarget.Position, InTransform).Y,
-                   World_To_Screen(InTarget.Position + InTarget.Size, InTransform).X,
-                   World_To_Screen(InTarget.Position + InTarget.Size, InTransform).Y};
+    const auto SourceMin = World_To_Screen(InSource.Position, InTransform);
+    const auto SourceMax = World_To_Screen(InSource.Position + InSource.Size, InTransform);
+    const auto TargetMin = World_To_Screen(InTarget.Position, InTransform);
+    const auto TargetMax = World_To_Screen(InTarget.Position + InTarget.Size, InTransform);
+    const auto SourceRect = FSlateRect{static_cast<float>(SourceMin.X),
+                                       static_cast<float>(SourceMin.Y),
+                                       static_cast<float>(SourceMax.X),
+                                       static_cast<float>(SourceMax.Y)};
+    const auto TargetRect = FSlateRect{static_cast<float>(TargetMin.X),
+                                       static_cast<float>(TargetMin.Y),
+                                       static_cast<float>(TargetMax.X),
+                                       static_cast<float>(TargetMax.Y)};
 
     auto Result = FCkDebug_GraphCanvasEdgeGeometry{};
     if (InEdge.RoutePoints.IsEmpty())
@@ -722,7 +724,10 @@ auto SCkDebug_GraphCanvas::Get_ScreenRect(const FCkDebug_GraphCanvasNodeGeometry
 {
     const auto Position = World_To_Screen(InNode.Position, _Transform);
     const auto Size = InNode.Size * _Transform.Zoom;
-    return FSlateRect{Position.X, Position.Y, Position.X + Size.X, Position.Y + Size.Y};
+    return FSlateRect{static_cast<float>(Position.X),
+                      static_cast<float>(Position.Y),
+                      static_cast<float>(Position.X + Size.X),
+                      static_cast<float>(Position.Y + Size.Y)};
 }
 
 auto SCkDebug_GraphCanvas::Is_RectVisible(const FSlateRect& InRect,

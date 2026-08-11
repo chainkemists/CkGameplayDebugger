@@ -396,8 +396,8 @@ auto SCkSmRuntimeGraph::HandleSelectionChanged(const TSet<uint64>& InSelection) 
     {
         return;
     }
-    auto StateIndex = INDEX_NONE;
-    auto TransitionIndex = INDEX_NONE;
+    int32 StateIndex = INDEX_NONE;
+    int32 TransitionIndex = INDEX_NONE;
     for (const auto Id : InSelection)
     {
         if (Id >= 0x100000000ull && Id < 0x200000000ull)

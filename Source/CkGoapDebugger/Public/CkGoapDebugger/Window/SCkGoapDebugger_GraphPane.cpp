@@ -13,7 +13,7 @@
 #include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
 #include "CkGoapDebugger/Graph/CkGoapRuntimeGraphModel.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
-#include "Styling/AppStyle.h"
+#include "Styling/CoreStyle.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -44,7 +44,7 @@ namespace ck_goap_debugger_graph_pane
                 return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()};
             })
             [SNew(SBorder)
-                 .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                 .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                  .BorderBackgroundColor(InColor)];
     }
 
@@ -156,7 +156,7 @@ namespace ck_goap_debugger_graph_pane
                                  })] +
              SOverlay::Slot()
                  [SNew(SBorder)
-                      .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                      .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                       .BorderBackgroundColor_Lambda(
                           [Weak]
                           {
@@ -175,7 +175,7 @@ namespace ck_goap_debugger_graph_pane
                               return FMargin(ck::debug_axes::Get_NodeBorderThickness());
                           })
                           [SNew(SBorder)
-                               .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                               .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                                .BorderBackgroundColor_Lambda(
                                    [Weak]
                                    {
@@ -275,8 +275,8 @@ namespace ck_goap_debugger_graph_pane
                                                  })] +
                                     SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceXS)
                                         [SNew(SBorder)
-                                             .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrus"
-                                                                                   "h")))
+                                             .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrus"
+                                                                                          "h")))
                                              .BorderBackgroundColor(
                                                  CkStyle::OverlayOf(CkStyle::CategoryAge(), 0.15f))
                                              .Visibility_Lambda(
@@ -332,7 +332,7 @@ namespace ck_goap_debugger_graph_pane
                                                     ? EVisibility::SelfHitTestInvisible
                                                     : EVisibility::Collapsed;
                                      })[SNew(SBorder)
-                                            .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                            .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                                             .BorderBackgroundColor(CkStyle::NodeBorder_InPlan())
                                             .HAlign(HAlign_Center)
                                             .VAlign(VAlign_Center)[SNew(STextBlock)
@@ -380,14 +380,14 @@ namespace ck_goap_debugger_graph_pane
             .MinDesiredWidth(FCkGoapDebuggerStyle::GraphNode_Width)
             .MaxDesiredWidth(FCkGoapDebuggerStyle::GraphNode_MaxWidth)
                 [SNew(SBorder)
-                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                     .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                      .BorderBackgroundColor(CkStyle::NodeBorder_Goal())
                      .Padding_Lambda(
                          []
                          {
                              return FMargin{ck::debug_axes::Get_NodeBorderThickness()};
                          })[SNew(SBorder)
-                                .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
+                                .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
                                 .BorderBackgroundColor_Lambda(
                                     []
                                     {

@@ -1991,9 +1991,16 @@ auto
     }
 
     DoCancelAutoOpenTrace();
+    if (TraceGuid != _SuppressedAutoOpenTraceGuid)
+    {
+        _SuppressedAutoOpenTraceGuid.Invalidate();
+    }
     _PendingAutoOpenTracePath = MoveTemp(TracePath);
     _PendingAutoOpenTraceGuid = TraceGuid;
     _PendingAutoOpenWriterFinalized = false;
+    _AutoOpenDelayWarningShown = false;
+    _AutoOpenTraceOpeningStarted = false;
+    _AutoOpenReportGenerated = false;
     _AutoOpenDeadlineSeconds = FPlatformTime::Seconds() + 30.0;
     DoSetStatus(TEXT("Trace stopped. Finalizing and opening the capture..."), ECk_Tone::Ok);
     _AutoOpenTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
@@ -2007,65 +2014,93 @@ auto
     -> bool
 {
     auto& Capture = FCkInsightsDebuggerModule::Get().Get_CaptureController();
+
+    if (_AutoOpenTraceOpeningStarted)
+    {
+        if (DoIsLoading())
+        {
+            return true;
+        }
+
+        if (NOT _AutoOpenReportGenerated)
+        {
+            // The report export already surfaced its concrete error. Stop retrying in this tab so
+            // capture controls remain usable, but retain the controller record for a fresh tab.
+            _SuppressedAutoOpenTraceGuid = _PendingAutoOpenTraceGuid;
+            _AutoOpenTickerHandle.Reset();
+            DoCancelAutoOpenTrace();
+            return false;
+        }
+
+        const auto Acknowledged = Capture.Acknowledge_CompletedCapture(_PendingAutoOpenTraceGuid);
+        if (NOT Acknowledged)
+        {
+            // The single retained completion changed while this trace was loading. End only this
+            // local attempt; the capture UI ticker will discover and queue the current record.
+            _AutoOpenTickerHandle.Reset();
+            DoCancelAutoOpenTrace();
+            return false;
+        }
+
+        // This callback is ending itself, so avoid asking the ticker to remove its currently
+        // executing delegate before the normal false return unregisters it.
+        _AutoOpenTickerHandle.Reset();
+        DoCancelAutoOpenTrace();
+        return false;
+    }
+
     if (NOT _PendingAutoOpenWriterFinalized)
     {
         _PendingAutoOpenWriterFinalized = Capture.IsTraceWriterFinalized(_PendingAutoOpenTraceGuid);
         if (NOT _PendingAutoOpenWriterFinalized)
         {
-            if (FPlatformTime::Seconds() < _AutoOpenDeadlineSeconds)
-            { return true; }
-
-            _SuppressedAutoOpenTraceGuid = _PendingAutoOpenTraceGuid;
-            _AutoOpenTickerHandle.Reset();
-            _PendingAutoOpenTracePath.Reset();
-            _PendingAutoOpenTraceGuid.Invalidate();
-            _PendingAutoOpenWriterFinalized = false;
-            _AutoOpenDeadlineSeconds = 0.0;
-            DoSetStatus(TEXT("Timed out waiting for the trace writer to finish."), ECk_Tone::Err);
-            return false;
+            if (NOT _AutoOpenDelayWarningShown && FPlatformTime::Seconds() >= _AutoOpenDeadlineSeconds)
+            {
+                _AutoOpenDelayWarningShown = true;
+                DoSetStatus(
+                    TEXT("The trace writer is still finalizing after 30 seconds. Waiting to open the capture..."),
+                    ECk_Tone::Warn);
+            }
+            return true;
         }
     }
 
     if (DoIsLoading())
     { return true; }
 
-    const auto TracePath = MoveTemp(_PendingAutoOpenTracePath);
-    const auto TraceGuid = _PendingAutoOpenTraceGuid;
-    _PendingAutoOpenTracePath.Reset();
-    _PendingAutoOpenTraceGuid.Invalidate();
-    _PendingAutoOpenWriterFinalized = false;
-    _AutoOpenDeadlineSeconds = 0.0;
-    _AutoOpenTickerHandle.Reset();
-
-    const auto TraceExists = IFileManager::Get().FileSize(*TracePath) > 0;
-    CK_ENSURE_IF_NOT(TraceExists, TEXT("Stopped trace is missing or empty: [{}]"), TracePath)
-    {}
+    const auto TraceExists = IFileManager::Get().FileSize(*_PendingAutoOpenTracePath) > 0;
     if (NOT TraceExists)
     {
-        _SuppressedAutoOpenTraceGuid = TraceGuid;
-        DoSetStatus(TEXT("The stopped trace file is missing or empty."), ECk_Tone::Err);
+        if (NOT _AutoOpenDelayWarningShown && FPlatformTime::Seconds() >= _AutoOpenDeadlineSeconds)
+        {
+            _AutoOpenDelayWarningShown = true;
+            DoSetStatus(
+                TEXT("The trace writer finalized, but its file is still empty after 30 seconds. Waiting to open the capture..."),
+                ECk_Tone::Warn);
+        }
+        return true;
+    }
+
+    _PendingAutoReportTracePath = _PendingAutoOpenTracePath;
+    DoOpenTracePath(_PendingAutoOpenTracePath);
+    if (NOT DoIsLoading())
+    {
+        _PendingAutoReportTracePath.Reset();
+        DoSetStatus(
+            TEXT("Trace finalized, but opening failed. Close and reopen Insights Analyzer to retry."),
+            ECk_Tone::Err);
+        _SuppressedAutoOpenTraceGuid = _PendingAutoOpenTraceGuid;
+        _AutoOpenTickerHandle.Reset();
+        DoCancelAutoOpenTrace();
         return false;
     }
 
-    _PendingAutoReportTracePath = TracePath;
-    DoOpenTracePath(TracePath);
-    if (DoIsLoading())
-    {
-        const auto Acknowledged = Capture.Acknowledge_CompletedCapture(TraceGuid);
-        CK_ENSURE_IF_NOT(Acknowledged, TEXT("The completed trace must still be retained when auto-open begins"))
-        {}
-        if (NOT Acknowledged)
-        {
-            _SuppressedAutoOpenTraceGuid = TraceGuid;
-            DoSetStatus(TEXT("Trace opening started, but capture completion acknowledgement failed."), ECk_Tone::Err);
-        }
-    }
-    else
-    {
-        _PendingAutoReportTracePath.Reset();
-        _SuppressedAutoOpenTraceGuid = TraceGuid;
-    }
-    return false;
+    _AutoOpenTraceOpeningStarted = true;
+    // Keep the completion record throughout async loading. DoFinishLoading generates the
+    // automatic report before the opening-started branch above observes DoIsLoading() == false
+    // and acknowledges the record. Closing this tab at any earlier point therefore leaves the
+    // controller record available for the next tab instance to recover.
+    return true;
 }
 
 auto SCkInsightsAnalyzerTab::DoCancelAutoOpenTrace() -> void
@@ -2079,6 +2114,9 @@ auto SCkInsightsAnalyzerTab::DoCancelAutoOpenTrace() -> void
     _PendingAutoOpenTracePath.Reset();
     _PendingAutoOpenTraceGuid.Invalidate();
     _PendingAutoOpenWriterFinalized = false;
+    _AutoOpenDelayWarningShown = false;
+    _AutoOpenTraceOpeningStarted = false;
+    _AutoOpenReportGenerated = false;
     _AutoOpenDeadlineSeconds = 0.0;
 }
 
@@ -2819,7 +2857,7 @@ auto
 auto
     SCkInsightsAnalyzerTab::
     DoGenerateAutomatedCaptureReport()
-    -> void
+    -> bool
 {
     using namespace ck_insights_analyzer_tab;
 
@@ -2834,7 +2872,7 @@ auto
     if (NOT CanGenerate)
     {
         DoSetStatus(TEXT("Trace loaded, but its automated report target did not match."), ECk_Tone::Err);
-        return;
+        return false;
     }
 
     constexpr int32 HotFrameCount = 5;
@@ -2876,7 +2914,7 @@ auto
                 SavedMarkdown ? TEXT("") : TEXT("Markdown "),
                 SavedJson ? TEXT("") : TEXT("JSON")),
             ECk_Tone::Err);
-        return;
+        return false;
     }
 
     DoSetStatus(
@@ -2890,6 +2928,7 @@ auto
                 *FPaths::GetCleanFilename(MarkdownPath),
                 *FPaths::GetCleanFilename(JsonPath)),
         HasAnalyzableFrames ? ECk_Tone::Ok : ECk_Tone::Warn);
+    return true;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -3159,7 +3198,7 @@ auto
 
     if (NOT _PendingAutoReportTracePath.IsEmpty())
     {
-        DoGenerateAutomatedCaptureReport();
+        _AutoOpenReportGenerated = DoGenerateAutomatedCaptureReport();
     }
 }
 

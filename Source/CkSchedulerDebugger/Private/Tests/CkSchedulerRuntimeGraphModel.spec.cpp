@@ -84,6 +84,24 @@ bool FCkSchedulerRuntimeGraphModel_Test::RunTest(const FString&)
     TestFalse(TEXT("same topology does not churn nodes"), Model.Rebuild(Processors, 20, Layout));
     TestTrue(TEXT("same topology keeps stable node identity"),
              Model.Get_NodeById(20) == SelectedNode);
+
+    auto LegacySubsetIndices = TSet<int32>{1};
+    LegacySubsetIndices.Add(0);
+    LegacySubsetIndices.Add(2);
+    auto ExpectedLegacyOrder = TArray<int32>{};
+    for (const auto Index : LegacySubsetIndices)
+    {
+        ExpectedLegacyOrder.Add(Processors[Index].NodeIndex);
+    }
+    TestEqual(TEXT("runtime node count follows legacy TSet subset construction"),
+              Model.Get_Nodes().Num(),
+              ExpectedLegacyOrder.Num());
+    for (auto Index = 0; Index < ExpectedLegacyOrder.Num(); ++Index)
+    {
+        TestEqual(FString::Printf(TEXT("runtime node order matches legacy subset index %d"), Index),
+                  Model.Get_Nodes()[Index]->StableId,
+                  ExpectedLegacyOrder[Index]);
+    }
     return true;
 }
 

@@ -215,12 +215,6 @@ auto FCkEcsRuntimeGraphModel::RebuildFromEntity(const FCk_Handle& InEntity) -> b
             Dependents.Add({Dependent, ECkEcsRuntimeGraphRelationship::LifetimeDependent});
         }
     }
-    Dependents.Sort(
-        [](const auto& InLeft, const auto& InRight)
-        {
-            return InLeft.Entity < InRight.Entity;
-        });
-
     auto DependentHandles = TArray<FCk_Handle>{};
     DependentHandles.Reserve(Dependents.Num());
     for (const auto& Dependent : Dependents)

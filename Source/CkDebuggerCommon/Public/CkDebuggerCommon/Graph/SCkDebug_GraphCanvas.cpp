@@ -5,6 +5,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
+#include "Styling/AppStyle.h"
 #include "Widgets/SNullWidget.h"
 
 // =====================================================================================================================
@@ -15,8 +16,6 @@ namespace ck_debug_graph_canvas
     constexpr auto PanDeadZonePx = 3.0f;
     constexpr auto MarqueeBorderThickness = 1.0f;
     constexpr auto HoverDeemphasisAlpha = 0.25f;
-    constexpr auto DashLength = 8.0f;
-    constexpr auto DashGap = 5.0f;
 
     auto Get_AnchorPoint(const FSlateRect& InRect, ECkDebug_GraphAnchor InAnchor) -> FVector2D
     {
@@ -307,23 +306,43 @@ auto SCkDebug_GraphCanvas::Compute_EdgeGeometry(const FCkDebug_GraphCanvasNodeGe
                          ? ck_debug_graph_canvas::Get_ClosestPointOnRect(TargetRect, Result.Start)
                          : TargetSeed;
         Result.Points = {Result.Start, Result.End};
-        return Result;
+    }
+    else
+    {
+        const auto FirstRoute = World_To_Screen(InEdge.RoutePoints[0], InTransform);
+        const auto LastRoute = World_To_Screen(InEdge.RoutePoints.Last(), InTransform);
+        Result.Start = InEdge.SourceAnchor == ECkDebug_GraphAnchor::Center
+                           ? ck_debug_graph_canvas::Get_ClosestPointOnRect(SourceRect, FirstRoute)
+                           : ck_debug_graph_canvas::Get_AnchorPoint(SourceRect, InEdge.SourceAnchor);
+        Result.End = InEdge.TargetAnchor == ECkDebug_GraphAnchor::Center
+                         ? ck_debug_graph_canvas::Get_ClosestPointOnRect(TargetRect, LastRoute)
+                         : ck_debug_graph_canvas::Get_AnchorPoint(TargetRect, InEdge.TargetAnchor);
+        Result.Points.Add(Result.Start);
+        for (const auto& Point : InEdge.RoutePoints)
+        {
+            Result.Points.Add(World_To_Screen(Point, InTransform));
+        }
+        Result.Points.Add(Result.End);
     }
 
-    const auto FirstRoute = World_To_Screen(InEdge.RoutePoints[0], InTransform);
-    const auto LastRoute = World_To_Screen(InEdge.RoutePoints.Last(), InTransform);
-    Result.Start = InEdge.SourceAnchor == ECkDebug_GraphAnchor::Center
-                       ? ck_debug_graph_canvas::Get_ClosestPointOnRect(SourceRect, FirstRoute)
-                       : ck_debug_graph_canvas::Get_AnchorPoint(SourceRect, InEdge.SourceAnchor);
-    Result.End = InEdge.TargetAnchor == ECkDebug_GraphAnchor::Center
-                     ? ck_debug_graph_canvas::Get_ClosestPointOnRect(TargetRect, LastRoute)
-                     : ck_debug_graph_canvas::Get_AnchorPoint(TargetRect, InEdge.TargetAnchor);
-    Result.Points.Add(Result.Start);
-    for (const auto& Point : InEdge.RoutePoints)
+    // The retained GraphEditor connection policies offset straight reciprocal wires by 4.5 px,
+    // then shorten both ends by the 8 px arrow radius. Adapters opt into those exact values; routed
+    // SM edges keep their authored route points and therefore leave LineSeparation at zero.
+    if (NOT FMath::IsNearlyZero(InEdge.LineSeparation) && Result.Points.Num() == 2)
     {
-        Result.Points.Add(World_To_Screen(Point, InTransform));
+        const auto Delta = Result.End - Result.Start;
+        if (Delta.SizeSquared() > KINDA_SMALL_NUMBER)
+        {
+            const auto UnitDelta = Delta.GetSafeNormal();
+            const auto Normal = FVector2D{Delta.Y, -Delta.X}.GetSafeNormal();
+            const auto DirectionBias = Normal * InEdge.LineSeparation;
+            const auto LengthBias = UnitDelta * FMath::Max(0.0f, InEdge.ArrowRadius);
+            Result.Start += DirectionBias + LengthBias;
+            Result.End += DirectionBias - LengthBias;
+            Result.Points[0] = Result.Start;
+            Result.Points[1] = Result.End;
+        }
     }
-    Result.Points.Add(Result.End);
     return Result;
 }
 
@@ -747,7 +766,7 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
                                      int32 InLayerId) const -> void
 {
     auto Color = InEdge.Color;
-    if (_HoveredNodeId != 0 && _HoveredNodeId != InEdge.SourceId &&
+    if (InEdge.DeemphasizeWhenUnrelatedHovered && _HoveredNodeId != 0 && _HoveredNodeId != InEdge.SourceId &&
         _HoveredNodeId != InEdge.TargetId)
     {
         Color.A *= ck_debug_graph_canvas::HoverDeemphasisAlpha;
@@ -767,11 +786,13 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
                 continue;
             }
             const auto Direction = Delta / Length;
+            const auto DashLength = FMath::Max(0.5f, InEdge.DashLength);
+            const auto DashGap = FMath::Max(0.0f, InEdge.DashGap);
             for (auto Distance = 0.0f; Distance < Length;
-                 Distance += ck_debug_graph_canvas::DashLength + ck_debug_graph_canvas::DashGap)
+                 Distance += DashLength + DashGap)
             {
                 const auto DashEnd = FMath::Min(Length,
-                                                Distance + ck_debug_graph_canvas::DashLength);
+                                                Distance + DashLength);
                 const auto DashPoints = TArray<FVector2D>{Start + Direction * Distance,
                                                           Start + Direction * DashEnd};
                 FSlateDrawElement::MakeLines(OutDrawElements,
@@ -810,22 +831,29 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
         return;
     }
 
-    const auto Direction = Delta.GetSafeNormal();
-    const auto Normal = FVector2D{Direction.Y, -Direction.X};
-    const auto ArrowLength = 10.0f * _Transform.Zoom;
-    const auto ArrowHalfWidth = 4.0f * _Transform.Zoom;
-    const auto ArrowBase = End - Direction * ArrowLength;
-    const auto ArrowPoints = TArray<FVector2D>{ArrowBase + Normal * ArrowHalfWidth,
-                                               End,
-                                               ArrowBase - Normal * ArrowHalfWidth};
-    FSlateDrawElement::MakeLines(OutDrawElements,
-                                 InLayerId + 1,
-                                 FPaintGeometry(),
-                                 ArrowPoints,
-                                 ESlateDrawEffect::None,
-                                 Color,
-                                 true,
-                                 Thickness);
+    // Match FConnectionDrawingPolicy: the 16 px Graph.Arrow brush is centered on the endpoint and
+    // rotated along the final segment. FAppStyle is already a runtime dependency of Common.
+    const auto* ArrowImage = FAppStyle::GetBrush(TEXT("Graph.Arrow"));
+    if (ArrowImage == nullptr || ArrowImage->GetDrawType() == ESlateBrushDrawType::NoDrawType)
+    {
+        return;
+    }
+
+    const auto ArrowRadius = FVector2D{FMath::Max(0.0f, InEdge.ArrowRadius),
+                                       FMath::Max(0.0f, InEdge.ArrowRadius)};
+    const auto ArrowDrawPosition = End - ArrowRadius;
+    const auto AngleInRadians = FMath::Atan2(Delta.Y, Delta.X);
+    FSlateDrawElement::MakeRotatedBox(OutDrawElements,
+                                      InLayerId + 1,
+                                      FPaintGeometry(ArrowDrawPosition,
+                                                     ArrowImage->ImageSize * _Transform.Zoom,
+                                                     _Transform.Zoom),
+                                      ArrowImage,
+                                      ESlateDrawEffect::None,
+                                      AngleInRadians,
+                                      TOptional<FVector2D>{},
+                                      FSlateDrawElement::RelativeToElement,
+                                      Color);
 }
 
 auto SCkDebug_GraphCanvas::Draw_Marquee(const FGeometry& InGeometry,

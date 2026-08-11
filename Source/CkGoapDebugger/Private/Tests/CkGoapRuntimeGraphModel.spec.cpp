@@ -12,6 +12,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkGoapRuntimeGraphModelTopologyTest,
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkGoapRuntimeGraphModelSelectedGoalTest,
                                  "Ck.Goap.RuntimeGraph.SelectedDualRoleGoalChangesScene",
                                  EAutomationTestFlags::EditorContext |
+                                      EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkGoapRuntimeGraphModelNameDepthTest,
+                                 "Ck.Goap.RuntimeGraph.NameDepthMatchesEditorNormalization",
+                                 EAutomationTestFlags::EditorContext |
                                      EAutomationTestFlags::EngineFilter)
 
 auto FCkGoapRuntimeGraphModelTopologyTest::RunTest(const FString& Parameters) -> bool
@@ -61,6 +66,17 @@ auto FCkGoapRuntimeGraphModelSelectedGoalTest::RunTest(const FString& Parameters
                  SecondHash);
     TestNotEqual(TEXT("First selected goal differs from root goal"), FirstHash, RootHash);
     TestNotEqual(TEXT("Second selected goal differs from root goal"), SecondHash, RootHash);
+    return true;
+}
+
+auto FCkGoapRuntimeGraphModelNameDepthTest::RunTest(const FString& Parameters) -> bool
+{
+    TestEqual(TEXT("Default object and generated-class suffix are ignored"),
+              FCkGoapRuntimeGraphModel::ComputeMaxNameDepth(TEXT("Default__Ck_Goap_MakeTea_C")),
+              3);
+    TestEqual(TEXT("Atomic class keeps one depth"),
+              FCkGoapRuntimeGraphModel::ComputeMaxNameDepth(TEXT("MakeTea")),
+              1);
     return true;
 }
 

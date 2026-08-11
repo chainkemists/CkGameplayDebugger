@@ -335,8 +335,9 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         return;
     }
 
-    _EntityCards.Reset();
-    _CanvasNodes.Reset();
+    auto PreviousCards = MoveTemp(_EntityCards);
+    auto NewCards = TMap<uint64, TSharedPtr<SCkEcsEntityGraphCard>>{};
+    auto NewCanvasNodes = TMap<uint64, TSharedPtr<FCkEcsRuntimeGraphNode>>{};
     auto StableToCanvasId = TMap<FString, uint64>{};
     auto Scene = FCkDebug_GraphCanvasScene{};
 
@@ -353,7 +354,17 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
             continue;
         }
 
-        auto Card = SNew(SCkEcsEntityGraphCard).Node(RuntimeNode).bSelected(false);
+        auto Card = TSharedPtr<SCkEcsEntityGraphCard>{};
+        if (const auto* ExistingCard = PreviousCards.Find(CanvasId); ExistingCard != nullptr &&
+                                                           ExistingCard->IsValid())
+        {
+            Card = *ExistingCard;
+            Card->SetNode(RuntimeNode);
+        }
+        else
+        {
+            Card = SNew(SCkEcsEntityGraphCard).Node(RuntimeNode).bSelected(false);
+        }
         Card->SlatePrepass();
 
         auto CanvasNode = FCkDebug_GraphCanvasNode{};
@@ -365,8 +376,8 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         Scene.Nodes.Add(MoveTemp(CanvasNode));
 
         StableToCanvasId.Add(RuntimeNode->StableId, CanvasId);
-        _EntityCards.Add(CanvasId, Card);
-        _CanvasNodes.Add(CanvasId, RuntimeNode);
+        NewCards.Add(CanvasId, Card);
+        NewCanvasNodes.Add(CanvasId, RuntimeNode);
     }
 
     for (const auto& RuntimeEdge : _RuntimeGraphModel.GetEdges())
@@ -383,10 +394,13 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         CanvasEdge.TargetId = *TargetId;
         CanvasEdge.Color = RuntimeEdge.Color;
         CanvasEdge.Thickness = 1.5f;
+        CanvasEdge.LineSeparation = 4.5f;
         CanvasEdge.IsDirected = RuntimeEdge.bIsDirected;
         Scene.Edges.Add(MoveTemp(CanvasEdge));
     }
 
+    _EntityCards = MoveTemp(NewCards);
+    _CanvasNodes = MoveTemp(NewCanvasNodes);
     _GraphCanvas->Set_Scene(MoveTemp(Scene));
     if (InFrameAll)
     {

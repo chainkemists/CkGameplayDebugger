@@ -78,8 +78,9 @@ class CKGOAPDEBUGGER_API FCkGoapRuntimeGraphModel
 
     static auto ComputeTopologyHash(const FCkGoapDebugger_PlannerInfo& InPlanner) -> uint32;
     static auto ComputeEffectiveGoalHash(const FCkGoapDebugger_PlannerInfo& InPlanner,
-                                         const FCkGoapDebugger_ActionInfo* InSelectedAction)
+                                          const FCkGoapDebugger_ActionInfo* InSelectedAction)
         -> uint32;
+    static auto ComputeMaxNameDepth(const FString& InClassName) -> int32;
 
   private:
     TArray<TSharedPtr<FCkGoapRuntimeGraphNode>> _Nodes;

@@ -27,7 +27,7 @@ class FCkSchedulerDebuggerPage_TreeView : public ICkSchedulerDebuggerPage
 
   private:
     auto DoBuildDetailGraph() -> TSharedRef<SWidget>;
-    auto DoRebuildDetailGraph(bool InForceCards = false, bool InFrameAll = true) -> void;
+    auto DoRebuildDetailGraph(bool InForceCards = false) -> void;
     auto DoOnSelectionChanged(int32 InProcessorIndex) -> void;
     auto DoOnCanvasSelectionChanged(const TSet<uint64>& InSelectedNodeIds) -> void;
     auto DoOnCanvasNodeContextMenu(uint64 InNodeId, const FPointerEvent& InMouseEvent) -> void;
@@ -42,8 +42,6 @@ class FCkSchedulerDebuggerPage_TreeView : public ICkSchedulerDebuggerPage
     FCkSchedulerRuntimeGraphModel _RuntimeGraphModel;
     FCkDebugGraphLayoutParams _LayoutParams;
     TMap<int32, TSharedPtr<SCkSchedulerProcessorCard>> _ProcessorCards;
-    bool _PendingFrameAll = false;
-
     FDelegateHandle _SelectionChangedHandle;
 };
 

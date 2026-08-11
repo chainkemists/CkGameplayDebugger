@@ -10,6 +10,10 @@
 #include "Containers/Array.h"
 #include "Containers/Map.h"
 #include "Containers/UnrealString.h"
+#include "Math/Color.h"
+#include "Math/Transform.h"
+#include "Misc/Guid.h"
+#include "Misc/Optional.h"
 #include "Templates/SharedPointer.h"
 #include "UObject/NameTypes.h"
 
@@ -158,6 +162,60 @@ struct CKSAVEDEBUGGER_API FCkSaveDebugger_DiffGroupRow
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** How the visualizer represents a placed row beyond its diamond. MeshGhost: a bridged actor row — its Construct
+ *  ensures without an owning actor and editor worlds cannot supply one, so its visual is read passively from the
+ *  actor class's component templates. ConstructionPreview: a plain script row — the editor ECS world runs its real
+ *  Construct (the spawner-preview mechanism), so the visual is whatever construction composes. DiamondOnly:
+ *  everything else (EngineOwned rows already exist in the level; DefinitionBuilt recipe replay is not built yet). */
+enum class ECkSaveDebugger_VisualKind : uint8
+{
+    DiamondOnly,
+    MeshGhost,
+    ConstructionPreview,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/** One placeable save row for the editor-viewport visualizer: where the loader would put this entity, plus the
+ *  facts a diamond and its hover label need. Plain data — no Slate, no world, no handle — so the projection is
+ *  spec-testable and the drawing side can hold an immutable snapshot of it. */
+struct CKSAVEDEBUGGER_API FCkSaveDebugger_VisualizationRow
+{
+    uint32 SavedId = ck::snapshot::k_NoSavedEntity;
+    int32  EntityIndex = INDEX_NONE;
+
+    FTransform WorldTransform = FTransform::Identity;
+    FString DisplayText;
+    ECk_Snapshot_V3_Provenance Provenance = ECk_Snapshot_V3_Provenance::EngineOwned;
+    bool HasProblems = false;
+
+    // The bridged actor class of a RuntimeSpawned actor row, empty otherwise — what the mesh-ghost renderer
+    // resolves component templates from. Carried on the row so the visual layer never reads the document.
+    FString ActorClassPath;
+    FString ScriptClassPath;
+    ECkSaveDebugger_VisualKind VisualKind = ECkSaveDebugger_VisualKind::DiamondOnly;
+
+    // Index of this row's lifetime owner within the SAME array — the other endpoint of the owner-chain line.
+    // INDEX_NONE when the owner is absent from the table or itself unplaced.
+    int32 OwnerRowIndex = INDEX_NONE;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/** Verdict of comparing the save's captured world against the currently open editor level — what the Visualize
+ *  command branches its load-the-level prompt on. */
+enum class ECkSaveDebugger_LevelMatch : uint8
+{
+    Match,
+    Mismatch,
+    // The header carries no world path (recovered/legacy header) — there is nothing to compare, so there is
+    // nothing to prompt about either.
+    SaveHasNoWorld,
+    NoCurrentWorld,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 /** Everything the CK Save Debugger window shows, with zero Slate in it: an inspection document, the decode results
  *  the user has asked for so far, the filter/selection state, and the ownership tree built from them.
  *
@@ -252,6 +310,10 @@ private:
     uint8   _ProvenanceMask = ck_save_debugger_model::k_AllProvenanceMask;
     bool    _ProblemsOnly = false;
 
+    // SaveKey -> "ActorName (Class)", derived by the WINDOW from the open editor level (never by the model — it
+    // holds no world). Applied to row display/search text on Rebuild_Tree, so the setter's caller re-runs it.
+    TMap<FGuid, FString> _SaveKeyAnnotations;
+
     uint32 _SelectedEntitySavedId = ck::snapshot::k_NoSavedEntity;
     int32  _SelectedPayloadIndex = INDEX_NONE;
 
@@ -279,6 +341,7 @@ public:
     CK_PROPERTY(_HighlightString);
     CK_PROPERTY(_ProvenanceMask);
     CK_PROPERTY(_ProblemsOnly);
+    CK_PROPERTY(_SaveKeyAnnotations);
     CK_PROPERTY(_SelectedEntitySavedId);
     CK_PROPERTY(_SelectedPayloadIndex);
     CK_PROPERTY_GET(_TreeRoots);
@@ -326,10 +389,33 @@ namespace ck_save_debugger_model
     Build_EntityDisplayText(
         const FCk_SnapshotInspection_EntitySummary& InSummary) -> FString;
 
+    /** As above, appending the resolved editor-actor name when the row's SaveKey appears in the annotation map.
+     *  A save records nothing but the key for an EngineOwned row (the loader only rendezvouses, never re-creates),
+     *  so the name is WORLD data the window derives from the open level — the model just merges strings, which is
+     *  what keeps this projection pure and spec-testable. */
+    CKSAVEDEBUGGER_API auto
+    Build_EntityDisplayText(
+        const FCk_SnapshotInspection_EntitySummary& InSummary,
+        const TMap<FGuid, FString>& InSaveKeyAnnotations) -> FString;
+
     /** Everything the Filter / Highlight boxes match a row against, joined into one haystack. */
     CKSAVEDEBUGGER_API auto
     Build_EntitySearchText(
         const FCk_SnapshotInspection_EntitySummary& InSummary) -> FString;
+
+    /** As above; an annotated row is also findable by its editor-actor name. */
+    CKSAVEDEBUGGER_API auto
+    Build_EntitySearchText(
+        const FCk_SnapshotInspection_EntitySummary& InSummary,
+        const TMap<FGuid, FString>& InSaveKeyAnnotations) -> FString;
+
+    /** The saved id of the row carrying this SaveKey, or k_NoSavedEntity. Editor-selection sync resolves a clicked
+     *  level actor to its row through this (the key is FGuid::NewDeterministicGuid of the actor's level-placed
+     *  identity — the same one derivation every stamping site uses). */
+    CKSAVEDEBUGGER_API auto
+    TryGet_SavedIdForSaveKey(
+        const FCk_SnapshotInspection_Document& InDocument,
+        const FGuid& InSaveKey) -> uint32;
 
     CKSAVEDEBUGGER_API auto
     Build_ShortTypeName(
@@ -400,6 +486,45 @@ namespace ck_save_debugger_model
     CKSAVEDEBUGGER_API auto
     Get_OpaquePayloadCount(
         const FCk_SnapshotInspection_Document& InDocument) -> int32;
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    /** The world transform the loader would restore for this row, or unset when the save carries none. Mirrors the
+     *  loader's own placement rules: identity IS the format's "no Transform fragment" sentinel
+     *  (CkSnapshot_Header.h, DoApply_SavedTransforms), and a bridged actor's spawn seed stands in when the
+     *  general column is empty — a row this returns unset for is one the loader would not place either. */
+    CKSAVEDEBUGGER_API auto
+    TryGet_VisualizationTransform(
+        const FCk_Snapshot_V3_EntityEntry& InEntry) -> TOptional<FTransform>;
+
+    /** Every placeable row of the document, in table order, with owner links resolved to indices into the returned
+     *  array. Rows without placement are simply absent — the visualizer draws a spatial SLICE of the save, and the
+     *  window states the placed/total split rather than pretending coverage. Row display text carries the
+     *  editor-actor annotation when one resolves. */
+    CKSAVEDEBUGGER_API auto
+    Build_VisualizationRows(
+        const FCk_SnapshotInspection_Document& InDocument,
+        const TMap<FGuid, FString>& InSaveKeyAnnotations = {}) -> TArray<FCkSaveDebugger_VisualizationRow>;
+
+    /** The viewport tint that stands for a capture provenance — four DISTINCT colors (CkStyle tokens), same
+     *  reasoning as Get_ProvenanceIconId: a shared tint turns the census-at-a-glance into decoration. Problem rows
+     *  override to CkStyle::Err() at the draw site, exactly like tree rows do. */
+    CKSAVEDEBUGGER_API auto
+    Get_ProvenanceVisualizationColor(
+        ECk_Snapshot_V3_Provenance InProvenance) -> FLinearColor;
+
+    /** Which in-world representation a row earns beyond its diamond — see ECkSaveDebugger_VisualKind. */
+    CKSAVEDEBUGGER_API auto
+    Get_VisualKind(
+        const FCk_Snapshot_V3_EntityEntry& InEntry) -> ECkSaveDebugger_VisualKind;
+
+    /** Compares the header's captured world package against the current editor level's package name. Both sides are
+     *  PIE-prefix-stripped: a save captured during PIE names the UEDPIE_N_ package while the editor level does not,
+     *  and that difference is not a mismatch. */
+    CKSAVEDEBUGGER_API auto
+    Get_LevelMatch(
+        const FCk_SnapshotInspection_Document& InDocument,
+        const FString& InCurrentWorldPackageName) -> ECkSaveDebugger_LevelMatch;
 
     // ----------------------------------------------------------------------------------------------------------------
 

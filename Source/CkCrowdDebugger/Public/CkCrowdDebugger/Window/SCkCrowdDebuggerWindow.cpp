@@ -399,7 +399,9 @@ auto SCkCrowdDebuggerWindow::Get_VoxelSourceLabel() const -> FText
 	{
 	case ECkCrowdDebugger_VoxelSource::LivePie: return FText::FromString(TEXT("Live PIE"));
 	case ECkCrowdDebugger_VoxelSource::RetainedSnapshot: return FText::FromString(TEXT("Retained"));
+#if WITH_EDITOR
 	case ECkCrowdDebugger_VoxelSource::EditorPreview: return FText::FromString(TEXT("Editor Preview"));
+#endif
 	default: return FText::FromString(TEXT("Auto Source"));
 	}
 }
@@ -412,7 +414,11 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 	{
 		const auto HasRuntimeWorld = InSelectedWorld != nullptr &&
 			(InSelectedWorld->WorldType == EWorldType::PIE || InSelectedWorld->WorldType == EWorldType::Game);
+#if WITH_EDITOR
 		Source = HasRuntimeWorld ? ECkCrowdDebugger_VoxelSource::LivePie : ECkCrowdDebugger_VoxelSource::EditorPreview;
+#else
+		Source = HasRuntimeWorld ? ECkCrowdDebugger_VoxelSource::LivePie : ECkCrowdDebugger_VoxelSource::RetainedSnapshot;
+#endif
 	}
 
 	auto Combined = TOptional<ck::voxelnav::FDebugSnapshot>{};
@@ -432,9 +438,9 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 	{
 		Combined = _RetainedVoxelSnapshot;
 	}
+#if WITH_EDITOR
 	else
 	{
-#if WITH_EDITOR
 		auto* PreviewSubsystem = UCk_VoxelNavPreview_EditorSubsystem_UE::Get();
 		if (PreviewSubsystem != nullptr)
 		{
@@ -449,18 +455,19 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 			if (Published.IsValid())
 			{ Combined = Combine_Snapshots(*Published, Params._MaxCellsPerLayer); }
 		}
-#else
-		_VoxelSourceStatus = TEXT("VoxelNav Editor Preview is unavailable in packaged builds");
-#endif
 	}
+#endif
 
 	if (NOT Combined.IsSet())
 	{
-		_VoxelSourceStatus = Source == ECkCrowdDebugger_VoxelSource::RetainedSnapshot
-			? TEXT("VoxelNav Retained: no PIE snapshot captured yet")
-			: Source == ECkCrowdDebugger_VoxelSource::LivePie
-				? TEXT("VoxelNav Live PIE: no runtime volume")
-				: TEXT("VoxelNav Editor Preview: place a Ck Voxel Nav Volume in the level");
+		if (Source == ECkCrowdDebugger_VoxelSource::RetainedSnapshot)
+		{ _VoxelSourceStatus = TEXT("VoxelNav Retained: no PIE snapshot captured yet"); }
+		else if (Source == ECkCrowdDebugger_VoxelSource::LivePie)
+		{ _VoxelSourceStatus = TEXT("VoxelNav Live PIE: no runtime volume"); }
+#if WITH_EDITOR
+		else
+		{ _VoxelSourceStatus = TEXT("VoxelNav Editor Preview: place a Ck Voxel Nav Volume in the level"); }
+#endif
 		if (_ViewportPanel.IsValid())
 		{ _ViewportPanel->Clear_VoxelNavSnapshot(); }
 		return;
@@ -487,9 +494,15 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 		Combined->_ActiveDirtyBounds = FBox{ForceInit};
 	}
 
+	const auto* SourceLabel = Source == ECkCrowdDebugger_VoxelSource::LivePie ? TEXT("Live PIE") :
+		Source == ECkCrowdDebugger_VoxelSource::RetainedSnapshot ? TEXT("Retained") :
+#if WITH_EDITOR
+		TEXT("Editor Preview");
+#else
+		TEXT("Retained");
+#endif
 	_VoxelSourceStatus = FString::Printf(TEXT("VoxelNav %s: %s | merged %d/%d | raw %d/%d | occupied %d/%d"),
-		Source == ECkCrowdDebugger_VoxelSource::LivePie ? TEXT("Live PIE") :
-			Source == ECkCrowdDebugger_VoxelSource::RetainedSnapshot ? TEXT("Retained") : TEXT("Editor Preview"),
+		SourceLabel,
 		Get_StatusLabel(Combined->_Status),
 		Combined->_MergedFree._Cells.Num(), Combined->_MergedFree._FilteredTotal,
 		Combined->_RawFree._Cells.Num(), Combined->_RawFree._FilteredTotal,
@@ -545,11 +558,19 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			];
 	};
 
+#if WITH_EDITOR
+	const auto* AutoSourceLabel = TEXT("Auto (PIE when running, Editor otherwise)");
+#else
+	const auto* AutoSourceLabel = TEXT("Auto (Live when running, Retained otherwise)");
+#endif
 	const auto SourceMenu = SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Auto (PIE when running, Editor otherwise)"), ECkCrowdDebugger_VoxelSource::Auto) ]
+		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(AutoSourceLabel, ECkCrowdDebugger_VoxelSource::Auto) ]
 		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Live PIE"), ECkCrowdDebugger_VoxelSource::LivePie) ]
 		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Retained Snapshot"), ECkCrowdDebugger_VoxelSource::RetainedSnapshot) ]
-		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Editor Preview"), ECkCrowdDebugger_VoxelSource::EditorPreview) ];
+#if WITH_EDITOR
+		+ SVerticalBox::Slot().AutoHeight()[ MakeSourceButton(TEXT("Editor Preview"), ECkCrowdDebugger_VoxelSource::EditorPreview) ]
+#endif
+		;
 
 	const auto NavigationMenu = SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()
@@ -596,6 +617,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			]
 		]
 #endif
+#if WITH_EDITOR
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 4.0f, 8.0f, 2.0f)
 		[
 			SNew(SButton)
@@ -607,6 +629,7 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 					return FReply::Handled();
 				})
 		]
+#endif
 		+ SVerticalBox::Slot().AutoHeight().Padding(8.0f, 3.0f)
 		[
 			SNew(STextBlock)

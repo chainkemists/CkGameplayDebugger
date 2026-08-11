@@ -2,6 +2,7 @@
 
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NodePill.h"
@@ -9,13 +10,14 @@
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
+#include "Rendering/DrawElements.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
 struct FCkSmRuntimeGraphCardPresentation
@@ -69,6 +71,192 @@ namespace ck_sm_runtime_graph
     {
         return InBreakpointStyle == 22 || InBreakpointStyle == 23;
     }
+
+    auto DrawSquare(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                    const FVector2f Pos, const float Size, const FLinearColor& Color) -> void
+    {
+        const auto Child = Geo.MakeChild(FVector2f(Size, Size), FSlateLayoutTransform(Pos));
+        FSlateDrawElement::MakeBox(Out, Layer, Child.ToPaintGeometry(),
+            FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None, Color);
+    }
+
+    auto DrawRect(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                  const FVector2f Pos, const FVector2f Size, const FLinearColor& Color) -> void
+    {
+        const auto Child = Geo.MakeChild(Size, FSlateLayoutTransform(Pos));
+        FSlateDrawElement::MakeBox(Out, Layer, Child.ToPaintGeometry(),
+            FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None, Color);
+    }
+
+    auto DrawCircle(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                    const FVector2f Pos, const float Size, const FLinearColor& Color) -> void
+    {
+        static const auto Brush = FSlateRoundedBoxBrush(FLinearColor::White, 999.0f);
+        const auto Child = Geo.MakeChild(FVector2f(Size, Size), FSlateLayoutTransform(Pos));
+        FSlateDrawElement::MakeBox(Out, Layer, Child.ToPaintGeometry(), &Brush,
+            ESlateDrawEffect::None, Color);
+    }
+
+    auto DrawDiamond(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                     const FVector2f Center, const float Size, const FLinearColor& Color) -> void
+    {
+        const auto Half = Size * 0.5f;
+        const auto Child = Geo.MakeChild(FVector2f(Size, Size),
+            FSlateLayoutTransform(Center - FVector2f(Half, Half)));
+        FSlateDrawElement::MakeRotatedBox(Out, Layer, Child.ToPaintGeometry(),
+            FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")), ESlateDrawEffect::None, PI / 4.0f,
+            TOptional<FVector2D>(), FSlateDrawElement::RelativeToElement, Color);
+    }
+
+    auto DrawHollowCircle(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                          const FVector2f Pos, const float Size, const FLinearColor& Color,
+                          const FLinearColor& Background) -> void
+    {
+        DrawCircle(Out, Layer, Geo, Pos, Size, Color);
+        DrawCircle(Out, Layer + 1, Geo, Pos + FVector2f(2.0f, 2.0f), Size - 4.0f, Background);
+    }
+
+    auto DrawHollowSquare(FSlateWindowElementList& Out, const int32 Layer, const FGeometry& Geo,
+                          const FVector2f Pos, const float Size, const FLinearColor& Color,
+                          const FLinearColor& Background) -> void
+    {
+        DrawSquare(Out, Layer, Geo, Pos, Size, Color);
+        DrawSquare(Out, Layer + 1, Geo, Pos + FVector2f(2.0f, 2.0f), Size - 4.0f, Background);
+    }
+
+    class SCkSmRuntimeBreakpointOverlay final : public SLeafWidget
+    {
+      public:
+        SLATE_BEGIN_ARGS(SCkSmRuntimeBreakpointOverlay) {}
+            SLATE_ARGUMENT(TWeakPtr<FCkSmRuntimeGraphCardPresentation>, Presentation)
+            SLATE_ARGUMENT(int32, Style)
+            SLATE_ARGUMENT(bool, bTransition)
+        SLATE_END_ARGS()
+
+        void Construct(const FArguments& Args)
+        {
+            _Presentation = Args._Presentation;
+            _Style = Args._Style;
+            _bTransition = Args._bTransition;
+        }
+
+        virtual FVector2D ComputeDesiredSize(float) const override { return FVector2D::ZeroVector; }
+
+        virtual int32 OnPaint(const FPaintArgs&, const FGeometry& Geo, const FSlateRect&,
+                              FSlateWindowElementList& Out, int32 Layer, const FWidgetStyle&,
+                              bool) const override
+        {
+            const auto Presentation = _Presentation.Pin();
+            if (NOT Presentation)
+            {
+                return Layer;
+            }
+            return _bTransition ? PaintTransition(*Presentation, Geo, Out, Layer)
+                                : PaintState(*Presentation, Geo, Out, Layer);
+        }
+
+      private:
+        auto PaintTransition(const FCkSmRuntimeGraphCardPresentation& P, const FGeometry& Geo,
+                             FSlateWindowElementList& Out, const int32 Layer) const -> int32
+        {
+            const auto bSet = P.Node.Transition && P.Node.Transition->HasBreakpoint;
+            const auto Red = CkStyle::Err();
+            const auto Hollow = CkStyle::OverlayOf(Red, 0.25f);
+            const auto Size = ck_sm_debugger_axes::Get_IndicatorSize();
+            const auto Extent = Geo.GetLocalSize();
+            const auto Square = [&](const FVector2f Pos, const bool bDiamond, const FLinearColor& Color)
+            {
+                if (bDiamond) DrawDiamond(Out, Layer + 1, Geo, Pos + FVector2f(Size * 0.5f), Size, Color);
+                else DrawSquare(Out, Layer + 1, Geo, Pos, Size, Color);
+            };
+            switch (_Style)
+            {
+            case 0: if (bSet) Square(FVector2f(Extent.X - Size, 0), false, Red); break;
+            case 1: if (bSet) Square(FVector2f::ZeroVector, false, Red); break;
+            case 2: if (bSet) Square(FVector2f(Extent.X - Size, 0), true, Red); break;
+            case 3: if (bSet) Square(FVector2f::ZeroVector, true, Red); break;
+            case 4: Square(FVector2f(Extent.X - Size, 0), true, bSet ? Red : Hollow); break;
+            case 5: Square(FVector2f::ZeroVector, true, bSet ? Red : Hollow); break;
+            case 6: Square(FVector2f(Extent.X - Size, Extent.Y - Size), true, bSet ? Red : Hollow); break;
+            case 7: Square(FVector2f(Extent.X - Size, 0), false, bSet ? Red : Hollow); break;
+            case 8:
+                if (bSet) DrawSquare(Out, Layer + 1, Geo, FVector2f::ZeroVector,
+                                     FMath::Min(Extent.X, Extent.Y),
+                                     CkStyle::OverlayOf(Red, FMath::Clamp(0.35f * ck_sm_debugger_axes::Get_NodeDimScale(), 0.05f, 1.0f)));
+                break;
+            default: break;
+            }
+            return Layer + 2;
+        }
+
+        auto PaintState(const FCkSmRuntimeGraphCardPresentation& P, const FGeometry& Geo,
+                        FSlateWindowElementList& Out, const int32 Layer) const -> int32
+        {
+            if (NOT P.Node.State || _Style < 0 || _Style > 21)
+            {
+                return Layer;
+            }
+            const auto bEntry = P.Node.State->HasEntryBreakpoint;
+            const auto bExit = P.Node.State->HasExitBreakpoint;
+            if (NOT bEntry && NOT bExit) return Layer;
+            const auto Red = CkStyle::Err();
+            const auto Bg = CkStyle::NodeFill_Inactive();
+            const auto Faded = CkStyle::OverlayOf(Red, 0.4f);
+            const auto Extent = Geo.GetLocalSize(); const float W = Extent.X, H = Extent.Y, CY = H * .5f;
+            constexpr float S=10, O=12, G=2, Pad=4;
+            const auto C = [&](FVector2f Pos, float Z, FLinearColor X) { DrawCircle(Out, Layer + 1, Geo, Pos, Z, X); };
+            const auto HC = [&](FVector2f Pos, float Z) { DrawHollowCircle(Out, Layer + 1, Geo, Pos, Z, Red, Bg); };
+            const auto SQ = [&](FVector2f Pos, float Z, FLinearColor X) { DrawSquare(Out, Layer + 1, Geo, Pos, Z, X); };
+            const auto HS = [&](FVector2f Pos, float Z) { DrawHollowSquare(Out, Layer + 1, Geo, Pos, Z, Red, Bg); };
+            switch (_Style)
+            {
+            case 0: { float X=W-S+Pad; if(bEntry){C({X,-S*.5f},S,Red);X-=S+G;} if(bExit)HC({X,-O*.5f},O); } break;
+            case 1: { float X=-Pad; if(bEntry){C({X,-S*.5f},S,Red);X+=S+G;} if(bExit)HC({X,-O*.5f},O); } break;
+            case 2: { float X=W-S+Pad; if(bEntry){C({X,H-S*.5f},S,Red);X-=S+G;} if(bExit)HC({X,H-O*.5f},O); } break;
+            case 3: { float X=-Pad; if(bEntry){C({X,H-S*.5f},S,Red);X+=S+G;} if(bExit)HC({X,H-O*.5f},O); } break;
+            case 4: { float X=W+Pad; if(bEntry){C({X,CY-S*.5f},S,Red);X+=S+G;} if(bExit)HC({X,CY-O*.5f},O); } break;
+            case 5: { float X=-(S+Pad); if(bExit){X-=O+G;HC({X+O+G,CY-O*.5f},O);} if(bEntry)C({X,CY-S*.5f},S,Red); } break;
+            case 6: { float X=(W-(bEntry?S:0)-(bExit?O:0)-((bEntry&&bExit)?G:0))*.5f; if(bEntry){C({X,-(S+Pad)},S,Red);X+=S+G;}if(bExit)HC({X,-(O+Pad)},O); } break;
+            case 7: { float X=(W-(bEntry?S:0)-(bExit?O:0)-((bEntry&&bExit)?G:0))*.5f; if(bEntry){C({X,H+Pad},S,Red);X+=S+G;}if(bExit)HC({X,H+Pad},O); } break;
+            case 8: case 9: { float X=_Style==8?W+Pad:-(FMath::Max(S,O)+Pad); float Y=CY-((bEntry&&bExit)?S+G*.5f:S*.5f); if(bEntry){C({X,Y},S,Red);Y+=S+G;}if(bExit)HC({X,Y},O); } break;
+            case 10: case 11:
+            {
+                const float X = _Style == 10 ? -6.0f : W + 3.0f;
+                if (bEntry) DrawRect(Out, Layer + 1, Geo, FVector2f(X, 0), FVector2f(3, H), Red);
+                if (bExit) for (int32 I = 0; I < 3; ++I)
+                {
+                    const float BarX = _Style == 10 ? (bEntry ? -10.0f : -6.0f) : W + (bEntry ? 7.0f : 3.0f);
+                    const float SegmentHeight = (H - 4.0f) / 3.0f;
+                    DrawRect(Out, Layer + 1, Geo, FVector2f(BarX, 1.0f + I * SegmentHeight),
+                        FVector2f(3.0f, SegmentHeight - 2.0f), Red);
+                }
+            } break;
+            case 12: case 13:
+            {
+                const float Y = _Style == 12 ? -5.0f : H + 2.0f, Half = W * .5f;
+                if (bEntry) DrawRect(Out, Layer + 1, Geo, FVector2f(0, Y), FVector2f(Half, 3), Red);
+                if (bExit) DrawRect(Out, Layer + 1, Geo, FVector2f(Half, Y), FVector2f(Half, 3), Faded);
+            } break;
+            case 14: { float X=W-S+Pad; if(bEntry){SQ({X,-S*.5f},S,Red);X-=S+G;}if(bExit)HS({X,-O*.5f},O); } break;
+            case 15: { float X=W+Pad; if(bEntry){SQ({X,CY-S*.5f},S,Red);X+=S+G;}if(bExit)HS({X,CY-O*.5f},O); } break;
+            case 16: { float X=W-2; if(bEntry){DrawDiamond(Out,Layer+1,Geo,{X,-2},S,Red);X-=S+G+2;}if(bExit)DrawDiamond(Out,Layer+1,Geo,{X,-2},S,Faded); } break;
+            case 17: { float X=W+Pad+S*.5f; if(bEntry){DrawDiamond(Out,Layer+1,Geo,{X,CY},S,Red);X+=S+G;}if(bExit)DrawDiamond(Out,Layer+1,Geo,{X,CY},S,Faded); } break;
+            case 18: if(bEntry){SQ({-10,CY-4},8,Red);SQ({-6,CY-2},4,Red);}if(bExit){SQ({W+2,CY-4},8,Red);SQ({W+2,CY-2},4,Red);} break;
+            case 19:
+                if (bEntry) DrawRect(Out, Layer + 1, Geo, FVector2f(0, H + 3), FVector2f(W, 2), Red);
+                if (bExit) for (float X = 0; X < W; X += 9)
+                    DrawRect(Out, Layer + 1, Geo, FVector2f(X, bEntry ? H + 7 : H + 3), FVector2f(6, 2), Red);
+                break;
+            case 20: case 21: { const float Y=_Style==20?-6:H-8; if(bExit)HC({W-4,Y},14);if(bEntry)C({W-1,Y+3},8,Red); } break;
+            default: break;
+            }
+            return Layer + 3;
+        }
+
+        TWeakPtr<FCkSmRuntimeGraphCardPresentation> _Presentation;
+        int32 _Style = 0;
+        bool _bTransition = false;
+    };
 } // namespace ck_sm_runtime_graph
 
 void SCkSmRuntimeGraph::Construct(const FArguments& InArgs)
@@ -135,6 +323,8 @@ auto SCkSmRuntimeGraph::SetLayout(const FCkSmRuntimeGraphLayout& InParams) -> vo
         return;
     }
     _Layout = InParams;
+    _BreakpointStyle = InParams.StateBreakpointStyle;
+    _TransitionBreakpointStyle = InParams.TransitionBreakpointStyle;
     RebuildScene();
 }
 
@@ -243,6 +433,7 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
 
         auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
         StructureHash = HashCombine(StructureHash, GetTypeHash(_BreakpointStyle));
+        StructureHash = HashCombine(StructureHash, GetTypeHash(_TransitionBreakpointStyle));
         const auto* CachedHash = _CardStructureHashes.Find(Node.Id);
         auto Card = _CardCache.FindRef(Node.Id);
         if (NOT Card || CachedHash == nullptr || *CachedHash != StructureHash)
@@ -352,12 +543,6 @@ auto SCkSmRuntimeGraph::MakeCard(
 
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Transition)
     {
-        const auto BreakpointRed = CkStyle::Err();
-        const auto BreakpointHollow = CkStyle::OverlayOf(BreakpointRed, 0.25f);
-        const auto IndicatorSize = TAttribute<FOptionalSize>::CreateLambda([]()
-        {
-            return FOptionalSize{ck_sm_debugger_axes::Get_IndicatorSize()};
-        });
         // The editor transition node is a compact ColorSpill/Icon badge. Conditions belong to the
         // existing Details surface; retaining them here changed the graph topology and obscured wires.
         return SNew(SBox)
@@ -365,7 +550,8 @@ auto SCkSmRuntimeGraph::MakeCard(
             .HeightOverride(16.0f)
             [SNew(SOverlay)
              + SOverlay::Slot()[SNew(SImage)
-                                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.ColorSpill")))
+                                     .Image(FCkDebuggerStyle::Get().GetBrush(
+                                         TEXT("CkDebugger.Graph.TransitionNode.ColorSpill")))
                                     .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
                                     {
                                         const auto Presentation = WeakPresentation.Pin();
@@ -373,30 +559,13 @@ auto SCkSmRuntimeGraph::MakeCard(
                                                    ? CkStyle::Accent()
                                                    : CkStyle::TextStrong();
                                     })]
-             + SOverlay::Slot()[SNew(SImage)
-                                    .Image(FAppStyle::GetBrush(TEXT("Graph.TransitionNode.Icon")))]
-             + SOverlay::Slot()
-                   .HAlign(HAlign_Left)
-                   .VAlign(VAlign_Top)
-                       [SNew(SBox)
-                            .WidthOverride(IndicatorSize)
-                            .HeightOverride(IndicatorSize)
-                                [SNew(SBorder)
-                                     .BorderImage(FAppStyle::GetBrush(TEXT("WhiteBrush")))
-                                     .BorderBackgroundColor_Lambda(
-                                         [WeakPresentation,
-                                          BreakpointRed,
-                                          BreakpointHollow]() -> FSlateColor
-                                         {
-                                             const auto Presentation = WeakPresentation.Pin();
-                                             return Presentation && Presentation->Node.Transition
-                                                            && Presentation->Node.Transition->HasBreakpoint
-                                                        ? BreakpointRed
-                                                        : BreakpointHollow;
-                                         })
-                                     .RenderTransformPivot(FVector2D(0.5f, 0.5f))
-                                     .RenderTransform(
-                                         FSlateRenderTransform(FQuat2D(PI / 4.0)))]]];
+              + SOverlay::Slot()[SNew(SImage)
+                                     .Image(FCkDebuggerStyle::Get().GetBrush(
+                                         TEXT("CkDebugger.Graph.TransitionNode.Icon")))]
+              + SOverlay::Slot()[SNew(ck_sm_runtime_graph::SCkSmRuntimeBreakpointOverlay)
+                                     .Presentation(WeakPresentation)
+                                     .Style(_TransitionBreakpointStyle)
+                                     .bTransition(true)]];
     }
 
     auto Body = SNew(SVerticalBox);
@@ -683,12 +852,21 @@ auto SCkSmRuntimeGraph::MakeCard(
                 {
                     return CkStyle::NodeFill_Inactive();
                 }
-                return Presentation->Node.bCurrent || Presentation->Node.bScrubActive
-                           ? CkStyle::Ok()
-                           : (Presentation->Node.bPrevious
-                                      || Presentation->Node.bScrubExited
-                                  ? CkStyle::TextDim()
-                                  : CkStyle::NodeFill_Inactive());
+                if (Presentation->Node.bScrubActive)
+                {
+                    return CkStyle::Ok();
+                }
+                auto Border = CkStyle::NodeFill_Inactive();
+                if (Presentation->Node.bCurrent)
+                {
+                    Border = FMath::Lerp(Border,
+                                         CkStyle::Ok(),
+                                         Presentation->Node.BorderGlowAlpha);
+                    Border = FMath::Lerp(Border,
+                                         CkStyle::TextStrong(),
+                                         Presentation->Node.EntryPulseAlpha * 0.7f);
+                }
+                return Border;
             })
             .FillColorOverride_Lambda([WeakPresentation]()
             {
@@ -702,13 +880,17 @@ auto SCkSmRuntimeGraph::MakeCard(
             .OpacityOverride_Lambda([WeakPresentation]()
             {
                 const auto Presentation = WeakPresentation.Pin();
-                return Presentation
-                               && (Presentation->Node.bCurrent
-                                   || Presentation->Node.bScrubActive
-                                   || Presentation->Node.bPrevious
-                                   || Presentation->Node.bScrubExited)
-                           ? 1.0f
-                           : ck::debug_axes::Get_NodeInactiveOpacity();
+                if (NOT Presentation)
+                {
+                    return ck::debug_axes::Get_NodeInactiveOpacity();
+                }
+                if (Presentation->Node.bScrubActive || Presentation->Node.bScrubExited)
+                {
+                    return 1.0f;
+                }
+                return FMath::Lerp(ck::debug_axes::Get_NodeInactiveOpacity(),
+                                   1.0f,
+                                   Presentation->Node.CellGlowAlpha);
             })
             .BorderThickness_Lambda([]()
             {
@@ -737,6 +919,15 @@ auto SCkSmRuntimeGraph::MakeCard(
         return FText::GetEmpty();
     }));
     _StatePills.Add(InNode.Id, Pill);
+    if (NOT bUseInlineBreakpoints)
+    {
+        return SNew(SOverlay)
+            + SOverlay::Slot()[Card]
+            + SOverlay::Slot()[SNew(ck_sm_runtime_graph::SCkSmRuntimeBreakpointOverlay)
+                                   .Presentation(WeakPresentation)
+                                   .Style(_BreakpointStyle)
+                                   .bTransition(false)];
+    }
     return Card;
 }
 

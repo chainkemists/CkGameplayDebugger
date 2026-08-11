@@ -125,6 +125,44 @@ namespace ck_goap_runtime_graph
         return FVector2D{Width, FMath::Max(Height, 60.0f)};
     }
 
+    auto MeasureGoalNode(const TArray<FCkGoapDebugger_Condition>& Conditions) -> FVector2D
+    {
+        if (NOT FSlateApplication::IsInitialized())
+        {
+            return FVector2D{200.0f, NodeHeight};
+        }
+        const auto FontMeasure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+        const auto HeaderFont = ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize());
+        const auto RowFont = ck::debug_axes::ScaledFont("Regular", CkStyle::NodeMetaFontSize());
+        const auto MeasureWidth = [&FontMeasure](const FString& Text, const FSlateFontInfo& Font)
+        {
+            return static_cast<float>(FontMeasure->Measure(Text, Font).X);
+        };
+        const auto MeasureHeight = [&FontMeasure](const FString& Text, const FSlateFontInfo& Font)
+        {
+            return static_cast<float>(FontMeasure->Measure(Text, Font).Y);
+        };
+
+        const float Chrome = 2.0f * ck::debug_axes::Get_NodeBorderThickness() +
+                             2.0f * CkStyle::SpaceM * ck_goap_debugger_axes::Get_NodePaddingScale();
+        float ContentWidth = MeasureWidth(TEXT("◆ Goal"), HeaderFont);
+        float RowsHeight = 0.0f;
+        for (const auto& Condition : Conditions)
+        {
+            const FString Text = FString::Printf(TEXT("%s = %s"),
+                                                  *TagLeaf(Condition.Key),
+                                                  Condition.Value ? TEXT("true") : TEXT("false"));
+            ContentWidth = FMath::Max(ContentWidth, MeasureWidth(Text, RowFont));
+            RowsHeight += MeasureHeight(Text, RowFont) + 2.0f;
+        }
+        const float Height = 2.0f * ck::debug_axes::Get_NodeBorderThickness() +
+                             2.0f * CkStyle::SpaceS * ck_goap_debugger_axes::Get_NodePaddingScale() +
+                             MeasureHeight(TEXT("◆ Goal"), HeaderFont) +
+                             (Conditions.IsEmpty() ? 0.0f : CkStyle::SpaceS + RowsHeight);
+        return FVector2D{FMath::Clamp(ContentWidth + Chrome, NodeWidth, NodeMaxWidth),
+                         FMath::Max(Height, 60.0f)};
+    }
+
 } // namespace ck_goap_runtime_graph
 
 auto FCkGoapRuntimeGraphModel::ComputeTopologyHash(const FCkGoapDebugger_PlannerInfo& InPlanner)
@@ -342,7 +380,7 @@ auto FCkGoapRuntimeGraphModel::Rebuild(const FCkGoapDebugger_PlannerInfo& InPlan
         Node->GoalOwnerName = Owner;
         Node->GoalConditions = *Goal;
         Node->Position = FVector2D{LayerX[MaxLayer + 1] + GoalGap, NodeMinY};
-        Node->Size.X = 200.0f;
+        Node->Size = MeasureGoalNode(Node->GoalConditions);
         _Nodes.Add(Node);
         for (int32 I = 0; I < Catalog.Num(); ++I)
             for (const auto& E : Catalog[I]->Effects)
@@ -356,8 +394,8 @@ auto FCkGoapRuntimeGraphModel::Rebuild(const FCkGoapDebugger_PlannerInfo& InPlan
 }
 
 auto FCkGoapRuntimeGraphModel::UpdateRuntimeState(const FCkGoapDebugger_PlannerInfo& InPlanner,
-                                                  const FCk_Handle_Goap_Action& InSelectedAction)
-    -> void
+                                                   const FCk_Handle_Goap_Action& InSelectedAction)
+    -> bool
 {
     using namespace ck_goap_runtime_graph;
     TArray<const FCkGoapDebugger_ActionInfo*> Catalog;
@@ -373,6 +411,7 @@ auto FCkGoapRuntimeGraphModel::UpdateRuntimeState(const FCkGoapDebugger_PlannerI
     {
         Steps.Add(Name, Step++);
     }
+    auto SceneStateChanged = false;
     for (const auto& Node : _Nodes)
     {
         Node->WorldState.Reset();
@@ -386,12 +425,125 @@ auto FCkGoapRuntimeGraphModel::UpdateRuntimeState(const FCkGoapDebugger_PlannerI
         {
             Node->Action = *Current;
         }
-        Node->PlanStepIndex = Steps.FindRef(Node->Action.ClassName);
-        Node->IsInPlan = Node->PlanStepIndex > 0;
+        const int32 NewPlanStep = Steps.FindRef(Node->Action.ClassName);
+        const bool NewInPlan = NewPlanStep > 0;
         Node->IsSelected = ck::IsValid(InSelectedAction) && Node->Action.Handle == InSelectedAction;
-        Node->IsFailureBlocked = Node->Action.PlanStatus == ECk_GoapPlanStatus::PlanFailed &&
-                                 (Node->Action.Role == ECkGoapDebugger_ActionRole::Leaf ||
-                                  Node->Action.Role == ECkGoapDebugger_ActionRole::Mid);
+        const bool NewFailureBlocked = Node->Action.PlanStatus == ECk_GoapPlanStatus::PlanFailed &&
+                                       (Node->Action.Role == ECkGoapDebugger_ActionRole::Leaf ||
+                                        Node->Action.Role == ECkGoapDebugger_ActionRole::Mid);
+        SceneStateChanged |= Node->IsInPlan != NewInPlan ||
+                             Node->IsFailureBlocked != NewFailureBlocked;
+        Node->PlanStepIndex = NewPlanStep;
+        Node->IsInPlan = NewInPlan;
+        Node->IsFailureBlocked = NewFailureBlocked;
+    }
+    return SceneStateChanged;
+}
+
+auto FCkGoapRuntimeGraphModel::Relayout(int32 InNameDepth) -> void
+{
+    using namespace ck_goap_runtime_graph;
+    auto Actions = TArray<TSharedPtr<FCkGoapRuntimeGraphNode>>{};
+    TSharedPtr<FCkGoapRuntimeGraphNode> Goal;
+    for (const auto& Node : _Nodes)
+    {
+        if (Node->Kind == ECkGoapRuntimeGraphNodeKind::Action)
+        {
+            Actions.Add(Node);
+        }
+        else
+        {
+            Goal = Node;
+        }
+    }
+
+    auto Producers = TMap<FGameplayTag, TArray<int32>>{};
+    for (int32 Index = 0; Index < Actions.Num(); ++Index)
+    {
+        for (const auto& Effect : Actions[Index]->Action.Effects)
+        {
+            Producers.FindOrAdd(Effect.Key).Add(Index);
+        }
+    }
+    auto Layers = TArray<int32>{};
+    Layers.Init(-1, Actions.Num());
+    bool HasCycle = false;
+    auto Resolve = [&](auto&& Self, int32 Index) -> int32
+    {
+        if (Layers[Index] >= 0) return Layers[Index];
+        if (Layers[Index] == -2)
+        {
+            HasCycle = true;
+            return 0;
+        }
+        Layers[Index] = -2;
+        int32 Layer = 0;
+        for (const auto& Precondition : Actions[Index]->Action.Preconditions)
+        {
+            if (const auto* Found = Producers.Find(Precondition.Key))
+            {
+                for (const int32 Producer : *Found)
+                {
+                    if (Producer != Index)
+                    {
+                        Layer = FMath::Max(Layer, Self(Self, Producer) + 1);
+                    }
+                }
+            }
+        }
+        return Layers[Index] = Layer;
+    };
+    for (int32 Index = 0; Index < Actions.Num(); ++Index)
+    {
+        Resolve(Resolve, Index);
+    }
+    if (HasCycle)
+    {
+        for (int32 Index = 0; Index < Layers.Num(); ++Index)
+        {
+            Layers[Index] = Index;
+        }
+    }
+    int32 MaxLayer = -1;
+    for (const int32 Layer : Layers)
+    {
+        MaxLayer = FMath::Max(MaxLayer, Layer);
+    }
+    auto LayerWidths = TArray<float>{};
+    LayerWidths.Init(NodeWidth, MaxLayer + 1);
+    auto LayerHeights = TArray<float>{};
+    LayerHeights.Init(0.0f, MaxLayer + 1);
+    for (int32 Index = 0; Index < Actions.Num(); ++Index)
+    {
+        Actions[Index]->Size = MeasureNode(Actions[Index]->Action, InNameDepth);
+        const int32 Layer = Layers[Index];
+        LayerWidths[Layer] = FMath::Max(LayerWidths[Layer], static_cast<float>(Actions[Index]->Size.X));
+        LayerHeights[Layer] += static_cast<float>(Actions[Index]->Size.Y) + VertGap;
+    }
+    for (float& Height : LayerHeights)
+    {
+        Height = FMath::Max(Height - VertGap, 0.0f);
+    }
+    auto LayerX = TArray<float>{};
+    LayerX.Init(NodeMinX, MaxLayer + 2);
+    for (int32 Layer = 1; Layer <= MaxLayer + 1; ++Layer)
+    {
+        LayerX[Layer] = LayerX[Layer - 1] +
+                        LayerWidths[FMath::Min(Layer - 1, MaxLayer)] + HorzGap;
+    }
+    auto LayerY = TArray<float>{};
+    LayerY.SetNumZeroed(MaxLayer + 1);
+    for (int32 Index = 0; Index < Actions.Num(); ++Index)
+    {
+        const int32 Layer = Layers[Index];
+        Actions[Index]->Position = FVector2D{LayerX[Layer],
+                                             NodeMinY + LayerY[Layer] - LayerHeights[Layer] / 2.0f};
+        LayerY[Layer] += static_cast<float>(Actions[Index]->Size.Y) + VertGap;
+    }
+    if (Goal.IsValid())
+    {
+        Goal->Size = MeasureGoalNode(Goal->GoalConditions);
+        Goal->Position = FVector2D{LayerX[MaxLayer + 1] + GoalGap, NodeMinY};
     }
 }
 

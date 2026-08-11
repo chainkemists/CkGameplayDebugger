@@ -32,6 +32,10 @@ struct FCkSmRuntimeGraphNode
     bool bHasOverride = false;
     bool bFullyEventDriven = false;
     bool bExpandTasks = true;
+    // Retained-card presentation only. These never affect topology or widget identity.
+    float EntryPulseAlpha = 0.0f;
+    float BorderGlowAlpha = 0.0f;
+    float CellGlowAlpha = 0.0f;
     TSharedPtr<FCkSmDebugger_StateInfo> State;
     TSharedPtr<FCkSmDebugger_TransitionInfo> Transition;
 };

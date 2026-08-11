@@ -55,9 +55,14 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     // segment count actually present in the current snapshot.
     auto Get_MaxNameDepth() const -> int32;
 
+    // Recomputes fixed canvas geometry after an axis revision while preserving
+    // the graph model, selection, viewport transform, and cached card widgets.
+    auto Refresh_ForStyleChange() -> void;
+
   private:
     auto BuildHeader() -> TSharedRef<SWidget>;
     auto OnGraphSelectionChanged(const TSet<uint64>& InSelection) -> void;
+    auto OnGraphNodeMoved(uint64 InNodeId, const FVector2D& InPosition) -> void;
     auto RebuildCanvasScene() -> void;
     auto Request_SetHideDimmed(bool InHideDimmed) -> void;
 
@@ -67,6 +72,8 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     TSharedPtr<FCkGoapRuntimeGraphModel> _Graph;
     TSharedPtr<SCkDebug_GraphCanvas> _GraphCanvas;
     TSharedPtr<SCkDebug_SelectableLabel> _HeaderText;
+    TMap<uint64, TSharedPtr<SWidget>> _CardWidgets;
+    TMap<uint64, FVector2D> _NodePositionOverrides;
 
     FDelegateHandle _OnChangedHandle;
 

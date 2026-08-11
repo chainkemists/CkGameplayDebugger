@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Animation/CurveSequence.h"
 #include "Widgets/SPanel.h"
 
 // =====================================================================================================================
@@ -72,6 +73,7 @@ struct FCkDebug_GraphCanvasEdgeGeometry
 
 DECLARE_DELEGATE_OneParam(FOnCkDebug_GraphCanvasSelectionChanged, const TSet<uint64>&);
 DECLARE_DELEGATE_OneParam(FOnCkDebug_GraphCanvasNodeDoubleClicked, uint64);
+DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasNodeMoved, uint64, const FVector2D&);
 DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasNodeContextMenu, uint64, const FPointerEvent&);
 DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasBackgroundContextMenu,
                            const FVector2D&,
@@ -85,7 +87,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     SCkDebug_GraphCanvas();
 
     SLATE_BEGIN_ARGS(SCkDebug_GraphCanvas)
-        : _MinZoom(0.25f), _MaxZoom(3.0f), _FitPadding(32.0f), _AllowNodeDragging(false)
+        : _MinZoom(0.10f), _MaxZoom(2.0f), _FitPadding(32.0f), _AllowNodeDragging(false)
     {
     }
     SLATE_ARGUMENT(float, MinZoom)
@@ -94,6 +96,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     SLATE_ARGUMENT(bool, AllowNodeDragging)
     SLATE_EVENT(FOnCkDebug_GraphCanvasSelectionChanged, OnSelectionChanged)
     SLATE_EVENT(FOnCkDebug_GraphCanvasNodeDoubleClicked, OnNodeDoubleClicked)
+    SLATE_EVENT(FOnCkDebug_GraphCanvasNodeMoved, OnNodeMoved)
     SLATE_EVENT(FOnCkDebug_GraphCanvasNodeContextMenu, OnNodeContextMenu)
     SLATE_EVENT(FOnCkDebug_GraphCanvasBackgroundContextMenu, OnBackgroundContextMenu)
     SLATE_END_ARGS()
@@ -194,8 +197,20 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
                    FSlateWindowElementList& OutDrawElements,
                    int32 InLayerId) const -> void;
     auto Draw_Marquee(const FGeometry& InGeometry,
-                      FSlateWindowElementList& OutDrawElements,
-                      int32 InLayerId) const -> void;
+                       FSlateWindowElementList& OutDrawElements,
+                       int32 InLayerId) const -> void;
+    auto Draw_MarqueePreview(FSlateWindowElementList& OutDrawElements, int32 InLayerId) const -> void;
+    auto Draw_Background(const FGeometry& InGeometry,
+                         FSlateWindowElementList& OutDrawElements,
+                         int32 InLayerId) const -> int32;
+    auto Draw_ZoomLabel(const FGeometry& InGeometry,
+                        FSlateWindowElementList& OutDrawElements,
+                        int32 InLayerId) const -> void;
+    auto Get_MarqueeSelection() const -> TSet<uint64>;
+    auto Get_LegacyZoomLevel(float InZoom) const -> int32;
+    auto Apply_LegacyZoom(int32 InZoomDelta,
+                          const FVector2D& InLocalZoomOrigin,
+                          bool bInAllowFullRange) -> void;
 
   private:
     TPanelChildren<FSlot> _Children;
@@ -210,6 +225,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
 
     FOnCkDebug_GraphCanvasSelectionChanged _OnSelectionChanged;
     FOnCkDebug_GraphCanvasNodeDoubleClicked _OnNodeDoubleClicked;
+    FOnCkDebug_GraphCanvasNodeMoved _OnNodeMoved;
     FOnCkDebug_GraphCanvasNodeContextMenu _OnNodeContextMenu;
     FOnCkDebug_GraphCanvasBackgroundContextMenu _OnBackgroundContextMenu;
 
@@ -217,11 +233,17 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     bool _IsMarqueeSelecting = false;
     bool _IsDraggingNodes = false;
     bool _PanWasDragged = false;
+    bool _NodeDragExceededDeadZone = false;
     FVector2D _PointerDownLocal = FVector2D::ZeroVector;
     FVector2D _PanStart = FVector2D::ZeroVector;
     uint64 _ContextNodeId = 0;
+    uint8 _MarqueeOperation = 0;
     TSet<uint64> _MarqueeBaseSelection;
+    TSet<uint64> _MarqueePreviewSelection;
     FVector2D _NodeDragStartWorld = FVector2D::ZeroVector;
     TMap<uint64, FVector2D> _NodeDragStartPositions;
+    uint64 _DraggedNodeId = 0;
+    int32 _LegacyZoomLevel = 12;
+    FCurveSequence _ZoomLevelFade;
     uint64 _HoveredNodeId = 0;
 };

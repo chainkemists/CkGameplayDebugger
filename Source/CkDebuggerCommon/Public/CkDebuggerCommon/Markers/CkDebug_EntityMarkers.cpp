@@ -3,6 +3,7 @@
 #include "CkCore/Debug/CkDebugDraw_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Fragment.h"
 #include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
 
@@ -115,6 +116,9 @@ auto
     if (ck::Is_NOT_Valid(TransientEntity))
     { return 0; }
 
+    if (InParams.TargetMatch)
+    { return DoGather_Targeted(TransientEntity, InParams); }
+
     const auto MaxDepth     = ck::DebugMarkers::Get_MaxDepth();
     const auto CullRadiusSq = InParams.CullRadius * InParams.CullRadius;
 
@@ -208,6 +212,117 @@ auto
         _EntryNums.Add(Entry.EntityNum);
         _Entries.Add(MoveTemp(Entry));
     });
+
+    return _Entries.Num();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkDebug_EntityMarkers::
+    DoGather_Targeted(
+        const FCk_Handle&    InTransientEntity,
+        const FGatherParams& InParams)
+    -> int32
+{
+    // ---- Phase A: every live entity accepted by the predicate ----
+    // Iterated via FFragment_LifetimeOwner (present on every created entity),
+    // NOT FFragment_Transform — the matched feature may live on a
+    // transform-less sub-entity whose ancestors are what the user sees.
+    auto Matches = TArray<FCk_Handle>{};
+    auto MutableTransient = InTransientEntity;
+    MutableTransient.View<ck::FFragment_LifetimeOwner, CK_IGNORE_PENDING_KILL>().ForEach(
+    [&](FCk_Entity InEntity, const ck::FFragment_LifetimeOwner&)
+    {
+        const auto Handle = ck::MakeHandle(InEntity, InTransientEntity);
+        if (ck::Is_NOT_Valid(Handle))
+        { return; }
+
+        if (Handle.Has<ck::FFragment_Pmg_DebugShape_Common>())
+        { return; }
+
+        if (NOT InParams.TargetMatch(Handle))
+        { return; }
+
+        Matches.Add(Handle);
+    });
+
+    // ---- Phase B: include set = each match's owner chain up to its representative root ----
+    // Representative = top-most ancestor that is neither the transient root nor
+    // an ActorRelay entity (raw relay check — the user setting only affects depth
+    // counting, not what the NPC-level representative is).
+    auto IncludedByNum = TMap<uint32, FCk_Handle>{};
+    for (const auto& Match : Matches)
+    {
+        auto Chain = TArray<FCk_Handle>{};
+        Chain.Add(Match);
+
+        auto Owner          = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Match);
+        auto WalkIterations = 0;
+        while (ck::IsValid(Owner) && NOT (Owner == InTransientEntity) && WalkIterations < MaxDepthWalk)
+        {
+            ++WalkIterations;
+            Chain.Add(Owner);
+            Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Owner);
+        }
+
+        while (Chain.Num() > 1 && ck::DebugDepthTransparency::Get_IsRelayEntity(Chain.Last()))
+        { Chain.Pop(); }
+
+        for (const auto& Node : Chain)
+        { IncludedByNum.Add(static_cast<uint32>(Node.Get_Entity().Get_EntityNumber()), Node); }
+    }
+
+    // ---- Phase C: emit entries for included, transform-bearing nodes ----
+    const auto CullRadiusSq = InParams.CullRadius * InParams.CullRadius;
+    for (const auto& Kvp : IncludedByNum)
+    {
+        const auto& Handle = Kvp.Value;
+        if (NOT Handle.Has<ck::FFragment_Transform>())
+        { continue; }
+
+        const auto WorldPos = Handle.Get<ck::FFragment_Transform>().Get_Transform().GetLocation();
+
+        if (InParams.CullOrigin.IsSet() &&
+            FVector::DistSquared(WorldPos, InParams.CullOrigin.GetValue()) > CullRadiusSq)
+        { continue; }
+
+        if (InParams.Filter && NOT InParams.Filter(Handle))
+        { continue; }
+
+        // Depth + immediate owner — same walk as the unfiltered path (transparent
+        // owners advance the chain without counting), minus FullDepthRoots, which
+        // does not apply in target mode.
+        auto Depth          = 0;
+        auto OwnerEntityNum = MAX_uint32;
+        {
+            auto Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Handle);
+            if (ck::IsValid(Owner) && NOT (Owner == InTransientEntity))
+            {
+                OwnerEntityNum = static_cast<uint32>(Owner.Get_Entity().Get_EntityNumber());
+            }
+            auto WalkIterations = 0;
+            while (ck::IsValid(Owner) && NOT (Owner == InTransientEntity) && WalkIterations < MaxDepthWalk)
+            {
+                ++WalkIterations;
+
+                if (NOT ck::DebugDepthTransparency::Get_IsTransparentOwner(Owner))
+                { ++Depth; }
+
+                Owner = UCk_Utils_EntityLifetime_UE::Get_LifetimeOwner(Owner);
+            }
+        }
+
+        auto Entry           = FEntry{};
+        Entry.Entity         = Handle;
+        Entry.WorldPos       = WorldPos;
+        Entry.Depth          = Depth;
+        Entry.EntityNum      = Kvp.Key;
+        Entry.OwnerEntityNum = OwnerEntityNum;
+
+        _EntryNums.Add(Entry.EntityNum);
+        _Entries.Add(MoveTemp(Entry));
+    }
 
     return _Entries.Num();
 }

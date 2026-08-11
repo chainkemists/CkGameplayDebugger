@@ -8,7 +8,7 @@
 
 // ====================================================================================================================
 
-UCLASS(config=EditorPerProjectUserSettings, meta=(DisplayName="Ck Debugger"))
+UCLASS(config=GameUserSettings, meta=(DisplayName="Ck Debugger"))
 class CKDEBUGGERCOMMON_API UCkDebuggerSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
@@ -18,6 +18,12 @@ public:
 	{
 		CategoryName = TEXT("Ck");
 		SectionName = TEXT("Debugger");
+	}
+
+	virtual auto
+	GetContainerName() const -> FName override
+	{
+		return TEXT("Editor");
 	}
 
 	// ----------------------------------------------------------------------------------------------------------------

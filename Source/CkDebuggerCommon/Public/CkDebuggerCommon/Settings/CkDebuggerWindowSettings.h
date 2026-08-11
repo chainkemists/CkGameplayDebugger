@@ -5,8 +5,8 @@
 #include "CkDebuggerWindowSettings.generated.h"
 
 // ====================================================================================================================
-// Per-user (editor-local, NOT checked into source) settings that control when
-// each Ck debugger window may refresh. Read via GetDefault<>; write via
+// Per-user (NOT checked into source) settings that control when each Ck debugger
+// window may refresh in Editor and packaged developer tools. Read via GetDefault<>; write via
 // GetMutableDefault<> + SaveConfig().
 //
 // Two independent axes:
@@ -41,12 +41,17 @@ enum class ECkDebugger_RefreshRateCap : uint8
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Ck Debugger Windows"))
+UCLASS(Config = GameUserSettings, meta = (DisplayName = "Ck Debugger Windows"))
 class CKDEBUGGERCOMMON_API UCkDebuggerWindowSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
 public:
+	virtual auto
+	GetContainerName() const -> FName override
+	{
+		return TEXT("Editor");
+	}
 	virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
 	// ---- Global defaults ---------------------------------------------------

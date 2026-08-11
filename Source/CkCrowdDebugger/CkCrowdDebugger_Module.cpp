@@ -4,10 +4,12 @@
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkCrowdDebugger/Window/SCkCrowdDebuggerWindow.h"
+#include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
 
 #include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 
@@ -40,6 +42,8 @@ namespace
 
 void FCkCrowdDebuggerModule::StartupModule()
 {
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkCrowdDebuggerSettings>());
+
 	auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
 		_TabId,
 		FOnSpawnTab::CreateRaw(this, &FCkCrowdDebuggerModule::OnSpawnDebuggerTab))

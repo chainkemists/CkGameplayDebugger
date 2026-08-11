@@ -6,12 +6,17 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Ck Crowd Debugger"))
+UCLASS(Config = GameUserSettings, meta = (DisplayName = "Ck Crowd Debugger"))
 class CKCROWDDEBUGGER_API UCkCrowdDebuggerSettings : public UDeveloperSettings
 {
 	GENERATED_BODY()
 
 public:
+	virtual auto
+	GetContainerName() const -> FName override
+	{
+		return TEXT("Editor");
+	}
 	virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
 	UPROPERTY(Config, EditAnywhere, Category = "Viewport",

@@ -5,12 +5,12 @@
 #include "CkEcsDebuggerSettings.generated.h"
 
 // ====================================================================================================================
-// Per-user (editor-local) settings for the ECS debugger. Holds the persistent
+// Per-user settings for the ECS debugger. Holds the persistent
 // "always hide these entity types from the tree" list keyed by inspector ID.
 // Read via GetDefault<>; write via GetMutableDefault<> + SaveConfig().
 // ====================================================================================================================
 
-UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig, meta = (DisplayName = "Ck ECS Debugger"))
+UCLASS(Config = GameUserSettings, meta = (DisplayName = "Ck ECS Debugger"))
 class CKECSDEBUGGER_API UCkEcsDebuggerSettings : public UDeveloperSettings
 {
     GENERATED_BODY()
@@ -29,6 +29,11 @@ public:
         };
     }
 
+    virtual auto
+    GetContainerName() const -> FName override
+    {
+        return TEXT("Editor");
+    }
     virtual auto GetCategoryName() const -> FName override { return TEXT("CkGameplayDebugger"); }
 
     // Feature ids whose single-feature entities classify as INTERNAL (fold/rollup

@@ -88,11 +88,16 @@ remain (see Open issues).
   - Tear down handle-holding Slate on `FCoreDelegates::OnEnginePreExit`, NOT in `ShutdownModule`
     (too late — the registry's shared state is already freed). Canonical:
     `Source/CkEcsDebugger/CkEcsDebugger_Module.cpp:60-66,109-121`.
-- **Settings split** (commit `d607751`): per-user input keybinds live in
-  `UCk_DebugOverlay_InputSettings` (`Config=EditorPerProjectUserSettings`, Editor Preferences →
-  Ck — `Settings/CkDebugOverlay_Settings.h:136-143`); project visuals/layouts live in
+- **Settings split** (commit `d607751`, packaged persistence update 2026-08-11): per-user input
+  keybinds live in `UCk_DebugOverlay_InputSettings` (`Config=GameUserSettings`, still presented
+  under Editor Preferences → Ck through `GetContainerName()` —
+  `Settings/CkDebugOverlay_Settings.h`); project visuals/layouts live in
   `UCk_DebugOverlay_Settings` (`Config=Game, DefaultConfig`, Project Settings → Ck — same file
-  `:11-19`). New gesture keybinds go in the Input class, never the project class.
+  `:11-19`). The runtime store is per-user and available in packaged builds; editor startup imports
+  the old `EditorPerProjectUserSettings` section once when no runtime section exists. New gesture
+  keybinds go in the Input class, never the project class. The same storage/migration contract
+  covers common debugger style/window preferences, ECS filters, Crowd viewport preferences, and
+  EQS view toggles so Editor and packaged tools persist the same categories of user choice.
 - **DeveloperTool debuggers are not runtime dependencies**: game modules and the three Runtime
   modules here must never depend on them. Editor-only workspace-menu and `UnrealEd` dependencies
   stay behind `Target.bBuildEditor` / `WITH_EDITOR`; packaged windows use runtime Slate's global
@@ -110,9 +115,9 @@ remain (see Open issues).
 - Repo-root `README.md:11` is stale — it claims a Cog plugin dependency; Cog is gone (zero real
   references left in `Source/`; `Config/DefaultCkDebugger.ini:4-7` still redirects dead Cog-era
   classes, and `Content/CkEcsDebugger_WindowManager.uasset` is orphaned).
-- `[EDITOR-VERIFY]` Whether the overlay works in **packaged non-Shipping builds** is UNVERIFIED:
-  the module is Runtime and compiles in, but its keybinds are EditorPerProjectUserSettings, which
-  don't ship — open question for the maintainer.
+- `[PACKAGED-VERIFY]` The overlay module and its per-user `GameUserSettings` gestures now compile
+  into packaged non-Shipping builds, but the complete double-tap gesture and persistence workflow
+  still requires live packaged acceptance.
 
 ## Provenance and maintenance
 

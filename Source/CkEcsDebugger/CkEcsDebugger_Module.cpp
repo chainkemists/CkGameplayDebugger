@@ -5,6 +5,7 @@
 #include "CkEcsDebugger/FeatureFlags/CkEcsDebugger_FeatureFlags.h"
 #include "CkEcsDebugger/Window/CkDebuggerWindow_Main.h"
 #include "CkEcsDebugger/Models/CkDebuggerModel_EntitySelection.h"
+#include "CkEcsDebugger/Settings/CkEcsDebuggerSettings.h"
 #if WITH_EDITOR
     #include "CkEcsDebugger/Graph/CkEcsDebugGraphFactory.h"
 #endif
@@ -13,6 +14,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Misc/CoreDelegates.h"
@@ -52,6 +54,8 @@ static FAutoConsoleCommand CmdEcsDebugger(
 
 auto FCkEcsDebuggerModule::StartupModule() -> void
 {
+	ck::debugger_settings::Migrate_EditorUserSettingsIfNeeded(GetMutableDefault<UCkEcsDebuggerSettings>());
+
     // FCkDebuggerStyle now lives in (and is initialized by) CkDebuggerCommon — the whole
     // suite shares one style set, so a feature module must never Initialize/Shutdown it.
 

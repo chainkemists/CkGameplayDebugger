@@ -21,6 +21,7 @@ public class CkCrowdDebugger : CkModuleRules
 			"Slate",
 			"SlateCore",
 			"AppFramework",
+			"UMG",
 
 			"GameplayTags",
 			"NavigationSystem",

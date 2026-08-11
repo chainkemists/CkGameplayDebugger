@@ -1,22 +1,24 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 
-#if WITH_EDITOR
-
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
+#include "Components/Viewport.h"
 #include "DynamicMeshBuilder.h"
-#include "EditorModes.h"
-#include "EditorViewportClient.h"
 #include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "EngineGlobals.h"
 #include "HAL/IConsoleManager.h"
 #include "InputCoreTypes.h"
+#include "InputKeyEventArgs.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialRenderProxy.h"
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "PreviewScene.h"
+#include "SceneView.h"
+#include "SceneManagement.h"
+#include "Slate/SceneViewport.h"
 
 // KEPT LOCAL — every FLinearColor below this line is 3D SCENE paint pushed through an
 // FPrimitiveDrawInterface, not a Slate surface. Voxel layer fills, snapshot-status wire colours,
@@ -31,6 +33,30 @@
 
 namespace ck_crowd_debugger_3d_viewport
 {
+	class FDynamicColoredMaterialRenderProxy final : public FDynamicPrimitiveResource, public FColoredMaterialRenderProxy
+	{
+	public:
+		FDynamicColoredMaterialRenderProxy(
+			const FMaterialRenderProxy* InParent,
+			const FLinearColor& InColor)
+			: FColoredMaterialRenderProxy(InParent, InColor)
+		{}
+
+		virtual void InitPrimitiveResource(FRHICommandListBase&) override {}
+		virtual void ReleasePrimitiveResource() override { delete this; }
+	};
+
+	auto Get_FillMaterial() -> UMaterial*
+	{
+		if (GEngine == nullptr)
+		{ return nullptr; }
+#if WITH_EDITORONLY_DATA
+		if (GEngine->GeomMaterial != nullptr)
+		{ return GEngine->GeomMaterial; }
+#endif
+		return GEngine->DebugMeshMaterial;
+	}
+
 	constexpr int32 MaxImmediateBoxesPerLayer = 10000;
 	constexpr int32 AgentCapsuleSides = 16;
 	constexpr float MaxVelocityVectorLength = 250.0f;
@@ -219,27 +245,30 @@ namespace ck_crowd_debugger_3d_viewport
 
 // --------------------------------------------------------------------------------------------------------------------
 
-class FCkCrowdDebugger_3dViewportClient final : public FEditorViewportClient
+class FCkCrowdDebugger_3dViewportClient final : public FUMGViewportClient
 {
 public:
 	FCkCrowdDebugger_3dViewportClient(
 		FPreviewScene& InPreviewScene,
-		const TSharedRef<SEditorViewport>& InViewportWidget,
 		FOnCkCrowdDebugger_AgentPicked InOnAgentPicked)
-		: FEditorViewportClient(nullptr, &InPreviewScene, InViewportWidget)
+		: FUMGViewportClient(&InPreviewScene)
 		, _OnAgentPicked(MoveTemp(InOnAgentPicked))
 	{
 		EngineShowFlags.SetEyeAdaptation(false);
-		SetViewportType(LVT_Perspective);
+		SetBackgroundColor(FLinearColor::Black);
 		SetViewLocation(FVector(-1600.0, -1600.0, 1200.0));
 		SetViewRotation(FRotator(-25.0, 45.0, 0.0));
-		bSetListenerPosition = false;
-		SetRealtime(true);
 	}
 
-	virtual auto GetBackgroundColor() const -> FLinearColor override
+	using FViewElementDrawer::Draw;
+
+	auto Set_Viewport(const TSharedRef<FSceneViewport>& InViewport) -> void
+	{ _Viewport = InViewport; }
+
+	auto Invalidate() const -> void
 	{
-		return FLinearColor::Black;
+		if (const auto SceneViewport = _Viewport.Pin())
+		{ SceneViewport->Invalidate(); }
 	}
 
 	auto Set_Snapshot(const ck::voxelnav::FDebugSnapshot& InSnapshot) -> void
@@ -345,21 +374,22 @@ public:
 			return;
 		}
 
-		auto DesiredViewportType = LVT_Perspective;
+		ViewInfo.ProjectionMode = ECameraProjectionMode::Perspective;
+		auto DesiredRotation = FRotator(-25.0, 45.0, 0.0);
 		switch (InPreset)
 		{
-			case ECkCrowdDebugger_CameraPreset::Top:    DesiredViewportType = LVT_OrthoTop; break;
-			case ECkCrowdDebugger_CameraPreset::Bottom: DesiredViewportType = LVT_OrthoBottom; break;
-			case ECkCrowdDebugger_CameraPreset::Left:   DesiredViewportType = LVT_OrthoLeft; break;
-			case ECkCrowdDebugger_CameraPreset::Right:  DesiredViewportType = LVT_OrthoRight; break;
-			case ECkCrowdDebugger_CameraPreset::Front:  DesiredViewportType = LVT_OrthoFront; break;
-			case ECkCrowdDebugger_CameraPreset::Back:   DesiredViewportType = LVT_OrthoBack; break;
+			case ECkCrowdDebugger_CameraPreset::Top:    DesiredRotation = FRotator(-90.0, 0.0, 0.0); break;
+			case ECkCrowdDebugger_CameraPreset::Bottom: DesiredRotation = FRotator(90.0, 0.0, 0.0); break;
+			case ECkCrowdDebugger_CameraPreset::Left:   DesiredRotation = FRotator(0.0, 180.0, 0.0); break;
+			case ECkCrowdDebugger_CameraPreset::Right:  DesiredRotation = FRotator(0.0, 0.0, 0.0); break;
+			case ECkCrowdDebugger_CameraPreset::Front:  DesiredRotation = FRotator(0.0, -90.0, 0.0); break;
+			case ECkCrowdDebugger_CameraPreset::Back:   DesiredRotation = FRotator(0.0, 90.0, 0.0); break;
 			default: break;
 		}
 
-		SetViewportType(DesiredViewportType);
-		if (DesiredViewportType == LVT_Perspective)
-		{ SetViewRotation(FRotator(-25.0, 45.0, 0.0)); }
+		if (InPreset != ECkCrowdDebugger_CameraPreset::Perspective)
+		{ ViewInfo.ProjectionMode = ECameraProjectionMode::Orthographic; }
+		SetViewRotation(DesiredRotation);
 		FrameBounds(Get_AllFrameBounds());
 	}
 
@@ -374,38 +404,119 @@ public:
 			NOT InEventArgs.Viewport->KeyState(EKeys::RightMouseButton);
 		if (IsPlainLeftClick && _OnAgentPicked.IsBound())
 		{
-			const auto Cursor = GetCursorWorldLocationFromMousePos();
-			const auto PickedAgentIndex = PickAgent(Cursor.GetOrigin(), Cursor.GetDirection());
-			if (PickedAgentIndex.IsSet())
+			FVector RayOrigin;
+			FVector RayDirection;
+			if (GetCursorWorldRay(InEventArgs.Viewport, RayOrigin, RayDirection))
 			{
-				_OnAgentPicked.Execute(*PickedAgentIndex);
+				const auto PickedAgentIndex = PickAgent(RayOrigin, RayDirection);
+				if (PickedAgentIndex.IsSet())
+				{
+					_OnAgentPicked.Execute(*PickedAgentIndex);
+					return true;
+				}
+			}
+		}
+
+		if (InEventArgs.Event == IE_Pressed || InEventArgs.Event == IE_Repeat)
+		{
+			if (InEventArgs.Key == EKeys::F)
+			{
+				ApplyPreset(ECkCrowdDebugger_CameraPreset::FrameSelection);
+				return true;
+			}
+			if (InEventArgs.Key == EKeys::Home)
+			{
+				ApplyPreset(ECkCrowdDebugger_CameraPreset::FrameAll);
 				return true;
 			}
 		}
 
 		const auto IsMouseWheel = InEventArgs.Key == EKeys::MouseScrollUp ||
 			InEventArgs.Key == EKeys::MouseScrollDown;
-		const auto IsSpeedChange = IsPerspective() &&
+		const auto IsSpeedChange = ViewInfo.ProjectionMode == ECameraProjectionMode::Perspective &&
 			InEventArgs.Event == IE_Pressed &&
 			IsMouseWheel &&
 			InEventArgs.Viewport != nullptr &&
 			InEventArgs.Viewport->KeyState(EKeys::RightMouseButton);
 		if (IsSpeedChange)
 		{
-			auto SpeedSettings = GetCameraSpeedSettings();
-			const auto CurrentSpeed = SpeedSettings.GetCurrentSpeed();
 			const auto Direction = InEventArgs.Key == EKeys::MouseScrollDown ? -1.0f : 1.0f;
-			SpeedSettings.SetCurrentSpeed(CurrentSpeed + CurrentSpeed * 0.1f * Direction);
-			SetCameraSpeedSettings(SpeedSettings);
+			_CameraSpeed = FMath::Clamp(_CameraSpeed + _CameraSpeed * 0.1f * Direction, 0.00001f, 10000.0f);
 			return true;
 		}
 
-		return FEditorViewportClient::InputKey(InEventArgs);
+		if (IsMouseWheel && InEventArgs.Event == IE_Pressed)
+		{
+			Zoom(InEventArgs.Key == EKeys::MouseScrollUp ? 1.1f : 1.0f / 1.1f);
+			return true;
+		}
+
+		return InEventArgs.Key == EKeys::RightMouseButton || InEventArgs.Key == EKeys::MiddleMouseButton;
+	}
+
+	virtual auto InputAxis(const FInputKeyEventArgs& InEventArgs) -> bool override
+	{
+		if (InEventArgs.Viewport == nullptr || (InEventArgs.Key != EKeys::MouseX && InEventArgs.Key != EKeys::MouseY))
+		{ return false; }
+
+		const auto IsOrbiting = InEventArgs.Viewport->KeyState(EKeys::RightMouseButton);
+		const auto IsPanning = InEventArgs.Viewport->KeyState(EKeys::MiddleMouseButton);
+		if (NOT IsOrbiting && NOT IsPanning)
+		{ return false; }
+
+		if (IsOrbiting)
+		{
+			auto Rotation = GetViewRotation();
+			if (InEventArgs.Key == EKeys::MouseX) { Rotation.Yaw += InEventArgs.AmountDepressed * 0.25f; }
+			else { Rotation.Pitch = FMath::Clamp(Rotation.Pitch + InEventArgs.AmountDepressed * 0.25f, -89.0f, 89.0f); }
+			SetViewRotation(Rotation);
+			const auto Distance = (GetViewLocation() - GetLookAtLocation()).Size();
+			SetViewLocation(GetLookAtLocation() - Rotation.Vector() * FMath::Max(Distance, 1.0f));
+		}
+		else
+		{
+			const auto Distance = FMath::Max((GetViewLocation() - GetLookAtLocation()).Size(), 1.0f);
+			const auto PanScale = FMath::Clamp(_CameraSpeed / 1000.0f, 0.1f, 100.0f);
+			const auto Delta = InEventArgs.Key == EKeys::MouseX
+				? GetViewRotation().RotateVector(FVector::RightVector) * (-InEventArgs.AmountDepressed * Distance * 0.001f * PanScale)
+				: GetViewRotation().RotateVector(FVector::UpVector) * (InEventArgs.AmountDepressed * Distance * 0.001f * PanScale);
+			SetViewLocation(GetViewLocation() + Delta);
+			SetLookAtLocation(GetLookAtLocation() + Delta);
+		}
+		Invalidate();
+		return true;
+	}
+
+	auto Tick_Navigation(float InDeltaTime) -> void
+	{
+		const auto SceneViewport = _Viewport.Pin();
+		if (SceneViewport == nullptr || ViewInfo.ProjectionMode != ECameraProjectionMode::Perspective)
+		{ return; }
+
+		auto Direction = FVector::ZeroVector;
+		if (SceneViewport->KeyState(EKeys::W) || SceneViewport->KeyState(EKeys::Up))
+		{ Direction += GetViewRotation().Vector(); }
+		if (SceneViewport->KeyState(EKeys::S) || SceneViewport->KeyState(EKeys::Down))
+		{ Direction -= GetViewRotation().Vector(); }
+		if (SceneViewport->KeyState(EKeys::D) || SceneViewport->KeyState(EKeys::Right))
+		{ Direction += GetViewRotation().RotateVector(FVector::RightVector); }
+		if (SceneViewport->KeyState(EKeys::A) || SceneViewport->KeyState(EKeys::Left))
+		{ Direction -= GetViewRotation().RotateVector(FVector::RightVector); }
+		if (SceneViewport->KeyState(EKeys::E))
+		{ Direction += FVector::UpVector; }
+		if (SceneViewport->KeyState(EKeys::Q))
+		{ Direction -= FVector::UpVector; }
+		if (Direction.IsNearlyZero())
+		{ return; }
+
+		const auto Delta = Direction.GetSafeNormal() * _CameraSpeed * 32.0f * InDeltaTime;
+		SetViewLocation(GetViewLocation() + Delta);
+		SetLookAtLocation(GetLookAtLocation() + Delta);
+		Invalidate();
 	}
 
 	virtual void Draw(const FSceneView* InView, FPrimitiveDrawInterface* InPdi) override
 	{
-		FEditorViewportClient::Draw(InView, InPdi);
 		if (InPdi == nullptr)
 		{ return; }
 
@@ -436,6 +547,36 @@ public:
 	}
 
 private:
+	auto GetCursorWorldRay(
+		FViewport* InViewport,
+		FVector& OutRayOrigin,
+		FVector& OutRayDirection) const -> bool
+	{
+		if (InViewport == nullptr)
+		{ return false; }
+		const auto Size = InViewport->GetSizeXY();
+		if (Size.X <= 0 || Size.Y <= 0)
+		{ return false; }
+
+		auto Mouse = FIntPoint{};
+		InViewport->GetMousePos(Mouse);
+		auto ViewInitOptions = FSceneViewInitOptions{};
+		ViewInitOptions.SetViewRectangle(FIntRect(0, 0, Size.X, Size.Y));
+		ViewInitOptions.ViewOrigin = GetViewLocation();
+		ViewInitOptions.ViewRotationMatrix = FInverseRotationMatrix(GetViewRotation());
+		ViewInitOptions.ViewRotationMatrix = ViewInitOptions.ViewRotationMatrix * FMatrix(
+			FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+		const auto AspectRatioAxisConstraint = GetDefault<ULocalPlayer>()->AspectRatioAxisConstraint;
+		auto ProjectionViewInfo = ViewInfo;
+		FMinimalViewInfo::CalculateProjectionMatrixGivenView(
+			ProjectionViewInfo, AspectRatioAxisConstraint, InViewport, ViewInitOptions);
+		FSceneView::DeprojectScreenToWorld(
+			FVector2D(Mouse), ViewInitOptions.ViewRect,
+			ViewInitOptions.ViewRotationMatrix.InverseFast(), ViewInitOptions.ProjectionMatrix.InverseFast(),
+			OutRayOrigin, OutRayDirection);
+		return NOT OutRayDirection.IsNearlyZero();
+	}
+
 	auto PickAgent(const FVector& InOrigin, const FVector& InDirection) const -> TOptional<int32>
 	{
 		const auto RayDirection = InDirection.GetSafeNormal();
@@ -476,8 +617,47 @@ private:
 
 	auto FrameBounds(const FBox& InBounds) -> void
 	{
-		if (InBounds.IsValid != 0)
-		{ FocusViewportOnBox(InBounds, true); }
+		if (InBounds.IsValid == 0)
+		{ return; }
+
+		const auto Center = InBounds.GetCenter();
+		auto Radius = FMath::Max(InBounds.GetExtent().Size(), 10.0);
+		auto AspectRatio = 1.777777f;
+		if (const auto SceneViewport = _Viewport.Pin())
+		{
+			const auto Size = SceneViewport->GetSizeXY();
+			if (Size.X > 0 && Size.Y > 0)
+			{ AspectRatio = SceneViewport->GetDesiredAspectRatio(); }
+		}
+		if (ViewInfo.ProjectionMode == ECameraProjectionMode::Orthographic)
+		{
+			ViewInfo.OrthoWidth = Radius * 2.0f * FMath::Max(AspectRatio, 1.0f);
+			SetLookAtLocation(Center);
+			SetViewLocation(Center);
+		}
+		else
+		{
+			if (AspectRatio > 1.0f)
+			{ Radius *= AspectRatio; }
+			const auto Distance = Radius / FMath::Tan(FMath::DegreesToRadians(ViewInfo.FOV * 0.5f));
+			SetLookAtLocation(Center);
+			SetViewLocation(Center - GetViewRotation().Vector() * Distance);
+		}
+		Invalidate();
+	}
+
+	auto Zoom(float InFactor) -> void
+	{
+		if (ViewInfo.ProjectionMode == ECameraProjectionMode::Orthographic)
+		{
+			ViewInfo.OrthoWidth = FMath::Clamp(ViewInfo.OrthoWidth / InFactor, 10.0f, 1000000.0f);
+		}
+		else
+		{
+			const auto Delta = GetViewLocation() - GetLookAtLocation();
+			SetViewLocation(GetLookAtLocation() + Delta / InFactor);
+		}
+		Invalidate();
 	}
 
 	auto DrawAgents(FPrimitiveDrawInterface* InPdi) const -> void
@@ -517,7 +697,8 @@ private:
 
 	auto DrawNavmesh(const FSceneView* InView, FPrimitiveDrawInterface* InPdi) const -> void
 	{
-		if (_NavmeshTriangles.Num() < 3 || InView == nullptr || GEngine == nullptr || GEngine->GeomMaterial == nullptr)
+		const auto* FillMaterial = ck_crowd_debugger_3d_viewport::Get_FillMaterial();
+		if (_NavmeshTriangles.Num() < 3 || InView == nullptr || FillMaterial == nullptr)
 		{ return; }
 
 		auto MeshBuilder = FDynamicMeshBuilder{InView->GetFeatureLevel()};
@@ -553,8 +734,8 @@ private:
 		{ return; }
 
 		const auto NavmeshColor = FLinearColor{0.27f, 0.78f, 0.43f, 0.15f};
-		auto* MaterialProxy = new FDynamicColoredMaterialRenderProxy(
-			GEngine->GeomMaterial->GetRenderProxy(),
+		auto* MaterialProxy = new ck_crowd_debugger_3d_viewport::FDynamicColoredMaterialRenderProxy(
+			FillMaterial->GetRenderProxy(),
 			NavmeshColor);
 		InPdi->RegisterDynamicResource(MaterialProxy);
 		MeshBuilder.Draw(InPdi, FMatrix::Identity, MaterialProxy, SDPG_World, true, false);
@@ -602,7 +783,8 @@ private:
 				FirstEndHalfWidth);
 		}
 
-		if (Opacity <= UE_SMALL_NUMBER || InView == nullptr || GEngine == nullptr || GEngine->GeomMaterial == nullptr)
+		const auto* FillMaterial = ck_crowd_debugger_3d_viewport::Get_FillMaterial();
+		if (Opacity <= UE_SMALL_NUMBER || InView == nullptr || FillMaterial == nullptr)
 		{ return; }
 
 		auto MeshBuilder = FDynamicMeshBuilder{InView->GetFeatureLevel()};
@@ -693,8 +875,8 @@ private:
 		if (TriangleCount <= 0)
 		{ return; }
 
-		auto* MaterialProxy = new FDynamicColoredMaterialRenderProxy(
-			GEngine->GeomMaterial->GetRenderProxy(),
+		auto* MaterialProxy = new ck_crowd_debugger_3d_viewport::FDynamicColoredMaterialRenderProxy(
+			FillMaterial->GetRenderProxy(),
 			RibbonColor);
 		InPdi->RegisterDynamicResource(MaterialProxy);
 		MeshBuilder.Draw(InPdi, FMatrix::Identity, MaterialProxy, SDPG_Foreground, true, false);
@@ -750,7 +932,9 @@ private:
 	FBox _SelectedAgentBounds = FBox{ForceInit};
 	FVector _SelectedAgentPosition = FVector::ZeroVector;
 	FOnCkCrowdDebugger_AgentPicked _OnAgentPicked;
+	TWeakPtr<FSceneViewport> _Viewport;
 	uint64 _NavmeshGeometryRevision = MAX_uint64;
+	float _CameraSpeed = 1.0f;
 	bool _HasSnapshot = false;
 };
 
@@ -762,18 +946,18 @@ auto SCkCrowdDebugger_3dViewport::Construct(const FArguments& InArgs) -> void
 	_PreviewScene = MakeShared<FPreviewScene>(
 		FPreviewScene::ConstructionValues()
 			.SetCreateDefaultLighting(false)
-			.SetCreatePhysicsScene(false));
-	SEditorViewport::Construct(SEditorViewport::FArguments());
-}
-
-auto SCkCrowdDebugger_3dViewport::MakeEditorViewportClient() -> TSharedRef<FEditorViewportClient>
-{
-	check(_PreviewScene.IsValid());
+			.SetCreatePhysicsScene(false)
+			.SetEditor(false));
+	SViewport::FArguments ViewportArguments;
+	ViewportArguments.IgnoreTextureAlpha(false);
+	ViewportArguments.EnableBlending(false);
+	SViewport::Construct(ViewportArguments);
 	_ViewportClient = MakeShared<FCkCrowdDebugger_3dViewportClient>(
 		*_PreviewScene,
-		SharedThis(this),
 		_OnAgentPicked);
-	return _ViewportClient.ToSharedRef();
+	_SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
+	_ViewportClient->Set_Viewport(_SceneViewport.ToSharedRef());
+	SetViewportInterface(_SceneViewport.ToSharedRef());
 }
 
 auto SCkCrowdDebugger_3dViewport::Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot& InSnapshot) -> void
@@ -817,37 +1001,19 @@ auto SCkCrowdDebugger_3dViewport::Apply_CameraPreset(ECkCrowdDebugger_CameraPres
 	{ _ViewportClient->ApplyPreset(InPreset); }
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
-#else
-
-#include "Widgets/Text/STextBlock.h"
-
-auto SCkCrowdDebugger_3dViewport::Construct(const FArguments& InArgs) -> void
+auto SCkCrowdDebugger_3dViewport::Tick(
+	const FGeometry& InAllottedGeometry,
+	double InCurrentTime,
+	float InDeltaTime) -> void
 {
-	_OnAgentPicked = InArgs._OnAgentPicked;
-	ChildSlot
-	[
-		SNew(STextBlock)
-		.Text(FText::FromString(TEXT("The 3D Crowd viewport is editor-only; packaged builds retain the live lists and diagnostics.")))
-		.Justification(ETextJustify::Center)
-	];
+	SViewport::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+	if (_SceneViewport.IsValid())
+	{
+		_SceneViewport->Invalidate();
+	}
+	if (_ViewportClient.IsValid())
+	{
+		_ViewportClient->Tick_Navigation(InDeltaTime);
+		_ViewportClient->Tick(InDeltaTime);
+	}
 }
-
-auto SCkCrowdDebugger_3dViewport::Set_VoxelNavSnapshot(const ck::voxelnav::FDebugSnapshot&) -> void {}
-auto SCkCrowdDebugger_3dViewport::Clear_VoxelNavSnapshot() -> void {}
-
-auto SCkCrowdDebugger_3dViewport::Set_AgentSnapshots(
-	const TArray<FCkCrowdDebugger_AgentSnapshot>&,
-	const FCk_Handle&) -> void
-{}
-
-auto SCkCrowdDebugger_3dViewport::Set_NavmeshTriangles(const TArray<FVector>&, uint64) -> void {}
-
-auto SCkCrowdDebugger_3dViewport::Set_PathNetworkRibbons(
-	const TArray<FCkCrowdDebugger_PathNetworkRibbonSnapshot>&) -> void
-{}
-
-auto SCkCrowdDebugger_3dViewport::Apply_CameraPreset(ECkCrowdDebugger_CameraPreset) -> void {}
-
-#endif

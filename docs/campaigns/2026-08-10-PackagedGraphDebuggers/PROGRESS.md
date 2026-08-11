@@ -15,19 +15,25 @@
   state/transition/compound cards, details, history/scrub/timeline, runtime pause, Preview, and Test mode.
 - All four module descriptors are DeveloperTool and the launcher descriptor test expects Development cooked
   inclusion with Test and Shipping exclusion.
-- Static verification is clean: module JSON parses as 17 DeveloperTool + 3 Runtime, editor-only dependency
+- The full packaged-tool completion audit also closes three non-graph parity gaps: GOAP pause-on events pause the
+  selected packaged world, Crowd omits Editor Preview controls that cannot operate outside the Editor, and the ECS
+  dynamic-fragment inspector resolves cooked fragment/property/enum labels through CkDynamic's value-owned schema.
+- Static verification is clean: module JSON parses as 18 DeveloperTool + 3 Runtime, editor-only dependency
   surfaces are guarded, reflected graph classes remain UHT-visible, and `git diff --check` passes.
-- Development Editor and Win64 Development Game builds succeed through UnrealToolbox. Deterministic coverage
-  compiles in both targets; tests were not launched by explicit CTO instruction.
+- The previously published graph/runtime-view revision passed Development Editor and Win64 Development Game builds
+  through UnrealToolbox, plus a clean compile/cook/stage/pak/archive package. Tests were not launched by explicit CTO
+  instruction.
 
 ## In flight
 
-- Publishing the debugger commit and root gitlink on `feature/packaged-debugger-tools`.
+- Compiling the completion-audit fixes in Development Editor and Win64 Development Game, then publishing the
+  CkFoundation/CkGameplayDebugger commits and refreshed root gitlinks on `feature/packaged-debugger-tools`.
 
 ## Blockers
 
-- None for compilation. Matched Editor/package visual and interaction acceptance remains for the BM output.
+- None. The new completion-audit slice still requires compile evidence and matched Editor/package observation.
 
 ## Next step
 
-- Build packaged Development on the BM, open all four graph tools, and complete the matched visual/interaction checklist.
+- Build the completion-audit slice, refresh the package, and complete the matched visual/interaction checklist for the
+  high-risk tools before declaring exact parity complete.

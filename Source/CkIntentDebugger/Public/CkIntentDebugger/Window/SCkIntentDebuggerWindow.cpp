@@ -3,6 +3,7 @@
 #include "CkIntentDebugger/CkIntentDebugger_Module.h"
 
 #include "CkIntentDebugger/ViewModel/CkIntentDebugger_ViewModel.h"
+#include "CkIntentDebugger/Window/SCkIntentDebugger_DevicesPanel.h"
 #include "CkIntentDebugger/Window/SCkIntentDebugger_KeyStatePanel.h"
 #include "CkIntentDebugger/Window/SCkIntentDebugger_LayerStackPanel.h"
 #include "CkIntentDebugger/Window/SCkIntentDebugger_NearMissPanel.h"
@@ -17,7 +18,6 @@
 
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
-#include "CkDebuggerCommon/Widgets/SCkDebug_UnderlineTabs.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -31,7 +31,6 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
-#include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -42,9 +41,6 @@ namespace ck_intent_debugger_window
     constexpr auto PadS = 4.0f;
     constexpr auto PadM = 8.0f;
 
-    const auto TabId_KeyState = FName{TEXT("KeyState")};
-    const auto TabId_Resolution = FName{TEXT("Resolution")};
-    const auto TabId_NearMiss = FName{TEXT("NearMiss")};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -62,7 +58,6 @@ auto
     Register_WithGate();
 
     _ViewModel = MakeShared<FCkIntentDebugger_ViewModel>();
-    _ActiveTabId = ck_intent_debugger_window::TabId_KeyState;
 
     _ViewModelChangedHandle = _ViewModel->OnChanged.AddSP(
         this, &SCkIntentDebuggerWindow::HandleViewModelChanged);
@@ -143,115 +138,135 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 
+// Everything at once, no tabs, and EVERY boundary is a splitter handle — a fixed proportion is a proportion the
+// user cannot fix. The tables live under the layer stack because the stack is deep in a real game and shallow in
+// a gym; sharing its column is what keeps neither case wasteful. The splitters also keep every list at a bounded
+// height, which SListView needs.
 auto
     SCkIntentDebuggerWindow::
     Build_Body()
     -> TSharedRef<SWidget>
 {
-    auto Tabs = TArray<FCkDebug_UnderlineTabDesc>{};
-
-    Tabs.Add(FCkDebug_UnderlineTabDesc{
-        ck_intent_debugger_window::TabId_KeyState, FText::FromString(TEXT("Key / State"))});
-
-    Tabs.Add(FCkDebug_UnderlineTabDesc{
-        ck_intent_debugger_window::TabId_Resolution, FText::FromString(TEXT("Resolution table"))});
-
-    auto NearMissTab = FCkDebug_UnderlineTabDesc{
-        ck_intent_debugger_window::TabId_NearMiss, FText::FromString(TEXT("Near misses"))};
-
-    NearMissTab.CountText = TAttribute<FText>::CreateLambda([this]()
-    {
-        const auto* Layer = _ViewModel.IsValid() ? _ViewModel->TryGet_SelectedLayer() : nullptr;
-        return Layer != nullptr && NOT Layer->ScanDiagnostics.IsEmpty()
-            ? FText::AsNumber(Layer->ScanDiagnostics.Num())
-            : FText::GetEmpty();
-    });
-
-    NearMissTab.ShowWarnDot = TAttribute<bool>::CreateLambda([this]()
-    {
-        return _ViewModel.IsValid() && NOT _ViewModel->Get_Snapshot().ScanDiagnosticsEnabled;
-    });
-
-    Tabs.Add(MoveTemp(NearMissTab));
-
     return SNew(SSplitter)
         .Orientation(Orient_Horizontal)
 
-        + SSplitter::Slot().Value(0.32f)
+        + SSplitter::Slot().Value(0.30f)
         [
             SNew(SBorder)
                 .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
                 .BorderBackgroundColor(CkStyle::Bg2())
             [
-                SNew(SVerticalBox)
+                SNew(SSplitter)
+                    .Orientation(Orient_Vertical)
 
-                + SVerticalBox::Slot().AutoHeight()
+                + SSplitter::Slot().Value(0.40f)
                 [
-                    SNew(SCkDebug_SectionHeader)
-                        .Label(FText::FromString(TEXT("Layer stack")))
-                        .SubText(FText::FromString(TEXT("top-down · first Consume wins")))
-                        .Underline(true)
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SCkDebug_SectionHeader)
+                            .Label(FText::FromString(TEXT("Layer stack")))
+                            .SubText(FText::FromString(TEXT("top-down · first Consume wins")))
+                            .Underline(true)
+                    ]
+
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SAssignNew(_LayerStackPanel, SCkIntentDebugger_LayerStackPanel)
+                            .ViewModel(_ViewModel)
+                    ]
                 ]
 
-                + SVerticalBox::Slot().FillHeight(1.0f)
+                + SSplitter::Slot().Value(0.32f)
                 [
-                    SAssignNew(_LayerStackPanel, SCkIntentDebugger_LayerStackPanel)
-                        .ViewModel(_ViewModel)
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SCkDebug_SectionHeader)
+                            .Label(FText::FromString(TEXT("Resolution table")))
+                            .Underline(true)
+                    ]
+
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SAssignNew(_ResolutionPanel, SCkIntentDebugger_ResolutionPanel)
+                            .ViewModel(_ViewModel)
+                    ]
+                ]
+
+                + SSplitter::Slot().Value(0.28f)
+                [
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SCkDebug_SectionHeader)
+                            .Label(FText::FromString(TEXT("Near misses")))
+                            .Underline(true)
+                    ]
+
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SAssignNew(_NearMissPanel, SCkIntentDebugger_NearMissPanel)
+                            .ViewModel(_ViewModel)
+                    ]
                 ]
             ]
         ]
 
-        + SSplitter::Slot().Value(0.68f)
+        + SSplitter::Slot().Value(0.70f)
         [
-            SNew(SVerticalBox)
+            SNew(SSplitter)
+                .Orientation(Orient_Vertical)
 
-            + SVerticalBox::Slot().AutoHeight()
+            + SSplitter::Slot().Value(0.32f)
             [
                 SAssignNew(_TimelineDock, SCkIntentDebugger_TimelineDock)
                     .ViewModel(_ViewModel)
             ]
 
-            + SVerticalBox::Slot().AutoHeight().Padding(ck_intent_debugger_window::PadM, 0.0f)
+            + SSplitter::Slot().Value(0.68f)
             [
-                SNew(SCkDebug_UnderlineTabs)
-                    .Tabs(Tabs)
-                    .ActiveTabId_Lambda([this]() { return _ActiveTabId; })
-                    .OnTabSelected_Lambda([this](FName InTabId)
-                    {
-                        _ActiveTabId = InTabId;
+                SNew(SSplitter)
+                    .Orientation(Orient_Horizontal)
 
-                        if (NOT _DetailSwitcher.IsValid())
-                        { return; }
-
-                        if (InTabId == ck_intent_debugger_window::TabId_Resolution)
-                        { _DetailSwitcher->SetActiveWidgetIndex(1); }
-                        else if (InTabId == ck_intent_debugger_window::TabId_NearMiss)
-                        { _DetailSwitcher->SetActiveWidgetIndex(2); }
-                        else
-                        { _DetailSwitcher->SetActiveWidgetIndex(0); }
-                    })
-            ]
-
-            + SVerticalBox::Slot().FillHeight(1.0f)
-            [
-                SAssignNew(_DetailSwitcher, SWidgetSwitcher)
-
-                + SWidgetSwitcher::Slot()
+                + SSplitter::Slot().Value(0.38f)
                 [
-                    SAssignNew(_KeyStatePanel, SCkIntentDebugger_KeyStatePanel)
-                        .ViewModel(_ViewModel)
+                    SNew(SVerticalBox)
+
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SCkDebug_SectionHeader)
+                            .Label(FText::FromString(TEXT("Key / State")))
+                            .Underline(true)
+                    ]
+
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SAssignNew(_KeyStatePanel, SCkIntentDebugger_KeyStatePanel)
+                            .ViewModel(_ViewModel)
+                    ]
                 ]
 
-                + SWidgetSwitcher::Slot()
+                + SSplitter::Slot().Value(0.62f)
                 [
-                    SAssignNew(_ResolutionPanel, SCkIntentDebugger_ResolutionPanel)
-                        .ViewModel(_ViewModel)
-                ]
+                    SNew(SVerticalBox)
 
-                + SWidgetSwitcher::Slot()
-                [
-                    SAssignNew(_NearMissPanel, SCkIntentDebugger_NearMissPanel)
-                        .ViewModel(_ViewModel)
+                    + SVerticalBox::Slot().AutoHeight()
+                    [
+                        SNew(SCkDebug_SectionHeader)
+                            .Label(FText::FromString(TEXT("Devices")))
+                            .SubText(FText::FromString(TEXT("flash = press · fill = hold toward the verdict · bright bezel = minted · dim = not connected")))
+                            .Underline(true)
+                    ]
+
+                    + SVerticalBox::Slot().FillHeight(1.0f)
+                    [
+                        SAssignNew(_DevicesPanel, SCkIntentDebugger_DevicesPanel)
+                            .ViewModel(_ViewModel)
+                    ]
                 ]
             ]
         ];
@@ -269,10 +284,14 @@ auto
 {
     SCompoundWidget::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
-    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
+    if (NOT _ViewModel.IsValid())
     { return; }
 
-    if (NOT _ViewModel.IsValid())
+    // BEFORE the gate: edge capture is truth, not presentation — a release sampled at a capped cadence is a
+    // release missed, which latches a witnessed key down (the slice-11-1 stuck-key defect).
+    _ViewModel->Tick_WitnessDeviceEdges();
+
+    if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
     _ViewModel->Tick();

@@ -4,6 +4,7 @@
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
+#include "CkGoapDebugger/Data/CkGoapDebugger_Targeting.h"
 #include "CkGoapDebugger/ViewModel/CkGoapDebugger_ViewModel.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_AgentColumn.h"
 #include "CkGoapDebugger/Window/SCkGoapDebugger_AgentListPanel.h"
@@ -27,6 +28,9 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_AlertRow.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_EntityRef.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -95,6 +99,11 @@ auto
     HandleWorldTornDown()
     -> void
 {
+    // Stop picker reads first — it holds a sticky focus handle and reads the
+    // marker snapshot every tick.
+    if (_ViewportPicker.IsValid())
+    { _ViewportPicker->Deactivate(); }
+
     _CachedWorld.Reset();
     FCkGoapDebugger_DataCollector::Reset_ForWorldChange();
 
@@ -177,6 +186,41 @@ auto
 
     _ViewModel = MakeShared<FCkGoapDebugger_ViewModel>();
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+
+    // Shared viewport picker, specialized to GOAP: only roster entities (plus
+    // their owner chain up to the NPC representative) are previewed/pickable.
+    // A picked entity resolves through the lineage-aware roster resolver, so
+    // clicking the NPC root or the planner sub-entity both land on the roster
+    // agent.
+    _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakWorld = TWeakPtr<FCkDebuggerModel_WorldSelector>(_WorldModel)]() -> UWorld*
+            {
+                const auto Pinned = WeakWorld.Pin();
+                return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.TargetFilter =
+            [](const FCk_Handle& InCandidate)
+            {
+                return ck_goap_debugger::IsGoapRosterEntity(InCandidate);
+            };
+        PickerParams.OnEntityPicked =
+            [](const FCk_Handle& InPicked)
+            {
+                const auto Resolved = ck_goap_debugger::ResolveGoapTarget(InPicked);
+                if (ck::Is_NOT_Valid(Resolved))
+                { return; }
+
+                // Adopt into other open debuggers, then re-front this tab with
+                // the resolved agent selected (the game viewport took focus
+                // while picking).
+                ck::DebugSelectionSync::Broadcast(Resolved, TEXT("GoapDebugger"));
+                SCkGoapDebuggerWindow::OpenForEntity(Resolved);
+            };
+        _ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
 
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
         this, &SCkGoapDebuggerWindow::HandleWorldChanged);
@@ -307,6 +351,11 @@ auto
     // MUST be the direct base, not SCompoundWidget: the base's Tick is what polls the Layer-B style
     // revision behind the refresh gate. Calling the grandparent kills live style-apply silently.
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
+
+    // Viewport-picker ticks stay ungated so input handling keeps working even
+    // when the panel refresh is paused.
+    if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+    { _ViewportPicker->Tick(InDeltaTime); }
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -483,6 +532,19 @@ auto
                                 if (NOT _ViewModel.IsValid()) { return FCk_Handle{}; }
                                 return _ViewModel->GetSelectedEntity();
                             })
+                    ]
+
+                // Viewport picker (shared) — click a GOAP agent in the world.
+                + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
+                    [
+                        SNew(SCkDebug_ViewportPickerControls)
+                            .Picker(_ViewportPicker)
+                            .PickTooltip(FText::FromString(TEXT(
+                                "Enter pick mode: click a GOAP agent in the viewport to inspect it.\n"
+                                "Only entities with GOAP (and their owning NPC) are shown and pickable.")))
                     ]
 
                 + SHorizontalBox::Slot()

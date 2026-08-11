@@ -17,7 +17,6 @@ public class CkEcsDebugger : CkModuleRules
             "ApplicationCore",
             "Slate",
             "SlateCore",
-            "GraphEditor",
             "AppFramework",
 
             "CkActorRelay",
@@ -88,7 +87,8 @@ public class CkEcsDebugger : CkModuleRules
                 "UnrealEd",
                 "WorkspaceMenuStructure",
                 "EditorStyle",
-                "ToolMenus"
+                "ToolMenus",
+                "GraphEditor"
             });
         }
     }

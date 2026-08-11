@@ -24,7 +24,9 @@
 #include "CkEcsDebugger/Models/CkDebuggerModel_InspectorFilter.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Base.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Dashboard.h"
-#include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
+#if WITH_EDITOR
+    #include "CkEcsDebugger/Pages/CkDebuggerPage_Overview.h"
+#endif
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Archetypes.h"
 #include "CkEcsDebugger/Pages/CkDebuggerPage_Activity.h"
 
@@ -117,7 +119,9 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     }
 
     Pages.Add(MakeShared<FCkDebuggerPage_Dashboard>());   // "Overview" (mockup dashboard)
+#if WITH_EDITOR
     Pages.Add(MakeShared<FCkDebuggerPage_Overview>());     // "Graph" (hierarchy graph)
+#endif
     Pages.Add(MakeShared<FCkDebuggerPage_Archetypes>());
     Pages.Add(MakeShared<FCkDebuggerPage_Activity>());
     Pages[0]->Set_IsActive(true);

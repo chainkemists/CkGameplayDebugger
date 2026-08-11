@@ -13,6 +13,7 @@ public class CkGoapDebugger : CkModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"GameplayTags",
 			"InputCore",
 
 			"Slate",

@@ -12,8 +12,15 @@ auto SCkEcsEntityGraphCard::Construct(const FArguments& InArgs) -> void
 
 auto SCkEcsEntityGraphCard::SetNode(TSharedPtr<FCkEcsRuntimeGraphNode> InNode) -> void
 {
+    const auto bRequiresRebuild = NOT _Node.IsValid() || NOT InNode.IsValid() ||
+                                  _Node->DisplayName != InNode->DisplayName ||
+                                  _Node->Relationship != InNode->Relationship ||
+                                  _Node->bIsCenterNode != InNode->bIsCenterNode;
     _Node = MoveTemp(InNode);
-    RebuildCard();
+    if (bRequiresRebuild)
+    {
+        RebuildCard();
+    }
 }
 
 auto SCkEcsEntityGraphCard::SetSelected(const bool bInSelected) -> void

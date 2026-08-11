@@ -10,6 +10,7 @@
 // --------------------------------------------------------------------------------------------------------------------
 
 class FCkCrowdDebugger_ViewModel;
+class FCkDebug_ViewportPicker;
 
 class SCkCrowdDebugger_NavmeshStatusPanel;
 class SCkCrowdDebugger_AgentListPanel;
@@ -40,6 +41,10 @@ public:
 	auto Construct(const FArguments& InArgs) -> void;
 	auto TargetEntity(const FCk_Handle& InEntity) -> void;
 
+	// The ONE definition of "an entity this debugger lists" — shared by the
+	// module's FCkDebug_EntityTargetRoute and the window's viewport picker.
+	static auto Is_CrowdDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
+
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 	virtual auto Get_WindowId() const -> FName override { return WindowId; }
@@ -63,6 +68,9 @@ private:
 private:
 	TSharedPtr<FCkCrowdDebugger_ViewModel> _ViewModel;
 	TSharedPtr<FCkDebuggerModel_WorldSelector> _WorldModel;
+
+	// Shared viewport picker (CkDebuggerCommon), specialized to crowd agents.
+	TSharedPtr<FCkDebug_ViewportPicker> _ViewportPicker;
 
 	TSharedPtr<SCkCrowdDebugger_NavmeshStatusPanel> _NavmeshStatusPanel;
 	TSharedPtr<SCkCrowdDebugger_AgentListPanel>     _AgentListPanel;

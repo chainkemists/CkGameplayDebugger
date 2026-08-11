@@ -11,7 +11,6 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
 
-#include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "HAL/IConsoleManager.h"
@@ -34,7 +33,7 @@ namespace
 	{
 		return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
 			[](const FCk_Handle& InCandidate)
-			{ return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_CrowdAgent_Params>(); });
+			{ return SCkCrowdDebuggerWindow::Is_CrowdDebuggerEntity(InCandidate); });
 	}
 }
 

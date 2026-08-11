@@ -10,8 +10,13 @@
 #include "CkCrowdDebugger/Viewport/SCkCrowdDebugger_3dViewport.h"
 #include "CkCrowdDebugger/Window/CkCrowdDebugger_PanelAxes.h"
 
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkCore/Validation/CkIsValid.h"
+
+#include "CkCrowd/Agent/CkCrowdAgent_Fragment.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -61,12 +66,44 @@ const FName SCkCrowdDebuggerWindow::WindowId{TEXT("CkCrowdDebugger")};
 
 // --------------------------------------------------------------------------------------------------------------------
 
+auto SCkCrowdDebuggerWindow::Is_CrowdDebuggerEntity(const FCk_Handle& InCandidate) -> bool
+{
+	return ck::IsValid(InCandidate) && InCandidate.Has<ck::FFragment_CrowdAgent_Params>();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
 auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 {
 	Register_WithGate();
 
 	_ViewModel = MakeShared<FCkCrowdDebugger_ViewModel>();
 	_WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
+
+	// Shared viewport picker, specialized to crowd agents: only entities with
+	// FFragment_CrowdAgent_Params (plus their owner chain up to the NPC
+	// representative) are previewed and pickable. The pick routes through this
+	// module's registered entity-target route, which resolves the lineage and
+	// re-fronts the tab with the agent selected.
+	_ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+	{
+		auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+		PickerParams.Get_TargetWorld =
+			[WeakWorld = TWeakPtr<FCkDebuggerModel_WorldSelector>(_WorldModel)]() -> UWorld*
+			{
+				const auto Pinned = WeakWorld.Pin();
+				return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+			};
+		PickerParams.TargetFilter =
+			[](const FCk_Handle& InCandidate) { return Is_CrowdDebuggerEntity(InCandidate); };
+		PickerParams.OnEntityPicked =
+			[](const FCk_Handle& InPicked)
+			{
+				ck::DebugSelectionSync::Broadcast(InPicked, TEXT("CrowdDebugger"));
+				FCkDebug_EntityTargetRegistry::Get().TryOpenAndTarget(WindowId, InPicked);
+			};
+		_ViewportPicker->Construct(MoveTemp(PickerParams));
+	}
 	_WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(
 		this, &SCkCrowdDebuggerWindow::HandleWorldChanged);
 	_SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
@@ -158,6 +195,9 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 
 auto SCkCrowdDebuggerWindow::HandleWorldChanged(UWorld*) -> void
 {
+	if (_ViewportPicker.IsValid())
+	{ _ViewportPicker->Deactivate(); }
+
 	_PendingTarget.Reset();
 	if (_ViewModel.IsValid())
 	{ _ViewModel->Reset_ForWorldChange(); }
@@ -193,6 +233,9 @@ auto SCkCrowdDebuggerWindow::OnStyleRevisionChanged() -> void
 auto SCkCrowdDebuggerWindow::Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void
 {
 	SCkDebugger_WindowBase::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
+
+	if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+	{ _ViewportPicker->Tick(InDeltaTime); }
 
 	if (NOT _ViewModel.IsValid())
 	{ return; }
@@ -743,6 +786,15 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			[
 				SNew(SCkDebug_WorldSelector, _WorldModel)
 				.ShowHeaderLabel(false)
+			]
+			// Viewport picker (shared) — click a crowd agent in the world.
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+			[
+				SNew(SCkDebug_ViewportPickerControls)
+				.Picker(_ViewportPicker)
+				.PickTooltip(FText::FromString(TEXT(
+					"Enter pick mode: click a crowd agent in the viewport to inspect it.\n"
+					"Only crowd-agent entities (and their owning NPC) are shown and pickable.")))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
 			[

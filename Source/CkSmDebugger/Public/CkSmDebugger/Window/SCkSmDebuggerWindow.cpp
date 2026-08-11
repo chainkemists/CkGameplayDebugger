@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 #include "CkSmDebugger/ViewModel/CkSmDebugger_ViewModel.h"
 #include "CkSmDebugger/Data/CkSmDebugger_DataCollector.h"
@@ -3385,3 +3386,4 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+#endif

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "EdGraphUtilities.h"
-#include "CoreMinimal.h"
+#if WITH_EDITOR
+    #include "EdGraphUtilities.h"
+    #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Node factory — maps UCkSmDebugNode_State / UCkSmDebugNode_Transition to their
@@ -15,5 +16,6 @@ class CKSMDEBUGGER_API FCkSmDebugGraphFactory : public FGraphPanelNodeFactory
 public:
     virtual auto CreateNode(UEdGraphNode* InNode) const -> TSharedPtr<SGraphNode> override;
 };
+#endif
 
 // --------------------------------------------------------------------------------------------------------------------

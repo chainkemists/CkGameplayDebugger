@@ -1,3 +1,4 @@
+#if WITH_EDITOR
 #include "CkSmDebugger/Preview/SCkSmDebugger_PreviewPane.h"
 
 #include "CkSmDebugger/Graph/CkSmDebugGraph.h"
@@ -520,3 +521,4 @@ auto
 {
     return FText::FromString(_StatusMessage);
 }
+#endif

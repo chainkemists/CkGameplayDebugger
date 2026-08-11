@@ -4,8 +4,11 @@
 #include "Modules/ModuleManager.h"
 
 class SCkSmDebuggerWindow;
+class SCkSmDebuggerPackagedWindow;
 class SDockTab;
+#if WITH_EDITOR
 struct FGraphPanelNodeFactory;
+#endif
 
 class FCkSmDebuggerModule : public IModuleInterface
 {
@@ -26,9 +29,13 @@ private:
         TSharedPtr<SDockTab> InNewForegroundTab,
         TSharedPtr<SDockTab>) -> void;
 
+#if WITH_EDITOR
     TSharedPtr<SCkSmDebuggerWindow> _DebuggerWindow;
-    TSharedPtr<SDockTab> _DebuggerTab;
     TSharedPtr<FGraphPanelNodeFactory> _NodeFactory;
+#else
+    TSharedPtr<SCkSmDebuggerPackagedWindow> _DebuggerWindow;
+#endif
+    TSharedPtr<SDockTab> _DebuggerTab;
 
     uint64 _DebuggerToolRegistrationId = 0;
     uint64 _EntityTargetRouteRegistrationId = 0;

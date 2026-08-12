@@ -78,7 +78,11 @@ struct FCkIntentDebugger_ResolutionRow
 {
     FString TerminalLabel;
     ECk_Input_ButtonTier Tier = ECk_Input_ButtonTier::Mapped;
-    FKey ResolvedKey;
+
+    // Every key the terminal button resolves to, primary first (ascending slot order) — a mapped button
+    // bound on several slots (keyboard in one, gamepad in another) resolves them all. Empty means the
+    // button is unbound, not merely that the primary slot is.
+    TArray<FKey> ResolvedKeys;
     TArray<FName> IntentNames;
 
     // Zero on both means this terminal is acted on the frame it is pressed — the overwhelmingly common case, and
@@ -134,7 +138,9 @@ struct FCkIntentDebugger_ButtonState
 {
     FString Label;
     ECk_Input_ButtonTier Tier = ECk_Input_ButtonTier::Mapped;
-    FKey Key;
+
+    // Every key currently producing this button, primary first — see FCkIntentDebugger_ResolutionRow::ResolvedKeys.
+    TArray<FKey> Keys;
     bool WentDown = false;
     bool WentUp = false;
 };

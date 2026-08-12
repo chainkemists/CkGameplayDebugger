@@ -108,7 +108,7 @@ namespace ck_intent_debugger_collector
             Row.WentUp = InReleased.Contains(Button);
 
             if (ck::IsValid(InMap))
-            { Row.Key = UCk_Utils_InputButtonMap_UE::TryGet_KeyForButton(InMap, Button); }
+            { Row.Keys = UCk_Utils_InputButtonMap_UE::Get_KeysForButton(InMap, Button); }
 
             Rows.Add(MoveTemp(Row));
         }
@@ -280,7 +280,7 @@ namespace ck_intent_debugger_collector
             Row.Tier = Terminal.Get_Tier();
 
             if (ck::IsValid(InMap))
-            { Row.ResolvedKey = UCk_Utils_InputButtonMap_UE::TryGet_KeyForButton(InMap, Terminal); }
+            { Row.ResolvedKeys = UCk_Utils_InputButtonMap_UE::Get_KeysForButton(InMap, Terminal); }
 
             for (const auto IntentIndex : Resolution.Get_IntentIndices())
             {
@@ -424,10 +424,11 @@ auto
         {
             for (const auto& Button : UCk_Utils_InputButtonMap_UE::Get_AllButtons(ButtonMap))
             {
-                const auto Key = UCk_Utils_InputButtonMap_UE::TryGet_KeyForButton(ButtonMap, Button);
-
-                if (Key.IsValid())
-                { Entry.MintedKeys.AddUnique(Key); }
+                for (const auto& Key : UCk_Utils_InputButtonMap_UE::Get_KeysForButton(ButtonMap, Button))
+                {
+                    if (Key.IsValid())
+                    { Entry.MintedKeys.AddUnique(Key); }
+                }
             }
         }
 

@@ -100,6 +100,7 @@ namespace ck::intent_debugger
             case ECk_Intent_Phase::Pending:   return TEXT("Pending");
             case ECk_Intent_Phase::Completed: return TEXT("Completed");
             case ECk_Intent_Phase::Failed:    return TEXT("Failed");
+            case ECk_Intent_Phase::Active:    return TEXT("Active");
             case ECk_Intent_Phase::Idle:
             default: return TEXT("Idle");
         }
@@ -138,6 +139,7 @@ namespace ck::intent_debugger
             case ECk_Intent_Phase::Pending:   return CkStyle::GetToneColor(ECk_Tone::Warn);
             case ECk_Intent_Phase::Completed: return CkStyle::GetToneColor(ECk_Tone::Ok);
             case ECk_Intent_Phase::Failed:    return CkStyle::GetToneColor(ECk_Tone::Err);
+            case ECk_Intent_Phase::Active:    return CkStyle::GetToneColor(ECk_Tone::Info);
             case ECk_Intent_Phase::Idle:
             default: return CkStyle::GetToneDimColor(ECk_Tone::Neutral);
         }

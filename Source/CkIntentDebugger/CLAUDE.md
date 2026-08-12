@@ -41,7 +41,9 @@ while a neighbour is lit **is** the hysteresis, rendered rather than re-derived.
   is `UCk_Utils_IntentSampler_UE::{Get_FrameCount, Get_LatestFrame, TryGet_FrameAtOffset}`; the
   near-miss ring is `UCk_Utils_IntentMatcher_UE::{Get_ScanDiagnostics, Get_ScanDiagnosticsEnabled}`;
   layer captures are `UCk_Utils_InputLayer_UE::Get_Captures`; button↔key is
-  `UCk_Utils_InputButtonMap_UE::TryGet_KeyForButton`; the deferral verdict is
+  `UCk_Utils_InputButtonMap_UE::Get_KeysForButton` — a Mapped button may resolve to more than one key
+  (one per bound slot), so the resolution table and the held-button rows render every key the button
+  carries, primary first, not just the first slot; the deferral verdict is
   `UCk_Utils_IntentGrammar_UE::Get_DeferralVerdict`.
 - **Const fragment reads where no Util reaches**, matching the `CkAggroDebugger` /
   `CkGoapDebugger` precedent. Four gaps, all of them state CkIntent deliberately does not expose to

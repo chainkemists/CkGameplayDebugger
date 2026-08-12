@@ -329,8 +329,14 @@ auto
     {
         for (const auto& Resolution : Layer->Resolutions)
         {
-            if (Resolution.ResolvedKey.IsValid() && Resolution.HoldSiblingFrames > 0)
-            { VerdictByKey.Add(Resolution.ResolvedKey, Resolution.HoldSiblingFrames); }
+            if (Resolution.HoldSiblingFrames <= 0)
+            { continue; }
+
+            for (const auto& Key : Resolution.ResolvedKeys)
+            {
+                if (Key.IsValid())
+                { VerdictByKey.Add(Key, Resolution.HoldSiblingFrames); }
+            }
         }
     }
 
@@ -354,7 +360,7 @@ auto
             { continue; }
 
             const auto* Button = Row.Held.FindByPredicate(
-                [&Key](const FCkIntentDebugger_ButtonState& InButton) { return InButton.Key == Key; });
+                [&Key](const FCkIntentDebugger_ButtonState& InButton) { return InButton.Keys.Contains(Key); });
 
             if (CountingRun)
             {

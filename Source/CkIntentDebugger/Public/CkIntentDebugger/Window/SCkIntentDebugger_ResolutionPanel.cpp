@@ -20,6 +20,24 @@ namespace ck_intent_debugger_resolution
 {
     constexpr auto PadS = 4.0f;
 
+    // Every key a terminal button resolves to, joined for display — primary first, exactly as the row
+    // carries them. Empty reads as the same "<unbound>" a single unresolved key always has.
+    auto
+        Get_KeysLabel(
+            const TArray<FKey>& InKeys)
+        -> FString
+    {
+        if (InKeys.IsEmpty())
+        { return TEXT("<unbound>"); }
+
+        auto Parts = TArray<FString>{};
+        Parts.Reserve(InKeys.Num());
+        for (const auto& Key : InKeys)
+        { Parts.Add(Key.ToString()); }
+
+        return FString::Join(Parts, TEXT(", "));
+    }
+
     auto
         Get_DeferralLabel(
             const FCkIntentDebugger_ResolutionRow& InRow)
@@ -50,7 +68,7 @@ namespace ck_intent_debugger_resolution
 
         return ck::Format_UE(TEXT("{}\t{}\t{}\t{}"),
             InRow.TerminalLabel,
-            InRow.ResolvedKey.IsValid() ? InRow.ResolvedKey.ToString() : FString{TEXT("<unbound>")},
+            Get_KeysLabel(InRow.ResolvedKeys),
             FString::Join(Names, TEXT(" > ")),
             Get_DeferralLabel(InRow));
     }
@@ -212,14 +230,12 @@ auto
                         if (NOT Row.IsValid())
                         { return FText::GetEmpty(); }
 
-                        return Row->ResolvedKey.IsValid()
-                            ? FText::FromString(Row->ResolvedKey.ToString())
-                            : FText::FromString(TEXT("<unbound>"));
+                        return FText::FromString(ck_intent_debugger_resolution::Get_KeysLabel(Row->ResolvedKeys));
                     })
                     .ColorAndOpacity_Lambda([WeakRow]()
                     {
                         const auto Row = WeakRow.Pin();
-                        const auto IsBound = Row.IsValid() && Row->ResolvedKey.IsValid();
+                        const auto IsBound = Row.IsValid() && NOT Row->ResolvedKeys.IsEmpty();
                         return FSlateColor{IsBound ? CkStyle::TextDim() : CkStyle::Err()};
                     })
             ]

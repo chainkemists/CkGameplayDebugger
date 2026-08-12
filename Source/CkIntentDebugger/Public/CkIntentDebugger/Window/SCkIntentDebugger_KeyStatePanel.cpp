@@ -27,6 +27,24 @@ namespace ck_intent_debugger_keystate
     constexpr auto PadS = 4.0f;
     constexpr auto PadM = 8.0f;
 
+    // Every key a held button resolves to, joined for display — primary first, exactly as the row carries
+    // them. Empty reads as the same "<unbound>" a single unresolved key always has.
+    auto
+        Get_KeysLabel(
+            const TArray<FKey>& InKeys)
+        -> FString
+    {
+        if (InKeys.IsEmpty())
+        { return TEXT("<unbound>"); }
+
+        auto Parts = TArray<FString>{};
+        Parts.Reserve(InKeys.Num());
+        for (const auto& Key : InKeys)
+        { Parts.Add(Key.ToString()); }
+
+        return FString::Join(Parts, TEXT(", "));
+    }
+
     auto
         Get_EdgeLabel(
             const FCkIntentDebugger_ButtonState& InButton)
@@ -314,9 +332,7 @@ auto
                     if (Button == nullptr)
                     { return FText::GetEmpty(); }
 
-                    return Button->Key.IsValid()
-                        ? FText::FromString(Button->Key.ToString())
-                        : FText::FromString(TEXT("<unbound>"));
+                    return FText::FromString(ck_intent_debugger_keystate::Get_KeysLabel(Button->Keys));
                 })
         ]
 

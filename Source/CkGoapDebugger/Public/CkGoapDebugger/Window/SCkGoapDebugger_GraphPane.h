@@ -64,6 +64,7 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     auto OnGraphSelectionChanged(const TSet<uint64>& InSelection) -> void;
     auto OnGraphNodeMoved(uint64 InNodeId, const FVector2D& InPosition) -> void;
     auto RebuildCanvasScene() -> void;
+    auto ResetManualNodePositions() -> void;
     auto Request_SetHideDimmed(bool InHideDimmed) -> void;
 
   private:
@@ -74,6 +75,7 @@ class CKGOAPDEBUGGER_API SCkGoapDebugger_GraphPane : public SCompoundWidget
     TSharedPtr<SCkDebug_SelectableLabel> _HeaderText;
     TMap<uint64, TSharedPtr<SWidget>> _CardWidgets;
     TMap<uint64, FVector2D> _NodePositionOverrides;
+    uint64 _ManualPositionScopeId = 0;
 
     FDelegateHandle _OnChangedHandle;
 

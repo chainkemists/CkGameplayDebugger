@@ -48,6 +48,7 @@ class CKGOAPDEBUGGER_API FCkGoapRuntimeGraphModel
     auto UpdateRuntimeState(const FCkGoapDebugger_PlannerInfo& InPlanner,
                             const FCk_Handle_Goap_Action& InSelectedAction) -> bool;
     auto Relayout(int32 InNameDepth) -> void;
+    auto ApplyMeasuredNodeSizes(const TMap<uint64, FVector2D>& InSizes) -> bool;
     auto Reset() -> void;
 
     auto GetTopologyHash() const -> uint32
@@ -82,6 +83,9 @@ class CKGOAPDEBUGGER_API FCkGoapRuntimeGraphModel
                                           const FCkGoapDebugger_ActionInfo* InSelectedAction)
         -> uint32;
     static auto ComputeMaxNameDepth(const FString& InClassName) -> int32;
+
+  private:
+    auto RelayoutWithCurrentSizes() -> void;
 
   private:
     TArray<TSharedPtr<FCkGoapRuntimeGraphNode>> _Nodes;

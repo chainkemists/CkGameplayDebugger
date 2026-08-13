@@ -122,6 +122,7 @@ SCkDebug_GraphCanvas::SCkDebug_GraphCanvas() : _Children(this)
 
 auto SCkDebug_GraphCanvas::Construct(const FArguments& InArgs) -> void
 {
+    SetClipping(EWidgetClipping::ClipToBounds);
     _MinZoom = FMath::Max(0.01f, InArgs._MinZoom);
     _MaxZoom = FMath::Max(_MinZoom, InArgs._MaxZoom);
     _FitPadding = FMath::Max(0.0f, InArgs._FitPadding);
@@ -129,6 +130,7 @@ auto SCkDebug_GraphCanvas::Construct(const FArguments& InArgs) -> void
     _OnSelectionChanged = InArgs._OnSelectionChanged;
     _OnNodeDoubleClicked = InArgs._OnNodeDoubleClicked;
     _OnNodeMoved = InArgs._OnNodeMoved;
+    _OnResolveDragGroup = InArgs._OnResolveDragGroup;
     _OnNodeContextMenu = InArgs._OnNodeContextMenu;
     _OnBackgroundContextMenu = InArgs._OnBackgroundContextMenu;
     _LegacyZoomLevel = Get_LegacyZoomLevel(_Transform.Zoom);
@@ -143,6 +145,22 @@ auto SCkDebug_GraphCanvas::Set_Scene(FCkDebug_GraphCanvasScene InScene) -> void
         {
             return InA.Layer < InB.Layer;
         });
+
+    if (_IsDraggingNodes)
+    {
+        for (auto& IncomingNode : InScene.Nodes)
+        {
+            if (NOT _NodeDragStartPositions.Contains(IncomingNode.Id))
+            {
+                continue;
+            }
+
+            if (const auto* CurrentNode = Find_Node(IncomingNode.Id))
+            {
+                IncomingNode.Position = CurrentNode->Position;
+            }
+        }
+    }
 
     auto CanReuseChildSlots = _Scene.Nodes.Num() == InScene.Nodes.Num();
     if (CanReuseChildSlots)
@@ -260,6 +278,7 @@ auto SCkDebug_GraphCanvas::Clear_InteractionDelegates() -> void
     _OnSelectionChanged.Unbind();
     _OnNodeDoubleClicked.Unbind();
     _OnNodeMoved.Unbind();
+    _OnResolveDragGroup.Unbind();
     _OnNodeContextMenu.Unbind();
     _OnBackgroundContextMenu.Unbind();
 }
@@ -323,8 +342,8 @@ auto SCkDebug_GraphCanvas::Compute_FitTransform(
 }
 
 auto SCkDebug_GraphCanvas::Compute_EdgeGeometry(const FCkDebug_GraphCanvasNodeGeometry& InSource,
-                                                const FCkDebug_GraphCanvasNodeGeometry& InTarget,
-                                                const FCkDebug_GraphCanvasEdge& InEdge,
+                                                 const FCkDebug_GraphCanvasNodeGeometry& InTarget,
+                                                 const FCkDebug_GraphCanvasEdge& InEdge,
                                                 const FCkDebug_GraphCanvasTransform& InTransform)
     -> FCkDebug_GraphCanvasEdgeGeometry
 {
@@ -384,14 +403,40 @@ auto SCkDebug_GraphCanvas::Compute_EdgeGeometry(const FCkDebug_GraphCanvasNodeGe
         {
             const auto UnitDelta = Delta.GetSafeNormal();
             const auto Normal = FVector2D{Delta.Y, -Delta.X}.GetSafeNormal();
-            const auto DirectionBias = Normal * InEdge.LineSeparation;
-            const auto LengthBias = UnitDelta * FMath::Max(0.0f, InEdge.ArrowRadius);
+            const auto DirectionBias = Normal * InEdge.LineSeparation * InTransform.Zoom;
+            const auto LengthBias =
+                UnitDelta * FMath::Max(0.0f, InEdge.ArrowRadius) * InTransform.Zoom;
             Result.Start += DirectionBias + LengthBias;
             Result.End += DirectionBias - LengthBias;
             Result.Points[0] = Result.Start;
             Result.Points[1] = Result.End;
         }
     }
+    return Result;
+}
+
+auto SCkDebug_GraphCanvas::Compute_ArrowGeometry(
+    const FCkDebug_GraphCanvasEdgeGeometry& InEdgeGeometry,
+    const FVector2D& InImageSize,
+    float InZoom) -> FCkDebug_GraphCanvasArrowGeometry
+{
+    auto Result = FCkDebug_GraphCanvasArrowGeometry{};
+    if (InEdgeGeometry.Points.Num() < 2)
+    {
+        return Result;
+    }
+
+    const auto End = InEdgeGeometry.Points.Last();
+    const auto Previous = InEdgeGeometry.Points[InEdgeGeometry.Points.Num() - 2];
+    const auto Delta = End - Previous;
+    if (Delta.SizeSquared() <= KINDA_SMALL_NUMBER)
+    {
+        return Result;
+    }
+
+    Result.Size = InImageSize * FMath::Max(0.0f, InZoom);
+    Result.Position = End - Result.Size * 0.5f;
+    Result.AngleInRadians = FMath::Atan2(Delta.Y, Delta.X);
     return Result;
 }
 
@@ -451,19 +496,21 @@ auto SCkDebug_GraphCanvas::OnPaint(const FPaintArgs& InArgs,
         {
             continue;
         }
-        Draw_Edge(Edge, Geometry, OutDrawElements, EdgeLayer);
+        Draw_Edge(Edge, Geometry, InAllottedGeometry, OutDrawElements, EdgeLayer);
     }
 
     Draw_Marquee(InAllottedGeometry, OutDrawElements, EdgeLayer + 1);
-    Draw_MarqueePreview(OutDrawElements, EdgeLayer + 2);
+    Draw_MarqueePreview(InAllottedGeometry, OutDrawElements, EdgeLayer + 2);
     Draw_ZoomLabel(InAllottedGeometry, OutDrawElements, EdgeLayer + 3);
-    return SPanel::OnPaint(InArgs,
-                           InAllottedGeometry,
-                           InCullingRect,
-                           OutDrawElements,
-                           EdgeLayer + 4,
-                           InWidgetStyle,
-                           InParentEnabled);
+    const auto ChildLayer = SPanel::OnPaint(InArgs,
+                                            InAllottedGeometry,
+                                            InCullingRect,
+                                            OutDrawElements,
+                                            EdgeLayer + 4,
+                                            InWidgetStyle,
+                                            InParentEnabled);
+    Draw_ManualPositionIndicators(InAllottedGeometry, OutDrawElements, ChildLayer + 1);
+    return ChildLayer + 2;
 }
 
 // =====================================================================================================================
@@ -554,11 +601,25 @@ auto SCkDebug_GraphCanvas::OnMouseButtonDown(const FGeometry& InGeometry,
             _DraggedNodeId = HitNodeId;
             _NodeDragStartWorld = Screen_To_World(LocalPosition, _Transform);
             _NodeDragStartPositions.Reset();
-            for (const auto SelectedId : _SelectedNodeIds)
+            _NodeDragCommitIds = _SelectedNodeIds;
+            _NodeDragCommitIds.Add(HitNodeId);
+            auto DragIds = _NodeDragCommitIds;
+            if (_OnResolveDragGroup.IsBound())
             {
-                if (const auto* SelectedNode = Find_Node(SelectedId))
+                // A compound may already be selected while the pointer lands on one of its
+                // children. Resolve every selected root, not only the hit node, so the drag
+                // snapshot and the visible move describe the same closure.
+                const auto DragRoots = DragIds.Array();
+                for (const auto DragRootId : DragRoots)
                 {
-                    _NodeDragStartPositions.Add(SelectedId, SelectedNode->Position);
+                    DragIds.Append(_OnResolveDragGroup.Execute(DragRootId));
+                }
+            }
+            for (const auto DragId : DragIds)
+            {
+                if (const auto* DragNode = Find_Node(DragId))
+                {
+                    _NodeDragStartPositions.Add(DragId, DragNode->Position);
                 }
             }
             return FReply::Handled()
@@ -586,9 +647,11 @@ auto SCkDebug_GraphCanvas::OnMouseButtonUp(const FGeometry& InGeometry,
         auto MovedNodes = TArray<TPair<uint64, FVector2D>>{};
         if (_NodeDragExceededDeadZone)
         {
-            for (const auto& [Id, StartPosition] : _NodeDragStartPositions)
+            for (const auto Id : _NodeDragCommitIds)
             {
-                if (const auto* Node = Find_Node(Id); Node != nullptr && NOT Node->Position.Equals(StartPosition))
+                const auto* StartPosition = _NodeDragStartPositions.Find(Id);
+                if (const auto* Node = Find_Node(Id);
+                    Node != nullptr && StartPosition != nullptr && NOT Node->Position.Equals(*StartPosition))
                 {
                     MovedNodes.Emplace(Id, Node->Position);
                 }
@@ -597,6 +660,7 @@ auto SCkDebug_GraphCanvas::OnMouseButtonUp(const FGeometry& InGeometry,
         }
         _IsDraggingNodes = false;
         _NodeDragStartPositions.Reset();
+        _NodeDragCommitIds.Reset();
         _DraggedNodeId = 0;
         _NodeDragExceededDeadZone = false;
         for (const auto& [Id, Position] : MovedNodes)
@@ -769,6 +833,7 @@ auto SCkDebug_GraphCanvas::OnMouseCaptureLost(const FCaptureLostEvent& InCapture
     _ContextNodeId = 0;
     _MarqueePreviewSelection.Reset();
     _NodeDragStartPositions.Reset();
+    _NodeDragCommitIds.Reset();
     _DraggedNodeId = 0;
     _NodeDragExceededDeadZone = false;
     SPanel::OnMouseCaptureLost(InCaptureLostEvent);
@@ -828,9 +893,10 @@ auto SCkDebug_GraphCanvas::Notify_SelectionChanged() -> void
 }
 
 auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
-                                     const FCkDebug_GraphCanvasEdgeGeometry& InGeometry,
-                                     FSlateWindowElementList& OutDrawElements,
-                                     int32 InLayerId) const -> void
+                                      const FCkDebug_GraphCanvasEdgeGeometry& InEdgeGeometry,
+                                      const FGeometry& InAllottedGeometry,
+                                      FSlateWindowElementList& OutDrawElements,
+                                      int32 InLayerId) const -> void
 {
     auto Color = InEdge.Color;
     if (InEdge.DeemphasizeWhenUnrelatedHovered && _HoveredNodeId != 0 && _HoveredNodeId != InEdge.SourceId &&
@@ -842,10 +908,10 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
     const auto Thickness = FMath::Max(0.5f, InEdge.Thickness * _Transform.Zoom);
     if (InEdge.IsDashed)
     {
-        for (auto Index = 1; Index < InGeometry.Points.Num(); ++Index)
+        for (auto Index = 1; Index < InEdgeGeometry.Points.Num(); ++Index)
         {
-            const auto Start = InGeometry.Points[Index - 1];
-            const auto End = InGeometry.Points[Index];
+            const auto Start = InEdgeGeometry.Points[Index - 1];
+            const auto End = InEdgeGeometry.Points[Index];
             const auto Delta = End - Start;
             const auto Length = Delta.Size();
             if (Length <= KINDA_SMALL_NUMBER)
@@ -864,7 +930,7 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
                                                           Start + Direction * DashEnd};
                 FSlateDrawElement::MakeLines(OutDrawElements,
                                              InLayerId,
-                                             FPaintGeometry(),
+                                             InAllottedGeometry.ToPaintGeometry(),
                                              DashPoints,
                                              ESlateDrawEffect::None,
                                              Color,
@@ -877,23 +943,15 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
     {
         FSlateDrawElement::MakeLines(OutDrawElements,
                                      InLayerId,
-                                     FPaintGeometry(),
-                                     InGeometry.Points,
+                                     InAllottedGeometry.ToPaintGeometry(),
+                                     InEdgeGeometry.Points,
                                      ESlateDrawEffect::None,
                                      Color,
                                      true,
                                      Thickness);
     }
 
-    if (NOT InEdge.IsDirected || InGeometry.Points.Num() < 2)
-    {
-        return;
-    }
-
-    const auto End = InGeometry.Points.Last();
-    const auto Previous = InGeometry.Points[InGeometry.Points.Num() - 2];
-    const auto Delta = End - Previous;
-    if (Delta.SizeSquared() <= KINDA_SMALL_NUMBER)
+    if (NOT InEdge.IsDirected || InEdgeGeometry.Points.Num() < 2)
     {
         return;
     }
@@ -906,18 +964,22 @@ auto SCkDebug_GraphCanvas::Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
         return;
     }
 
-    const auto ArrowRadius = FVector2D{FMath::Max(0.0f, InEdge.ArrowRadius),
-                                       FMath::Max(0.0f, InEdge.ArrowRadius)};
-    const auto ArrowDrawPosition = End - ArrowRadius;
-    const auto AngleInRadians = FMath::Atan2(Delta.Y, Delta.X);
+    const auto ArrowGeometry = Compute_ArrowGeometry(InEdgeGeometry,
+                                                      ArrowImage->ImageSize,
+                                                      _Transform.Zoom);
+    if (ArrowGeometry.Size.IsNearlyZero())
+    {
+        return;
+    }
+
     FSlateDrawElement::MakeRotatedBox(OutDrawElements,
                                       InLayerId + 1,
-                                      FPaintGeometry(ArrowDrawPosition,
-                                                     ArrowImage->ImageSize * _Transform.Zoom,
-                                                     _Transform.Zoom),
+                                      InAllottedGeometry.ToPaintGeometry(
+                                          FVector2f{ArrowGeometry.Size},
+                                          FSlateLayoutTransform{FVector2f{ArrowGeometry.Position}}),
                                       ArrowImage,
                                       ESlateDrawEffect::None,
-                                      AngleInRadians,
+                                      ArrowGeometry.AngleInRadians,
                                       TOptional<FVector2D>{},
                                       FSlateDrawElement::RelativeToElement,
                                       Color);
@@ -943,11 +1005,14 @@ auto SCkDebug_GraphCanvas::Draw_Marquee(const FGeometry& InGeometry,
     const auto* MarqueeBrush = FCkDebuggerStyle::Get().GetBrush(TEXT("CkDebugger.Graph.MarqueeSelection"));
     FSlateDrawElement::MakeBox(OutDrawElements,
                                InLayerId,
-                               FPaintGeometry(FVector2D{Rect.Left, Rect.Top}, Size, 1.0f),
+                               InGeometry.ToPaintGeometry(
+                                   FVector2f{Size},
+                                   FSlateLayoutTransform{FVector2f{Rect.Left, Rect.Top}}),
                                MarqueeBrush);
 }
 
-auto SCkDebug_GraphCanvas::Draw_MarqueePreview(FSlateWindowElementList& OutDrawElements,
+auto SCkDebug_GraphCanvas::Draw_MarqueePreview(const FGeometry& InGeometry,
+                                                FSlateWindowElementList& OutDrawElements,
                                                 int32 InLayerId) const -> void
 {
     if (NOT _IsMarqueeSelecting)
@@ -965,13 +1030,50 @@ auto SCkDebug_GraphCanvas::Draw_MarqueePreview(FSlateWindowElementList& OutDrawE
         const auto Rect = Get_ScreenRect(Node);
         FSlateDrawElement::MakeBox(OutDrawElements,
                                    InLayerId,
-                                   FPaintGeometry(FVector2D{Rect.Left - 2.0f, Rect.Top - 2.0f},
-                                                  FVector2D{Rect.Right - Rect.Left + 4.0f,
-                                                            Rect.Bottom - Rect.Top + 4.0f},
-                                                  1.0f),
+                                   InGeometry.ToPaintGeometry(
+                                       FVector2f{static_cast<float>(Rect.Right - Rect.Left + 4.0f),
+                                                 static_cast<float>(Rect.Bottom - Rect.Top + 4.0f)},
+                                       FSlateLayoutTransform{
+                                           FVector2f{Rect.Left - 2.0f, Rect.Top - 2.0f}}),
                                    FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")),
                                    ESlateDrawEffect::None,
                                    PreviewColor);
+    }
+}
+
+auto SCkDebug_GraphCanvas::Draw_ManualPositionIndicators(
+    const FGeometry& InGeometry,
+    FSlateWindowElementList& OutDrawElements,
+    const int32 InLayerId) const -> void
+{
+    constexpr auto IndicatorSize = 5.0f;
+    constexpr auto IndicatorInset = 3.0f;
+    const auto ViewportSize = InGeometry.GetLocalSize();
+
+    for (const auto& Node : _Scene.Nodes)
+    {
+        if (NOT Node.bHasManualPosition)
+        {
+            continue;
+        }
+
+        const auto NodeRect = Get_ScreenRect(Node);
+        if (NodeRect.Right < 0.0f || NodeRect.Left > ViewportSize.X || NodeRect.Bottom < 0.0f ||
+            NodeRect.Top > ViewportSize.Y)
+        {
+            continue;
+        }
+
+        const auto IndicatorPosition = FVector2f{NodeRect.Right - IndicatorInset - IndicatorSize,
+                                                  NodeRect.Top + IndicatorInset};
+        FSlateDrawElement::MakeBox(
+            OutDrawElements,
+            InLayerId,
+            InGeometry.ToPaintGeometry(FVector2f{IndicatorSize, IndicatorSize},
+                                       FSlateLayoutTransform{IndicatorPosition}),
+            FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")),
+            ESlateDrawEffect::None,
+            FLinearColor{0.90f, 0.62f, 0.10f, 0.92f});
     }
 }
 

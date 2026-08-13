@@ -453,7 +453,8 @@ SCkGoapDebugger_GraphPane::~SCkGoapDebugger_GraphPane()
         _GraphCanvas->Clear_InteractionDelegates();
     if (_OnChangedHandle.IsValid() && _ViewModel.IsValid())
         _ViewModel->OnChanged.Remove(_OnChangedHandle);
-    Reset_ForWorldChange();
+    // Member destruction releases graph snapshots and cards. Do not run the live-widget reset here:
+    // module shutdown can destroy this pane after SlateApplication has already shut down.
 }
 
 auto SCkGoapDebugger_GraphPane::Construct(const FArguments& InArgs) -> void

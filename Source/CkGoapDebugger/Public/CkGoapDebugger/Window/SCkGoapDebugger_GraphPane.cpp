@@ -8,6 +8,7 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkEditorTools/Style/CkStyle.h"
+#include "CkGoap/Planner/CkGoap_Planner_Fragment_Data.h"
 #include "CkGoapDebugger/CkGoapDebuggerStyle.h"
 #include "CkGoapDebugger/CkGoapDebugger_Axes.h"
 #include "CkGoapDebugger/Data/CkGoapDebugger_DecisionModel.h"
@@ -25,6 +26,19 @@
 
 namespace ck_goap_debugger_graph_pane
 {
+    auto MakePlannerScopeId(const FCk_Handle_Goap_Planner& InPlanner) -> uint64
+    {
+        if (ck::Is_NOT_Valid(InPlanner))
+        {
+            return 0;
+        }
+
+        const auto Entity = InPlanner.Get_Entity();
+        const auto Number = static_cast<uint64>(Entity.Get_EntityNumber());
+        const auto Version = static_cast<uint64>(Entity.Get_VersionNumber());
+        return ((Version << 32) | Number) + 1;
+    }
+
     auto TagLeaf(const FGameplayTag& InTag) -> FString
     {
         const FString Full = InTag.ToString();
@@ -136,10 +150,27 @@ namespace ck_goap_debugger_graph_pane
                                                 {
                                                     return ck::debug_axes::ScaledFont(
                                                         "Regular", CkStyle::NodeMetaFontSize());
-                                                })
-                                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))] +
-                      SHorizontalBox::Slot().AutoWidth().Padding(
-                          4, 0, 0, 0)[MakeDot(FSlateColor(CkStyle::Accent()))]];
+                                             })
+                                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
+                                            .OverflowPolicy(ETextOverflowPolicy::Ellipsis)] +
+                       SHorizontalBox::Slot().AutoWidth().Padding(
+                           4, 0, 0, 0)[MakeDot(FSlateColor(CkStyle::Accent()))]];
+        TSharedRef<SWidget> Relations = SNullWidget::NullWidget;
+        if (NOT Sorted.IsEmpty() && NOT SortedEffects.IsEmpty())
+        {
+            Relations = SNew(SHorizontalBox) +
+                        SHorizontalBox::Slot().FillWidth(1.0f).Padding(0.0f, 0.0f, 12.0f, 0.0f)
+                            [Conditions] +
+                        SHorizontalBox::Slot().FillWidth(1.0f)[Effects];
+        }
+        else if (NOT Sorted.IsEmpty())
+        {
+            Relations = Conditions;
+        }
+        else if (NOT SortedEffects.IsEmpty())
+        {
+            Relations = Effects;
+        }
         return SNew(SBox).MinDesiredWidth(180.0f).MaxDesiredWidth(420.0f)
             [SNew(SOverlay) +
              SOverlay::Slot().Padding(
@@ -301,12 +332,8 @@ namespace ck_goap_debugger_graph_pane
                                                              })
                                                          .ColorAndOpacity(
                                                              FSlateColor(CkStyle::CategoryAge()))]] +
-                                    SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceS)
-                                        [SNew(SHorizontalBox) +
-                                         SHorizontalBox::Slot().AutoWidth()[Conditions] +
-                                         SHorizontalBox::Slot().FillWidth(
-                                             1)[SNullWidget::NullWidget] +
-                                         SHorizontalBox::Slot().AutoWidth()[Effects]]]]] +
+                                     SVerticalBox::Slot().AutoHeight().Padding(0, CkStyle::SpaceS)
+                                         [Relations]]]] +
               SOverlay::Slot()
                   .HAlign(HAlign_Left)
                   .VAlign(VAlign_Top)
@@ -466,6 +493,7 @@ auto SCkGoapDebugger_GraphPane::Reset_ForWorldChange() -> void
     _LastSelectedAction = {};
     _CardWidgets.Reset();
     _NodePositionOverrides.Reset();
+    _ManualPositionScopeId = 0;
     if (_HeaderText.IsValid())
         _HeaderText->SetText(FText::FromString(TEXT("Action graph - (no selection)")));
 }
@@ -497,6 +525,13 @@ auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
         return;
     }
     const auto Selected = _ViewModel->GetSelectedAction();
+    const auto ManualPositionScopeId =
+        ck_goap_debugger_graph_pane::MakePlannerScopeId(Planner->PlannerHandle);
+    if (_ManualPositionScopeId != ManualPositionScopeId)
+    {
+        _ManualPositionScopeId = ManualPositionScopeId;
+        _NodePositionOverrides.Reset();
+    }
     const auto Hash = FCkGoapRuntimeGraphModel::ComputeTopologyHash(*Planner);
     const auto* SelectedInfo = _ViewModel->GetSelectedActionInfo();
     const auto EffectiveGoalHash = FCkGoapRuntimeGraphModel::ComputeEffectiveGoalHash(*Planner,
@@ -512,12 +547,6 @@ auto SCkGoapDebugger_GraphPane::RefreshFromViewModel() -> void
         // together so the card and its connections never describe different
         // selected Actions for a frame.
         _CardWidgets.Reset();
-        if (TopologyChanged)
-        {
-            // Node IDs are topology-local ordinals. Do not carry a drag position
-            // into a replacement graph where the ordinal can describe another Action.
-            _NodePositionOverrides.Reset();
-        }
         _Graph->Rebuild(*Planner, Selected, _ViewModel->Get_NameDepth());
         _LastTopologyHash = Hash;
         _LastEffectiveGoalHash = EffectiveGoalHash;
@@ -559,6 +588,37 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
 {
     if (!_GraphCanvas.IsValid())
         return;
+
+    auto MeasuredSizes = TMap<uint64, FVector2D>{};
+    for (const auto& Node : _Graph->GetNodes())
+    {
+        auto* CardWidget = _CardWidgets.Find(Node->Id);
+        if (CardWidget == nullptr)
+        {
+            auto NewCardWidget = Node->Kind == ECkGoapRuntimeGraphNodeKind::Action
+                                     ? ck_goap_debugger_graph_pane::BuildActionCard(
+                                           Node, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1)
+                                     : ck_goap_debugger_graph_pane::BuildGoalCard(Node);
+            CardWidget = &_CardWidgets.Add(Node->Id, MoveTemp(NewCardWidget));
+        }
+        (*CardWidget)->SlatePrepass();
+        MeasuredSizes.Add(Node->Id, (*CardWidget)->GetDesiredSize());
+    }
+    _Graph->ApplyMeasuredNodeSizes(MeasuredSizes);
+
+    auto FullGraphNodeIds = TSet<uint64>{};
+    for (const auto& Node : _Graph->GetNodes())
+    {
+        FullGraphNodeIds.Add(Node->Id);
+    }
+    for (auto It = _NodePositionOverrides.CreateIterator(); It; ++It)
+    {
+        if (!FullGraphNodeIds.Contains(It.Key()))
+        {
+            It.RemoveCurrent();
+        }
+    }
+
     FCkDebug_GraphCanvasScene Scene;
     for (const auto& Node : _Graph->GetNodes())
     {
@@ -572,20 +632,10 @@ auto SCkGoapDebugger_GraphPane::RebuildCanvasScene() -> void
         if (const auto* PositionOverride = _NodePositionOverrides.Find(Node->Id))
         {
             CanvasNode.Position = *PositionOverride;
+            CanvasNode.bHasManualPosition = true;
         }
         CanvasNode.Size = Node->Size;
-        if (const auto* Existing = _CardWidgets.Find(Node->Id))
-        {
-            CanvasNode.Widget = Existing->ToSharedRef();
-        }
-        else
-        {
-            CanvasNode.Widget = Node->Kind == ECkGoapRuntimeGraphNodeKind::Action
-                                    ? ck_goap_debugger_graph_pane::BuildActionCard(
-                                          Node, _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1)
-                                    : ck_goap_debugger_graph_pane::BuildGoalCard(Node);
-            _CardWidgets.Add(Node->Id, CanvasNode.Widget);
-        }
+        CanvasNode.Widget = _CardWidgets.FindChecked(Node->Id).ToSharedRef();
         Scene.Nodes.Add(MoveTemp(CanvasNode));
     }
     const auto FindNode = [this](uint64 InId) -> const FCkGoapRuntimeGraphNode*
@@ -684,6 +734,18 @@ auto SCkGoapDebugger_GraphPane::OnGraphNodeMoved(const uint64 InNodeId,
                                                  const FVector2D& InPosition) -> void
 {
     _NodePositionOverrides.Add(InNodeId, InPosition);
+    RebuildCanvasScene();
+}
+
+auto SCkGoapDebugger_GraphPane::ResetManualNodePositions() -> void
+{
+    if (_NodePositionOverrides.IsEmpty())
+    {
+        return;
+    }
+
+    _NodePositionOverrides.Reset();
+    RebuildCanvasScene();
 }
 
 auto SCkGoapDebugger_GraphPane::Request_SetHideDimmed(bool InHideDimmed) -> void
@@ -717,6 +779,18 @@ auto SCkGoapDebugger_GraphPane::BuildHeader() -> TSharedRef<SWidget>
                                                                 _GraphCanvas->Frame_All();
                                                             return FReply::Handled();
                                                         })] +
+              SHorizontalBox::Slot().AutoWidth().Padding(
+                  4, 0)[SNew(SButton)
+                            .Text(FText::FromString(TEXT("Reset nodes")))
+                            .ToolTipText(FText::FromString(
+                                TEXT("Restore automatic graph node positions.")))
+                            .IsEnabled_Lambda([this] { return !_NodePositionOverrides.IsEmpty(); })
+                            .OnClicked_Lambda(
+                                [this]
+                                {
+                                    ResetManualNodePositions();
+                                    return FReply::Handled();
+                                })] +
               SHorizontalBox::Slot().AutoWidth().Padding(
                   4, 0)[SNew(SButton)
                             .Text(FText::FromString(TEXT("1:1")))

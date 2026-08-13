@@ -442,6 +442,46 @@ auto FCkGoapRuntimeGraphModel::UpdateRuntimeState(const FCkGoapDebugger_PlannerI
 
 auto FCkGoapRuntimeGraphModel::Relayout(int32 InNameDepth) -> void
 {
+    for (const auto& Node : _Nodes)
+    {
+        if (Node->Kind == ECkGoapRuntimeGraphNodeKind::Action)
+        {
+            Node->Size = ck_goap_runtime_graph::MeasureNode(Node->Action, InNameDepth);
+        }
+        else
+        {
+            Node->Size = ck_goap_runtime_graph::MeasureGoalNode(Node->GoalConditions);
+        }
+    }
+
+    RelayoutWithCurrentSizes();
+}
+
+auto FCkGoapRuntimeGraphModel::ApplyMeasuredNodeSizes(
+    const TMap<uint64, FVector2D>& InSizes) -> bool
+{
+    auto Changed = false;
+    for (const auto& Node : _Nodes)
+    {
+        const auto* Size = InSizes.Find(Node->Id);
+        if (Size == nullptr || Size->X <= 0.0f || Size->Y <= 0.0f || Node->Size.Equals(*Size, 0.1f))
+        {
+            continue;
+        }
+
+        Node->Size = *Size;
+        Changed = true;
+    }
+
+    if (Changed)
+    {
+        RelayoutWithCurrentSizes();
+    }
+    return Changed;
+}
+
+auto FCkGoapRuntimeGraphModel::RelayoutWithCurrentSizes() -> void
+{
     using namespace ck_goap_runtime_graph;
     auto Actions = TArray<TSharedPtr<FCkGoapRuntimeGraphNode>>{};
     TSharedPtr<FCkGoapRuntimeGraphNode> Goal;
@@ -515,7 +555,6 @@ auto FCkGoapRuntimeGraphModel::Relayout(int32 InNameDepth) -> void
     LayerHeights.Init(0.0f, MaxLayer + 1);
     for (int32 Index = 0; Index < Actions.Num(); ++Index)
     {
-        Actions[Index]->Size = MeasureNode(Actions[Index]->Action, InNameDepth);
         const int32 Layer = Layers[Index];
         LayerWidths[Layer] = FMath::Max(LayerWidths[Layer], static_cast<float>(Actions[Index]->Size.X));
         LayerHeights[Layer] += static_cast<float>(Actions[Index]->Size.Y) + VertGap;
@@ -542,7 +581,6 @@ auto FCkGoapRuntimeGraphModel::Relayout(int32 InNameDepth) -> void
     }
     if (Goal.IsValid())
     {
-        Goal->Size = MeasureGoalNode(Goal->GoalConditions);
         Goal->Position = FVector2D{LayerX[MaxLayer + 1] + GoalGap, NodeMinY};
     }
 }

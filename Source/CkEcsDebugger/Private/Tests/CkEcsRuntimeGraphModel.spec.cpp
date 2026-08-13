@@ -77,6 +77,38 @@ auto FCkEcsRuntimeGraphLayout_PreservesDependentInputOrder::RunTest(const FStrin
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCkEcsRuntimeGraphModel_RejectsSelfRelationship,
+                                 "Ck.EcsDebugger.RuntimeGraph.Model.RejectsSelfRelationship",
+                                 EAutomationTestFlags::EditorContext |
+                                     EAutomationTestFlags::EngineFilter)
+
+auto FCkEcsRuntimeGraphModel_RejectsSelfRelationship::RunTest(const FString& /*InParameters*/)
+    -> bool
+{
+    using namespace ck::registry_table;
+
+    auto Registry = EnttRegistryType{};
+    const auto RegistrySlot = Allocate(&Registry);
+    {
+        auto Center = FCk_Handle{FCk_Entity{Registry.create()}, RegistrySlot};
+        Center.Add<ck::FFragment_ContextOwner>(Center);
+
+        auto Model = FCkEcsRuntimeGraphModel{};
+        TestTrue(TEXT("Self-owned entity builds a visible graph"), Model.RebuildFromEntity(Center));
+        TestEqual(TEXT("Self relationship does not duplicate the center"), Model.GetNodes().Num(), 1);
+        TestEqual(TEXT("Self relationship does not emit a self edge"), Model.GetEdges().Num(), 0);
+        if (Model.GetNodes().Num() == 1)
+        {
+            TestTrue(TEXT("The remaining node is the center"), Model.GetNodes()[0]->bIsCenterNode);
+            TestEqual(TEXT("The center keeps its stable identity"),
+                      Model.GetNodes()[0]->StableId,
+                      FCkEcsRuntimeGraphModel::MakeStableId(Center));
+        }
+    }
+    Free(RegistrySlot);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkEcsRuntimeGraphTopologyHash_DetectsSameCountDependentReplacement,
     "Ck.EcsDebugger.RuntimeGraph.TopologyHash.DetectsSameCountDependentReplacement",

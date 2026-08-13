@@ -180,39 +180,37 @@ auto FCkEcsRuntimeGraphModel::RebuildFromEntity(const FCk_Handle& InEntity) -> b
     auto Dependents = TArray<ck_ecs_runtime_graph_model::FRelatedEntity>{};
     auto LifetimeOwner = FCk_Handle{};
     auto ContextOwner = FCk_Handle{};
+    auto RelatedEntities = TSet<FCk_Handle>{};
+    RelatedEntities.Add(InEntity);
 
     if (InEntity.Has<ck::FFragment_LifetimeOwner>())
     {
-        LifetimeOwner = InEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
-        if (ck::IsValid(LifetimeOwner))
+        const auto Candidate = InEntity.Get<ck::FFragment_LifetimeOwner>().Get_Entity();
+        if (ck::IsValid(Candidate) && NOT RelatedEntities.Contains(Candidate))
         {
+            LifetimeOwner = Candidate;
             Owners.Add({LifetimeOwner, ECkEcsRuntimeGraphRelationship::LifetimeOwner});
+            RelatedEntities.Add(LifetimeOwner);
         }
     }
 
     if (UCk_Utils_ContextOwner_UE::Has(InEntity))
     {
-        ContextOwner = UCk_Utils_ContextOwner_UE::Get_ContextOwner(InEntity);
-        auto bAlreadyAdded = false;
-        for (const auto& Existing : Owners)
+        const auto Candidate = UCk_Utils_ContextOwner_UE::Get_ContextOwner(InEntity);
+        if (ck::IsValid(Candidate) && NOT RelatedEntities.Contains(Candidate))
         {
-            if (Existing.Entity == ContextOwner)
-            {
-                bAlreadyAdded = true;
-                break;
-            }
-        }
-        if (ck::IsValid(ContextOwner) && NOT bAlreadyAdded)
-        {
+            ContextOwner = Candidate;
             Owners.Add({ContextOwner, ECkEcsRuntimeGraphRelationship::ContextOwner});
+            RelatedEntities.Add(ContextOwner);
         }
     }
 
     for (const auto& Dependent : UCk_Utils_EntityLifetime_UE::Get_LifetimeDependents(InEntity))
     {
-        if (ck::IsValid(Dependent))
+        if (ck::IsValid(Dependent) && NOT RelatedEntities.Contains(Dependent))
         {
             Dependents.Add({Dependent, ECkEcsRuntimeGraphRelationship::LifetimeDependent});
+            RelatedEntities.Add(Dependent);
         }
     }
     auto DependentHandles = TArray<FCk_Handle>{};

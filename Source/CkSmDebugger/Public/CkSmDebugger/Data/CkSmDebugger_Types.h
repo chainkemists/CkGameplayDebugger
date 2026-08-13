@@ -43,6 +43,7 @@ struct FCkSmDebugger_TaskInfo
 struct FCkSmDebugger_StateInfo
 {
     FCk_Handle Handle;
+    FCk_Handle_StateMachine OwningSmHandle;
     TSubclassOf<UCk_SmState_EntityScript> StateClass;
     TSubclassOf<UCk_SmState_EntityScript> ScriptClass;
     TSubclassOf<UCk_SmState_EntityScript> RequestedScriptClass;
@@ -110,6 +111,7 @@ inline constexpr int32 GCkSmDebugger_MaxResultSamplesPerCondition = 4096;
 struct FCkSmDebugger_TransitionInfo
 {
     FCk_Handle Handle;
+    FCk_Handle_StateMachine OwningSmHandle;
     int32 SourceStateIndex = -1;
     int32 TargetStateIndex = -1;
     int32 Order = 0;
@@ -150,6 +152,15 @@ struct FCkSmDebugger_HistoryTaskSnapshot
 
 struct FCkSmDebugger_HistoryEntry
 {
+    // Collector-assigned, nonzero identity for one concrete backend history record. It remains
+    // stable while the collector observes the same run, including after recursive/cached merges.
+    uint64 LiveEventId = 0;
+    // Exact backend timestamp bits used only to re-scope the same occurrence when a live child
+    // history entry is promoted into its parent graph. Logical time is intentionally separate.
+    uint64 LiveEventRawTimeBits = 0;
+    FCk_Handle_StateMachine OwningSmHandle;
+    TSubclassOf<UCk_SmState_EntityScript> FromStateClass;
+    TSubclassOf<UCk_SmState_EntityScript> ToStateClass;
     FString FromStateName;
     FString ToStateName;
     FString SubSmParentStateName;
@@ -231,6 +242,16 @@ struct FCkSmDebugger_RunInfo
 
 // --------------------------------------------------------------------------------------------------------------------
 
+enum class ECkSmDebugger_BreakpointHitKind : uint8
+{
+    None,
+    StateEntry,
+    StateExit,
+    Transition,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
 struct FCkSmDebugger_SmInfo
 {
     FCk_Handle_StateMachine Handle;
@@ -251,6 +272,10 @@ struct FCkSmDebugger_SmInfo
 
     bool IsPieDebugPaused = false;
     bool HasBreakpointHit = false;
+    ECkSmDebugger_BreakpointHitKind BreakpointHitKind = ECkSmDebugger_BreakpointHitKind::None;
+    TSubclassOf<UCk_SmState_EntityScript> BreakpointHitStateClass;
+    TSubclassOf<UCk_SmState_EntityScript> BreakpointHitSourceStateClass;
+    TSubclassOf<UCk_SmState_EntityScript> BreakpointHitTargetStateClass;
     FString BreakpointHitDescription;
 };
 

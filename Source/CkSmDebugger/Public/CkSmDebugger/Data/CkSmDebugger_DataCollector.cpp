@@ -91,6 +91,57 @@ auto
 
 auto
     FCkSmDebugger_DataCollector::
+    GetOrAssignLiveEventId(
+        const FCkSmDebugger_HistoryEntry& InEntry,
+        const FCk_Handle_StateMachine& InOwningSmHandle,
+        const uint64 InRawRealTimeBits,
+        const FString& InSubSmScope)
+    -> uint64
+{
+    const auto Scope = InSubSmScope.IsEmpty()
+                           ? FString::Printf(
+                                 TEXT("owner:%08x"),
+                                 ::GetTypeHash(static_cast<FCk_Handle>(InOwningSmHandle)))
+                           : FString::Printf(TEXT("parent:%s"), *InSubSmScope);
+    const auto Key = FString::Printf(
+        TEXT("%016llx|%llu|%s|%s|%s|%s|%s"),
+        InRawRealTimeBits,
+        InEntry.FrameNumber,
+        *GetNameSafe(InEntry.FromStateClass.Get()),
+        *GetNameSafe(InEntry.ToStateClass.Get()),
+        *InEntry.FromStateName,
+        *InEntry.ToStateName,
+        *Scope);
+    if (const auto* Existing = _LiveEventIds.Find(Key))
+    {
+        return *Existing;
+    }
+
+    // Zero is the DTO's explicit "not a live event" sentinel. Owner scope separates simultaneous
+    // roots; parent scope intentionally survives Foundation promoting a destroyed child record.
+    const auto Assigned = _NextLiveEventId++;
+    _LiveEventIds.Add(Key, Assigned == 0 ? _NextLiveEventId++ : Assigned);
+    _LiveEventOwners.Add(_LiveEventIds[Key], InOwningSmHandle);
+    return _LiveEventIds[Key];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
+    GetCanonicalLiveEventOwner(
+        const uint64 InLiveEventId,
+        const FCk_Handle_StateMachine& InFallbackOwner) const
+    -> FCk_Handle_StateMachine
+{
+    const auto* Owner = _LiveEventOwners.Find(InLiveEventId);
+    return Owner ? *Owner : InFallbackOwner;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkSmDebugger_DataCollector::
     Get_AllStateMachines() const
     -> const TArray<FCkSmDebugger_SmInfo>&
 {
@@ -116,6 +167,9 @@ auto
     _TransitionHistoriesBySm.Reset();
     _PerSmRunCounters.Reset();
     _HistoricalSubSms.Reset();
+    _LiveEventIds.Reset();
+    _LiveEventOwners.Reset();
+    _NextLiveEventId = 1;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -174,6 +228,7 @@ auto
     for (const auto& [StateClass, StateDef] : SubSmDef->StateDefinitions)
     {
         auto StateInfo = FCkSmDebugger_StateInfo{};
+        StateInfo.OwningSmHandle = SmInfo.Handle;
         StateInfo.StateClass = StateClass;
         StateInfo.ScriptClass = StateDef.ScriptClass;
         StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
@@ -218,6 +273,7 @@ auto
         for (const auto& TransDef : StateDef.Transitions)
         {
             auto TransInfo = FCkSmDebugger_TransitionInfo{};
+            TransInfo.OwningSmHandle = SmInfo.Handle;
             TransInfo.SourceStateIndex = *SourceIndex;
             TransInfo.SourceStateClass = StateClass;
             TransInfo.SourceStateName = SmInfo.States[*SourceIndex].StateName;
@@ -332,6 +388,7 @@ auto
     for (const auto& [StateClass, CachedState] : CachedStates)
     {
         auto StateInfo = FCkSmDebugger_StateInfo{};
+        StateInfo.OwningSmHandle = SmInfo.Handle;
         StateInfo.StateClass = StateClass;
         StateInfo.ScriptClass = CachedState.ScriptClass;
         StateInfo.RequestedScriptClass = CachedState.RequestedScriptClass;
@@ -379,6 +436,7 @@ auto
         for (const auto& CachedTransition : CachedState.Transitions)
         {
             auto TransInfo = FCkSmDebugger_TransitionInfo{};
+            TransInfo.OwningSmHandle = SmInfo.Handle;
             TransInfo.SourceStateIndex = *SourceIndex;
             TransInfo.SourceStateClass = StateClass;
             TransInfo.SourceStateName = SmInfo.States[*SourceIndex].StateName;
@@ -435,6 +493,7 @@ auto
                 if (StateClassToIndex.Contains(StateClass)) { continue; }
 
                 auto StateInfo = FCkSmDebugger_StateInfo{};
+                StateInfo.OwningSmHandle = SmInfo.Handle;
                 StateInfo.StateClass = StateClass;
                 StateInfo.ScriptClass = StateDef.ScriptClass;
                 StateInfo.RequestedScriptClass = StateDef.RequestedScriptClass;
@@ -489,6 +548,7 @@ auto
                 for (const auto& TransDef : StateDef.Transitions)
                 {
                     auto TransInfo = FCkSmDebugger_TransitionInfo{};
+                    TransInfo.OwningSmHandle = SmInfo.Handle;
                     TransInfo.SourceStateIndex = *SourceIndex;
                     TransInfo.SourceStateClass = StateClass;
                     TransInfo.SourceStateName = State.StateName;
@@ -573,16 +633,90 @@ auto
         RestoreTransitionHistories(SmInfo.DebugName, SmInfo);
     }
 
+    const auto ResolveTransitionOrder = [&SmInfo](FCkSmDebugger_HistoryEntry& InOutEntry)
+    {
+        const auto StateMatches = [](const TSubclassOf<UCk_SmState_EntityScript> InEventClass,
+                                     const FString& InEventName,
+                                     const TSubclassOf<UCk_SmState_EntityScript> InTransitionClass,
+                                     const FString& InTransitionName)
+        {
+            return InEventClass ? InEventClass == InTransitionClass
+                                : NOT InEventName.IsEmpty() && InEventName == InTransitionName;
+        };
+        const auto ConditionsMatch = [&InOutEntry](const FCkSmDebugger_TransitionInfo& InTransition)
+        {
+            if (InTransition.Conditions.Num() != InOutEntry.ConditionNames.Num())
+            {
+                return false;
+            }
+            for (auto Index = 0; Index < InTransition.Conditions.Num(); ++Index)
+            {
+                if (InTransition.Conditions[Index].ClassName != InOutEntry.ConditionNames[Index])
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const auto* BestEndpointMatch = static_cast<const FCkSmDebugger_TransitionInfo*>(nullptr);
+        const auto* BestConditionMatch = static_cast<const FCkSmDebugger_TransitionInfo*>(nullptr);
+        for (const auto& Transition : SmInfo.Transitions)
+        {
+            if (NOT StateMatches(InOutEntry.FromStateClass,
+                                 InOutEntry.FromStateName,
+                                 Transition.SourceStateClass,
+                                 Transition.SourceStateName)
+                || NOT StateMatches(InOutEntry.ToStateClass,
+                                    InOutEntry.ToStateName,
+                                    Transition.TargetStateClass,
+                                    Transition.TargetStateName))
+            {
+                continue;
+            }
+            if (BestEndpointMatch == nullptr || Transition.Order < BestEndpointMatch->Order)
+            {
+                BestEndpointMatch = &Transition;
+            }
+            if (ConditionsMatch(Transition)
+                && (BestConditionMatch == nullptr || Transition.Order < BestConditionMatch->Order))
+            {
+                BestConditionMatch = &Transition;
+            }
+        }
+        if (const auto* Resolved = BestConditionMatch ? BestConditionMatch : BestEndpointMatch)
+        {
+            // Foundation history does not carry transition order. Conditions identify the fired
+            // parallel edge when possible; otherwise the state machine's first ordered match wins.
+            InOutEntry.TransitionOrder = Resolved->Order;
+        }
+    };
+
     // Copy history
     for (const auto& HistoryEntry : Debug.Get_History())
     {
         auto ViewerEntry = FCkSmDebugger_HistoryEntry{};
+        ViewerEntry.OwningSmHandle = SmInfo.Handle;
+        ViewerEntry.FromStateClass = HistoryEntry.FromStateClass;
+        ViewerEntry.ToStateClass = HistoryEntry.ToStateClass;
         ViewerEntry.FromStateName = HistoryEntry.FromStateName;
         ViewerEntry.ToStateName = HistoryEntry.ToStateName;
         ViewerEntry.SubSmParentStateName = HistoryEntry.SubSmParentStateName;
         ViewerEntry.FrameNumber = ComputeLogicalFrame(HistoryEntry.FrameNumber);
         ViewerEntry.ConditionNames = HistoryEntry.TransitionConditionNames;
         ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistoryEntry.RealTimeSeconds);
+        static_assert(sizeof(ViewerEntry.LiveEventRawTimeBits) == sizeof(HistoryEntry.RealTimeSeconds));
+        FMemory::Memcpy(&ViewerEntry.LiveEventRawTimeBits,
+                        &HistoryEntry.RealTimeSeconds,
+                        sizeof(ViewerEntry.LiveEventRawTimeBits));
+        ResolveTransitionOrder(ViewerEntry);
+        ViewerEntry.LiveEventId = GetOrAssignLiveEventId(
+            ViewerEntry,
+            SmInfo.Handle,
+            ViewerEntry.LiveEventRawTimeBits,
+            ViewerEntry.SubSmParentStateName);
+        ViewerEntry.OwningSmHandle = GetCanonicalLiveEventOwner(
+            ViewerEntry.LiveEventId, SmInfo.Handle);
 
         for (const auto& Snap : HistoryEntry.TaskSnapshots)
         {
@@ -836,11 +970,28 @@ auto
             for (const auto& HistEntry : BackendRun.History)
             {
                 auto ViewerEntry = FCkSmDebugger_HistoryEntry{};
+                ViewerEntry.OwningSmHandle = SmInfo.Handle;
+                ViewerEntry.FromStateClass = HistEntry.FromStateClass;
+                ViewerEntry.ToStateClass = HistEntry.ToStateClass;
                 ViewerEntry.FromStateName = HistEntry.FromStateName;
                 ViewerEntry.ToStateName = HistEntry.ToStateName;
+                ViewerEntry.SubSmParentStateName = HistEntry.SubSmParentStateName;
                 ViewerEntry.FrameNumber = ComputeLogicalFrame(HistEntry.FrameNumber);
                 ViewerEntry.ConditionNames = HistEntry.TransitionConditionNames;
                 ViewerEntry.RealTimeSeconds = ComputeLogicalTime(HistEntry.RealTimeSeconds);
+                static_assert(sizeof(ViewerEntry.LiveEventRawTimeBits) ==
+                              sizeof(HistEntry.RealTimeSeconds));
+                FMemory::Memcpy(&ViewerEntry.LiveEventRawTimeBits,
+                                &HistEntry.RealTimeSeconds,
+                                sizeof(ViewerEntry.LiveEventRawTimeBits));
+                ResolveTransitionOrder(ViewerEntry);
+                ViewerEntry.LiveEventId = GetOrAssignLiveEventId(
+                    ViewerEntry,
+                    SmInfo.Handle,
+                    ViewerEntry.LiveEventRawTimeBits,
+                    ViewerEntry.SubSmParentStateName);
+                ViewerEntry.OwningSmHandle = GetCanonicalLiveEventOwner(
+                    ViewerEntry.LiveEventId, SmInfo.Handle);
 
                 for (const auto& Snap : HistEntry.TaskSnapshots)
                 {
@@ -892,15 +1043,41 @@ auto
             const auto& HitFrag = InSmHandle.Get<ck::FFragment_Sm_Debug_BreakpointHit>();
             SmInfo.HasBreakpointHit = true;
             SmInfo.BreakpointHitDescription = HitFrag.Description;
+            SmInfo.BreakpointHitStateClass = HitFrag.StateClass;
+            SmInfo.BreakpointHitSourceStateClass = HitFrag.SourceStateClass;
+            SmInfo.BreakpointHitTargetStateClass = HitFrag.TargetStateClass;
+
+            switch (HitFrag.Kind)
+            {
+                case ck::ECk_SmDebug_BreakpointHitKind::StateEntry:
+                    SmInfo.BreakpointHitKind = ECkSmDebugger_BreakpointHitKind::StateEntry;
+                    break;
+                case ck::ECk_SmDebug_BreakpointHitKind::StateExit:
+                    SmInfo.BreakpointHitKind = ECkSmDebugger_BreakpointHitKind::StateExit;
+                    break;
+                case ck::ECk_SmDebug_BreakpointHitKind::Transition:
+                    SmInfo.BreakpointHitKind = ECkSmDebugger_BreakpointHitKind::Transition;
+                    break;
+                case ck::ECk_SmDebug_BreakpointHitKind::None:
+                    SmInfo.BreakpointHitKind = ECkSmDebugger_BreakpointHitKind::None;
+                    break;
+            }
 
             if (NOT _BreakpointHitWallTimes.Contains(HitFrag.RealTimeSeconds))
             {
                 _BreakpointHitWallTimes.Add(HitFrag.RealTimeSeconds);
             }
 
-            if (SmInfo.CurrentStateIndex >= 0)
+            const auto HitStateClass =
+                HitFrag.Kind == ck::ECk_SmDebug_BreakpointHitKind::Transition
+                    ? HitFrag.SourceStateClass
+                    : HitFrag.StateClass;
+            for (auto& State : SmInfo.States)
             {
-                SmInfo.States[SmInfo.CurrentStateIndex].IsBreakpointHit = true;
+                State.IsBreakpointHit =
+                    HitStateClass
+                    && State.StateClass == HitStateClass
+                    && State.OwningSmHandle == SmInfo.Handle;
             }
         }
         else
@@ -987,6 +1164,21 @@ auto
             if (SubSmInfo.States.Num() == 0)
             { continue; }
 
+            // A breakpoint pauses the nested machine that owns the hit. Preserve its typed hit
+            // metadata on the root DTO so the window banner can name it, while the moved child
+            // state retains IsBreakpointHit for the red graph outline.
+            if (SubSmInfo.HasBreakpointHit)
+            {
+                InOutSmInfo.HasBreakpointHit = true;
+                InOutSmInfo.BreakpointHitKind = SubSmInfo.BreakpointHitKind;
+                InOutSmInfo.BreakpointHitStateClass = SubSmInfo.BreakpointHitStateClass;
+                InOutSmInfo.BreakpointHitSourceStateClass =
+                    SubSmInfo.BreakpointHitSourceStateClass;
+                InOutSmInfo.BreakpointHitTargetStateClass =
+                    SubSmInfo.BreakpointHitTargetStateClass;
+                InOutSmInfo.BreakpointHitDescription = SubSmInfo.BreakpointHitDescription;
+            }
+
             // Merge sub-SM states into parent with index remapping
             auto IndexOffset = InOutSmInfo.States.Num();
 
@@ -1015,6 +1207,12 @@ auto
             for (auto& SubEntry : SubSmInfo.History)
             {
                 SubEntry.SubSmParentStateName = ParentStateName;
+                SubEntry.LiveEventId = GetOrAssignLiveEventId(SubEntry,
+                                                              SubEntry.OwningSmHandle,
+                                                              SubEntry.LiveEventRawTimeBits,
+                                                              ParentStateName);
+                SubEntry.OwningSmHandle = GetCanonicalLiveEventOwner(
+                    SubEntry.LiveEventId, SubEntry.OwningSmHandle);
                 OutSubSmHistories.Add(MoveTemp(SubEntry));
             }
         }
@@ -1502,6 +1700,7 @@ namespace
     auto NullHandlesOnState(FCkSmDebugger_StateInfo& InOutState) -> void
     {
         InOutState.Handle = FCk_Handle{};
+        InOutState.OwningSmHandle = FCk_Handle_StateMachine{};
         for (auto& Task : InOutState.Tasks)
         {
             Task.Handle = FCk_Handle{};
@@ -1512,6 +1711,7 @@ namespace
     auto NullHandlesOnTransition(FCkSmDebugger_TransitionInfo& InOutTrans) -> void
     {
         InOutTrans.Handle = FCk_Handle{};
+        InOutTrans.OwningSmHandle = FCk_Handle_StateMachine{};
         for (auto& Cond : InOutTrans.Conditions)
         {
             Cond.Handle = FCk_Handle{};

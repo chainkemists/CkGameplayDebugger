@@ -1452,6 +1452,7 @@ auto
         Dense.CornerStyle       = ECkDebugAxis_CornerStyle::Sharp;
         Dense.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Flat;
         Dense.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Dense;
+        Dense.GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Subtle;
         Dense.RowBanding        = ECkDebugAxis_RowBanding::Hairline;
 
         Result.Add(FCkDebuggerStyleProfile{
@@ -1473,6 +1474,7 @@ auto
         Presentation.CornerStyle       = ECkDebugAxis_CornerStyle::Pill;
         Presentation.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Layered;
         Presentation.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Card;
+        Presentation.GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Bold;
         Presentation.RowBanding        = ECkDebugAxis_RowBanding::Zebra;
 
         Result.Add(FCkDebuggerStyleProfile{
@@ -1494,6 +1496,7 @@ auto
         MinimalInk.CornerStyle       = ECkDebugAxis_CornerStyle::Sharp;
         MinimalInk.SurfaceElevation  = ECkDebugAxis_SurfaceElevation::Outlined;
         MinimalInk.GraphNodeStyle    = ECkDebugAxis_GraphNodeStyle::Minimal;
+        MinimalInk.GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Subtle;
         MinimalInk.RowBanding        = ECkDebugAxis_RowBanding::Off;
 
         Result.Add(FCkDebuggerStyleProfile{

@@ -278,6 +278,35 @@ enum class ECkDebugAxis_GraphNodeStyle : uint8
 // --------------------------------------------------------------------------------------------------------------------
 
 /**
+ * The pacing of short-lived state-machine graph feedback. This is a discrete
+ * readability preference rather than four unrelated numeric knobs, so a
+ * profile can carry one coherent motion vocabulary.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_GraphMotion : uint8
+{
+    Quick,
+    Measured,
+    Deliberate,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
+ * The strength of a state-machine graph event. The axis controls geometry only: render sites
+ * retain their semantic CkStyle::Warn color instead of turning this into a palette choice.
+ */
+UENUM(BlueprintType)
+enum class ECkDebugAxis_GraphEventEmphasis : uint8
+{
+    Subtle,
+    Clear,
+    Bold,
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/**
  * Row-to-row separation in list and tree surfaces. Zebra alternates a fill; Hairline draws a rule
  * under each row at the SeparatorWeight thickness instead.
  */
@@ -385,6 +414,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
         meta = (ToolTip = "Border weight and inactive fade for debug graph nodes (state machine, GOAP)."))
     ECkDebugAxis_GraphNodeStyle GraphNodeStyle = ECkDebugAxis_GraphNodeStyle::Card;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Pacing for state-machine graph state and transition feedback: quick, measured, or deliberate."))
+    ECkDebugAxis_GraphMotion GraphMotion = ECkDebugAxis_GraphMotion::Measured;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
+        meta = (ToolTip = "Outline and edge-flash strength for state-machine graph events: subtle, clear, or bold."))
+    ECkDebugAxis_GraphEventEmphasis GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Clear;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Style Axes",
         meta = (ToolTip = "Row-to-row separation in list and tree surfaces: none, alternating fills, or a per-row rule."))

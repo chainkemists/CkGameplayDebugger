@@ -33,7 +33,7 @@ struct FCkSmRuntimeGraphNode
     bool bFullyEventDriven = false;
     bool bExpandTasks = true;
     // Retained-card presentation only. These never affect topology or widget identity.
-    float EntryPulseAlpha = 0.0f;
+    float StateEventAlpha = 0.0f;
     float BorderGlowAlpha = 0.0f;
     float CellGlowAlpha = 0.0f;
     TSharedPtr<FCkSmDebugger_StateInfo> State;
@@ -59,6 +59,12 @@ struct FCkSmRuntimeGraphScene
 {
     TArray<FCkSmRuntimeGraphNode> Nodes;
     TArray<FCkSmRuntimeGraphEdge> Edges;
+};
+
+struct FCkSmRuntimeGraphNodeGeometry
+{
+    FVector2D Position = FVector2D::ZeroVector;
+    FVector2D Size = FVector2D::ZeroVector;
 };
 
 enum class ECkSmRuntimeGraphCopyTarget : uint8
@@ -96,10 +102,11 @@ class CKSMDEBUGGER_API FCkSmRuntimeGraphModel
     }
     auto ApplyScrubHighlight(int32 InActiveStateIndex, int32 InExitedStateIndex) -> void;
     auto ClearPresentation() -> void;
-    auto TickLivePresentation(float InDeltaTime,
-                              int32 InPreviousStateIndex,
-                              int32 InCurrentStateIndex,
-                              const TSet<FString>& InPreviousStateNames) -> void;
+    auto TriggerLivePresentation(const TArray<FCkSmDebugger_HistoryEntry>& InEvents) -> void;
+    auto TriggerLivePresentation(int32 InPreviousStateIndex,
+                                 int32 InCurrentStateIndex,
+                                 const TSet<FString>& InPreviousStateNames) -> void;
+    auto TickLivePresentation(float InDeltaTime) -> void;
     auto GetScene() const -> const FCkSmRuntimeGraphScene&
     {
         return _Scene;
@@ -117,6 +124,10 @@ class CKSMDEBUGGER_API FCkSmRuntimeGraphModel
     static auto EstimateStateSize(const FCkSmDebugger_StateInfo& InState,
                                   bool bInExpandTasks,
                                   int32 InNameDepth) -> FVector2D;
+    static auto ResolveNodeGeometry(const FCkSmRuntimeGraphScene& InScene,
+                                    const FCkSmRuntimeGraphNode& InNode,
+                                    const TMap<uint64, FVector2D>& InPositionOverrides)
+        -> FCkSmRuntimeGraphNodeGeometry;
     static auto ComputeStructureHash(const FCkSmDebugger_SmInfo& InInfo,
                                      bool bInExpandTasks,
                                      int32 InNameDepth,

@@ -16,6 +16,7 @@ class SCkSmRuntimeGraph;
 class SCkSmDebugger_PreviewPane;
 class SSplitter;
 class SBox;
+enum class ECkSmRuntimeBreakpointTarget : uint8;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Top-level debugger window — placed inside the NomadTab.
@@ -62,6 +63,7 @@ private:
     auto RefreshSmSelector() -> void;
     auto Get_IsExecutionPaused() const -> bool;
     auto Set_ExecutionPaused(bool InPaused) -> void;
+    auto ToggleRuntimeBreakpoint(ECkSmRuntimeBreakpointTarget InTarget, int32 InIndex) -> void;
 
     // Push the current run's segments + marks into the shared scrub timeline.
     auto RefreshTimelineContent() -> void;
@@ -69,6 +71,9 @@ private:
     // Re-centre the timeline window on the cursor. Replaces the old
     // "ScrubState.TimelineScrollX = 0" recentre — the widget owns the window now.
     auto FocusTimelineOnCursor() -> void;
+    auto ConsumeNewLiveEvents(const FCkSmDebugger_SmInfo& InSmInfo)
+        -> TArray<FCkSmDebugger_HistoryEntry>;
+    auto ResetLiveEventCursor() -> void;
 
     // Run-relative time -> absolute engine frame, via the run's FrameSegments table.
     // Returns 0 when the run has no history yet.
@@ -133,6 +138,13 @@ private:
 
     // Breakpoint tracking — detect state transitions to trigger pause
     int32 _LastCurrentStateIdx = -1;
+
+    // The first observed history of a selected root/run establishes a baseline; only later,
+    // nonzero collector event IDs are passed to the graph as live presentation events.
+    TOptional<FCk_Handle_StateMachine> _LiveEventCursorRoot;
+    int32 _LiveEventCursorRunIndex = INDEX_NONE;
+    TSet<uint64> _ObservedLiveEventIds;
+    ECkSmDebugger_ViewMode _LastPresentationViewMode = ECkSmDebugger_ViewMode::Live;
 
     // When true, the detail panel follows the current active state automatically.
     // Cleared when the user explicitly picks a different state/transition in the

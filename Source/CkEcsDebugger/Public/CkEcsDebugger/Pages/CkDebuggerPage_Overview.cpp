@@ -14,6 +14,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -119,7 +120,8 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
             .AllowNodeDragging(true)
             .OnSelectionChanged_Raw(this, &FCkDebuggerPage_Overview::OnCanvasSelectionChanged)
             .OnNodeDoubleClicked_Raw(this, &FCkDebuggerPage_Overview::OnCanvasNodeDoubleClicked)
-            .OnNodeContextMenu_Raw(this, &FCkDebuggerPage_Overview::OnCanvasNodeContextMenu);
+            .OnNodeContextMenu_Raw(this, &FCkDebuggerPage_Overview::OnCanvasNodeContextMenu)
+            .OnNodeMoved_Raw(this, &FCkDebuggerPage_Overview::OnCanvasNodeMoved);
 
     const auto LegendPadding = TAttribute<FMargin>::CreateLambda(
         []() -> FMargin
@@ -150,6 +152,40 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
             LegendPadding)[ck_ecs_debugger_page_overview::MakeLegendEntry(CkStyle::Transform(),
                                                                           TEXT("Dependent"))];
 
+    const auto HeaderBar = SNew(SHorizontalBox) +
+                           SHorizontalBox::Slot().FillWidth(1.0f)[LegendBar] +
+                           SHorizontalBox::Slot()
+                               .AutoWidth()
+                               .Padding(6.0f, 0.0f)[SNew(SButton)
+                                                        .Text(FText::FromString(TEXT("Fit")))
+                                                        .ToolTipText(FText::FromString(
+                                                            TEXT("Frame all graph nodes.")))
+                                                        .OnClicked_Lambda(
+                                                            [this]
+                                                            {
+                                                                if (_GraphCanvas.IsValid())
+                                                                {
+                                                                    _GraphCanvas->Frame_All();
+                                                                }
+                                                                return FReply::Handled();
+                                                            })] +
+                           SHorizontalBox::Slot().AutoWidth()[SNew(SButton)
+                                                                  .Text(FText::FromString(
+                                                                      TEXT("Reset nodes")))
+                                                                  .ToolTipText(FText::FromString(
+                                                                      TEXT("Restore automatic graph node positions.")))
+                                                                  .IsEnabled_Lambda(
+                                                                      [this]
+                                                                      {
+                                                                          return !_ManualNodePositions.IsEmpty();
+                                                                      })
+                                                                  .OnClicked_Lambda(
+                                                                      [this]
+                                                                      {
+                                                                          ResetManualNodePositions();
+                                                                          return FReply::Handled();
+                                                                      })];
+
     if (SelectionModel.IsValid())
     {
         SelectionChangedHandle = SelectionModel->OnSelectionChanged.AddRaw(
@@ -171,7 +207,7 @@ auto FCkDebuggerPage_Overview::Build_Content(const FCkDebuggerPageContext& InCon
     return SNew(SBorder)
         .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Graph.Background"))
         .Padding(0.0f)[SNew(SVerticalBox) +
-                       SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f)[LegendBar] +
+                       SVerticalBox::Slot().AutoHeight().Padding(4.0f, 2.0f)[HeaderBar] +
                        SVerticalBox::Slot().FillHeight(1.0f)[_GraphCanvas.ToSharedRef()]];
 }
 
@@ -298,6 +334,29 @@ auto FCkDebuggerPage_Overview::OnCanvasNodeContextMenu(uint64 InNodeId,
                                          (*Node)->DisplayName);
 }
 
+auto FCkDebuggerPage_Overview::OnCanvasNodeMoved(const uint64 InNodeId,
+                                                 const FVector2D& InPosition) -> void
+{
+    if (_ManualPositionScopeId == 0 || !_CanvasNodes.Contains(InNodeId))
+    {
+        return;
+    }
+
+    _ManualNodePositions.Add(InNodeId, InPosition);
+    RebuildCanvasScene(false);
+}
+
+auto FCkDebuggerPage_Overview::ResetManualNodePositions() -> void
+{
+    if (_ManualNodePositions.IsEmpty())
+    {
+        return;
+    }
+
+    _ManualNodePositions.Reset();
+    RebuildCanvasScene(false);
+}
+
 // =====================================================================================================================
 
 auto FCkDebuggerPage_Overview::RebuildGraph(bool InForceCards) -> void
@@ -320,6 +379,13 @@ auto FCkDebuggerPage_Overview::RebuildGraph(bool InForceCards) -> void
         return;
     }
 
+    const auto ManualPositionScopeId = ck_ecs_debugger_page_overview::MakeCanvasId(PrimaryEntity);
+    if (_ManualPositionScopeId != ManualPositionScopeId)
+    {
+        _ManualPositionScopeId = ManualPositionScopeId;
+        _ManualNodePositions.Reset();
+    }
+
     const auto TopologyChanged = _RuntimeGraphModel.RebuildFromEntity(PrimaryEntity);
     if (TopologyChanged || InForceCards)
     {
@@ -340,6 +406,7 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
     auto NewCanvasNodes = TMap<uint64, TSharedPtr<FCkEcsRuntimeGraphNode>>{};
     auto StableToCanvasId = TMap<FString, uint64>{};
     auto Scene = FCkDebug_GraphCanvasScene{};
+    auto PresentNodeIds = TSet<uint64>{};
 
     for (const auto& RuntimeNode : _RuntimeGraphModel.GetNodes())
     {
@@ -353,6 +420,7 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         {
             continue;
         }
+        PresentNodeIds.Add(CanvasId);
 
         auto Card = TSharedPtr<SCkEcsEntityGraphCard>{};
         if (const auto* ExistingCard = PreviousCards.Find(CanvasId); ExistingCard != nullptr &&
@@ -371,6 +439,11 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         CanvasNode.Id = CanvasId;
         CanvasNode.Position = FVector2D{static_cast<double>(RuntimeNode->Position.X),
                                         static_cast<double>(RuntimeNode->Position.Y)};
+        if (const auto* ManualPosition = _ManualNodePositions.Find(CanvasId))
+        {
+            CanvasNode.Position = *ManualPosition;
+            CanvasNode.bHasManualPosition = true;
+        }
         CanvasNode.Size = Card->GetDesiredSize();
         CanvasNode.Widget = Card;
         Scene.Nodes.Add(MoveTemp(CanvasNode));
@@ -378,6 +451,14 @@ auto FCkDebuggerPage_Overview::RebuildCanvasScene(bool InFrameAll) -> void
         StableToCanvasId.Add(RuntimeNode->StableId, CanvasId);
         NewCards.Add(CanvasId, Card);
         NewCanvasNodes.Add(CanvasId, RuntimeNode);
+    }
+
+    for (auto It = _ManualNodePositions.CreateIterator(); It; ++It)
+    {
+        if (!PresentNodeIds.Contains(It.Key()))
+        {
+            It.RemoveCurrent();
+        }
     }
 
     for (const auto& RuntimeEdge : _RuntimeGraphModel.GetEdges())
@@ -432,6 +513,8 @@ auto FCkDebuggerPage_Overview::ClearGraph() -> void
     const auto WasPopulated = _RuntimeGraphModel.Clear();
     _EntityCards.Reset();
     _CanvasNodes.Reset();
+    _ManualNodePositions.Reset();
+    _ManualPositionScopeId = 0;
     _PendingFrameAll = false;
     if (WasPopulated && _GraphCanvas.IsValid())
     {

@@ -29,9 +29,11 @@ class FCkDebuggerPage_Overview : public ICkDebuggerPage_Base
     auto OnCanvasSelectionChanged(const TSet<uint64>& InSelectedNodeIds) -> void;
     auto OnCanvasNodeDoubleClicked(uint64 InNodeId) -> void;
     auto OnCanvasNodeContextMenu(uint64 InNodeId, const FPointerEvent& InMouseEvent) -> void;
+    auto OnCanvasNodeMoved(uint64 InNodeId, const FVector2D& InPosition) -> void;
     auto RebuildGraph(bool InForceCards = false) -> void;
     auto RebuildCanvasScene(bool InFrameAll) -> void;
     auto Apply_InspectorFilterToGraph() -> void;
+    auto ResetManualNodePositions() -> void;
     auto ClearGraph() -> void;
 
     bool IsActivePage = false;
@@ -40,6 +42,8 @@ class FCkDebuggerPage_Overview : public ICkDebuggerPage_Base
     TSharedPtr<SCkDebug_GraphCanvas> _GraphCanvas;
     TMap<uint64, TSharedPtr<SCkEcsEntityGraphCard>> _EntityCards;
     TMap<uint64, TSharedPtr<FCkEcsRuntimeGraphNode>> _CanvasNodes;
+    TMap<uint64, FVector2D> _ManualNodePositions;
+    uint64 _ManualPositionScopeId = 0;
     bool _PendingFrameAll = false;
 
     TSharedPtr<FCkDebuggerModel_EntitySelection> SelectionModel;

@@ -60,8 +60,8 @@ auto FCkSmRuntimeGraphFacade::TickLivePresentation(const float InDeltaTime,
                                                    const TSet<FString>& InPreviousStateNames)
     -> void
 {
-    _Model.TickLivePresentation(InDeltaTime,
-                                InPreviousStateIndex,
-                                InCurrentStateIndex,
-                                InPreviousStateNames);
+    _Model.TriggerLivePresentation(InPreviousStateIndex,
+                                   InCurrentStateIndex,
+                                   InPreviousStateNames);
+    _Model.TickLivePresentation(InDeltaTime);
 }

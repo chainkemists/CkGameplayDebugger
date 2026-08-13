@@ -32,6 +32,8 @@ namespace ck::style_lab
                 {TEXT("CornerStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.DisplayName", "Corner Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "CornerStyle.ToolTip", "Corner shape for chips, badges, and cards.")},
                 {TEXT("SurfaceElevation"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.DisplayName", "Surface Elevation"), NSLOCTEXT("CkStyleLabAxisMetadata", "SurfaceElevation.ToolTip", "Tonal separation between nested surfaces: a background ladder per depth, one flat fill, or transparent fills with 1px rings.")},
                 {TEXT("GraphNodeStyle"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.DisplayName", "Graph Node Style"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphNodeStyle.ToolTip", "Border weight and inactive fade for debug graph nodes (state machine, GOAP).")},
+                {TEXT("GraphMotion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.DisplayName", "Graph Motion"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphMotion.ToolTip", "Pacing for state-machine graph state and transition feedback: quick, measured, or deliberate.")},
+                {TEXT("GraphEventEmphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.DisplayName", "Graph Event Emphasis"), NSLOCTEXT("CkStyleLabAxisMetadata", "GraphEventEmphasis.ToolTip", "Outline and edge-flash strength for state-machine graph events: subtle, clear, or bold.")},
                 {TEXT("RowBanding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.DisplayName", "Row Banding"), NSLOCTEXT("CkStyleLabAxisMetadata", "RowBanding.ToolTip", "Row-to-row separation in list and tree surfaces: none, alternating fills, or a per-row rule.")},
             };
             return AxisMetadata;
@@ -64,6 +66,8 @@ namespace ck::style_lab
                 CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 0, "Rounded"), CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 1, "Sharp"), CK_STYLE_LAB_AXIS_OPTION(CornerStyle, 2, "Pill"),
                 CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 0, "Layered"), CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 1, "Flat"), CK_STYLE_LAB_AXIS_OPTION(SurfaceElevation, 2, "Outlined"),
                 CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 0, "Card"), CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 1, "Minimal"), CK_STYLE_LAB_AXIS_OPTION(GraphNodeStyle, 2, "Dense"),
+                CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 0, "Quick"), CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 1, "Measured"), CK_STYLE_LAB_AXIS_OPTION(GraphMotion, 2, "Deliberate"),
+                CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 0, "Subtle"), CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 1, "Clear"), CK_STYLE_LAB_AXIS_OPTION(GraphEventEmphasis, 2, "Bold"),
                 CK_STYLE_LAB_AXIS_OPTION(RowBanding, 0, "Off"), CK_STYLE_LAB_AXIS_OPTION(RowBanding, 1, "Zebra"), CK_STYLE_LAB_AXIS_OPTION(RowBanding, 2, "Hairline"),
             };
             return AxisOptionMetadata;

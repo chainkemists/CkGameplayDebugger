@@ -14,6 +14,7 @@
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/EditorOnly/CkEditorOnly_Utils.h"
+#include "CkStateMachine/Debug/CkStateMachine_Debug_Fragment.h"
 #include "CkStateMachine/Debug/CkStateMachine_Debug_Utils.h"
 
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -70,6 +71,54 @@ namespace ck_sm_debugger_window
     auto Color_Detail_ClassName() -> FLinearColor { return CkStyle::Reference(); }
     auto Color_Detail_Bullet()    -> FLinearColor { return CkStyle::Warn(); }
     auto Color_Detail_Arrow()     -> FLinearColor { return CkStyle::TextDim(); }
+
+    auto GetBreakpointStateName(
+        const FCkSmDebugger_SmInfo& InSmInfo,
+        const TSubclassOf<UCk_SmState_EntityScript> InStateClass) -> FString
+    {
+        if (NOT InStateClass)
+        {
+            return {};
+        }
+
+        const auto* State = InSmInfo.States.FindByPredicate(
+            [InStateClass](const FCkSmDebugger_StateInfo& InState)
+            {
+                return InState.StateClass == InStateClass;
+            });
+        return State ? State->StateName : InStateClass->GetName();
+    }
+
+    auto GetBreakpointHitText(const FCkSmDebugger_SmInfo& InSmInfo,
+                              const int32 InNameDepth) -> FText
+    {
+        const auto ShortStateName = [&InSmInfo, InNameDepth](
+                                        const TSubclassOf<UCk_SmState_EntityScript> InStateClass)
+        {
+            return SCkDebug_NameLabel::Get_ShortName(
+                GetBreakpointStateName(InSmInfo, InStateClass), InNameDepth);
+        };
+
+        switch (InSmInfo.BreakpointHitKind)
+        {
+            case ECkSmDebugger_BreakpointHitKind::StateEntry:
+                return FText::FromString(
+                    TEXT("Entry: ") + ShortStateName(InSmInfo.BreakpointHitStateClass));
+            case ECkSmDebugger_BreakpointHitKind::StateExit:
+                return FText::FromString(
+                    TEXT("Exit: ") + ShortStateName(InSmInfo.BreakpointHitStateClass));
+            case ECkSmDebugger_BreakpointHitKind::Transition:
+                return FText::FromString(
+                    TEXT("Transition: ")
+                    + ShortStateName(InSmInfo.BreakpointHitSourceStateClass)
+                    + TEXT(" \u2192 ")
+                    + ShortStateName(InSmInfo.BreakpointHitTargetStateClass));
+            case ECkSmDebugger_BreakpointHitKind::None:
+                return FText::FromString(InSmInfo.BreakpointHitDescription);
+        }
+
+        return FText::FromString(InSmInfo.BreakpointHitDescription);
+    }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Section header: axis-driven title + separator underline. The underline collapses entirely when
@@ -309,6 +358,8 @@ auto
     _SelectedTransitionIndex = -1;
     _SelectedHistoryEntry.Reset();
     _LastCurrentStateIdx = -1;
+    ResetLiveEventCursor();
+    _LastPresentationViewMode = ECkSmDebugger_ViewMode::Live;
     _AutoSelectActiveState = true;
     _LastDetailSig = FDetailSignature{};
 
@@ -372,6 +423,172 @@ auto SCkSmDebuggerWindow::Set_ExecutionPaused(const bool InPaused) -> void
 #else
     if (auto* World = _CachedWorld.Get(); ck::IsValid(World))
         UGameplayStatics::SetGamePaused(World, InPaused);
+#endif
+}
+
+auto SCkSmDebuggerWindow::ToggleRuntimeBreakpoint(
+    const ECkSmRuntimeBreakpointTarget InTarget,
+    const int32 InIndex) -> void
+{
+    if (_IsTestMode)
+    {
+        if (InTarget == ECkSmRuntimeBreakpointTarget::Transition)
+        {
+            if (NOT _TestSmInfo.Transitions.IsValidIndex(InIndex))
+            {
+                return;
+            }
+            _TestSmInfo.Transitions[InIndex].HasBreakpoint =
+                NOT _TestSmInfo.Transitions[InIndex].HasBreakpoint;
+        }
+        else
+        {
+            if (NOT _TestSmInfo.States.IsValidIndex(InIndex))
+            {
+                return;
+            }
+            auto& State = _TestSmInfo.States[InIndex];
+            if (InTarget == ECkSmRuntimeBreakpointTarget::StateEntry)
+            {
+                State.HasEntryBreakpoint = NOT State.HasEntryBreakpoint;
+            }
+            else
+            {
+                State.HasExitBreakpoint = NOT State.HasExitBreakpoint;
+            }
+        }
+        if (_RuntimeGraph.IsValid())
+        {
+            _RuntimeGraph->SetSmInfo(&_TestSmInfo);
+        }
+        return;
+    }
+
+#if !UE_BUILD_SHIPPING
+    if (NOT _ViewModel.IsValid())
+    {
+        return;
+    }
+    auto SmHandle = _ViewModel->Get_SelectedSmHandle();
+    const auto bHandleValid = NOT ck::Is_NOT_Valid(SmHandle);
+    if (NOT bHandleValid)
+    {
+        return;
+    }
+    auto* SmInfo = _ViewModel->Get_MutableSmInfo();
+    if (SmInfo == nullptr || SmInfo->Handle != SmHandle)
+    {
+        return;
+    }
+
+    if (InTarget == ECkSmRuntimeBreakpointTarget::Transition)
+    {
+        if (NOT SmInfo->Transitions.IsValidIndex(InIndex))
+        {
+            return;
+        }
+        const auto& Transition = SmInfo->Transitions[InIndex];
+        const auto bClassesValid = Transition.SourceStateClass && Transition.TargetStateClass;
+        if (NOT bClassesValid)
+        {
+            return;
+        }
+        auto OwningSmHandle = Transition.OwningSmHandle;
+        if (ck::Is_NOT_Valid(OwningSmHandle))
+        {
+            if (Transition.IsSubSmTransition)
+            {
+                return;
+            }
+            OwningSmHandle = SmHandle;
+        }
+        auto& Breakpoints = OwningSmHandle.AddOrGet<ck::FFragment_Sm_Breakpoints>();
+        const auto Key = ck::FFragment_Sm_Breakpoints::FTransitionKey{
+            Transition.SourceStateClass,
+            Transition.TargetStateClass};
+        auto& Set = Breakpoints.Get_TransitionBreakpoints();
+        const auto bEnable = NOT Set.Contains(Key);
+        if (bEnable)
+        {
+            Set.Add(Key);
+        }
+        else
+        {
+            Set.Remove(Key);
+        }
+        for (auto& Candidate : SmInfo->Transitions)
+        {
+            auto CandidateOwner = Candidate.OwningSmHandle;
+            if (ck::Is_NOT_Valid(CandidateOwner) && NOT Candidate.IsSubSmTransition)
+            {
+                CandidateOwner = SmHandle;
+            }
+            if (CandidateOwner == OwningSmHandle
+                && Candidate.SourceStateClass == Transition.SourceStateClass
+                && Candidate.TargetStateClass == Transition.TargetStateClass)
+            {
+                Candidate.HasBreakpoint = bEnable;
+            }
+        }
+    }
+    else
+    {
+        if (NOT SmInfo->States.IsValidIndex(InIndex))
+        {
+            return;
+        }
+        const auto StateClass = SmInfo->States[InIndex].StateClass;
+        if (NOT StateClass)
+        {
+            return;
+        }
+        auto OwningSmHandle = SmInfo->States[InIndex].OwningSmHandle;
+        if (ck::Is_NOT_Valid(OwningSmHandle))
+        {
+            if (SmInfo->States[InIndex].IsSubSmNode)
+            {
+                return;
+            }
+            OwningSmHandle = SmHandle;
+        }
+        auto& Breakpoints = OwningSmHandle.AddOrGet<ck::FFragment_Sm_Breakpoints>();
+        auto& Set = InTarget == ECkSmRuntimeBreakpointTarget::StateEntry
+                        ? Breakpoints.Get_EntryBreakpoints()
+                        : Breakpoints.Get_ExitBreakpoints();
+        const auto bEnable = NOT Set.Contains(StateClass);
+        if (bEnable)
+        {
+            Set.Add(StateClass);
+        }
+        else
+        {
+            Set.Remove(StateClass);
+        }
+        for (auto& Candidate : SmInfo->States)
+        {
+            auto CandidateOwner = Candidate.OwningSmHandle;
+            if (ck::Is_NOT_Valid(CandidateOwner) && NOT Candidate.IsSubSmNode)
+            {
+                CandidateOwner = SmHandle;
+            }
+            if (CandidateOwner != OwningSmHandle || Candidate.StateClass != StateClass)
+            {
+                continue;
+            }
+            if (InTarget == ECkSmRuntimeBreakpointTarget::StateEntry)
+            {
+                Candidate.HasEntryBreakpoint = bEnable;
+            }
+            else
+            {
+                Candidate.HasExitBreakpoint = bEnable;
+            }
+        }
+    }
+    if (_RuntimeGraph.IsValid())
+    {
+        _RuntimeGraph->SetSmInfo(SmInfo);
+    }
 #endif
 }
 
@@ -570,6 +787,65 @@ auto
 
 auto
     SCkSmDebuggerWindow::
+    ResetLiveEventCursor()
+    -> void
+{
+    _LiveEventCursorRoot.Reset();
+    _LiveEventCursorRunIndex = INDEX_NONE;
+    _ObservedLiveEventIds.Reset();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
+    ConsumeNewLiveEvents(
+        const FCkSmDebugger_SmInfo& InSmInfo)
+    -> TArray<FCkSmDebugger_HistoryEntry>
+{
+    const auto RunIndex = InSmInfo.CurrentRun.RunIndex;
+    const auto bNewRoot = NOT _LiveEventCursorRoot.IsSet()
+                       || _LiveEventCursorRoot.GetValue() != InSmInfo.Handle;
+    if (bNewRoot)
+    {
+        _LiveEventCursorRoot = InSmInfo.Handle;
+        _LiveEventCursorRunIndex = RunIndex;
+        _ObservedLiveEventIds.Reset();
+        for (const auto& Event : InSmInfo.History)
+        {
+            if (Event.LiveEventId != 0)
+            {
+                _ObservedLiveEventIds.Add(Event.LiveEventId);
+            }
+        }
+        return {};
+    }
+
+    if (_LiveEventCursorRunIndex != RunIndex)
+    {
+        // Same selected scope, new live run: consume its already-accumulated history so a
+        // transition landing between refresh samples still gets one presentation event.
+        _LiveEventCursorRunIndex = RunIndex;
+        _ObservedLiveEventIds.Reset();
+    }
+
+    auto Result = TArray<FCkSmDebugger_HistoryEntry>{};
+    for (const auto& Event : InSmInfo.History)
+    {
+        if (Event.LiveEventId == 0 || _ObservedLiveEventIds.Contains(Event.LiveEventId))
+        {
+            continue;
+        }
+        _ObservedLiveEventIds.Add(Event.LiveEventId);
+        Result.Add(Event);
+    }
+    return Result;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSmDebuggerWindow::
     RefreshTimelineContent()
     -> void
 {
@@ -746,6 +1022,10 @@ auto
         this, &SCkSmDebuggerWindow::HandleWorldTornDown);
 
     _RuntimeGraph = SNew(SCkSmRuntimeGraph)
+#if !UE_BUILD_SHIPPING
+        .OnBreakpointRequested(FOnCkSmRuntimeGraphBreakpointRequested::CreateSP(
+            this, &SCkSmDebuggerWindow::ToggleRuntimeBreakpoint))
+#endif
         .OnSelectionChanged(FOnCkSmRuntimeGraphSelection::CreateLambda([this](const int32 InStateIndex, const int32 InTransitionIndex)
         {
             if (NOT _ViewModel.IsValid()) { return; }
@@ -956,6 +1236,16 @@ auto
         return;
     }
 
+    // Presentation animation is frame-driven, not data-refresh-driven. Keeping this outside the
+    // rate cap makes Graph Motion durations real seconds and prevents 5/15/30 Hz refresh choices
+    // from turning fades into a handful of jumps.
+    if (_RuntimeGraph.IsValid() &&
+        _ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Live &&
+        FCkDebuggerRefreshGate::Is_WindowVisible(WindowId))
+    {
+        _RuntimeGraph->TickLivePresentation(InDeltaTime);
+    }
+
     UCk_Utils_StateMachineDebug_UE::Set_IsDebuggerCaptureVisible(
         FCkDebuggerRefreshGate::Is_WindowVisible(WindowId));
 
@@ -1060,7 +1350,22 @@ auto
         }
 
         // ----- Highlight pass: scrub mode or live flash -----
-        if (_ViewModel->Get_ViewMode() == ECkSmDebugger_ViewMode::Scrub)
+        const auto PresentationViewMode = _ViewModel->Get_ViewMode();
+        if (PresentationViewMode != _LastPresentationViewMode)
+        {
+            if (PresentationViewMode == ECkSmDebugger_ViewMode::Live)
+            {
+                // Scrub highlights and events accumulated while examining history are not live
+                // feedback. Return to a clean live baseline without replaying that backlog.
+                if (_RuntimeGraph.IsValid())
+                {
+                    _RuntimeGraph->ClearPresentation();
+                }
+                ResetLiveEventCursor();
+            }
+            _LastPresentationViewMode = PresentationViewMode;
+        }
+        if (PresentationViewMode == ECkSmDebugger_ViewMode::Scrub)
         {
             auto HighlightTarget = _ViewModel->Get_ScrubHighlightTarget();
             auto HighlightSource = _ViewModel->Get_ScrubHighlightSource();
@@ -1071,38 +1376,11 @@ auto
         else
         {
             _RuntimeGraphFacade.ClearScrubHighlight();
-            if (_RuntimeGraph.IsValid())
-                _RuntimeGraph->ClearPresentation();
-
-            // Compute one "previous state" per hierarchy level (outer SM +
-            // each sub-SM) by walking history backwards and keeping the first
-            // FromStateName we see for each distinct SubSmParentStateName.
-            // Name-based matching survives graph rebuilds (sub-SM live/cached
-            // swaps invalidate indices but not state names).
-            auto PreviousStateNames = TSet<FString>{};
-            auto SeenLevels = TSet<FString>{};
-            for (auto HistIdx = SmInfo->History.Num() - 1; HistIdx >= 0; --HistIdx)
+            auto LiveEvents = ConsumeNewLiveEvents(*SmInfo);
+            if (_RuntimeGraph.IsValid() && NOT LiveEvents.IsEmpty())
             {
-                const auto& Entry = SmInfo->History[HistIdx];
-                if (SeenLevels.Contains(Entry.SubSmParentStateName)) { continue; }
-                // Skip boot/start markers (empty or literal "(start)" From) without marking
-                // the level seen — otherwise a recent boot marker blocks us from finding a
-                // real previous state at that hierarchy level. The backend stamps
-                // FromStateName = "(start)" on sub-SM initial-state entries (see
-                // CkStateMachine_Debug_Processor.cpp DoHandleRequest).
-                if (Entry.FromStateName.IsEmpty()
-                    || Entry.FromStateName == TEXT("(start)"))
-                { continue; }
-
-                SeenLevels.Add(Entry.SubSmParentStateName);
-                PreviousStateNames.Add(Entry.FromStateName);
+                _RuntimeGraph->TriggerLivePresentation(LiveEvents);
             }
-
-            _RuntimeGraphFacade.TickLivePresentation(
-                InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
-            if (_RuntimeGraph.IsValid())
-                _RuntimeGraph->TickLivePresentation(
-                    InDeltaTime, _LastCurrentStateIdx, SmInfo->CurrentStateIndex, PreviousStateNames);
         }
 
         // ----- Breakpoint detection: pause PIE on state entry/exit -----
@@ -1471,18 +1749,25 @@ auto
                     }))
             ]
 
-        // Relayout
+        // Restore automatic layout for nodes which were manually moved.
         + SHorizontalBox::Slot()
             .AutoWidth()
             .Padding(4.0f, 0.0f, 0.0f, 0.0f)
             .VAlign(VAlign_Center)
             [
                 SNew(SButton)
-                    .Text(FText::FromString(TEXT("Relayout")))
+                    .Text(FText::FromString(TEXT("Reset nodes")))
+                    .IsEnabled_Lambda([this]()
+                    {
+                        return _RuntimeGraph.IsValid()
+                               && _RuntimeGraph->HasManualNodePositions();
+                    })
                     .OnClicked_Lambda([this]()
                     {
-                        if (_ViewModel.IsValid())
-                        { _ViewModel->RequestRelayout(); }
+                        if (_RuntimeGraph.IsValid())
+                        {
+                            _RuntimeGraph->ResetNodePositions();
+                        }
                         return FReply::Handled();
                     })
             ]
@@ -1980,9 +2265,23 @@ auto
 
                         auto SmInfo = _ViewModel->Get_CurrentSmInfo();
                         if (SmInfo && SmInfo->HasBreakpointHit)
-                        { return FText::FromString(SmInfo->BreakpointHitDescription); }
+                        {
+                            return ck_sm_debugger_window::GetBreakpointHitText(
+                                *SmInfo,
+                                _RuntimeGraphFacade.GetLayoutParams().NameDepth);
+                        }
 
                         return FText::GetEmpty();
+                    })
+                    .ToolTipText_Lambda([this]()
+                    {
+                        if (NOT _ViewModel.IsValid())
+                        { return FText::GetEmpty(); }
+
+                        const auto* SmInfo = _ViewModel->Get_CurrentSmInfo();
+                        return SmInfo && SmInfo->HasBreakpointHit
+                                   ? FText::FromString(SmInfo->BreakpointHitDescription)
+                                   : FText::GetEmpty();
                     })
                     .ColorAndOpacity(CkStyle::Err())
                     .Font_Lambda([]() -> FSlateFontInfo

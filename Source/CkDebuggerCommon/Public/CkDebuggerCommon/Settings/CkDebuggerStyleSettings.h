@@ -35,7 +35,9 @@ public:
     // v5: - EntityIdStyle::HashTintedChip. The treatment it carried is EntityRefStyle::Pill; EntityIdStyle
     //     is now composition only. Ini stores entries by NAME, so a v4 config naming HashTintedChip
     //     falls back to the NameAndId default and keeps whatever EntityRefStyle it already had.
-    static constexpr int32 CurrentSchemaVersion = 5;
+    // v6: + GraphMotion (state-machine graph feedback pacing).
+    // v7: + GraphEventEmphasis (colorless state-machine graph event geometry).
+    static constexpr int32 CurrentSchemaVersion = 7;
 
 public:
     UCkDebuggerStyleSettings();

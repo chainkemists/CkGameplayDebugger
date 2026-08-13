@@ -2,6 +2,7 @@
 
 #include "CkDebuggerCommon/Graph/CkDebugGraphLayout.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
+#include "CkSmDebugger/CkSmDebuggerStyle.h"
 
 namespace
 {
@@ -148,6 +149,7 @@ auto FCkSmRuntimeGraphModel::ClearPresentation() -> void
         Node.bScrubActive = false;
         Node.bScrubExited = false;
         Node.bPrevious = false;
+        Node.StateEventAlpha = 0.0f;
     }
     for (auto& Edge : _Scene.Edges)
     {
@@ -156,52 +158,254 @@ auto FCkSmRuntimeGraphModel::ClearPresentation() -> void
     }
 }
 
-auto FCkSmRuntimeGraphModel::TickLivePresentation(const float InDeltaTime,
-                                                  const int32 InPreviousStateIndex,
-                                                  const int32 InCurrentStateIndex,
-                                                  const TSet<FString>& InPreviousStateNames) -> void
+auto FCkSmRuntimeGraphModel::TriggerLivePresentation(
+    const TArray<FCkSmDebugger_HistoryEntry>& InEvents) -> void
 {
+    if (InEvents.IsEmpty())
+    {
+        return;
+    }
+
+    const auto MatchesOwner = [](const FCk_Handle_StateMachine& InEventOwner,
+                                 const FCk_Handle_StateMachine& InSceneOwner)
+    {
+        const auto EventOwner = static_cast<FCk_Handle>(InEventOwner);
+        const auto SceneOwner = static_cast<FCk_Handle>(InSceneOwner);
+        return EventOwner == FCk_Handle{} || SceneOwner == FCk_Handle{} || EventOwner == SceneOwner;
+    };
+    const auto MatchesState = [&MatchesOwner](const FCkSmRuntimeGraphNode& InNode,
+                                               const FCkSmDebugger_HistoryEntry& InEvent,
+                                               const bool bInSource)
+    {
+        if (InNode.Kind != ECkSmRuntimeGraphNodeKind::State || NOT InNode.State)
+        {
+            return false;
+        }
+        // A short-lived sub-SM can be observed first through Foundation's parent-promoted history;
+        // in that case its canonical owner is no longer recoverable, but the stamped parent path is.
+        if (InEvent.SubSmParentStateName.IsEmpty()
+            && NOT MatchesOwner(InEvent.OwningSmHandle, InNode.State->OwningSmHandle))
+        {
+            return false;
+        }
+        if (NOT InEvent.SubSmParentStateName.IsEmpty()
+            && InNode.State->SubSmParentStateName != InEvent.SubSmParentStateName)
+        {
+            return false;
+        }
+
+        const auto EventClass = bInSource ? InEvent.FromStateClass : InEvent.ToStateClass;
+        if (EventClass)
+        {
+            return InNode.State->StateClass == EventClass;
+        }
+        const auto& EventName = bInSource ? InEvent.FromStateName : InEvent.ToStateName;
+        return NOT EventName.IsEmpty() && EventName != TEXT("(start)")
+               && (InNode.State->StateName == EventName || InNode.Label == EventName);
+    };
+    const auto MatchesTransition = [&MatchesOwner, &MatchesState, this](
+                                       const FCkSmRuntimeGraphNode& InNode,
+                                       const FCkSmDebugger_HistoryEntry& InEvent)
+    {
+        if (InNode.Kind != ECkSmRuntimeGraphNodeKind::Transition || NOT InNode.Transition)
+        {
+            return false;
+        }
+        const auto& Transition = *InNode.Transition;
+        if (InEvent.SubSmParentStateName.IsEmpty()
+            && NOT MatchesOwner(InEvent.OwningSmHandle, Transition.OwningSmHandle))
+        {
+            return false;
+        }
+        if (InEvent.TransitionOrder >= 0 && Transition.Order != InEvent.TransitionOrder)
+        {
+            return false;
+        }
+        const auto ClassOrNameMatches = [](const TSubclassOf<UCk_SmState_EntityScript> InEventClass,
+                                           const FString& InEventName,
+                                           const TSubclassOf<UCk_SmState_EntityScript> InSceneClass,
+                                           const FString& InSceneName)
+        {
+            return InEventClass ? InEventClass == InSceneClass : InEventName == InSceneName;
+        };
+        if (NOT ClassOrNameMatches(InEvent.FromStateClass,
+                                   InEvent.FromStateName,
+                                   Transition.SourceStateClass,
+                                   Transition.SourceStateName)
+            || NOT ClassOrNameMatches(InEvent.ToStateClass,
+                                      InEvent.ToStateName,
+                                      Transition.TargetStateClass,
+                                      Transition.TargetStateName))
+        {
+            return false;
+        }
+        if (InEvent.SubSmParentStateName.IsEmpty())
+        {
+            return true;
+        }
+        const auto* SourceNode = _Scene.Nodes.FindByPredicate(
+            [&Transition](const FCkSmRuntimeGraphNode& InCandidate)
+            {
+                return InCandidate.Kind == ECkSmRuntimeGraphNodeKind::State
+                       && InCandidate.StateIndex == Transition.SourceStateIndex;
+            });
+        return SourceNode && MatchesState(*SourceNode, InEvent, true);
+    };
+
     for (auto& Node : _Scene.Nodes)
     {
         Node.bScrubActive = false;
         Node.bScrubExited = false;
-        Node.bPrevious = Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.Label.Len() > 0 &&
-                          InPreviousStateNames.Contains(Node.State ? Node.State->StateName
-                                                                   : Node.Label) &&
-                          NOT Node.bCurrent;
         if (Node.Kind == ECkSmRuntimeGraphNodeKind::State)
         {
-            const auto bEntering = Node.StateIndex == InCurrentStateIndex &&
-                                   InPreviousStateIndex >= 0 &&
-                                   InPreviousStateIndex != InCurrentStateIndex;
-            if (bEntering)
-            {
-                Node.EntryPulseAlpha = 1.0f;
-            }
-            Node.EntryPulseAlpha = FMath::Max(0.0f, Node.EntryPulseAlpha - InDeltaTime * 2.5f);
-            Node.BorderGlowAlpha = FMath::FInterpTo(Node.BorderGlowAlpha,
-                                                     Node.bCurrent ? 1.0f : 0.0f,
-                                                     InDeltaTime,
-                                                     7.0f);
-            // Match the editor: a previously/currently visited card remains readable;
-            // its current-only border is the signal that fades out.
-            if (Node.bCurrent || Node.bPrevious)
-            {
-                Node.CellGlowAlpha = FMath::FInterpTo(Node.CellGlowAlpha, 1.0f, InDeltaTime, 7.0f);
-            }
+            Node.bPrevious = false;
         }
     }
     for (auto& Edge : _Scene.Edges)
     {
         Edge.bScrubHighlighted = false;
-        Edge.LiveFlashAlpha = FMath::Max(0.0f, Edge.LiveFlashAlpha - InDeltaTime);
-        if (InPreviousStateIndex >= 0 && InCurrentStateIndex >= 0 &&
-            InPreviousStateIndex != InCurrentStateIndex &&
-            Edge.SourceId == GetStateId(InPreviousStateIndex) &&
-            Edge.TargetId == GetStateId(InCurrentStateIndex))
+    }
+
+    for (const auto& Event : InEvents)
+    {
+        for (auto& Node : _Scene.Nodes)
         {
-            Edge.LiveFlashAlpha = 1.0f;
+            const auto bSource = MatchesState(Node, Event, true);
+            const auto bTarget = MatchesState(Node, Event, false);
+            if (bTarget)
+            {
+                // A transition event has independent visual weight from the steady current-state
+                // border. Only the entered state appears immediately and decays on frame ticks;
+                // the exited state retains its ordinary active/inactive presentation.
+                Node.StateEventAlpha = 1.0f;
+            }
+            Node.bPrevious |= bSource && NOT Node.bCurrent;
         }
+        const auto ConditionsMatch = [&Event](const FCkSmRuntimeGraphNode& InTransitionNode)
+        {
+            if (NOT InTransitionNode.Transition
+                || InTransitionNode.Transition->Conditions.Num() != Event.ConditionNames.Num())
+            {
+                return false;
+            }
+            for (auto Index = 0; Index < Event.ConditionNames.Num(); ++Index)
+            {
+                if (InTransitionNode.Transition->Conditions[Index].ClassName
+                    != Event.ConditionNames[Index])
+                {
+                    return false;
+                }
+            }
+            return true;
+        };
+        const auto* BestTransitionNode = static_cast<const FCkSmRuntimeGraphNode*>(nullptr);
+        auto bBestConditionsMatch = false;
+        for (const auto& TransitionNode : _Scene.Nodes)
+        {
+            if (NOT MatchesTransition(TransitionNode, Event))
+            {
+                continue;
+            }
+            const auto bConditionsMatch = ConditionsMatch(TransitionNode);
+            if (BestTransitionNode == nullptr
+                || (bConditionsMatch && NOT bBestConditionsMatch)
+                || (bConditionsMatch == bBestConditionsMatch
+                    && TransitionNode.Transition->Order < BestTransitionNode->Transition->Order))
+            {
+                BestTransitionNode = &TransitionNode;
+                bBestConditionsMatch = bConditionsMatch;
+            }
+        }
+        if (BestTransitionNode)
+        {
+            for (auto& Edge : _Scene.Edges)
+            {
+                if (Edge.TransitionId == BestTransitionNode->Id)
+                {
+                    Edge.LiveFlashAlpha = 1.0f;
+                }
+            }
+        }
+    }
+}
+
+auto FCkSmRuntimeGraphModel::TriggerLivePresentation(
+    const int32 InPreviousStateIndex,
+    const int32 InCurrentStateIndex,
+    const TSet<FString>& InPreviousStateNames) -> void
+{
+    if (InPreviousStateIndex >= 0 && InCurrentStateIndex >= 0
+        && InPreviousStateIndex != InCurrentStateIndex)
+    {
+        auto Event = FCkSmDebugger_HistoryEntry{};
+        if (const auto* Source = FindNodeById(GetStateId(InPreviousStateIndex)); Source && Source->State)
+        {
+            Event.OwningSmHandle = Source->State->OwningSmHandle;
+            Event.FromStateClass = Source->State->StateClass;
+            Event.FromStateName = Source->State->StateName;
+        }
+        if (const auto* Target = FindNodeById(GetStateId(InCurrentStateIndex)); Target && Target->State)
+        {
+            Event.ToStateClass = Target->State->StateClass;
+            Event.ToStateName = Target->State->StateName;
+        }
+        TriggerLivePresentation({Event});
+        // Legacy/synthetic DTOs may only carry indices and leave transition class/name identity
+        // empty. Preserve the facade contract without weakening the live event matcher.
+        for (auto& Edge : _Scene.Edges)
+        {
+            if (Edge.SourceId == GetStateId(InPreviousStateIndex)
+                && Edge.TargetId == GetStateId(InCurrentStateIndex))
+            {
+                Edge.LiveFlashAlpha = 1.0f;
+            }
+        }
+    }
+    for (auto& Node : _Scene.Nodes)
+    {
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::State && Node.Label.Len() > 0)
+        {
+            Node.bPrevious |= InPreviousStateNames.Contains(Node.State ? Node.State->StateName
+                                                                        : Node.Label)
+                              && NOT Node.bCurrent;
+        }
+    }
+}
+
+auto FCkSmRuntimeGraphModel::TickLivePresentation(const float InDeltaTime) -> void
+{
+    const auto Motion = FCkSmDebuggerStyle::Get_GraphMotionTiming(
+        UCkDebuggerStyleSettings::Get_Selection().GraphMotion);
+    for (auto& Node : _Scene.Nodes)
+    {
+        if (Node.Kind != ECkSmRuntimeGraphNodeKind::State)
+        {
+            continue;
+        }
+        Node.StateEventAlpha = FMath::Max(
+            0.0f,
+            Node.StateEventAlpha - InDeltaTime / FMath::Max(Motion.EntryPulseSeconds,
+                                                             KINDA_SMALL_NUMBER));
+        const auto BorderFadeSeconds = Node.bCurrent ? Motion.CurrentStateFadeSeconds
+                                                      : Motion.PreviousStateFadeSeconds;
+        Node.BorderGlowAlpha = FMath::FInterpConstantTo(
+            Node.BorderGlowAlpha,
+            Node.bCurrent ? 1.0f : 0.0f,
+            InDeltaTime,
+            1.0f / FMath::Max(BorderFadeSeconds, KINDA_SMALL_NUMBER));
+        // Match the editor: a previously/currently visited card remains readable;
+        // its active fill and border are the channels that fade between states.
+        if (Node.bCurrent || Node.bPrevious)
+        {
+            Node.CellGlowAlpha = FMath::FInterpTo(Node.CellGlowAlpha, 1.0f, InDeltaTime, 7.0f);
+        }
+    }
+    for (auto& Edge : _Scene.Edges)
+    {
+        Edge.LiveFlashAlpha = FMath::Max(
+            0.0f,
+            Edge.LiveFlashAlpha - InDeltaTime / FMath::Max(Motion.TransitionFlashSeconds,
+                                                            KINDA_SMALL_NUMBER));
     }
 }
 
@@ -231,6 +435,106 @@ auto FCkSmRuntimeGraphModel::EstimateStateSize(const FCkSmDebugger_StateInfo& In
     return FVector2D{Width, Height};
 }
 
+auto FCkSmRuntimeGraphModel::ResolveNodeGeometry(
+    const FCkSmRuntimeGraphScene& InScene,
+    const FCkSmRuntimeGraphNode& InNode,
+    const TMap<uint64, FVector2D>& InPositionOverrides) -> FCkSmRuntimeGraphNodeGeometry
+{
+    auto VisitingCompounds = TSet<uint64>{};
+    auto Resolve = TFunction<FCkSmRuntimeGraphNodeGeometry(const FCkSmRuntimeGraphNode&)>{};
+    Resolve = [&InScene, &InPositionOverrides, &VisitingCompounds, &Resolve](
+                  const FCkSmRuntimeGraphNode& InResolvingNode) -> FCkSmRuntimeGraphNodeGeometry
+    {
+        auto Result = FCkSmRuntimeGraphNodeGeometry{InResolvingNode.Position, InResolvingNode.Size};
+        if (InResolvingNode.Kind != ECkSmRuntimeGraphNodeKind::Compound)
+        {
+            if (const auto* Override = InPositionOverrides.Find(InResolvingNode.Id))
+            {
+                Result.Position = *Override;
+            }
+            return Result;
+        }
+        if (VisitingCompounds.Contains(InResolvingNode.Id))
+        {
+            // Malformed parent cycles have no safe derived containment. Keep this branch at
+            // its authored geometry rather than recursing or applying an ambiguous override.
+            return Result;
+        }
+        VisitingCompounds.Add(InResolvingNode.Id);
+
+        auto BaseMin = FVector2D{TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
+        auto BaseMax = FVector2D{TNumericLimits<float>::Lowest(), TNumericLimits<float>::Lowest()};
+        auto EffectiveMin = BaseMin;
+        auto EffectiveMax = BaseMax;
+        auto bHasDirectChildren = false;
+        for (const auto& Child : InScene.Nodes)
+        {
+            if (Child.Kind != ECkSmRuntimeGraphNodeKind::State || NOT Child.State ||
+                NOT Child.State->IsSubSmNode ||
+                Child.State->SubSmParentStateIndex != InResolvingNode.StateIndex)
+            {
+                continue;
+            }
+            bHasDirectChildren = true;
+            const auto ChildGeometry = Resolve(Child);
+            const auto EffectivePosition = ChildGeometry.Position;
+            BaseMin.X = FMath::Min(BaseMin.X, Child.Position.X);
+            BaseMin.Y = FMath::Min(BaseMin.Y, Child.Position.Y);
+            BaseMax.X = FMath::Max(BaseMax.X, Child.Position.X + Child.Size.X);
+            BaseMax.Y = FMath::Max(BaseMax.Y, Child.Position.Y + Child.Size.Y);
+            EffectiveMin.X = FMath::Min(EffectiveMin.X, EffectivePosition.X);
+            EffectiveMin.Y = FMath::Min(EffectiveMin.Y, EffectivePosition.Y);
+            EffectiveMax.X = FMath::Max(EffectiveMax.X, EffectivePosition.X + Child.Size.X);
+            EffectiveMax.Y = FMath::Max(EffectiveMax.Y, EffectivePosition.Y + Child.Size.Y);
+
+            // A direct state may own a nested machine. Its compound is a derived child bound as
+            // well, otherwise a manual nested layout can spill beyond an untouched outer box.
+            const auto NestedCompoundId = GetCompoundId(Child.StateIndex);
+            if (const auto* NestedCompound = InScene.Nodes.FindByPredicate(
+                    [NestedCompoundId](const FCkSmRuntimeGraphNode& Candidate)
+                    { return Candidate.Id == NestedCompoundId && Candidate.Kind == ECkSmRuntimeGraphNodeKind::Compound; }))
+            {
+                const auto NestedGeometry = Resolve(*NestedCompound);
+                BaseMin.X = FMath::Min(BaseMin.X, NestedCompound->Position.X);
+                BaseMin.Y = FMath::Min(BaseMin.Y, NestedCompound->Position.Y);
+                BaseMax.X = FMath::Max(BaseMax.X, NestedCompound->Position.X + NestedCompound->Size.X);
+                BaseMax.Y = FMath::Max(BaseMax.Y, NestedCompound->Position.Y + NestedCompound->Size.Y);
+                EffectiveMin.X = FMath::Min(EffectiveMin.X, NestedGeometry.Position.X);
+                EffectiveMin.Y = FMath::Min(EffectiveMin.Y, NestedGeometry.Position.Y);
+                EffectiveMax.X = FMath::Max(EffectiveMax.X, NestedGeometry.Position.X + NestedGeometry.Size.X);
+                EffectiveMax.Y = FMath::Max(EffectiveMax.Y, NestedGeometry.Position.Y + NestedGeometry.Size.Y);
+            }
+        }
+        if (NOT bHasDirectChildren)
+        {
+            VisitingCompounds.Remove(InResolvingNode.Id);
+            return Result;
+        }
+
+        // Older scenes sized an ancestor from direct state cards only, so a nested compound could
+        // already extend beyond that stored rectangle. Negative inherited margins would preserve
+        // the clipping after any descendant move. Retain authored margins when they are valid, but
+        // normalize malformed/shallow bounds to the same minimum visual padding as a new wrapper.
+        const auto AuthoredLeadingMargin = BaseMin - InResolvingNode.Position;
+        const auto AuthoredTrailingMargin = InResolvingNode.Position + InResolvingNode.Size - BaseMax;
+        const auto LeadingMargin = FVector2D{
+            FMath::Max(20.0f, AuthoredLeadingMargin.X),
+            FMath::Max(48.0f, AuthoredLeadingMargin.Y)};
+        const auto TrailingMargin = FVector2D{
+            FMath::Max(20.0f, AuthoredTrailingMargin.X),
+            FMath::Max(20.0f, AuthoredTrailingMargin.Y)};
+        Result.Position = EffectiveMin - LeadingMargin;
+        Result.Size = FVector2D{
+            FMath::Max(160.0f,
+                       EffectiveMax.X - EffectiveMin.X + LeadingMargin.X + TrailingMargin.X),
+            FMath::Max(120.0f,
+                       EffectiveMax.Y - EffectiveMin.Y + LeadingMargin.Y + TrailingMargin.Y)};
+        VisitingCompounds.Remove(InResolvingNode.Id);
+        return Result;
+    };
+    return Resolve(InNode);
+}
+
 auto FCkSmRuntimeGraphModel::ComputeStructureHash(const FCkSmDebugger_SmInfo& InInfo,
                                                   const bool bInExpandTasks,
                                                   const int32 InNameDepth,
@@ -244,6 +548,7 @@ auto FCkSmRuntimeGraphModel::ComputeStructureHash(const FCkSmDebugger_SmInfo& In
     Hash = HashCombine(Hash, GetTypeHash(InSpacingX));
     Hash = HashCombine(Hash, GetTypeHash(InSpacingY));
     Hash = HashCombine(Hash, GetTypeHash(bInUndirected));
+    Hash = HashCombine(Hash, GetTypeHash(InInfo.InitialStateClass.Get()));
     Hash = HashCombine(Hash, GetTypeHash(InInfo.States.Num()));
     Hash = HashCombine(Hash, GetTypeHash(InInfo.Transitions.Num()));
 
@@ -368,7 +673,9 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
     // This is the same persistence rule as UCkSmDebugGraph: live child state
     // entities disappear on parent exit, but their last observed topology stays
     // visible until the selected state machine changes.
-    if (InRawInfo.Handle != _CachedSubSmOwner)
+    const auto bOwnerChanged = InRawInfo.Handle != _CachedSubSmOwner;
+    const auto PreviousScene = bOwnerChanged ? FCkSmRuntimeGraphScene{} : _Scene;
+    if (bOwnerChanged)
     {
         _CachedSubSmData.Reset();
         _CachedSubSmOwner = InRawInfo.Handle;
@@ -472,8 +779,34 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
         return Size;
     };
 
+    constexpr auto EntryLayoutIndex = -2;
+    const auto EntrySize = FVector2D{140.0f, 62.0f};
+    auto InitialStateIndex = int32{INDEX_NONE};
+    if (InInfo.InitialStateClass)
+    {
+        InitialStateIndex = InInfo.States.IndexOfByPredicate(
+            [&InInfo](const FCkSmDebugger_StateInfo& InState)
+            {
+                return NOT InState.IsSubSmNode
+                       && InState.StateClass == InInfo.InitialStateClass;
+            });
+    }
+    else if (NOT InInfo.States.IsEmpty())
+    {
+        // Synthetic/test DTOs predate InitialStateClass. Preserve their established first-state
+        // convention without using it when a configured class fails to resolve.
+        InitialStateIndex = 0;
+    }
+
     auto LayoutNodes = TArray<FCkDebugGraphLayoutNode>{};
     auto LayoutEdges = TArray<FCkDebugGraphLayoutEdge>{};
+    if (InitialStateIndex != INDEX_NONE)
+    {
+        LayoutNodes.Add({EntryLayoutIndex,
+                         FMath::RoundToInt32(EntrySize.X),
+                         FMath::RoundToInt32(EntrySize.Y)});
+        LayoutEdges.Add({EntryLayoutIndex, InitialStateIndex});
+    }
     for (auto Index = 0; Index < InInfo.States.Num(); ++Index)
     {
         const auto Size = EstimateVisualStateSize(Index);
@@ -490,7 +823,11 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
     const auto Layout = FCkDebugGraphLayout::ComputeLayout(
         LayoutNodes,
         LayoutEdges,
-        {InSpacingX, InSpacingY, 4, NOT bInUndirected, InInfo.CurrentStateIndex});
+        {InSpacingX,
+         InSpacingY,
+         4,
+         NOT bInUndirected,
+         InitialStateIndex != INDEX_NONE ? EntryLayoutIndex : InInfo.CurrentStateIndex});
 
     for (auto StateIndex = 0; StateIndex < InInfo.States.Num(); ++StateIndex)
     {
@@ -673,8 +1010,10 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
         Compound.Id = GetCompoundId(ParentIndex);
         Compound.Kind = ECkSmRuntimeGraphNodeKind::Compound;
         Compound.StateIndex = ParentIndex;
-        Compound.Label = InInfo.States.IsValidIndex(ParentIndex) ? InInfo.States[ParentIndex].StateName
-                                                               : TEXT("Sub State Machine");
+        Compound.Label = InInfo.States.IsValidIndex(ParentIndex)
+                             ? SCkDebug_NameLabel::Get_ShortName(InInfo.States[ParentIndex].StateName,
+                                                                  InNameDepth)
+                             : TEXT("Sub State Machine");
         Compound.Position = CompoundPosition;
         Compound.Size = CompoundSize;
         Compound.Accent = FLinearColor(0.30f, 0.45f, 0.75f, 0.35f);
@@ -685,20 +1024,33 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
                        InInfo.States[ChildIndex].IsCurrentState;
             });
         NewScene.Nodes.Add(MoveTemp(Compound));
+
+        // This is a hierarchy ingress, not a state transition: target the compound boundary so
+        // nested machines retain a single, unambiguous parent-to-machine relationship.
+        auto IngressEdge = FCkSmRuntimeGraphEdge{};
+        IngressEdge.SourceId = GetStateId(ParentIndex);
+        IngressEdge.TargetId = GetCompoundId(ParentIndex);
+        IngressEdge.Color = CkStyle::Reference();
+        IngressEdge.bDirected = true;
+        NewScene.Edges.Add(MoveTemp(IngressEdge));
     }
 
-    if (NOT InInfo.States.IsEmpty())
+    if (InitialStateIndex != INDEX_NONE)
     {
         auto Entry = FCkSmRuntimeGraphNode{};
         Entry.Id = GetEntryId();
         Entry.Kind = ECkSmRuntimeGraphNodeKind::Entry;
-        Entry.Label = TEXT("Entry  ▶");
-        Entry.Position = FVector2D{-180.0f, 120.0f};
-        Entry.Size = FVector2D{80.0f, 32.0f};
+        Entry.Label = TEXT("ENTRY");
+        if (const auto* EntryPosition = Layout.Positions.Find(EntryLayoutIndex))
+        {
+            Entry.Position = FVector2D{static_cast<float>(EntryPosition->X),
+                                       static_cast<float>(EntryPosition->Y)};
+        }
+        Entry.Size = EntrySize;
         NewScene.Nodes.Add(MoveTemp(Entry));
         auto EntryEdge = FCkSmRuntimeGraphEdge{};
         EntryEdge.SourceId = GetEntryId();
-        EntryEdge.TargetId = GetStateId(0);
+        EntryEdge.TargetId = GetStateId(InitialStateIndex);
         EntryEdge.Color = FLinearColor::White;
         EntryEdge.bDirected = true;
         NewScene.Edges.Add(MoveTemp(EntryEdge));
@@ -771,7 +1123,10 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
             Badge.TransitionIndex = TransitionIndex;
             Badge.Label =
                 FString::Printf(TEXT("%d/%d"), Transition.SatisfiedCount, Transition.TotalCount);
-            Badge.Size = FVector2D{16.0f, 16.0f};
+            // Both runtime-safe transition brushes are authored at 25x25. A smaller scene node
+            // clips the color-spill, directional icon, and breakpoint marker into one glyph.
+            Badge.Size = FVector2D{FCkSmDebuggerStyle::Sm_TransitionBadgeSize,
+                                   FCkSmDebuggerStyle::Sm_TransitionBadgeSize};
             const auto DefaultCenter = (SourceNode->Position + SourceNode->Size * 0.5f +
                                         TargetNode->Position + TargetNode->Size * 0.5f) *
                                        0.5f;
@@ -794,6 +1149,103 @@ auto FCkSmRuntimeGraphModel::Rebuild(const FCkSmDebugger_SmInfo& InRawInfo,
             NewScene.Nodes.Add(MoveTemp(Badge));
         }
         NewScene.Edges.Add(MoveTemp(Edge));
+    }
+    // A live/cached sub-machine swap changes topology and therefore rebuilds the scene. Preserve
+    // retained presentation by semantic identity so an event which began immediately before that
+    // swap does not collapse into a one-frame flash.
+    const auto StatesMatch = [](const FCkSmRuntimeGraphNode& InNew,
+                                const FCkSmRuntimeGraphNode& InPrevious)
+    {
+        if (InNew.Kind != ECkSmRuntimeGraphNodeKind::State || NOT InNew.State
+            || InPrevious.Kind != ECkSmRuntimeGraphNodeKind::State || NOT InPrevious.State
+            || InNew.State->SubSmParentStateName != InPrevious.State->SubSmParentStateName)
+        {
+            return false;
+        }
+        const auto NewOwner = static_cast<FCk_Handle>(InNew.State->OwningSmHandle);
+        const auto PreviousOwner = static_cast<FCk_Handle>(InPrevious.State->OwningSmHandle);
+        const auto bOwnersMatch = NewOwner == PreviousOwner
+                               || (NewOwner == FCk_Handle{} && PreviousOwner == FCk_Handle{})
+                               || (InNew.State->IsHistoricalSubSm
+                                   && PreviousOwner != FCk_Handle{});
+        if (NOT bOwnersMatch)
+        {
+            // A live child becoming a cached historical child is the same presentation lifetime.
+            // The reverse direction is a new machine incarnation and must not inherit an old pulse.
+            return false;
+        }
+        return InNew.State->StateClass && InPrevious.State->StateClass
+                   ? InNew.State->StateClass == InPrevious.State->StateClass
+                   : InNew.State->StateName == InPrevious.State->StateName;
+    };
+    for (auto& NewNode : NewScene.Nodes)
+    {
+        if (NewNode.Kind != ECkSmRuntimeGraphNodeKind::State)
+        {
+            continue;
+        }
+        if (const auto* PreviousNode = PreviousScene.Nodes.FindByPredicate(
+                [&NewNode, &StatesMatch](const FCkSmRuntimeGraphNode& InPrevious)
+                { return StatesMatch(NewNode, InPrevious); }))
+        {
+            NewNode.StateEventAlpha = PreviousNode->StateEventAlpha;
+            NewNode.BorderGlowAlpha = PreviousNode->BorderGlowAlpha;
+            NewNode.CellGlowAlpha = PreviousNode->CellGlowAlpha;
+            NewNode.bPrevious = PreviousNode->bPrevious;
+        }
+    }
+    const auto FindTransitionSource = [](const FCkSmRuntimeGraphScene& InScene,
+                                         const FCkSmDebugger_TransitionInfo& InTransition)
+        -> const FCkSmRuntimeGraphNode*
+    {
+        return InScene.Nodes.FindByPredicate(
+            [&InTransition](const FCkSmRuntimeGraphNode& InNode)
+            {
+                return InNode.Kind == ECkSmRuntimeGraphNodeKind::State
+                       && InNode.StateIndex == InTransition.SourceStateIndex;
+            });
+    };
+    for (auto& NewEdge : NewScene.Edges)
+    {
+        if (NewEdge.TransitionId == 0)
+        {
+            continue;
+        }
+        const auto* NewTransitionNode = NewScene.Nodes.FindByPredicate(
+            [&NewEdge](const FCkSmRuntimeGraphNode& InNode)
+            { return InNode.Id == NewEdge.TransitionId && InNode.Transition; });
+        if (NewTransitionNode == nullptr)
+        {
+            continue;
+        }
+        const auto& NewTransition = *NewTransitionNode->Transition;
+        const auto* NewSource = FindTransitionSource(NewScene, NewTransition);
+        const auto* PreviousTransitionNode = PreviousScene.Nodes.FindByPredicate(
+            [&PreviousScene, &FindTransitionSource, &StatesMatch, &NewTransition, NewSource](
+                const FCkSmRuntimeGraphNode& InNode)
+            {
+                if (InNode.Kind != ECkSmRuntimeGraphNodeKind::Transition || NOT InNode.Transition)
+                {
+                    return false;
+                }
+                const auto& Previous = *InNode.Transition;
+                const auto* PreviousSource = FindTransitionSource(PreviousScene, Previous);
+                return NewSource && PreviousSource && StatesMatch(*NewSource, *PreviousSource)
+                       && NewTransition.SourceStateClass == Previous.SourceStateClass
+                       && NewTransition.TargetStateClass == Previous.TargetStateClass
+                       && NewTransition.SourceStateName == Previous.SourceStateName
+                       && NewTransition.TargetStateName == Previous.TargetStateName
+                       && NewTransition.Order == Previous.Order;
+            });
+        if (PreviousTransitionNode)
+        {
+            if (const auto* PreviousEdge = PreviousScene.Edges.FindByPredicate(
+                    [PreviousTransitionNode](const FCkSmRuntimeGraphEdge& InEdge)
+                    { return InEdge.TransitionId == PreviousTransitionNode->Id; }))
+            {
+                NewEdge.LiveFlashAlpha = PreviousEdge->LiveFlashAlpha;
+            }
+        }
     }
     _Scene = MoveTemp(NewScene);
 }

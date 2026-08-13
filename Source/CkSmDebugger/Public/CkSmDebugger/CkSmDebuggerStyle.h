@@ -19,6 +19,50 @@
 
 namespace FCkSmDebuggerStyle
 {
+    struct FGraphMotionTiming
+    {
+        float CurrentStateFadeSeconds = 0.30f;
+        float PreviousStateFadeSeconds = 0.90f;
+        float EntryPulseSeconds = 0.80f;
+        float TransitionFlashSeconds = 0.90f;
+    };
+
+    struct FGraphEventEmphasis
+    {
+        float StateEventOutlinePeakThickness = 5.0f;
+        float EdgeFlashPeakThickness = 4.5f;
+    };
+
+    /** Pure mapping from the shared Style Lab axis to coherent SM graph timings. */
+    inline auto Get_GraphMotionTiming(const ECkDebugAxis_GraphMotion InMotion) -> FGraphMotionTiming
+    {
+        switch (InMotion)
+        {
+            case ECkDebugAxis_GraphMotion::Quick:
+                return {0.18f, 0.60f, 0.60f, 0.65f};
+            case ECkDebugAxis_GraphMotion::Measured:
+                return {0.30f, 0.90f, 1.10f, 1.20f};
+            case ECkDebugAxis_GraphMotion::Deliberate:
+                return {0.50f, 1.40f, 1.80f, 2.00f};
+        }
+
+        return Get_GraphMotionTiming(ECkDebugAxis_GraphMotion::Measured);
+    }
+
+    /** Pure geometry mapping. Callers retain CkStyle::Warn for the event color. */
+    inline auto Get_GraphEventEmphasis(const ECkDebugAxis_GraphEventEmphasis InEmphasis)
+        -> FGraphEventEmphasis
+    {
+        switch (InEmphasis)
+        {
+            case ECkDebugAxis_GraphEventEmphasis::Subtle: return {3.0f, 3.0f};
+            case ECkDebugAxis_GraphEventEmphasis::Clear:  return {5.0f, 4.5f};
+            case ECkDebugAxis_GraphEventEmphasis::Bold:   return {7.0f, 6.0f};
+        }
+
+        return Get_GraphEventEmphasis(ECkDebugAxis_GraphEventEmphasis::Clear);
+    }
+
     // KEPT LOCAL (SM-semantic): the "this state's script was overridden at runtime" marker. The
     // palette has no override/mutation role, and its only purples (Value_Tag, CategoryAge) already
     // carry unrelated value-type / action-category meaning.
@@ -37,18 +81,14 @@ namespace FCkSmDebuggerStyle
     inline constexpr float Sm_AccentBarWidth          = 3.0f;
     inline constexpr float Sm_StateIconSize           = 5.0f;
     inline constexpr float Sm_StateIconGap            = 6.0f;
+    inline constexpr float Sm_TransitionBadgeSize     = 25.0f;
     inline constexpr float Sm_TransitionBadgeRadius   = 10.0f;
     inline constexpr float Sm_TransitionBadgeFontSize = 10.0f;
 
-    // Seconds for live highlights to fade. Fast = becoming current / becoming
-    // previous (snappy); the slow duration is the final fade of the grey
-    // previous-halo out to nothing (lingers so you can track where it came from).
+    // Compatibility for the legacy GraphEditor implementation. The runtime-Slate graph consumes
+    // Get_GraphMotionTiming() directly.
     inline constexpr float Sm_HighlightFadeFast       = 0.18f;
     inline constexpr float Sm_HighlightFadeDuration   = 0.6f;
-
-    // Seconds for the one-shot "just became current" entry overshoot (a brief
-    // brightening of the border colour) to play out. Shorter than the fade —
-    // it's a transient attention grab, not a steady-state.
     inline constexpr float Sm_EntryPulseDuration      = 0.5f;
 
 }

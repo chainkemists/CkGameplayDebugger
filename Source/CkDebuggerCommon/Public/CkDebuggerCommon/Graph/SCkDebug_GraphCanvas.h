@@ -38,6 +38,7 @@ struct FCkDebug_GraphCanvasNodeGeometry
 struct FCkDebug_GraphCanvasNode : FCkDebug_GraphCanvasNodeGeometry
 {
     TSharedPtr<SWidget> Widget;
+    bool bHasManualPosition = false;
 };
 
 struct FCkDebug_GraphCanvasEdge
@@ -71,9 +72,17 @@ struct FCkDebug_GraphCanvasEdgeGeometry
     TArray<FVector2D> Points;
 };
 
+struct FCkDebug_GraphCanvasArrowGeometry
+{
+    FVector2D Position = FVector2D::ZeroVector;
+    FVector2D Size = FVector2D::ZeroVector;
+    float AngleInRadians = 0.0f;
+};
+
 DECLARE_DELEGATE_OneParam(FOnCkDebug_GraphCanvasSelectionChanged, const TSet<uint64>&);
 DECLARE_DELEGATE_OneParam(FOnCkDebug_GraphCanvasNodeDoubleClicked, uint64);
 DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasNodeMoved, uint64, const FVector2D&);
+DECLARE_DELEGATE_RetVal_OneParam(TSet<uint64>, FOnCkDebug_GraphCanvasResolveDragGroup, uint64);
 DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasNodeContextMenu, uint64, const FPointerEvent&);
 DECLARE_DELEGATE_TwoParams(FOnCkDebug_GraphCanvasBackgroundContextMenu,
                            const FVector2D&,
@@ -97,6 +106,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     SLATE_EVENT(FOnCkDebug_GraphCanvasSelectionChanged, OnSelectionChanged)
     SLATE_EVENT(FOnCkDebug_GraphCanvasNodeDoubleClicked, OnNodeDoubleClicked)
     SLATE_EVENT(FOnCkDebug_GraphCanvasNodeMoved, OnNodeMoved)
+    SLATE_EVENT(FOnCkDebug_GraphCanvasResolveDragGroup, OnResolveDragGroup)
     SLATE_EVENT(FOnCkDebug_GraphCanvasNodeContextMenu, OnNodeContextMenu)
     SLATE_EVENT(FOnCkDebug_GraphCanvasBackgroundContextMenu, OnBackgroundContextMenu)
     SLATE_END_ARGS()
@@ -142,6 +152,9 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
                                      const FCkDebug_GraphCanvasEdge& InEdge,
                                      const FCkDebug_GraphCanvasTransform& InTransform)
         -> FCkDebug_GraphCanvasEdgeGeometry;
+    static auto Compute_ArrowGeometry(const FCkDebug_GraphCanvasEdgeGeometry& InEdgeGeometry,
+                                      const FVector2D& InImageSize,
+                                      float InZoom) -> FCkDebug_GraphCanvasArrowGeometry;
 
     // ---- SWidget
     // ---------------------------------------------------------------------------------------------------
@@ -193,13 +206,19 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     auto Is_RectVisible(const FSlateRect& InRect, const FSlateRect& InCullingRect) const -> bool;
     auto Notify_SelectionChanged() -> void;
     auto Draw_Edge(const FCkDebug_GraphCanvasEdge& InEdge,
-                   const FCkDebug_GraphCanvasEdgeGeometry& InGeometry,
+                   const FCkDebug_GraphCanvasEdgeGeometry& InEdgeGeometry,
+                   const FGeometry& InAllottedGeometry,
                    FSlateWindowElementList& OutDrawElements,
                    int32 InLayerId) const -> void;
     auto Draw_Marquee(const FGeometry& InGeometry,
                        FSlateWindowElementList& OutDrawElements,
                        int32 InLayerId) const -> void;
-    auto Draw_MarqueePreview(FSlateWindowElementList& OutDrawElements, int32 InLayerId) const -> void;
+    auto Draw_MarqueePreview(const FGeometry& InGeometry,
+                             FSlateWindowElementList& OutDrawElements,
+                             int32 InLayerId) const -> void;
+    auto Draw_ManualPositionIndicators(const FGeometry& InGeometry,
+                                       FSlateWindowElementList& OutDrawElements,
+                                       int32 InLayerId) const -> void;
     auto Draw_Background(const FGeometry& InGeometry,
                          FSlateWindowElementList& OutDrawElements,
                          int32 InLayerId) const -> int32;
@@ -226,6 +245,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     FOnCkDebug_GraphCanvasSelectionChanged _OnSelectionChanged;
     FOnCkDebug_GraphCanvasNodeDoubleClicked _OnNodeDoubleClicked;
     FOnCkDebug_GraphCanvasNodeMoved _OnNodeMoved;
+    FOnCkDebug_GraphCanvasResolveDragGroup _OnResolveDragGroup;
     FOnCkDebug_GraphCanvasNodeContextMenu _OnNodeContextMenu;
     FOnCkDebug_GraphCanvasBackgroundContextMenu _OnBackgroundContextMenu;
 
@@ -242,6 +262,7 @@ class CKDEBUGGERCOMMON_API SCkDebug_GraphCanvas : public SPanel
     TSet<uint64> _MarqueePreviewSelection;
     FVector2D _NodeDragStartWorld = FVector2D::ZeroVector;
     TMap<uint64, FVector2D> _NodeDragStartPositions;
+    TSet<uint64> _NodeDragCommitIds;
     uint64 _DraggedNodeId = 0;
     int32 _LegacyZoomLevel = 12;
     FCurveSequence _ZoomLevelFade;

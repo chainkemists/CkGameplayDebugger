@@ -2,6 +2,7 @@
 
 #include "Brushes/SlateRoundedBoxBrush.h"
 #include "CkDebuggerCommon/Graph/SCkDebug_GraphCanvas.h"
+#include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_NameLabel.h"
@@ -10,9 +11,11 @@
 #include "CkSmDebugger/CkSmDebuggerStyle.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Styling/AppStyle.h"
 #include "Styling/CoreStyle.h"
 #include "Rendering/DrawElements.h"
 #include "Widgets/Images/SImage.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -262,12 +265,15 @@ namespace ck_sm_runtime_graph
 void SCkSmRuntimeGraph::Construct(const FArguments& InArgs)
 {
     _OnSelectionChanged = InArgs._OnSelectionChanged;
+    _OnBreakpointRequested = InArgs._OnBreakpointRequested;
     ChildSlot[SAssignNew(_Canvas, SCkDebug_GraphCanvas)
                    .AllowNodeDragging(true)
                    .OnSelectionChanged(FOnCkDebug_GraphCanvasSelectionChanged::CreateSP(
                        this, &SCkSmRuntimeGraph::HandleSelectionChanged))
                    .OnNodeMoved(FOnCkDebug_GraphCanvasNodeMoved::CreateSP(
                        this, &SCkSmRuntimeGraph::HandleNodeMoved))
+                   .OnResolveDragGroup(FOnCkDebug_GraphCanvasResolveDragGroup::CreateSP(
+                       this, &SCkSmRuntimeGraph::ResolveDragGroup))
                    .OnNodeContextMenu(FOnCkDebug_GraphCanvasNodeContextMenu::CreateSP(
                        this, &SCkSmRuntimeGraph::HandleNodeContextMenu))];
 }
@@ -283,6 +289,11 @@ auto SCkSmRuntimeGraph::SetSmInfo(const FCkSmDebugger_SmInfo* InInfo) -> void
         return;
     }
 
+    if (_PositionScopeHandle != InInfo->Handle)
+    {
+        _PositionOverrides.Reset();
+        _PositionScopeHandle = InInfo->Handle;
+    }
     _SmInfo = InInfo;
     const auto NewStructureHash = FCkSmRuntimeGraphModel::ComputeStructureHash(
         *InInfo,
@@ -365,15 +376,26 @@ auto SCkSmRuntimeGraph::ClearPresentation() -> void
     _Model.ClearPresentation();
     InstallScene();
 }
-auto SCkSmRuntimeGraph::TickLivePresentation(const float InDeltaTime,
-                                             const int32 InPreviousStateIndex,
-                                             const int32 InCurrentStateIndex,
-                                             const TSet<FString>& InPreviousStateNames) -> void
+auto SCkSmRuntimeGraph::TriggerLivePresentation(
+    const TArray<FCkSmDebugger_HistoryEntry>& InEvents) -> void
 {
-    _Model.TickLivePresentation(InDeltaTime,
-                                InPreviousStateIndex,
-                                InCurrentStateIndex,
-                                InPreviousStateNames);
+    _Model.TriggerLivePresentation(InEvents);
+    InstallScene();
+}
+auto SCkSmRuntimeGraph::TriggerLivePresentation(
+    const int32 InPreviousStateIndex,
+    const int32 InCurrentStateIndex,
+    const TSet<FString>& InPreviousStateNames) -> void
+{
+    _Model.TriggerLivePresentation(InPreviousStateIndex,
+                                   InCurrentStateIndex,
+                                   InPreviousStateNames);
+    InstallScene();
+}
+
+auto SCkSmRuntimeGraph::TickLivePresentation(const float InDeltaTime) -> void
+{
+    _Model.TickLivePresentation(InDeltaTime);
     InstallScene();
 }
 auto SCkSmRuntimeGraph::FrameAll() -> void
@@ -383,6 +405,17 @@ auto SCkSmRuntimeGraph::FrameAll() -> void
         _Canvas->Frame_All();
     }
 }
+
+auto SCkSmRuntimeGraph::ResetNodePositions() -> void
+{
+    if (_PositionOverrides.IsEmpty())
+    {
+        return;
+    }
+    _PositionOverrides.Reset();
+    InstallScene();
+}
+
 auto SCkSmRuntimeGraph::Clear() -> void
 {
     _SmInfo = nullptr;
@@ -392,6 +425,7 @@ auto SCkSmRuntimeGraph::Clear() -> void
     _CardPresentations.Reset();
     _StatePills.Reset();
     _PositionOverrides.Reset();
+    _PositionScopeHandle = FCk_Handle_StateMachine{};
     _StructureHash = 0;
     _HasStructureHash = false;
     if (_Canvas)
@@ -422,6 +456,20 @@ auto SCkSmRuntimeGraph::RebuildScene(const bool bInClearPositionOverrides) -> vo
                    _Layout.SpacingX,
                    _Layout.SpacingY,
                    _Layout.UndirectedBFS);
+    auto PresentIds = TSet<uint64>{};
+    for (const auto& Node : _Model.GetScene().Nodes)
+    {
+        PresentIds.Add(Node.Id);
+    }
+    for (auto It = _PositionOverrides.CreateIterator(); It; ++It)
+    {
+        const auto* Node = _Model.FindNodeById(It.Key());
+        if (NOT PresentIds.Contains(It.Key()) ||
+            (Node != nullptr && Node->Kind == ECkSmRuntimeGraphNodeKind::Compound))
+        {
+            It.RemoveCurrent();
+        }
+    }
     _StructureHash = FCkSmRuntimeGraphModel::ComputeStructureHash(*_SmInfo,
                                                                   _Layout.ExpandTasks,
                                                                   _Layout.NameDepth,
@@ -438,12 +486,24 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
     {
         return;
     }
+    // Compounds became derived geometry. Discard stale session entries from the previous
+    // ownership model before resolving the scene so they cannot reappear after a refresh.
+    for (auto It = _PositionOverrides.CreateIterator(); It; ++It)
+    {
+        const auto* OverrideNode = _Model.FindNodeById(It.Key());
+        if (OverrideNode && OverrideNode->Kind == ECkSmRuntimeGraphNodeKind::Compound)
+        {
+            It.RemoveCurrent();
+        }
+    }
     auto CanvasScene = FCkDebug_GraphCanvasScene{};
     const auto& SelectedIds = _Canvas->Get_SelectedNodeIds();
     auto PresentIds = TSet<uint64>{};
     for (const auto& Node : _Model.GetScene().Nodes)
     {
         PresentIds.Add(Node.Id);
+        const auto EffectiveGeometry = FCkSmRuntimeGraphModel::ResolveNodeGeometry(
+            _Model.GetScene(), Node, _PositionOverrides);
         auto Presentation = _CardPresentations.FindRef(Node.Id);
         if (NOT Presentation)
         {
@@ -451,6 +511,7 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
             _CardPresentations.Add(Node.Id, Presentation);
         }
         Presentation->Node = Node;
+        Presentation->Node.Size = EffectiveGeometry.Size;
         Presentation->bSelected = SelectedIds.Contains(Node.Id);
 
         auto StructureHash = ck_sm_runtime_graph::GetCardStructureHash(Node);
@@ -473,14 +534,34 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         CanvasNode.Id = Node.Id;
         CanvasNode.Position = Node.Kind == ECkSmRuntimeGraphNodeKind::Transition
                                   ? GetEffectiveTransitionBadgePosition(Node)
-                                  : GetEffectivePosition(Node);
-        CanvasNode.Size = Node.Size;
+                                  : EffectiveGeometry.Position;
+        CanvasNode.Size = EffectiveGeometry.Size;
         CanvasNode.Layer = Node.Kind == ECkSmRuntimeGraphNodeKind::Compound ? 0 : 1;
+        if (Node.Kind == ECkSmRuntimeGraphNodeKind::Compound)
+        {
+            const auto DescendantIds = GetCompoundDescendantIds(Node.StateIndex);
+            for (const auto DescendantId : DescendantIds)
+            {
+                const auto* Descendant = _Model.FindNodeById(DescendantId);
+                if (Descendant && Descendant->Kind == ECkSmRuntimeGraphNodeKind::State
+                    && _PositionOverrides.Contains(DescendantId))
+                {
+                    CanvasNode.bHasManualPosition = true;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            CanvasNode.bHasManualPosition = _PositionOverrides.Contains(Node.Id);
+        }
         CanvasNode.Widget = Card;
         CanvasScene.Nodes.Add(MoveTemp(CanvasNode));
     }
     for (const auto& Edge : _Model.GetScene().Edges)
     {
+        const auto EventEmphasis = FCkSmDebuggerStyle::Get_GraphEventEmphasis(
+            UCkDebuggerStyleSettings::Get_Selection().GraphEventEmphasis);
         auto CanvasEdge = FCkDebug_GraphCanvasEdge{};
         CanvasEdge.SourceId = Edge.SourceId;
         CanvasEdge.TargetId = Edge.TargetId;
@@ -490,7 +571,10 @@ auto SCkSmRuntimeGraph::InstallScene() -> void
         CanvasEdge.Thickness =
             Edge.bScrubHighlighted
                 ? 3.0f
-                : FMath::Lerp(Edge.Thickness, 3.5f, FMath::Clamp(Edge.LiveFlashAlpha, 0.0f, 1.0f));
+                : FMath::Lerp(Edge.Thickness,
+                              FMath::Max(Edge.Thickness,
+                                         EventEmphasis.EdgeFlashPeakThickness),
+                              FMath::Clamp(Edge.LiveFlashAlpha, 0.0f, 1.0f));
         if (Edge.LiveFlashAlpha > 0.0f)
         {
             CanvasEdge.Color =
@@ -533,13 +617,26 @@ auto SCkSmRuntimeGraph::MakeCard(
                 {
                     return CkStyle::TextDim();
                 }
-                return Presentation->Node.bCurrent ? CkStyle::Warn()
-                                                   : Presentation->Node.Accent;
+                auto Color = CkStyle::TextDim();
+                Color.A = (Presentation->Node.bCurrent ? 0.22f : 0.10f)
+                          * ck_sm_debugger_axes::Get_NodeDimScale();
+                return Color;
             })
             .Padding(
                 1.0f)[SNew(SBorder)
-                          .BorderImage(ck_sm_runtime_graph::GetCompoundFillBrush())
-                          .BorderBackgroundColor(CkStyle::NodeFill_Inactive())
+                           .BorderImage(ck_sm_runtime_graph::GetCompoundFillBrush())
+                           .BorderBackgroundColor_Lambda([WeakPresentation]() -> FSlateColor
+                           {
+                               const auto Presentation = WeakPresentation.Pin();
+                               auto Color = CkStyle::Bg3();
+                               Color.A = ck_sm_debugger_axes::Get_NodeDrawsFill()
+                                             ? (Presentation && Presentation->Node.bCurrent
+                                                    ? 0.02f
+                                                    : 0.01f)
+                                                   * ck_sm_debugger_axes::Get_NodeDimScale()
+                                             : 0.0f;
+                               return Color;
+                           })
                           .Padding(
                               8.0f)[SNew(STextBlock)
                                         .Text_Lambda([WeakPresentation]()
@@ -560,36 +657,75 @@ auto SCkSmRuntimeGraph::MakeCard(
 
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Entry)
     {
-        return SNew(STextBlock)
-            .Text(FText::FromString(InNode.Label))
-            .ColorAndOpacity(CkStyle::TextDim());
+        auto EntryPill = TSharedPtr<SCkDebug_NodePill>{};
+        auto EntryCard =
+            SAssignNew(EntryPill, SCkDebug_NodePill)
+                .Variant(ECkDebug_NodePillVariant::Inactive)
+                .Title(FText::FromString(TEXT("Entry")))
+                .ShowCost(false)
+                .MinDesiredWidth(InNode.Size.X)
+                .AccentColor(CkStyle::Warn())
+                .AccentWidth(FCkSmDebuggerStyle::Sm_AccentBarWidth)
+                .BorderColorOverride(CkStyle::Warn())
+                .FillColorOverride(CkStyle::Bg2())
+                .Selected(InPresentation->bSelected)
+                .BodyContent()
+                [
+                    SNew(STextBlock)
+                        .Text(FText::FromString(TEXT("INITIAL FLOW")))
+                        .Font_Lambda([]()
+                        {
+                            return ck::debug_axes::ScaledFont("Bold", 7);
+                        })
+                        .ColorAndOpacity(CkStyle::TextDim())
+                ];
+        _StatePills.Add(InNode.Id, EntryPill);
+        return EntryCard;
     }
 
     if (InNode.Kind == ECkSmRuntimeGraphNodeKind::Transition)
     {
-        // The editor transition node is a compact ColorSpill/Icon badge. Conditions belong to the
-        // existing Details surface; retaining them here changed the graph topology and obscured wires.
+        // Conditions belong to the existing Details surface; retaining them here changed the graph
+        // topology and obscured wires. The compact badge still has to retain the brushes' authored
+        // 25px footprint or its color-spill, icon, and breakpoint marker clip into one glyph.
         return SNew(SBox)
-            .WidthOverride(16.0f)
-            .HeightOverride(16.0f)
+            .WidthOverride(FCkSmDebuggerStyle::Sm_TransitionBadgeSize)
+            .HeightOverride(FCkSmDebuggerStyle::Sm_TransitionBadgeSize)
             [SNew(SOverlay)
              + SOverlay::Slot()[SNew(SImage)
                                      .Image(FCkDebuggerStyle::Get().GetBrush(
                                          TEXT("CkDebugger.Graph.TransitionNode.ColorSpill")))
-                                    .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
-                                    {
-                                        const auto Presentation = WeakPresentation.Pin();
-                                        return Presentation && Presentation->bSelected
-                                                   ? CkStyle::Accent()
-                                                   : CkStyle::TextStrong();
-                                    })]
-              + SOverlay::Slot()[SNew(SImage)
+                                     .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
+                                     {
+                                         const auto Presentation = WeakPresentation.Pin();
+                                         return Presentation && Presentation->bSelected
+                                                    ? CkStyle::Accent()
+                                                    : CkStyle::TextStrong();
+                                     })]
+             + SOverlay::Slot()[SNew(SImage)
                                      .Image(FCkDebuggerStyle::Get().GetBrush(
                                          TEXT("CkDebugger.Graph.TransitionNode.Icon")))]
-              + SOverlay::Slot()[SNew(ck_sm_runtime_graph::SCkSmRuntimeBreakpointOverlay)
+             + SOverlay::Slot()[SNew(ck_sm_runtime_graph::SCkSmRuntimeBreakpointOverlay)
                                      .Presentation(WeakPresentation)
                                      .Style(_TransitionBreakpointStyle)
-                                     .bTransition(true)]];
+                                     .bTransition(true)]
+             + SOverlay::Slot()
+                   .HAlign(HAlign_Center)
+                   .VAlign(VAlign_Center)
+                   [SNew(SBox)
+                        .WidthOverride(14.0f)
+                        .HeightOverride(14.0f)
+                        [SNew(SButton)
+                             .ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
+                             .ContentPadding(0.0f)
+                             .ToolTipText(FText::FromString(TEXT("Toggle transition breakpoint")))
+                             .IsEnabled_Lambda([this]() { return _OnBreakpointRequested.IsBound(); })
+                             .OnClicked_Lambda([this, TransitionIndex = InNode.TransitionIndex]()
+                             {
+                                 return HandleBreakpointClicked(
+                                     ECkSmRuntimeBreakpointTarget::Transition,
+                                     TransitionIndex);
+                             })]]];
     }
 
     auto Body = SNew(SVerticalBox);
@@ -604,23 +740,47 @@ auto SCkSmRuntimeGraph::MakeCard(
     const auto BreakpointTransform = bUseDiamondBreakpoints
                                          ? FSlateRenderTransform(FQuat2D(PI / 4.0))
                                          : FSlateRenderTransform();
+    const auto MakeInlineBreakpoint =
+        [this,
+         WeakPresentation,
+         BreakpointRed,
+         BreakpointHollow,
+         BreakpointTransform,
+         StateIndex = InNode.StateIndex](const ECkSmRuntimeBreakpointTarget InTarget,
+                                         const bool bInEntry) -> TSharedRef<SWidget>
+    {
+        return SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "HoverHintOnly")
+            .ContentPadding(0.0f)
+            .ToolTipText(FText::FromString(bInEntry ? TEXT("Toggle state entry breakpoint")
+                                                     : TEXT("Toggle state exit breakpoint")))
+            .IsEnabled_Lambda([this]() { return _OnBreakpointRequested.IsBound(); })
+            .OnClicked_Lambda([this, InTarget, StateIndex]()
+            {
+                return HandleBreakpointClicked(InTarget, StateIndex);
+            })
+            [SNew(SBorder)
+                 .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
+                 .BorderBackgroundColor_Lambda(
+                     [WeakPresentation,
+                      BreakpointRed,
+                      BreakpointHollow,
+                      bInEntry]() -> FSlateColor
+                     {
+                         const auto Presentation = WeakPresentation.Pin();
+                         const auto bSet = Presentation && Presentation->Node.State
+                                               && (bInEntry
+                                                       ? Presentation->Node.State->HasEntryBreakpoint
+                                                       : Presentation->Node.State->HasExitBreakpoint);
+                         return bSet ? BreakpointRed : BreakpointHollow;
+                     })
+                 .RenderTransformPivot(FVector2D(0.5f, 0.5f))
+                 .RenderTransform(BreakpointTransform)];
+    };
     const auto LeftIndicator = bUseInlineBreakpoints
-                                   ? StaticCastSharedRef<SWidget>(
-                                         SNew(SBorder)
-                                             .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-                                             .BorderBackgroundColor_Lambda(
-                                                 [WeakPresentation,
-                                                  BreakpointRed,
-                                                  BreakpointHollow]() -> FSlateColor
-                                                 {
-                                                     const auto Presentation = WeakPresentation.Pin();
-                                                     return Presentation && Presentation->Node.State
-                                                                    && Presentation->Node.State->HasEntryBreakpoint
-                                                                ? BreakpointRed
-                                                                : BreakpointHollow;
-                                                 })
-                                             .RenderTransformPivot(FVector2D(0.5f, 0.5f))
-                                             .RenderTransform(BreakpointTransform))
+                                   ? MakeInlineBreakpoint(
+                                         ECkSmRuntimeBreakpointTarget::StateEntry,
+                                         true)
                                    : StaticCastSharedRef<SWidget>(
                                          SNew(SBorder)
                                              .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
@@ -653,18 +813,7 @@ auto SCkSmRuntimeGraph::MakeCard(
                        {
                            return ck::debug_axes::ScaledFont("Bold", CkStyle::NodeTitleFontSize());
                        })
-                       .ColorAndOpacity_Lambda([WeakPresentation]() -> FSlateColor
-                       {
-                           const auto Presentation = WeakPresentation.Pin();
-                           auto Color = CkStyle::Text();
-                           if (Presentation && Presentation->Node.State
-                               && Presentation->Node.State->IsSubSmNode
-                               && NOT Presentation->Node.bParentActive)
-                           {
-                               Color.A *= 0.35f;
-                           }
-                           return Color;
-                       })]
+                       .ColorAndOpacity(FSlateColor(CkStyle::Text()))]
          + SHorizontalBox::Slot()
                .AutoWidth()
                .VAlign(VAlign_Center)
@@ -672,23 +821,10 @@ auto SCkSmRuntimeGraph::MakeCard(
                    [SNew(SBox)
                         .WidthOverride(IndicatorSize)
                         .HeightOverride(IndicatorSize)
-                        .Visibility(bUseInlineBreakpoints ? EVisibility::SelfHitTestInvisible
+                        .Visibility(bUseInlineBreakpoints ? EVisibility::Visible
                                                           : EVisibility::Collapsed)
-                            [SNew(SBorder)
-                                .BorderImage(FCoreStyle::Get().GetBrush(TEXT("WhiteBrush")))
-                                .BorderBackgroundColor_Lambda(
-                                    [WeakPresentation,
-                                     BreakpointRed,
-                                     BreakpointHollow]() -> FSlateColor
-                                    {
-                                        const auto Presentation = WeakPresentation.Pin();
-                                        return Presentation && Presentation->Node.State
-                                                       && Presentation->Node.State->HasExitBreakpoint
-                                                   ? BreakpointRed
-                                                   : BreakpointHollow;
-                                    })
-                                 .RenderTransformPivot(FVector2D(0.5f, 0.5f))
-                                  .RenderTransform(BreakpointTransform)]]
+                            [MakeInlineBreakpoint(ECkSmRuntimeBreakpointTarget::StateExit,
+                                                  false)]]
          + SHorizontalBox::Slot()
                .AutoWidth()
                .VAlign(VAlign_Center)
@@ -764,14 +900,9 @@ auto SCkSmRuntimeGraph::MakeCard(
                                                      {
                                                          return CkStyle::TextMute();
                                                      }
-                                                     auto Color = CkSmDebugger::GetTaskResultColor(
+                                                     return CkSmDebugger::GetTaskResultColor(
                                                          Presentation->Node.State->Tasks[TaskIndex]
                                                              .LastResult);
-                                                     if (NOT Presentation->Node.State->IsCurrentState)
-                                                     {
-                                                         Color.A *= 0.3f;
-                                                     }
-                                                     return Color;
                                                  })]]
                      + SHorizontalBox::Slot()
                            .FillWidth(1.0f)
@@ -799,18 +930,7 @@ auto SCkSmRuntimeGraph::MakeCard(
                                         return ck::debug_axes::ScaledFont(
                                             "Regular", CkStyle::FontSizeMicro());
                                     })
-                                    .ColorAndOpacity_Lambda(
-                                        [WeakPresentation]() -> FSlateColor
-                                        {
-                                            const auto Presentation = WeakPresentation.Pin();
-                                            auto Color = CkStyle::TextDim();
-                                            if (Presentation && Presentation->Node.State
-                                                && NOT Presentation->Node.State->IsCurrentState)
-                                            {
-                                                Color.A *= 0.4f;
-                                            }
-                                            return Color;
-                                        })]
+                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))]
                      + SHorizontalBox::Slot()
                            .AutoWidth()
                            .VAlign(VAlign_Center)
@@ -821,18 +941,7 @@ auto SCkSmRuntimeGraph::MakeCard(
                                     {
                                         return ck::debug_axes::ScaledFont("Bold", 7);
                                     })
-                                    .ColorAndOpacity_Lambda(
-                                        [WeakPresentation]() -> FSlateColor
-                                        {
-                                            const auto Presentation = WeakPresentation.Pin();
-                                            auto Color = CkStyle::Warn();
-                                            if (Presentation && Presentation->Node.State
-                                                && NOT Presentation->Node.State->IsCurrentState)
-                                            {
-                                                Color.A *= 0.45f;
-                                            }
-                                            return Color;
-                                        })
+                                    .ColorAndOpacity(FSlateColor(CkStyle::Warn()))
                                     .Visibility_Lambda([WeakPresentation, TaskIndex]()
                                     {
                                         const auto Presentation = WeakPresentation.Pin();
@@ -860,13 +969,7 @@ auto SCkSmRuntimeGraph::MakeCard(
                 {
                     return FLinearColor::Transparent;
                 }
-                auto Accent = Presentation->Node.Accent;
-                if (Presentation->Node.State && Presentation->Node.State->IsSubSmNode
-                    && NOT Presentation->Node.bParentActive)
-                {
-                    Accent.A *= 0.35f;
-                }
-                return Accent;
+                return Presentation->Node.Accent;
             })
             .AccentWidth_Lambda([]() { return FCkSmDebuggerStyle::Sm_AccentBarWidth; })
             .BorderColorOverride_Lambda([WeakPresentation]()
@@ -876,30 +979,42 @@ auto SCkSmRuntimeGraph::MakeCard(
                 {
                     return CkStyle::NodeFill_Inactive();
                 }
+                if (Presentation->Node.State
+                    && Presentation->Node.State->IsBreakpointHit)
+                {
+                    return CkStyle::Err();
+                }
                 if (Presentation->Node.bScrubActive)
                 {
                     return CkStyle::Ok();
                 }
-                auto Border = CkStyle::NodeFill_Inactive();
-                if (Presentation->Node.bCurrent)
+                const auto Border = FMath::Lerp(CkStyle::NodeFill_Inactive(),
+                                                CkStyle::Ok(),
+                                                Presentation->Node.BorderGlowAlpha);
+                if (Presentation->Node.StateEventAlpha > 0.0f)
                 {
-                    Border = FMath::Lerp(Border,
-                                         CkStyle::Ok(),
-                                         Presentation->Node.BorderGlowAlpha);
-                    Border = FMath::Lerp(Border,
-                                         CkStyle::TextStrong(),
-                                         Presentation->Node.EntryPulseAlpha * 0.7f);
+                    return FMath::Lerp(Border,
+                                       CkStyle::Warn(),
+                                       FMath::Clamp(Presentation->Node.StateEventAlpha,
+                                                    0.0f,
+                                                    1.0f));
                 }
                 return Border;
             })
             .FillColorOverride_Lambda([WeakPresentation]()
             {
                 const auto Presentation = WeakPresentation.Pin();
-                return Presentation
-                               && (Presentation->Node.bCurrent
-                                   || Presentation->Node.bScrubActive)
-                           ? CkStyle::NodeFill_InPlan()
-                           : CkStyle::NodeFill_Inactive();
+                if (NOT Presentation)
+                {
+                    return CkStyle::NodeFill_Inactive();
+                }
+                if (Presentation->Node.bScrubActive)
+                {
+                    return CkStyle::NodeFill_InPlan();
+                }
+                return FMath::Lerp(CkStyle::NodeFill_Inactive(),
+                                   CkStyle::NodeFill_InPlan(),
+                                   Presentation->Node.BorderGlowAlpha);
             })
             .OpacityOverride_Lambda([WeakPresentation]()
             {
@@ -912,13 +1027,39 @@ auto SCkSmRuntimeGraph::MakeCard(
                 {
                     return 1.0f;
                 }
-                return FMath::Lerp(ck::debug_axes::Get_NodeInactiveOpacity(),
+                const auto InactiveOpacity = ck::debug_axes::Get_NodeInactiveOpacity();
+                const auto Opacity = FMath::Lerp(InactiveOpacity,
+                                                 1.0f,
+                                                 Presentation->Node.CellGlowAlpha);
+                auto EffectiveOpacity = Opacity;
+                if (Presentation->Node.State && Presentation->Node.State->IsSubSmNode
+                    && NOT Presentation->Node.bParentActive)
+                {
+                    // A sub-state whose owner is inactive stays subdued once at the card level.
+                    // Per-control alpha multipliers made the same card nearly disappear.
+                    const auto ParentInactiveOpacity = FMath::Lerp(InactiveOpacity, 1.0f, 0.35f);
+                    EffectiveOpacity = FMath::Min(Opacity, ParentInactiveOpacity);
+                }
+                // Nested machines may be inactive when their exit event arrives. Bring only the
+                // transient event frame back to full opacity so its yellow outline remains legible.
+                return FMath::Lerp(EffectiveOpacity,
                                    1.0f,
-                                   Presentation->Node.CellGlowAlpha);
+                                   FMath::Clamp(Presentation->Node.StateEventAlpha, 0.0f, 1.0f));
             })
-            .BorderThickness_Lambda([]()
+            .BorderThickness_Lambda([WeakPresentation]()
             {
-                return ck::debug_axes::Get_NodeBorderThickness();
+                const auto BaseThickness = ck::debug_axes::Get_NodeBorderThickness();
+                const auto Presentation = WeakPresentation.Pin();
+                if (NOT Presentation)
+                {
+                    return BaseThickness;
+                }
+                const auto EventEmphasis = FCkSmDebuggerStyle::Get_GraphEventEmphasis(
+                    UCkDebuggerStyleSettings::Get_Selection().GraphEventEmphasis);
+                return FMath::Lerp(
+                    BaseThickness,
+                    FMath::Max(BaseThickness, EventEmphasis.StateEventOutlinePeakThickness),
+                    FMath::Clamp(Presentation->Node.StateEventAlpha, 0.0f, 1.0f));
             })
             .Selected(InPresentation->bSelected)
             .BodyContent()[Body];
@@ -989,11 +1130,16 @@ auto SCkSmRuntimeGraph::HandleSelectionChanged(const TSet<uint64>& InSelection) 
 
 auto SCkSmRuntimeGraph::GetEffectivePosition(const FCkSmRuntimeGraphNode& InNode) const -> FVector2D
 {
-    if (const auto* Override = _PositionOverrides.Find(InNode.Id))
-    {
-        return *Override;
-    }
-    return InNode.Position;
+    return FCkSmRuntimeGraphModel::ResolveNodeGeometry(
+               _Model.GetScene(), InNode, _PositionOverrides)
+        .Position;
+}
+
+auto SCkSmRuntimeGraph::GetEffectiveSize(const FCkSmRuntimeGraphNode& InNode) const -> FVector2D
+{
+    return FCkSmRuntimeGraphModel::ResolveNodeGeometry(
+               _Model.GetScene(), InNode, _PositionOverrides)
+        .Size;
 }
 
 auto SCkSmRuntimeGraph::GetEffectiveRoutePoints(const FCkSmRuntimeGraphEdge& InEdge) const
@@ -1026,8 +1172,10 @@ auto SCkSmRuntimeGraph::GetEffectiveRoutePoints(const FCkSmRuntimeGraphEdge& InE
 
     const auto SourceCenter = SourceNode->Position + SourceNode->Size * 0.5f;
     const auto TargetCenter = TargetNode->Position + TargetNode->Size * 0.5f;
-    const auto EffectiveSourceCenter = SourceCenter + SourceDelta;
-    const auto EffectiveTargetCenter = TargetCenter + TargetDelta;
+    const auto EffectiveSourceCenter = GetEffectivePosition(*SourceNode) +
+                                       GetEffectiveSize(*SourceNode) * 0.5f;
+    const auto EffectiveTargetCenter = GetEffectivePosition(*TargetNode) +
+                                       GetEffectiveSize(*TargetNode) * 0.5f;
     const auto BaseDirection = TargetCenter - SourceCenter;
     const auto BaseLength = BaseDirection.Size();
     if (BaseLength <= KINDA_SMALL_NUMBER)
@@ -1086,9 +1234,9 @@ auto SCkSmRuntimeGraph::GetEffectiveTransitionBadgePosition(const FCkSmRuntimeGr
     }
 
     const auto RoutePoints = GetEffectiveRoutePoints(*Edge);
-    auto Center = (GetEffectivePosition(*SourceNode) + SourceNode->Size * 0.5f +
-                   GetEffectivePosition(*TargetNode) + TargetNode->Size * 0.5f) *
-                  0.5f;
+    auto Center = (GetEffectivePosition(*SourceNode) + GetEffectiveSize(*SourceNode) * 0.5f +
+                    GetEffectivePosition(*TargetNode) + GetEffectiveSize(*TargetNode) * 0.5f) *
+                   0.5f;
     if (Edge->bSelfLoop && RoutePoints.Num() >= 2)
     {
         Center = RoutePoints[1];
@@ -1178,6 +1326,19 @@ auto SCkSmRuntimeGraph::HasSelectedAncestorCompound(const uint64 InNodeId) const
     return false;
 }
 
+auto SCkSmRuntimeGraph::ResolveDragGroup(const uint64 InNodeId) const -> TSet<uint64>
+{
+    const auto* Node = _Model.FindNodeById(InNodeId);
+    if (Node == nullptr || Node->Kind != ECkSmRuntimeGraphNodeKind::Compound)
+    {
+        return {};
+    }
+
+    auto Result = GetCompoundDescendantIds(Node->StateIndex);
+    Result.Add(Node->Id);
+    return Result;
+}
+
 auto SCkSmRuntimeGraph::HandleNodeMoved(const uint64 InNodeId, const FVector2D& InPosition) -> void
 {
     const auto* MovedNode = _Model.FindNodeById(InNodeId);
@@ -1188,23 +1349,46 @@ auto SCkSmRuntimeGraph::HandleNodeMoved(const uint64 InNodeId, const FVector2D& 
         return;
     }
 
-    const auto PreviousPosition = GetEffectivePosition(*MovedNode);
-    const auto Delta = InPosition - PreviousPosition;
-    if (Delta.IsNearlyZero())
+    const auto PreviousPosition = MovedNode->Kind == ECkSmRuntimeGraphNodeKind::Transition
+                                      ? GetEffectiveTransitionBadgePosition(*MovedNode)
+                                      : GetEffectivePosition(*MovedNode);
+    if (InPosition.Equals(PreviousPosition))
     {
         return;
     }
 
-    _PositionOverrides.Add(InNodeId, InPosition);
     if (MovedNode->Kind == ECkSmRuntimeGraphNodeKind::Compound)
     {
-        for (const auto DescendantId : GetCompoundDescendantIds(MovedNode->StateIndex))
+        // The canvas already moved the complete drag closure atomically. Persist those exact final
+        // positions rather than re-deriving descendants from an override map being mutated here;
+        // nested compound geometry is child-derived and would otherwise risk applying Delta twice.
+        for (const auto DragNodeId : ResolveDragGroup(InNodeId))
         {
-            if (const auto* Descendant = _Model.FindNodeById(DescendantId))
+            const auto* ModelNode = _Model.FindNodeById(DragNodeId);
+            if (ModelNode == nullptr || ModelNode->Kind != ECkSmRuntimeGraphNodeKind::State)
             {
-                _PositionOverrides.Add(DescendantId, GetEffectivePosition(*Descendant) + Delta);
+                _PositionOverrides.Remove(DragNodeId);
+                continue;
+            }
+            const auto* DragNode = _Canvas
+                                       ? _Canvas->Get_Scene().Nodes.FindByPredicate(
+                                             [DragNodeId](const FCkDebug_GraphCanvasNode& InNode)
+                                             {
+                                                 return InNode.Id == DragNodeId;
+                                             })
+                                       : nullptr;
+            if (DragNode)
+            {
+                _PositionOverrides.Add(DragNodeId, DragNode->Position);
             }
         }
+        // Compound bounds are derived from the persisted state positions, never independently
+        // authored. Remove an old override if this session still has one.
+        _PositionOverrides.Remove(InNodeId);
+    }
+    else
+    {
+        _PositionOverrides.Add(InNodeId, InPosition);
     }
     InstallScene();
 }
@@ -1212,14 +1396,67 @@ auto SCkSmRuntimeGraph::HandleNodeMoved(const uint64 InNodeId, const FVector2D& 
 auto SCkSmRuntimeGraph::HandleNodeContextMenu(const uint64 InNodeId,
                                               const FPointerEvent& InMouseEvent) -> void
 {
+    if (NOT _Canvas)
+    {
+        return;
+    }
+
+    const auto* Node = _Model.FindNodeById(InNodeId);
     const auto Payload = _Model.BuildCopyPayload(InNodeId);
-    if (NOT Payload.IsSet() || NOT _Canvas)
+    const auto bHasBreakpointAction = Node && _OnBreakpointRequested.IsBound()
+                                      && ((Node->Kind == ECkSmRuntimeGraphNodeKind::State
+                                           && Node->State)
+                                          || (Node->Kind == ECkSmRuntimeGraphNodeKind::Transition
+                                              && Node->Transition));
+    if (NOT bHasBreakpointAction && NOT Payload.IsSet())
     {
         return;
     }
 
     auto Menu = FMenuBuilder(true, nullptr);
-    if (Payload->Target == ECkSmRuntimeGraphCopyTarget::State)
+    if (bHasBreakpointAction && Node->Kind == ECkSmRuntimeGraphNodeKind::State)
+    {
+        Menu.AddMenuEntry(
+            FText::FromString(Node->State->HasEntryBreakpoint
+                                  ? TEXT("Clear entry breakpoint")
+                                  : TEXT("Set entry breakpoint")),
+            FText::FromString(TEXT("Toggle the breakpoint checked when this state becomes active")),
+            FSlateIcon{},
+            FUIAction(FExecuteAction::CreateSP(this,
+                                               &SCkSmRuntimeGraph::RequestBreakpointToggle,
+                                               ECkSmRuntimeBreakpointTarget::StateEntry,
+                                               Node->StateIndex)));
+        Menu.AddMenuEntry(
+            FText::FromString(Node->State->HasExitBreakpoint
+                                  ? TEXT("Clear exit breakpoint")
+                                  : TEXT("Set exit breakpoint")),
+            FText::FromString(TEXT("Toggle the breakpoint checked when this state exits")),
+            FSlateIcon{},
+            FUIAction(FExecuteAction::CreateSP(this,
+                                               &SCkSmRuntimeGraph::RequestBreakpointToggle,
+                                               ECkSmRuntimeBreakpointTarget::StateExit,
+                                               Node->StateIndex)));
+    }
+    else if (bHasBreakpointAction)
+    {
+        Menu.AddMenuEntry(
+            FText::FromString(Node->Transition->HasBreakpoint
+                                  ? TEXT("Clear transition breakpoint")
+                                  : TEXT("Set transition breakpoint")),
+            FText::FromString(TEXT("Toggle the breakpoint checked when this transition fires")),
+            FSlateIcon{},
+            FUIAction(FExecuteAction::CreateSP(this,
+                                               &SCkSmRuntimeGraph::RequestBreakpointToggle,
+                                               ECkSmRuntimeBreakpointTarget::Transition,
+                                               Node->TransitionIndex)));
+    }
+
+    if (bHasBreakpointAction && Payload.IsSet())
+    {
+        Menu.AddMenuSeparator();
+    }
+
+    if (Payload.IsSet() && Payload->Target == ECkSmRuntimeGraphCopyTarget::State)
     {
         ck::DebugCopyMenu::AddCopyEntry(Menu,
                                         FText::FromString(TEXT("Copy Display Name")),
@@ -1231,7 +1468,7 @@ auto SCkSmRuntimeGraph::HandleNodeContextMenu(const uint64 InNodeId,
                                             TEXT("Copy the full underlying state class name")),
                                         Payload->ClassName);
     }
-    else
+    else if (Payload.IsSet())
     {
         ck::DebugCopyMenu::AddCopyEntry(Menu,
                                         FText::FromString(TEXT("Copy Group Label")),
@@ -1262,4 +1499,21 @@ auto SCkSmRuntimeGraph::HandleNodeContextMenu(const uint64 InNodeId,
                                       Menu.MakeWidget(),
                                       InMouseEvent.GetScreenSpacePosition(),
                                       FPopupTransitionEffect{FPopupTransitionEffect::ContextMenu});
+}
+
+auto SCkSmRuntimeGraph::HandleBreakpointClicked(const ECkSmRuntimeBreakpointTarget InTarget,
+                                                 const int32 InIndex) -> FReply
+{
+    if (NOT _OnBreakpointRequested.IsBound())
+    {
+        return FReply::Unhandled();
+    }
+    RequestBreakpointToggle(InTarget, InIndex);
+    return FReply::Handled();
+}
+
+auto SCkSmRuntimeGraph::RequestBreakpointToggle(const ECkSmRuntimeBreakpointTarget InTarget,
+                                                 const int32 InIndex) -> void
+{
+    _OnBreakpointRequested.ExecuteIfBound(InTarget, InIndex);
 }

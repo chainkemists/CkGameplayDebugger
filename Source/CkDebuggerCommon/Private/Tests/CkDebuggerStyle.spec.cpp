@@ -140,7 +140,7 @@ bool FCkDebuggerStyle_ProfileRegistryIntegrity::RunTest(const FString& Parameter
 
     // The catalog size is asserted explicitly so an accidental axis drop is caught here rather than
     // silently narrowing every reflection-driven surface (the Style Lab's controls pane included).
-    TestEqual(TEXT("The axis catalog holds every declared axis"), ComparedAxes, 22);
+    TestEqual(TEXT("The axis catalog holds every declared axis"), ComparedAxes, 24);
 
     // Every non-Classic profile must actually differ, otherwise the registry entry is dead weight.
     for (auto Index = 1; Index < Profiles.Num(); ++Index)
@@ -160,6 +160,92 @@ bool FCkDebuggerStyle_ProfileRegistryIntegrity::RunTest(const FString& Parameter
             AnyDifference);
     }
 
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_GraphMotionSelection,
+    "Ck.DebuggerCommon.Style.GraphMotionSelection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_GraphMotionSelection::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto Defaults = FCkDebuggerStyleSelection{};
+    TestEqual(TEXT("Graph Motion defaults to Measured"),
+        Defaults.GraphMotion, ECkDebugAxis_GraphMotion::Measured);
+
+    const auto Options = Get_AllOptions<ECkDebugAxis_GraphMotion>();
+    TestEqual(TEXT("Graph Motion exposes three pacing choices"), Options.Num(), 3);
+    TestTrue(TEXT("Graph Motion includes Quick"), Options.Contains(ECkDebugAxis_GraphMotion::Quick));
+    TestTrue(TEXT("Graph Motion includes Measured"), Options.Contains(ECkDebugAxis_GraphMotion::Measured));
+    TestTrue(TEXT("Graph Motion includes Deliberate"), Options.Contains(ECkDebugAxis_GraphMotion::Deliberate));
+
+    TestEqual(TEXT("Current style schema includes Graph Motion"),
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 7);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebuggerStyle_GraphEventEmphasisSelection,
+    "Ck.DebuggerCommon.Style.GraphEventEmphasisSelection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebuggerStyle_GraphEventEmphasisSelection::RunTest(const FString& Parameters)
+{
+    using namespace ck_debugger_style_tests;
+
+    const auto Defaults = FCkDebuggerStyleSelection{};
+    TestEqual(TEXT("Graph Event Emphasis defaults to Clear"),
+              Defaults.GraphEventEmphasis,
+              ECkDebugAxis_GraphEventEmphasis::Clear);
+
+    const auto Options = Get_AllOptions<ECkDebugAxis_GraphEventEmphasis>();
+    TestEqual(TEXT("Graph Event Emphasis exposes three choices"), Options.Num(), 3);
+    TestTrue(TEXT("Graph Event Emphasis includes Subtle"),
+             Options.Contains(ECkDebugAxis_GraphEventEmphasis::Subtle));
+    TestTrue(TEXT("Graph Event Emphasis includes Clear"),
+             Options.Contains(ECkDebugAxis_GraphEventEmphasis::Clear));
+    TestTrue(TEXT("Graph Event Emphasis includes Bold"),
+             Options.Contains(ECkDebugAxis_GraphEventEmphasis::Bold));
+
+    const auto* Property = FindFProperty<FProperty>(
+        FCkDebuggerStyleSelection::StaticStruct(), TEXT("GraphEventEmphasis"));
+    TestNotNull(TEXT("Graph Event Emphasis remains a reflected config property"), Property);
+    if (Property == nullptr)
+    {
+        return false;
+    }
+
+    auto Source = FCkDebuggerStyleSelection{};
+    Source.GraphEventEmphasis = ECkDebugAxis_GraphEventEmphasis::Bold;
+    auto Serialized = FString{};
+    Property->ExportTextItem_Direct(
+        Serialized,
+        Property->ContainerPtrToValuePtr<void>(&Source),
+        nullptr,
+        nullptr,
+        PPF_None);
+    TestEqual(TEXT("Graph Event Emphasis serializes by stable enum name"),
+              Serialized,
+              FString{TEXT("Bold")});
+
+    auto RoundTripped = FCkDebuggerStyleSelection{};
+    const auto* Remainder = Property->ImportText_Direct(
+        *Serialized,
+        Property->ContainerPtrToValuePtr<void>(&RoundTripped),
+        nullptr,
+        PPF_None);
+    TestNotNull(TEXT("Graph Event Emphasis deserializes from its enum name"), Remainder);
+    TestEqual(TEXT("Graph Event Emphasis survives config serialization"),
+              RoundTripped.GraphEventEmphasis,
+              ECkDebugAxis_GraphEventEmphasis::Bold);
     return true;
 }
 
@@ -711,10 +797,11 @@ bool FCkDebuggerStyle_SchemaV4AxesResolveDistinctly::RunTest(const FString& Para
 
     Settings->Selection = FCkDebuggerStyleSelection{};
 
-    // v5 split EntityIdStyle (composition) from EntityRefStyle (treatment); the option count below
-    // is what makes the removal of HashTintedChip a test failure rather than a silent revert.
+    // v5 split EntityIdStyle (composition) from EntityRefStyle (treatment); v6 added GraphMotion;
+    // v7 added GraphEventEmphasis.
+    // The catalog schema check makes either accidental regression a test failure rather than a silent revert.
     TestEqual(TEXT("Schema version tracks the current axis catalog"),
-        UCkDebuggerStyleSettings::CurrentSchemaVersion, 5);
+        UCkDebuggerStyleSettings::CurrentSchemaVersion, 7);
 
     // ---- TextScale -----------------------------------------------------------
     const auto RoleSize = CkStyle::FontSizeSmall();

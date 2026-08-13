@@ -120,6 +120,19 @@ private:
     // merge harmlessly into a single ring, but BB-side debug names are unique).
     TMap<FString, TMap<FTransitionKey, FTransitionSampleRing>> _TransitionHistoriesBySm;
 
+    auto GetOrAssignLiveEventId(
+        const FCkSmDebugger_HistoryEntry& InEntry,
+        const FCk_Handle_StateMachine& InOwningSmHandle,
+        uint64 InRawRealTimeBits,
+        const FString& InSubSmScope = {}) -> uint64;
+    auto GetCanonicalLiveEventOwner(
+        uint64 InLiveEventId,
+        const FCk_Handle_StateMachine& InFallbackOwner) const -> FCk_Handle_StateMachine;
+
+    TMap<FString, uint64> _LiveEventIds;
+    TMap<uint64, FCk_Handle_StateMachine> _LiveEventOwners;
+    uint64 _NextLiveEventId = 1;
+
     // Track each SM's last observed run counter to clear histories on a new run.
     TMap<FString, int32> _PerSmRunCounters;
 

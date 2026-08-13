@@ -1,5 +1,7 @@
 #include "CkInputDebugger/Window/SCkInputDebuggerWindow.h"
 
+#include "CkInputDebugger/Window/SCkInputDebugger_DeviceVisual.h"
+
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Format/CkFormat.h"
@@ -26,6 +28,13 @@
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
+#include "GameFramework/PlayerController.h"
+
+#include "Framework/Application/SlateApplication.h"
+
+#if WITH_EDITOR
+#include "Editor.h"
+#endif
 
 #include "Styling/AppStyle.h"
 #include "Widgets/SBoxPanel.h"
@@ -104,6 +113,20 @@ auto
 
     _ContextListBox  = SNew(SVerticalBox);
     _ResolvedListBox = SNew(SVerticalBox);
+    _BindingsListBox = SNew(SVerticalBox);
+    _KeyStripBox     = SNew(SHorizontalBox);
+
+    // Passive application-wide observer for the live surfaces — every handler returns false, so
+    // it can never starve viewport input (ck-slate-tools §3).
+    if (FSlateApplication::IsInitialized())
+    {
+        _KeyObserver = MakeShared<FCkInputDebugger_KeyActivityObserver>();
+        FSlateApplication::Get().RegisterInputPreProcessor(_KeyObserver);
+    }
+
+#if WITH_EDITOR
+    _EndPIEHandle = FEditorDelegates::EndPIE.AddSP(this, &SCkInputDebuggerWindow::OnEndPIE);
+#endif
 
     ChildSlot
     [
@@ -153,6 +176,47 @@ auto
                             + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
                                 [
                                     SNew(SCkDebug_SectionHeader)
+                                        .Label(FText::FromString(TEXT("Held & Recent Keys")))
+                                ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+                                [ _KeyStripBox.ToSharedRef() ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+                                [
+                                    SNew(SCkDebug_SectionHeader)
+                                        .Label(FText::FromString(TEXT("Devices")))
+                                ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
+                                [
+                                    SNew(SCkInputDebugger_DeviceVisual)
+                                        .IsKeyPressed_Lambda([this](const FKey& InKey) { return _KeyObserver.IsValid() && _KeyObserver->Get_IsHeld(InKey); })
+                                        .IsKeyMapped_Lambda([this](const FKey& InKey) { return _MappedKeys.Contains(InKey); })
+                                        .IsKeyRebound_Lambda([this](const FKey& InKey) { return _ReboundKeys.Contains(InKey); })
+                                        .IsKeyFiltered_Lambda([this](const FKey& InKey) { return _KeyFilter.IsValid() && _KeyFilter == InKey; })
+                                        .KeyTooltip_Lambda([this](const FKey& InKey) { return Get_KeyTooltip(InKey); })
+                                        .OnKeyClicked_Lambda([this](const FKey& InKey) { HandleDeviceKeyClicked(InKey); })
+                                ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM)
+                                [ ck::debug_axes::Make_AxisSeparator() ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+                                [
+                                    SNew(SCkDebug_SectionHeader)
+                                        .Label(FText::FromString(TEXT("Player Bindings — default vs current")))
+                                ]
+
+                            + SVerticalBox::Slot().AutoHeight()
+                                [ _BindingsListBox.ToSharedRef() ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceM)
+                                [ ck::debug_axes::Make_AxisSeparator() ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS)
+                                [
+                                    SNew(SCkDebug_SectionHeader)
                                         .Label(FText::FromString(TEXT("Mapping Context Stack")))
                                 ]
 
@@ -175,6 +239,30 @@ auto
         ]
         ]
     ];
+}
+
+SCkInputDebuggerWindow::~SCkInputDebuggerWindow()
+{
+    if (_KeyObserver.IsValid() && FSlateApplication::IsInitialized())
+    { FSlateApplication::Get().UnregisterInputPreProcessor(_KeyObserver); }
+
+#if WITH_EDITOR
+    if (_EndPIEHandle.IsValid())
+    { FEditorDelegates::EndPIE.Remove(_EndPIEHandle); }
+#endif
+}
+
+auto
+    SCkInputDebuggerWindow::
+    OnEndPIE(
+        bool InIsSimulating)
+    -> void
+{
+    // Keys held while PIE dies release into a dead world — never observed
+    if (_KeyObserver.IsValid())
+    { _KeyObserver->Clear(); }
+
+    _KeyFilter = FKey{};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -305,6 +393,29 @@ auto
     {
         _LastSignature = Snapshot.StructuralSignature;
         RebuildSections(Snapshot);
+    }
+
+    // ---- Bindings profile (default vs current) — its own cheap signature gate ----
+
+    _BoundPlayerController = [&]() -> APlayerController*
+    {
+        const auto* LocalPlayer = Subsystem->GetLocalPlayer<ULocalPlayer>();
+        return ck::IsValid(LocalPlayer, ck::IsValid_Policy_NullptrOnly{}) ? LocalPlayer->PlayerController : nullptr;
+    }();
+
+    if (auto Bindings = FCkInputDebugger_BindingsSnapshot::Gather(_BoundPlayerController.Get());
+        Bindings.Signature != _LastBindingsSignature)
+    {
+        _LastBindingsSignature = Bindings.Signature;
+        RebuildBindings(Bindings);
+    }
+
+    // ---- Held/recent key strip — rebuilt only when the observer's sets change ----
+
+    if (_KeyObserver.IsValid() && _KeyObserver->Get_ActivityRevision() != _LastActivityRevision)
+    {
+        _LastActivityRevision = _KeyObserver->Get_ActivityRevision();
+        RebuildKeyStrip();
     }
 
     UpdateLiveValues();
@@ -440,6 +551,20 @@ auto
     _ResolvedListBox->ClearChildren();
     _ContextSlots.Reset();
     _ActionSlots.Reset();
+
+    // ---- Key lookup for the device visual + tooltips ----
+
+    _MappedKeys.Reset();
+    _ActionsByKey.Reset();
+
+    for (const auto& Context : InSnapshot.Contexts)
+    {
+        for (const auto& Mapping : Context.Mappings)
+        {
+            _MappedKeys.Add(Mapping.Key);
+            _ActionsByKey.FindOrAdd(Mapping.Key).AddUnique(Mapping.ActionName);
+        }
+    }
 
     // ---- Context stack ----
 
@@ -787,6 +912,18 @@ auto
         }
     }
 
+    // ---- Player bindings ----
+
+    for (auto& Binding : _BindingSlots)
+    {
+        if (NOT Binding.Root.IsValid())
+        { continue; }
+
+        Binding.Root->SetVisibility(MatchesFilter(Binding.SearchText)
+            ? EVisibility::Visible
+            : EVisibility::Collapsed);
+    }
+
     // ---- Resolved actions ----
 
     for (auto& Slot : _ActionSlots)
@@ -810,6 +947,269 @@ auto
 }
 
 // --------------------------------------------------------------------------------------------------------------------
+// Live key strip + bindings pane
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInputDebuggerWindow::
+    Get_KeyDisplay(
+        const FKey& InKey) const
+    -> FString
+{
+    return InKey.GetDisplayName().ToString();
+}
+
+auto
+    SCkInputDebuggerWindow::
+    RebuildKeyStrip()
+    -> void
+{
+    _KeyStripBox->ClearChildren();
+
+    const auto MakeChip = [this](const FKey& InKey, bool InIsHeld, float InOpacity) -> TSharedRef<SWidget>
+    {
+        auto ActionLines = FString{};
+        if (const auto* Actions = _ActionsByKey.Find(InKey))
+        { ActionLines = FString::Join(*Actions, TEXT(" · ")); }
+
+        return SNew(SBorder)
+            .BorderImage(CkStyle::GetRoundedBrush())
+            .BorderBackgroundColor((InIsHeld ? CkStyle::Bg3() : CkStyle::Bg2()).CopyWithNewOpacity(InOpacity))
+            .Padding(FMargin(CkStyle::SpaceS, CkStyle::SpaceS * 0.6f))
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                    [
+                        SNew(SBorder)
+                            .BorderImage(CkStyle::GetRoundedBrush_Small())
+                            .BorderBackgroundColor(CkStyle::BgRoot().CopyWithNewOpacity(InOpacity))
+                            .Padding(FMargin(6.0f, 2.0f))
+                            [
+                                SNew(STextBlock)
+                                    .Font_Static(&ck_input_debugger::Font_RowLabel)
+                                    .Text(FText::FromString(Get_KeyDisplay(InKey).ToUpper()))
+                                    .ColorAndOpacity((InIsHeld ? CkStyle::Accent() : CkStyle::TextDim()).CopyWithNewOpacity(InOpacity))
+                            ]
+                    ]
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                    [
+                        SNew(STextBlock)
+                            .Font_Static(&ck_input_debugger::Font_Body)
+                            .Text(FText::FromString(ActionLines.IsEmpty() ? TEXT("(no action)") : ActionLines))
+                            .ColorAndOpacity((ActionLines.IsEmpty() ? CkStyle::TextMute() : CkStyle::Text()).CopyWithNewOpacity(InOpacity))
+                    ]
+            ];
+    };
+
+    auto AnyChip = false;
+
+    if (_KeyObserver.IsValid())
+    {
+        for (const auto& Held : _KeyObserver->Get_HeldKeys())
+        {
+            constexpr auto FullOpacity = 1.0f;
+            _KeyStripBox->AddSlot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [ MakeChip(Held.Key, true, FullOpacity) ];
+            AnyChip = true;
+        }
+
+        auto RecentOpacity = 0.65f;
+        for (const auto& Recent : _KeyObserver->Get_RecentKeys())
+        {
+            _KeyStripBox->AddSlot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                [ MakeChip(Recent.Key, false, RecentOpacity) ];
+            RecentOpacity = FMath::Max(0.25f, RecentOpacity - 0.12f);
+            AnyChip = true;
+        }
+    }
+
+    if (NOT AnyChip)
+    {
+        _KeyStripBox->AddSlot().AutoWidth().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                    .Font_Static(&ck_input_debugger::Font_Body)
+                    .Text(FText::FromString(TEXT("Press something — held keys pin left, releases fade right.")))
+                    .ColorAndOpacity(CkStyle::TextMute())
+            ];
+    }
+}
+
+auto
+    SCkInputDebuggerWindow::
+    RebuildBindings(
+        const FCkInputDebugger_BindingsSnapshot& InBindings)
+    -> void
+{
+    _BindingsListBox->ClearChildren();
+    _BindingSlots.Reset();
+    _ReboundKeys.Reset();
+
+    if (InBindings.CategoryOrder.IsEmpty())
+    {
+        _BindingsListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
+            [
+                SNew(STextBlock)
+                    .Font_Static(&ck_input_debugger::Font_Body)
+                    .Text(FText::FromString(TEXT("No player-mappable bindings registered (no Enhanced Input user-settings profile rows).")))
+                    .ColorAndOpacity(CkStyle::TextMute())
+            ];
+        return;
+    }
+
+    const auto MakeKeyCap = [](const FKey& InKey, const FLinearColor& InColor) -> TSharedRef<SWidget>
+    {
+        return SNew(SBorder)
+            .BorderImage(CkStyle::GetRoundedBrush_Small())
+            .BorderBackgroundColor(CkStyle::BgRoot())
+            .Padding(FMargin(6.0f, 1.0f))
+            [
+                SNew(STextBlock)
+                    .Font_Static(&ck_input_debugger::Font_Value)
+                    .Text(FText::FromString(InKey.IsValid() ? InKey.GetDisplayName().ToString() : TEXT("—")))
+                    .ColorAndOpacity(InColor)
+            ];
+    };
+
+    for (const auto& Category : InBindings.CategoryOrder)
+    {
+        _BindingsListBox->AddSlot().AutoHeight().Padding(CkStyle::SpaceS, CkStyle::SpaceS, CkStyle::SpaceS, 2.0f)
+            [
+                SNew(STextBlock)
+                    .Font_Static(&ck_input_debugger::Font_RowLabel)
+                    .Text(FText::FromString(Category.IsEmpty() ? TEXT("(uncategorized)") : Category))
+                    .ColorAndOpacity(CkStyle::Accent())
+            ];
+
+        for (const auto& Row : InBindings.RowsByCategory[Category])
+        {
+            if (Row.IsRebound && Row.CurrentKey.IsValid())
+            { _ReboundKeys.Add(Row.CurrentKey); }
+
+            auto Slot = FCkInputDebugger_BindingSlot{};
+            Slot.SearchText = ck::Format_UE(TEXT("{} {} {} {} {}"),
+                Row.DisplayName, Row.MappingName,
+                Row.DefaultKey.GetDisplayName().ToString(),
+                Row.CurrentKey.GetDisplayName().ToString(),
+                Row.ScopeTags).ToLower();
+
+            const auto RowWidget = SNew(SBorder)
+                .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+                .BorderBackgroundColor(FLinearColor::Transparent)
+                .Padding(ck_input_debugger::Get_ActionRowPadding())
+                [
+                    SNew(SHorizontalBox)
+
+                    + SHorizontalBox::Slot().FillWidth(0.34f).VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Font_Static(&ck_input_debugger::Font_Body)
+                                .Text(FText::FromString(Row.DisplayName.IsEmpty() ? Row.MappingName.ToString() : Row.DisplayName))
+                                .ColorAndOpacity(CkStyle::Text())
+                        ]
+
+                    + SHorizontalBox::Slot().FillWidth(0.22f).VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Font_Static(&ck_input_debugger::Font_Value)
+                                .Text(FText::FromString(Row.MappingName.ToString()))
+                                .ColorAndOpacity(CkStyle::TextMute())
+                        ]
+
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ MakeKeyCap(Row.DefaultKey, CkStyle::TextDim()) ]
+
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceS, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Font_Static(&ck_input_debugger::Font_Body)
+                                .Text(FText::FromString(TEXT("→")))
+                                .ColorAndOpacity(CkStyle::TextMute())
+                        ]
+
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [ MakeKeyCap(Row.CurrentKey, Row.IsRebound ? CkStyle::Warn() : CkStyle::Text()) ]
+
+                    + SHorizontalBox::Slot().FillWidth(0.12f).VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+                        [
+                            SNew(STextBlock)
+                                .Font_Static(&ck_input_debugger::Font_Body)
+                                .Text(FText::FromString(Row.IsGamepad ? TEXT("Gamepad") : TEXT("KBM")))
+                                .ColorAndOpacity(CkStyle::TextMute())
+                        ]
+
+                    + SHorizontalBox::Slot().FillWidth(0.2f).VAlign(VAlign_Center)
+                        [
+                            SNew(STextBlock)
+                                .Font_Static(&ck_input_debugger::Font_Body)
+                                .Text(FText::FromString(Row.ScopeTags))
+                                .ColorAndOpacity(CkStyle::TextMute())
+                        ]
+
+                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                        [
+                            SNew(SBorder)
+                                .BorderImage(CkStyle::GetRoundedBrush_Small())
+                                .BorderBackgroundColor(CkStyle::Warn().CopyWithNewOpacity(0.16f))
+                                .Padding(FMargin(5.0f, 1.0f))
+                                .Visibility(Row.IsRebound ? EVisibility::Visible : EVisibility::Collapsed)
+                                [
+                                    SNew(STextBlock)
+                                        .Font_Static(&ck_input_debugger::Font_Value)
+                                        .Text(FText::FromString(TEXT("REBOUND")))
+                                        .ColorAndOpacity(CkStyle::Warn())
+                                ]
+                        ]
+                ];
+
+            Slot.Root = RowWidget;
+            _BindingSlots.Emplace(MoveTemp(Slot));
+
+            _BindingsListBox->AddSlot().AutoHeight() [ RowWidget ];
+        }
+    }
+
+    ApplyFilterAndHighlight();
+}
+
+auto
+    SCkInputDebuggerWindow::
+    Get_KeyTooltip(
+        const FKey& InKey) const
+    -> FText
+{
+    auto Lines = TArray<FString>{};
+    Lines.Emplace(Get_KeyDisplay(InKey));
+
+    if (const auto* Actions = _ActionsByKey.Find(InKey))
+    {
+        for (const auto& ActionName : *Actions)
+        { Lines.Emplace(ck::Format_UE(TEXT("  {}"), ActionName)); }
+    }
+    else
+    { Lines.Emplace(TEXT("  (no mapped action)")); }
+
+    if (_ReboundKeys.Contains(InKey))
+    { Lines.Emplace(TEXT("  rebound from default")); }
+
+    Lines.Emplace(TEXT("Click to filter the panes below to this key."));
+
+    return FText::FromString(FString::Join(Lines, TEXT("\n")));
+}
+
+auto
+    SCkInputDebuggerWindow::
+    HandleDeviceKeyClicked(
+        const FKey& InKey)
+    -> void
+{
+    _KeyFilter = (_KeyFilter == InKey) ? FKey{} : InKey;
+    ApplyFilterAndHighlight();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
 // Search predicates
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -819,6 +1219,12 @@ auto
         const FString& InSearchText) const
     -> bool
 {
+    // The device-visual key filter composes WITH the text filter: search strings carry the key
+    // display names, so containment is the match.
+    if (_KeyFilter.IsValid() &&
+        NOT InSearchText.Contains(Get_KeyDisplay(_KeyFilter), ESearchCase::IgnoreCase))
+    { return false; }
+
     if (_FilterString.IsEmpty())
     { return true; }
 

@@ -18,6 +18,7 @@ public class CkInputDebugger : CkModuleRules
             "SlateCore",
 
             "CkCore",
+            "CkInput",  // bindings pane: user-settings profile rows + Ck scope-tag settings
             "CkEcs",  // CkCore's SharedPCH instantiates global ECS registrations — every CK module must link CkEcs
             "CkDebuggerCommon",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window

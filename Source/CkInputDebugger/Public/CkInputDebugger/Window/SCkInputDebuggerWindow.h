@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CkInputDebugger/Data/CkInputDebugger_Snapshot.h"
+#include "CkInputDebugger/Data/CkInputDebugger_Bindings.h"
+#include "CkInputDebugger/Data/CkInputDebugger_KeyActivity.h"
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
@@ -15,6 +17,7 @@ class STextBlock;
 class FCkDebuggerModel_WorldSelector;
 class UEnhancedInputLocalPlayerSubsystem;
 class UInputAction;
+class APlayerController;
 
 // --------------------------------------------------------------------------------------------------------------------
 // Pre-built, in-place-updated row for one action<->key mapping inside a context.
@@ -78,6 +81,7 @@ public:
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
+    virtual ~SCkInputDebuggerWindow();
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
@@ -103,11 +107,21 @@ private:
     auto RebuildSections(const FCkInputDebugger_Snapshot& InSnapshot) -> void;
     auto BuildContextSlot(const FCkInputDebugger_ContextRow& InContext) -> void;
     auto BuildActionSlot(const FCkInputDebugger_ActionRow& InAction) -> void;
+    auto RebuildBindings(const FCkInputDebugger_BindingsSnapshot& InBindings) -> void;
+    auto RebuildKeyStrip() -> void;
 
     // ---- In-place update (every gated tick) ----
 
     auto UpdateLiveValues() -> void;
     auto ApplyFilterAndHighlight() -> void;
+
+    // ---- Device visual + key filter ----
+
+    auto Get_KeyTooltip(const FKey& InKey) const -> FText;
+    auto HandleDeviceKeyClicked(const FKey& InKey) -> void;
+    auto Get_KeyDisplay(const FKey& InKey) const -> FString;
+
+    auto OnEndPIE(bool InIsSimulating) -> void;
 
     // ---- Search ----
 
@@ -120,21 +134,42 @@ private:
     TSharedPtr<STextBlock>                     _SummaryText;
 
     // ---- Body containers ----
-    TSharedPtr<SVerticalBox> _ContextListBox;
-    TSharedPtr<SVerticalBox> _ResolvedListBox;
+    TSharedPtr<SVerticalBox>   _ContextListBox;
+    TSharedPtr<SVerticalBox>   _ResolvedListBox;
+    TSharedPtr<SVerticalBox>   _BindingsListBox;
+    TSharedPtr<SHorizontalBox> _KeyStripBox;
 
     // ---- Pre-built slots ----
     TArray<FCkInputDebugger_ContextSlot> _ContextSlots;
     TArray<FCkInputDebugger_ActionSlot>  _ActionSlots;
 
+    struct FCkInputDebugger_BindingSlot
+    {
+        TSharedPtr<SWidget> Root;
+        FString             SearchText;
+    };
+    TArray<FCkInputDebugger_BindingSlot> _BindingSlots;
+
     // ---- State ----
     TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem> _BoundSubsystem;
+    TWeakObjectPtr<APlayerController>                  _BoundPlayerController;
     int32   _SelectedPlayerIndex = 0;
     int32   _LastNumLocalPlayers = -1;
     FString _LastSignature;
+    FString _LastBindingsSignature;
     FString _FilterString;
     FString _HighlightString;
     bool    _ShowActiveActionsOnly = false;
+
+    // ---- Live key activity (passive observer; holds keys only, never handles) ----
+    TSharedPtr<FCkInputDebugger_KeyActivityObserver> _KeyObserver;
+    int32 _LastActivityRevision = -1;
+    FKey  _KeyFilter;
+    TSet<FKey> _MappedKeys;
+    TSet<FKey> _ReboundKeys;
+    TMap<FKey, TArray<FString>> _ActionsByKey;
+
+    FDelegateHandle _EndPIEHandle;
 };
 
 // ====================================================================================================================

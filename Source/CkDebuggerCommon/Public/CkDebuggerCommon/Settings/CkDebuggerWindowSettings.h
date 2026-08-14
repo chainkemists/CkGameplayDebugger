@@ -66,6 +66,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Global")
 	ECkDebugger_RefreshRateCap RefreshRateCap_Global = ECkDebugger_RefreshRateCap::Hz30;
 
+	// When a CK debugger tab is already open, opening another one docks it as a tab in that
+	// window instead of spawning a new floating window. Covers opens through CK surfaces (the
+	// launcher, the in-window Debuggers menu, ck.* console commands); the editor's own
+	// Tools-menu entries place tabs through the saved layout and are not redirected. Tabs docked
+	// this way are not persisted in the layout across editor restarts.
+	UPROPERTY(Config, EditAnywhere, Category = "Global")
+	bool DockNewDebuggersIntoExistingWindow = false;
+
 	// ---- Per-window overrides ----------------------------------------------
 	// Keys are the window IDs returned by SCkDebugger_WindowBase::Get_WindowId().
 	// Known IDs: "EcsDebugger", "GoapDebugger", "SmDebugger", "SchedulerDebugger",

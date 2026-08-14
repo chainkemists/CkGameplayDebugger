@@ -5,6 +5,7 @@
 #include "CkCore/Macros/CkMacros.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -60,7 +61,9 @@ auto FCkInsightsDebuggerModule::StartupModule() -> void
         LOCTEXT("InsightsAnalyzerLauncherTooltip", "Open .utrace files and analyze frame performance"),
         TEXT("Hourglass"),
         ECkDebuggerToolCategory::Tools,
-        10});
+        10}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkInsightsDebuggerModule::ShutdownModule() -> void
@@ -86,7 +89,7 @@ auto FCkInsightsDebuggerModule::Get() -> FCkInsightsDebuggerModule&
 
 auto FCkInsightsDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkInsightsDebuggerModule::CloseDebugger() -> void

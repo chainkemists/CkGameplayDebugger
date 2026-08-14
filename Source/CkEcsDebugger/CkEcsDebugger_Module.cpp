@@ -12,6 +12,7 @@
 
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_Navigator.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
@@ -84,7 +85,9 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("Browse ECS entities, archetypes, fragments, and relationships")),
         TEXT("EntityCollection"),
         ECkDebuggerToolCategory::Core,
-        10});
+        10}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{DebuggerTabName}}); })));
 
     // Tear the debugger UI down BEFORE module shutdown / world cleanup, so that
     // any inspector-held FCk_Handle (and any captured handles in Slate delegates)
@@ -228,7 +231,7 @@ auto FCkEcsDebuggerModule::Get() -> FCkEcsDebuggerModule&
 
 auto FCkEcsDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(DebuggerTabName);
 }
 
 auto FCkEcsDebuggerModule::CloseDebugger() -> void

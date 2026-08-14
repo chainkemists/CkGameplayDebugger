@@ -25,6 +25,7 @@
 
 #include "CkGoap/WorldState/CkGoap_WorldState_Utils.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -1399,7 +1400,7 @@ auto
     // is what creates the live SCkGoapDebuggerWindow instance and stores it
     // on FCkGoapDebuggerModule, so this MUST run before we ask the module
     // for the window pointer.
-    FGlobalTabmanager::Get()->TryInvokeTab(FCkGoapDebuggerModule::Get_TabName());
+    ck::debugger_tabs::Invoke_DebuggerTab(FCkGoapDebuggerModule::Get_TabName());
 
     auto Window = FCkGoapDebuggerModule::Get().Get_DebuggerWindow();
     if (Window.IsValid())

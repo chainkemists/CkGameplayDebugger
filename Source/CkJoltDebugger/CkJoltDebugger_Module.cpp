@@ -3,6 +3,7 @@
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -58,7 +59,9 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("World-level Jolt physics stats: bodies, characters, and the baked static world")),
         TEXT("Cube"),
         ECkDebuggerToolCategory::Systems,
-        30});
+        30}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkJoltDebuggerModule::ShutdownModule() -> void
@@ -82,7 +85,7 @@ auto FCkJoltDebuggerModule::Get() -> FCkJoltDebuggerModule&
 
 auto FCkJoltDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkJoltDebuggerModule::CloseDebugger() -> void

@@ -1,8 +1,7 @@
 #include "CkInputDebugger/Window/SCkInputDebuggerWindow.h"
 
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceKeyboard.h"
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceMouse.h"
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceGamepad.h"
+#include "CkDebuggerCommon/Devices/SCkDebug_DevicesPanel.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_EventTimeline.h"
 
 #include "CkCore/Macros/CkMacros.h"
 #include "CkCore/Validation/CkIsValid.h"
@@ -118,6 +117,7 @@ auto
     _ResolvedListBox = SNew(SVerticalBox);
     _BindingsListBox = SNew(SVerticalBox);
     _KeyStripBox     = SNew(SHorizontalBox);
+    _TimelineHost    = SNew(SBox);
 
     // Passive application-wide observer for the live surfaces — every handler returns false, so
     // it can never starve viewport input (ck-slate-tools §3).
@@ -195,6 +195,17 @@ auto
                             + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
                                 [
                                     BuildSection(
+                                        FText::FromString(TEXT("Timeline")),
+                                        SNew(STextBlock)
+                                            .Font_Static(&ck_input_debugger::Font_Body)
+                                            .Text(FText::FromString(TEXT("frame axis · wheel zooms · right-drag pans · F = follow live · click a press marker to filter")))
+                                            .ColorAndOpacity(CkStyle::TextMute()),
+                                        _TimelineHost.ToSharedRef())
+                                ]
+
+                            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS * 0.5f)
+                                [
+                                    BuildSection(
                                         FText::FromString(TEXT("Player Bindings — default vs current")),
                                         BuildBindingsHeader(),
                                         _BindingsListBox.ToSharedRef())
@@ -244,6 +255,14 @@ auto
     { _KeyObserver->Clear(); }
 
     _KeyFilter = FKey{};
+
+    _TimelineStructureHash = 0;
+    _TimelineLaneLabels.Reset();
+    _TimelineLaneKeys.Reset();
+    _Timeline.Reset();
+
+    if (_TimelineHost.IsValid())
+    { _TimelineHost->SetContent(SNullWidget::NullWidget); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -355,78 +374,15 @@ auto
     BuildDevicesSection()
     -> TSharedRef<SWidget>
 {
+    // The shared panel keeps this section pixel-identical to the Intent debugger's Devices view.
     // One composed snapshot serves every device widget; the attribute refreshes it lazily, at most
     // once per frame, so the flash decay stays smooth regardless of the window's refresh gate.
-    const auto SnapshotLambda = TAttribute<const FCkDebug_DeviceSnapshot*>::CreateLambda(
-        [this]() { return Get_DeviceSnapshot(); });
-
-    const auto OnClicked = FCkDebug_DeviceKeyClicked::CreateLambda(
-        [this](const FKey& InKey) { HandleDeviceKeyClicked(InKey); });
-
-    const auto Tooltip = FCkDebug_DeviceKeyTooltip::CreateLambda(
-        [this](const FKey& InKey) { return Get_KeyTooltip(InKey); });
-
-    constexpr auto KeyboardMaxWidth = 760.0f;
-    constexpr auto KeyboardMaxHeight = 230.0f;
-    constexpr auto MouseMaxWidth = 135.0f;
-    constexpr auto MouseMaxHeight = 205.0f;
-    constexpr auto GamepadMaxWidth = 320.0f;
-    constexpr auto GamepadMaxHeight = 205.0f;
-
-    return SNew(SVerticalBox)
-
-        + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
-                    [
-                        SNew(SBox)
-                            .MaxDesiredWidth(KeyboardMaxWidth)
-                            .MaxDesiredHeight(KeyboardMaxHeight)
-                        [
-                            SNew(SCkDebug_DeviceKeyboard)
-                                .Snapshot(SnapshotLambda)
-                                .OnKeyClicked(OnClicked)
-                                .KeyTooltip(Tooltip)
-                        ]
-                    ]
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SBox)
-                            .MaxDesiredWidth(MouseMaxWidth)
-                            .MaxDesiredHeight(MouseMaxHeight)
-                        [
-                            SNew(SCkDebug_DeviceMouse)
-                                .Snapshot(SnapshotLambda)
-                                .OnKeyClicked(OnClicked)
-                                .KeyTooltip(Tooltip)
-                        ]
-                    ]
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                    [
-                        SNew(SBox)
-                            .MaxDesiredWidth(GamepadMaxWidth)
-                            .MaxDesiredHeight(GamepadMaxHeight)
-                        [
-                            SNew(SCkDebug_DeviceGamepad)
-                                .Snapshot(SnapshotLambda)
-                                .OnKeyClicked(OnClicked)
-                                .KeyTooltip(Tooltip)
-                        ]
-                    ]
-            ]
-
-        + SVerticalBox::Slot().AutoHeight().Padding(0.0f, CkStyle::SpaceS, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Font_Static(&ck_input_debugger::Font_Body)
-                    .Text(FText::FromString(TEXT(
-                        "flash = press · fill = hold · outlined = mapped · amber = rebound · bright ring = filtered · hover = actions · click = filter the panes below")))
-                    .ColorAndOpacity(CkStyle::TextMute())
-            ];
+    return SNew(SCkDebug_DevicesPanel)
+        .Snapshot_Lambda([this]() { return Get_DeviceSnapshot(); })
+        .OnKeyClicked_Lambda([this](const FKey& InKey) { HandleDeviceKeyClicked(InKey); })
+        .KeyTooltip_Lambda([this](const FKey& InKey) { return Get_KeyTooltip(InKey); })
+        .NoteText(FText::FromString(TEXT(
+            "flash = press · fill = hold · outlined = mapped · amber = rebound · bright ring = filtered · hover = actions · click = filter the panes below")));
 }
 
 auto
@@ -596,6 +552,10 @@ auto
         _LastActivityRevision = _KeyObserver->Get_ActivityRevision();
         UpdateKeyStrip();
     }
+
+    // The timeline re-supplies content every gated tick: open spans extend to the live edge and the
+    // following view slides even when no new edge arrives.
+    UpdateTimeline();
 
     UpdateLiveValues();
 }
@@ -1273,6 +1233,140 @@ auto
 
     if (_KeyStripEmptyText.IsValid())
     { _KeyStripEmptyText->SetVisibility(ChipIdx == 0 ? EVisibility::Visible : EVisibility::Collapsed); }
+}
+
+auto
+    SCkInputDebuggerWindow::
+    UpdateTimeline()
+    -> void
+{
+    if (NOT _TimelineHost.IsValid() || NOT _KeyObserver.IsValid())
+    { return; }
+
+    const auto& Episodes = _KeyObserver->Get_EdgeHistory();
+    const auto LiveFrame = _KeyObserver->Get_LiveFrame();
+
+    // ---- Lane set: one lane per key witnessed in the ring, alphabetical (the Intent dock's button-lane rule) ----
+
+    auto LaneKeys = TArray<FKey>{};
+    for (const auto& Episode : Episodes)
+    { LaneKeys.AddUnique(Episode.Key); }
+
+    LaneKeys.Sort([this](const FKey& InA, const FKey& InB)
+    { return Get_KeyDisplay(InA) < Get_KeyDisplay(InB); });
+
+    auto Labels = TArray<FString>{};
+    Labels.Reserve(LaneKeys.Num());
+    for (const auto& LaneKey : LaneKeys)
+    { Labels.Emplace(Get_KeyDisplay(LaneKey)); }
+
+    auto Hash = GetTypeHash(Labels.Num());
+    for (const auto& Label : Labels)
+    { Hash = HashCombine(Hash, GetTypeHash(Label)); }
+
+    // Lane labels are a construction argument, so a changed lane SET is the one sanctioned widget
+    // rebuild — never mid-drag: the drag holds mouse capture on the widget a rebuild would destroy.
+    // The hash stays stale, so the rebuild lands on the next refresh after the drag ends.
+    const auto IsInteracting = _Timeline.IsValid() && _Timeline->Get_IsInteracting();
+    const auto NeedsRebuild = (Hash != _TimelineStructureHash || NOT _Timeline.IsValid()) && NOT IsInteracting;
+
+    // Lanes come and go with the ring, so a rebuild is routine — the user's pan/zoom must survive it.
+    // Applied AFTER Set_Content below: a fresh widget's data range is 0..1 until then, and Set_View clamps.
+    const auto CarriedViewStart = _Timeline.IsValid() ? _Timeline->Get_ViewStart() : 0.0;
+    const auto CarriedViewDuration = _Timeline.IsValid() ? _Timeline->Get_ViewDuration() : 0.0;
+    const auto CarriedFollow = NOT _Timeline.IsValid() || _Timeline->Get_IsFollowingLive();
+
+    if (NeedsRebuild)
+    {
+        _TimelineStructureHash = Hash;
+        _TimelineLaneLabels = Labels;
+        _TimelineLaneKeys = LaneKeys;
+
+        constexpr auto LaneHeight = 22.0f;
+        constexpr auto MinTimelineHeight = 140.0f;
+        constexpr auto InitialViewFrames = 600.0;
+
+        _TimelineHost->SetContent(
+            SAssignNew(_Timeline, SCkDebug_EventTimeline)
+                .LaneLabels(_TimelineLaneLabels)
+                .DesiredHeight(FMath::Max(
+                    MinTimelineHeight,
+                    static_cast<float>(_TimelineLaneLabels.Num()) * LaneHeight))
+                .AllowPanZoom(true)
+                .InitialViewDuration(InitialViewFrames)
+                .SelectedId_Lambda([this]() -> int32
+                {
+                    return _TimelineLaneKeys.IndexOfByKey(_KeyFilter);
+                })
+                .OnEventSelected_Lambda([this](int32 InSelectionId)
+                {
+                    if (_TimelineLaneKeys.IsValidIndex(InSelectionId))
+                    { HandleDeviceKeyClicked(_TimelineLaneKeys[InSelectionId]); }
+                })
+                .OnFormatTick_Lambda([](double InTime)
+                {
+                    return ck::Format_UE(TEXT("f{}"), FMath::RoundToInt32(InTime));
+                }));
+    }
+
+    if (NOT _Timeline.IsValid())
+    { return; }
+
+    if (Episodes.IsEmpty())
+    {
+        _Timeline->Set_Content(0.0, 1.0, {}, {});
+        return;
+    }
+
+    auto Events = TArray<FCkDebug_TimelineEvent>{};
+    auto Spans = TArray<FCkDebug_TimelineSpan>{};
+    auto TimeMin = static_cast<double>(Episodes[0].PressFrame);
+
+    for (const auto& Episode : Episodes)
+    {
+        // A key that arrived while a drag deferred the lane rebuild has no lane yet — its episodes
+        // join on the refresh that rebuilds.
+        const auto LaneIndex = _TimelineLaneKeys.IndexOfByKey(Episode.Key);
+
+        if (LaneIndex == INDEX_NONE)
+        { continue; }
+
+        TimeMin = FMath::Min(TimeMin, static_cast<double>(Episode.PressFrame));
+
+        const auto IsOpen = Episode.ReleaseFrame == INDEX_NONE;
+        const auto EndFrame = IsOpen ? LiveFrame : Episode.ReleaseFrame;
+        const auto KeyLabel = _TimelineLaneLabels[LaneIndex];
+
+        auto Span = FCkDebug_TimelineSpan{};
+        Span.LaneIndex = LaneIndex;
+        Span.StartSeconds = static_cast<double>(Episode.PressFrame);
+        Span.EndSeconds = static_cast<double>(EndFrame) + 1.0;
+        Span.Color = IsOpen ? CkStyle::Accent() : CkStyle::AccentDim();
+        Span.Tooltip = IsOpen
+            ? ck::Format_UE(TEXT("{} held since f{}"), KeyLabel, Episode.PressFrame)
+            : ck::Format_UE(TEXT("{}  f{}..f{}  ({} frames)"),
+                KeyLabel, Episode.PressFrame, Episode.ReleaseFrame,
+                Episode.ReleaseFrame - Episode.PressFrame + 1);
+        Spans.Add(MoveTemp(Span));
+
+        auto Event = FCkDebug_TimelineEvent{};
+        Event.LaneIndex = LaneIndex;
+        Event.TimeSeconds = static_cast<double>(Episode.PressFrame);
+        Event.Shape = ECkDebug_TimelineMarker::Diamond;
+        Event.Color = CkStyle::Ok();
+        Event.SelectionId = LaneIndex;
+        Event.Tooltip = ck::Format_UE(TEXT("{} pressed @ f{} — click to filter the panes to this key"),
+            KeyLabel, Episode.PressFrame);
+        Events.Add(MoveTemp(Event));
+    }
+
+    _Timeline->Set_Content(TimeMin, FMath::Max(TimeMin + 1.0, static_cast<double>(LiveFrame)), Events, Spans);
+
+    if (NeedsRebuild && CarriedViewDuration > 0.0)
+    {
+        _Timeline->Set_View(CarriedViewStart, CarriedViewDuration);
+        _Timeline->Set_FollowLive(CarriedFollow);
+    }
 }
 
 auto

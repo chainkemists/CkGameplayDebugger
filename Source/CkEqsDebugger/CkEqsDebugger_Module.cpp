@@ -6,6 +6,7 @@
 #include "CkEqsDebugger/Settings/CkEqsDebuggerSettings.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
 
 #include "Framework/Docking/TabManager.h"
@@ -65,7 +66,9 @@ auto
         FText::FromString(TEXT("Inspect environmental queries, generators, tests, and scores")),
         TEXT("Eqs"),
         ECkDebuggerToolCategory::Ai,
-        40});
+        40}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto
@@ -98,7 +101,7 @@ auto
     OpenDebugger()
     -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto

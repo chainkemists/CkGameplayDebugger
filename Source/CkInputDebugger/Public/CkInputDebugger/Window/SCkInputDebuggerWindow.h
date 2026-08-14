@@ -14,8 +14,10 @@
 class SVerticalBox;
 class SHorizontalBox;
 class SBorder;
+class SBox;
 class SExpandableArea;
 class SCkDebug_CategoryDot;
+class SCkDebug_EventTimeline;
 class STextBlock;
 class FCkDebuggerModel_WorldSelector;
 class UEnhancedInputLocalPlayerSubsystem;
@@ -134,6 +136,7 @@ private:
 
     auto UpdateKeyStrip() -> void;
     auto EnsureKeyStripChips(int32 InCount) -> void;
+    auto UpdateTimeline() -> void;
     auto UpdateLiveValues() -> void;
     auto ApplyFilterAndHighlight() -> void;
 
@@ -188,6 +191,13 @@ private:
     };
     TArray<FCkInputDebugger_KeyChip> _KeyStripChips;
     TSharedPtr<SWidget>              _KeyStripEmptyText;
+
+    // ---- Timeline (shared lanes widget, frame axis; rebuilt only when the lane SET changes) ----
+    TSharedPtr<SBox>                   _TimelineHost;
+    TSharedPtr<SCkDebug_EventTimeline> _Timeline;
+    TArray<FString> _TimelineLaneLabels;
+    TArray<FKey>    _TimelineLaneKeys;
+    uint32          _TimelineStructureHash = 0;
 
     // ---- State ----
     TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem> _BoundSubsystem;

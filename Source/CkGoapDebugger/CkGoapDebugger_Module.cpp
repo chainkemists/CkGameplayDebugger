@@ -13,6 +13,7 @@
 #include "CkGoapDebugger/Window/SCkGoapDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 
 #include "CkEcsDebugger/Inspectors/CkDebuggerInspectorRegistry.h"
@@ -108,7 +109,9 @@ auto
         FText::FromString(TEXT("Inspect GOAP planning, world state, actions, and plan history")),
         TEXT("Goap"),
         ECkDebuggerToolCategory::Ai,
-        20});
+        20}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 
     _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
         TEXT("CkGoapDebugger"), _DebuggerTabName,
@@ -156,7 +159,7 @@ auto
     OpenDebugger()
     -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto

@@ -10,13 +10,10 @@ class FCkIntentDebugger_ViewModel;
 // --------------------------------------------------------------------------------------------------------------------
 // Devices view — the player's physical hardware, drawn live.
 //
-// The full-size keyboard renders the ViewModel's device snapshot: minted keys with exact record history (bright
-// bezel, press flash, hold fill toward the matcher's verdict point), unminted keys witnessed best-effort off the
-// router's per-pass events. The widget itself lives in CkDebuggerCommon (Runtime) and consumes plain values only —
-// this panel is the debugger-side producer hookup, and a game HUD hosting the same widget is the intended future.
-//
-// The gamepad renders beside the keyboard and mouse from the same snapshot; stick deflection lights it only when
-// the producer folds axis magnitudes into the stick-button key states.
+// A thin producer hookup over the shared SCkDebug_DevicesPanel (CkDebuggerCommon): minted keys render with exact
+// record history (bright bezel, press flash, hold fill toward the matcher's verdict point), unminted keys witnessed
+// best-effort off the router's per-pass events. The shared panel is what keeps this view pixel-identical to the
+// Input Debugger's devices section; a game HUD hosting the same panel is the intended future.
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkIntentDebugger_DevicesPanel : public SCompoundWidget

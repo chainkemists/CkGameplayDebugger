@@ -7,7 +7,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -46,9 +45,6 @@ namespace ck_jolt_debugger
     static auto Bold(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", InSize); }
     static auto Mono(int32 InSize)   -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", InSize); }
 
-    // Deliberate outlier: the window title sits between FontSizeH3 (10) and FontSizeH2 (12); it is
-    // the only 11pt text in the module and a role would move it. TextScale still applies.
-    static auto Font_Title()    -> FSlateFontInfo { return Bold(11); }
     static auto Font_Summary()  -> FSlateFontInfo { return Bold(CkStyle::FontSizeH3()); }
     static auto Font_RowLabel() -> FSlateFontInfo { return Normal(CkStyle::FontSizeSmall()); }
     static auto Font_RowValue() -> FSlateFontInfo { return Mono(CkStyle::FontSizeSmall()); }
@@ -125,33 +121,6 @@ auto
 {
     Register_WithGate();
 
-    // ---- Toolbar ----
-
-    auto Toolbar =
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
-        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&ck_jolt_debugger::Font_Title)
-                    .ColorAndOpacity(CkStyle::TextStrong())
-                    .Text(FText::FromString(TEXT("Jolt Physics")))
-                ]
-
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(SCkDebugger_RefreshControls)
-                        .WindowId(SCkJoltDebuggerWindow::WindowId)
-                ]
-        ];
-
     // ---- Summary (world) ----
 
     auto Summary =
@@ -169,10 +138,13 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger")).DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            SNew(SCkDebug_IconToolbar)
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger"))
+        .ShowRefreshControls(true)
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(
+                TEXT("JoltDebugDraw"),
+                FText::FromString(TEXT("Jolt debug drawing")),
+                SNew(SCkDebug_IconToolbar)
             .Actions({
                 FCkDebug_IconToggleAction{
                     TEXT("JoltDebugDraw"),
@@ -204,8 +176,7 @@ auto
                     {
                         return ck_jolt_debugger::GetDebugCVarBool(TEXT("ck.Jolt.DebugDraw.Enabled"));
                     })}
-            })
-        ]
+            }))})
         .Content()
         [
         SNew(SBorder)
@@ -213,9 +184,6 @@ auto
         .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ Toolbar ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [ Summary ]

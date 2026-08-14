@@ -20,7 +20,6 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkAStar/CkAStar_Fragment.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
@@ -113,9 +112,8 @@ auto
         SNew(SCkDebug_WindowChrome)
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkAStarDebugger"))
-            .DisplayName(FText::FromString(TEXT("CK A* Debugger")))
-            .MenuActionsContent()
-            [
+            .CommandGroups({
+                FCkDebug_CommandGroup::Primary(TEXT("Capture"), FText::FromString(TEXT("Capture controls")),
                 SNew(SCkDebug_IconToggle)
                 .IconId(TEXT("Hourglass"))
                 .Label(FText::FromString(TEXT("Pause capture")))
@@ -124,19 +122,13 @@ auto
                 .OnStateChanged_Lambda([this](const bool InPaused)
                 {
                     if (_ViewModel.IsValid()) { _ViewModel->Set_Paused(InPaused); }
-                })
-            ]
+                })),
+                FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("Search target and status")), BuildToolbar())
+            })
+            .ShowRefreshControls(true)
             .Content()
             [
                 SNew(SVerticalBox)
-
-            // Toolbar
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(4.0f)
-                [
-                    BuildToolbar()
-                ]
 
             // Main content
             + SVerticalBox::Slot()
@@ -407,19 +399,7 @@ auto
                     .ColorAndOpacity(CkAStarDebugger::GetStatusColor(ECk_AStarSearchStatus::Idle))
             ]
 
-        // Spacer
-        + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-
-        // Refresh-mode + rate-cap controls
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(12.0f, 0.0f, 0.0f, 0.0f)
-            [
-                SNew(SCkDebugger_RefreshControls)
-                    .WindowId(SCkAStarDebuggerWindow::WindowId)
-            ];
+        ;
 }
 
 // ====================================================================================================================

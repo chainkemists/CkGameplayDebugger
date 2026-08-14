@@ -56,11 +56,37 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    const auto RuntimeCommands =
+        SNew(SHorizontalBox)
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [
+            SNew(SButton)
+            .Text(FText::FromString(TEXT("Save")))
+            .ToolTipText(FText::FromString(TEXT("Runs the Ck_Save console command in the active PIE session")))
+            .OnClicked_Lambda([this]() { DoExecCommand(TEXT("Ck_Save")); return FReply::Handled(); })
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        [
+            SNew(SButton)
+            .Text(FText::FromString(TEXT("Load")))
+            .ToolTipText(FText::FromString(TEXT("Runs the Ck_Load console command in the active PIE session")))
+            .OnClicked_Lambda([this]() { DoExecCommand(TEXT("Ck_Load")); return FReply::Handled(); })
+        ];
+
+    const auto DialogSearch =
+        SNew(SCkDebug_DualSearchBar)
+        .FilterHintText(FText::FromString(TEXT("Filter lines/emitters…")))
+        .OnFilterTextChanged_Lambda([this](const FString& InText) { _FilterString = InText; })
+        .OnHighlightTextChanged_Lambda([this](const FString& InText) { _HighlightString = InText; });
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
-        .MenuActionsContent()
-        [
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(TEXT("CooldownView"), FText::FromString(TEXT("Cooldown view controls")),
             SNew(SCkDebug_IconToggle)
             .IconId(TEXT("Hourglass"))
             .Label(FText::FromString(TEXT("Active cooldowns only")))
@@ -71,47 +97,15 @@ auto
                 if (_ShowActiveCooldownsOnly == InActiveOnly) { return; }
                 _ShowActiveCooldownsOnly = InActiveOnly;
                 _LastCooldownSignature.Reset();
-            })
-        ]
+            })),
+            FCkDebug_CommandGroup::Context(TEXT("RuntimeCommands"), FText::FromString(TEXT("Dialog runtime commands")), RuntimeCommands),
+            FCkDebug_CommandGroup::Context(TEXT("DialogSearch"), FText::FromString(TEXT("Dialog search")), DialogSearch)
+        })
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkDialogDebugger"))
-        .DisplayName(Get_WindowDisplayName())
         .Content()
         [
             SNew(SVerticalBox)
-        // Save / Load toolbar — convenience for the Ck_Save / Ck_Load console commands.
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceS, CkStyle::SpaceS, CkStyle::SpaceS, 0.0f)
-        [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-            [
-                SNew(SButton)
-                .Text(FText::FromString(TEXT("Save")))
-                .ToolTipText(FText::FromString(TEXT("Runs the Ck_Save console command in the active PIE session")))
-                .OnClicked_Lambda([this]() { DoExecCommand(TEXT("Ck_Save")); return FReply::Handled(); })
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            [
-                SNew(SButton)
-                .Text(FText::FromString(TEXT("Load")))
-                .ToolTipText(FText::FromString(TEXT("Runs the Ck_Load console command in the active PIE session")))
-                .OnClicked_Lambda([this]() { DoExecCommand(TEXT("Ck_Load")); return FReply::Handled(); })
-            ]
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceS)
-        [
-            SNew(SCkDebug_DualSearchBar)
-            .FilterHintText(FText::FromString(TEXT("Filter lines/emitters…")))
-            .OnFilterTextChanged_Lambda([this](const FString& InText) { _FilterString = InText; })
-            .OnHighlightTextChanged_Lambda([this](const FString& InText) { _HighlightString = InText; })
-        ]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
         [

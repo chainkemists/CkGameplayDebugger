@@ -12,7 +12,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -216,7 +215,7 @@ auto
             ]
         ];
 
-    // ---- Toolbar ----
+    // ---- Layer actions ----
 
     auto MakeIconButton = [](const TCHAR* InBrush, const FText& InTooltip, FOnClicked InOnClicked) -> TSharedRef<SWidget>
     {
@@ -237,13 +236,8 @@ auto
             ];
     };
 
-    auto Toolbar =
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
-        .Padding(FMargin(CkStyle::SpaceS))
-        [
-            SNew(SHorizontalBox)
+    auto LayerActions =
+        SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
@@ -286,20 +280,7 @@ auto
                         }))
                 ]
 
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(SBox).MinDesiredWidth(200.0f) [ SearchBar ]
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SCkDebugger_RefreshControls)
-                        .WindowId(SCkUIDebuggerWindow::WindowId)
-                ]
-        ];
+        ;
 
     // ---- History area ----
 
@@ -331,24 +312,34 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkUIDebugger"))
-        .DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            SNew(SCkDebug_IconToolbar)
-            .Actions({
-                FCkDebug_IconToggleAction{
-                    TEXT("UiActiveLayerOnly"),
-                    TEXT("Target"),
-                    FText::FromString(TEXT("Active Layer Only")),
-                    FText::FromString(TEXT("Show only the layout's active layer.")),
-                    TAttribute<bool>::CreateLambda([this]() { return _ShowActiveLayerOnly; }),
-                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
-                    {
-                        _ShowActiveLayerOnly = InIsEnabled;
-                        _IsDirty = true;
-                    })}
-            })
-        ]
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(
+                TEXT("LayerView"),
+                FText::FromString(TEXT("Layer view controls")),
+                SNew(SCkDebug_IconToolbar)
+                .Actions({
+                    FCkDebug_IconToggleAction{
+                        TEXT("UiActiveLayerOnly"),
+                        TEXT("Target"),
+                        FText::FromString(TEXT("Active Layer Only")),
+                        FText::FromString(TEXT("Show only the layout's active layer.")),
+                        TAttribute<bool>::CreateLambda([this]() { return _ShowActiveLayerOnly; }),
+                        FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
+                        {
+                            _ShowActiveLayerOnly = InIsEnabled;
+                            _IsDirty = true;
+                        })}
+                })),
+            FCkDebug_CommandGroup::Context(
+                TEXT("LayerFilter"),
+                FText::FromString(TEXT("Layer filter")),
+                SearchBar),
+            FCkDebug_CommandGroup::Context(
+                TEXT("LayerActions"),
+                FText::FromString(TEXT("Layer actions")),
+                LayerActions)
+        })
+        .ShowRefreshControls(true)
         .Content()
         [
             SNew(SBorder)
@@ -356,9 +347,6 @@ auto
         .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ Toolbar ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [ _SummaryText.ToSharedRef() ]

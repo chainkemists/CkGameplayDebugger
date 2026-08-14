@@ -10,7 +10,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -71,8 +70,6 @@ namespace ck_map_debugger
 
     // TextScale-aware fonts on the same CkStyle roles this window already used. Bound through
     // .Font_Static so a Style Lab flip resizes text that was built long before the flip.
-    static auto Font_Title()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeH2()); }
-    static auto Font_Subtitle()  -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeH3()); }
     static auto Font_Body()      -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); }
     static auto Font_Micro()     -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeMicro()); }
     static auto Font_MonoBody()  -> FSlateFontInfo { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeBody()); }
@@ -567,46 +564,6 @@ auto
     });
 #endif
 
-    // ---- Toolbar ----
-
-    auto Toolbar =
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::BgRoot())
-        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-        [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&ck_map_debugger::Font_Title)
-                    .ColorAndOpacity(CkStyle::TextStrong())
-                    .Text(FText::FromString(TEXT("Map Stack")))
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f)
-                [
-                    SNew(STextBlock)
-                    .Font_Static(&ck_map_debugger::Font_Subtitle)
-                    .ColorAndOpacity(CkStyle::TextDim())
-                    .Text_Lambda([this]() -> FText
-                    {
-                        return _Snapshot->HasWorld
-                            ? FText::FromString(ck::Format_UE(TEXT("World: {}"), _Snapshot->WorldLabel))
-                            : FText::FromString(TEXT("No active world. Start PIE to see the map stack."));
-                    })
-                ]
-
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SNew(SCkDebugger_RefreshControls)
-                        .WindowId(SCkMapDebuggerWindow::WindowId)
-                ]
-        ];
-
     // ---- Left rail: search + POI list ----
 
     auto LeftRail =
@@ -785,10 +742,13 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger")).DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            SNew(SCkDebug_IconToggle)
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkMapDebugger"))
+        .ShowRefreshControls(true)
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(
+                TEXT("MapPoiVisibility"),
+                FText::FromString(TEXT("Map point visibility")),
+                SNew(SCkDebug_IconToggle)
             .IconId(TEXT("Target"))
             .Label(FText::FromString(TEXT("Enabled POIs only")))
             .ToolTip(FText::FromString(TEXT("Hide disabled POIs from the list; the map snapshot remains unchanged.")))
@@ -798,8 +758,20 @@ auto
                 if (_ShowEnabledPoisOnly == InEnabledOnly) { return; }
                 _ShowEnabledPoisOnly = InEnabledOnly;
                 DoRefreshRowItems();
-            })
-        ]
+            })),
+            FCkDebug_CommandGroup::Context(
+                TEXT("MapWorld"),
+                FText::FromString(TEXT("Map world status")),
+                SNew(STextBlock)
+                .Font_Static(&ck_map_debugger::Font_Body)
+                .ColorAndOpacity(CkStyle::TextDim())
+                .Text_Lambda([this]() -> FText
+                {
+                    return _Snapshot->HasWorld
+                        ? FText::FromString(ck::Format_UE(TEXT("World: {}"), _Snapshot->WorldLabel))
+                        : FText::FromString(TEXT("No active world. Start PIE to see the map stack."));
+                })
+                .OverflowPolicy(ETextOverflowPolicy::Ellipsis))})
         .Content()
         [
         SNew(SBorder)
@@ -807,9 +779,6 @@ auto
         .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ Toolbar ]
 
             + SVerticalBox::Slot().FillHeight(1.0f)
                 [

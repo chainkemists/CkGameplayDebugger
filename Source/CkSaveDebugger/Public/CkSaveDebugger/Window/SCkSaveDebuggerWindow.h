@@ -53,7 +53,10 @@ protected:
 private:
     // ---- Chrome construction ----
     auto DoCreate_MenuActions() -> TSharedRef<SWidget>;
-    auto DoCreate_Toolbar() -> TSharedRef<SWidget>;
+    auto DoCreate_FileControls() -> TSharedRef<SWidget>;
+    auto DoCreate_VisualizationControls() -> TSharedRef<SWidget>;
+    auto DoCreate_ExportControls() -> TSharedRef<SWidget>;
+    auto DoCreate_FileStatus() -> TSharedRef<SWidget>;
     auto DoCreate_Body() -> TSharedRef<SWidget>;
     auto DoCreate_Status() -> TSharedRef<SWidget>;
     auto DoCreate_ProvenanceChips() -> TSharedRef<SWidget>;

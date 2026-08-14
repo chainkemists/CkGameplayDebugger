@@ -26,7 +26,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -116,12 +115,11 @@ auto
         SNew(SCkDebug_WindowChrome)
             .WindowId(Get_WindowId())
             .ToolTabId(TEXT("CkIntentDebugger"))
-            .DisplayName(Get_WindowDisplayName())
             .StatusText_Lambda([this]() { return Get_StatusText(); })
-            .ToolbarContent()
-            [
-                Build_Toolbar()
-            ]
+            .CommandGroups({
+                FCkDebug_CommandGroup::Context(TEXT("IntentTarget"), FText::FromString(TEXT("Intent source and target")), Build_Toolbar())
+            })
+            .ShowRefreshControls(true)
             .Content()
             [
                 Build_Body()
@@ -185,14 +183,6 @@ auto
                 SAssignNew(_SourceSelectorBox, SHorizontalBox)
             ]
 
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                .Padding(ck_intent_debugger_window::PadM, 0.0f, 0.0f, 0.0f)
-            [
-                SNew(SCkDebugger_RefreshControls)
-                    .WindowId(SCkIntentDebuggerWindow::WindowId)
-            ]
         ];
 }
 

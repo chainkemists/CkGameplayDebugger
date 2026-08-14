@@ -18,7 +18,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_CopyableContainer.h"
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -133,9 +132,9 @@ auto
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger")).DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkInputDebugger"))
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(TEXT("InputView"), FText::FromString(TEXT("Input view controls")),
             SNew(SCkDebug_IconToolbar)
             .Actions({
                 FCkDebug_IconToggleAction{
@@ -149,8 +148,10 @@ auto
                         _ShowActiveActionsOnly = InIsEnabled;
                         ApplyFilterAndHighlight();
                     })}
-            })
-        ]
+            })),
+            FCkDebug_CommandGroup::Context(TEXT("InputContext"), FText::FromString(TEXT("Player and input search")), BuildToolbar())
+        })
+        .ShowRefreshControls(true)
         .Content()
         [
         SNew(SBorder)
@@ -158,9 +159,6 @@ auto
         .BorderBackgroundColor(CkStyle::Bg1())
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ BuildToolbar() ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                 [ _SummaryText.ToSharedRef() ]
@@ -301,8 +299,6 @@ auto
                     SAssignNew(_PlayerSelectorBox, SHorizontalBox)
                 ]
 
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [
                     SNew(SBox).MinDesiredWidth(260.0f)
@@ -325,11 +321,6 @@ auto
                     ]
                 ]
 
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SCkDebugger_RefreshControls)
-                        .WindowId(SCkInputDebuggerWindow::WindowId)
-                ]
         ];
 }
 

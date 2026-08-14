@@ -5,6 +5,7 @@
 #include "CkDialogDebugger/Window/SCkDialogDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -63,7 +64,9 @@ auto FCkDialogDebuggerModule::StartupModule() -> void
         // Core/40 — 20 is CkSmDebugger's and 30 is CkMapDebugger's. The launcher census spec asserts every
         // category/order slot is unique, so a duplicate here fails the catalog test rather than just mis-sorting.
         ECkDebuggerToolCategory::Core,
-        40});
+        40}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkDialogDebuggerModule::ShutdownModule() -> void
@@ -87,7 +90,7 @@ auto FCkDialogDebuggerModule::Get() -> FCkDialogDebuggerModule&
 
 auto FCkDialogDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkDialogDebuggerModule::CloseDebugger() -> void

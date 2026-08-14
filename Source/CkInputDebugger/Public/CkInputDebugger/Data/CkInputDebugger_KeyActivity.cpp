@@ -8,6 +8,7 @@ namespace ck_input_debugger_key_activity
 {
     constexpr auto MaxRecentKeys = 6;
     constexpr auto AnalogRestThreshold = 0.08f;
+    constexpr auto MaxEdgeEpisodes = 512;
 
     // Deflection maps onto Get_FillFraction as HeldRunFrames / HoldVerdictFrames, so the stick
     // region fills proportionally to how far the stick is pushed.
@@ -184,6 +185,7 @@ auto
     _Recent.Reset();
     _AnalogMagnitudes.Reset();
     _KeyStates.Reset();
+    _EdgeHistory.Reset();
     ++_Revision;
 }
 
@@ -202,6 +204,11 @@ auto
 
     auto& State = _KeyStates.FindOrAdd(InKey);
     State.LatestPressFrame = _LiveFrame;
+
+    _EdgeHistory.Emplace(FCkInputDebugger_KeyEdgeEpisode{InKey, _LiveFrame});
+
+    if (_EdgeHistory.Num() > ck_input_debugger_key_activity::MaxEdgeEpisodes)
+    { _EdgeHistory.RemoveAt(0, _EdgeHistory.Num() - ck_input_debugger_key_activity::MaxEdgeEpisodes); }
 
     ++_Revision;
 }
@@ -227,6 +234,16 @@ auto
 
     if (auto* State = _KeyStates.Find(InKey))
     { State->LatestReleaseFrame = _LiveFrame; }
+
+    for (auto EpisodeIdx = _EdgeHistory.Num() - 1; EpisodeIdx >= 0; --EpisodeIdx)
+    {
+        if (auto& Episode = _EdgeHistory[EpisodeIdx];
+            Episode.Key == InKey && Episode.ReleaseFrame == INDEX_NONE)
+        {
+            Episode.ReleaseFrame = _LiveFrame;
+            break;
+        }
+    }
 
     ++_Revision;
 }

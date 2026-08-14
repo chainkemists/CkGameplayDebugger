@@ -5,6 +5,7 @@
 #include "CkObjectPoolingDebugger/Window/SCkObjectPoolingDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -60,7 +61,9 @@ auto FCkObjectPoolingDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("Inspect object pools, occupancy, allocations, and tuning data")),
         TEXT("Package"),
         ECkDebuggerToolCategory::Systems,
-        20});
+        20}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkObjectPoolingDebuggerModule::ShutdownModule() -> void
@@ -84,7 +87,7 @@ auto FCkObjectPoolingDebuggerModule::Get() -> FCkObjectPoolingDebuggerModule&
 
 auto FCkObjectPoolingDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkObjectPoolingDebuggerModule::CloseDebugger() -> void

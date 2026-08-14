@@ -4,6 +4,7 @@
 
 #include "CkCore/Ensure/CkEnsure.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 
@@ -227,7 +228,7 @@ auto SCkDebuggerLauncher::Build_ToolButton(const FCkDebuggerToolDescriptor& InTo
         .OnClicked_Lambda([TabId]()
         {
             if (FGlobalTabmanager::Get()->HasTabSpawner(TabId))
-            { FGlobalTabmanager::Get()->TryInvokeTab(FTabId{TabId}); }
+            { ck::debugger_tabs::Invoke_DebuggerTab(TabId); }
 
             return FReply::Handled();
         })

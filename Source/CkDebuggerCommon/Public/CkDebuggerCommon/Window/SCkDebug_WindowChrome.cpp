@@ -3,6 +3,7 @@
 #include "CkCore/Ensure/CkEnsure.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UseEcsSelection.h"
@@ -209,7 +210,7 @@ auto SCkDebug_WindowChrome::Build_DebuggerMenu() const -> TSharedRef<SWidget>
 auto SCkDebug_WindowChrome::OnOpenDebugger(FName InTabId) const -> FReply
 {
     if (NOT InTabId.IsNone() && FGlobalTabmanager::Get()->HasTabSpawner(InTabId))
-    { FGlobalTabmanager::Get()->TryInvokeTab(FTabId{InTabId}); }
+    { ck::debugger_tabs::Invoke_DebuggerTab(InTabId); }
 
     return FReply::Handled();
 }

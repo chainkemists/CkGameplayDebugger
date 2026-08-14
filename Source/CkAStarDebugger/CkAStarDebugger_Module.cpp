@@ -6,6 +6,7 @@
 #include "CkAStarDebugger/Window/SCkAStarDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
@@ -75,7 +76,9 @@ auto
         FText::FromString(TEXT("Inspect A* search graphs, candidates, and path costs")),
         TEXT("Grid"),
         ECkDebuggerToolCategory::Ai,
-        10});
+        10}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 
     _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
         TEXT("CkAStarDebugger"), _DebuggerTabName,
@@ -144,7 +147,7 @@ auto
     OpenDebugger()
     -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto

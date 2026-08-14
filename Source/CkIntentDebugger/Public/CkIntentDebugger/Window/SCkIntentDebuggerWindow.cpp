@@ -16,6 +16,7 @@
 #include "CkInput/CkInputLayer_Utils.h"
 #include "CkInput/CkInputSource_Utils.h"
 
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
@@ -397,7 +398,7 @@ auto
 
     // The module's OnSpawnDebuggerTab is what creates the live window and stores it, so this MUST run before we
     // ask the module for the window pointer.
-    FGlobalTabmanager::Get()->TryInvokeTab(FCkIntentDebuggerModule::Get_TabName());
+    ck::debugger_tabs::Invoke_DebuggerTab(FCkIntentDebuggerModule::Get_TabName());
 
     const auto Window = FCkIntentDebuggerModule::Get().Get_DebuggerWindow();
     if (NOT Window.IsValid())

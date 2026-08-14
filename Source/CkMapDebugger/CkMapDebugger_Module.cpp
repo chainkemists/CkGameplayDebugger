@@ -3,6 +3,7 @@
 #include "CkMapDebugger/Window/SCkMapDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -58,7 +59,9 @@ auto FCkMapDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("POIs, compasses, minimaps, and fog-of-war — the CkPoi map stack at a glance")),
         TEXT("TreasureMap"),
         ECkDebuggerToolCategory::Core,
-        30});
+        30}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkMapDebuggerModule::ShutdownModule() -> void
@@ -82,7 +85,7 @@ auto FCkMapDebuggerModule::Get() -> FCkMapDebuggerModule&
 
 auto FCkMapDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkMapDebuggerModule::CloseDebugger() -> void

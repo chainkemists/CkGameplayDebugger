@@ -34,6 +34,14 @@ struct FCkInputDebugger_RecentKey
     double ReleasedAt = 0.0;
 };
 
+// One press..release run of one key, frame-indexed on the observer's clock — the timeline's row unit.
+struct FCkInputDebugger_KeyEdgeEpisode
+{
+    FKey  Key;
+    int32 PressFrame = 0;
+    int32 ReleaseFrame = INDEX_NONE; // INDEX_NONE while still held
+};
+
 class FCkInputDebugger_KeyActivityObserver : public IInputProcessor
 {
 public:
@@ -65,6 +73,11 @@ public:
      */
     auto Fill_DeviceSnapshot(FCkDebug_DeviceSnapshot& OutSnapshot) const -> void;
 
+    /** Frame-indexed press/release episodes (oldest first, ring-capped) — the timeline's data. */
+    auto Get_EdgeHistory() const -> const TArray<FCkInputDebugger_KeyEdgeEpisode>& { return _EdgeHistory; }
+
+    auto Get_LiveFrame() const -> int32 { return _LiveFrame; }
+
     auto Clear() -> void;
 
 private:
@@ -76,6 +89,7 @@ private:
     TArray<FCkInputDebugger_RecentKey> _Recent;
     TMap<FKey, float>                  _AnalogMagnitudes;
     TMap<FKey, FCkDebug_DeviceKeyState> _KeyStates;
+    TArray<FCkInputDebugger_KeyEdgeEpisode> _EdgeHistory;
     int32                              _Revision = 0;
     int32                              _LiveFrame = 0;
 };

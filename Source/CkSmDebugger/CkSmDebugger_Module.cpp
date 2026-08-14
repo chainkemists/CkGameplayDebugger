@@ -7,6 +7,7 @@
 #include "CkSmDebugger/Window/SCkSmDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
@@ -76,7 +77,9 @@ auto FCkSmDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("Inspect state-machine graphs, transitions, and history")),
         TEXT("StateMachine"),
         ECkDebuggerToolCategory::Core,
-        20});
+        20}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 
     _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
         TEXT("CkSmDebugger"), _DebuggerTabName,
@@ -144,7 +147,7 @@ auto FCkSmDebuggerModule::Get() -> FCkSmDebuggerModule&
 
 auto FCkSmDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkSmDebuggerModule::CloseDebugger() -> void

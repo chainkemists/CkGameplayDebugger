@@ -5,6 +5,7 @@
 #include "CkUIDebugger/Window/SCkUIDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -60,7 +61,9 @@ auto FCkUIDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("Inspect UI layers, widgets, and viewport ownership")),
         TEXT("Window"),
         ECkDebuggerToolCategory::Interface,
-        10});
+        10}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkUIDebuggerModule::ShutdownModule() -> void
@@ -84,7 +87,7 @@ auto FCkUIDebuggerModule::Get() -> FCkUIDebuggerModule&
 
 auto FCkUIDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkUIDebuggerModule::CloseDebugger() -> void

@@ -63,6 +63,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkRecord",
             "CkRelationship",
             "CkRenderTarget",
+            "CkResourceLoader",
             "CkResolver",
             "CkShapes",
             "CkSnapshot",

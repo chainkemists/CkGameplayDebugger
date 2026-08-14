@@ -8,7 +8,6 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
@@ -215,11 +214,11 @@ auto
     Build_Row()
     -> TSharedRef<SWidget>
 {
-    auto Row = SNew(SWrapBox)
-        .UseAllottedSize(true);
+    auto Row = SNew(SHorizontalBox);
     for (const auto& Action : _Actions)
     {
         Row->AddSlot()
+        .AutoWidth()
         .VAlign(VAlign_Center)
         .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
         [

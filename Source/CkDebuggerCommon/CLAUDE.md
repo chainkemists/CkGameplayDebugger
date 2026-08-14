@@ -60,7 +60,7 @@ selectable.
 | An EntityScript class name or gameplay-tag path | `SCkDebug_NameLabel` | **The** name widget — every debugger renders class/tag names through it. Short form selectable, tooltip = full name, tiny »/« button expands/contracts when shortened. `.NameDepth` binds to the debugger's depth tuner; `SCkDebug_NameLabel::Get_ShortName()` is the one canonical shortener for composite strings the widget can't host (crumbs, log lines, graph measurement), `Get_SegmentCount()` feeds a cycler's MaxDepth. Don't use inside `SListView` rows (internal SButton — see click-traps below); use `Get_ShortName` + `STextBlock` there. |
 | A toolbar name-verbosity control | `SCkDebug_NameDepthCycler` | The "Name ◀ value ▶" chrome control (canonical cycle: Full(0) ↔ 1 … MaxDepth). State stays with the owner (view model / graph / window member); widget reports via `OnDepthChanged`. Used by GOAP, SM, UI debuggers — add it to any debugger that renders class/tag names. |
 | A glyph/icon anywhere in a debugger | `SCkDebug_Icon` | **Never drop a bare `SImage` icon into a slot** — that is how icons ship without tooltips. `.Meaning` (what the glyph stands for) becomes the hover tooltip; `.Brush` comes from the owning module's style registry. Click-passive — safe in `SListView` rows. Exception: an icon inside a control that already carries a richer tooltip (filter-chip SCheckBox, launcher tool button) keeps the wrapper's tooltip instead — one surface, one tooltip. |
-| A simple boolean display/debug option | `SCkDebug_IconToggle` or `SCkDebug_IconToolbar` | Keep state and persistence with the feature; bind it through `FCkDebug_IconToggleAction`. Use the toolbar for window-wide settings: all actions stay visible immediately to the right of the stable left-anchored debugger title and never collapse behind an overflow control. The action surface owns the flexible header width and wraps at narrow widths, so slack follows the last action without clipping it. Use the individual toggle only when the option is contextual to a local panel. Do not create a feature-local checkbox style or icon registry. |
+| A simple boolean display/debug option | `SCkDebug_IconToggle` or `SCkDebug_IconToolbar` | Keep state and persistence with the feature; bind it through `FCkDebug_IconToggleAction`. Use the toolbar for window-wide settings: every action stays on one horizontal line and never collapses behind an overflow menu. The owning command lane scrolls horizontally at constrained widths; individual icons never wrap into a grid. Use the individual toggle only when the option is contextual to a local panel. Do not create a feature-local checkbox style or icon registry. |
 | Composite widget that should support right-click → Copy as a unit (group, pill, custom row) | Wrap with `SCkDebug_CopyableContainer` | Pass `.CopyText(...)` with the multi-line clipboard payload. SButton inside the wrapped child still receives left-clicks; right-click bubbles through. |
 | Inspector key/value rows | `SCkDebug_KeyValueRow` (via `FCkInspectorWidgetBuilder::AddRow`) | Values are already `SEditableText` — automatic. |
 | An editable number anywhere (inspector row, settings drawer) | `SCkDebug_NumericEditor` | **The** numeric field. Commits on Enter / lost focus, never per keystroke; attribute-bound display frozen while typing; optional min/max; Float and Integer kinds; `OnEditStateChanged` brackets the focus window for the edit guard. Never hand-roll an `SEditableTextBox` for a number. |
@@ -548,14 +548,12 @@ If your module renders graph nodes via `SGraphEditor`, also add `GraphEditor`.
 
 ## Common window chrome and entity targeting
 
-- Every plugin-owned standalone debugger tab uses `SCkDebug_WindowChrome`. It owns the stable
-  left-anchored title, the directly visible `MenuActionsContent` immediately to its right, the
-  right-anchored debugger switcher, body boundary, and status strip. The menu-action surface takes
-  the remaining header width and wraps actions when narrow; it never clips or hides them.
-  `MenuActionsContent` is the canonical home for high-frequency boolean icon actions;
-  `ToolbarContent` is for selectors and commands that need a dedicated row; specialized panels
-  remain inside `Content`. `CkInsightsDebugger` follows the same contract while consuming UI-free
-  trace analysis and report APIs from CkFoundation.
+- Every plugin-owned standalone debugger tab uses `SCkDebug_WindowChrome`. The dock tab owns the
+  debugger name; Chrome must not repeat a title or identity icon. Chrome owns the directly visible
+  semantic command lanes, the right-anchored Tools switcher, body boundary, and trailing utilities.
+  Primary and context lanes each remain one physical line and scroll horizontally when narrow;
+  controls and icon actions never wrap into additional rows. `CkInsightsDebugger` follows the same
+  contract while consuming UI-free trace analysis and report APIs from CkFoundation.
 - Feature modules never construct `SCheckBox` directly. Use `SCkDebug_IconToggle` or
   `SCkDebug_IconToolbar` for a fixed icon-backed boolean, `SCkDebug_ToggleSurface` when a contextual
   card/chip owns rich content, and engine `SSegmentedControl` for short exclusive choices. The

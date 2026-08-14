@@ -81,14 +81,63 @@ auto
         const FArguments& InArgs)
     -> void
 {
+    const auto Overview =
+        SNew(SHorizontalBox)
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
+        [
+            SAssignNew(_StatOwners, SCkDebug_StatPair)
+            .Label(FText::FromString(TEXT("OWNERS")))
+            .Value(FText::FromString(TEXT("0")))
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
+        [
+            SAssignNew(_StatEngaged, SCkDebug_StatPair)
+            .Label(FText::FromString(TEXT("ENGAGED")))
+            .Value(FText::FromString(TEXT("0")))
+            .ValueColor(FSlateColor(CkStyle::Err()))
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            SAssignNew(_StatTargets, SCkDebug_StatPair)
+            .Label(FText::FromString(TEXT("TRACKED")))
+            .Value(FText::FromString(TEXT("0")))
+        ];
+
+    const auto SearchAndStatus =
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceXS)
+        [
+            SAssignNew(_StatusText, STextBlock)
+            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
+            .ColorAndOpacity(CkStyle::TextMute())
+            .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
+        ]
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_DualSearchBar)
+            .FilterHintText(FText::FromString(TEXT("Filter owners/targets…")))
+            .OnFilterTextChanged_Lambda([this](const FString& InText) { _FilterString = InText; })
+            .OnHighlightTextChanged_Lambda([this](const FString& InText) { _HighlightString = InText; })
+        ];
+
     ChildSlot
     [
         SNew(SCkDebug_WindowChrome)
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkAggroDebugger"))
-            .DisplayName(FText::FromString(TEXT("CK Aggro Debugger")))
-            .MenuActionsContent()
-            [
+            .CommandGroups({
+                FCkDebug_CommandGroup::Primary(TEXT("AggroView"), FText::FromString(TEXT("Aggro view controls")),
                 SNew(SCkDebug_IconToggle)
                 .IconId(TEXT("Target"))
                 .Label(FText::FromString(TEXT("Engaged owners only")))
@@ -99,62 +148,13 @@ auto
                     if (_ShowEngagedOwnersOnly == InEngagedOnly) { return; }
                     _ShowEngagedOwnersOnly = InEngagedOnly;
                     _LastSignature.Reset();
-                })
-            ]
+                })),
+                FCkDebug_CommandGroup::Context(TEXT("AggroOverview"), FText::FromString(TEXT("Aggro overview")), Overview),
+                FCkDebug_CommandGroup::Context(TEXT("AggroSearch"), FText::FromString(TEXT("Aggro search and status")), SearchAndStatus)
+            })
             .Content()
             [
                 SNew(SVerticalBox)
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceM, CkStyle::SpaceXS)
-        [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
-            [
-                SAssignNew(_StatOwners, SCkDebug_StatPair)
-                .Label(FText::FromString(TEXT("OWNERS")))
-                .Value(FText::FromString(TEXT("0")))
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceXL, 0.0f)
-            [
-                SAssignNew(_StatEngaged, SCkDebug_StatPair)
-                .Label(FText::FromString(TEXT("ENGAGED")))
-                .Value(FText::FromString(TEXT("0")))
-                .ValueColor(FSlateColor(CkStyle::Err()))
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            [
-                SAssignNew(_StatTargets, SCkDebug_StatPair)
-                .Label(FText::FromString(TEXT("TRACKED")))
-                .Value(FText::FromString(TEXT("0")))
-            ]
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceM, 0.0f, CkStyle::SpaceM, CkStyle::SpaceXS)
-        [
-            SAssignNew(_StatusText, STextBlock)
-            .Font_Static(&ck_aggro_debugger_window::Get_RowFont)
-            .ColorAndOpacity(CkStyle::TextMute())
-            .Text(FText::FromString(TEXT("(waiting for a PIE session…)")))
-        ]
-        + SVerticalBox::Slot()
-        .AutoHeight()
-        .Padding(CkStyle::SpaceS)
-        [
-            SNew(SCkDebug_DualSearchBar)
-            .FilterHintText(FText::FromString(TEXT("Filter owners/targets…")))
-            .OnFilterTextChanged_Lambda([this](const FString& InText) { _FilterString = InText; })
-            .OnHighlightTextChanged_Lambda([this](const FString& InText) { _HighlightString = InText; })
-        ]
         + SVerticalBox::Slot()
         .FillHeight(1.0f)
         [

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CommandBar.h"
 #include "Widgets/SCompoundWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -8,8 +9,8 @@
 /**
  * Shared frame for standalone CK debugger tabs.
  *
- * The frame owns only debugger-wide chrome: a stable title and debugger switcher,
- * an optional tool-specific toolbar, the tool body, and a persistent status strip.
+ * The frame owns only debugger-wide chrome: semantic command groups, a trailing
+ * status/refresh/tool cluster, and the tool body. The tab owns debugger identity.
  * Feature modules continue to own all tool-specific state and controls.
  */
 class CKDEBUGGERCOMMON_API SCkDebug_WindowChrome : public SCompoundWidget
@@ -18,13 +19,14 @@ public:
     SLATE_BEGIN_ARGS(SCkDebug_WindowChrome)
         : _WindowId(NAME_None)
         , _ToolTabId(NAME_None)
-        , _DisplayName(FText::GetEmpty())
         , _StatusText(FText::GetEmpty())
+        , _ShowRefreshControls(false)
     {}
         SLATE_ARGUMENT(FName, WindowId)
         SLATE_ARGUMENT(FName, ToolTabId)
-        SLATE_ATTRIBUTE(FText, DisplayName)
         SLATE_ATTRIBUTE(FText, StatusText)
+        SLATE_ARGUMENT(TArray<FCkDebug_CommandGroup>, CommandGroups)
+        SLATE_ARGUMENT(bool, ShowRefreshControls)
         SLATE_NAMED_SLOT(FArguments, MenuActionsContent)
         SLATE_NAMED_SLOT(FArguments, ToolbarContent)
         SLATE_NAMED_SLOT(FArguments, Content)
@@ -40,7 +42,6 @@ private:
 
     FName _WindowId;
     FName _ToolTabId;
-    TAttribute<FText> _DisplayName;
     TAttribute<FText> _StatusText;
 };
 

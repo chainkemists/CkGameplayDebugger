@@ -44,7 +44,6 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 // On-Screen Overlay controls (toolbar popover mirroring the overlay CVars + settings).
 #include "CkEntityDebugOverlay/Settings/CkDebugOverlay_Settings.h"
@@ -128,7 +127,7 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
     SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkDebuggerWindow_Main::HandleSessionInvalidated);
 
-    // Refresh the toolbar badge strip when the filter selection changes.
+    // Refresh the command-bar badge strip when the filter selection changes.
     if (FilterModel.IsValid())
     {
         auto WeakSelf = TWeakPtr<SCkDebuggerWindow_Main>(SharedThis(this));
@@ -159,11 +158,13 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkEcsDebugger"))
-        .DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            Build_MenuActions()
-        ]
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(TEXT("OverlayView"), FText::FromString(TEXT("Overlay view controls")), Build_MenuActions()),
+            FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("Entity target controls")), Build_TargetControls()),
+            FCkDebug_CommandGroup::Context(TEXT("OverlaySettings"), FText::FromString(TEXT("Overlay settings")), Build_OverlaySettingsControls()),
+            FCkDebug_CommandGroup::Context(TEXT("EntityFilter"), FText::FromString(TEXT("Entity filter controls")), Build_EntityFilterControls())
+        })
+        .ShowRefreshControls(true)
         .Content()
         [
             SNew(SBorder)
@@ -171,12 +172,6 @@ auto SCkDebuggerWindow_Main::Construct(const FArguments& InArgs) -> void
         .Padding(0.0f)
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot()
-            .AutoHeight()
-            [
-                Build_Toolbar()
-            ]
 
             + SVerticalBox::Slot()
             .FillHeight(1.0f)
@@ -306,7 +301,7 @@ auto SCkDebuggerWindow_Main::Tick(
 // Everything visual in this window is attribute-bound and needs nothing here. What this drives is
 // the four surfaces that COMPOSE at build time and cannot be expressed as an attribute:
 //
-//   1. the toolbar's active-filter badge strip (its widget per badge is chosen by BadgeStyle),
+    //   1. the command-bar active-filter badge strip (its widget per badge is chosen by BadgeStyle),
 //   2. the inspector panel (row set, section headers, EntityIdStyle name composition),
 //   3. the entity list's quick-access section (rows composed per pinned entity),
 //   4. the active page, via the page interface's own hook.
@@ -394,35 +389,19 @@ auto SCkDebuggerWindow_Main::Build_MenuActions() -> TSharedRef<SWidget>
         .Actions(IconActions);
 }
 
-auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
+auto SCkDebuggerWindow_Main::Build_TargetControls() -> TSharedRef<SWidget>
 {
-    return SNew(SBorder)
-        .BorderImage(FCkDebuggerStyle::Get().GetBrush("CkDebugger.Background.Medium"))
-        .Padding(FMargin(FCkDebuggerStyle::Padding_Small, FCkDebuggerStyle::Padding_Small))
+    return SNew(SCkDebug_ViewportPickerControls)
+        .Picker(ViewportPicker)
+        .ExtraSettingsContent()
         [
-            SNew(SHorizontalBox)
+            Build_PickerExtraSettings()
+        ];
+}
 
-            // ---- Pick button + picker settings (shared picker controls) ----
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-            [
-                SNew(SCkDebug_ViewportPickerControls)
-                .Picker(ViewportPicker)
-                .ExtraSettingsContent()
-                [
-                    Build_PickerExtraSettings()
-                ]
-            ]
-
-            // ---- Contextual overlay layout settings ----
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
-            [
-                SAssignNew(OverlayAnchor, SMenuAnchor)
+auto SCkDebuggerWindow_Main::Build_OverlaySettingsControls() -> TSharedRef<SWidget>
+{
+    return SAssignNew(OverlayAnchor, SMenuAnchor)
                 .Placement(MenuPlacement_BelowAnchor)
                 .OnGetMenuContent_Lambda([this]() -> TSharedRef<SWidget>
                 {
@@ -454,43 +433,15 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                         .Font_Static(&ck_debugger_window_main::Get_LabelFont)
                         .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
                     ]
-                ]
-            ]
+                ];
+}
 
-            // ---- Visual separator ----
+auto SCkDebuggerWindow_Main::Build_EntityFilterControls() -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
-            .Padding(FMargin(FCkDebuggerStyle::Padding_Small, 0.0f))
-            [
-                // Vertical twin of ck::debug_axes::Make_AxisSeparator: SSeparator::Thickness has
-                // no setter, so SeparatorWeight rides an SBox width override and the None option
-                // collapses the box together with its slot padding.
-                SNew(SBox)
-                .WidthOverride_Lambda([]() -> FOptionalSize
-                {
-                    return FOptionalSize{ck::debug_axes::Get_SeparatorThickness(
-                        UCkDebuggerStyleSettings::Get_Selection())};
-                })
-                .Visibility_Lambda([]()
-                {
-                    return ck::debug_axes::Get_SeparatorThickness(
-                        UCkDebuggerStyleSettings::Get_Selection()) > 0.0f
-                        ? EVisibility::Visible
-                        : EVisibility::Collapsed;
-                })
-                [
-                    SNew(SSeparator)
-                    .Orientation(Orient_Vertical)
-                    .Thickness(1.0f)
-                ]
-            ]
-
-            // ---- Filter button (with active count) ----
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(0.0f, 0.0f, FCkDebuggerStyle::Padding_Small, 0.0f))
             [
                 SAssignNew(FilterAnchor, SMenuAnchor)
                 .Placement(MenuPlacement_BelowAnchor)
@@ -540,25 +491,12 @@ auto SCkDebuggerWindow_Main::Build_Toolbar() -> TSharedRef<SWidget>
                     ]
                 ]
             ]
-
-            // ---- Active-filter badge strip ----
             + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             .VAlign(VAlign_Center)
             [
                 SAssignNew(FilterBadgeStrip, SHorizontalBox)
-            ]
-
-            // ---- Refresh mode + rate cap (right-aligned) ----
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(FMargin(FCkDebuggerStyle::Padding_Medium, 0.0f, 0.0f, 0.0f))
-            [
-                SNew(SCkDebugger_RefreshControls)
-                .WindowId(SCkDebuggerWindow_Main::WindowId)
-            ]
-        ];
+            ];
 }
 
 auto SCkDebuggerWindow_Main::Build_PickerExtraSettings() -> TSharedRef<SWidget>

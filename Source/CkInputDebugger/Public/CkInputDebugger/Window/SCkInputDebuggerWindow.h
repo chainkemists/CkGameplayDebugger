@@ -105,7 +105,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Enhanced Input Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Enhanced Input")); }
 
 protected:
     // Context / action rows are built imperatively, so a style revision re-runs them through the

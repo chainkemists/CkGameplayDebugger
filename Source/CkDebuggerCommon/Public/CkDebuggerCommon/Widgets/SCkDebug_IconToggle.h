@@ -79,8 +79,8 @@ private:
 
 // ====================================================================================================================
 
-// Shared debugger menu row. Every action remains directly visible; the row
-// uses its allotted width and wraps instead of clipping or hiding actions.
+// Shared debugger menu row. Actions always remain on one horizontal line;
+// the owning command lane provides horizontal scrolling when width is tight.
 class CKDEBUGGERCOMMON_API SCkDebug_IconToolbar : public SCompoundWidget
 {
 public:

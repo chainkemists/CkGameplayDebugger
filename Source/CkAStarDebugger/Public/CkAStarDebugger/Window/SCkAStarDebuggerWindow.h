@@ -37,7 +37,7 @@ public:
     static auto Is_AStarDebuggerEntity(const FCk_Handle& InCandidate) -> bool;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK A* Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("A*")); }
 
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;

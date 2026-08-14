@@ -13,7 +13,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -85,11 +84,8 @@ auto
 		SNew(SCkDebug_WindowChrome)
 			.WindowId(WindowId)
 			.ToolTabId(TEXT("CkSchedulerDebugger"))
-			.DisplayName(Get_WindowDisplayName())
-			.MenuActionsContent()
-			[
-				DoBuildMenuActions()
-			]
+			.ShowRefreshControls(true)
+			.CommandGroups(DoBuildCommandGroups())
 			.Content()
 			[
 				SNew(SBorder)
@@ -101,80 +97,9 @@ auto
 
 				+ SVerticalBox::Slot()
 					.AutoHeight()
-					[
-						DoBuildTopBar()
-					]
-
-				+ SVerticalBox::Slot()
-					.AutoHeight()
 					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
 					[
 						DoBuildStatsBar()
-					]
-
-				+ SVerticalBox::Slot()
-					.AutoHeight()
-					.Padding(FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
-					[
-						SNew(SHorizontalBox)
-
-						+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 2.0f, FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
-							[
-								SNew(SButton)
-									.ToolTipText(FText::FromString(TEXT("Previous frame (older) — Left Arrow")))
-									.OnClicked_Lambda([this]() -> FReply
-									{
-										_ViewModel->CycleSelectedFrame(+1);
-										return FReply::Handled();
-									})
-									[
-										SNew(STextBlock)
-											.Text(FText::FromString(TEXT("<")))
-											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H3)
-									]
-							]
-
-						+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							.Padding(0.0f, 2.0f, FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
-							[
-								SNew(SButton)
-									.ToolTipText(FText::FromString(TEXT("Next frame (newer) — Right Arrow")))
-									.OnClicked_Lambda([this]() -> FReply
-									{
-										_ViewModel->CycleSelectedFrame(-1);
-										return FReply::Handled();
-									})
-									[
-										SNew(STextBlock)
-											.Text(FText::FromString(TEXT(">")))
-											.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Bold_H3)
-									]
-							]
-
-						+ SHorizontalBox::Slot()
-							.FillWidth(1.0f)
-							.VAlign(VAlign_Center)
-							.Padding(FCkSchedulerDebuggerStyle::Padding_Small, 2.0f)
-							[
-								SNew(SSearchBox)
-									.HintText(FText::FromString(TEXT("Highlight frames with processor...")))
-									.ToolTipText(FText::FromString(TEXT("Outlines history bars whose frames ran a processor matching this text")))
-									.OnTextChanged_Lambda([this](const FText& InText)
-									{
-										auto NewFilter = InText.ToString();
-										if (_HighlightFilter == NewFilter)
-										{ return; }
-
-										_HighlightFilter = MoveTemp(NewFilter);
-										_HighlightVerdictByFrame.Reset();
-										DoPushFrameSamples(true);
-									})
-							]
 					]
 
 				+ SVerticalBox::Slot()
@@ -225,39 +150,6 @@ auto
 	];
 
 	DoSwitchToPage(0);
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-	SCkSchedulerDebuggerWindow::
-	DoBuildMenuActions()
-	-> TSharedRef<SWidget>
-{
-	return SNew(SCkDebug_IconToggle)
-		.IconId(TEXT("Snowflake"))
-		.Label(FText::FromString(TEXT("Freeze capture")))
-		.ToolTip(FText::FromString(TEXT("Freeze scheduler capture. Turning this off while inspecting history returns to live capture.")))
-		.IsOn_Lambda([this]() -> bool
-		{
-			return _ViewModel.IsValid()
-				&& (_ViewModel->Get_IsFrozen() || _ViewModel->Get_SelectedFrameOffset() > 0);
-		})
-		.OnStateChanged_Lambda([this](bool InIsOn)
-		{
-			if (NOT _ViewModel.IsValid()) { return; }
-
-			if (InIsOn)
-			{
-				_ViewModel->Set_IsFrozen(true);
-			}
-			else
-			{
-				if (_ViewModel->Get_SelectedFrameOffset() > 0)
-				{ _ViewModel->Set_SelectedFrameOffset(0); }
-				_ViewModel->Set_IsFrozen(false);
-			}
-		});
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -393,98 +285,22 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 
-auto
-	SCkSchedulerDebuggerWindow::
-	DoBuildTopBar()
-	-> TSharedRef<SWidget>
+auto SCkSchedulerDebuggerWindow::DoBuildCommandGroups() -> TArray<FCkDebug_CommandGroup>
 {
-	return SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-		.Padding_Lambda([]()
-		{
-			return ck::debug_axes::Apply_RowDensity(
-				FMargin{FCkSchedulerDebuggerStyle::Padding_Medium, FCkSchedulerDebuggerStyle::Padding_Small});
-		})
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Large, 0.0f)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(TEXT("CkScheduler Debugger")))
-						.Font_Static(&ck::scheduler_debugger_axes::Get_Font_WindowTitle)
-						.ColorAndOpacity(CkStyle::Text())
-				]
-
-			+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
-				[
-					SNew(SCkDebug_WorldSelector, _WorldModel)
-						.ShowHeaderLabel(false)
-				]
-
-			+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				[
-					SNew(SSpacer)
-				]
-
-			+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Medium, 0.0f)
-				[
-					SNew(SHorizontalBox)
-
-					+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, FCkSchedulerDebuggerStyle::Padding_Small, 0.0f)
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("History")))
-								.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
-								.ColorAndOpacity(CkStyle::TextDim())
-						]
-
-					+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						[
-							SNew(SBox)
-								.WidthOverride(70.0f)
-								[
-									SNew(SSpinBox<int32>)
-										.MinValue(10)
-										.MaxValue(10000)
-										.Value(this, &SCkSchedulerDebuggerWindow::DoGetFrameHistoryMaxSize)
-										.OnValueCommitted_Lambda([this](int32 InValue, ETextCommit::Type)
-										{
-											_FrameHistoryMaxSize = InValue;
-											if (_CurrentWorld.IsValid())
-											{
-												_ViewModel->Set_FrameHistoryMaxSize(_CurrentWorld.Get(), InValue);
-											}
-										})
-										.Font_Static(&ck::scheduler_debugger_axes::Get_Font_Regular_Body)
-								]
-						]
-				]
-
-			+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(FCkSchedulerDebuggerStyle::Padding_Large, 0.0f, 0.0f, 0.0f)
-				[
-					SNew(SCkDebugger_RefreshControls)
-						.WindowId(SCkSchedulerDebuggerWindow::WindowId)
-				]
-		];
+    const auto Freeze = SNew(SCkDebug_IconToggle)
+        .IconId(TEXT("Snowflake")).Label(FText::FromString(TEXT("Freeze capture")))
+        .ToolTip(FText::FromString(TEXT("Freeze scheduler capture. Turning this off while inspecting history returns to live capture.")))
+        .IsOn_Lambda([this]() { return _ViewModel.IsValid() && (_ViewModel->Get_IsFrozen() || _ViewModel->Get_SelectedFrameOffset() > 0); })
+        .OnStateChanged_Lambda([this](bool InIsOn) { if (NOT _ViewModel.IsValid()) { return; } if (InIsOn) { _ViewModel->Set_IsFrozen(true); } else { if (_ViewModel->Get_SelectedFrameOffset() > 0) { _ViewModel->Set_SelectedFrameOffset(0); } _ViewModel->Set_IsFrozen(false); } });
+    const auto FrameHistory = SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(SButton).ToolTipText(FText::FromString(TEXT("Previous frame (older) — Left Arrow"))).OnClicked_Lambda([this]() { _ViewModel->CycleSelectedFrame(+1); return FReply::Handled(); })[SNew(STextBlock).Text(FText::FromString(TEXT("<")))] ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(SButton).ToolTipText(FText::FromString(TEXT("Next frame (newer) — Right Arrow"))).OnClicked_Lambda([this]() { _ViewModel->CycleSelectedFrame(-1); return FReply::Handled(); })[SNew(STextBlock).Text(FText::FromString(TEXT(">")))] ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text(FText::FromString(TEXT("History"))).ColorAndOpacity(CkStyle::TextDim()) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(SBox).WidthOverride(70.0f)[SNew(SSpinBox<int32>).MinValue(10).MaxValue(10000).Value(this, &SCkSchedulerDebuggerWindow::DoGetFrameHistoryMaxSize).OnValueCommitted_Lambda([this](int32 InValue, ETextCommit::Type) { _FrameHistoryMaxSize = InValue; if (_CurrentWorld.IsValid()) { _ViewModel->Set_FrameHistoryMaxSize(_CurrentWorld.Get(), InValue); } })] ];
+    const auto Highlight = SNew(SSearchBox).HintText(FText::FromString(TEXT("Highlight frames with processor..."))).ToolTipText(FText::FromString(TEXT("Outlines history bars whose frames ran a processor matching this text"))).OnTextChanged_Lambda([this](const FText& InText) { auto NewFilter = InText.ToString(); if (_HighlightFilter == NewFilter) { return; } _HighlightFilter = MoveTemp(NewFilter); _HighlightVerdictByFrame.Reset(); DoPushFrameSamples(true); });
+    const auto SelectedFrame = SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(DoComposeSelectedFrameText()); }).ColorAndOpacity(CkStyle::TextDim());
+    return {FCkDebug_CommandGroup::Primary(TEXT("SchedulerFreeze"), FText::FromString(TEXT("Scheduler freeze capture")), Freeze), FCkDebug_CommandGroup::Context(TEXT("SchedulerFrameHistory"), FText::FromString(TEXT("Scheduler frame navigation and history")), FrameHistory), FCkDebug_CommandGroup::Context(TEXT("SchedulerHighlight"), FText::FromString(TEXT("Scheduler frame highlight filter")), Highlight), FCkDebug_CommandGroup::Context(TEXT("SchedulerSelectedFrame"), FText::FromString(TEXT("Selected scheduler frame status")), SelectedFrame)};
 }
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CommandBar.h"
 #include "Widgets/Views/SListView.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -46,7 +47,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Object Pooling Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Object Pooling")); }
 
 private:
     // sortable table columns
@@ -75,7 +76,7 @@ private:
         float  ReleasesPerSec = 0.0f;
     };
 
-    auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto BuildOverviewStrip() -> TSharedRef<SWidget>;
     auto BuildHeaderRow() -> TSharedRef<SWidget>;
     auto BuildInspectorRail() -> TSharedRef<SWidget>;

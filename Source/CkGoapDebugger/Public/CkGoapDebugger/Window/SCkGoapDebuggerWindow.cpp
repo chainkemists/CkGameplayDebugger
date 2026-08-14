@@ -248,11 +248,7 @@ auto
         SNew(SCkDebug_WindowChrome)
             .WindowId(WindowId)
             .ToolTabId(TEXT("CkGoapDebugger"))
-            .DisplayName(FText::FromString(TEXT("CK GOAP Debugger")))
-            .MenuActionsContent()
-            [
-                BuildMenuActions()
-            ]
+            .CommandGroups(BuildCommandGroups())
             .Content()
             [
                 SNew(SBorder)
@@ -261,13 +257,6 @@ auto
             .Padding(FMargin(0.0f))
             [
                 SNew(SVerticalBox)
-
-                    // Chrome bar (pickers, transport, nerd toggle)
-                    + SVerticalBox::Slot()
-                        .AutoHeight()
-                        [
-                            BuildChromeBar()
-                        ]
 
                     // Nerd strip — search internals; only in nerd mode.
                     + SVerticalBox::Slot()
@@ -423,303 +412,59 @@ auto
 // BUILD — CHROME BAR (Mission Control)
 // ====================================================================================================================
 
-auto
-    SCkGoapDebuggerWindow::
-    BuildChromeBar()
-    -> TSharedRef<SWidget>
+auto SCkGoapDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>
 {
-    // Enter Scrub mode at the given history index (clamped); INDEX_NONE-safe.
     const auto ScrubTo = [this](int32 InIndex) -> void
     {
         if (NOT _ViewModel.IsValid()) { return; }
         const auto Entity = _ViewModel->GetSelectedEntity();
         if (NOT ck::IsValid(Entity)) { return; }
-
-        const auto& Hist = FCkGoapDebugger_DataCollector::GetHistory(Entity);
-        if (Hist.IsEmpty()) { return; }
-
-        const auto Clamped = FMath::Clamp(InIndex, 0, Hist.Num() - 1);
-        _ViewModel->SetScrubEventIndex(Clamped);
-        if (ck::IsValid(Hist[Clamped].ActionSetHandle))
-        { _ViewModel->SetSelectedActionSet(Hist[Clamped].ActionSetHandle); }
+        const auto& History = FCkGoapDebugger_DataCollector::GetHistory(Entity);
+        if (History.IsEmpty()) { return; }
+        const auto Index = FMath::Clamp(InIndex, 0, History.Num() - 1);
+        _ViewModel->SetScrubEventIndex(Index);
+        if (ck::IsValid(History[Index].ActionSetHandle))
+        { _ViewModel->SetSelectedActionSet(History[Index].ActionSetHandle); }
         _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Scrub);
     };
 
-    return SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(FSlateColor(CkStyle::Bg2()))
-        .Padding(FMargin(CkStyle::SpaceL, CkStyle::SpaceM))
-        [
-            SNew(SHorizontalBox)
+    const auto Target = SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SAssignNew(_AgentPicker, STextComboBox).OptionsSource(&_AgentPickerLabels).OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandleAgentPicked).ToolTipText(FText::FromString(TEXT("Select the agent under inspection."))) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SAssignNew(_PlannerPicker, STextComboBox).OptionsSource(&_PlannerPickerLabels).OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandlePlannerPicked).ToolTipText(FText::FromString(TEXT("Select a top-level Planner on this agent. Sub-Planners live in the Inspector tree."))) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SNew(SCkDebug_EntityRef).Entity_Lambda([this]() -> FCk_Handle { return _ViewModel.IsValid() ? _ViewModel->GetSelectedEntity() : FCk_Handle{}; }) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [ SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a GOAP agent in the viewport to inspect it.\nOnly entities with GOAP (and their owning NPC) are shown and pickable."))) ];
 
-                // Product mark
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SHorizontalBox)
-                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, 6.0f, 0.0f)
-                            [
-                                SNew(SBox)
-                                    .WidthOverride_Lambda([]() -> FOptionalSize
-                                    { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
-                                    .HeightOverride_Lambda([]() -> FOptionalSize
-                                    { return FOptionalSize{ck_goap_debugger_axes::Get_DotSize()}; })
-                                [
-                                    SNew(SImage)
-                                        .Image(CkStyle::GetRoundedBrush_Small())
-                                        .ColorAndOpacity(FSlateColor(CkStyle::Accent()))
-                                ]
-                            ]
-                        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                            [
-                                SNew(STextBlock)
-                                    .Text(FText::FromString(TEXT("GOAP Mission Control")))
-                                    .Font_Lambda([]() -> FSlateFontInfo
-                                    { return ck::debug_axes::ScaledFont("Mono", CkStyle::FontSizeBody()); })
-                                    .ColorAndOpacity(FSlateColor(CkStyle::Text()))
-                            ]
-                    ]
+    const auto Playback = SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+        [ SNew(SButton).ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle()).ToolTipText(FText::FromString(TEXT("Live — follow the game. Scrubbing the timeline pauses on a recorded event."))).OnClicked_Lambda([this]() -> FReply { if (_ViewModel.IsValid()) { _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live); _ViewModel->SetScrubEventIndex(INDEX_NONE); } return FReply::Handled(); }) [ SNew(SCkDebug_StatusPill).Text_Lambda([this]() { const auto IsLive = NOT _ViewModel.IsValid() || _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live; return IsLive ? FText::FromString(TEXT("LIVE")) : FText::FromString(FString::Printf(TEXT("PAUSED @ #%d"), _ViewModel->GetScrubEventIndex() + 1)); }).Tone_Lambda([this]() { return NOT _ViewModel.IsValid() || _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live ? ECk_Tone::Ok : ECk_Tone::Warn; }) ] ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [ SNew(SButton).ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle()).ToolTipText(FText::FromString(TEXT("Step one recorded event back (enters Scrub)"))).OnClicked_Lambda([this, ScrubTo]() -> FReply { ScrubTo(_ViewModel.IsValid() && _ViewModel->GetScrubEventIndex() != INDEX_NONE ? _ViewModel->GetScrubEventIndex() - 1 : MAX_int32 - 1); return FReply::Handled(); }) [ SNew(STextBlock).Text(FText::FromString(TEXT("|◀"))) ] ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SNew(SButton).ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle()).ToolTipText(FText::FromString(TEXT("Step one recorded event forward"))).OnClicked_Lambda([this, ScrubTo]() -> FReply { if (_ViewModel.IsValid() && _ViewModel->GetScrubEventIndex() != INDEX_NONE) { ScrubTo(_ViewModel->GetScrubEventIndex() + 1); } return FReply::Handled(); }) [ SNew(STextBlock).Text(FText::FromString(TEXT("▶|"))) ] ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [ SNew(SButton).ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle()).ToolTipText(FText::FromString(TEXT("History recording is always on. Click to CLEAR the selected agent's recorded events."))).OnClicked_Lambda([this]() -> FReply { if (_ViewModel.IsValid()) { const auto Entity = _ViewModel->GetSelectedEntity(); if (ck::IsValid(Entity)) { FCkGoapDebugger_DataCollector::ClearHistoryForEntity(Entity); } _ViewModel->SetScrubEventIndex(INDEX_NONE); _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live); } return FReply::Handled(); }) [ SNew(SCkDebug_StatusPill).Text(FText::FromString(TEXT("REC"))).Tone(ECk_Tone::Err) ] ];
 
-                // World selector (shared across all CK debuggers)
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SCkDebug_WorldSelector, _WorldModel)
-                            .ShowHeaderLabel(false)
-                    ]
+    const auto Display = SNew(SHorizontalBox)
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+        [ SNew(STextBlock).Text(FText::FromString(TEXT("Nerd mode"))).ToolTipText(FText::FromString(TEXT("Reveal search internals: budget usage, states expanded, the regressive trace, entity handles."))).ColorAndOpacity(FSlateColor(CkStyle::TextDim())) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        [ SNew(SCkDebug_Switch).IsOn_Lambda([this] { return _NerdMode; }).OnStateChanged_Lambda([this](bool InNew) { _NerdMode = InNew; if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); } }) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [ SNew(SCkDebug_NameDepthCycler).Depth_Lambda([this]() { return _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1; }).MaxDepth_Lambda([this]() { return _GraphPane.IsValid() ? _GraphPane->Get_MaxNameDepth() : 1; }).OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InDepth) { if (_ViewModel.IsValid()) { _ViewModel->Set_NameDepth(InDepth); _ViewModel->Broadcast_Changed(); } })) ];
 
-                // Agent picker — the mockup's chrome agent dropdown.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SAssignNew(_AgentPicker, STextComboBox)
-                            .OptionsSource(&_AgentPickerLabels)
-                            .OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandleAgentPicked)
-                            .ToolTipText(FText::FromString(TEXT("Select the agent under inspection.")))
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
-                    ]
-
-                // Planner picker — top-level Planners on the selected agent
-                // (+sub count); the Sidebar tree drills into sub-Planners.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SAssignNew(_PlannerPicker, STextComboBox)
-                            .OptionsSource(&_PlannerPickerLabels)
-                            .OnSelectionChanged(this, &SCkGoapDebuggerWindow::HandlePlannerPicked)
-                            .ToolTipText(FText::FromString(TEXT("Select a top-level Planner on this agent. Sub-Planners live in the Inspector tree.")))
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); })
-                    ]
-
-                // Selected agent pill (ID|Version) — click navigates to ECS debugger
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SCkDebug_EntityRef)
-                            .Entity_Lambda([this]() -> FCk_Handle
-                            {
-                                if (NOT _ViewModel.IsValid()) { return FCk_Handle{}; }
-                                return _ViewModel->GetSelectedEntity();
-                            })
-                    ]
-
-                // Viewport picker (shared) — click a GOAP agent in the world.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SCkDebug_ViewportPickerControls)
-                            .Picker(_ViewportPicker)
-                            .PickTooltip(FText::FromString(TEXT(
-                                "Enter pick mode: click a GOAP agent in the viewport to inspect it.\n"
-                                "Only entities with GOAP (and their owning NPC) are shown and pickable.")))
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .FillWidth(1.0f)
-
-                // Transport: LIVE / step-back / step-forward — the mockup's
-                // timeline transport. LIVE returns to live; steps scrub the
-                // history ring.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                    [
-                        SNew(SButton)
-                            .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
-                            .ContentPadding(FMargin(2.0f))
-                            .ToolTipText(FText::FromString(TEXT("Live — follow the game. Scrubbing the timeline pauses on a recorded event.")))
-                            .OnClicked_Lambda([this]() -> FReply
-                            {
-                                if (_ViewModel.IsValid())
-                                {
-                                    _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live);
-                                    _ViewModel->SetScrubEventIndex(INDEX_NONE);
-                                }
-                                return FReply::Handled();
-                            })
-                            [
-                                SNew(SCkDebug_StatusPill)
-                                    .Text_Lambda([this]() -> FText
-                                    {
-                                        const auto IsLive = NOT _ViewModel.IsValid()
-                                            || _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live;
-                                        if (IsLive) { return FText::FromString(TEXT("LIVE")); }
-                                        return FText::FromString(FString::Printf(TEXT("PAUSED @ #%d"),
-                                            _ViewModel->GetScrubEventIndex() + 1));
-                                    })
-                                    .Tone_Lambda([this]() -> ECk_Tone
-                                    {
-                                        const auto IsLive = NOT _ViewModel.IsValid()
-                                            || _ViewModel->GetMode() == FCkGoapDebugger_ViewModel::EMode::Live;
-                                        return IsLive ? ECk_Tone::Ok : ECk_Tone::Warn;
-                                    })
-                            ]
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    [
-                        SNew(SButton)
-                            .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
-                            .ContentPadding(FMargin(6.0f, 2.0f))
-                            .ToolTipText(FText::FromString(TEXT("Step one recorded event back (enters Scrub)")))
-                            .OnClicked_Lambda([this, ScrubTo]() -> FReply
-                            {
-                                const auto Current = _ViewModel.IsValid() ? _ViewModel->GetScrubEventIndex() : INDEX_NONE;
-                                ScrubTo(Current == INDEX_NONE ? MAX_int32 - 1 : Current - 1);
-                                return FReply::Handled();
-                            })
-                            [
-                                SNew(STextBlock)
-                                    .Text(FText::FromString(TEXT("|◀")))
-                                    .Font_Lambda([]() -> FSlateFontInfo
-                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
-                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                            ]
-                    ]
-
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SButton)
-                            .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
-                            .ContentPadding(FMargin(6.0f, 2.0f))
-                            .ToolTipText(FText::FromString(TEXT("Step one recorded event forward")))
-                            .OnClicked_Lambda([this, ScrubTo]() -> FReply
-                            {
-                                const auto Current = _ViewModel.IsValid() ? _ViewModel->GetScrubEventIndex() : INDEX_NONE;
-                                if (Current != INDEX_NONE) { ScrubTo(Current + 1); }
-                                return FReply::Handled();
-                            })
-                            [
-                                SNew(STextBlock)
-                                    .Text(FText::FromString(TEXT("▶|")))
-                                    .Font_Lambda([]() -> FSlateFontInfo
-                                    { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeBody()); })
-                                    .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                            ]
-                    ]
-
-                // REC — history ring indicator; click clears the recording.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SButton)
-                            .ButtonStyle(&FCkDebuggerCommonStyle::Get_FlatButtonStyle())
-                            .ContentPadding(FMargin(2.0f))
-                            .ToolTipText(FText::FromString(TEXT("History recording is always on. Click to CLEAR the selected agent's recorded events.")))
-                            .OnClicked_Lambda([this]() -> FReply
-                            {
-                                if (_ViewModel.IsValid())
-                                {
-                                    const auto Entity = _ViewModel->GetSelectedEntity();
-                                    if (ck::IsValid(Entity))
-                                    { FCkGoapDebugger_DataCollector::ClearHistoryForEntity(Entity); }
-                                    _ViewModel->SetScrubEventIndex(INDEX_NONE);
-                                    _ViewModel->SetMode(FCkGoapDebugger_ViewModel::EMode::Live);
-                                }
-                                return FReply::Handled();
-                            })
-                            [
-                                SNew(SCkDebug_StatusPill)
-                                    .Text(FText::FromString(TEXT("REC")))
-                                    .Tone(ECk_Tone::Err)
-                            ]
-                    ]
-
-                // Nerd mode — reveals search internals.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
-                    [
-                        SNew(STextBlock)
-                            .Text(FText::FromString(TEXT("Nerd mode")))
-                            .Font_Lambda([]() -> FSlateFontInfo
-                            { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeSmall()); })
-                            .ColorAndOpacity(FSlateColor(CkStyle::TextDim()))
-                            .ToolTipText(FText::FromString(TEXT("Reveal search internals: budget usage, states expanded, the regressive trace, entity handles.")))
-                    ]
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
-                    [
-                        SNew(SCkDebug_Switch)
-                            .IsOn_Lambda([this] { return _NerdMode; })
-                            .OnStateChanged_Lambda([this](bool InNew)
-                            {
-                                _NerdMode = InNew;
-                                if (_ViewModel.IsValid()) { _ViewModel->Broadcast_Changed(); }
-                            })
-                    ]
-
-                // Name depth verbosity — the shared cycler widget. Depth lives
-                // on the ViewModel; every pane that renders class names
-                // re-renders off the Changed broadcast.
-                + SHorizontalBox::Slot()
-                    .AutoWidth()
-                    .VAlign(VAlign_Center)
-                    .Padding(0.0f, 0.0f, FCkGoapDebuggerStyle::Padding_Medium, 0.0f)
-                    [
-                        SNew(SCkDebug_NameDepthCycler)
-                            .Depth_Lambda([this]() -> int32
-                            {
-                                return _ViewModel.IsValid() ? _ViewModel->Get_NameDepth() : 1;
-                            })
-                            .MaxDepth_Lambda([this]() -> int32
-                            {
-                                return _GraphPane.IsValid() ? _GraphPane->Get_MaxNameDepth() : 1;
-                            })
-                            .OnDepthChanged(FOnCkDebug_NameDepthChanged::CreateLambda([this](int32 InNewDepth)
-                            {
-                                if (NOT _ViewModel.IsValid()) { return; }
-                                _ViewModel->Set_NameDepth(InNewDepth);
-                                _ViewModel->Broadcast_Changed();
-                            }))
-                    ]
-        ];
+    return {
+        FCkDebug_CommandGroup::Primary(TEXT("GoapPauseOn"), FText::FromString(TEXT("GOAP pause-on actions")), BuildMenuActions()),
+        FCkDebug_CommandGroup::Context(TEXT("GoapTarget"), FText::FromString(TEXT("GOAP target selection")), Target),
+        FCkDebug_CommandGroup::Context(TEXT("GoapPlayback"), FText::FromString(TEXT("GOAP playback")), Playback),
+        FCkDebug_CommandGroup::Context(TEXT("GoapDisplay"), FText::FromString(TEXT("GOAP display and names")), Display)};
 }
+
 
 // ====================================================================================================================
 // CHROME PICKERS

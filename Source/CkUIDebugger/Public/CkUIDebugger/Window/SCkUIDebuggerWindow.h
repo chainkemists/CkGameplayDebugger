@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CkUI/Types/CkUI_Types.h"
+#include "CkUICore/Types/CkUI_Types.h"
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"

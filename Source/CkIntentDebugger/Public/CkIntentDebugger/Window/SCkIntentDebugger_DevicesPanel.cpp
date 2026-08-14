@@ -4,6 +4,7 @@
 
 #include "CkDebuggerCommon/Devices/SCkDebug_DeviceKeyboard.h"
 #include "CkDebuggerCommon/Devices/SCkDebug_DeviceMouse.h"
+#include "CkDebuggerCommon/Devices/SCkDebug_DeviceGamepad.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -24,6 +25,9 @@ namespace ck_intent_debugger_devices
 
     constexpr auto MouseMaxWidth = 135.0f;
     constexpr auto MouseMaxHeight = 205.0f;
+
+    constexpr auto GamepadMaxWidth = 320.0f;
+    constexpr auto GamepadMaxHeight = 205.0f;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -80,13 +84,25 @@ auto
                             .Snapshot_Lambda(SnapshotLambda)
                     ]
                 ]
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
+                    .Padding(ck_intent_debugger_devices::PadM, 0.0f, 0.0f, 0.0f)
+                [
+                    SNew(SBox)
+                        .MaxDesiredWidth(ck_intent_debugger_devices::GamepadMaxWidth)
+                        .MaxDesiredHeight(ck_intent_debugger_devices::GamepadMaxHeight)
+                    [
+                        SNew(SCkDebug_DeviceGamepad)
+                            .Snapshot_Lambda(SnapshotLambda)
+                    ]
+                ]
             ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(0.0f, ck_intent_debugger_devices::PadM, 0.0f, 0.0f)
             [
                 SNew(STextBlock)
                     .Text(FText::FromString(TEXT(
-                        "Every device edge is captured ungated; sub-frame taps coalesce to one row. Gamepad joins in the next slice.")))
+                        "Every device edge is captured ungated; sub-frame taps coalesce to one row.")))
                     .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
                     .ColorAndOpacity(CkStyle::TextMute())
             ]

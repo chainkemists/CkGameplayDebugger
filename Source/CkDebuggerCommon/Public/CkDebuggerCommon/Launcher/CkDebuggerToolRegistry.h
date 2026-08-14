@@ -4,6 +4,15 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
+class SDockTab;
+
+// Builds this tool's tab OUTSIDE the nomad spawner — the dock-into-existing-window path needs an
+// unmanaged tab it can insert next to a live one. Modules typically bind a lambda forwarding to
+// their existing OnSpawnDebuggerTab.
+DECLARE_DELEGATE_RetVal(TSharedRef<SDockTab>, FCkDebuggerToolTabFactory);
+
+// --------------------------------------------------------------------------------------------------------------------
+
 enum class ECkDebuggerToolCategory : uint8
 {
     Invalid,
@@ -46,6 +55,13 @@ public:
     auto Get_IconId() const -> FName { return _IconId; }
     auto Get_Category() const -> ECkDebuggerToolCategory { return _Category; }
     auto Get_SortOrder() const -> int32 { return _SortOrder; }
+    auto Get_TabFactory() const -> const FCkDebuggerToolTabFactory& { return _TabFactory; }
+
+    auto Set_TabFactory(FCkDebuggerToolTabFactory InTabFactory) -> FCkDebuggerToolDescriptor&
+    {
+        _TabFactory = MoveTemp(InTabFactory);
+        return *this;
+    }
 
 private:
     FName _OwnerModule;
@@ -55,6 +71,7 @@ private:
     FName _IconId;
     ECkDebuggerToolCategory _Category = ECkDebuggerToolCategory::Invalid;
     int32 _SortOrder = 0;
+    FCkDebuggerToolTabFactory _TabFactory;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

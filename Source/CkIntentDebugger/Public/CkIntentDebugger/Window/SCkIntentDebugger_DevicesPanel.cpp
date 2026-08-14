@@ -2,33 +2,7 @@
 
 #include "CkIntentDebugger/ViewModel/CkIntentDebugger_ViewModel.h"
 
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceKeyboard.h"
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceMouse.h"
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceGamepad.h"
-
-#include "CkEditorTools/Style/CkStyle.h"
-
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Layout/SScrollBox.h"
-#include "Widgets/SBoxPanel.h"
-#include "Widgets/Text/STextBlock.h"
-
-// --------------------------------------------------------------------------------------------------------------------
-
-namespace ck_intent_debugger_devices
-{
-    constexpr auto PadS = 4.0f;
-    constexpr auto PadM = 8.0f;
-
-    constexpr auto KeyboardMaxWidth = 760.0f;
-    constexpr auto KeyboardMaxHeight = 230.0f;
-
-    constexpr auto MouseMaxWidth = 135.0f;
-    constexpr auto MouseMaxHeight = 205.0f;
-
-    constexpr auto GamepadMaxWidth = 320.0f;
-    constexpr auto GamepadMaxHeight = 205.0f;
-}
+#include "CkDebuggerCommon/Devices/SCkDebug_DevicesPanel.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -52,61 +26,10 @@ auto
 
     ChildSlot
     [
-        SNew(SScrollBox)
-
-        + SScrollBox::Slot().Padding(ck_intent_debugger_devices::PadM, ck_intent_debugger_devices::PadS)
-        [
-            SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left)
-            [
-                SNew(SHorizontalBox)
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
-                [
-                    SNew(SBox)
-                        .MaxDesiredWidth(ck_intent_debugger_devices::KeyboardMaxWidth)
-                        .MaxDesiredHeight(ck_intent_debugger_devices::KeyboardMaxHeight)
-                    [
-                        SNew(SCkDebug_DeviceKeyboard)
-                            .Snapshot_Lambda(SnapshotLambda)
-                    ]
-                ]
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
-                    .Padding(ck_intent_debugger_devices::PadM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SBox)
-                        .MaxDesiredWidth(ck_intent_debugger_devices::MouseMaxWidth)
-                        .MaxDesiredHeight(ck_intent_debugger_devices::MouseMaxHeight)
-                    [
-                        SNew(SCkDebug_DeviceMouse)
-                            .Snapshot_Lambda(SnapshotLambda)
-                    ]
-                ]
-
-                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top)
-                    .Padding(ck_intent_debugger_devices::PadM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SBox)
-                        .MaxDesiredWidth(ck_intent_debugger_devices::GamepadMaxWidth)
-                        .MaxDesiredHeight(ck_intent_debugger_devices::GamepadMaxHeight)
-                    [
-                        SNew(SCkDebug_DeviceGamepad)
-                            .Snapshot_Lambda(SnapshotLambda)
-                    ]
-                ]
-            ]
-
-            + SVerticalBox::Slot().AutoHeight().Padding(0.0f, ck_intent_debugger_devices::PadM, 0.0f, 0.0f)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT(
-                        "Every device edge is captured ungated; sub-frame taps coalesce to one row.")))
-                    .Font(CkStyle::RegularFont(CkStyle::FontSizeSmall()))
-                    .ColorAndOpacity(CkStyle::TextMute())
-            ]
-        ]
+        SNew(SCkDebug_DevicesPanel)
+            .Snapshot_Lambda(SnapshotLambda)
+            .NoteText(FText::FromString(TEXT(
+                "Every device edge is captured ungated; sub-frame taps coalesce to one row.")))
     ];
 }
 

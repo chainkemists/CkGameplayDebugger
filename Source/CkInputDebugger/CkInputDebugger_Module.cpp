@@ -5,6 +5,7 @@
 #include "CkInputDebugger/Window/SCkInputDebuggerWindow.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -60,7 +61,9 @@ auto FCkInputDebuggerModule::StartupModule() -> void
         FText::FromString(TEXT("Inspect input contexts, actions, bindings, and live values")),
         TEXT("Input"),
         ECkDebuggerToolCategory::Interface,
-        20});
+        20}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
 }
 
 auto FCkInputDebuggerModule::ShutdownModule() -> void
@@ -84,7 +87,7 @@ auto FCkInputDebuggerModule::Get() -> FCkInputDebuggerModule&
 
 auto FCkInputDebuggerModule::OpenDebugger() -> void
 {
-    FGlobalTabmanager::Get()->TryInvokeTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
 }
 
 auto FCkInputDebuggerModule::CloseDebugger() -> void

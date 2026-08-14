@@ -7,6 +7,7 @@
 #include "CkCrowdDebugger/Settings/CkCrowdDebuggerSettings.h"
 
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
+#include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerUserSettingsMigration.h"
@@ -59,7 +60,9 @@ void FCkCrowdDebuggerModule::StartupModule()
 		LOCTEXT("LauncherTooltip", "Inspect crowd agents, navigation, paths, and avoidance"),
 		TEXT("People"),
 		ECkDebuggerToolCategory::Ai,
-		30});
+		30}
+        .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_TabId}}); })));
 
 	// The embedded editor viewport owns editor modes. Release it before Slate and the editor-mode subsystem shut down.
 	_EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(
@@ -116,7 +119,7 @@ auto FCkCrowdDebuggerModule::HandleEnginePreExit() -> void
 
 auto FCkCrowdDebuggerModule::OpenDebugger() -> void
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(_TabId);
+	ck::debugger_tabs::Invoke_DebuggerTab(_TabId);
 }
 
 auto FCkCrowdDebuggerModule::CloseDebugger() -> void

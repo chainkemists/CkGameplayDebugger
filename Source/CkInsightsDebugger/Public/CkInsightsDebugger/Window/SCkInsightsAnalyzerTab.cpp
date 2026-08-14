@@ -496,15 +496,28 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(TEXT("CkInsightsAnalyzer"))
         .ToolTabId(TEXT("CkInsightsAnalyzerTab"))
-        .DisplayName(FText::FromString(TEXT("Insights Analyzer")))
-        .MenuActionsContent()
-        [
-            DoCreateMenuActions()
-        ]
-        .ToolbarContent()
-        [
-            DoCreateToolbar()
-        ]
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(
+                TEXT("Capture"),
+                FText::FromString(TEXT("Timed trace capture")),
+                DoCreateCaptureControls()),
+            FCkDebug_CommandGroup::Primary(
+                TEXT("Profiling"),
+                FText::FromString(TEXT("Profiling event and stat controls")),
+                DoCreateProfilingActions()),
+            FCkDebug_CommandGroup::Primary(
+                TEXT("Limits"),
+                FText::FromString(TEXT("Profiling row limits")),
+                DoCreateLimitsControls()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("TraceSource"),
+                FText::FromString(TEXT("Trace file selection")),
+                DoCreateTraceSourceControls()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("Analysis"),
+                FText::FromString(TEXT("Trace analysis and export commands")),
+                DoCreateAnalysisControls()),
+        })
         .Content()
         [
             Content
@@ -534,7 +547,7 @@ SCkInsightsAnalyzerTab::~SCkInsightsAnalyzerTab()
 
 auto
     SCkInsightsAnalyzerTab::
-    DoCreateMenuActions()
+    DoCreateProfilingActions()
     -> TSharedRef<SWidget>
 {
     auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
@@ -642,8 +655,20 @@ auto
         TAttribute<bool>::CreateLambda([this]() { return DoGet_ShowAllChildren(); }),
         FOnCkDebug_IconToggleChanged::CreateSP(this, &SCkInsightsAnalyzerTab::DoOnShowAllChildrenChanged)});
 
-    return SNew(SHorizontalBox)
+    return SNew(SCkDebug_IconToolbar)
+        .Actions(MoveTemp(Actions));
+}
 
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoCreateCaptureControls()
+    -> TSharedRef<SWidget>
+{
+    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
+
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -667,7 +692,6 @@ auto
                 .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnCaptureClicked)
                 [
                     SNew(SOverlay)
-
                     + SOverlay::Slot()
                     [
                         SNew(SProgressBar)
@@ -680,7 +704,6 @@ auto
                         })
                         .FillColorAndOpacity(CkStyle::Accent())
                     ]
-
                     + SOverlay::Slot()
                     .HAlign(HAlign_Center)
                     .VAlign(VAlign_Center)
@@ -696,30 +719,26 @@ auto
                                 return FText::FromString(TEXT("Starting trace..."));
                             case ECkInsightsCaptureState::Recording:
                                 return FText::FromString(FString::Printf(
-                                    TEXT("Stop trace — %.1fs remaining"),
-                                    Snapshot.RemainingSeconds));
+                                    TEXT("Stop trace — %.1fs remaining"), Snapshot.RemainingSeconds));
                             case ECkInsightsCaptureState::Stopping:
                                 return FText::FromString(TEXT("Finalizing trace..."));
                             default:
                                 return Snapshot.bIsTracing
                                     ? FText::FromString(TEXT("External trace active"))
                                     : FText::FromString(FString::Printf(
-                                        TEXT("Capture %ds trace"),
-                                        _CaptureDurationSeconds));
+                                        TEXT("Capture %ds trace"), _CaptureDurationSeconds));
                             }
                         })
                     ]
                 ]
             ]
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
         .Padding(CkStyle::SpaceXS, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(SHorizontalBox)
-
             + SHorizontalBox::Slot()
             .AutoWidth()
             [
@@ -747,7 +766,6 @@ auto
                     })
                 ]
             ]
-
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -759,14 +777,11 @@ auto
                 .ColorAndOpacity(CkStyle::TextDim())
             ]
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             SNew(SHorizontalBox)
-
             + SHorizontalBox::Slot()
             .AutoWidth()
             [
@@ -807,7 +822,6 @@ auto
                     })
                 ]
             ]
-
             + SHorizontalBox::Slot()
             .AutoWidth()
             .VAlign(VAlign_Center)
@@ -818,88 +832,67 @@ auto
                 .Font(ck_insights_analyzer_tab::SmallFont())
                 .ColorAndOpacity(CkStyle::TextDim())
             ]
-        ]
+        ];
+}
 
-        + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
-        .HAlign(HAlign_Fill)
-        [
-            SNew(SCkDebug_IconToolbar)
-            .Actions(MoveTemp(Actions))
-        ]
+auto
+    SCkInsightsAnalyzerTab::
+    DoCreateLimitsControls()
+    -> TSharedRef<SWidget>
+{
+    auto* Capture = &FCkInsightsDebuggerModule::Get().Get_CaptureController();
 
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
         [
-            SNew(SHorizontalBox)
-
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+            SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Max/group")))
+            .Font_Static(&ck_insights_analyzer_tab::SmallFont)
+            .ColorAndOpacity(CkStyle::TextDim())
+            .ToolTipText(FText::FromString(TEXT(
+                "Maximum stat rows drawn for each enabled stat group (stats.MaxPerGroup).")))
+        ]
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        [
+            SNew(SBox)
+            .WidthOverride(64.0f)
             [
-                SNew(STextBlock)
-                .Text(FText::FromString(TEXT("Max/group")))
-                .Font_Static(&ck_insights_analyzer_tab::SmallFont)
-                .ColorAndOpacity(CkStyle::TextDim())
-                .ToolTipText(FText::FromString(TEXT(
-                    "Maximum stat rows drawn for each enabled stat group (stats.MaxPerGroup).")))
-            ]
+                SNew(SSpinBox<int32>)
+                .MinValue(1)
+                .MinSliderValue(1)
+                .MaxSliderValue(250)
+                .Delta(5)
+                .Value_Lambda([Capture]() { return Capture->Get_StatMaxPerGroup().Get(25); })
+                .IsEnabled_Lambda([Capture]() { return Capture->Get_StatMaxPerGroup().IsSet(); })
+                .OnValueCommitted_Lambda([this, Capture](int32 InValue, ETextCommit::Type)
+                {
+                    auto Error = FString{};
+                    if (NOT Capture->TrySet_StatMaxPerGroup(InValue, Error))
+                    {
+                        DoSetStatus(Error, ECk_Tone::Err);
+                        return;
+                    }
 
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            [
-                SNew(SBox)
-                .WidthOverride(64.0f)
-                [
-                    SNew(SSpinBox<int32>)
-                    .MinValue(1)
-                    .MinSliderValue(1)
-                    .MaxSliderValue(250)
-                    .Delta(5)
-                    .Value_Lambda([Capture]()
-                    {
-                        return Capture->Get_StatMaxPerGroup().Get(25);
-                    })
-                    .IsEnabled_Lambda([Capture]()
-                    {
-                        return Capture->Get_StatMaxPerGroup().IsSet();
-                    })
-                    .OnValueCommitted_Lambda([this, Capture](int32 InValue, ETextCommit::Type)
-                    {
-                        auto Error = FString{};
-                        if (NOT Capture->TrySet_StatMaxPerGroup(InValue, Error))
-                        {
-                            DoSetStatus(Error, ECk_Tone::Err);
-                            return;
-                        }
-
-                        DoSetStatus(
-                            FString::Printf(TEXT("stats.MaxPerGroup set to %d."), InValue),
-                            ECk_Tone::Ok);
-                    })
-                ]
+                    DoSetStatus(
+                        FString::Printf(TEXT("stats.MaxPerGroup set to %d."), InValue),
+                        ECk_Tone::Ok);
+                })
             ]
         ];
 }
 
-// --------------------------------------------------------------------------------------------------------------------
-
 auto
     SCkInsightsAnalyzerTab::
-    DoCreateToolbar()
+    DoCreateTraceSourceControls()
     -> TSharedRef<SWidget>
 {
     using namespace ck_insights_analyzer_tab;
 
-    return SNew(SBorder)
-        .BorderImage(CkStyle::GetFilledBrush())
-        .BorderBackgroundColor(CkStyle::BgRoot())
-        .Padding(FMargin{PanelPadding})
-        [
-            SNew(SHorizontalBox)
+    return SNew(SHorizontalBox)
 
         + SHorizontalBox::Slot()
         .AutoWidth()
@@ -928,6 +921,17 @@ auto
             ]
         ]
 
+        ;
+}
+
+auto
+    SCkInsightsAnalyzerTab::
+    DoCreateAnalysisControls()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_insights_analyzer_tab;
+
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -952,12 +956,11 @@ auto
                 [
                     SAssignNew(_DepthCombo, STextComboBox)
                     .OptionsSource(&_DepthOptions)
-                    .InitiallySelectedItem(_DepthOptions[1]) // Standard
+                    .InitiallySelectedItem(_DepthOptions[1])
                     .OnSelectionChanged(this, &SCkInsightsAnalyzerTab::DoOnDepthSelectionChanged)
                 ]
             ]
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .Padding(0.0f, 0.0f, SectionSpacing, 0.0f)
@@ -968,7 +971,6 @@ auto
             .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnAnalyzeWorstClicked)
             .HAlign(HAlign_Center)
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .Padding(0.0f, 0.0f, SectionSpacing, 0.0f)
@@ -979,18 +981,15 @@ auto
             .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnCopyToClipboardClicked)
             .HAlign(HAlign_Center)
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
-        .Padding(0.0f, 0.0f, SectionSpacing, 0.0f)
         [
             SNew(SButton)
             .Text(FText::FromString(TEXT("Export JSON...")))
-            .ToolTipText(FText::FromString(TEXT("Save the current analysis as a machine-readable JSON report (same format as the commandlet's -json output)")))
+            .ToolTipText(FText::FromString(TEXT(
+                "Save the current analysis as a machine-readable JSON report (same format as the commandlet's -json output)")))
             .OnClicked(this, &SCkInsightsAnalyzerTab::DoOnExportJsonClicked)
             .HAlign(HAlign_Center)
-        ]
-
         ];
 }
 
@@ -1029,6 +1028,7 @@ auto
             .Text(FText::FromString(TEXT("No trace loaded. Click \"Open .utrace...\" to begin.")))
             .Font_Static(&BodyFont)
             .ColorAndOpacity(CkStyle::TextDim())
+            .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
         ];
 }
 

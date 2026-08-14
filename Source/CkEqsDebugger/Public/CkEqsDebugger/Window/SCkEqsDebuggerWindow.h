@@ -36,7 +36,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK EQS Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("EQS")); }
 
 protected:
     virtual auto OnStyleRevisionChanged() -> void override;

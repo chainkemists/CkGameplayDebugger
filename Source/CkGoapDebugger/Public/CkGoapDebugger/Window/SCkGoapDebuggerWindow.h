@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CommandBar.h"
 
 // ====================================================================================================================
 
@@ -56,7 +57,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Goap Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("GOAP")); }
 
     // -----------------------------------------------------------------------------------------------------------------
     // External entry point — used by the inspector gateway (D7) to invoke the
@@ -93,7 +94,7 @@ private:
     // Build helpers — called once from Construct; result subtrees are cached.
     // -----------------------------------------------------------------------------------------------------------------
 
-    auto BuildChromeBar() -> TSharedRef<SWidget>;
+    auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto BuildMenuActions() -> TSharedRef<SWidget>;
     auto BuildNerdStrip() -> TSharedRef<SWidget>;
     auto BuildAlertStrip() -> TSharedRef<SWidget>;

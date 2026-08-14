@@ -18,7 +18,6 @@
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -197,24 +196,8 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkObjectPoolingDebugger"))
-        .DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            SNew(SCkDebug_IconToolbar)
-            .Actions({
-                FCkDebug_IconToggleAction{
-                    TEXT("PoolsInUseOnly"),
-                    TEXT("Hourglass"),
-                    FText::FromString(TEXT("In Use Only")),
-                    FText::FromString(TEXT("Show only pools with one or more borrowed instances.")),
-                    TAttribute<bool>::CreateLambda([this]() { return _ShowInUseOnly; }),
-                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
-                    {
-                        _ShowInUseOnly = InIsEnabled;
-                        DoRefresh_VisibleItems();
-                    })}
-            })
-        ]
+        .ShowRefreshControls(true)
+        .CommandGroups(BuildCommandGroups())
         .Content()
         [
             SNew(SBorder)
@@ -222,9 +205,6 @@ auto
         .BorderBackgroundColor(CkStyle::BgRoot())
         [
             SNew(SVerticalBox)
-
-            + SVerticalBox::Slot().AutoHeight()
-                [ BuildToolbar() ]
 
             + SVerticalBox::Slot().AutoHeight()
                 [ BuildOverviewStrip() ]
@@ -294,15 +274,10 @@ auto
 
 auto
     SCkObjectPoolingDebuggerWindow::
-    BuildToolbar()
-    -> TSharedRef<SWidget>
+    BuildCommandGroups()
+    -> TArray<FCkDebug_CommandGroup>
 {
-    return SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(CkStyle::Bg1())
-        .Padding(FMargin(CkStyle::SpaceM, CkStyle::SpaceS))
-        [
-            SNew(SHorizontalBox)
+    const auto PoolContext = SNew(SHorizontalBox)
 
             + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
                 [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
@@ -328,11 +303,8 @@ auto
                         .ColorAndOpacity(CkStyle::TextDim())
                 ]
 
-            + SHorizontalBox::Slot().FillWidth(1.0f)
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                [
-                    SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
+            ;
+    const auto PoolSearch = SAssignNew(_SearchBar, SCkDebug_DualSearchBar)
                         .FilterHintText(FText::FromString(TEXT("Filter pools…")))
                         .OnFilterTextChanged_Lambda([this](const FString& InText)
                         {
@@ -343,11 +315,8 @@ auto
                         {
                             _HighlightText = InText;
                         })
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [
-                    SNew(SButton)
+                ;
+    const auto PoolExport = SNew(SButton)
                         .ButtonStyle(FAppStyle::Get(), "SimpleButton")
                         .ContentPadding(FMargin(CkStyle::SpaceS, 2.0f))
                         .ToolTipText(FText::FromString(TEXT("Write a JSON report of every pool (counters + params) "
@@ -359,11 +328,26 @@ auto
                                 .Font_Static(&ck_object_pooling_debugger_window::Font_BoldMicro)
                                 .ColorAndOpacity(CkStyle::Accent())
                         ]
-                ]
-
-            + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
-                [ SNew(SCkDebugger_RefreshControls).WindowId(SCkObjectPoolingDebuggerWindow::WindowId) ]
-        ];
+                ;
+    return {
+        FCkDebug_CommandGroup::Primary(
+            TEXT("PoolsInUseOnly"),
+            FText::FromString(TEXT("Object pooling visibility")),
+            SNew(SCkDebug_IconToolbar).Actions({
+                FCkDebug_IconToggleAction{
+                    TEXT("PoolsInUseOnly"),
+                    TEXT("Hourglass"),
+                    FText::FromString(TEXT("In Use Only")),
+                    FText::FromString(TEXT("Show only pools with one or more borrowed instances.")),
+                    TAttribute<bool>::CreateLambda([this]() { return _ShowInUseOnly; }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([this](const bool InIsEnabled)
+                    {
+                        _ShowInUseOnly = InIsEnabled;
+                        DoRefresh_VisibleItems();
+                    })}})),
+        FCkDebug_CommandGroup::Context(TEXT("PoolContext"), FText::FromString(TEXT("Pool context and subsystem health")), PoolContext),
+        FCkDebug_CommandGroup::Context(TEXT("PoolSearch"), FText::FromString(TEXT("Pool filter and highlight search")), PoolSearch),
+        FCkDebug_CommandGroup::Context(TEXT("PoolExport"), FText::FromString(TEXT("Pool report export")), PoolExport)};
 }
 
 // --------------------------------------------------------------------------------------------------------------------

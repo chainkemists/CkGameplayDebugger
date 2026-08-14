@@ -89,10 +89,11 @@ When an inspector allocates per-entity state (debug draw, registered delegates, 
 
 ## ECS-Specific Conventions
 
-- Use `SCkDebug_IconToggle` only for fixed-icon booleans and place debugger-wide actions in
-  `SCkDebug_WindowChrome::MenuActionsContent`. Use `SCkDebug_ToggleSurface` for contextual,
+- Use `SCkDebug_IconToggle` only for fixed-icon booleans and place debugger-wide controls in
+  semantic `SCkDebug_WindowChrome::CommandGroups`. Use `SCkDebug_ToggleSurface` for contextual,
   content-bearing filters, cards, and dynamic feature chips; use `SSegmentedControl` for
-  mutually exclusive choices. Do not promote contextual entity filters into the window chrome.
+  mutually exclusive choices. Keep entity-specific filters in the inspector rather than promoting
+  them into window-wide command groups.
 - Inspector priority determines sort order (lower = higher in panel): EntityInfo=10, Transform=20, TagSet=25, Network=30, Relationships=40, etc.
 - Inspectors that need per-inspector search set `IsFilterable() -> true`
 - `FCkDebuggerStyle` (Slate brushes, text styles, padding + graph-node size constants, SVG icon registry) **moved to `CkDebuggerCommon/Styles/CkDebuggerStyle.h`** in the 2026-08-09 common-widget consolidation — it is now the whole suite's style set. Include the common path; do NOT call `Initialize`/`Shutdown` from this module (CkDebuggerCommon owns its lifetime). Cross-debugger colour tokens still live in `CkStyle::`.

@@ -21,7 +21,6 @@
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
 #include "CkDebuggerCommon/Settings/CkDebuggerStyleSettings.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
 #include "CkStateMachine/StateMachine/CkStateMachine_Fragment.h"
 
@@ -1046,22 +1045,19 @@ auto
         SNew(SCkDebug_WindowChrome)
              .WindowId(WindowId)
              .ToolTabId(TEXT("CkSmDebugger"))
-             .DisplayName(FText::FromString(TEXT("CK State Machine Debugger")))
-             .MenuActionsContent()
-             [
-                 BuildMenuActions()
-             ]
+             .ShowRefreshControls(true)
+             .CommandGroups({
+                 FCkDebug_CommandGroup::Primary(TEXT("SmView"), FText::FromString(TEXT("State machine view controls")), BuildMenuActions()),
+                 FCkDebug_CommandGroup::Context(TEXT("Target"), FText::FromString(TEXT("State machine target controls")), BuildTargetCommands()),
+                 FCkDebug_CommandGroup::Context(TEXT("Graph"), FText::FromString(TEXT("Graph layout controls")), BuildGraphCommands()),
+                 FCkDebug_CommandGroup::Context(
+                     TEXT("Playback"),
+                     FText::FromString(TEXT("State machine playback, preview, and breakpoint controls")),
+                     BuildPlaybackCommands())
+             })
              .Content()
-            [
-                SNew(SVerticalBox)
-
-            // Toolbar
-            + SVerticalBox::Slot()
-                .AutoHeight()
-                .Padding(4.0f)
-                [
-                    BuildToolbar()
-                ]
+             [
+                 SNew(SVerticalBox)
 
             // Main content area — wrapped in a horizontal splitter so the preview
             // pane can slide in on the right at 50% width without disturbing the
@@ -1596,7 +1592,7 @@ auto
 
 auto
     SCkSmDebuggerWindow::
-    BuildToolbar()
+    BuildTargetCommands()
     -> TSharedRef<SWidget>
 {
 
@@ -1681,18 +1677,6 @@ auto
                     ]
             ]
 
-        // ── Separator ────────────────────────────────────────────────────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(6.0f, 0.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(CkStyle::TextMute())
-            ]
-
         // ── Owning entity (clickable → opens in CK ECS Debugger) ─────────
         // Sits next to the SM combo; that combo already shows the entity's
         // DebugName, so the pill renders just the canonical ID. Same pattern
@@ -1717,15 +1701,15 @@ auto
                     })
             ]
 
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(0.0f, 0.0f, 6.0f, 0.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(CkStyle::TextMute())
-            ]
+        ;
+}
+
+auto
+    SCkSmDebuggerWindow::
+    BuildGraphCommands()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
 
         // Name depth — the shared cycler widget. Runtime presentation owns this value.
         + SHorizontalBox::Slot()
@@ -2082,17 +2066,15 @@ auto
                     ]
             ]
 
-        // ── Separator ────────────────────────────────────────────────────
+        ;
+}
 
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(6.0f, 0.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text(FText::FromString(TEXT("|")))
-                    .ColorAndOpacity(CkStyle::TextMute())
-            ]
+auto
+    SCkSmDebuggerWindow::
+    BuildPlaybackCommands()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
 
         // ── Playback: mode indicator + buttons ───────────────────────────
 
@@ -2224,41 +2206,44 @@ auto
                     })
             ]
 
-        // ── Spacer ───────────────────────────────────────────────────────
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            BuildPreviewPickerCommands()
+        ]
 
         + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            [
-                SNullWidget::NullWidget
-            ]
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        [
+            BuildBreakpointCommands()
+        ];
+}
 
-        // ── Preview picker (inline, only visible when the preview pane is open) ──
-        // Sharing the main toolbar row keeps the preview graph top aligned with
-        // the live graph top on the left. Occupies the right half via FillWidth(1).
-        + SHorizontalBox::Slot()
-            .FillWidth(1.0f)
-            .VAlign(VAlign_Center)
-            .Padding(2.0f)
-            [
-                SNew(SBox)
-                    .Visibility_Lambda([this]()
-                    {
-                        return _IsPreviewOpen ? EVisibility::Visible : EVisibility::Collapsed;
-                    })
-                    [
-                        _PreviewPane->BuildPickerRow()
-                    ]
-            ]
+auto
+    SCkSmDebuggerWindow::
+    BuildPreviewPickerCommands()
+    -> TSharedRef<SWidget>
+{
+    // The picker remains an atomic group because it only appears with the preview pane.
+    return SNew(SBox)
+        .Visibility_Lambda([this]()
+        {
+            return _IsPreviewOpen ? EVisibility::Visible : EVisibility::Collapsed;
+        })
+        [
+            _PreviewPane->BuildPickerRow()
+        ];
+}
 
-        // ── Breakpoint status (right-aligned) ───────────────────────────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.0f)
-            .VAlign(VAlign_Center)
-            [
-                SNew(STextBlock)
-                    .Text_Lambda([this]()
+auto
+    SCkSmDebuggerWindow::
+    BuildBreakpointCommands()
+    -> TSharedRef<SWidget>
+{
+    return SNew(STextBlock)
+        .Text_Lambda([this]()
                     {
                         if (NOT _ViewModel.IsValid())
                         { return FText::GetEmpty(); }
@@ -2273,7 +2258,7 @@ auto
 
                         return FText::GetEmpty();
                     })
-                    .ToolTipText_Lambda([this]()
+        .ToolTipText_Lambda([this]()
                     {
                         if (NOT _ViewModel.IsValid())
                         { return FText::GetEmpty(); }
@@ -2283,21 +2268,9 @@ auto
                                    ? FText::FromString(SmInfo->BreakpointHitDescription)
                                    : FText::GetEmpty();
                     })
-                    .ColorAndOpacity(CkStyle::Err())
-                    .Font_Lambda([]() -> FSlateFontInfo
-                    { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); })
-            ]
-
-        // ── Per-window refresh controls ─────────────────────────────────
-
-        + SHorizontalBox::Slot()
-            .AutoWidth()
-            .VAlign(VAlign_Center)
-            .Padding(12.0f, 0.0f, 0.0f, 0.0f)
-            [
-                SNew(SCkDebugger_RefreshControls)
-                    .WindowId(SCkSmDebuggerWindow::WindowId)
-            ];
+        .ColorAndOpacity(CkStyle::Err())
+        .Font_Lambda([]() -> FSlateFontInfo
+        { return ck::debug_axes::ScaledFont("Bold", CkStyle::FontSizeBody()); });
 }
 
 // --------------------------------------------------------------------------------------------------------------------

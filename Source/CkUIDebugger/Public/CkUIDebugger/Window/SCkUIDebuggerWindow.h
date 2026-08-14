@@ -78,7 +78,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK UI Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("UI")); }
 
 protected:
     // Layer slots + history rows are built imperatively, so anything they read at build time (row
@@ -121,7 +121,7 @@ private:
     // ---- Name shortening ----
 
     // Depth-shortens via SCkDebug_NameLabel::Get_ShortName and tracks the
-    // largest segment count seen so the toolbar cycler's Max stays honest.
+    // largest segment count seen so the command-bar cycler's Max stays honest.
     auto DoShortName(const FString& InFullName) -> FString;
 
     // ---- Widgets ----

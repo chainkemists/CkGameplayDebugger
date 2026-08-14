@@ -44,7 +44,7 @@ public:
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
     virtual auto Get_WindowDisplayName() const -> FText override
-    { return FText::FromString(TEXT("CK Intent Debugger")); }
+    { return FText::FromString(TEXT("Intent")); }
 
 public:
     /**

@@ -10,7 +10,6 @@
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
 #include "CkDebuggerCommon/Window/SCkDebug_WindowChrome.h"
-#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SelectableLabel.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
@@ -128,22 +127,14 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(Get_WindowId())
         .ToolTabId(TEXT("CkEqsDebugger"))
-        .DisplayName(Get_WindowDisplayName())
-        .MenuActionsContent()
-        [
-            BuildMenuActions()
-        ]
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(TEXT("CaptureAndOverlay"), FText::FromString(TEXT("Capture and overlay controls")), BuildMenuActions()),
+            FCkDebug_CommandGroup::Context(TEXT("WorldAndStatus"), FText::FromString(TEXT("World and query status")), BuildToolbar())
+        })
+        .ShowRefreshControls(true)
         .Content()
         [
         SNew(SVerticalBox)
-        + SVerticalBox::Slot().AutoHeight().Padding(FMargin{6.0f})
-        [
-            BuildToolbar()
-        ]
-        + SVerticalBox::Slot().AutoHeight()
-        [
-            ck::debug_axes::Make_AxisSeparator()
-        ]
         + SVerticalBox::Slot().FillHeight(1.0f).Padding(FMargin{6.0f, 6.0f, 6.0f, 6.0f})
         [
             SNew(SSplitter)
@@ -241,26 +232,11 @@ auto
 {
     return SNew(SHorizontalBox)
 
-        // Title
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 12.0f, 0.0f})
-        [
-            SNew(STextBlock)
-            .Text(FText::FromString(TEXT("CK EQS Debugger")))
-            .ColorAndOpacity(FSlateColor{CkStyle::Text()})
-            .Font_Static(&ck_eqs_debugger_window::Get_TitleFont)
-        ]
-
         // World selector (shared across all CK debuggers)
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{0.0f, 0.0f, 12.0f, 0.0f})
         [
             SNew(SCkDebug_WorldSelector, _WorldModel)
             .ShowHeaderLabel(false)
-        ]
-
-        // Separator
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{6.0f, 0.0f})
-        [
-            ck_eqs_debugger_window::Make_VerticalAxisSeparator()
         ]
 
         // Status text (query count + pause indicator).
@@ -271,11 +247,7 @@ auto
             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
         ]
 
-        // Refresh-rate / mode controls — common widget; reads/writes UCkDebuggerWindowSettings.
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin{12.0f, 0.0f, 0.0f, 0.0f})
-        [
-            SNew(SCkDebugger_RefreshControls).WindowId(WindowId)
-        ];
+        ;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

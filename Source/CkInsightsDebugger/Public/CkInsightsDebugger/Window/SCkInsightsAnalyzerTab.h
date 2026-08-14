@@ -64,8 +64,11 @@ private:
 
     // ---- UI Construction ----
 
-    auto DoCreateToolbar() -> TSharedRef<SWidget>;
-    auto DoCreateMenuActions() -> TSharedRef<SWidget>;
+    auto DoCreateCaptureControls() -> TSharedRef<SWidget>;
+    auto DoCreateProfilingActions() -> TSharedRef<SWidget>;
+    auto DoCreateLimitsControls() -> TSharedRef<SWidget>;
+    auto DoCreateTraceSourceControls() -> TSharedRef<SWidget>;
+    auto DoCreateAnalysisControls() -> TSharedRef<SWidget>;
     auto DoCreateStatus() -> TSharedRef<SWidget>;
     auto DoCreateSummaryStrip() -> TSharedRef<SWidget>;
     auto DoCreateResultsArea() -> TSharedRef<SWidget>;

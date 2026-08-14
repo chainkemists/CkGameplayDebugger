@@ -45,7 +45,7 @@ public:
     auto SupportsKeyboardFocus() const -> bool override { return true; }
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK SM Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("State Machine")); }
 
 protected:
     // Structural style axes changed — re-emit the surfaces that COMPOSE against an axis instead of
@@ -54,8 +54,12 @@ protected:
     virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
-    auto BuildToolbar() -> TSharedRef<SWidget>;
     auto BuildMenuActions() -> TSharedRef<SWidget>;
+    auto BuildTargetCommands() -> TSharedRef<SWidget>;
+    auto BuildGraphCommands() -> TSharedRef<SWidget>;
+    auto BuildPlaybackCommands() -> TSharedRef<SWidget>;
+    auto BuildPreviewPickerCommands() -> TSharedRef<SWidget>;
+    auto BuildBreakpointCommands() -> TSharedRef<SWidget>;
     auto BuildTimelineToolbar() -> TSharedRef<SWidget>;
     auto BuildDetailPanel() -> TSharedRef<SWidget>;
     auto BuildDetailContent() -> TSharedRef<SWidget>;

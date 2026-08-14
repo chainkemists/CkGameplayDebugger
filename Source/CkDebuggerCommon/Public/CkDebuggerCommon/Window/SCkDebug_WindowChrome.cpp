@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 #include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+#include "CkDebuggerCommon/Window/SCkDebugger_RefreshControls.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_UseEcsSelection.h"
 #include "CkEditorTools/Style/CkStyle.h"
 
@@ -34,7 +35,6 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
     {}
     _ToolTabId = HasToolTabId ? InArgs._ToolTabId : _WindowId;
 
-    _DisplayName = InArgs._DisplayName;
     _StatusText = InArgs._StatusText;
 
     const auto MenuActions = InArgs._MenuActionsContent.Widget;
@@ -44,6 +44,22 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
     const auto HasMenuActions = MenuActions != SNullWidget::NullWidget;
     const auto HasToolbar = Toolbar != SNullWidget::NullWidget;
     const auto HasStatusWidget = Status != SNullWidget::NullWidget;
+    auto CommandGroups = InArgs._CommandGroups;
+    if (HasMenuActions)
+    {
+        CommandGroups.Add(FCkDebug_CommandGroup::Primary(
+            TEXT("LegacyMenuActions"),
+            FText::FromString(TEXT("Debugger view actions")),
+            MenuActions));
+    }
+    if (HasToolbar)
+    {
+        CommandGroups.Add(FCkDebug_CommandGroup::Context(
+            TEXT("LegacyToolbar"),
+            FText::FromString(TEXT("Debugger commands")),
+            Toolbar));
+    }
+
     const auto EffectiveStatus = HasStatusWidget
         ? Status
         : StaticCastSharedRef<SWidget>(
@@ -66,62 +82,78 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                 + SVerticalBox::Slot()
                 .AutoHeight()
                 [
-                    SNew(SBorder)
-                        .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
-                        .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
-                        .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceS})
+                    SNew(SCkDebug_CommandBar)
+                    .Groups(MoveTemp(CommandGroups))
+                    .UtilityContent()
+                    [
+                        SNew(SHorizontalBox)
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
                         [
-                            SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .HAlign(HAlign_Left)
-                            .VAlign(VAlign_Center)
-                            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                            SNew(SBox)
+                            .MaxDesiredWidth(320.0f)
+                            .Clipping(EWidgetClipping::ClipToBounds)
+                            .Visibility_Lambda([this, HasStatusWidget]()
+                            {
+                                return HasStatusWidget || NOT _StatusText.Get().IsEmpty()
+                                    ? EVisibility::Visible
+                                    : EVisibility::Collapsed;
+                            })
+                            [
+                                EffectiveStatus
+                            ]
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                        [
+                            SNew(SBox)
+                            .Visibility_Lambda([this]()
+                            {
+                                return FCkDebug_EntityTargetRegistry::Get().Has_Route(_ToolTabId)
+                                    ? EVisibility::Visible
+                                    : EVisibility::Collapsed;
+                            })
+                            [
+                                SNew(SCkDebug_UseEcsSelection)
+                                .TargetTabId(_ToolTabId)
+                            ]
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+                        [
+                            SNew(SBox)
+                            .Visibility(InArgs._ShowRefreshControls ? EVisibility::Visible : EVisibility::Collapsed)
+                            [
+                                SNew(SCkDebugger_RefreshControls)
+                                .WindowId(_WindowId)
+                            ]
+                        ]
+
+                        + SHorizontalBox::Slot()
+                        .AutoWidth()
+                        .VAlign(VAlign_Center)
+                        [
+                            SNew(SComboButton)
+                            .ContentPadding(FMargin{CkStyle::SpaceS, 1.0f})
+                            .ToolTipText(FText::FromString(TEXT("Open another CK debugger")))
+                            .OnGetMenuContent(this, &SCkDebug_WindowChrome::Build_DebuggerMenu)
+                            .ButtonContent()
                             [
                                 SNew(STextBlock)
-                                    .Text(_DisplayName)
-                                    .Font(CkStyle::BoldFont(CkStyle::FontSizeSmall()))
-                                    .ColorAndOpacity(CkStyle::TextStrong())
-                                    .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
-                            ]
-                            + SHorizontalBox::Slot()
-                            .FillWidth(1.0f)
-                            .HAlign(HAlign_Fill)
-                            .VAlign(VAlign_Center)
-                            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
-                            [
-                                SNew(SBox)
-                                    .Visibility(HasMenuActions ? EVisibility::Visible : EVisibility::Collapsed)
-                                    [
-                                        MenuActions
-                                    ]
-                            ]
-                            + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            [
-                                SNew(SComboButton)
-                                    .ContentPadding(FMargin{CkStyle::SpaceS, 1.0f})
-                                    .ToolTipText(FText::FromString(TEXT("Open another CK debugger")))
-                                    .OnGetMenuContent(this, &SCkDebug_WindowChrome::Build_DebuggerMenu)
-                                    .ButtonContent()
-                                    [
-                                        SNew(STextBlock)
-                                            .Text(FText::FromString(TEXT("Debuggers")))
-                                            .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
-                                    ]
+                                .Text(FText::FromString(TEXT("Tools")))
+                                .Font(CkStyle::BoldFont(CkStyle::FontSizeMicro()))
                             ]
                         ]
-                ]
-
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SBox)
-                        .Visibility(HasToolbar ? EVisibility::Visible : EVisibility::Collapsed)
-                        [
-                            Toolbar
-                        ]
+                    ]
                 ]
 
                 + SVerticalBox::Slot()
@@ -130,39 +162,6 @@ auto SCkDebug_WindowChrome::Construct(const FArguments& InArgs) -> void
                     Content
                 ]
 
-                + SVerticalBox::Slot()
-                .AutoHeight()
-                [
-                    SNew(SBorder)
-                        .BorderImage_Lambda([]{ return ck::debug_axes::Get_SurfaceBrush(1); })
-                        .BorderBackgroundColor_Lambda([]{ return FSlateColor{ck::debug_axes::Get_SurfaceTint(1)}; })
-                        .Padding(FMargin{CkStyle::SpaceM, CkStyle::SpaceXS})
-                        [
-                            SNew(SHorizontalBox)
-                            + SHorizontalBox::Slot()
-                            .FillWidth(1.0f)
-                            .VAlign(VAlign_Center)
-                            [
-                                EffectiveStatus
-                            ]
-                            + SHorizontalBox::Slot()
-                            .AutoWidth()
-                            .VAlign(VAlign_Center)
-                            [
-                                SNew(SBox)
-                                    .Visibility_Lambda([this]()
-                                    {
-                                        return FCkDebug_EntityTargetRegistry::Get().Has_Route(_ToolTabId)
-                                            ? EVisibility::Visible
-                                            : EVisibility::Collapsed;
-                                    })
-                                    [
-                                        SNew(SCkDebug_UseEcsSelection)
-                                            .TargetTabId(_ToolTabId)
-                                    ]
-                            ]
-                        ]
-                ]
             ]
     ];
 }
@@ -218,14 +217,7 @@ auto SCkDebug_WindowChrome::OnOpenDebugger(FName InTabId) const -> FReply
 auto SCkDebug_WindowChrome::Get_DefaultStatusText() const -> FText
 {
     const auto Status = _StatusText.Get();
-    if (NOT Status.IsEmpty())
-    { return Status; }
-
-    const auto Name = _DisplayName.Get();
-    return FText::Format(
-        FText::FromString(TEXT("{0} | {1} debugger tools available")),
-        Name.IsEmpty() ? FText::FromName(_WindowId) : Name,
-        FText::AsNumber(FCkDebuggerToolRegistry::Get().Get_Tools().Num()));
+    return Status;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

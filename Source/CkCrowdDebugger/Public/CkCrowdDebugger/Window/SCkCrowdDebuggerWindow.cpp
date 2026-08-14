@@ -139,15 +139,10 @@ auto SCkCrowdDebuggerWindow::Construct(const FArguments& InArgs) -> void
 		SNew(SCkDebug_WindowChrome)
 		.WindowId(WindowId)
 		.ToolTabId(TEXT("CkCrowdDebugger"))
-		.DisplayName(FText::FromString(TEXT("CK Crowd Debugger")))
-		.MenuActionsContent()
-		[
-			BuildMenuActions()
-		]
+		.CommandGroups(BuildCommandGroups())
 		.Content()
 		[
 		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight() [ BuildToolbar() ]
 		+ SVerticalBox::Slot().FillHeight(1.0f)
 		[
 			SNew(SSplitter).Orientation(Orient_Horizontal)
@@ -586,7 +581,7 @@ auto SCkCrowdDebuggerWindow::Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> v
 	{ _ViewportPanel->Set_VoxelNavSnapshot(*Combined); }
 }
 
-auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
+auto SCkCrowdDebuggerWindow::BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>
 {
 	const auto MakeSourceButton = [this](const TCHAR* InLabel, ECkCrowdDebugger_VoxelSource InSource) -> TSharedRef<SWidget>
 	{
@@ -773,102 +768,43 @@ auto SCkCrowdDebuggerWindow::BuildToolbar() -> TSharedRef<SWidget>
 			]
 		];
 
-	return SNew(SBorder)
-		.Padding(FMargin(8, 4))
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-			[
-				SNew(STextBlock).Text(FText::FromString(TEXT("CK Crowd Debugger")))
-			]
-			// World selector (shared across all CK debuggers)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-			[
-				SNew(SCkDebug_WorldSelector, _WorldModel)
-				.ShowHeaderLabel(false)
-			]
-			// Viewport picker (shared) — click a crowd agent in the world.
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-			[
-				SNew(SCkDebug_ViewportPickerControls)
-				.Picker(_ViewportPicker)
-				.PickTooltip(FText::FromString(TEXT(
-					"Enter pick mode: click a crowd agent in the viewport to inspect it.\n"
-					"Only crowd-agent entities (and their owning NPC) are shown and pickable.")))
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(TEXT("Run Health Check")))
-				.ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin to +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely; a green probe proves the nav stack works in isolation from any gym wiring.")))
-				.OnClicked_Lambda([this]() -> FReply
-				{
-					if (_ViewModel.IsValid())
-					{ _ViewModel->Run_HealthCheckProbe(); }
-					return FReply::Handled();
-				})
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 4, 0)
-			[
-				SNew(SComboButton)
-					.ToolTipText(FText::FromString(TEXT("Choose Live PIE, retained, or exact cooked-Jolt editor VoxelNav data.")))
-					.ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { return Get_VoxelSourceLabel(); })]
-					.MenuContent()[SourceMenu]
-			]
-			// Compact menus replace the old noisy flat checkbox strip. CVar-backed checks still reflect console changes.
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 4, 0)
-			[
-				SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu]
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
-			[
-				SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu]
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0, 8, 0)
-			[
-				SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd diagnostic settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Diagnostics")))].MenuContent()[DiagnosticsMenu]
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2, 0)
-			[ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkCrowdDebugger_CameraPreset::Perspective) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkCrowdDebugger_CameraPreset::Top) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkCrowdDebugger_CameraPreset::Bottom) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkCrowdDebugger_CameraPreset::Left) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkCrowdDebugger_CameraPreset::Right) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkCrowdDebugger_CameraPreset::Front) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkCrowdDebugger_CameraPreset::Back) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame all VoxelNav and crowd-agent bounds"), ECkCrowdDebugger_CameraPreset::FrameAll) ]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(1, 0)
-			[ MakeCameraButton(TEXT("SelectInViewport"), TEXT("Frame the selected crowd agent"), ECkCrowdDebugger_CameraPreset::FrameSelection) ]
-			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(8, 0)
-			[
-				SNew(STextBlock)
-					.Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); })
-					.ColorAndOpacity(FSlateColor(CkStyle::Info()))
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text_Lambda([this]() -> FText
-				{
-					if (NOT _ViewModel.IsValid())
-					{ return FText::FromString(TEXT("(no view-model)")); }
-					return FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount()));
-				})
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("ck.CrowdDebugger 1")))
-				.ColorAndOpacity(FSlateColor(CkStyle::TextMute()))
-			]
-		];
+	const auto Target = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+		[ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[ SNew(SCkDebug_ViewportPickerControls).Picker(_ViewportPicker).PickTooltip(FText::FromString(TEXT("Enter pick mode: click a crowd agent in the viewport to inspect it.\nOnly crowd-agent entities (and their owning NPC) are shown and pickable."))) ];
+	const auto Diagnostics = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)
+		[ SNew(SButton).Text(FText::FromString(TEXT("Run Health Check"))).ToolTipText(FText::FromString(TEXT("Run a synthetic FindPathSync probe (origin to +200) and surface the result in the Navmesh Status panel. Bypasses the request/processor pipeline entirely; a green probe proves the nav stack works in isolation from any gym wiring."))).OnClicked_Lambda([this]() -> FReply { if (_ViewModel.IsValid()) { _ViewModel->Run_HealthCheckProbe(); } return FReply::Handled(); }) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd diagnostic settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Diagnostics")))].MenuContent()[DiagnosticsMenu] ];
+	const auto DataView = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 4, 0)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Choose Live PIE, retained, or exact cooked-Jolt editor VoxelNav data."))).ButtonContent()[SNew(STextBlock).Text_Lambda([this]() { return Get_VoxelSourceLabel(); })].MenuContent()[SourceMenu] ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Navigation display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Navigation")))].MenuContent()[NavigationMenu] ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4, 0)
+		[ SNew(SComboButton).ToolTipText(FText::FromString(TEXT("Crowd display settings."))).ButtonContent()[SNew(STextBlock).Text(FText::FromString(TEXT("Crowd")))].MenuContent()[CrowdMenu] ];
+	const auto Camera = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkCrowdDebugger_CameraPreset::Perspective) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkCrowdDebugger_CameraPreset::Top) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkCrowdDebugger_CameraPreset::Bottom) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkCrowdDebugger_CameraPreset::Left) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkCrowdDebugger_CameraPreset::Right) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkCrowdDebugger_CameraPreset::Front) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkCrowdDebugger_CameraPreset::Back) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame all VoxelNav and crowd-agent bounds"), ECkCrowdDebugger_CameraPreset::FrameAll) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ MakeCameraButton(TEXT("SelectInViewport"), TEXT("Frame the selected crowd agent"), ECkCrowdDebugger_CameraPreset::FrameSelection) ];
+	const auto Telemetry = SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0, 0, 8, 0)[ SNew(STextBlock).Text_Lambda([this]() { return FText::FromString(_VoxelSourceStatus); }).ColorAndOpacity(FSlateColor(CkStyle::Info())) ]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)[ SNew(STextBlock).Text_Lambda([this]() -> FText { return _ViewModel.IsValid() ? FText::FromString(FString::Printf(TEXT("Agents: %d"), _ViewModel->Get_AgentCount())) : FText::FromString(TEXT("(no view-model)")); }) ];
+	return {
+		FCkDebug_CommandGroup::Primary(TEXT("CrowdOverlays"), FText::FromString(TEXT("Crowd overlay controls")), BuildMenuActions()),
+		FCkDebug_CommandGroup::Context(TEXT("CrowdTarget"), FText::FromString(TEXT("Crowd target selection")), Target),
+		FCkDebug_CommandGroup::Context(TEXT("CrowdDiagnostics"), FText::FromString(TEXT("Crowd diagnostics")), Diagnostics),
+		FCkDebug_CommandGroup::Context(TEXT("CrowdDataView"), FText::FromString(TEXT("Crowd data and view settings")), DataView),
+		FCkDebug_CommandGroup::Context(TEXT("CrowdCamera"), FText::FromString(TEXT("Crowd viewport camera")), Camera),
+		FCkDebug_CommandGroup::Context(TEXT("CrowdTelemetry"), FText::FromString(TEXT("Crowd telemetry")), Telemetry)};
 }
 
 auto SCkCrowdDebuggerWindow::BuildMenuActions() -> TSharedRef<SWidget>

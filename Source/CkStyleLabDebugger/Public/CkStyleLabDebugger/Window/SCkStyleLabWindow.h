@@ -30,7 +30,7 @@ public:
     auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Debugger Style Lab")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Style Lab")); }
 
 private:
     auto Build_MenuActions() -> TSharedRef<SWidget>;

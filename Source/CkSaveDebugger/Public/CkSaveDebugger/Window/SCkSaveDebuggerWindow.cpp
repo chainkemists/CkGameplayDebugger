@@ -281,15 +281,27 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkSaveDebugger"))
-        .DisplayName(FText::FromString(TEXT("CK Save Debugger")))
-        .MenuActionsContent()
-        [
-            DoCreate_MenuActions()
-        ]
-        .ToolbarContent()
-        [
-            DoCreate_Toolbar()
-        ]
+        .CommandGroups({
+            FCkDebug_CommandGroup::Primary(
+                TEXT("SaveActions"),
+                FText::FromString(TEXT("Save actions")),
+                DoCreate_MenuActions()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("File"),
+                FText::FromString(TEXT("Save file commands")),
+                DoCreate_FileControls()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("Visualization"),
+                FText::FromString(TEXT("Save visualization commands")),
+                DoCreate_VisualizationControls()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("Export"),
+                FText::FromString(TEXT("Save export commands")),
+                DoCreate_ExportControls()),
+            FCkDebug_CommandGroup::Context(
+                TEXT("FileStatus"),
+                FText::FromString(TEXT("Open save status")),
+                DoCreate_FileStatus())})
         .Content()
         [
             DoCreate_Body()
@@ -369,7 +381,7 @@ auto
 
 auto
     SCkSaveDebuggerWindow::
-    DoCreate_Toolbar()
+    DoCreate_FileControls()
     -> TSharedRef<SWidget>
 {
     using namespace ck_save_debugger_window;
@@ -405,16 +417,26 @@ auto
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+        .Padding(0.0f)
         [
             Build_CommandButton(FName{TEXT("Scale")},
                 TEXT("Compare Against..."),
                 TEXT("Pick an OLDER save as the baseline and diff the open file against it. The open file is the current side"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCompareAgainstClicked),
                 HasFile)
-        ]
+        ];
+}
 
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_VisualizationControls()
+    -> TSharedRef<SWidget>
+{
 #if WITH_EDITOR
+    using namespace ck_save_debugger_window;
+    const auto HasFile = TAttribute<bool>::CreateLambda([this]() -> bool { return NOT _CurrentPath.IsEmpty(); });
+
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -430,7 +452,6 @@ auto
             .ContentPadding(FMargin{CkStyle::SpaceM, CkStyle::SpaceXS})
             [
                 SNew(SHorizontalBox)
-
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
@@ -441,7 +462,6 @@ auto
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                     .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
                 ]
-
                 + SHorizontalBox::Slot()
                 .AutoWidth()
                 .VAlign(VAlign_Center)
@@ -456,11 +476,9 @@ auto
                 ]
             ]
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
             Build_CommandButton(FName{TEXT("Crosshair")},
                 TEXT("Frame"),
@@ -470,9 +488,22 @@ auto
                 {
                     return ck::save_debugger_viz::Get_IsVisualizerEnabled();
                 }))
-        ]
+        ];
+#else
+    return SNew(SBox);
 #endif
+}
 
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_ExportControls()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_save_debugger_window;
+
+    const auto HasFile = TAttribute<bool>::CreateLambda([this]() -> bool { return NOT _CurrentPath.IsEmpty(); });
+
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -484,19 +515,26 @@ auto
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnExportJsonClicked),
                 HasFile)
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
         [
             Build_CommandButton(FName{TEXT("Clipboard")},
                 TEXT("Copy Report"),
                 TEXT("Copy the census and diagnostics to the clipboard"),
                 FOnClicked::CreateSP(this, &SCkSaveDebuggerWindow::DoOnCopyReportClicked),
                 HasFile)
-        ]
+        ];
+}
 
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_FileStatus()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_save_debugger_window;
+
+    return SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -508,17 +546,20 @@ auto
             .ColorAndOpacity(FSlateColor{CkStyle::Accent()})
             .Size(FVector2D{k_PanelIconSize, k_PanelIconSize})
         ]
-
         + SHorizontalBox::Slot()
-        .FillWidth(1.0f)
+        .AutoWidth()
         .VAlign(VAlign_Center)
-        .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
         [
-            SAssignNew(_PathLabel, SCkDebug_SelectableLabel)
-            .Text(FText::FromString(TEXT("(no file open)")))
-            .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            SNew(SBox)
+            .MaxDesiredWidth(280.0f)
+            .Clipping(EWidgetClipping::ClipToBounds)
+            [
+                SAssignNew(_PathLabel, SCkDebug_SelectableLabel)
+                .Text(FText::FromString(TEXT("(no file open)")))
+                .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            ]
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -540,7 +581,6 @@ auto
                 DoRebuild_BlobDetail();
             })
         ]
-
         + SHorizontalBox::Slot()
         .AutoWidth()
         .VAlign(VAlign_Center)
@@ -1250,6 +1290,7 @@ auto
             SAssignNew(_StatusText, STextBlock)
             .Text(FText::FromString(TEXT("No save open. Click \"Open Save...\" to begin.")))
             .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
+            .OverflowPolicy(ETextOverflowPolicy::Ellipsis)
         ];
 }
 

@@ -2,6 +2,7 @@
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CommandBar.h"
 
 #include "CkVoxelNav/Debug/CkVoxelNav_DebugSnapshot.h"
 
@@ -49,7 +50,7 @@ public:
 
 	virtual auto Get_WindowId() const -> FName override { return WindowId; }
 	virtual auto Get_WindowDisplayName() const -> FText override
-	{ return FText::FromString(TEXT("CK Crowd Debugger")); }
+	{ return FText::FromString(TEXT("Crowd")); }
 
 	virtual ~SCkCrowdDebuggerWindow();
 
@@ -57,7 +58,7 @@ protected:
 	virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
-	auto BuildToolbar() -> TSharedRef<SWidget>;
+	auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
 	auto BuildMenuActions() -> TSharedRef<SWidget>;
 	auto Refresh_VoxelSnapshot(UWorld* InSelectedWorld) -> void;
 	auto Get_VoxelSnapshotBuildParams() const -> ck::voxelnav::FDebugSnapshotBuildParams;

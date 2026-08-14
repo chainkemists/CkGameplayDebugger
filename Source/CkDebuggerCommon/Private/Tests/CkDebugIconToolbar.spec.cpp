@@ -53,6 +53,48 @@ bool FCkDebugIconToolbar_PartitionsAtomically::RunTest(const FString& Parameters
 // --------------------------------------------------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkDebugIconToolbar_UsesSingleHorizontalRow,
+    "Ck.DebuggerCommon.IconToolbar.UsesSingleHorizontalRow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCkDebugIconToolbar_UsesSingleHorizontalRow::RunTest(const FString& Parameters)
+{
+    using namespace ck_debug_icon_toolbar_tests;
+
+    auto Actions = TArray<FCkDebug_IconToggleAction>{};
+    for (auto Index = 0; Index < 8; ++Index)
+    { Actions.Add(MakeAction(FName{*FString::Printf(TEXT("Action%d"), Index)})); }
+
+    auto Toolbar = SNew(SCkDebug_IconToolbar)
+        .Actions(MoveTemp(Actions));
+
+    Toolbar->SlatePrepass();
+    const auto* Children = Toolbar->GetChildren();
+    TestEqual(TEXT("Toolbar publishes one direct action row"), Children->Num(), 1);
+    if (Children->Num() == 1)
+    {
+        const auto Row = Children->GetChildAt(0);
+        TestEqual(
+            TEXT("Action row is horizontal and cannot wrap"),
+            Row->GetTypeAsString(),
+            FString{TEXT("SHorizontalBox")});
+
+        auto Arranged = FArrangedChildren{EVisibility::Visible};
+        Row->ArrangeChildren(
+            FGeometry::MakeRoot(FVector2D{80.0f, 64.0f}, FSlateLayoutTransform{}),
+            Arranged);
+        TestEqual(
+            TEXT("Narrow geometry still arranges every action in the direct row"),
+            Arranged.Num(),
+            8);
+    }
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FCkDebugIconToggle_DoesNotFillSurplusWidth,
     "Ck.DebuggerCommon.IconToolbar.ToggleDoesNotFillSurplusWidth",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

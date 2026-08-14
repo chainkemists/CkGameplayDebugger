@@ -5,6 +5,7 @@
 
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 #include "CkDebuggerCommon/Models/CkDebuggerModel_WorldSelector.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CommandBar.h"
 
 #include "Widgets/Layout/SBox.h"
 
@@ -24,14 +25,13 @@ public:
 	virtual auto Tick(const FGeometry& AllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
 	virtual auto Get_WindowId() const -> FName override { return WindowId; }
-	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK Scheduler Debugger")); }
+	virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("Scheduler")); }
 
 protected:
 	virtual auto OnStyleRevisionChanged() -> void override;
 
 private:
-	auto DoBuildMenuActions() -> TSharedRef<SWidget>;
-	auto DoBuildTopBar() -> TSharedRef<SWidget>;
+	auto DoBuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
 	auto DoBuildStatsBar() -> TSharedRef<SWidget>;
 	auto DoBuildTabBar() -> TSharedRef<SWidget>;
 	auto DoSwitchToPage(int32 InPageIndex) -> void;

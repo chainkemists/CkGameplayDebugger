@@ -46,12 +46,10 @@ auto
         SNew(SCkDebug_WindowChrome)
             .WindowId(Get_WindowId())
             .ToolTabId(TEXT("CkStyleLabDebugger"))
-            .DisplayName(Get_WindowDisplayName())
             .StatusText(TAttribute<FText>::CreateSP(this, &SCkStyleLabWindow::Get_StatusText))
-            .MenuActionsContent()
-            [
-                Build_MenuActions()
-            ]
+            .CommandGroups({
+                FCkDebug_CommandGroup::Primary(TEXT("StylePreview"), FText::FromString(TEXT("Style preview controls")), Build_MenuActions())
+            })
             .Content()
             [
                 SNew(SHorizontalBox)

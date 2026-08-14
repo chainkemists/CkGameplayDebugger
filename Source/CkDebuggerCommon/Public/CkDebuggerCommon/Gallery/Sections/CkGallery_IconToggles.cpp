@@ -5,6 +5,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 
 using ck::gallery::Caption;
@@ -135,8 +136,16 @@ public:
                 SNew(SBox)
                 .WidthOverride(620.0f)
                 [
-                    SNew(SCkDebug_IconToolbar)
-                    .Actions(MakeToolbarActions())
+                    SNew(SScrollBox)
+                    .Orientation(Orient_Horizontal)
+                    .ScrollBarVisibility(EVisibility::Collapsed)
+                    .ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
+
+                    + SScrollBox::Slot()
+                    [
+                        SNew(SCkDebug_IconToolbar)
+                        .Actions(MakeToolbarActions())
+                    ]
                 ]
             ]
 
@@ -144,7 +153,7 @@ public:
             .AutoHeight()
             .Padding(0.0f, 0.0f, 0.0f, CkStyle::SpaceS)
             [
-                Caption(TEXT("Narrow container — direct actions keep their desired width"))
+                Caption(TEXT("Narrow container — direct actions stay on one scrollable line"))
             ]
 
             + SVerticalBox::Slot()
@@ -153,8 +162,16 @@ public:
                 SNew(SBox)
                 .WidthOverride(280.0f)
                 [
-                    SNew(SCkDebug_IconToolbar)
-                    .Actions(MakeToolbarActions())
+                    SNew(SScrollBox)
+                    .Orientation(Orient_Horizontal)
+                    .ScrollBarVisibility(EVisibility::Collapsed)
+                    .ConsumeMouseWheel(EConsumeMouseWheel::WhenScrollingPossible)
+
+                    + SScrollBox::Slot()
+                    [
+                        SNew(SCkDebug_IconToolbar)
+                        .Actions(MakeToolbarActions())
+                    ]
                 ]
             ];
     }

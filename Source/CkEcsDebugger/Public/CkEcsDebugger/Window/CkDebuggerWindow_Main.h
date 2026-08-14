@@ -28,7 +28,7 @@ public:
     auto OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) -> FReply override;
 
     virtual auto Get_WindowId() const -> FName override { return WindowId; }
-    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("CK ECS Debugger")); }
+    virtual auto Get_WindowDisplayName() const -> FText override { return FText::FromString(TEXT("ECS")); }
 
     auto Get_SelectionModel() const -> TSharedPtr<FCkDebuggerModel_EntitySelection>;
     auto Get_WorldModel() const -> TSharedPtr<FCkDebuggerModel_WorldContext>;
@@ -40,7 +40,9 @@ protected:
 
 private:
     auto Build_MenuActions() -> TSharedRef<SWidget>;
-    auto Build_Toolbar() -> TSharedRef<SWidget>;
+    auto Build_TargetControls() -> TSharedRef<SWidget>;
+    auto Build_OverlaySettingsControls() -> TSharedRef<SWidget>;
+    auto Build_EntityFilterControls() -> TSharedRef<SWidget>;
     auto Build_PickerExtraSettings() -> TSharedRef<SWidget>;
     auto Build_OverlayPopover() -> TSharedRef<SWidget>;
     auto Build_FilterPopover() -> TSharedRef<SWidget>;

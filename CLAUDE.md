@@ -64,10 +64,11 @@ remain (see Open issues).
   census is enforced by `Source/CkDebuggerLauncher/Private/Tests/CkDebuggerLauncherCatalog.spec.cpp`;
   permanent authoring steps live in `Source/CkDebuggerLauncher/CLAUDE.md`.
 - **Standalone window chrome**: every plugin-owned catalog window wraps its specialized root in
-  `SCkDebug_WindowChrome`, which provides the common title, inline icon-action area, Debuggers menu,
-  and status strip. Every catalog tool contributes at least one useful boolean action through that
-  shared area. This includes `CkInsightsDebugger`; CkFoundation retains only its UI-free
-  trace-analysis dependency.
+  `SCkDebug_WindowChrome`, which provides single-line command lanes, the trailing status/refresh
+  cluster, and the Tools menu. The dock tab is the sole debugger identity surface; never repeat its
+  title or icon inside the command bar. At constrained widths, command lanes scroll horizontally
+  rather than wrapping controls. This includes `CkInsightsDebugger`; CkFoundation retains only its
+  UI-free trace-analysis dependency.
 - **Entity-aware debugger entry**: a debugger that can select an ECS entity registers an
   `FCkDebug_EntityTargetRoute` and resolves exact/ancestor/descendant handles through the common
   closest-lineage helper. This powers both ECS inspector `Open In` links and the common

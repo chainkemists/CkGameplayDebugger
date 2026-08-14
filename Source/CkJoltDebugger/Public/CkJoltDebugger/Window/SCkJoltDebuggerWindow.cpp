@@ -49,8 +49,8 @@ namespace ck_jolt_debugger
     static auto Font_RowLabel() -> FSlateFontInfo { return Normal(CkStyle::FontSizeSmall()); }
     static auto Font_RowValue() -> FSlateFontInfo { return Mono(CkStyle::FontSizeSmall()); }
 
-    // RowDensity lands live on every stat row — the slot padding is a Slate attribute, so the axis
-    // moves already-built rows without a rebuild.
+    // RowDensity lands live on every stat row through its registered SBox padding attribute, so the
+    // axis moves already-built rows without binding an unsupported SScrollPanel slot attribute.
     static auto Get_StatRowPadding() -> FMargin
     {
         return ck::debug_axes::Apply_RowDensity(FMargin{CkStyle::SpaceM, 0.0f});
@@ -197,52 +197,52 @@ auto
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("World")) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Async Physics Update:"), TAttribute<FText>::CreateLambda([this]()
                             { return FText::FromString(_Stats.HasWorld ? (_Stats.AsyncPhysics ? TEXT("Yes") : TEXT("No")) : TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Parallel Physics:"), TAttribute<FText>::CreateLambda([this]()
                             { return FText::FromString(_Stats.HasWorld ? (_Stats.ParallelPhysics ? TEXT("Yes") : TEXT("No")) : TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Physics Threads:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.ThreadCount) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Rigid Bodies")) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("JoltBody Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumBodies) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Dynamic:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumDynamic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Kinematic:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumKinematic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Static:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStatic) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Awake:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumAwake) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Asleep:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumAsleep) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Characters")) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("JoltCharacter Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumCharacters) : FText::FromString(TEXT("--")); })) ]
 
                     + SScrollBox::Slot().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
                         [ MakeSectionHeader(TEXT("Static World")) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("JoltStaticActor Entities:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStaticActors) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Static Bodies:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumStaticBodies) : FText::FromString(TEXT("--")); })) ]
-                    + SScrollBox::Slot().Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+                    + SScrollBox::Slot()
                         [ MakeStatRow(TEXT("Unique Shapes:"), TAttribute<FText>::CreateLambda([this]()
                             { return _Stats.HasWorld ? FText::AsNumber(_Stats.NumUniqueShapes) : FText::FromString(TEXT("--")); })) ]
                 ]
@@ -358,9 +358,12 @@ auto
         TAttribute<FText>  InValue) const
     -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
+    return SNew(SBox)
+        .Padding(TAttribute<FMargin>::CreateStatic(&ck_jolt_debugger::Get_StatRowPadding))
+        [
+            SNew(SHorizontalBox)
 
-        + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
+            + SHorizontalBox::Slot().FillWidth(0.6f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Font_Static(&ck_jolt_debugger::Font_RowLabel)
@@ -368,13 +371,14 @@ auto
                 .Text(FText::FromString(InLabel))
             ]
 
-        + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
+            + SHorizontalBox::Slot().FillWidth(0.4f).VAlign(VAlign_Center)
             [
                 SNew(STextBlock)
                 .Font_Static(&ck_jolt_debugger::Font_RowValue)
                 .ColorAndOpacity(CkStyle::Text())
                 .Text(InValue)
-            ];
+            ]
+        ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

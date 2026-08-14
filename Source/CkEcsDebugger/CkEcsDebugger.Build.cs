@@ -73,6 +73,7 @@ public class CkEcsDebugger : CkModuleRules
             "CkTimer",
             "CkTween",
             "CkUI",
+            "CkUICore",
             "CkUnrealComponent",
             "CkVariables",
             "CkVat",

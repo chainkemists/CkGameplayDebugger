@@ -21,6 +21,7 @@ public class CkUIDebugger : CkModuleRules
             "CkEcs",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkUI",
+            "CkUICore",
         });
 
         if (Target.bBuildEditor)

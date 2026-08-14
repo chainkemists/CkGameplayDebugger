@@ -42,6 +42,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkAggroDebugger"),
         TEXT("CkStyleLabDebugger"),
         TEXT("CkSaveDebugger"),
+        TEXT("CkOptimizationDebugger"),
     };
 
     const auto Tools = FCkDebuggerToolRegistry::Get().Get_Tools();
@@ -195,6 +196,7 @@ bool FCkDebuggerLauncherPackaging_DevToolDescriptorsIncludeDevelopmentCookedWin6
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkMapDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkStyleLabDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkSaveDebugger"));
+    TestExpectedModule(TEXT("CkDebugger"), TEXT("CkOptimizationDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkInsightsDebugger"));
     TestExpectedModule(TEXT("CkDebugger"), TEXT("CkDebuggerLauncher"));
     return true;

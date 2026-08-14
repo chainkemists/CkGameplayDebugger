@@ -1,27 +1,29 @@
 #pragma once
 
 #include "CkDebuggerCommon/Devices/CkDebug_DeviceTypes.h"
+#include "CkDebuggerCommon/Devices/SCkDebug_DeviceWidgetBase.h"
 
 #include "CoreMinimal.h"
-#include "Widgets/SLeafWidget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Full-size ANSI keyboard, drawn procedurally from the layout table — no images, crisp at any DPI, restyled by the
 // suite tokens. One leaf widget paints every cap, which is what keeps 104 keys from being 104 widgets.
 //
-// The state vocabulary (shared with the gamepad visualizer):
-//   press  = an instant FLASH — the cap snaps to the accent on its press frame and decays over a few hundred ms,
-//            so a one-frame tap is still visible to a human;
-//   hold   = a FILL — the cap fills toward its hold-verdict threshold when the producer knows one (a full cap IS
-//            the matcher declaring a hold), or fills completely when no verdict exists;
-//   minted = a brighter bezel — a key the producer carries per-frame history for. A minted key that never lights
-//            is a dead pipeline; an unminted one is merely unwatched. The two must not look alike.
+// The state vocabulary (shared with the mouse and gamepad visualizers):
+//   press       = an instant FLASH — the cap snaps to the accent on its press frame and decays over a few hundred
+//                 ms, so a one-frame tap is still visible to a human;
+//   hold        = a FILL — the cap fills toward its hold-verdict threshold when the producer knows one (a full cap
+//                 IS the matcher declaring a hold), or fills completely when no verdict exists;
+//   minted      = a brighter bezel — a key the producer carries per-frame history for. A minted key that never
+//                 lights is a dead pipeline; an unminted one is merely unwatched. The two must not look alike;
+//   rebound     = an amber cap label (and rim, when actionable) — the player remapped this key away from default;
+//   highlighted = a bright thick ring — an externally selected cap (click-to-filter target).
 //
 // All timing is in the SNAPSHOT's frames (LiveFrame minus edge frames) — the widget owns no clock, so it can never
-// disagree with the record it renders.
+// disagree with the record it renders. Optional click/tooltip interactivity comes from the shared device base.
 // --------------------------------------------------------------------------------------------------------------------
 
-class CKDEBUGGERCOMMON_API SCkDebug_DeviceKeyboard : public SLeafWidget
+class CKDEBUGGERCOMMON_API SCkDebug_DeviceKeyboard : public SCkDebug_DeviceWidgetBase
 {
 public:
     SLATE_BEGIN_ARGS(SCkDebug_DeviceKeyboard)
@@ -29,6 +31,8 @@ public:
     {}
         // Owned by the producer (a view-model cache); nullptr renders the board idle-dim.
         SLATE_ATTRIBUTE(const FCkDebug_DeviceSnapshot*, Snapshot)
+        SLATE_EVENT(FCkDebug_DeviceKeyClicked, OnKeyClicked)
+        SLATE_EVENT(FCkDebug_DeviceKeyTooltip, KeyTooltip)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -44,8 +48,8 @@ public:
 
     virtual auto ComputeDesiredSize(float InLayoutScaleMultiplier) const -> FVector2D override;
 
-private:
-    TAttribute<const FCkDebug_DeviceSnapshot*> _Snapshot;
+protected:
+    virtual auto Get_KeyAtPosition(const FGeometry& InGeometry, const FVector2D& InLocalPos) const -> FKey override;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

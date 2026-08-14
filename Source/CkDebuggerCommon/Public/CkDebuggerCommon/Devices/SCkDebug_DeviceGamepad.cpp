@@ -1,4 +1,4 @@
-#include "CkDebuggerCommon/Devices/SCkDebug_DeviceMouse.h"
+#include "CkDebuggerCommon/Devices/SCkDebug_DeviceGamepad.h"
 
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
@@ -11,10 +11,10 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace ck_debug_device_mouse
+namespace ck_debug_device_gamepad
 {
     // The design box the regions below are authored in; paint scales it to the allotted geometry.
-    constexpr auto DesignWidth = 100.0f;
+    constexpr auto DesignWidth = 236.0f;
     constexpr auto DesignHeight = 150.0f;
 
     constexpr auto DesiredScale = 1.35f;
@@ -29,17 +29,30 @@ namespace ck_debug_device_mouse
         float H = 0.0f;
     };
 
-    // Authored once — the mouse's own layout table, same doctrine as the keyboard's.
+    // Authored once — the pad's own layout table, same doctrine as the keyboard's.
     inline auto Get_Regions() -> const TArray<FRegion>&
     {
         static const auto Regions = TArray<FRegion>{
-            {EKeys::LeftMouseButton, TEXT("L"), 8.0f, 8.0f, 36.0f, 52.0f},
-            {EKeys::RightMouseButton, TEXT("R"), 56.0f, 8.0f, 36.0f, 52.0f},
-            {EKeys::MouseScrollUp, nullptr, 44.5f, 9.0f, 11.0f, 8.0f},
-            {EKeys::MiddleMouseButton, nullptr, 44.5f, 19.0f, 11.0f, 26.0f},
-            {EKeys::MouseScrollDown, nullptr, 44.5f, 47.0f, 11.0f, 8.0f},
-            {EKeys::ThumbMouseButton, TEXT("4"), 1.0f, 74.0f, 9.0f, 24.0f},
-            {EKeys::ThumbMouseButton2, TEXT("5"), 1.0f, 102.0f, 9.0f, 18.0f},
+            {EKeys::Gamepad_LeftTrigger, TEXT("LT"), 16.0f, 4.0f, 38.0f, 14.0f},
+            {EKeys::Gamepad_RightTrigger, TEXT("RT"), 182.0f, 4.0f, 38.0f, 14.0f},
+            {EKeys::Gamepad_LeftShoulder, TEXT("LB"), 16.0f, 22.0f, 38.0f, 12.0f},
+            {EKeys::Gamepad_RightShoulder, TEXT("RB"), 182.0f, 22.0f, 38.0f, 12.0f},
+
+            {EKeys::Gamepad_DPad_Up, TEXT("^"), 44.0f, 58.0f, 16.0f, 16.0f},
+            {EKeys::Gamepad_DPad_Left, TEXT("<"), 26.0f, 74.0f, 16.0f, 16.0f},
+            {EKeys::Gamepad_DPad_Right, TEXT(">"), 62.0f, 74.0f, 16.0f, 16.0f},
+            {EKeys::Gamepad_DPad_Down, TEXT("v"), 44.0f, 90.0f, 16.0f, 16.0f},
+
+            {EKeys::Gamepad_Special_Left, TEXT("SE"), 100.0f, 58.0f, 16.0f, 10.0f},
+            {EKeys::Gamepad_Special_Right, TEXT("ST"), 120.0f, 58.0f, 16.0f, 10.0f},
+
+            {EKeys::Gamepad_FaceButton_Top, TEXT("Y"), 176.0f, 54.0f, 18.0f, 18.0f},
+            {EKeys::Gamepad_FaceButton_Left, TEXT("X"), 156.0f, 72.0f, 18.0f, 18.0f},
+            {EKeys::Gamepad_FaceButton_Right, TEXT("B"), 196.0f, 72.0f, 18.0f, 18.0f},
+            {EKeys::Gamepad_FaceButton_Bottom, TEXT("A"), 176.0f, 90.0f, 18.0f, 18.0f},
+
+            {EKeys::Gamepad_LeftThumbstick, TEXT("L"), 76.0f, 100.0f, 28.0f, 28.0f},
+            {EKeys::Gamepad_RightThumbstick, TEXT("R"), 132.0f, 100.0f, 28.0f, 28.0f},
         };
 
         return Regions;
@@ -49,7 +62,7 @@ namespace ck_debug_device_mouse
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    SCkDebug_DeviceMouse::
+    SCkDebug_DeviceGamepad::
     Construct(
         const FArguments& InArgs)
     -> void
@@ -60,7 +73,20 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    SCkDebug_DeviceMouse::
+    SCkDebug_DeviceGamepad::
+    ComputeDesiredSize(
+        float InLayoutScaleMultiplier) const
+    -> FVector2D
+{
+    return FVector2D{
+        ck_debug_device_gamepad::DesignWidth * ck_debug_device_gamepad::DesiredScale,
+        ck_debug_device_gamepad::DesignHeight * ck_debug_device_gamepad::DesiredScale};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDebug_DeviceGamepad::
     Get_KeyAtPosition(
         const FGeometry& InGeometry,
         const FVector2D& InLocalPos) const
@@ -68,13 +94,13 @@ auto
 {
     const auto LocalSize = InGeometry.GetLocalSize();
     const auto Scale = static_cast<float>(FMath::Min(
-        LocalSize.X / ck_debug_device_mouse::DesignWidth,
-        LocalSize.Y / ck_debug_device_mouse::DesignHeight));
+        LocalSize.X / ck_debug_device_gamepad::DesignWidth,
+        LocalSize.Y / ck_debug_device_gamepad::DesignHeight));
 
     if (Scale <= 0.05f)
     { return FKey{}; }
 
-    for (const auto& Region : ck_debug_device_mouse::Get_Regions())
+    for (const auto& Region : ck_debug_device_gamepad::Get_Regions())
     {
         const auto RegionRect = FSlateRect{
             Region.X * Scale,
@@ -92,20 +118,7 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    SCkDebug_DeviceMouse::
-    ComputeDesiredSize(
-        float InLayoutScaleMultiplier) const
-    -> FVector2D
-{
-    return FVector2D{
-        ck_debug_device_mouse::DesignWidth * ck_debug_device_mouse::DesiredScale,
-        ck_debug_device_mouse::DesignHeight * ck_debug_device_mouse::DesiredScale};
-}
-
-// --------------------------------------------------------------------------------------------------------------------
-
-auto
-    SCkDebug_DeviceMouse::
+    SCkDebug_DeviceGamepad::
     OnPaint(
         const FPaintArgs& InArgs,
         const FGeometry& InAllottedGeometry,
@@ -120,8 +133,8 @@ auto
 
     const auto LocalSize = InAllottedGeometry.GetLocalSize();
     const auto Scale = static_cast<float>(FMath::Min(
-        LocalSize.X / ck_debug_device_mouse::DesignWidth,
-        LocalSize.Y / ck_debug_device_mouse::DesignHeight));
+        LocalSize.X / ck_debug_device_gamepad::DesignWidth,
+        LocalSize.Y / ck_debug_device_gamepad::DesignHeight));
 
     if (Scale <= 0.05f)
     { return InLayerId; }
@@ -142,7 +155,7 @@ auto
     const auto FlashLayer = InLayerId + 4;
     const auto LabelLayer = InLayerId + 5;
 
-    // The body shell behind the regions — not a key, just the silhouette that makes it read as a mouse.
+    // The body shell behind the regions — not a key, just the silhouette that makes it read as a pad.
     {
         auto BodyTint = CkStyle::Bg1();
         BodyTint.A *= DeviceAlpha;
@@ -151,14 +164,14 @@ auto
             OutDrawElements,
             BaseLayer,
             InAllottedGeometry.ToPaintGeometry(
-                FVector2f{92.0f * Scale, 140.0f * Scale},
-                FSlateLayoutTransform{FVector2f{4.0f * Scale, 5.0f * Scale}}),
+                FVector2f{228.0f * Scale, 106.0f * Scale},
+                FSlateLayoutTransform{FVector2f{4.0f * Scale, 40.0f * Scale}}),
             Brush,
             ESlateDrawEffect::None,
             BodyTint);
     }
 
-    for (const auto& Region : ck_debug_device_mouse::Get_Regions())
+    for (const auto& Region : ck_debug_device_gamepad::Get_Regions())
     {
         const auto RegionPos = FVector2f{Region.X * Scale, Region.Y * Scale};
         const auto RegionSize = FVector2f{Region.W * Scale, Region.H * Scale};

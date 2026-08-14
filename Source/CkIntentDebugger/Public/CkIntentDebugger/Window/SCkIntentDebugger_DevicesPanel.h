@@ -15,7 +15,8 @@ class FCkIntentDebugger_ViewModel;
 // router's per-pass events. The widget itself lives in CkDebuggerCommon (Runtime) and consumes plain values only —
 // this panel is the debugger-side producer hookup, and a game HUD hosting the same widget is the intended future.
 //
-// The gamepad joins in its own slice; the panel's layout already reserves the seat.
+// The gamepad renders beside the keyboard and mouse from the same snapshot; stick deflection lights it only when
+// the producer folds axis magnitudes into the stick-button key states.
 // --------------------------------------------------------------------------------------------------------------------
 
 class SCkIntentDebugger_DevicesPanel : public SCompoundWidget

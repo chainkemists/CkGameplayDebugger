@@ -3,6 +3,8 @@
 #include "CkDebuggerCommon/Devices/CkDebug_KeyboardLayout.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerStyle.h"
 
+#include "CkCore/Macros/CkMacros.h"
+
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Fonts/FontMeasure.h"
@@ -29,8 +31,47 @@ auto
         const FArguments& InArgs)
     -> void
 {
-    _Snapshot = InArgs._Snapshot;
-    SetCanTick(false);
+    DoConstruct_DeviceCommon(InArgs._Snapshot, InArgs._OnKeyClicked, InArgs._KeyTooltip);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDebug_DeviceKeyboard::
+    Get_KeyAtPosition(
+        const FGeometry& InGeometry,
+        const FVector2D& InLocalPos) const
+    -> FKey
+{
+    const auto& Layout = ck::debug_devices::Get_KeyboardLayout_AnsiFull();
+    const auto Extent = ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
+
+    const auto LocalSize = InGeometry.GetLocalSize();
+    const auto Unit = static_cast<float>(FMath::Min(
+        LocalSize.X / Extent.X,
+        LocalSize.Y / Extent.Y));
+
+    if (Unit <= 1.0f)
+    { return FKey{}; }
+
+    const auto Gap = Unit * ck_debug_device_keyboard::CapGapFraction;
+
+    for (const auto& Def : Layout)
+    {
+        if (NOT Def.Key.IsValid())
+        { continue; }
+
+        const auto CapRect = FSlateRect{
+            Def.X * Unit,
+            Def.Y * Unit,
+            Def.X * Unit + Def.W * Unit - Gap,
+            Def.Y * Unit + Def.H * Unit - Gap};
+
+        if (CapRect.ContainsPoint(InLocalPos))
+        { return Def.Key; }
+    }
+
+    return FKey{};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -97,14 +138,17 @@ auto
         const auto IsLightable = Def.Key.IsValid();
         const auto IsMinted = State != nullptr && State->IsMinted;
         const auto IsActionable = State != nullptr && State->IsActionable;
+        const auto IsRebound = State != nullptr && State->IsRebound;
+        const auto IsHighlighted = State != nullptr && State->IsHighlighted;
 
-        if (IsActionable)
+        if (IsActionable || IsHighlighted)
         {
             // A rounded rim: the same badge brush drawn one step larger UNDER the cap, so the outline keeps the
-            // cap's corner radius without a dedicated border brush.
-            const auto RimPx = FMath::Max(1.0f, Gap * 0.5f);
-            auto RimTint = CkStyle::Accent();
-            RimTint.A *= 0.9f * BoardAlpha;
+            // cap's corner radius without a dedicated border brush. A highlighted cap gets a brighter, thicker
+            // ring that wins over the actionable/rebound rims.
+            const auto RimPx = FMath::Max(1.0f, Gap * (IsHighlighted ? 0.8f : 0.5f));
+            auto RimTint = IsHighlighted ? CkStyle::Text() : (IsRebound ? CkStyle::Warn() : CkStyle::Accent());
+            RimTint.A *= (IsHighlighted ? 1.0f : 0.9f) * BoardAlpha;
 
             FSlateDrawElement::MakeBox(
                 OutDrawElements,
@@ -174,7 +218,9 @@ auto
 
         if (Unit >= 14.0f)
         {
-            auto LabelTint = IsMinted ? CkStyle::Text() : (IsLightable ? CkStyle::TextDim() : CkStyle::TextMute());
+            auto LabelTint = IsRebound
+                ? CkStyle::Warn()
+                : (IsMinted ? CkStyle::Text() : (IsLightable ? CkStyle::TextDim() : CkStyle::TextMute()));
             LabelTint.A *= BoardAlpha;
 
             const auto LabelSize = FontMeasure->Measure(Def.Label, CapFont);

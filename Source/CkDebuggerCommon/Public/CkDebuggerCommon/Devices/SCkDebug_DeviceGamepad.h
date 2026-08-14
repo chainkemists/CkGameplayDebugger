@@ -6,17 +6,18 @@
 #include "CoreMinimal.h"
 
 // --------------------------------------------------------------------------------------------------------------------
-// The mouse, drawn procedurally beside the keyboard — same snapshot, same state vocabulary (flash on press, fill on
-// hold toward the verdict, bright bezel when minted, amber when rebound, bright ring when highlighted, dim when
-// disconnected). Regions: left/right buttons, the wheel (middle click; scroll up/down render as flash-only nubs —
-// they are impulse keys whose press and release land on one row), and the two thumb buttons on the left flank.
+// The gamepad, drawn procedurally beside the keyboard and mouse — same snapshot, same state vocabulary (flash on
+// press, fill on hold toward the verdict, bright bezel when minted, amber when rebound, bright ring when
+// highlighted, dim when disconnected). Regions: triggers and bumpers up top, D-pad left, face buttons right,
+// select/start center, the two stick buttons below — a producer that folds stick DEFLECTION into the stick-button
+// key states makes the sticks light on movement, not only on click.
 // Optional click/tooltip interactivity comes from the shared device base.
 // --------------------------------------------------------------------------------------------------------------------
 
-class CKDEBUGGERCOMMON_API SCkDebug_DeviceMouse : public SCkDebug_DeviceWidgetBase
+class CKDEBUGGERCOMMON_API SCkDebug_DeviceGamepad : public SCkDebug_DeviceWidgetBase
 {
 public:
-    SLATE_BEGIN_ARGS(SCkDebug_DeviceMouse)
+    SLATE_BEGIN_ARGS(SCkDebug_DeviceGamepad)
         : _Snapshot(nullptr)
     {}
         SLATE_ATTRIBUTE(const FCkDebug_DeviceSnapshot*, Snapshot)

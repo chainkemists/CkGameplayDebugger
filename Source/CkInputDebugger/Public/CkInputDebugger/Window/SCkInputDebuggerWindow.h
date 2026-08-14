@@ -4,6 +4,8 @@
 #include "CkInputDebugger/Data/CkInputDebugger_Bindings.h"
 #include "CkInputDebugger/Data/CkInputDebugger_KeyActivity.h"
 
+#include "CkDebuggerCommon/Devices/CkDebug_DeviceTypes.h"
+
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
 
@@ -11,6 +13,7 @@
 
 class SVerticalBox;
 class SHorizontalBox;
+class SBorder;
 class SExpandableArea;
 class SCkDebug_CategoryDot;
 class STextBlock;
@@ -58,18 +61,33 @@ struct FCkInputDebugger_ActionSlot
     ECkInputDebugger_ActionActivity Activity = ECkInputDebugger_ActionActivity::NoInstance;
 };
 
+// --------------------------------------------------------------------------------------------------------------------
+// The bindings pane's row filter — which profile rows show.
+// --------------------------------------------------------------------------------------------------------------------
+
+enum class ECkInputDebugger_BindingsFilterMode
+{
+    All,
+    ReboundOnly,
+    DefaultOnly,
+};
+
 // ====================================================================================================================
 // CK Enhanced Input Debugger window.
 //
 // Shows, for the selected local player:
-//   1. The applied mapping-context STACK (priority-ordered) + each context's
+//   1. A live held/recent key strip + the shared device visualizers (keyboard / mouse / gamepad).
+//   2. The player's mappable-key profile, default vs current, filterable to rebound/default rows.
+//   3. The applied mapping-context STACK (priority-ordered) + each context's
 //      registered action<->key mappings.
-//   2. The resolved (flattened) action bindings with LIVE runtime value +
+//   4. The resolved (flattened) action bindings with LIVE runtime value +
 //      trigger-event state.
 //
 // Structure is rebuilt only when the snapshot's structural signature changes
 // (stack/mapping/player change). Live values + filter/highlight are applied
-// in-place each gated tick — no Tick-path widget-tree recreation.
+// in-place each gated tick — no Tick-path widget-tree recreation. The key strip
+// updates a pre-built chip pool in place for the same reason: tearing widgets
+// down on every key press causes a one-frame layout/font smear.
 // ====================================================================================================================
 
 class SCkInputDebuggerWindow : public SCkDebugger_WindowBase
@@ -96,6 +114,9 @@ private:
     // ---- Construction ----
 
     auto BuildToolbar() -> TSharedRef<SWidget>;
+    auto BuildDevicesSection() -> TSharedRef<SWidget>;
+    auto BuildBindingsHeader() -> TSharedRef<SWidget>;
+    auto BuildSection(const FText& InLabel, const TSharedRef<SWidget>& InHeaderExtra, const TSharedRef<SWidget>& InBody) -> TSharedRef<SWidget>;
 
     // ---- Player resolution ----
 
@@ -108,15 +129,17 @@ private:
     auto BuildContextSlot(const FCkInputDebugger_ContextRow& InContext) -> void;
     auto BuildActionSlot(const FCkInputDebugger_ActionRow& InAction) -> void;
     auto RebuildBindings(const FCkInputDebugger_BindingsSnapshot& InBindings) -> void;
-    auto RebuildKeyStrip() -> void;
 
     // ---- In-place update (every gated tick) ----
 
+    auto UpdateKeyStrip() -> void;
+    auto EnsureKeyStripChips(int32 InCount) -> void;
     auto UpdateLiveValues() -> void;
     auto ApplyFilterAndHighlight() -> void;
 
-    // ---- Device visual + key filter ----
+    // ---- Device visuals + key filter ----
 
+    auto Get_DeviceSnapshot() -> const FCkDebug_DeviceSnapshot*;
     auto Get_KeyTooltip(const FKey& InKey) const -> FText;
     auto HandleDeviceKeyClicked(const FKey& InKey) -> void;
     auto Get_KeyDisplay(const FKey& InKey) const -> FString;
@@ -145,10 +168,26 @@ private:
 
     struct FCkInputDebugger_BindingSlot
     {
-        TSharedPtr<SWidget> Root;
-        FString             SearchText;
+        TSharedPtr<SBorder>   Root;
+        TSharedPtr<STextBlock> NameText;
+        FString               SearchText;
+        FString               Category;
+        bool                  IsRebound = false;
     };
     TArray<FCkInputDebugger_BindingSlot> _BindingSlots;
+    TMap<FString, TSharedPtr<SWidget>>   _BindingCategoryHeaders;
+    TSharedPtr<STextBlock>               _ReboundCountText;
+
+    // One chip = one held/recent key; the pool is grown on demand and updated in place.
+    struct FCkInputDebugger_KeyChip
+    {
+        TSharedPtr<SBorder>    Root;
+        TSharedPtr<SBorder>    KeyBadge;
+        TSharedPtr<STextBlock> KeyText;
+        TSharedPtr<STextBlock> ActionText;
+    };
+    TArray<FCkInputDebugger_KeyChip> _KeyStripChips;
+    TSharedPtr<SWidget>              _KeyStripEmptyText;
 
     // ---- State ----
     TWeakObjectPtr<UEnhancedInputLocalPlayerSubsystem> _BoundSubsystem;
@@ -160,6 +199,7 @@ private:
     FString _FilterString;
     FString _HighlightString;
     bool    _ShowActiveActionsOnly = false;
+    ECkInputDebugger_BindingsFilterMode _BindingsFilterMode = ECkInputDebugger_BindingsFilterMode::All;
 
     // ---- Live key activity (passive observer; holds keys only, never handles) ----
     TSharedPtr<FCkInputDebugger_KeyActivityObserver> _KeyObserver;
@@ -168,6 +208,11 @@ private:
     TSet<FKey> _MappedKeys;
     TSet<FKey> _ReboundKeys;
     TMap<FKey, TArray<FString>> _ActionsByKey;
+
+    // Composed on demand (at most once per frame) from the observer's physical edges + this
+    // window's presentation overlays (mapped / rebound / click-filter highlight).
+    FCkDebug_DeviceSnapshot _DeviceSnapshot;
+    uint64                  _DeviceSnapshotFrame = 0;
 
     FDelegateHandle _EndPIEHandle;
 };

@@ -180,6 +180,12 @@ plain values (`FName`, `FKey`, ints, enums) — keep it that way, or that panel 
 - **A `<unbound>` terminal key is a player-reachable state**, not a defect — a mapped button whose
   key the player cleared in a settings screen. It is tinted as an error because a swap naming it
   would be rejected wholesale.
+- **A key shared by several hold-graded resolutions renders the SMALLEST `HoldSiblingFrames`.**
+  Key↔button is many-to-many, so the device snapshot's verdict map combines on collision with
+  `FMath::Min` rather than overwriting — the cap fills to full at the earliest threshold any owning
+  button grades on, which is the first frame the key's hold-ness matters to anyone. Never revert
+  that to a plain `TMap::Add`: last-writer-wins makes the cap show whichever resolution iterated
+  last, which is a decoration, not a verdict.
 
 ---
 

@@ -323,6 +323,13 @@ auto
 
     // The hold-verdict threshold per resolved key, off the selected layer's bake — this is what turns a cap's
     // fill into the matcher's own verdict point rather than a decoration.
+    //
+    // Key↔button is many-to-many by design (a button carries every key its slots bind, and one key can be bound
+    // by several buttons), so two hold-graded resolutions can name the SAME key with different thresholds. A
+    // plain Add would last-writer-win on that collision and the cap would silently show whichever resolution
+    // happened to iterate last. Combine with MIN instead: the fill saturates at the earliest threshold any
+    // owning button grades on, which is the first frame the key's hold-ness means anything to anyone. Max would
+    // leave a cap reading "still filling" past the point one of its owners has already called the press a hold.
     auto VerdictByKey = TMap<FKey, int32>{};
 
     if (const auto* Layer = TryGet_SelectedLayer())
@@ -334,7 +341,12 @@ auto
 
             for (const auto& Key : Resolution.ResolvedKeys)
             {
-                if (Key.IsValid())
+                if (NOT Key.IsValid())
+                { continue; }
+
+                if (auto* Existing = VerdictByKey.Find(Key))
+                { *Existing = FMath::Min(*Existing, Resolution.HoldSiblingFrames); }
+                else
                 { VerdictByKey.Add(Key, Resolution.HoldSiblingFrames); }
             }
         }

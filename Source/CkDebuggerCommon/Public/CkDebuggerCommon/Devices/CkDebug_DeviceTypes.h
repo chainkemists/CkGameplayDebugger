@@ -37,6 +37,14 @@ struct FCkDebug_DeviceKeyState
     // A key the game actually listens to — minted as a button or named by a layer capture. Outlined so a reader
     // can see the game's live input surface on the device at a glance.
     bool IsActionable = false;
+
+    // The player remapped this key away from its default binding — the cap reads amber so a rebound surface is
+    // visible on the device itself, not only in a bindings table.
+    bool IsRebound = false;
+
+    // Externally selected (a click-to-filter target, a search hit) — a bright ring above every other rim so the
+    // selection survives any combination of the states above.
+    bool IsHighlighted = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -55,6 +63,14 @@ struct FCkDebug_DeviceSnapshot
         return Keys.Find(InKey);
     }
 };
+
+// --------------------------------------------------------------------------------------------------------------------
+// Optional interactivity, shared by every device widget: a consumer that binds these gets click-to-select and
+// lazy hover tooltips; one that doesn't gets the original passive visualizer unchanged.
+// --------------------------------------------------------------------------------------------------------------------
+
+DECLARE_DELEGATE_OneParam(FCkDebug_DeviceKeyClicked, const FKey&);
+DECLARE_DELEGATE_RetVal_OneParam(FText, FCkDebug_DeviceKeyTooltip, const FKey&);
 
 // --------------------------------------------------------------------------------------------------------------------
 // The state vocabulary, shared by every device widget so a press reads identically on a keycap, a mouse button and

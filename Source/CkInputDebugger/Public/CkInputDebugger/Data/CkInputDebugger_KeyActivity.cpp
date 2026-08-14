@@ -8,6 +8,40 @@ namespace ck_input_debugger_key_activity
 {
     constexpr auto MaxRecentKeys = 6;
     constexpr auto AnalogRestThreshold = 0.08f;
+
+    // Deflection maps onto Get_FillFraction as HeldRunFrames / HoldVerdictFrames, so the stick
+    // region fills proportionally to how far the stick is pushed.
+    constexpr auto StickDeflectionVerdictFrames = 100;
+
+    struct FStickAxisFold
+    {
+        FKey StickButton;
+        FKey AxisX;
+        FKey AxisY;
+    };
+
+    inline auto Get_StickAxisFolds() -> const TArray<FStickAxisFold>&
+    {
+        static const auto Folds = TArray<FStickAxisFold>{
+            {EKeys::Gamepad_LeftThumbstick, EKeys::Gamepad_LeftX, EKeys::Gamepad_LeftY},
+            {EKeys::Gamepad_RightThumbstick, EKeys::Gamepad_RightX, EKeys::Gamepad_RightY},
+        };
+
+        return Folds;
+    }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkInputDebugger_KeyActivityObserver::
+    Tick(
+        const float InDeltaTime,
+        FSlateApplication& InSlateApp,
+        TSharedRef<ICursor> InCursor)
+    -> void
+{
+    ++_LiveFrame;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -106,12 +140,50 @@ auto
 
 auto
     FCkInputDebugger_KeyActivityObserver::
+    Fill_DeviceSnapshot(
+        FCkDebug_DeviceSnapshot& OutSnapshot) const
+    -> void
+{
+    using namespace ck_input_debugger_key_activity;
+
+    OutSnapshot.LiveFrame = _LiveFrame;
+    OutSnapshot.DeviceConnected = true;
+    OutSnapshot.Keys = _KeyStates;
+
+    for (auto& [Key, State] : OutSnapshot.Keys)
+    {
+        State.HeldRunFrames = Get_IsHeld(Key)
+            ? FMath::Max(1, _LiveFrame - State.LatestPressFrame)
+            : 0;
+    }
+
+    for (const auto& Fold : Get_StickAxisFolds())
+    {
+        const auto Deflection = FMath::Min(1.0f, static_cast<float>(
+            FVector2D{Get_AnalogMagnitude(Fold.AxisX), Get_AnalogMagnitude(Fold.AxisY)}.Size()));
+
+        if (Deflection < AnalogRestThreshold)
+        { continue; }
+
+        auto& StickState = OutSnapshot.Keys.FindOrAdd(Fold.StickButton);
+
+        if (StickState.HeldRunFrames > 0)
+        { continue; }
+
+        StickState.HoldVerdictFrames = StickDeflectionVerdictFrames;
+        StickState.HeldRunFrames = FMath::RoundToInt32(Deflection * StickDeflectionVerdictFrames);
+    }
+}
+
+auto
+    FCkInputDebugger_KeyActivityObserver::
     Clear()
     -> void
 {
     _Held.Reset();
     _Recent.Reset();
     _AnalogMagnitudes.Reset();
+    _KeyStates.Reset();
     ++_Revision;
 }
 
@@ -127,6 +199,10 @@ auto
     { return; }
 
     _Held.Emplace(FCkInputDebugger_HeldKey{InKey, FSlateApplication::Get().GetCurrentTime()});
+
+    auto& State = _KeyStates.FindOrAdd(InKey);
+    State.LatestPressFrame = _LiveFrame;
+
     ++_Revision;
 }
 
@@ -148,6 +224,9 @@ auto
 
     if (_Recent.Num() > MaxRecentKeys)
     { _Recent.SetNum(MaxRecentKeys); }
+
+    if (auto* State = _KeyStates.Find(InKey))
+    { State->LatestReleaseFrame = _LiveFrame; }
 
     ++_Revision;
 }

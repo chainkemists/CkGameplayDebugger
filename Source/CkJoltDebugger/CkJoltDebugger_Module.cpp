@@ -6,6 +6,7 @@
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "Misc/CoreDelegates.h"
 #include "Widgets/Docking/SDockTab.h"
 #if WITH_EDITOR
     #include "WorkspaceMenuStructure.h"
@@ -62,12 +63,29 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
         { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+
+    // Tear the debugger UI down BEFORE module shutdown / world cleanup, so the window's debug-draw target
+    // unregisters from a live Jolt subsystem and releases its preview-world components while the world is
+    // still alive. Doing it during ShutdownModule is too late.
+    _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkJoltDebuggerModule::HandleEnginePreExit);
+}
+
+auto FCkJoltDebuggerModule::HandleEnginePreExit() -> void
+{
+    _DebuggerTab.Reset();
+    _DebuggerWindow.Reset();
 }
 
 auto FCkJoltDebuggerModule::ShutdownModule() -> void
 {
     FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
+
+    if (_EnginePreExitHandle.IsValid())
+    {
+        FCoreDelegates::OnEnginePreExit.Remove(_EnginePreExitHandle);
+        _EnginePreExitHandle.Reset();
+    }
 
     if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
     {

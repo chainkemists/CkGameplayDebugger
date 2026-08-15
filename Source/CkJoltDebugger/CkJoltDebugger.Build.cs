@@ -11,6 +11,12 @@ public class CkJoltDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
 
+            // Preview-scene viewport: FSceneViewport + FUMGViewportClient + camera input.
+            "RenderCore",
+            "RHI",
+            "InputCore",
+            "UMG",
+
             "Slate",
             "SlateCore",
 

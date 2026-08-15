@@ -6,7 +6,12 @@
 
 // --------------------------------------------------------------------------------------------------------------------
 
-DECLARE_DELEGATE_RetVal(TOptional<FCkJoltDebugger_BodySnapshot>, FOnCkJoltDebugger_GetSelection);
+/*
+ * By CONST REFERENCE, not by value: every row's value attribute pulls the selection on every paint, and a
+ * by-value delegate copied the whole snapshot — handle, two strings and a vector — once per row per frame.
+ * The referent is the window's own selection member, which outlives every row it feeds.
+ */
+DECLARE_DELEGATE_RetVal(const TOptional<FCkJoltDebugger_BodySnapshot>&, FOnCkJoltDebugger_GetSelection);
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -29,7 +34,7 @@ public:
     auto Get_RowValueText(const FString& InKey) const -> FText;
 
 private:
-    auto Get_Selection() const -> TOptional<FCkJoltDebugger_BodySnapshot>;
+    auto Get_Selection() const -> const TOptional<FCkJoltDebugger_BodySnapshot>&;
 
     auto MakeRow(
         const FString& InKey,

@@ -1,6 +1,7 @@
 ﻿#include "CkGoapDebugger/Data/CkGoapDebugger_DataCollector.h"
 
 #include "CkCore/Object/CkObject_Utils.h"
+#include "CkCore/Time/CkTime_Utils.h"
 #include "CkCore/Validation/CkIsValid.h"
 
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
@@ -338,10 +339,20 @@ namespace ck_goap_debugger_data_collector_internal
         // PR-B.1b Stage 5: ReplanThrottle lives on the Planner entity. Read it
         // here only for promoted mid-tier Planners (the Action handle that
         // also carries the Planner role).
+        // The throttle now stores a world-time STAMP of the last replan rather than a per-frame
+        // accumulator (the accumulator could not survive AutoReplan skipping idle planners), so the
+        // displayed seconds-since is derived here against the same clock the processor compares to.
         if (InActionHandle.Has<ck::FFragment_Goap_Planner_ReplanThrottle>())
         {
             const auto& Throttle = InActionHandle.Get<ck::FFragment_Goap_Planner_ReplanThrottle>();
-            Info.SecondsSinceLastReplan = Throttle.Get_SecondsSinceLastReplan();
+
+            const auto World = UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InActionHandle);
+            const auto TimeParams = FCk_Utils_Time_GetWorldTime_Params{World};
+            const auto Now = static_cast<double>(
+                UCk_Utils_Time_UE::Get_WorldTime(TimeParams).Get_WorldTime().Get_Time().Get_Seconds());
+
+            Info.SecondsSinceLastReplan = static_cast<float>(
+                FMath::Max(0.0, Now - Throttle.Get_LastReplanWorldTimeSeconds()));
         }
 
         // ---- Chain position --------------------------------------------------------

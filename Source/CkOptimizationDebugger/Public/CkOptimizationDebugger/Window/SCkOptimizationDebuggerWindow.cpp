@@ -766,7 +766,6 @@ auto
         SNew(SCkDebug_WindowChrome)
         .WindowId(WindowId)
         .ToolTabId(TEXT("CkOptimizationDebugger"))
-        .DisplayName(FText::FromString(TEXT("CK Optimization Debugger")))
         .MenuActionsContent()
         [
             DoCreate_MenuActions()

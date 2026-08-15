@@ -261,6 +261,11 @@ auto
         { SelectedItem = Selection[0]; }
     }
 
+    auto SelectedIdentity = TOptional<ck_jolt_debugger_outliner_panel::FRowIdentity>{};
+
+    if (SelectedItem.IsValid())
+    { SelectedIdentity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(*SelectedItem); }
+
     auto Existing = TMap<ck_jolt_debugger_outliner_panel::FRowIdentity, ItemPtr>{};
     Existing.Reserve(_ItemSource.Num());
 
@@ -276,11 +281,17 @@ auto
 
     for (const auto& Body : _Bodies)
     {
-        if (NOT ck_jolt_debugger_outliner_panel::Matches_Query(Body, _FilterString))
+        const auto Identity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(Body);
+
+        // The SELECTED row is listed whatever the filter says. A selection that vanishes because the user
+        // narrowed the query afterwards is indistinguishable from no selection at all — and the detail panel
+        // beside it would still be showing the row's facts. It renders dimmed, the way a highlight non-match does.
+        const auto IsPinnedSelection = SelectedIdentity.IsSet() && *SelectedIdentity == Identity;
+
+        if (NOT IsPinnedSelection && NOT ck_jolt_debugger_outliner_panel::Matches_Query(Body, _FilterString))
         { continue; }
 
         auto Item = ItemPtr{};
-        const auto Identity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(Body);
 
         if (auto* Found = Existing.Find(Identity))
         {
@@ -300,9 +311,32 @@ auto
     if (Existing.Num() > 0)
     { SetChanged = true; }
 
+    // Population first, then name. Stable, so rows the collector emitted in registry order for one population
+    // keep that order instead of shuffling between refreshes for no reason the user can see.
+    NewItems.StableSort([](const ItemPtr& InLeft, const ItemPtr& InRight) -> bool
+    {
+        if (NOT InLeft.IsValid() || NOT InRight.IsValid())
+        { return InLeft.IsValid(); }
+
+        if (InLeft->Population != InRight->Population)
+        { return static_cast<uint8>(InLeft->Population) < static_cast<uint8>(InRight->Population); }
+
+        return InLeft->DisplayName.Compare(InRight->DisplayName, ESearchCase::IgnoreCase) < 0;
+    });
+
+    // The set can be identical while the ORDER is not — a renamed entity moves within its population. The view
+    // renders from its own cached row order, so an unrefreshed reorder shows rows in the wrong places.
+    auto OrderChanged = NewItems.Num() != _ItemSource.Num();
+
+    for (auto Index = 0; NOT OrderChanged && Index < NewItems.Num(); ++Index)
+    {
+        if (NewItems[Index] != _ItemSource[Index])
+        { OrderChanged = true; }
+    }
+
     _ItemSource = MoveTemp(NewItems);
 
-    if (NOT _ListView.IsValid() || NOT SetChanged)
+    if (NOT _ListView.IsValid() || (NOT SetChanged && NOT OrderChanged))
     { return; }
 
     _ListView->RequestListRefresh();
@@ -382,9 +416,9 @@ auto
                     if (NOT Panel.IsValid() || NOT Item.IsValid())
                     { return FSlateColor::UseForeground(); }
 
-                    return ck_jolt_debugger_outliner_panel::Matches_Query(*Item, Panel->_HighlightString)
-                        ? FSlateColor::UseForeground()
-                        : FSlateColor{CkStyle::TextMute()};
+                    return Panel->Get_IsRowDimmed(*Item)
+                        ? FSlateColor{CkStyle::TextMute()}
+                        : FSlateColor::UseForeground();
                 })
             ]
 
@@ -474,6 +508,18 @@ auto
     _ListView->RequestScrollIntoView(InItem);
 
     return TOptional<FCkJoltDebugger_BodySnapshot>{*InItem};
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Get_IsRowDimmed(
+        const FCkJoltDebugger_BodySnapshot& InBody) const
+    -> bool
+{
+    // Two reasons a listed row can be off-query: it lost the highlight query, or it is the pinned selection
+    // the filter would otherwise have hidden. Both read the same — this row is not what you asked for.
+    return NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _HighlightString)
+        || NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _FilterString);
 }
 
 auto

@@ -98,7 +98,25 @@ auto FCkJoltDebuggerOutliner_RowsSelectFilterAndSurviveRefresh::RunTest(const FS
 
     Outliner->Set_FilterQuery(TEXT("Crate"));
 
-    TestEqual(TEXT("the filter hides the rows that do not match"), Outliner->Get_NumVisibleRows(), 1);
+    // "Crate" matches one row, but the SELECTED row ("Floor") stays pinned — a selection the filter erases is
+    // indistinguishable from no selection, while the detail panel beside it still shows that row's facts.
+    TestEqual(TEXT("the filter hides non-matches but keeps the selected row pinned"),
+        Outliner->Get_NumVisibleRows(), 2);
+
+    const auto Pinned = Outliner->Get_Selection();
+    TestTrue(TEXT("the pinned row is the selection itself"),
+        Pinned.IsSet() && Pinned->Handle == BakedEntity);
+    TestTrue(TEXT("the pinned row renders dimmed, because it is not what the filter asked for"),
+        Outliner->Get_IsRowDimmed(*Pinned));
+    TestFalse(TEXT("the row the filter DID match is not dimmed"),
+        Outliner->Get_IsRowDimmed(Bodies[0]));
+
+    // The pin follows the selection and nothing else: with no selection, the filter hides the row again.
+    Outliner->ClearSelection();
+    Outliner->Refresh(Bodies);
+
+    TestEqual(TEXT("with no selection to pin, the filter hides every non-match"),
+        Outliner->Get_NumVisibleRows(), 1);
 
     // An external selector must reach a row the filter is hiding: it clears the filter and reveals it, rather
     // than silently selecting nothing.

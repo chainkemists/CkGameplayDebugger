@@ -19,6 +19,11 @@ class STextBlock;
 class UCk_Jolt_Subsystem;
 class UWorld;
 
+namespace ck_jolt_debugger
+{
+    struct FPopulationGroup;
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 // Cached world-level Jolt stats, refreshed on the gated Tick and read by the value-row TAttribute lambdas.
 // --------------------------------------------------------------------------------------------------------------------
@@ -134,7 +139,7 @@ private:
         TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot,
         ECkJoltDebugger_SelectionSource InSource) -> void;
     auto DoRefreshSelectionFacts() -> void;
-    auto Get_Selection() const -> TOptional<FCkJoltDebugger_BodySnapshot> { return _Selection; }
+    auto Get_Selection() const -> const TOptional<FCkJoltDebugger_BodySnapshot>& { return _Selection; }
 
     auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto BuildInWorldDrawToggles() const -> TSharedRef<SWidget>;
@@ -147,10 +152,10 @@ private:
     auto BuildRightRail() -> TSharedRef<SWidget>;
 
     auto MakePopulationToggle(
-        FName InIconId,
-        const FString& InLabel,
-        const FString& InToolTip,
-        TArray<ECk_Jolt_DebugDraw_ColorClass> InColorClasses) const -> TSharedRef<SWidget>;
+        const ck_jolt_debugger::FPopulationGroup& InGroup) const -> TSharedRef<SWidget>;
+
+    /** Restore the per-user preferences into the target and the camera. Runs once, at the end of Construct. */
+    auto DoApplySavedPreferences() -> void;
 
     auto MakeSectionHeader(const FString& InText) const -> TSharedRef<SWidget>;
     auto MakeStatRow(const FString& InLabel, TAttribute<FText> InValue) const -> TSharedRef<SWidget>;

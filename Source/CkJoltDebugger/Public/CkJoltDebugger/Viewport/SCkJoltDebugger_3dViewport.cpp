@@ -23,6 +23,25 @@ namespace ck_jolt_debugger_3d_viewport
     auto Get_DefaultPerspectiveLocation() -> FVector
     { return FVector{-1600.0, -1600.0, 1200.0}; }
 
+    // How far the cursor may travel between press and release and still count as a click rather than a drag.
+    auto Get_PickDragThresholdSquared() -> double
+    {
+        constexpr auto ThresholdPixels = 4.0;
+        return ThresholdPixels * ThresholdPixels;
+    }
+
+    auto Get_IsAnyModifierDown(
+        const FViewport* InViewport) -> bool
+    {
+        if (InViewport == nullptr)
+        { return false; }
+
+        return InViewport->KeyState(EKeys::LeftControl) || InViewport->KeyState(EKeys::RightControl)
+            || InViewport->KeyState(EKeys::LeftShift)   || InViewport->KeyState(EKeys::RightShift)
+            || InViewport->KeyState(EKeys::LeftAlt)     || InViewport->KeyState(EKeys::RightAlt)
+            || InViewport->KeyState(EKeys::LeftCommand) || InViewport->KeyState(EKeys::RightCommand);
+    }
+
     auto Get_PresetRotation(
         ECkJoltDebugger_CameraPreset InPreset) -> FRotator
     {
@@ -98,30 +117,72 @@ public:
 
     virtual auto InputKey(const FInputKeyEventArgs& InEventArgs) -> bool override
     {
-        // A PLAIN left click only: while any camera button is down the left button is part of a drag
-        // gesture, and picking mid-orbit would fight the camera.
-        const auto IsPlainLeftClick = InEventArgs.Key == EKeys::LeftMouseButton &&
-            InEventArgs.Event == IE_Pressed &&
-            InEventArgs.Viewport != nullptr &&
-            NOT InEventArgs.Viewport->KeyState(EKeys::RightMouseButton) &&
-            NOT InEventArgs.Viewport->KeyState(EKeys::MiddleMouseButton);
-        if (IsPlainLeftClick && _OnBodyPicked.IsBound())
-        {
-            auto RayOrigin = FVector::ZeroVector;
-            auto RayDirection = FVector::ZeroVector;
+        auto* EventViewport = InEventArgs.Viewport;
 
-            if (GetCursorWorldRay(InEventArgs.Viewport, RayOrigin, RayDirection))
+        // A camera drag opens with a button press too, so a press is never enough to know a click happened.
+        // The pick resolves on RELEASE, and only if the cursor barely moved since the press — releasing at the
+        // end of an orbit or a pan must not re-select whatever ended up under the cursor.
+        if (EventViewport != nullptr && InEventArgs.Key == EKeys::LeftMouseButton)
+        {
+            if (InEventArgs.Event == IE_Pressed)
             {
-                const auto Target = _Target.Pin();
-                _OnBodyPicked.Execute(Target.IsValid()
-                    ? Target->TryPick_Body(RayOrigin, RayDirection)
-                    : TOptional<uint64>{});
+                _PendingPickPress.Reset();
+
+                const auto IsPlainPress = NOT EventViewport->KeyState(EKeys::RightMouseButton) &&
+                    NOT EventViewport->KeyState(EKeys::MiddleMouseButton);
+
+                if (IsPlainPress)
+                {
+                    auto PressPosition = FIntPoint{};
+                    EventViewport->GetMousePos(PressPosition);
+                    _PendingPickPress = PressPosition;
+                }
+
+                return true;
+            }
+
+            if (InEventArgs.Event == IE_Released)
+            {
+                const auto PressPosition = _PendingPickPress;
+                _PendingPickPress.Reset();
+
+                if (NOT PressPosition.IsSet() || NOT _OnBodyPicked.IsBound())
+                { return true; }
+
+                auto ReleasePosition = FIntPoint{};
+                EventViewport->GetMousePos(ReleasePosition);
+
+                const auto DragOffset = FVector2D{ReleasePosition - *PressPosition};
+
+                if (DragOffset.SizeSquared() >
+                    ck_jolt_debugger_3d_viewport::Get_PickDragThresholdSquared())
+                { return true; }
+
+                auto RayOrigin = FVector::ZeroVector;
+                auto RayDirection = FVector::ZeroVector;
+
+                if (GetCursorWorldRay(EventViewport, RayOrigin, RayDirection))
+                {
+                    const auto Target = _Target.Pin();
+                    _OnBodyPicked.Execute(Target.IsValid()
+                        ? Target->TryPick_Body(RayOrigin, RayDirection)
+                        : TOptional<uint64>{});
+                }
+
                 return true;
             }
         }
 
+        // A camera button arriving while the left one is down turns the gesture into a drag after the fact.
+        const auto IsCameraButtonPress = InEventArgs.Event == IE_Pressed &&
+            (InEventArgs.Key == EKeys::RightMouseButton || InEventArgs.Key == EKeys::MiddleMouseButton);
+        if (IsCameraButtonPress)
+        { _PendingPickPress.Reset(); }
+
+        // Ctrl+F, Alt+F and friends belong to whatever else the editor binds them to; only a bare F frames.
         const auto IsFrameSelectionKey = (InEventArgs.Event == IE_Pressed || InEventArgs.Event == IE_Repeat) &&
-            InEventArgs.Key == EKeys::F;
+            InEventArgs.Key == EKeys::F &&
+            NOT ck_jolt_debugger_3d_viewport::Get_IsAnyModifierDown(EventViewport);
         if (IsFrameSelectionKey)
         {
             ApplyPreset(ECkJoltDebugger_CameraPreset::FrameSelection);
@@ -157,6 +218,15 @@ public:
         }
 
         return InEventArgs.Key == EKeys::RightMouseButton || InEventArgs.Key == EKeys::MiddleMouseButton;
+    }
+
+    // Losing focus eats the release: FSceneViewport empties its key state on the way out, so a left button that
+    // went down in here never reports IE_Released. The press left standing would then pair with whatever
+    // release arrives next — a click somewhere else entirely, resolving as a pick.
+    virtual auto LostFocus(FViewport* InViewport) -> void override
+    {
+        _PendingPickPress.Reset();
+        FUMGViewportClient::LostFocus(InViewport);
     }
 
     virtual auto InputAxis(const FInputKeyEventArgs& InEventArgs) -> bool override
@@ -324,6 +394,10 @@ private:
 
     TOptional<FBox> _SelectionBounds;
     FOnCkJoltDebugger_BodyPicked _OnBodyPicked;
+
+    // Where a plain left press landed, until it releases. Unset means no click is in flight — either none
+    // started, or a camera button turned the one that did into a drag.
+    TOptional<FIntPoint> _PendingPickPress;
 
     float _CameraSpeed = 1.0f;
 };

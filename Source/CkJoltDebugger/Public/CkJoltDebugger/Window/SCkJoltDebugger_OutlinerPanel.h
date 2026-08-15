@@ -48,8 +48,15 @@ public:
     /** The row the view has selected, if any. */
     auto Get_Selection() const -> TOptional<FCkJoltDebugger_BodySnapshot>;
 
-    /** Rows surviving the filter — the outliner's visible row count. */
+    /*
+     * Rows surviving the filter, PLUS the selected row when the filter would otherwise hide it — a selection
+     * the user cannot see is indistinguishable from no selection, so the selected row is pinned and dimmed
+     * rather than dropped.
+     */
     auto Get_NumVisibleRows() const -> int32;
+
+    /** Whether a listed row renders muted: it lost the highlight query, or it is the pinned selection. */
+    auto Get_IsRowDimmed(const FCkJoltDebugger_BodySnapshot& InBody) const -> bool;
 
     /** Drive the filter query directly — the same path a keystroke in the search box takes. */
     auto Set_FilterQuery(const FString& InQuery) -> void;

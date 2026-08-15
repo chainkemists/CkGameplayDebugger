@@ -1,13 +1,19 @@
 # Jolt Debugger — World Viewport — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY phase boundary and session end -->
-**As of 2026-08-15 (campaign close, user AFK):** **ALL FOUR PHASES DONE AND COMMITTED LOCALLY. SHIP
-IS READY BUT WITHHELD** (outward action — needs the user). Nothing pushed; no superproject pointer
-bumps. `[EDITOR-VERIFY]` for Phases 3–4 (+ `[PACKAGED-VERIFY]`) awaits the user's return.
+**As of 2026-08-15 (campaign EXTENDED — Phase 5 DONE + committed; Phase 6 next under P5-D65 speed policy):** Phases 1–4 are DONE
+and COMMITTED LOCALLY. After the user's live PIE pass the campaign was **extended by four phases**
+(5–8: draw channels + draw flags + colour modes; sim control + inspection + drag facility; camera
++ command lanes + detail + drag UI; constraints/probes/health/labels/grid + close-out). Rulings
+**P5-D38 … P8-D60** are in the decision log below; phase contracts are in `PHASE_5.md` … `PHASE_8.md`;
+the unit breakdown is in `PHASE_5_DISPATCH.md`. **NEXT: Phase 6 executor A (P5-D66 Island drop + pause/step + detail sample + selected-body contacts + multi-select/isolate), then executor B (drag facility + stats).**
+**SHIP IS WITHHELD — extended by phases 5–8** (previously "ready"). Nothing pushed; no superproject
+pointer bumps. `[EDITOR-VERIFY]` for Phases 3–4 (+ `[PACKAGED-VERIFY]`) still awaits the user; the
+Phase-1–4 work is independently shippable if the user chooses to publish before 5–8 land.
 **Local tips (all `dev`, all ahead of `origin/dev`):**
-- CkFoundation: 2d0f71ced (Phase 4) ← 8e85733f1 (P3) ← 5b3ce3eb3 (P2) ← fb90e2f09 (branding) ← 5edf6c152 (P1)
-- CkTests: 59e3d1d6 (P4) ← 99e8c9f9 (P3) ← d039513b (P2) ← a6903924 (branding) ← fbd99927 (P1)
-- CkGameplayDebugger: [docs commit below] ← 66f1e75 (P4) ← 0271004/f646b4a (P3) ← 00b4801/c1cbd5f (P2) ← 5b954c7 (branding) ← c804e7b (P1 docs)
+- CkFoundation: 4e8b1c5a6 (Phase 5) ← 2d0f71ced (Phase 4) ← 8e85733f1 (P3) ← 5b3ce3eb3 (P2) ← fb90e2f09 (branding) ← 5edf6c152 (P1)
+- CkTests: f866da75 (P5) ← 59e3d1d6 (P4) ← 99e8c9f9 (P3) ← d039513b (P2) ← a6903924 (branding) ← fbd99927 (P1)
+- CkGameplayDebugger: [P5 docs commit] ← 1e24bfe (P5 collateral) ← 688583b (P4 docs) ← 66f1e75 (P4) ← 0271004/f646b4a (P3) ← 00b4801/c1cbd5f (P2) ← 5b954c7 (branding) ← c804e7b (P1 docs)
 - Superproject: local `dev` @ fd13be1 (branding) on top of origin/dev f51209d; HEAD detached at fd13be1.
 **Final gate of record (orchestrator, serial, final artifact):** full suite 1146/1150 with fails ⊆
 baseline named set (one flaky sibling re-ran green in isolation); scoped Jolt+JoltDebugger 78/78 exit 0
@@ -16,6 +22,11 @@ baseline named set (one flaky sibling re-ran green in isolation); scoped Jolt+Jo
 selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 
 ## Ship — instructions for the user (NOT executed; cross-repo publish guard)
+> **2026-08-15: ship withheld — the campaign was extended by phases 5–8.** These steps stay valid
+> and describe how to publish the Phase-1–4 work *if the user chooses to ship it early*; otherwise
+> they run once after Phase 8. Phases 5–8 add commits to the same three `dev` tips, so the
+> dependency order and the pointer-bump step are unchanged either way.
+
 1. PIE-verify Phase 3 (7 steps, PHASE_3.md) + Phase 4 (5 steps, PHASE_4.md) + the static-probe line
    (destroy a Static probe with the debugger open → its instance disappears). Fix-forward anything red.
 2. Publish in dependency order so no tip references an unpushed SHA: push CkFoundation `dev` first,
@@ -41,7 +52,11 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 | 2 — viewport shell | ✅ Done 2026-08-15, COMMITTED (c1cbd5f / 5b3ce3eb3 / d039513b); **`[EDITOR-VERIFY]` A–D 12/12 PASSED by user 2026-08-15** |
 | 3 — outliner + selection | ✅ Done 2026-08-15, COMMITTED (8e85733f1 / 99e8c9f9 / f646b4a / 0271004); gate: full 1146/1150 fails ⊆ baseline (VatProxy red re-ran green = Zen DDC infra noise), scoped serial 75/75; `[EDITOR-VERIFY]` (7 steps in PHASE_3.md) pending user |
 | 4 — scale + polish | ✅ Done 2026-08-15, COMMITTED (2d0f71ced / 59e3d1d6 / 66f1e75); measured; gate: full 1146/1150 ⊆ baseline, scoped 78/78; `[EDITOR-VERIFY]` (5 steps + static-probe) pending user |
-| Ship | 🟢 READY — withheld for user (push/pointer bumps/PACKAGED-VERIFY); instructions in "Ship" section above |
+| 5 — draw channels, draw flags, colour modes (CkJolt) | ✅ Done 2026-08-15, COMMITTED (CkFoundation 4e8b1c5a6 / CkTests f866da75 / CkGameplayDebugger 1e24bfe); gate Jolt 83/83, Launcher 3/3, Probe 27/27; `[EDITOR-VERIFY]` pending; Island mode dropped in P6 (P5-D66) |
+| 6 — sim control, inspection, drag facility (CkJolt) | ⏳ Pending — contract `PHASE_6.md` (P6-D43…D48) |
+| 7 — camera, lanes, detail, selection, drag UI (CkJoltDebugger) | ⏳ Pending — contract `PHASE_7.md` (P7-D49…D54) |
+| 8 — constraints, probes, health, labels, grid, close-out | ⏳ Pending — contract `PHASE_8.md` (P8-D55…D60) |
+| Ship | 🟡 withheld — extended by phases 5–8 (push/pointer bumps/PACKAGED-VERIFY still user-gated; instructions in "Ship" section above) |
 
 ## Decision log
 | # | Date | Decision | Why | Revisit when |
@@ -65,6 +80,30 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 | P1-D16 | 2026-08-14 | **Sleeping-at-open fix**: the revision-keyed full pass includes ALL currently-inactive bodies (statics AND sleeping dynamics → sleeping set), and JoltBody Setup bumps the scene revision when a body is added asleep (`InitialSleepState::Asleep`). Closes the executor's deviation 2 (asleep-at-registration or asleep-spawned bodies drew nothing until woken) | "Draw ALL bodies" is a campaign hard requirement; revision bumps on asleep-spawn are rare and only cost when a target is demanding | Phase-4 measurement objects |
 | P1-D17 | 2026-08-14 | **Multi-world PIE draw ratified**: every Jolt subsystem now gets its own default target, so server+client PIE worlds each draw under the same CVars (previously only the first world, an artifact of the sInstance gate). Accepted as a strict improvement; must be noted in the docs weld | Old behavior was a singleton artifact, not a design | user objects |
 | P1-D13 | 2026-08-14 | **RULED (post-investigation): wireframe = branch (a)** — direct `LoadObject<UMaterial>` of `/Engine/EngineDebugMaterials/WireframeMaterial.WireframeMaterial` (NEVER via `GEngine->WireframeMaterial`, which is null when `RequiresCookedData()` — `ShaderCore.cpp:606-610`), MID with `Color` param per bucket, mode toggle = ISM material swap. Evidence: `Material.h:939-941` `Wireframe` flag is runtime-unconditional; asset has `bUsedAsSpecialEngineMaterial` (bypasses ISM usage checks, `Material.cpp:2008,2043`) + a `Color` vector param; wireframe fill-mode path is VF-agnostic (`MeshPassProcessor.cpp:1823-1828`). Packaged-cook inclusion of `/Engine/EngineDebugMaterials/` is UNPROVEN — but identically unproven for the EXISTING solid material, so no regression vs status quo; logged as `[PACKAGED-VERIFY]` covering both. Fallback if that verify fails: branch (b), a CkUsf-generated look (`_Wireframe` flag + trivial .ush + AS asset decl + regen commit — mechanism documented in the Unit-I report) | Smallest delta, mirrors the proven solid-path load at `CkJolt_DebugRenderer.cpp:231-244`, no human editor step on an unproven risk | packaged verification fails → switch to branch (b) |
+| P5-D38 | 2026-08-15 | **Line + text channels on `FCk_Jolt_DebugDrawTarget`.** Target owns a `ULineBatchComponent` in its target world (same NewObject + RegisterComponentWithWorld + TStrongObjectPtr ownership as the ISMs, P1-D14) and calls `Flush()` at the start of every capture flush; `FCk_Jolt_DebugRenderer::DrawLine/DrawTriangle` route to the ACTIVE target's line channel (no more direct `DrawDebugLine`); wireframe triangles = 3 lines. `DrawText3D` → target stores `FCk_Jolt_DebugDrawLabel {WorldPos, Text, Color}` per frame; consumers render labels (viewport OnPaint projection for the preview; the in-world subsystem via `DrawDebugString`). Public API also exposes `Draw_ExternalLine/Box/Sphere/Arrow(...)` for non-JPH contributors (probe results, health, drag visuals) — an "External" channel cleared per capture. If an `FPreviewScene` world cannot host a `ULineBatchComponent` (unverifiable headlessly until built) the fallback is a PDI `Draw` override on the viewport (Crowd mechanism) — executor STOPs and reports if hit. | JPH line/text output currently dead-ends in the game world; the preview viewport needs it, and the External channel is the only sane home for probe/health/drag visuals | preview world proves unable to host a LineBatchComponent |
+| P5-D39 | 2026-08-15 | **Per-target draw flags** `FCk_Jolt_DebugDrawFlags` (bitmask): Shape (default on), Velocity, AngularVelocity, WorldTransform, CenterOfMassTransform, BoundingBox, MassAndInertia, SleepStats(if cheap; else drop), Constraints, ConstraintLimits, ConstraintReferenceFrames, ContactPoints, ContactNormals, SupportingFaces, Labels. Capture pass draws the per-body items itself from the flags (velocity arrow, axes, AABB…) — no `DrawBodies` in the capture; `DrawConstraints` called under the constraint flags. **The in-world draw is re-hosted onto the same flags**: the subsystem's default target's flags are sourced from the existing CVars (behavior-preserving; CVars remain the in-world source of truth) and the subsystem Tick path uses the same capture code (delete the duplicated `DrawSettings` block). | One vocabulary, two consumers; per-target so the preview and the in-world draw never fight | flags outgrow a 32-bit mask |
+| P5-D40 | 2026-08-15 | **Contact recording.** JPH `sDrawContact*` statics are set to the UNION of registered targets' contact flags (recomputed when flags change). `FProcessor_JoltWorld_Step` wraps `PhysicsSystem::Update` in a renderer `Begin/EndRecord()` scope: `DrawLine`s during recording append to a frame buffer tagged Channel=Contact (cap 200,000 lines/frame, warn once at Display when hit); immediately after Update the renderer replays the buffer into every registered target whose flags request contacts (targets keep them until their next flush). Disclose in docs: contact toggles are process-wide (shared in-world + preview), unlike every other flag. | Contacts only exist DURING the solve; the statics are process-wide by Jolt's design and cannot be per-target | Jolt makes the contact draw flags non-static |
+| P5-D41 | 2026-08-15 | **Highlight visibility.** Highlight colour → `{1.00, 0.15, 0.85}` (magenta, not near any palette entry), highlight bucket ALWAYS opaque (ignores palette opacity), overlay drawn at scale 1.03 about COM, highlight ISM `TranslucencySortPriority` = +1. Spec extends `HighlightAddsOverlayInstance`: asserts overlay instance scale ≠ 1.0 and highlight MID colour ≠ every palette colour. Add a **Hover** colour class (subdued: highlight at 0.5 alpha, scale 1.02) — see D43 for the mask. | User PIE report: the selected body is not visibly distinguishable | palette gains a magenta class |
+| P5-D42 | 2026-08-15 | **Colour-by modes.** `ECk_Jolt_DebugDrawColorMode { BodyClass (default), SleepState, ObjectLayer, Island, ShapeType }` per target. Bucket key's colour-class becomes a `uint8` class index; visibility mask widens from `uint8` to `uint64` (static_assert ≤ 64 classes per mode); ObjectLayer > 61 → "Other"; Island → island index hashed into a 16-colour palette (islands churn per step: acceptable, active bodies re-draw every frame anyway; sleeping = "no island" class). Highlight and Hover classes are mode-independent (always the same two indices, always visible). Legend API `Get_LegendEntries(mode)` returns (class name, colour) so the debugger's legend follows the mode. | Body class alone can't answer "why is this asleep / what layer is this / what island is this" | a mode needs > 64 classes |
+| P6-D43 | 2026-08-15 | **Pause / step.** Verify what sets `IsPaused()` today (grep the setter). Add `Request_StepOnce()` on the Jolt world: when paused, allows exactly one Step then re-pauses; exposed on `UCk_Jolt_Subsystem` (`Request_SetPaused`, `Request_StepOnce`, `Get_IsPaused`). Step processor also records `_LastStepDurationMs` (wall time of `Update`) on the world for stats. | Debugging a physics bug requires stopping time and advancing one step | — |
+| P6-D44 | 2026-08-15 | **Selected-body detail sample.** Extend the selection sample struct (currently linear velocity only) to `FCk_Jolt_DebugDraw_BodySample`: linear+angular velocity, mass (inverse mass → mass, 0 = infinite), friction, restitution, gravity factor, motion quality, object layer, broadphase layer, IsSensor, AllowSleeping, world AABB, shape type/subtype, shape scale, island index (`MotionProperties::GetIslandIndexInternal()` — read-only debug use, document it), user data. For character selections `FCk_Jolt_DebugDraw_CharacterSample`: ground state, ground normal, ground body key, ground velocity, character velocity, up. Sampled in the capture pass only (P3 rule: no PhysicsSystem reads from Slate). Multi-selection: sample the PRIMARY only. | The detail panel currently answers almost nothing; every field is a cheap body read in the async-safe window | sample cost shows up in the benchmark |
+| P6-D45 | 2026-08-15 | **Contacts of the selected body** via `NarrowPhaseQuery::CollideShape` with the selected body's shape at its COM transform, run in the capture pass on demand (only when a body is selected and the debugger asks): result list `{other body key, num contact points, penetration depth, contact points}` on the target; ContactPoints/normals for the selection are also drawn via the line channel. No ContactListener changes. | Answers "what is this body touching" without a listener, without per-step cost when nothing is selected | a ContactListener with retained manifolds appears |
+| P6-D46 | 2026-08-15 | **Multi-select + isolate.** `Set_HighlightedBodies(TArray<uint64>)` (keeps `Set_HighlightedBody` as the 1-element convenience) — Highlight keys are `HighlightKeyBit \| bodykey` so many coexist; `Set_IsolatedBodies(TSet<uint64>)` — when non-empty the capture skips every body not in the set (all populations), plus `Clear_Isolation()`. Both re-arm the full pass. | Comparing bodies and clearing visual clutter are the two things a 100k-body viewer most needs | — |
+| P6-D47 | 2026-08-15 | **Mouse-drag facility (sim-mutating, dev-only).** `UCk_Jolt_Subsystem::Request_BeginDrag(BodyKey/BodyID, WorldGrabPoint)`, `Request_UpdateDrag(WorldTargetPoint)`, `Request_EndDrag()`; requests queue on the subsystem and are applied by a processor that runs BEFORE Step (same group discipline as the capture); implementation = kinematic anchor body (no collision layer / non-colliding object layer) + `DistanceConstraint` (spring: frequency 2 Hz, damping 1, min/max 0) between grab point (body-local) and anchor; body activated on begin and each update; end removes constraint + anchor. Dynamic bodies only; ignored otherwise (log Verbose). Verify a non-colliding object layer exists in CkJolt's layer setup — if not, STOP-report which layer to use. | User PIE report: you cannot poke the simulation; this is the standard Jolt Samples mechanism | a non-colliding layer does not exist |
+| P6-D48 | 2026-08-15 | **Stats extension.** World exposes step duration (D43), `PhysicsSystem::GetBodyStats()`, `GetNumActiveBodies(Rigid/Soft)`, constraint count (`GetConstraints().size()`), and — if CkJolt has an existing ContactListener — a per-step counter of OnContactAdded/Persisted for "contact pairs" (else omit contacts, record why). | The stat rail is the debugger's only whole-world view | — |
+| P7-D49 | 2026-08-15 | **Camera = Unreal editor scheme.** RMB-drag = look in place (yaw/pitch, eye fixed); WASD/QE/arrows fly ONLY while RMB held; RMB+wheel = speed; MMB-drag = pan; wheel = dolly along view; LMB-drag = forward/back + yaw (UE style); Alt+LMB = orbit around the current look-at; Alt+RMB = dolly; F = Frame Selection, Home = Frame All (unchanged); LMB click without drag = pick (unchanged 4-px threshold). Ortho: RMB/MMB drag = pan, wheel = zoom, no rotation. Rewrite `InputKey`/`InputAxis`/`Tick_Navigation` only; the look-at is maintained as eye + forward × distance so Frame/orbit still work. Crowd viewport NOT touched. | User PIE report: the camera does not behave like the editor viewport, which is the muscle memory every user has | Crowd refactor campaign adopts it |
+| P7-D50 | 2026-08-15 | **"Draw" command lane** — one checkbox per D39 flag (grouped: Bodies / Constraints / Contacts / Labels), colour-mode combo (D42), all persisted in `UCkJoltDebuggerSettings`; legend follows the mode. "In-world draw" lane exposes all six CVars. | The flags are worthless without a surface | — |
+| P7-D51 | 2026-08-15 | **Sim controls** — toolbar Pause/Resume + Step buttons (D43) + Space (toggle) / Enter (step) when the viewport is focused; Pause state shown in the stats header. Stats panel gains D48 fields. | — | — |
+| P7-D52 | 2026-08-15 | **Detail panel** shows every D44 field (two-column, grouped: Motion / Material / Layers / Shape / Misc; character group when applicable) and a "Contacts" list (D45) whose rows select the other body on click. | — | — |
+| P7-D53 | 2026-08-15 | **Selection**: outliner multi-select (Ctrl/Shift), primary = last clicked; viewport Ctrl+click adds; all selected highlighted (D46); Isolate/Un-isolate toolbar toggle + `I` hotkey; Follow-selection toggle (camera keeps its offset to the primary's bounds centre every tick). | — | — |
+| P7-D54 | 2026-08-15 | **Mouse-drag UI** — Ctrl+LMB press on a dynamic body begins drag (D47), drag moves the anchor on the camera-parallel plane through the grab point (Ctrl+wheel moves the plane along the view), release ends; a drag line (external channel) from grab point to anchor. Only when the selected world is the authority (server/standalone) — disabled with a tooltip otherwise. | Dragging a client-side proxy body would desync and teach the user a lie | — |
+| P8-D55 | 2026-08-15 | **Constraints population** — if CkJolt exposes constraint entities/handles, list them keyed by handle with entity route; else list `PhysicsSystem::GetConstraints()` by index with body-pair display names and no route (record which branch applies after research). Selecting a constraint highlights both bodies + draws its reference frames. | — | — |
+| P8-D56 | 2026-08-15 | **Probe results** — draw the selected probe's current overlaps/hits from the ECS fragments via the External channel; toggle in the Draw lane. | Probes are drawn as sensor shapes today but their RESULTS — the actual product — are invisible | — |
+| P8-D57 | 2026-08-15 | **Health checks** — collector flags per body: NaN transform/velocity, \|v\| > threshold (setting, default 5000 cm/s), below world KillZ, zero-extent shape; outliner filter chip "Problems", warning badge with count in the stats header. | Finding the one broken body in 100k is the debugger's highest-value job | — |
+| P8-D58 | 2026-08-15 | **Labels + hover** — labels channel (D38) rendered in viewport `OnPaint` (project world→screen with the current view); label on the primary selection always, on all bodies when the Labels flag is set (cap 500 nearest, log once); hover = throttled `TryPick_Body` on mouse move (≥ 60 ms) → Hover class + name tooltip. | — | — |
+| P8-D59 | 2026-08-15 | **Grid, gizmo, bookmarks** — grid at Z=0 (100 cm cells, 20 m extent, major line every 10) via the External channel each capture (toggle, persisted); world-axis gizmo in the viewport's bottom-left in `OnPaint`; camera bookmarks Ctrl+0..9 set / 0..9 recall, persisted in settings. | Without a ground reference the preview world has no sense of scale or orientation | — |
+| P5-D61 | 2026-08-15 | **STOP-list rulings (S1–S14), issued after the planner's research pass — all 14 closed, nothing blocks Unit XI.** **S1** contact recording moves INSIDE `FJoltWorld::DoPhysicsUpdate` around `PhysicsSystem::Update`, buffer = `FCriticalSection`-guarded append active only while some target wants contacts, **double-buffered and consumed on the GAME THREAD by `FProcessor_JoltDebugDraw_Capture`** (not replayed in the Step processor); one-frame latency under async physics is accepted and documented. **S2** drag-anchor layer = a lazily registered default-constructed `FCk_Jolt_CollisionSignature` (`_ResponseMask = 0`, `_Domain = Dynamic`); the anchor is a raw JPH kinematic body with NO entity, and the subsystem publishes `Get_DebugInternalBodyIds()` so the capture skips it — never drawn, never pickable, never listed. **S3** the External channel is **retained named sub-channels** (`Draw_External*(Name, …)` accumulates, `Clear_External(Name)` empties, flushed every capture without clearing) — this is what makes probe results, the grid and the drag line stable. **S6** ObjectLayer legend = `Layer N — <object-channel name>` via a read-only reverse lookup on the layer table (add a getter if needed), bare `Layer N` with no channel. **S7** the world-axis gizmo REUSES `SCkDebug_OrientationCube` in an overlay slot — no hand-drawn `OnPaint` gizmo (labels still need `OnPaint`). **S8** add public `Get_BodyA`/`Get_BodyB` on `UCk_Utils_JoltConstraint_UE` (executor picks the doctrine-conformant spot, STOPs if unclear); all-constraints reference-frame drawing while a constraint is selected is accepted. **S10** `GetBodyStats()`/constraint-count cadence = **N = 30 captures**, UI labels those fields "(sampled)". **S12** mechanical `CkJoltDebugger` call-site collateral is in scope for Phases 5–6, no back-compat shims. **S14** the three user reports are recorded verbatim, plus the follow-up scope ruling "do all of the above including mouse-drag" (runtime property editing, rewind and soft bodies stay excluded). **S4, S5, S9, S11, S13** stand exactly as the planner recorded them | Research turned five rulings into forks and two into "does not exist"; ruling them all in one pass keeps the executor from re-litigating mid-unit | a ruled fork proves wrong in the build |
+| P8-D60 | 2026-08-15 | **Close-out** — module CLAUDE.md files updated (both), full serial gate + scoped gates, adversarial review per phase (fresh Opus drafts triage; orchestrator ratifies), commits local per phase, ship withheld (P0-D8/P4-D36 unchanged). | — | user returns and ships |
 
 ## Open items
 | Item | Status | Next step |
@@ -77,7 +116,51 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 | P1-D13 wireframe material source | RULED → decision log P1-D13 (branch (a)) | — |
 | Baseline gate | DONE — 1146/1150, 4 named pre-existing fails recorded above | — |
 | `[PACKAGED-VERIFY]` both debug materials (`M_SimpleUnlitTranslucent` + `WireframeMaterial`) load in a packaged Development build | OPEN (pre-existing risk, now named) | Verify during Phase-4 / next packaged acceptance pass; on failure switch wireframe to P1-D13 branch (b) |
+| Phases 5–8 planner STOP list (S1–S14) | ✅ CLOSED 2026-08-15 — all 14 ruled, see [P5-D61] | Unit XI is unblocked |
 **Rule: no completion claim may be written anywhere in this file while any row here is unresolved.**
+
+## Planner STOP list — Phases 5–8 (orchestrator rulings needed; NOT resolved by the planner)
+
+Each row is a place where the code makes a binding ruling infeasible, ambiguous, or riskier than it
+reads. The planner wrote the phase contracts to the ruling **as issued** and recorded the fork here.
+
+| # | Ruling | What the code says (evidence) | Fork options |
+|---|---|---|---|
+| S1 | **P5-D40** — "`FProcessor_JoltWorld_Step` wraps `PhysicsSystem::Update` in a `Begin/EndRecord()` scope" | `PhysicsSystem::Update` is **not** called in that processor. The step loop calls `JoltWorld->DoPhysicsUpdate(FixedDt)` (`CkJoltWorld_Processor.cpp:199`, lambda `:194-202`); `DoPhysicsUpdate` is declared `CkJoltWorld.h:158` and defined in `CkJoltWorld.cpp`. In **async** mode the whole loop runs on a TaskGraph thread (`Async(EAsyncExecution::TaskGraph, …)`, `:206-210`). Jolt's contact draw is emitted from inside the solve, which is multi-threaded when `jolt.EnableParallelPhysics` is on. **HIGH RISK: the record buffer would be appended from worker threads.** | (a) move the record scope into `FJoltWorld::DoPhysicsUpdate` and make the buffer thread-safe (lock-free per-thread chunks, or a critical section like `CkContactListener`'s `_QueueLock`, `CkJolt_Subsystem.cpp:213`); (b) record only in **sync** mode and document contacts as unavailable under async physics; (c) drop contact recording and rely on P6-D45's on-demand `CollideShape` for the selected body only |
+| S2 | **P6-D47** — "verify a non-colliding object layer exists … if not, STOP-report which layer to use" | **It does not exist.** Object layers are allocated per unique `FCk_Jolt_CollisionSignature` (`CkJoltCollisionLayer_Data.h:40-98`) by `Build_FromCollisionProfiles` (`CkJoltCollisionLayerTable.cpp:20-65`), which **skips** every `NoCollision` profile (`:36-37`). Broadphase layers are only `Static`/`Dynamic` (`CkJoltCollisionLayerTable.h:78-83`). | **Planner's recommended recipe (needs ratification):** register a layer for a *default-constructed* signature — `_ResponseMask = 0` (`CkJoltCollisionLayer_Data.h:55`) makes `Get_PairInteraction` (`.cpp:134-152`) `Ignore` against everything, so `ObjectLayerPairFilter::ShouldCollide` (`.h:139-147`) is false for every pair, and channel queries never see it; set `_Domain = Dynamic` so `ObjectVsBroadPhaseLayerFilter` (`.h:113-127`) keeps it in the dynamic tree. Alternative: reuse the fixed probe layer (`Get_ProbeSignature`, `:99-110`) — rejected by the planner because it overlaps WorldDynamic and would generate sensor events |
+| S3 | **P5-D38 / P8-D56 / P8-D59 / P7-D54** — the External channel is "cleared per capture" | CkJolt **cannot** read probe fragments: the dependency runs CkSpatialQuery → CkJolt (`CkProbe_Processor.cpp:1247` calls the Jolt world's `Request_NoteBodyRemoved`). So probe results, the grid and the drag line must be pushed **from the debugger's Slate tick**, whose rate is unrelated to the capture rate. A per-capture clear means anything pushed between captures is dropped and anything pushed before one is erased → flicker | (a) External channel **retained until its contributor clears it** (`Draw_External*` accumulates into a named sub-channel; `Clear_External(Name)` empties it) — planner's recommendation, one extra API, no flicker; (b) debugger re-pushes every Slate tick and accepts flicker; (c) grid only moves into the capture (CkJolt can draw a grid) and probe/drag stay flickery |
+| S4 | **P5-D39** — `SleepStats` "if cheap; else drop" | Jolt draws sleep stats from `MotionProperties`' internal sleep-test spheres; the accessors sit below the `FOR INTERNAL USE ONLY` banner (`MotionProperties.h:189-191`) and are not otherwise exposed, and the capture deliberately does not call `DrawBodies`. **Planner ruled it DROPPED** per the ruling's own escape clause | none needed — recorded so it is not re-litigated |
+| S5 | **P5-D41** — "Add a **Hover** colour class … see D43 for the mask" | D43 is the pause/step ruling. The mask widening is **P5-D42**. | Treat as a typo; the planner wrote PHASE_5 to take the mask from D42 and to land D42's widening **before** D41's Hover class (today `Count <= 8` is `static_assert`ed at `CkJolt_DebugDrawTarget.cpp:28-30`, and Hover would be the 9th) |
+| S6 | **P5-D42** — ObjectLayer colour mode "ObjectLayer > 61 → Other" | Object layers are **not** an enum and have no names: up to 1024 dynamically registered signatures (`CkJoltCollisionLayerTable.h:28`). The numeric bucketing works; `Get_LegendEntries` has nothing to name them with | (a) legend shows `Layer N — <channel name from the signature's `_ObjectChannel`>` (needs a layer→signature reverse read on the table); (b) legend shows bare `Layer N`; (c) drop the ObjectLayer mode |
+| S7 | **P8-D59** — "world-axis gizmo in the viewport's bottom-left in `OnPaint`" | `SCkDebug_OrientationCube` already exists as a shared 2D orientation gizmo (`CkDebuggerCommon/Public/CkDebuggerCommon/Widgets/SCkDebug_OrientationCube.h:34`, an `SLeafWidget`) | (a) keep the ruling and hand-draw in `OnPaint`; (b) drop the existing widget into an overlay slot over the viewport — cheaper, consistent with the suite, and needs no `OnPaint` for the gizmo (labels still do) |
+| S8 | **P8-D55** — "if CkJolt exposes constraint entities/handles … else …" | **Branch (a) applies.** A full constraint feature exists: `ck::FFragment_JoltConstraint_Current` (`CkJoltConstraint_Fragment.h:41-67`), `FCk_Handle_JoltConstraint`, `UCk_Utils_JoltConstraint_UE` (`CkJoltConstraint_Utils.h:18`), four processors, plus `UCk_Utils_JoltRope_UE`. **But** `_BodyA`/`_BodyB` (`:55-56`) are private behind a friend list (`:26-29`) — a narrow public read API is required. Separately, Jolt's `DrawConstraintReferenceFrame` (`PhysicsSystem.h:159`) is **all-constraints**, so "draws its reference frames" cannot be per-constraint | (a) add `Get_BodyA`/`Get_BodyB` to the utils and accept all-constraints reference-frame drawing while a constraint is selected (planner's write-up); (b) drop the reference-frame half of the ruling |
+| S9 | **P6-D48** — "if CkJolt has an existing ContactListener …" | **It does** — `class CkContactListener : public JPH::ContactListener` at `CkJolt_Subsystem.cpp:70` (`OnContactAdded :84-129`, `OnContactPersisted :131-175`), installed `:457-458`, running on Jolt worker threads under `_QueueLock` `:213`. So contact pairs are IN. Counter must be atomic | none needed — recorded |
+| S10 | **P6-D48** — `GetBodyStats()` in the stats | `BodyManager.h:78` documents it as *"slow, iterates through all bodies"*; `PhysicsSystem::GetConstraints()` (`:109`) returns `Array<Ref<Constraint>>` **by value** (full copy + refcount per element). At the campaign's 100k bar neither can be per-frame | planner wrote a throttle (every Nth capture, constant N) into PHASE_6 item 4; orchestrator should confirm the cadence is acceptable for a live stat rail |
+| S11 | **P5-D38** — `ULineBatchComponent` in an `FPreviewScene` world | **Zero precedent** — `rg` over all of `Plugins/` finds no `ULineBatchComponent` anywhere in the suite. Unverifiable headlessly. The named fallback IS proven in-suite: `SCkCrowdDebugger_3dViewport.cpp:518-547` overrides `Draw(const FSceneView*, FPrimitiveDrawInterface*)` and draws with `PDI->DrawLine` (`:917-920`) | ruling already names the fallback; recorded as the phase's top build-time risk |
+| S12 | **Phase-5/6 scope wording** — "CkFoundation only" | Phase 5 changes public signatures the debugger consumes (`Set_ClassVisibility`, `Get_IsClassVisible`, `Get_BucketColorClasses`, `Get_Palette().Get_Color()` at `SCkJoltDebuggerWindow.cpp:1029-1068` and `:1099-1138`; `Get_HighlightedBodyLinearVelocity` in Phase 6). Both plugins compile into one editor target, and module doctrine bans back-compat shims | planner wrote an explicit **"mechanical call-site collateral only"** allowance into PHASE_5 and PHASE_6 Fences; orchestrator should confirm |
+| S13 | **P8-D58** — labels in `OnPaint` | No `OnPaint` override and no world→screen projection exist anywhere in `CkGameplayDebugger`; the only view math is the inverse (`GetCursorWorldRay`, `SCkJoltDebugger_3dViewport.cpp:298-332`, via `FMinimalViewInfo::CalculateProjectionMatrixGivenView` + `FSceneView::DeprojectScreenToWorld`). Also `CkDebuggerCommon/CLAUDE.md:476-480` bans brush/font allocation in `OnPaint` | greenfield but feasible by building the forward matrices the same way; recorded as risk, no fork needed |
+| S14 | **The three user reports** in the dated entry below | The planner never saw the user's words — they were reconstructed from the ruling set | orchestrator should overwrite the three bullets with the user's verbatim feedback |
+
+### RULED — orchestrator, 2026-08-15 → decision-log entry **[P5-D61]**
+
+**Every S-row is now resolved. Nothing on this list blocks Unit XI.**
+
+| # | RULED |
+|---|---|
+| S1 | **Fork (a), refined.** Record scope goes **inside `FJoltWorld::DoPhysicsUpdate`** around `PhysicsSystem::Update`. Buffer = `FCriticalSection`-guarded append, **active only while some target's contact flags are on** (zero cost otherwise). **Do NOT replay in the Step processor** — the buffer is **double-buffered** and CONSUMED on the game thread by `FProcessor_JoltDebugDraw_Capture` (already after `WaitForAsync`), which replays into every registered target that wants contacts. **One-frame latency in async mode is ACCEPTED and documented.** |
+| S2 | **Planner recipe RATIFIED.** Register a layer for a default-constructed `FCk_Jolt_CollisionSignature` (`_ResponseMask = 0`, `_Domain = Dynamic`), **lazily on first drag**. The anchor is a **raw JPH kinematic body with no JoltBody entity**; the subsystem exposes `Get_DebugInternalBodyIds()` (or equivalent) and the **capture SKIPS those bodies — never drawn, never pickable, never listed**. Drag visual = External line per P7-D54. |
+| S3 | **Fork (a).** The External channel is **retained named sub-channels**: `Draw_External*(Name, …)` accumulates, `Clear_External(Name)` empties. Sub-channels are **flushed to the line batcher every capture WITHOUT being cleared**. |
+| S4 | Recorded as the planner wrote it — `SleepStats` **DROPPED**. No change. |
+| S5 | Recorded as the planner wrote it — "D43" in P5-D41 is a typo for **D42**; D42's mask widening lands before D41's Hover class. No change. |
+| S6 | **Fork (a).** Legend reads **`Layer N — <object-channel name>`** via a read-only reverse lookup on the layer table (**add a getter if needed**); bare **`Layer N`** when a signature has no channel. |
+| S7 | **Fork (b).** Reuse **`SCkDebug_OrientationCube`** in an overlay slot; **no hand-drawn gizmo**. Labels still need `OnPaint` — S13 stands as a risk. |
+| S8 | **Fork (a).** Add public **`Get_BodyA` / `Get_BodyB`** read accessors on `UCk_Utils_JoltConstraint_UE` (or on the fragment via a friend-free getter — **the executor picks the doctrine-conformant spot and STOPs if unclear**). Reference frames are drawn **all-constraints while a constraint is selected** — ACCEPTED, documented. |
+| S9 | Recorded as the planner wrote it — ContactListener exists, contact pairs are IN, counter is atomic. No change. |
+| S10 | **Cadence RATIFIED: N = 30 captures (constant).** The UI labels those fields **"(sampled)"**. |
+| S11 | Recorded as the planner wrote it — top build-time risk; D38's PDI fallback stands. No change. |
+| S12 | **Allowance CONFIRMED.** Mechanical call-site collateral in `CkJoltDebugger` is **in scope for Phases 5–6**; **no shims**. |
+| S13 | Recorded as the planner wrote it — `OnPaint` label projection is greenfield; risk accepted. No change. |
+| S14 | **Resolved** — the three user reports are now recorded VERBATIM in the dated entry below, together with the follow-up scope ruling. |
 
 ## Follow-ups recorded, not chased
 - `FCk_Handle::View() const` in CkEcs is broken (ensure-recovery branch returns non-const view;
@@ -91,6 +174,152 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
   green in the serial baseline). Orchestrator's serial full gate is the arbiter.
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-15 — Phase 5 fix-up landed (Opus); gate of record VERIFIED; Phase 5 COMMITTED (local); [P5-D66]
+- F1–F5, F7(b)(c), F8–F10, P5-D63(v) DONE (per-world contact recorder keyed by `JPH::PhysicsSystem*`
+  + atomic recording-world CAS; `Set_ColorMode` re-shows buckets; `Labels` gates text; MoveTemp
+  replay; SleepState/legend-fallback spec legs; `ck.Jolt.DebugDraw.Contacts` CVar incl. gate-close
+  flag reset and default-target replay via new `Get_DefaultDebugDrawTarget()`).
+- Gate of record (serial, final artifact) — **orchestrator re-read logs**: `Jolt` 83/83
+  (`Saved/Logs/BuildTest.log` 13:22), `DebuggerLauncher` 3/3 (BuildTest2 13:23), `Probe` 27/27
+  (BuildTest3 13:24). Benchmark default 100k steady 1.89 ms; all-flags 331 ms (unchanged class).
+- **[P5-D66] F7(a) STOP RULED: Island colour mode is INERT on vendored Jolt 5.2.1**
+  (`SetIslandIndexInternal` has zero call sites; `IslandBuilder` never writes back — executor-
+  verified). Ruling = **(a) DROP `Island` from `ECk_Jolt_DebugDrawColorMode`** (no dead API), executed
+  as the first item of the Phase-6 executor A (avoids an extra gate cycle now). Follow-up recorded:
+  option (c) — a one-line vendored patch calling `SetIslandIndexInternal` from `IslandBuilder` —
+  if the user wants island colouring later (carries a third-party divergence across Jolt bumps).
+- Committed locally (Phase 5): CkFoundation, CkTests, CkGameplayDebugger (collateral + docs). Ship
+  withheld (P0-D8/P4-D36). Phase 6 next under P5-D65 speed policy.
+
+
+### 2026-08-15 — [P5-D65] SPEED POLICY (user: "I am looking for speed at this point")
+- Per-unit gate = `--test-pattern JoltDebug --parallel 1` (DebugDraw + JoltDebugger specs, no
+  benchmarks). Whole-module `--test-pattern Jolt` (benchmarks incl.) ONCE per phase at the fix-up.
+  Adversarial review ONCE per phase (fresh Opus, drafted triage, Fable ratifies) — no per-unit
+  reviews. **Full serial suite ONCE, at the Phase-8 close** (delta vs the Phase-4 baseline set);
+  Phase-6 full suite dropped. Units merged: Phase 6 = 2 executors (XIV+XV sim/inspection;
+  XVI+XVII drag+stats), Phase 7 = 2 (camera+draw lane+sim controls; detail/selection/drag UI),
+  Phase 8 = 2 (populations/probe/health; labels/hover/grid/gizmo/bookmarks) + close-out.
+  Executors told to trust the contract and read only what they touch. Stale-green ban and
+  orchestrator log re-read unchanged. Baseline of record for the final full suite stays the
+  Phase-4 snapshot (`C:\Users\sulfu\.claude\reports\baseline_20260814-214144.md`, 1146/1150 named set).
+
+
+### 2026-08-15 — Phase-5 adversarial review (fresh Opus): 10 findings; triage RATIFIED [P5-D64]; fix-up dispatched
+- **[P5-D64]** FIX-NOW: **F1** (HIGH — `DrawLine` bound-target branch unlocked while workers may
+  draw during a concurrent world's async solve) → route to the recorder whenever recording is
+  active (atomic test first), never by `_ActiveTarget == nullptr` alone. **F2** (HIGH —
+  `Set_ColorMode` clears the hidden mask but surviving ISMs stay `SetVisibility(false)`) → re-apply
+  visibility on every bucket. **F3** (MED — one process-wide record buffer for N Jolt worlds) →
+  RULING: per-world record buffers (keyed by `FJoltWorld`/`PhysicsSystem*`), one global atomic
+  "current recording world"; a second world's `Begin` while another is recording SKIPS recording for
+  that step (Verbose, once) rather than mixing; the capture processor replays only its own world's
+  buffer into that world's targets. **F4** (dead `Labels` flag) → gate `DrawText3D` on `Labels`.
+  **F5** → `MoveTemp` into the last demanding target / shared ref (cheap, do now). **F7** (spec
+  gaps) → Island leg steps the fixture and asserts ≥2 distinct non-zero islands; SleepState
+  rebucket leg; layer-name refresh driven through a fixture with a layer context (or, if no headless
+  layer context exists, assert the bare-`Layer N` fallback of F8). **F8** → bare `Layer N` legend
+  rows for present indices when no names were published (do now, cheap). **F9** → `Excluded`
+  counting + agree the two paths. **F10** docs (acquire not relaxed; "demanding" not "registered";
+  close D63(vi) as NOT-A-DEFECT — `MotionProperties.h` is used; `Claude.md` filename stays, cross-
+  refs fixed is the normalization). Plus **P5-D63(v)**: add `ck.Jolt.DebugDraw.Contacts` CVar
+  (points+normals) mapped onto the in-world target's flags. DEFER: **F6** (per-line lock during
+  the parallel solve) → open perf item, measure before redesign (thread-local batching candidate).
+- Reviewer CLEAN list recorded in the transcript summary: lifetime/teardown, statics reset, overlay
+  scale in COM space, assert-safety, in-world parity incl. entity-less bodies, namespaces, doctrine.
+
+
+### 2026-08-15 — Phase 5 Unit XII (colour modes + highlight/hover + contact recording) DONE (Opus); orchestrator-verified; Unit XIII review dispatched
+- Landed (uncommitted): `ECk_Jolt_DebugDrawColorMode` (BodyClass/SleepState/ObjectLayer/Island/
+  ShapeType), uint8 class index + uint64 mask (Highlight=62, Hover=63, MaxColorClasses 64),
+  `Get_LegendEntries` (S6 layer names via existing `Get_NumLayers`/`Get_Signature`), highlight
+  magenta/opaque/1.03×/sort+1, Hover class 0.5α/1.02×, contact recorder (union → JPH statics; lock-
+  guarded double buffer inside `FJoltWorld::DoPhysicsUpdate`; replay by the capture processor; 200k
+  cap), `SleepColoring` CVar → in-world SleepState mode (P5-D62 ii). Specs `ColorModesAndLegend`,
+  `HoverOverlay`, `ContactRecordingReplays`; `HighlightAddsOverlayInstance` extended (scale≠1,
+  colour≠every palette). Collateral: `SCkJoltDebuggerWindow.cpp` 4 call sites (index API).
+- Gate (executor, serial, final artifact): `--test-pattern Jolt` **83/83**, exit 0 —
+  **orchestrator re-read `Saved/Logs/BuildTest2.log` (12:33): Total 83 / Passed 83 / Failed 0,
+  zero `Result={Fail`.**
+- Benchmark 100k: default flags first 56.4 / steady 1.82 / revision 16.9 / pick 13.1 / highlight
+  17.6 ms; **all flags: 330 / 308 / 318 / 13.4 / 322 ms** (lines clear every capture → the
+  incremental pass cannot skip inactive bodies' extras). Measure-only.
+- **[P5-D63] rulings on Unit XII deviations/findings:** (i) ObjectLayer catch-all = index 61
+  "Layer 61+" ACCEPTED (no 63rd index exists); (ii) `Get_BucketColorClasses` live-only ACCEPTED;
+  (iii) `Set_ColorMode` clears hidden mask ACCEPTED; (iv) all-flags 308 ms at 100k ACCEPTED as
+  measured — follow-up recorded (retain inactive-body extra lines across captures, rebuild on
+  revision) for Phase 8 polish if the user asks; (v) **in-world has no contact CVar → ADD
+  `ck.Jolt.DebugDraw.Contacts` (points+normals) in the Unit XIII fix-up** — the user's report
+  expects contacts in-world; (vi) stray `MotionType.h` include — remove in fix-up.
+- `[EDITOR-VERIFY]` (Phase 5, cumulative): contact points visible in preview with the flag on and
+  gone everywhere when off (process-wide); highlight unmistakable vs sleeping body + sensor;
+  `SleepColoring` CVar recolours in-world; colour modes + legends read correctly in preview.
+
+
+### 2026-08-15 — Phase 5 Unit XI (channels + flags + in-world re-host) DONE (Opus); orchestrator-verified; Unit XII dispatched
+- Landed (uncommitted, CkFoundation 8 files / CkTests 1 / CkGameplayDebugger CLAUDE.md only): line +
+  label + retained named External channels on `FCk_Jolt_DebugDrawTarget` (owned `ULineBatchComponent`);
+  renderer `DrawLine/DrawTriangle/DrawText3D` → active target channels; `ECk_Jolt_DebugDrawFlags`
+  (SleepStats dropped, S4); `Draw_BodyExtras` (velocity/angular arrows, world+COM axes, AABB,
+  mass+inertia) via `…Unchecked()` accessors; constraint draws under flags; in-world Tick re-hosted
+  onto `Capture_JoltWorld` (`DrawSettings`/`DrawBodies` block + `BeginFrame/EndFrame` deleted);
+  specs `Ck.Jolt.DebugDraw.LineAndLabelChannels`, `DrawFlagsGatePerBodyExtras`; docs defects fixed.
+- Gate (executor, serial, final artifact): `--test-pattern Jolt` **80/80**, exit 0 —
+  **orchestrator re-read `Saved/Logs/BuildTest2.log` (11:48): Total 80 / Passed 80 / Failed 0.**
+  Benchmark 100k within noise of Phase-4 numbers (steady 2.66 ms).
+- **[P5-D62] In-world re-host deltas RULED ACCEPTED:** (i) in-world body colours now come from the
+  facility palette (was JPH `sGetDistinctColor` per motion type) — consistency with the preview is
+  the point; (ii) `ck.Jolt.DebugDraw.SleepColoring` INERT until D42 lands in Unit XII — Unit XII
+  MUST wire it to the SleepState colour mode of the in-world target; (iii) `Velocity` CVar maps to
+  Velocity|AngularVelocity and axis/arrow sizes are ×100 (uu) — old sizes were sub-pixel.
+  Naming deviation `ECk_Jolt_DebugDrawFlags` (enum prefix) accepted.
+- Open `[EDITOR-VERIFY]` added (Phase 5): (1) in-world CVars: Enabled/Velocity/Constraints/
+  WorldTransform show; (2) Opacity live; (3) **a facility line renders in the preview viewport**
+  (`ULineBatchComponent` in `FPreviewScene` — headless-unverifiable, S11); (4) sleeping bodies still
+  distinguishable in-world.
+- Routing: executor Opus (fresh); orchestrator verified the log; Unit XII dispatched to fresh Opus.
+
+
+### 2026-08-15 — Phase 5–8 planning (Opus planner) — scope from user PIE feedback
+- Phases 1–4 shipped a **shape viewer**. The user's live PIE pass says it has to become a **physics
+  debugger**. The campaign is extended by four phases; ship moves from 🟢 READY to 🟡 withheld.
+- **The three user reports — VERBATIM** (supplied by the orchestrator 2026-08-15; these are the
+  user's own words and supersede the planner's earlier paraphrase):
+  1. *"I noticed that the in-world debug has more information than the jolt debugger. I can see
+     velocities, normals, contact points. The jolt debugger should have all those and they should
+     all be toggleable."* → P5-D38, P5-D39, P5-D40, P7-D50.
+  2. *"I also noticed that if I have something selected in the outliner, it does not change the
+     color of the body to show me what is selected."* → P5-D41.
+  3. *"Also, why aren't the camera controls similar to the Unreal Editor which is first person
+     controls where right-click moves the camera similar to an FPS instead of pivoting around the
+     focus."* → P7-D49.
+- **Follow-up scope ruling (user, verbatim):** *"I would like you to do all of the above including
+  mouse-drag."* — i.e. all 12 extras listed below **plus** mouse-drag (P6-D47/P7-D54). Runtime
+  property editing, rewind/record-replay and soft bodies remain **excluded**.
+- **The 13 extra items** scoped on top of the three reports:
+  1. Colour-by modes — sleep state / object layer / island / shape type, not just body class (P5-D42).
+  2. Pause and single-step the simulation (P6-D43, P7-D51).
+  3. A real detail panel: mass, friction, restitution, gravity factor, motion quality, layers,
+     shape type/scale, island, AABB, user data; character ground state (P6-D44, P7-D52).
+  4. "What is this body touching" — contacts of the selection (P6-D45, P7-D52).
+  5. Multi-select (P6-D46, P7-D53).
+  6. Isolate — hide everything but the selection (P6-D46, P7-D53).
+  7. Follow-selection camera (P7-D53).
+  8. Mouse-drag bodies to poke the simulation (P6-D47, P7-D54).
+  9. Extended world stats: step duration, body stats, active counts, constraint count (P6-D48).
+  10. A Constraints population in the outliner (P8-D55).
+  11. Probe overlap/hit results drawn — today only the sensor shape is (P8-D56).
+  12. Health checks: NaN, runaway velocity, below KillZ, degenerate shape, with a "Problems"
+      filter chip and a header badge (P8-D57).
+  13. Orientation aids: world-space labels + hover highlight, ground grid, world-axis gizmo,
+      camera bookmarks (P8-D58, P8-D59).
+- **Rulings recorded verbatim: P5-D38…P5-D42, P6-D43…P6-D48, P7-D49…P7-D54, P8-D55…P8-D60.**
+  None were re-litigated by the planner; every point where the code makes a ruling infeasible or
+  ambiguous is carried in the planner's STOP list (returned to the orchestrator) and in the
+  "Planner STOP list" section below, NOT resolved unilaterally.
+- Docs authored: `PHASE_5.md`, `PHASE_6.md`, `PHASE_7.md`, `PHASE_8.md`, `PHASE_5_DISPATCH.md`
+  (Units XI–XXI); `PLAN.md` rows 5–8 + phase summaries; this file.
 
 ### 2026-08-15 — Phase-4 fix-up landed (Opus); gate of record launched
 - F1: `UCk_Jolt_Subsystem::Request_NoteBodyRemoved()` wrapper (no in-tree caller yet — probe uses
@@ -404,4 +633,5 @@ selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
 | 2026-08-14 | Fable 5 | Campaign opened: research, user rulings P0-D1…D7, doc set authored | 4× Opus Explore (research); no executors yet |
 | 2026-08-14→15 | Fable 5 | Phase 1 executed end-to-end: baseline, rulings P1-D8…D18, facility implemented, adversarially reviewed, 12 fixes, multi-target spec, docs weld, gate of record green | 1× Opus Explore (wireframe investigation), 1× Opus executor (4 sequential units via resume), 1× Opus adversarial reviewer; gates run by orchestrator |
 | 2026-08-15 (cont.) | Fable 5 | Phase 3 + Phase 4 executed end-to-end autonomously (user AFK, P0-D8): outliner/selection/picking/detail, benchmark + incremental pass + sweep revision + settings, 2 review rounds (30 findings, 22 fixed), all committed locally; ship withheld | 3× Opus executors (P3 units VIII/IX/fix-up, P4 impl + fix-up), 2× Opus adversarial reviewers (drafted triage), gates run by orchestrator |
+| 2026-08-15 | Fable 5 (orchestrator); Opus (planner) | Campaign extended by phases 5–8 after the user's PIE pass: rulings P5-D38…P8-D60 issued by the orchestrator, four phase contracts + dispatch plan authored by an Opus planner (research-only, no code, no builds, no commits) | 1× Opus planner + 4× Opus Explore research agents (facility, debugger module, vendored Jolt API, probes/specs/docs) |
 | 2026-08-15 | Fable 5 | Phase 1 committed; Phase 2 executed end-to-end: facility extensions, viewport shell, review (10 findings) fixed, rulings P2-D19…D21, docs weld, gate of record green | standing Opus executor (Unit V), fresh Opus executor (Units VI/VII + docs), 1× Opus adversarial reviewer; gates run by orchestrator |

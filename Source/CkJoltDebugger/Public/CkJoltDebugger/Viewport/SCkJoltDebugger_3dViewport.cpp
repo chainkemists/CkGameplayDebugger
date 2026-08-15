@@ -89,6 +89,36 @@ public:
     auto Set_OnStepOnce(FSimpleDelegate InDelegate) -> void
     { _OnStepOnce = MoveTemp(InDelegate); }
 
+    auto Set_OnToggleIsolate(FSimpleDelegate InDelegate) -> void
+    { _OnToggleIsolate = MoveTemp(InDelegate); }
+
+    auto Set_OnDragArm(FSimpleDelegate InDelegate) -> void
+    { _OnDragArm = MoveTemp(InDelegate); }
+
+    auto Set_OnDragRay(FOnCkJoltDebugger_DragRay InDelegate) -> void
+    { _OnDragRay = MoveTemp(InDelegate); }
+
+    auto Set_OnDragPlaneShift(FOnCkJoltDebugger_DragPlaneShift InDelegate) -> void
+    { _OnDragPlaneShift = MoveTemp(InDelegate); }
+
+    auto Set_OnDragRelease(FSimpleDelegate InDelegate) -> void
+    { _OnDragRelease = MoveTemp(InDelegate); }
+
+    auto Set_DragEnabled(bool InIsEnabled) -> void
+    { _IsDragEnabled = InIsEnabled; }
+
+    auto Set_FollowSelection(bool InIsEnabled) -> void
+    {
+        if (_FollowSelection == InIsEnabled)
+        { return; }
+
+        _FollowSelection = InIsEnabled;
+
+        // The follow anchor is a DELTA source, not a target: re-arming it on the switch means turning Follow
+        // on never teleports the camera, it only starts tracking from wherever the selection is right now.
+        _LastFollowCenter.Reset();
+    }
+
     auto Get_ProjectionMode() const -> ECameraProjectionMode::Type
     { return ViewInfo.ProjectionMode; }
 
@@ -168,13 +198,49 @@ public:
                     _PendingPickPress = PressPosition;
                 }
 
+                /*
+                 * Ctrl+LMB is ONE gesture with two jobs (P7-D53 + P7-D54): it adds the body to the selection
+                 * and it opens the drag. The pick therefore resolves on the PRESS rather than on the release,
+                 * unlike the plain click — the drag needs the body highlighted so the facility samples it, and
+                 * that sample is what gives the grab point its depth.
+                 */
+                if (IsPlainPress && _IsControlDown)
+                {
+                    _IsCtrlGesture = true;
+                    DoPick(InViewport, true);
+
+#if !UE_BUILD_SHIPPING
+                    if (_IsDragEnabled)
+                    {
+                        _IsDragGesture = true;
+                        _OnDragArm.ExecuteIfBound();
+                    }
+#endif
+                }
+
                 return true;
             }
 
             if (InEvent == IE_Released)
             {
+                const auto WasCtrlGesture = _IsCtrlGesture;
+                _IsCtrlGesture = false;
+
+#if !UE_BUILD_SHIPPING
+                if (_IsDragGesture)
+                {
+                    _IsDragGesture = false;
+                    _OnDragRelease.ExecuteIfBound();
+                }
+#endif
+
                 const auto PressPosition = _PendingPickPress;
                 _PendingPickPress.Reset();
+
+                // The Ctrl gesture already picked on the press; picking again here would replace the
+                // multi-selection it just built with the one body under the cursor.
+                if (WasCtrlGesture)
+                { return true; }
 
                 if (NOT PressPosition.IsSet() || NOT _OnBodyPicked.IsBound() || InViewport == nullptr)
                 { return true; }
@@ -188,16 +254,7 @@ public:
                     ck_jolt_debugger_3d_viewport::Get_PickDragThresholdSquared())
                 { return true; }
 
-                auto RayOrigin = FVector::ZeroVector;
-                auto RayDirection = FVector::ZeroVector;
-
-                if (GetCursorWorldRay(InViewport, RayOrigin, RayDirection))
-                {
-                    const auto Target = _Target.Pin();
-                    _OnBodyPicked.Execute(Target.IsValid()
-                        ? Target->TryPick_Body(RayOrigin, RayDirection)
-                        : TOptional<uint64>{});
-                }
+                DoPick(InViewport, false);
 
                 return true;
             }
@@ -223,6 +280,12 @@ public:
             return true;
         }
 
+        if (IsUnmodifiedPress && InKey == EKeys::I)
+        {
+            _OnToggleIsolate.ExecuteIfBound();
+            return true;
+        }
+
         // Ctrl+F, Alt+F and friends belong to whatever else the editor binds them to; only a bare F frames.
         const auto IsFrameSelectionKey = (InEvent == IE_Pressed || InEvent == IE_Repeat) &&
             InKey == EKeys::F &&
@@ -242,6 +305,17 @@ public:
         }
 
         const auto IsMouseWheel = InKey == EKeys::MouseScrollUp || InKey == EKeys::MouseScrollDown;
+
+#if !UE_BUILD_SHIPPING
+        // Ctrl+wheel during a drag moves the drag PLANE along the view, not the camera — "further away" is
+        // the one thing a camera-parallel plane cannot otherwise express.
+        if (_IsDragGesture && IsMouseWheel && InEvent == IE_Pressed)
+        {
+            _OnDragPlaneShift.ExecuteIfBound(InKey == EKeys::MouseScrollUp ? 1.0f : -1.0f);
+            return true;
+        }
+#endif
+
         const auto IsSpeedChange = ViewInfo.ProjectionMode == ECameraProjectionMode::Perspective &&
             InEvent == IE_Pressed &&
             IsMouseWheel &&
@@ -273,6 +347,22 @@ public:
         DoRefresh_InputStateFromViewport(InViewport);
 
         const auto IsHorizontal = InAxisKey == EKeys::MouseX;
+
+#if !UE_BUILD_SHIPPING
+        // A live drag OWNS the mouse: the camera must not move under a body the user is placing, or the
+        // grab point and the drag plane built from it stop describing the same world.
+        if (_IsDragGesture)
+        {
+            auto RayOrigin = FVector::ZeroVector;
+            auto RayDirection = FVector::ZeroVector;
+
+            if (GetCursorWorldRay(InViewport, RayOrigin, RayDirection))
+            { _OnDragRay.ExecuteIfBound(RayOrigin, RayDirection); }
+
+            Invalidate();
+            return true;
+        }
+#endif
 
         // An orthographic preset is an AXIS-LOCKED view: rotating it turns it into an arbitrary perspective-less
         // camera with no way back, so every drag pans and rotation is refused outright.
@@ -310,6 +400,17 @@ public:
     virtual auto LostFocus(FViewport* InViewport) -> void override
     {
         _PendingPickPress.Reset();
+        _IsCtrlGesture = false;
+
+#if !UE_BUILD_SHIPPING
+        // A drag whose release never arrives would leave the facility's spring attached to a body forever.
+        if (_IsDragGesture)
+        {
+            _IsDragGesture = false;
+            _OnDragRelease.ExecuteIfBound();
+        }
+#endif
+
         DoReset_InputState();
         FUMGViewportClient::LostFocus(InViewport);
     }
@@ -347,7 +448,61 @@ public:
         Invalidate();
     }
 
+    /*
+     * Follow-selection (P7-D53): the camera keeps its OFFSET to the selection rather than re-framing it.
+     * Rotation, orbit distance and projection are untouched — a follow that re-framed would fight every
+     * gesture the user made while it was on, and a body moving at speed would make the view unusable.
+     *
+     * Driven off the same selection bounds the window pushes down every tick, so a multi-selection is
+     * followed by its union's centre, which is what the highlight is showing.
+     */
+    auto Tick_FollowSelection() -> void
+    {
+        if (NOT _FollowSelection || NOT _SelectionBounds.IsSet() || _SelectionBounds->IsValid == 0)
+        {
+            _LastFollowCenter.Reset();
+            return;
+        }
+
+        const auto Center = _SelectionBounds->GetCenter();
+
+        if (_LastFollowCenter.IsSet())
+        {
+            const auto Delta = Center - *_LastFollowCenter;
+
+            if (NOT Delta.IsNearlyZero())
+            {
+                SetViewLocation(GetViewLocation() + Delta);
+                DoSet_LookAt(_LookAt + Delta);
+                Invalidate();
+            }
+        }
+
+        _LastFollowCenter = Center;
+    }
+
 private:
+    /** The one pick path: deproject, ask the facility, report the key and whether the click was additive. */
+    auto DoPick(
+        FViewport* InViewport,
+        const bool InIsAdditive) -> void
+    {
+        if (NOT _OnBodyPicked.IsBound() || InViewport == nullptr)
+        { return; }
+
+        auto RayOrigin = FVector::ZeroVector;
+        auto RayDirection = FVector::ZeroVector;
+
+        if (NOT GetCursorWorldRay(InViewport, RayOrigin, RayDirection))
+        { return; }
+
+        const auto Target = _Target.Pin();
+
+        _OnBodyPicked.Execute(Target.IsValid()
+            ? Target->TryPick_Body(RayOrigin, RayDirection)
+            : TOptional<uint64>{}, InIsAdditive);
+    }
+
     auto Get_IsAnyModifierDown() const -> bool
     { return _IsAltDown || _IsControlDown || _IsShiftDown || _IsCommandDown; }
 
@@ -588,6 +743,11 @@ private:
     FOnCkJoltDebugger_BodyPicked _OnBodyPicked;
     FSimpleDelegate _OnTogglePause;
     FSimpleDelegate _OnStepOnce;
+    FSimpleDelegate _OnToggleIsolate;
+    FSimpleDelegate _OnDragArm;
+    FOnCkJoltDebugger_DragRay _OnDragRay;
+    FOnCkJoltDebugger_DragPlaneShift _OnDragPlaneShift;
+    FSimpleDelegate _OnDragRelease;
 
     // Where a plain left press landed, until it releases. Unset means no click is in flight — either none
     // started, or a camera button turned the one that did into a drag.
@@ -605,6 +765,16 @@ private:
     bool _IsLeftMouseDown = false;
     bool _IsRightMouseDown = false;
     bool _IsMiddleMouseDown = false;
+
+    // A Ctrl+LMB gesture in flight. Tracked separately from the drag: on a client the drag never opens, but
+    // the Ctrl-click still added to the selection on the press, and the release must not pick a second time.
+    bool _IsCtrlGesture = false;
+
+    bool _IsDragEnabled = false;
+    bool _IsDragGesture = false;
+
+    bool _FollowSelection = false;
+    TOptional<FVector> _LastFollowCenter;
 
     float _CameraSpeed = 1.0f;
 };
@@ -632,6 +802,11 @@ auto
     _ViewportClient->Set_OnBodyPicked(InArgs._OnBodyPicked);
     _ViewportClient->Set_OnTogglePause(InArgs._OnTogglePause);
     _ViewportClient->Set_OnStepOnce(InArgs._OnStepOnce);
+    _ViewportClient->Set_OnToggleIsolate(InArgs._OnToggleIsolate);
+    _ViewportClient->Set_OnDragArm(InArgs._OnDragArm);
+    _ViewportClient->Set_OnDragRay(InArgs._OnDragRay);
+    _ViewportClient->Set_OnDragPlaneShift(InArgs._OnDragPlaneShift);
+    _ViewportClient->Set_OnDragRelease(InArgs._OnDragRelease);
     _SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
     _ViewportClient->Set_Viewport(_SceneViewport.ToSharedRef());
     SetViewportInterface(_SceneViewport.ToSharedRef());
@@ -645,6 +820,26 @@ auto
 {
     if (_ViewportClient.IsValid())
     { _ViewportClient->Set_SelectionBounds(MoveTemp(InBounds)); }
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Set_DragEnabled(
+        bool InIsEnabled)
+    -> void
+{
+    if (_ViewportClient.IsValid())
+    { _ViewportClient->Set_DragEnabled(InIsEnabled); }
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Set_FollowSelection(
+        bool InIsEnabled)
+    -> void
+{
+    if (_ViewportClient.IsValid())
+    { _ViewportClient->Set_FollowSelection(InIsEnabled); }
 }
 
 auto
@@ -745,6 +940,7 @@ auto
     if (_ViewportClient.IsValid())
     {
         _ViewportClient->Tick_Navigation(InDeltaTime);
+        _ViewportClient->Tick_FollowSelection();
         _ViewportClient->Tick(InDeltaTime);
     }
 }

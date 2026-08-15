@@ -20,6 +20,13 @@ public:
     auto IsDebuggerOpen() const -> bool;
 
 private:
+    /*
+     * The nomad tab id — defined once, by the window, because the entity-target route, the launcher descriptor,
+     * the chrome's Sync action and the tab spawner must all name the SAME tab. A function rather than a static
+     * of its own: a second FName constant here could initialise before the window's and silently copy nothing.
+     */
+    static auto Get_DebuggerTabName() -> FName;
+
     auto OnSpawnDebuggerTab(const class FSpawnTabArgs& InArgs) -> TSharedRef<SDockTab>;
     auto HandleEnginePreExit() -> void;
 
@@ -29,6 +36,5 @@ private:
     FDelegateHandle _EnginePreExitHandle;
 
     uint64 _DebuggerToolRegistrationId = 0;
-
-    static const FName _DebuggerTabName;
+    uint64 _EntityTargetRouteRegistrationId = 0;
 };

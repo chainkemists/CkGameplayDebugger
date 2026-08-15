@@ -25,8 +25,14 @@ enum class ECkJoltDebugger_CameraPreset : uint8
     Right,
     Front,
     Back,
-    FrameAll
+    FrameAll,
+    FrameSelection
 };
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/** A plain left-click in the viewport, resolved against the target's live instances. Unset = empty space. */
+DECLARE_DELEGATE_OneParam(FOnCkJoltDebugger_BodyPicked, TOptional<uint64>);
 
 // --------------------------------------------------------------------------------------------------------------------
 // Debugger-owned inspection surface for the Jolt physics world. The widget draws NOTHING itself: it hosts an
@@ -41,6 +47,7 @@ class SCkJoltDebugger_3dViewport final : public SViewport
 {
 public:
     SLATE_BEGIN_ARGS(SCkJoltDebugger_3dViewport) {}
+        SLATE_EVENT(FOnCkJoltDebugger_BodyPicked, OnBodyPicked)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -48,8 +55,11 @@ public:
     /** The world every registered target must bind to. Valid for the widget's lifetime. */
     auto Get_PreviewWorld() const -> UWorld*;
 
-    /** Framing source for FrameAll. Held weakly — the window owns the target. */
+    /** Framing source for FrameAll, and the ray-pick source for a viewport click. Held weakly — the window owns the target. */
     auto Set_Target(TSharedPtr<FCk_Jolt_DebugDrawTarget> InTarget) -> void;
+
+    /** Framing source for FrameSelection. Unset makes the preset (and the F hotkey) inert. */
+    auto Set_SelectionBounds(TOptional<FBox> InBounds) -> void;
 
     auto ApplyPreset(ECkJoltDebugger_CameraPreset InPreset) -> void;
 

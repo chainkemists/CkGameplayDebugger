@@ -1,9 +1,13 @@
-#include "CkJoltDebugger_Module.h"
+﻿#include "CkJoltDebugger_Module.h"
 
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
 
+#include "CkCore/Validation/CkIsValid.h"
+
 #include "CkDebuggerCommon/Launcher/CkDebuggerToolRegistry.h"
 #include "CkDebuggerCommon/Launcher/CkDebuggerTabUtils.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 
 #include "Framework/Docking/TabManager.h"
 #include "Misc/CoreDelegates.h"
@@ -15,7 +19,23 @@
 
 #define LOCTEXT_NAMESPACE "FCkJoltDebuggerModule"
 
-const FName FCkJoltDebuggerModule::_DebuggerTabName = FName("CkJoltDebugger");
+auto FCkJoltDebuggerModule::Get_DebuggerTabName() -> FName
+{
+    return SCkJoltDebuggerWindow::TabId;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_jolt_debugger_module
+{
+    auto Resolve_JoltTarget(
+        const FCk_Handle& InSelected) -> FCk_Handle
+    {
+        return ck::DebugSelectionSync::Resolve_ClosestLineageMatch(InSelected,
+            [](const FCk_Handle& InCandidate)
+            { return SCkJoltDebuggerWindow::Is_JoltDebuggerEntity(InCandidate); });
+    }
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -45,7 +65,7 @@ static FAutoConsoleCommand CmdJoltDebugger(
 auto FCkJoltDebuggerModule::StartupModule() -> void
 {
     auto& TabSpawner = FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
-        _DebuggerTabName,
+        Get_DebuggerTabName(),
         FOnSpawnTab::CreateRaw(this, &FCkJoltDebuggerModule::OnSpawnDebuggerTab))
         .SetDisplayName(FText::FromString(TEXT("CK Jolt Physics Debugger")))
         .SetTooltipText(FText::FromString(TEXT("Opens the CK Jolt Physics Debugger window")));
@@ -55,19 +75,38 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
 
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkJoltDebugger"),
-        _DebuggerTabName,
+        Get_DebuggerTabName(),
         FText::FromString(TEXT("CK Jolt Physics Debugger")),
         FText::FromString(TEXT("World-level Jolt physics stats: bodies, characters, and the baked static world")),
         TEXT("Cube"),
         ECkDebuggerToolCategory::Systems,
         30}
         .Set_TabFactory(FCkDebuggerToolTabFactory::CreateLambda([this]
-        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{_DebuggerTabName}}); })));
+        { return OnSpawnDebuggerTab(FSpawnTabArgs{TSharedPtr<SWindow>{}, FTabId{Get_DebuggerTabName()}}); })));
 
     // Tear the debugger UI down BEFORE module shutdown / world cleanup, so the window's debug-draw target
     // unregisters from a live Jolt subsystem and releases its preview-world components while the world is
     // still alive. Doing it during ShutdownModule is too late.
     _EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddRaw(this, &FCkJoltDebuggerModule::HandleEnginePreExit);
+
+    // Registered AFTER the tab spawner so the route can never resolve to a tab that cannot be opened.
+    _EntityTargetRouteRegistrationId = FCkDebug_EntityTargetRegistry::Get().Register(FCkDebug_EntityTargetRoute{
+        TEXT("CkJoltDebugger"), Get_DebuggerTabName(),
+        [](const FCk_Handle& InEntity)
+        { return ck::IsValid(ck_jolt_debugger_module::Resolve_JoltTarget(InEntity)); },
+        [](const FCk_Handle& InEntity)
+        {
+            const auto Target = ck_jolt_debugger_module::Resolve_JoltTarget(InEntity);
+
+            if (ck::Is_NOT_Valid(Target))
+            { return; }
+
+            auto& Module = FCkJoltDebuggerModule::Get();
+            Module.OpenDebugger();
+
+            if (Module._DebuggerWindow.IsValid())
+            { Module._DebuggerWindow->TargetEntity(Target); }
+        }});
 }
 
 auto FCkJoltDebuggerModule::HandleEnginePreExit() -> void
@@ -78,7 +117,12 @@ auto FCkJoltDebuggerModule::HandleEnginePreExit() -> void
 
 auto FCkJoltDebuggerModule::ShutdownModule() -> void
 {
-    FCkDebuggerToolRegistry::Get().Unregister(_DebuggerTabName, _DebuggerToolRegistrationId);
+    // Unregistered BEFORE the spawner: a route outliving its tab spawner offers an "Open In" that opens
+    // nothing.
+    FCkDebug_EntityTargetRegistry::Get().Unregister(Get_DebuggerTabName(), _EntityTargetRouteRegistrationId);
+    _EntityTargetRouteRegistrationId = 0;
+
+    FCkDebuggerToolRegistry::Get().Unregister(Get_DebuggerTabName(), _DebuggerToolRegistrationId);
     _DebuggerToolRegistrationId = 0;
 
     if (_EnginePreExitHandle.IsValid())
@@ -87,9 +131,9 @@ auto FCkJoltDebuggerModule::ShutdownModule() -> void
         _EnginePreExitHandle.Reset();
     }
 
-    if (FGlobalTabmanager::Get()->HasTabSpawner(_DebuggerTabName))
+    if (FGlobalTabmanager::Get()->HasTabSpawner(Get_DebuggerTabName()))
     {
-        FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(_DebuggerTabName);
+        FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(Get_DebuggerTabName());
     }
 
     _DebuggerWindow.Reset();
@@ -103,7 +147,7 @@ auto FCkJoltDebuggerModule::Get() -> FCkJoltDebuggerModule&
 
 auto FCkJoltDebuggerModule::OpenDebugger() -> void
 {
-    ck::debugger_tabs::Invoke_DebuggerTab(_DebuggerTabName);
+    ck::debugger_tabs::Invoke_DebuggerTab(Get_DebuggerTabName());
 }
 
 auto FCkJoltDebuggerModule::CloseDebugger() -> void

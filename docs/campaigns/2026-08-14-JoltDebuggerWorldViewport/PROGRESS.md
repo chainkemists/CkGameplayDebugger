@@ -1,6 +1,15 @@
 # Jolt Debugger — World Viewport — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY phase boundary and session end -->
+**As of 2026-08-15 (Phase 3 entry):** **PHASE 2 COMMITTED** (CkFoundation 5b3ce3eb3, CkTests
+d039513b, CkGameplayDebugger c1cbd5f + docs 00b4801; branding commits fb90e2f09/5b954c7/a6903924/
+root fd13be1 landed alongside). **PHASE 3 ENTERED** — PHASE_3.md authored with rulings
+P3-D22…D27 (highlight lives in the facility; snapshots collected in the debugger; viewport
+click-pick = JPH-free ray-vs-instance-bounds in the facility; single-select model with 5
+sources/5 sinks; shared predicate for route + picker). User's `[EDITOR-VERIFY]` of Phase 2 in
+progress; first feedback: "no outliner / can't select or focus a body" = exactly Phase 3 scope.
+Facility unit (Unit VIII) dispatching to Opus first, then debugger unit (Unit IX).
+Prior state line follows for history:
 **As of 2026-08-15 (late):** **PHASE 2 DONE, verified, UNCOMMITTED** — awaiting user commit
 approval. Phase 1 committed earlier (CkFoundation 5edf6c152, CkTests fbd99927, CkGameplayDebugger
 c804e7b; local, unpushed). Phase-2 gate of record (orchestrator, serial): full suite 1146/1150
@@ -36,8 +45,8 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 |---|---|
 | Docs/decisions | ✅ Done 2026-08-14 |
 | 1 — CkJolt renderer facility | ✅ Done 2026-08-15, COMMITTED (5edf6c152 / fbd99927) |
-| 2 — viewport shell | ✅ Done 2026-08-15 (uncommitted; 67/67 serial + full suite delta-zero; `[EDITOR-VERIFY]` pending) |
-| 3 — outliner + selection | ⏳ Pending |
+| 2 — viewport shell | ✅ Done 2026-08-15, COMMITTED (c1cbd5f / 5b3ce3eb3 / d039513b); **`[EDITOR-VERIFY]` A–D 12/12 PASSED by user 2026-08-15** |
+| 3 — outliner + selection | 🟡 In progress (entered 2026-08-15) |
 | 4 — scale + polish | ⏳ Pending |
 | Ship | ⏳ Pending |
 
@@ -50,6 +59,8 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 | P0-D4 | 2026-08-14 | Scale bar = 100,000+ bodies; perf designed in from Phase 1, measured Phase 4 | User-ruled | never |
 | P0-D5 | 2026-08-14 | Debug data/scaffolding in CkFoundation (CkJolt); debugger module = presentation only | User brief + suite doctrine | never |
 | P0-D6 | 2026-08-14 | Fable orchestrates, Opus executes, Sonnet mechanical | User directive (Fable budget) | user says otherwise |
+| P0-D8 | 2026-08-15 | **User AFK directive: "complete all phases of this task"** — orchestrator runs Phase 3 close + Phase 4 end-to-end autonomously; per-phase LOCAL commits authorized by the established pattern (user approved commits for Phases 1–2 and asked for completion while away); **push / pointer bumps / ship remain WITHHELD** (outward; cross-repo publish guard). `[EDITOR-VERIFY]` items accumulate for the user's return | User directive | user returns |
+| P0-D6b | 2026-08-15 | REINFORCED by user: "aggressively use Opus 5 agents to save on Fable 5 usage" — ALL implementation, research, review, docs-weld, and triage-drafting units go to Opus; Fable turns limited to rulings on STOPs, gate verdicts, PROGRESS updates. Where a triage could be drafted by an Opus agent (e.g. review-finding severity ranking with proposed fixes), draft it there and have Fable ratify | User directive | user says otherwise |
 | P0-D7 | 2026-08-14 | Campaign docs at `Plugins/CkGameplayDebugger/docs/campaigns/2026-08-14-JoltDebuggerWorldViewport/` | Suite precedent (4 sibling campaigns there); UI is the campaign's center of gravity | — |
 | P1-D8 | 2026-08-14 | **Front-end/target split** (rules INV-E): ONE `JPH::DebugRenderer` subclass instance — VERIFIED constraint, `JoltPhysics/Jolt/Renderer/DebugRenderer.cpp:75` `JPH_ASSERT(sInstance == nullptr)` in ctor — renamed `FCk_Jolt_DebugRenderer`, owning only the world-agnostic geometry/batch cache. Per-world retained state (ISM buckets, MIDs, mode, palette) moves to a new `FCk_Jolt_DebugDrawTarget`; the subsystem's in-world draw becomes the default target; the debugger registers its own target bound to its preview world. Singleton lifetime moves out of per-subsystem ownership to a module-level holder torn down on `OnEnginePreExit` (executor proposes exact shape; STOP on GC entanglement) | Two simultaneous renderer instances assert; targets share the geometry cache (meshes are world-agnostic) | never — Jolt-version bump changes the assert |
 | P1-D9 | 2026-08-14 | **Capture runs inside CkJolt's processor pipeline** (rules INV-D), in the async-safe window (RunAfter `FProcessor_JoltWorld_WaitForAsync` + SleepStateMirror, RunBefore `FProcessor_JoltWorld_Step`), pumping every registered+demanding target. Works identically in sync and async physics modes; the Slate/debugger side NEVER touches `JPH::PhysicsSystem`. Retained ISMs mean a skipped frame just shows last state | The Slate tick races the in-flight async step; the pipeline window is the only safe read point. Also satisfies P0-D5 (CkFoundation processors update debug data) | if Jolt gains a step-barrier read contract |
@@ -87,6 +98,80 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
   green in the serial baseline). Orchestrator's serial full gate is the arbiter.
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-15 — Phase-3 fix-up + docs weld landed (Opus); gate of record launched
+- All P3-D29 FIX-NOW items implemented (per-finding file:line table in executor report).
+  Facility API added: `ck::jolt::debug_draw::Make_BodyKey(uint32)`, `FCk_Jolt_DebugDrawTarget::
+  Get_HighlightedBodyLinearVelocity() -> TOptional<FVector>` (sampled by capture in the
+  async-safe window; unset for characters / bodies not drawn this capture — documented).
+  Debugger no longer calls any Jolt utils for live body state. Module `_DebuggerTabName` static
+  replaced by `Get_DebuggerTabName()` → `SCkJoltDebuggerWindow::TabId` (avoids cross-TU FName
+  init-order hazard). Specs: `Outliner.RowsSelectFilterAndSurviveRefresh`,
+  `Detail.RowsReflectTheSelection`, `Jolt.DebugDraw.HighlightedBodyLinearVelocity`.
+- Executor gates: JoltDebugger 8/8, DebuggerLauncher 3/3, Jolt 74/75 (12/12 DebugDraw; red =
+  SQLite lane noise on `FrameCostMatrix`). Docs: `CkJoltDebugger/CLAUDE.md` (outliner, selection
+  model, click-picking, detail, route/picker, pending target, known-costs worklist, 8 specs,
+  editor-verify), `CkJolt/CLAUDE.md` (selection surface, Highlight class, 12 specs, 2 anti-patterns).
+- Caveat: executor made ONE comment-only source edit after its gates → orchestrator gate of record
+  (below) rebuilds + retests the final artifact and is the arbiter.
+- Behavioral note for PIE: velocity row reads `--` for a static/sleeping body once its revision
+  pass has passed, and always for characters (P3-D27 as reopened).
+
+### 2026-08-15 — Phase-3 adversarial review: 20 findings; Opus-drafted triage RATIFIED [P3-D29]
+- CLEAN: route order + non-open-only, shared predicate, picker lifecycle, echo suppression
+  (triple-guarded), click-trap-free rows, single teardown path, pick math, character-key
+  single-sourcing, slot-pair release, doctrine.
+- **[P3-D29] Triage ratified as drafted, with one orchestrator ruling:** #2 (`Get_LinearVelocity`
+  reads `PhysicsSystem` from Slate — forbidden, races async step) → **P3-D27 REOPENED: velocity
+  is sampled by the CAPTURE PROCESSOR** for the highlighted body only (`FCk_Jolt_DebugDrawTarget::
+  Get_HighlightedBodyLinearVelocity() -> TOptional<FVector>`, written in the async-safe window),
+  the debugger reads that; no Jolt utils calls from the debugger for live body state.
+  FIX-NOW: #1 pending-target steals selection + never expires; #2 (per ruling); #3 BodyKey 0
+  aliasing → `TOptional<uint64>` + row lookups by Handle; #4 baked static picks resolve via a
+  key→row map over ALL `_BodyIds`; #5 external selection must reach filtered-out rows (search
+  unfiltered set, reveal); #6 pending target carries world identity; #7 identity key
+  (Handle, Population); #9 doc the per-click full-pass cost; #12 `Make_BodyKey` public helper;
+  #13 non-vacuous outliner/detail specs; #19 single TabId definition; #20 drop "v1" breadcrumbs.
+  DEFER → Phase 4: #8, #10, #14, #15, #17, #18. ACCEPT-AS-DESIGNED (doc): #11, #16.
+
+### 2026-08-15 — Phase 3 Unit IX (outliner/selection/picking/detail) done; review dispatched
+- CkJoltDebugger (uncommitted): `Data/CkJoltDebugger_Types.h` + `DataCollector` (four fragments;
+  StaticActor rows keyed by FIRST body id — v1), `SCkJoltDebugger_OutlinerPanel` (pointer-identity
+  list, dual search, pill, copy menu), `SCkJoltDebugger_DetailPanel`, 3-way splitter, selection
+  model with 5 sources / sinks exactly per P3-D25 (broadcast only for user-originated Outliner/
+  Viewport), `Is_JoltDebuggerEntity` shared by module route + picker filter, route registered
+  after spawner / unregistered before, Frame Selection + `F` restored (`Set_SelectionBounds` fed
+  each Tick from `Get_HighlightedBodyBounds`), viewport plain-LMB pick via `TryPick_Body`.
+  Build.cs +CkSpatialQuery. Specs +2 (Outliner/Detail construct). Executor gates: JoltDebugger
+  6/6, DebuggerLauncher 3/3, Jolt 70/72 (both reds SQLite lane noise; all DebugDraw green).
+- Not done by design: collector spec (no headless JoltBody fixture exists — only the net-PIE
+  harness); docs weld → Unit X.
+- Inferred: JoltBody/Probe key widening `static_cast<uint64>(GetIndexAndSequenceNumber())` —
+  facility header states the convention only for characters. Confirm in review + editor.
+
+### 2026-08-15 — Phase 3 Unit VIII (facility highlight/pick) done; Unit IX dispatched
+- CkJolt (uncommitted): `Highlight` colour class (8th, static_assert holds), palette entry;
+  `Set_/Get_HighlightedBody`, `Get_HighlightedBodyBounds` (reads the NORMAL instance → available
+  instantly on selection), `TryPick_Body` (oriented-box slab test in instance space, parametric
+  distance, skips hidden classes + Highlight), `ck::jolt::debug_draw::Make_CharacterBodyKey`;
+  keyspace constants unified (`CharacterKeyBit=1<<40`, `HighlightKeyBit=1<<41`); public
+  `Release_BodySlots` also releases the paired overlay; `Set_HighlightedBody` re-arms the full
+  pass so static/asleep bodies highlight without waiting for a revision. **[P3-D28] all ratified.**
+- Specs +3 (`HighlightAddsOverlayInstance`, `HighlightedBodyBounds`, `PickNearestBody`); scoped
+  Jolt 69/70 (11/11 DebugDraw green; red = SQLite lane noise on yet another rotating test).
+- Executor's spec-first red (bounds assumed to require re-capture) was a wrong assertion,
+  corrected — recorded as honest process, not a facility bug.
+
+### 2026-08-15 — Phase-2 `[EDITOR-VERIFY]` A–D: 12/12 PASSED (user, live PIE)
+- VERIFIED by human: legacy in-world draw parity + live opacity/sleep-coloring + same-frame hide
+  (A1), multi-world server+client draw (A2/P1-D17), sleeping-at-open + asleep-spawn draw
+  immediately (B3–4, P1-D16 funnel live), PIE Stop survives + re-PIE repopulates (C5,
+  OnWorldCleanup path), viewport shows same bodies/colors + stat rail (D6), all 7 presets + Frame
+  All + orbit/pan/zoom/flight with NO ortho clipping (D7, P2-D20 #8), Frame All respects hidden
+  populations (D8, P2-D19), wireframe toggle (D9), population toggles + legend (D10), in-world
+  toggles game-viewport-only (D11), demand-off on tab switch (D12, P2-D20 #1).
+- Every "inferred" line carried from Phase 1/2 is now closed. Remaining open: `[PACKAGED-VERIFY]`
+  for the two engine debug materials (Phase 4).
 
 ### 2026-08-15 — Phase-2 fix-up (Unit VII) landed; [P2-D21] framing-movement assertion ruled OUT
 - All 10 P2-D20 fixes implemented + evidence (executor report): demand push via

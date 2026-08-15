@@ -1,10 +1,10 @@
-#include "CkInputDebugger/Data/CkInputDebugger_KeyActivity.h"
+#include "CkDebuggerCommon/Devices/CkDebug_KeyActivityObserver.h"
 
 #include "Framework/Application/SlateApplication.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
-namespace ck_input_debugger_key_activity
+namespace ck_debug_key_activity
 {
     constexpr auto MaxRecentKeys = 6;
     constexpr auto AnalogRestThreshold = 0.08f;
@@ -35,7 +35,7 @@ namespace ck_input_debugger_key_activity
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     Tick(
         const float InDeltaTime,
         FSlateApplication& InSlateApp,
@@ -43,12 +43,21 @@ auto
     -> void
 {
     ++_LiveFrame;
+
+    // App deactivation swallows release edges — a key held across an alt-tab would read held forever, in every
+    // consumer of this observer. Releasing through DoRelease closes the episodes exactly as real key-ups would.
+    if (NOT InSlateApp.IsActive() && _Held.Num() > 0)
+    {
+        const auto HeldCopy = _Held;
+        for (const auto& Held : HeldCopy)
+        { DoRelease(Held.Key); }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     HandleKeyDownEvent(
         FSlateApplication& InSlateApp,
         const FKeyEvent& InKeyEvent)
@@ -61,7 +70,7 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     HandleKeyUpEvent(
         FSlateApplication& InSlateApp,
         const FKeyEvent& InKeyEvent)
@@ -72,7 +81,7 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     HandleMouseButtonDownEvent(
         FSlateApplication& InSlateApp,
         const FPointerEvent& InPointerEvent)
@@ -83,7 +92,21 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
+    HandleMouseButtonDoubleClickEvent(
+        FSlateApplication& InSlateApp,
+        const FPointerEvent& InPointerEvent)
+    -> bool
+{
+    // The OS classifies the second press of a rapid double click as its own event type, and the engine's
+    // IInputProcessor default DROPS it — without this override the observer would read the button as not
+    // held for the entire second click. DoPress is idempotent, so also receiving a regular down is fine.
+    DoPress(InPointerEvent.GetEffectingButton());
+    return false;
+}
+
+auto
+    FCkDebug_KeyActivityObserver::
     HandleMouseButtonUpEvent(
         FSlateApplication& InSlateApp,
         const FPointerEvent& InPointerEvent)
@@ -94,13 +117,13 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     HandleAnalogInputEvent(
         FSlateApplication& InSlateApp,
         const FAnalogInputEvent& InAnalogEvent)
     -> bool
 {
-    using namespace ck_input_debugger_key_activity;
+    using namespace ck_debug_key_activity;
 
     const auto Magnitude = FMath::Abs(InAnalogEvent.GetAnalogValue());
     _AnalogMagnitudes.FindOrAdd(InAnalogEvent.GetKey()) = Magnitude;
@@ -119,16 +142,16 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     Get_IsHeld(
         const FKey& InKey) const
     -> bool
 {
-    return _Held.ContainsByPredicate([&](const FCkInputDebugger_HeldKey& InHeld) { return InHeld.Key == InKey; });
+    return _Held.ContainsByPredicate([&](const FCkDebug_HeldKey& InHeld) { return InHeld.Key == InKey; });
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     Get_AnalogMagnitude(
         const FKey& InKey) const
     -> float
@@ -140,12 +163,12 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     Fill_DeviceSnapshot(
         FCkDebug_DeviceSnapshot& OutSnapshot) const
     -> void
 {
-    using namespace ck_input_debugger_key_activity;
+    using namespace ck_debug_key_activity;
 
     OutSnapshot.LiveFrame = _LiveFrame;
     OutSnapshot.DeviceConnected = true;
@@ -177,7 +200,7 @@ auto
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     Clear()
     -> void
 {
@@ -192,7 +215,7 @@ auto
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     DoPress(
         const FKey& InKey)
     -> void
@@ -200,34 +223,34 @@ auto
     if (Get_IsHeld(InKey))
     { return; }
 
-    _Held.Emplace(FCkInputDebugger_HeldKey{InKey, FSlateApplication::Get().GetCurrentTime()});
+    _Held.Emplace(FCkDebug_HeldKey{InKey, FSlateApplication::Get().GetCurrentTime()});
 
     auto& State = _KeyStates.FindOrAdd(InKey);
     State.LatestPressFrame = _LiveFrame;
 
-    _EdgeHistory.Emplace(FCkInputDebugger_KeyEdgeEpisode{InKey, _LiveFrame});
+    _EdgeHistory.Emplace(FCkDebug_KeyEdgeEpisode{InKey, _LiveFrame});
 
-    if (_EdgeHistory.Num() > ck_input_debugger_key_activity::MaxEdgeEpisodes)
-    { _EdgeHistory.RemoveAt(0, _EdgeHistory.Num() - ck_input_debugger_key_activity::MaxEdgeEpisodes); }
+    if (_EdgeHistory.Num() > ck_debug_key_activity::MaxEdgeEpisodes)
+    { _EdgeHistory.RemoveAt(0, _EdgeHistory.Num() - ck_debug_key_activity::MaxEdgeEpisodes); }
 
     ++_Revision;
 }
 
 auto
-    FCkInputDebugger_KeyActivityObserver::
+    FCkDebug_KeyActivityObserver::
     DoRelease(
         const FKey& InKey)
     -> void
 {
-    using namespace ck_input_debugger_key_activity;
+    using namespace ck_debug_key_activity;
 
-    const auto RemovedCount = _Held.RemoveAll([&](const FCkInputDebugger_HeldKey& InHeld) { return InHeld.Key == InKey; });
+    const auto RemovedCount = _Held.RemoveAll([&](const FCkDebug_HeldKey& InHeld) { return InHeld.Key == InKey; });
 
     if (RemovedCount == 0)
     { return; }
 
-    _Recent.RemoveAll([&](const FCkInputDebugger_RecentKey& InRecent) { return InRecent.Key == InKey; });
-    _Recent.Insert(FCkInputDebugger_RecentKey{InKey, FSlateApplication::Get().GetCurrentTime()}, 0);
+    _Recent.RemoveAll([&](const FCkDebug_RecentKey& InRecent) { return InRecent.Key == InKey; });
+    _Recent.Insert(FCkDebug_RecentKey{InKey, FSlateApplication::Get().GetCurrentTime()}, 0);
 
     if (_Recent.Num() > MaxRecentKeys)
     { _Recent.SetNum(MaxRecentKeys); }

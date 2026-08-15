@@ -22,6 +22,7 @@
 #include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
 #include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
 #include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_SectionHeader.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_WorldSelector.h"
 #include "CkDebuggerCommon/Window/CkDebuggerRefreshGate.h"
@@ -30,6 +31,7 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "Framework/Docking/TabManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -117,6 +119,30 @@ auto
             .ToolTabId(TEXT("CkIntentDebugger"))
             .StatusText_Lambda([this]() { return Get_StatusText(); })
             .CommandGroups({
+                FCkDebug_CommandGroup::Primary(TEXT("IntentView"), FText::FromString(TEXT("Intent view controls")),
+                    SNew(SCkDebug_IconToolbar)
+                    .Actions({
+                        FCkDebug_IconToggleAction{
+                            TEXT("InputHudOverlay"),
+                            TEXT("World"),
+                            FText::FromString(TEXT("Input HUD overlay")),
+                            FText::FromString(TEXT("Toggle the on-screen QA input overlay (ck.InputOverlay).\n"
+                                 "Off (0) hides it, on (2) shows the auto device visual.")),
+                            TAttribute<bool>::CreateLambda([]() -> bool
+                            {
+                                const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay"));
+                                return CVar != nullptr && CVar->GetInt() != 0;
+                            }),
+                            FOnCkDebug_IconToggleChanged::CreateLambda([](bool InIsOn)
+                            {
+                                if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")))
+                                { CVar->Set(InIsOn ? 2 : 0, ECVF_SetByConsole); }
+                            }),
+                            TAttribute<bool>::CreateLambda([]() -> bool
+                            {
+                                return IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")) != nullptr;
+                            })}
+                    })),
                 FCkDebug_CommandGroup::Context(TEXT("IntentTarget"), FText::FromString(TEXT("Intent source and target")), Build_Toolbar())
             })
             .ShowRefreshControls(true)

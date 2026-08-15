@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 
 #include "Camera/CameraTypes.h"
+#include "Engine/EngineBaseTypes.h"
+#include "InputCoreTypes.h"
 
 #include "Widgets/SViewport.h"
 
@@ -48,6 +50,8 @@ class SCkJoltDebugger_3dViewport final : public SViewport
 public:
     SLATE_BEGIN_ARGS(SCkJoltDebugger_3dViewport) {}
         SLATE_EVENT(FOnCkJoltDebugger_BodyPicked, OnBodyPicked)
+        SLATE_EVENT(FSimpleDelegate, OnTogglePause)
+        SLATE_EVENT(FSimpleDelegate, OnStepOnce)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -66,6 +70,22 @@ public:
     auto Get_ProjectionMode() const -> ECameraProjectionMode::Type;
     auto Get_ViewRotation() const -> FRotator;
     auto Get_ViewLocation() const -> FVector;
+
+    /*
+     * The pivot every framing, orbit and dolly path maintains: eye + forward * orbit distance. It is a real
+     * camera state rather than a derived one, because look-in-place moves it while orbit must leave it alone,
+     * and a look-at recomputed from the eye each time could not tell those two gestures apart.
+     */
+    auto Get_LookAtLocation() const -> FVector;
+
+    /*
+     * The viewport client's input entry points, reachable without the client itself — it is a private type in
+     * the .cpp, and a camera scheme that cannot be driven from a spec is a camera scheme nothing pins.
+     * Both take the same keys FSceneViewport would deliver; the viewport pointer they would carry is only
+     * needed by the cursor-position paths (picking), which no-op without one.
+     */
+    auto Input_Key(const FKey& InKey, EInputEvent InEvent) -> bool;
+    auto Input_MouseAxis(const FKey& InAxisKey, float InDelta) -> bool;
 
     virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 

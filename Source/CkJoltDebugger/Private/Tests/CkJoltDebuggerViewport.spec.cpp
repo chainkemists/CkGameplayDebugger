@@ -108,4 +108,95 @@ auto FCkJoltDebuggerViewport_FrameAllWithoutContentIsInert::RunTest(const FStrin
     return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerViewport_CameraSchemeIsUnrealStyle,
+    "Ck.JoltDebugger.Viewport.CameraSchemeIsUnrealStyle",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerViewport_CameraSchemeIsUnrealStyle::RunTest(const FString&) -> bool
+{
+    const auto Viewport = SNew(SCkJoltDebugger_3dViewport);
+    Viewport->SlatePrepass();
+
+    constexpr auto DragAmount = 40.0f;
+
+    const auto Drag = [&Viewport](const FKey& InButton, float InAmount)
+    {
+        Viewport->Input_Key(InButton, IE_Pressed);
+        Viewport->Input_MouseAxis(EKeys::MouseX, InAmount);
+        Viewport->Input_Key(InButton, IE_Released);
+    };
+
+    // RIGHT-DRAG LOOKS IN PLACE. This is the whole reversal: the old scheme orbited here, which moved the eye.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Perspective);
+
+        const auto LocationBefore = Viewport->Get_ViewLocation();
+        const auto RotationBefore = Viewport->Get_ViewRotation();
+
+        Drag(EKeys::RightMouseButton, DragAmount);
+
+        TestTrue(TEXT("right-drag leaves the eye exactly where it was"),
+            Viewport->Get_ViewLocation().Equals(LocationBefore));
+        TestFalse(TEXT("right-drag turns the camera"),
+            Viewport->Get_ViewRotation().Equals(RotationBefore, 0.01f));
+    }
+
+    // ALT+LEFT-DRAG ORBITS. The discriminating half is the pivot: an orbit moves the eye AROUND a look-at that
+    // does not move, which is exactly what look-in-place above does not do.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Perspective);
+
+        const auto LocationBefore = Viewport->Get_ViewLocation();
+        const auto LookAtBefore = Viewport->Get_LookAtLocation();
+
+        Viewport->Input_Key(EKeys::LeftAlt, IE_Pressed);
+        Drag(EKeys::LeftMouseButton, DragAmount);
+        Viewport->Input_Key(EKeys::LeftAlt, IE_Released);
+
+        TestFalse(TEXT("alt+left-drag moves the eye"),
+            Viewport->Get_ViewLocation().Equals(LocationBefore, 1.0));
+        TestTrue(TEXT("alt+left-drag orbits about a pivot that stays put"),
+            Viewport->Get_LookAtLocation().Equals(LookAtBefore, 1.0));
+    }
+
+    // MIDDLE-DRAG PANS: the eye translates and the camera never turns.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Perspective);
+
+        const auto LocationBefore = Viewport->Get_ViewLocation();
+        const auto RotationBefore = Viewport->Get_ViewRotation();
+
+        Drag(EKeys::MiddleMouseButton, DragAmount);
+
+        TestFalse(TEXT("middle-drag moves the eye"),
+            Viewport->Get_ViewLocation().Equals(LocationBefore, 0.01));
+        TestTrue(TEXT("middle-drag never turns the camera"),
+            Viewport->Get_ViewRotation().Equals(RotationBefore, 0.01f));
+    }
+
+    // AN ORTHOGRAPHIC PRESET IS AXIS-LOCKED: a rotate gesture pans instead, and the rotation is untouched.
+    {
+        Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::Top);
+
+        const auto RotationBefore = Viewport->Get_ViewRotation();
+
+        Drag(EKeys::RightMouseButton, DragAmount);
+
+        TestTrue(TEXT("an ortho preset refuses to rotate"),
+            Viewport->Get_ViewRotation().Equals(RotationBefore, 0.01f));
+
+        Viewport->Input_Key(EKeys::LeftAlt, IE_Pressed);
+        Drag(EKeys::LeftMouseButton, DragAmount);
+        Viewport->Input_Key(EKeys::LeftAlt, IE_Released);
+
+        TestTrue(TEXT("an ortho preset refuses to orbit either"),
+            Viewport->Get_ViewRotation().Equals(RotationBefore, 0.01f));
+    }
+
+    return true;
+}
+
 #endif

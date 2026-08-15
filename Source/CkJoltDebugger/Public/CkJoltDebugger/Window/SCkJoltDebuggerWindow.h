@@ -15,6 +15,7 @@ class SCkJoltDebugger_3dViewport;
 class SCkJoltDebugger_DetailPanel;
 class SCkJoltDebugger_OutlinerPanel;
 class SDockTab;
+class SHorizontalBox;
 class STextBlock;
 class UCk_Jolt_Subsystem;
 class UWorld;
@@ -49,6 +50,33 @@ struct FCkJoltDebugger_Stats
     int32   NumStaticActors = 0;
     int32   NumStaticBodies = 0;
     int32   NumUniqueShapes = 0;
+
+    // ---- Simulation (P7-D51 / P6-D48) ----
+
+    bool    IsPaused = false;
+    float   LastStepMs = 0.0f;
+    int32   ContactPairsLastStep = 0;
+
+    int32   NumActiveRigidBodies = 0;
+    int32   NumActiveSoftBodies  = 0;
+
+    /*
+     * The half of FCk_Jolt_DebugDraw_WorldStats the capture refreshes only every 30th capture, because
+     * GetBodyStats walks every body and GetConstraints copies the constraint array. Rendered under a
+     * "(sampled)" label so a lagging number reads as designed rather than as a bug (P5-D61/S10).
+     */
+    bool    HasSampledStats = false;
+    int32   SampleAge = 0;
+
+    int32   SampledNumBodies             = 0;
+    int32   SampledMaxBodies             = 0;
+    int32   SampledStaticBodies          = 0;
+    int32   SampledDynamicBodies         = 0;
+    int32   SampledActiveDynamicBodies   = 0;
+    int32   SampledKinematicBodies       = 0;
+    int32   SampledActiveKinematicBodies = 0;
+    int32   SampledSoftBodies            = 0;
+    int32   SampledConstraints           = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -146,19 +174,46 @@ private:
     auto BuildTargetGroup() -> TSharedRef<SWidget>;
     auto BuildCameraGroup() -> TSharedRef<SWidget>;
     auto BuildRenderGroup() -> TSharedRef<SWidget>;
+    auto BuildSimGroup() -> TSharedRef<SWidget>;
+    auto BuildDrawGroup() -> TSharedRef<SWidget>;
     auto BuildPopulationGroup() -> TSharedRef<SWidget>;
-    auto BuildLegendGroup() const -> TSharedRef<SWidget>;
+    auto BuildLegendGroup() -> TSharedRef<SWidget>;
     auto BuildStatRail() const -> TSharedRef<SWidget>;
     auto BuildRightRail() -> TSharedRef<SWidget>;
 
     auto MakePopulationToggle(
         const ck_jolt_debugger::FPopulationGroup& InGroup) const -> TSharedRef<SWidget>;
 
+    /** The selected world's Jolt subsystem, or null whenever there is nothing inspectable to command. */
+    auto Get_SelectedJoltSubsystem() const -> UCk_Jolt_Subsystem*;
+    auto Get_HasCommandableWorld() const -> bool;
+
+    auto DoApplyPopulationVisibility() -> void;
+
+    auto Get_ColorMode() const -> ECk_Jolt_DebugDrawColorMode;
+    auto Set_ColorMode(ECk_Jolt_DebugDrawColorMode InColorMode) -> void;
+
+    auto Set_DrawFlag(ECk_Jolt_DebugDrawFlags InFlag, bool InIsEnabled) -> void;
+
+    /*
+     * The legend names the classes of the CURRENT colour mode, so a mode change has to re-populate it. This is
+     * the one Slate structure this window rebuilds after Construct — from the mode control's own handler, never
+     * from Tick.
+     */
+    auto DoRebuildLegend() -> void;
+
+    auto HandleTogglePause() -> void;
+    auto HandleStepOnce() -> void;
+
     /** Restore the per-user preferences into the target and the camera. Runs once, at the end of Construct. */
     auto DoApplySavedPreferences() -> void;
 
     auto MakeSectionHeader(const FString& InText) const -> TSharedRef<SWidget>;
     auto MakeStatRow(const FString& InLabel, TAttribute<FText> InValue) const -> TSharedRef<SWidget>;
+    auto MakeSampledStatRow(const FString& InLabel, TAttribute<FText> InValue) const -> TSharedRef<SWidget>;
+
+    /** A throttled count, or `--` while the capture has never taken a sample. */
+    auto Get_SampledStatText(int32 InValue) const -> FText;
 
     TSharedPtr<FCkDebuggerModel_WorldSelector>  _WorldModel;
     TSharedPtr<SCkJoltDebugger_3dViewport>      _Viewport;
@@ -166,6 +221,7 @@ private:
     TSharedPtr<SCkJoltDebugger_OutlinerPanel>   _OutlinerPanel;
     TSharedPtr<SCkJoltDebugger_DetailPanel>     _DetailPanel;
     TSharedPtr<FCkDebug_ViewportPicker>         _ViewportPicker;
+    TSharedPtr<SHorizontalBox>                  _LegendBox;
 
     FCkJoltDebugger_DataCollector _Collector;
 

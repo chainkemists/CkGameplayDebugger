@@ -1,12 +1,18 @@
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
 
 #include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
+#include "CkJoltDebugger/Window/SCkJoltDebugger_DetailPanel.h"
+#include "CkJoltDebugger/Window/SCkJoltDebugger_OutlinerPanel.h"
 
 #include "CkCore/Ensure/CkEnsure.h"
 #include "CkCore/Validation/CkIsValid.h"
 #include "CkCore/Format/CkFormat.h"
 
 #include "CkDebuggerCommon/Lifecycle/CkDebug_SessionLifecycle.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_EntityTarget.h"
+#include "CkDebuggerCommon/Navigation/CkDebug_SelectionSync.h"
+#include "CkDebuggerCommon/Picker/CkDebug_ViewportPicker.h"
+#include "CkDebuggerCommon/Picker/SCkDebug_ViewportPickerControls.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerCommonStyle.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -17,6 +23,7 @@
 
 #include "CkEditorTools/Style/CkStyle.h"
 
+#include "CkEcs/EntityLifetime/CkEntityLifetime_Utils.h"
 #include "CkEcs/Handle/CkHandle.h"
 #include "CkEcs/Handle/CkHandle_Utils.h"
 #include "CkEcs/Subsystem/CkEcsWorld_Subsystem.h"
@@ -26,6 +33,8 @@
 #include "CkJolt/Body/CkJoltBody_Fragment.h"
 #include "CkJolt/Character/CkJoltCharacter_Fragment.h"
 #include "CkJolt/StaticWorld/CkJoltStaticActor_Fragment.h"
+
+#include "CkSpatialQuery/Probe/CkProbe_Fragment.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -133,6 +142,24 @@ namespace ck_jolt_debugger
 // --------------------------------------------------------------------------------------------------------------------
 
 const FName SCkJoltDebuggerWindow::WindowId = FName(TEXT("JoltDebugger"));
+const FName SCkJoltDebuggerWindow::TabId = FName(TEXT("CkJoltDebugger"));
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    Is_JoltDebuggerEntity(
+        const FCk_Handle& InCandidate)
+    -> bool
+{
+    if (ck::Is_NOT_Valid(InCandidate))
+    { return false; }
+
+    return InCandidate.Has<ck::FFragment_JoltBody_Current>()
+        || InCandidate.Has<ck::FFragment_JoltStaticActor_Current>()
+        || InCandidate.Has<ck::FFragment_Probe_Current>()
+        || InCandidate.Has<ck::FFragment_JoltCharacter_Current>();
+}
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -145,19 +172,50 @@ auto
     Register_WithGate();
 
     _WorldModel = MakeShared<FCkDebuggerModel_WorldSelector>();
-    _Viewport = SNew(SCkJoltDebugger_3dViewport);
+    _Viewport = SNew(SCkJoltDebugger_3dViewport)
+        .OnBodyPicked(FOnCkJoltDebugger_BodyPicked::CreateSP(this, &SCkJoltDebuggerWindow::HandleViewportBodyPicked));
 
     DoCreateDebugDrawTarget();
+
+    _OutlinerPanel = SNew(SCkJoltDebugger_OutlinerPanel)
+        .OnRowSelected(FOnCkJoltDebugger_RowSelected::CreateSP(this, &SCkJoltDebuggerWindow::HandleOutlinerRowSelected));
+
+    _DetailPanel = SNew(SCkJoltDebugger_DetailPanel)
+        .GetSelection(FOnCkJoltDebugger_GetSelection::CreateSP(this, &SCkJoltDebuggerWindow::Get_Selection));
+
+    // The shared game-viewport picker, specialized to the four body-backing features. The pick routes
+    // through this module's entity-target route, so a pick and an ECS "Open In" land on the same row.
+    _ViewportPicker = MakeShared<FCkDebug_ViewportPicker>();
+    {
+        auto PickerParams = FCkDebug_ViewportPicker::FParams{};
+        PickerParams.Get_TargetWorld =
+            [WeakWorldModel = TWeakPtr<FCkDebuggerModel_WorldSelector>{_WorldModel}]() -> UWorld*
+            {
+                const auto Pinned = WeakWorldModel.Pin();
+                return Pinned.IsValid() ? Pinned->Get_SelectedWorld() : nullptr;
+            };
+        PickerParams.TargetFilter =
+            [](const FCk_Handle& InCandidate) { return Is_JoltDebuggerEntity(InCandidate); };
+        PickerParams.OnEntityPicked =
+            [](const FCk_Handle& InPicked)
+            {
+                ck::DebugSelectionSync::Broadcast(InPicked, TabId);
+                FCkDebug_EntityTargetRegistry::Get().TryOpenAndTarget(TabId, InPicked);
+            };
+        _ViewportPicker->Construct(MoveTemp(PickerParams));
+    }
 
     _WorldChangedHandle = _WorldModel->OnWorldChanged.AddSP(this, &SCkJoltDebuggerWindow::HandleWorldChanged);
     _SessionInvalidatedHandle = ck::DebugSessionLifecycle::Get_OnSessionInvalidated().AddSP(
         this, &SCkJoltDebuggerWindow::HandleSessionInvalidated);
+    _SelectionSyncHandle = ck::DebugSelectionSync::Get_OnSelection().AddSP(
+        this, &SCkJoltDebuggerWindow::HandleGlobalSelectionSync);
     _TabForegroundedHandle = FGlobalTabmanager::Get()->OnTabForegrounded_Subscribe(
         FOnActiveTabChanged::FDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleTabForegrounded));
 
     ChildSlot
     [
-        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TEXT("CkJoltDebugger"))
+        SNew(SCkDebug_WindowChrome).WindowId(Get_WindowId()).ToolTabId(TabId)
         .ShowRefreshControls(true)
         .CommandGroups(BuildCommandGroups())
         .Content()
@@ -168,11 +226,14 @@ auto
             [
                 SNew(SSplitter).Orientation(Orient_Horizontal)
 
-                + SSplitter::Slot().Value(0.72f)
+                + SSplitter::Slot().Value(0.22f)
+                [ _OutlinerPanel.ToSharedRef() ]
+
+                + SSplitter::Slot().Value(0.53f)
                 [ _Viewport.ToSharedRef() ]
 
-                + SSplitter::Slot().Value(0.28f)
-                [ BuildStatRail() ]
+                + SSplitter::Slot().Value(0.25f)
+                [ BuildRightRail() ]
             ]
         ]
     ];
@@ -195,9 +256,17 @@ SCkJoltDebuggerWindow::~SCkJoltDebuggerWindow()
     if (_SessionInvalidatedHandle.IsValid())
     { ck::DebugSessionLifecycle::Get_OnSessionInvalidated().Remove(_SessionInvalidatedHandle); }
 
+    if (_SelectionSyncHandle.IsValid())
+    { ck::DebugSelectionSync::Get_OnSelection().Remove(_SelectionSyncHandle); }
+
     if (_TabForegroundedHandle.IsValid())
     { FGlobalTabmanager::Get()->OnTabForegrounded_Unsubscribe(_TabForegroundedHandle); }
 
+    if (_ViewportPicker.IsValid())
+    { _ViewportPicker->Deactivate(); }
+
+    _Selection.Reset();
+    _Collector.Reset();
     _DebugDrawTarget.Reset();
 }
 
@@ -213,15 +282,28 @@ auto
 {
     SCkDebugger_WindowBase::Tick(InAllottedGeometry, InCurrentTime, InDeltaTime);
 
+    // The picker drives the GAME viewport, not this one — it must keep ticking at the display rate even
+    // when the user has throttled this window's refresh gate.
+    if (_ViewportPicker.IsValid() && _ViewportPicker->IsActive())
+    { _ViewportPicker->Tick(InDeltaTime); }
+
     _WorldModel->Ensure_AutoSelect();
     auto* World = _WorldModel->Get_SelectedWorld();
 
     DoSyncDebugDrawTarget(World);
 
+    if (_Viewport.IsValid())
+    {
+        _Viewport->Set_SelectionBounds(_DebugDrawTarget.IsValid()
+            ? _DebugDrawTarget->Get_HighlightedBodyBounds()
+            : TOptional<FBox>{});
+    }
+
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
 
     DoRefreshStats(World);
+    DoRefreshBodies(World);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -293,7 +375,25 @@ auto
     DoUnregisterDebugDrawTarget();
 
     if (_DebugDrawTarget.IsValid())
-    { _DebugDrawTarget->Set_IsDesired(false); }
+    {
+        _DebugDrawTarget->Set_IsDesired(false);
+        _DebugDrawTarget->Set_HighlightedBody(TOptional<uint64>{});
+    }
+
+    if (_ViewportPicker.IsValid())
+    { _ViewportPicker->Deactivate(); }
+
+    if (_Viewport.IsValid())
+    { _Viewport->Set_SelectionBounds(TOptional<FBox>{}); }
+
+    if (_OutlinerPanel.IsValid())
+    { _OutlinerPanel->Clear(); }
+
+    // The snapshots and the selection are where this window's PIE handles live — they die here, in the
+    // one reset both the world switch and the session invalidation route through.
+    _Collector.Reset();
+    _Selection.Reset();
+    _PendingTarget.Reset();
 
     _Stats = FCkJoltDebugger_Stats{};
 }
@@ -310,6 +410,17 @@ auto
     }
 
     HandleWorldChanged(nullptr);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    OnStyleRevisionChanged()
+    -> void
+{
+    // Everything else here is attribute-bound and has already moved; the outliner is the one surface with
+    // generated ROW widgets, whose STableRow style is resolved at generation time.
+    if (_OutlinerPanel.IsValid())
+    { _OutlinerPanel->Rebuild_ForStyleChange(); }
 }
 
 auto
@@ -395,6 +506,246 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    DoRefreshBodies(
+        UWorld* InWorld)
+    -> void
+{
+    _Collector.Collect(InWorld);
+
+    if (_OutlinerPanel.IsValid())
+    { _OutlinerPanel->Refresh(_Collector.Get_Bodies()); }
+
+    DoApplyPendingTarget(InWorld);
+    DoRefreshSelectionFacts();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoApplyPendingTarget(
+        UWorld* InWorld)
+    -> void
+{
+    if (NOT _PendingTarget.IsSet() || NOT _OutlinerPanel.IsValid())
+    { return; }
+
+    if (_PendingTarget->World.Get() != InWorld)
+    {
+        _PendingTarget.Reset();
+        return;
+    }
+
+    const auto PendingEntity = _PendingTarget->Entity;
+    const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+    const auto Matched = _OutlinerPanel->SelectByEntity(PendingEntity);
+
+    if (Matched.IsSet())
+    {
+        _PendingTarget.Reset();
+        DoApplySelection(Matched, ECkJoltDebugger_SelectionSource::External);
+        return;
+    }
+
+    // One retry, not a standing claim: once a pass HAS produced rows and none of them is the target, the
+    // target is not in this world's collection, and a pending target that never expires would keep stealing
+    // the next selection the user makes.
+    if (NOT _Collector.Get_Bodies().IsEmpty())
+    { _PendingTarget.Reset(); }
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoRefreshSelectionFacts()
+    -> void
+{
+    if (NOT _Selection.IsSet())
+    { return; }
+
+    // Keyed by the ENTITY, not the body key: a body key can be unset (a baked actor whose bodies are gone)
+    // and a re-baked actor keeps its entity while every one of its body ids changes.
+    const auto SelectedHandle = _Selection->Handle;
+    const auto SelectedPopulation = _Selection->Population;
+
+    const auto* Refreshed = _Collector.Get_Bodies().FindByPredicate(
+        [&SelectedHandle, SelectedPopulation](const FCkJoltDebugger_BodySnapshot& InBody)
+        { return InBody.Handle == SelectedHandle && InBody.Population == SelectedPopulation; });
+
+    if (Refreshed == nullptr)
+    {
+        // The selected body left the world. Drop the selection rather than keeping a row that no longer
+        // has anything behind it — the highlight would keep pointing at a released slot.
+        DoApplySelection({}, ECkJoltDebugger_SelectionSource::External);
+        return;
+    }
+
+    _Selection = *Refreshed;
+
+    // Velocity comes from the facility's own capture, which sampled it in the physics pipeline's async-safe
+    // window. Reading it off the live physics system from here would race the step.
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    const auto Velocity = _DebugDrawTarget->Get_HighlightedBodyLinearVelocity();
+
+    if (NOT Velocity.IsSet())
+    { return; }
+
+    _Selection->LinearVelocity = *Velocity;
+    _Selection->HasLinearVelocity = true;
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoApplySelection(
+        TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot,
+        ECkJoltDebugger_SelectionSource InSource)
+    -> void
+{
+    // Anything but an external apply supersedes a route target still waiting for a row: left standing, it
+    // would land on the next refresh and take the selection away from whoever just made one.
+    if (InSource != ECkJoltDebugger_SelectionSource::External)
+    { _PendingTarget.Reset(); }
+
+    _Selection = MoveTemp(InSnapshot);
+
+    if (_DebugDrawTarget.IsValid())
+    {
+        _DebugDrawTarget->Set_HighlightedBody(_Selection.IsSet()
+            ? _Selection->BodyKey
+            : TOptional<uint64>{});
+    }
+
+    if (_Viewport.IsValid())
+    {
+        _Viewport->Set_SelectionBounds(_DebugDrawTarget.IsValid()
+            ? _DebugDrawTarget->Get_HighlightedBodyBounds()
+            : TOptional<FBox>{});
+    }
+
+    // The outliner is a sink for every source except itself — re-stamping the row the user just clicked
+    // would fight the view's own selection state.
+    if (_OutlinerPanel.IsValid() && InSource != ECkJoltDebugger_SelectionSource::Outliner)
+    {
+        if (_Selection.IsSet())
+        { _OutlinerPanel->SelectByHandle(_Selection->Handle); }
+        else
+        { _OutlinerPanel->ClearSelection(); }
+    }
+
+    const auto IsUserOriginated = InSource == ECkJoltDebugger_SelectionSource::Outliner
+        || InSource == ECkJoltDebugger_SelectionSource::Viewport;
+
+    if (IsUserOriginated && _Selection.IsSet())
+    { ck::DebugSelectionSync::Broadcast(_Selection->Handle, TabId); }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleOutlinerRowSelected(
+        TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot)
+    -> void
+{
+    DoApplySelection(MoveTemp(InSnapshot), ECkJoltDebugger_SelectionSource::Outliner);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleViewportBodyPicked(
+        TOptional<uint64> InBodyKey)
+    -> void
+{
+    if (NOT InBodyKey.IsSet())
+    {
+        DoApplySelection({}, ECkJoltDebugger_SelectionSource::Viewport);
+        return;
+    }
+
+    const auto PickedKey = InBodyKey.GetValue();
+    const auto* Picked = _Collector.Get_Bodies().FindByPredicate(
+        [PickedKey](const FCkJoltDebugger_BodySnapshot& InBody)
+        { return InBody.BodyKey.IsSet() && *InBody.BodyKey == PickedKey; });
+
+    if (Picked == nullptr)
+    {
+        // A baked actor contributes many bodies and ONE row, whose key is only the first of them. Every other
+        // baked body is just as pickable and resolves to its actor through the collector's owner index.
+        const auto* Owner = _Collector.Get_BakedBodyOwners().Find(PickedKey);
+
+        if (Owner == nullptr)
+        { return; }
+
+        const auto OwnerHandle = *Owner;
+        Picked = _Collector.Get_Bodies().FindByPredicate(
+            [&OwnerHandle](const FCkJoltDebugger_BodySnapshot& InBody) { return InBody.Handle == OwnerHandle; });
+    }
+
+    // A pickable instance the outliner has no row for is a body the collector cannot attribute to an entity.
+    // Leave the selection alone rather than clearing it — the click did hit something.
+    if (Picked == nullptr)
+    { return; }
+
+    DoApplySelection(TOptional<FCkJoltDebugger_BodySnapshot>{*Picked}, ECkJoltDebugger_SelectionSource::Viewport);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleGlobalSelectionSync(
+        const FCk_Handle& InSelected,
+        FName InSource)
+    -> void
+{
+    if (InSource == TabId)
+    { return; }
+
+    const auto Resolved = ck::DebugSelectionSync::Resolve_ClosestLineageMatch(
+        InSelected,
+        [](const FCk_Handle& InCandidate) { return Is_JoltDebuggerEntity(InCandidate); });
+
+    if (ck::Is_NOT_Valid(Resolved) || NOT _OutlinerPanel.IsValid())
+    { return; }
+
+    const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+    const auto Matched = _OutlinerPanel->SelectByHandle(Resolved);
+
+    if (NOT Matched.IsSet())
+    { return; }
+
+    DoApplySelection(Matched, ECkJoltDebugger_SelectionSource::External);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    TargetEntity(
+        const FCk_Handle& InEntity)
+    -> void
+{
+    if (ck::Is_NOT_Valid(InEntity))
+    { return; }
+
+    if (_OutlinerPanel.IsValid())
+    {
+        const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+        const auto Matched = _OutlinerPanel->SelectByHandle(InEntity);
+
+        if (Matched.IsSet())
+        {
+            DoApplySelection(Matched, ECkJoltDebugger_SelectionSource::External);
+            return;
+        }
+    }
+
+    // The tab may have just opened, with no collector pass behind it yet — retry on the next refresh, against
+    // the world this entity actually lives in.
+    _PendingTarget = FCkJoltDebugger_PendingTarget{
+        InEntity.Get_Entity(),
+        UCk_Utils_EntityLifetime_UE::Get_WorldForEntity(InEntity)};
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
     BuildCommandGroups()
     -> TArray<FCkDebug_CommandGroup>
 {
@@ -474,7 +825,17 @@ auto
     BuildTargetGroup()
     -> TSharedRef<SWidget>
 {
-    return SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false);
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
+        [ SNew(SCkDebug_WorldSelector, _WorldModel).ShowHeaderLabel(false) ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_ViewportPickerControls)
+            .Picker(_ViewportPicker)
+            .PickTooltip(FText::FromString(TEXT("Enter pick mode: click a physics body in the GAME viewport to select it here.\nOnly Jolt bodies, baked static actors, sensors and characters (and their owning entity) are shown and pickable.")))
+        ];
 }
 
 auto
@@ -519,7 +880,25 @@ auto
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkJoltDebugger_CameraPreset::Back) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame every drawn Jolt body (Home)"), ECkJoltDebugger_CameraPreset::FrameAll) ];
+        [ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame every drawn Jolt body (Home)"), ECkJoltDebugger_CameraPreset::FrameAll) ]
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SButton)
+            .ButtonStyle(FAppStyle::Get(), "SimpleButton")
+            .ToolTipText(FText::FromString(TEXT("Frame the selected body (F)")))
+            .ContentPadding(FMargin{4.0f, 1.0f})
+            .IsEnabled_Lambda([this]() { return _Selection.IsSet(); })
+            .OnClicked_Lambda([this]() -> FReply
+            {
+                if (_Viewport.IsValid())
+                { _Viewport->ApplyPreset(ECkJoltDebugger_CameraPreset::FrameSelection); }
+
+                return FReply::Handled();
+            })
+            [
+                SNew(SImage).Image(FCkDebuggerCommonStyle::Get_IconBrush(TEXT("SelectInViewport")))
+            ]
+        ];
 }
 
 auto
@@ -665,6 +1044,26 @@ auto
     }
 
     return Legend;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    BuildRightRail()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SSplitter).Orientation(Orient_Vertical)
+
+        + SSplitter::Slot().Value(0.62f)
+        [ BuildStatRail() ]
+
+        + SSplitter::Slot().Value(0.38f)
+        [
+            SNew(SScrollBox)
+            + SScrollBox::Slot()
+            [ _DetailPanel.ToSharedRef() ]
+        ];
 }
 
 // --------------------------------------------------------------------------------------------------------------------

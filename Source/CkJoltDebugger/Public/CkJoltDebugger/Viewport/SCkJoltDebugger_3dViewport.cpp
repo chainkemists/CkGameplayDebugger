@@ -5,10 +5,12 @@
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
 #include "Components/Viewport.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "InputCoreTypes.h"
 #include "InputKeyEventArgs.h"
 #include "PreviewScene.h"
+#include "SceneView.h"
 #include "Slate/SceneViewport.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -58,6 +60,12 @@ public:
     auto Set_Target(TSharedPtr<FCk_Jolt_DebugDrawTarget> InTarget) -> void
     { _Target = InTarget; }
 
+    auto Set_SelectionBounds(TOptional<FBox> InBounds) -> void
+    { _SelectionBounds = MoveTemp(InBounds); }
+
+    auto Set_OnBodyPicked(FOnCkJoltDebugger_BodyPicked InDelegate) -> void
+    { _OnBodyPicked = MoveTemp(InDelegate); }
+
     auto Get_ProjectionMode() const -> ECameraProjectionMode::Type
     { return ViewInfo.ProjectionMode; }
 
@@ -75,6 +83,12 @@ public:
             return;
         }
 
+        if (InPreset == ECkJoltDebugger_CameraPreset::FrameSelection)
+        {
+            FrameBounds(_SelectionBounds.Get(FBox{ForceInit}));
+            return;
+        }
+
         ViewInfo.ProjectionMode = InPreset == ECkJoltDebugger_CameraPreset::Perspective
             ? ECameraProjectionMode::Perspective
             : ECameraProjectionMode::Orthographic;
@@ -84,6 +98,36 @@ public:
 
     virtual auto InputKey(const FInputKeyEventArgs& InEventArgs) -> bool override
     {
+        // A PLAIN left click only: while any camera button is down the left button is part of a drag
+        // gesture, and picking mid-orbit would fight the camera.
+        const auto IsPlainLeftClick = InEventArgs.Key == EKeys::LeftMouseButton &&
+            InEventArgs.Event == IE_Pressed &&
+            InEventArgs.Viewport != nullptr &&
+            NOT InEventArgs.Viewport->KeyState(EKeys::RightMouseButton) &&
+            NOT InEventArgs.Viewport->KeyState(EKeys::MiddleMouseButton);
+        if (IsPlainLeftClick && _OnBodyPicked.IsBound())
+        {
+            auto RayOrigin = FVector::ZeroVector;
+            auto RayDirection = FVector::ZeroVector;
+
+            if (GetCursorWorldRay(InEventArgs.Viewport, RayOrigin, RayDirection))
+            {
+                const auto Target = _Target.Pin();
+                _OnBodyPicked.Execute(Target.IsValid()
+                    ? Target->TryPick_Body(RayOrigin, RayDirection)
+                    : TOptional<uint64>{});
+                return true;
+            }
+        }
+
+        const auto IsFrameSelectionKey = (InEventArgs.Event == IE_Pressed || InEventArgs.Event == IE_Repeat) &&
+            InEventArgs.Key == EKeys::F;
+        if (IsFrameSelectionKey)
+        {
+            ApplyPreset(ECkJoltDebugger_CameraPreset::FrameSelection);
+            return true;
+        }
+
         const auto IsFrameAllKey = (InEventArgs.Event == IE_Pressed || InEventArgs.Event == IE_Repeat) &&
             InEventArgs.Key == EKeys::Home;
         if (IsFrameAllKey)
@@ -181,6 +225,42 @@ public:
     }
 
 private:
+    auto GetCursorWorldRay(
+        FViewport* InViewport,
+        FVector&   OutRayOrigin,
+        FVector&   OutRayDirection) const -> bool
+    {
+        if (InViewport == nullptr)
+        { return false; }
+
+        const auto Size = InViewport->GetSizeXY();
+
+        if (Size.X <= 0 || Size.Y <= 0)
+        { return false; }
+
+        auto Mouse = FIntPoint{};
+        InViewport->GetMousePos(Mouse);
+
+        auto ViewInitOptions = FSceneViewInitOptions{};
+        ViewInitOptions.SetViewRectangle(FIntRect(0, 0, Size.X, Size.Y));
+        ViewInitOptions.ViewOrigin = GetViewLocation();
+        ViewInitOptions.ViewRotationMatrix = FInverseRotationMatrix(GetViewRotation());
+        ViewInitOptions.ViewRotationMatrix = ViewInitOptions.ViewRotationMatrix * FMatrix(
+            FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+
+        const auto AspectRatioAxisConstraint = GetDefault<ULocalPlayer>()->AspectRatioAxisConstraint;
+        auto ProjectionViewInfo = ViewInfo;
+        FMinimalViewInfo::CalculateProjectionMatrixGivenView(
+            ProjectionViewInfo, AspectRatioAxisConstraint, InViewport, ViewInitOptions);
+
+        FSceneView::DeprojectScreenToWorld(
+            FVector2D(Mouse), ViewInitOptions.ViewRect,
+            ViewInitOptions.ViewRotationMatrix.InverseFast(), ViewInitOptions.ProjectionMatrix.InverseFast(),
+            OutRayOrigin, OutRayDirection);
+
+        return NOT OutRayDirection.IsNearlyZero();
+    }
+
     auto Get_TargetContentBounds() const -> FBox
     {
         const auto Target = _Target.Pin();
@@ -242,6 +322,9 @@ private:
     TWeakPtr<FCk_Jolt_DebugDrawTarget> _Target;
     TWeakPtr<FSceneViewport> _Viewport;
 
+    TOptional<FBox> _SelectionBounds;
+    FOnCkJoltDebugger_BodyPicked _OnBodyPicked;
+
     float _CameraSpeed = 1.0f;
 };
 
@@ -265,9 +348,20 @@ auto
     SViewport::Construct(ViewportArguments);
 
     _ViewportClient = MakeShared<FCkJoltDebugger_3dViewportClient>(*_PreviewScene);
+    _ViewportClient->Set_OnBodyPicked(InArgs._OnBodyPicked);
     _SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
     _ViewportClient->Set_Viewport(_SceneViewport.ToSharedRef());
     SetViewportInterface(_SceneViewport.ToSharedRef());
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Set_SelectionBounds(
+        TOptional<FBox> InBounds)
+    -> void
+{
+    if (_ViewportClient.IsValid())
+    { _ViewportClient->Set_SelectionBounds(MoveTemp(InBounds)); }
 }
 
 auto

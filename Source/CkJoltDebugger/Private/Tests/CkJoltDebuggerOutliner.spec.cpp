@@ -134,4 +134,99 @@ auto FCkJoltDebuggerOutliner_RowsSelectFilterAndSurviveRefresh::RunTest(const FS
     return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerOutliner_MultiSelectKeepsPrimaryAndSurvivesRefresh,
+    "Ck.JoltDebugger.Outliner.MultiSelectKeepsPrimaryAndSurvivesRefresh",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerOutliner_MultiSelectKeepsPrimaryAndSurvivesRefresh::RunTest(const FString&) -> bool
+{
+    using namespace ck_jolt_debugger_outliner_spec;
+
+    auto EcsWorld = ck::FEcsWorld{};
+    const auto BodyEntity      = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto BakedEntity     = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto CharacterEntity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+
+    const auto Bodies = TArray<FCkJoltDebugger_BodySnapshot>
+    {
+        Make_Snapshot(BodyEntity,      ECkJoltDebugger_Population::JoltBody,    11, TEXT("Crate")),
+        Make_Snapshot(BakedEntity,     ECkJoltDebugger_Population::BakedStatic, 22, TEXT("Floor")),
+        Make_Snapshot(CharacterEntity, ECkJoltDebugger_Population::Character,   33, TEXT("Walker"))
+    };
+
+    const auto Outliner = SNew(SCkJoltDebugger_OutlinerPanel);
+    Outliner->Refresh(Bodies);
+
+    Outliner->SelectByHandle(BodyEntity);
+
+    TestEqual(TEXT("a plain select selects exactly one row"), Outliner->Get_NumSelectedRows(), 1);
+
+    // Ctrl+click, whether it lands on a row here or on a body in the viewport, is the same act: the row
+    // JOINS the selection and becomes the primary, because it is the one the user acted on LAST.
+    const auto Added = Outliner->Add_ToSelection(BakedEntity);
+
+    if (NOT TestTrue(TEXT("adding to the selection finds the row"), Added.IsSet()))
+    { return false; }
+
+    TestEqual(TEXT("the addition makes two rows selected"), Outliner->Get_NumSelectedRows(), 2);
+
+    const auto Primary = Outliner->Get_Selection();
+    TestTrue(TEXT("the LAST row acted on is the primary"),
+        Primary.IsSet() && Primary->Handle == BakedEntity);
+
+    // The facility samples the FIRST highlighted key and asks only that body for its contacts, so the whole
+    // set has to arrive primary-first or the detail panel would describe a body the user did not click.
+    const auto All = Outliner->Get_SelectedAll();
+    TestEqual(TEXT("the whole selected set is reported"), All.Num(), 2);
+
+    if (All.Num() == 2)
+    {
+        TestTrue(TEXT("the primary leads the set"), All[0].Handle == BakedEntity);
+        TestTrue(TEXT("the earlier selection is still in it"), All[1].Handle == BodyEntity);
+    }
+
+    // A refresh over the same entities replaces nothing and must keep BOTH rows selected — the pointer-reuse
+    // contract plus an identity-keyed selection model, which is what a pointer-keyed one could not do.
+    Outliner->Refresh(Bodies);
+
+    TestEqual(TEXT("a refresh over the same entities keeps both rows selected"),
+        Outliner->Get_NumSelectedRows(), 2);
+
+    const auto PrimaryAfterRefresh = Outliner->Get_Selection();
+    TestTrue(TEXT("and keeps the same primary"),
+        PrimaryAfterRefresh.IsSet() && PrimaryAfterRefresh->Handle == BakedEntity);
+
+    // The pin covers EVERY selected row, not just the primary: a filter that erased half a multi-selection
+    // would leave the user isolating or highlighting rows they can no longer see.
+    Outliner->Set_FilterQuery(TEXT("Walker"));
+
+    TestEqual(TEXT("the filter hides no selected row — both stay pinned beside the one match"),
+        Outliner->Get_NumVisibleRows(), 3);
+    TestEqual(TEXT("and the selection itself is untouched"), Outliner->Get_NumSelectedRows(), 2);
+    TestTrue(TEXT("a pinned selected row renders dimmed"), Outliner->Get_IsRowDimmed(Bodies[0]));
+    TestTrue(TEXT("both pinned rows do"), Outliner->Get_IsRowDimmed(Bodies[1]));
+    TestFalse(TEXT("the row the filter DID match is not dimmed"), Outliner->Get_IsRowDimmed(Bodies[2]));
+
+    // A selected row whose entity leaves the world is not a selection any more.
+    const auto Survivors = TArray<FCkJoltDebugger_BodySnapshot>{Bodies[0], Bodies[2]};
+    Outliner->Refresh(Survivors);
+
+    TestEqual(TEXT("a row that left the world leaves the selection with it"),
+        Outliner->Get_NumSelectedRows(), 1);
+
+    const auto Promoted = Outliner->Get_Selection();
+    TestTrue(TEXT("and the surviving row becomes the primary"),
+        Promoted.IsSet() && Promoted->Handle == BodyEntity);
+
+    Outliner->ClearSelection();
+
+    TestEqual(TEXT("clearing drops the whole set"), Outliner->Get_NumSelectedRows(), 0);
+    TestFalse(TEXT("and the primary with it"), Outliner->Get_Selection().IsSet());
+
+    return true;
+}
+
 #endif

@@ -114,6 +114,37 @@ namespace ck_jolt_debugger
         }
     }
 
+    /*
+     * The retained External sub-channel the drag line lives in (P5-D61/S3). Named, because the channel is
+     * OWNED by this contributor: the capture re-emits it every pass without clearing it, and Clear_External
+     * on this one name is the only thing that ever empties it.
+     */
+    static auto Get_DragChannel() -> FName
+    { return FName{TEXT("JoltDebugger.Drag")}; }
+
+    /*
+     * Where a cursor ray meets a plane. Unset when the ray is parallel to the plane, and when the hit is
+     * BEHIND the eye — a drag that snapped to a point behind the camera would throw the body across the map.
+     */
+    static auto TryIntersect_Plane(
+        const FVector& InRayOrigin,
+        const FVector& InRayDirection,
+        const FVector& InPlanePoint,
+        const FVector& InPlaneNormal) -> TOptional<FVector>
+    {
+        const auto Denominator = FVector::DotProduct(InRayDirection, InPlaneNormal);
+
+        if (FMath::IsNearlyZero(Denominator, UE_KINDA_SMALL_NUMBER))
+        { return {}; }
+
+        const auto Distance = FVector::DotProduct(InPlanePoint - InRayOrigin, InPlaneNormal) / Denominator;
+
+        if (Distance <= 0.0)
+        { return {}; }
+
+        return InRayOrigin + InRayDirection * Distance;
+    }
+
     // The world is only inspectable once it has begun play — GetSubsystem on a not-yet-begun world crashes.
     static auto Get_IsInspectable(UWorld* InWorld) -> bool
     {
@@ -325,7 +356,12 @@ auto
     _Viewport = SNew(SCkJoltDebugger_3dViewport)
         .OnBodyPicked(FOnCkJoltDebugger_BodyPicked::CreateSP(this, &SCkJoltDebuggerWindow::HandleViewportBodyPicked))
         .OnTogglePause(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleTogglePause))
-        .OnStepOnce(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleStepOnce));
+        .OnStepOnce(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleStepOnce))
+        .OnToggleIsolate(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleToggleIsolate))
+        .OnDragArm(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragArm))
+        .OnDragRay(FOnCkJoltDebugger_DragRay::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRay))
+        .OnDragPlaneShift(FOnCkJoltDebugger_DragPlaneShift::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragPlaneShift))
+        .OnDragRelease(FSimpleDelegate::CreateSP(this, &SCkJoltDebuggerWindow::HandleDragRelease));
 
     DoCreateDebugDrawTarget();
 
@@ -333,7 +369,9 @@ auto
         .OnRowSelected(FOnCkJoltDebugger_RowSelected::CreateSP(this, &SCkJoltDebuggerWindow::HandleOutlinerRowSelected));
 
     _DetailPanel = SNew(SCkJoltDebugger_DetailPanel)
-        .GetSelection(FOnCkJoltDebugger_GetSelection::CreateSP(this, &SCkJoltDebuggerWindow::Get_Selection));
+        .GetSelection(FOnCkJoltDebugger_GetSelection::CreateSP(this, &SCkJoltDebuggerWindow::Get_Selection))
+        .GetSelectionFacts(FOnCkJoltDebugger_GetSelectionFacts::CreateSP(this, &SCkJoltDebuggerWindow::Get_SelectionFacts))
+        .OnContactSelected(FOnCkJoltDebugger_ContactSelected::CreateSP(this, &SCkJoltDebuggerWindow::HandleContactSelected));
 
     // The shared game-viewport picker, specialized to the four body-backing features. The pick routes
     // through this module's entity-target route, so a pick and an ECS "Open In" land on the same row.
@@ -422,6 +460,8 @@ SCkJoltDebuggerWindow::~SCkJoltDebuggerWindow()
     { _ViewportPicker->Deactivate(); }
 
     _Selection.Reset();
+    _SelectionAll.Reset();
+    _SelectionFacts.Reset();
     _Collector.Reset();
     _DebugDrawTarget.Reset();
 }
@@ -453,7 +493,15 @@ auto
         _Viewport->Set_SelectionBounds(_DebugDrawTarget.IsValid()
             ? _DebugDrawTarget->Get_HighlightedBodyBounds()
             : TOptional<FBox>{});
+
+        // The authority answer can change under this window (the world selector moves between a PIE server
+        // and its client), so it is pushed every tick rather than read once at construct.
+        _Viewport->Set_DragEnabled(Get_IsAuthorityWorld());
     }
+
+    // Ungated, like the selection bounds above it: a drag line that only moved at the refresh cadence would
+    // lag the body it is attached to, and the user is holding the mouse down while they watch it.
+    DoUpdateDragLine();
 
     if (NOT FCkDebuggerRefreshGate::Should_RefreshNow(WindowId))
     { return; }
@@ -549,7 +597,19 @@ auto
     // one reset both the world switch and the session invalidation route through.
     _Collector.Reset();
     _Selection.Reset();
+    _SelectionAll.Reset();
+    _SelectionFacts.Reset();
     _PendingTarget.Reset();
+
+    if (_DetailPanel.IsValid())
+    { _DetailPanel->Refresh_Contacts(); }
+
+    // The drag belonged to the world that just went away — its subsystem is already gone, so there is
+    // nothing to end, only local state to drop and a line to take down.
+    _DragBodyKey.Reset();
+    _IsDragBegun = false;
+    _DragLineGrab.Reset();
+    _DragLineAnchor.Reset();
 
     _Stats = FCkJoltDebugger_Stats{};
 }
@@ -741,7 +801,14 @@ auto
     -> void
 {
     if (NOT _Selection.IsSet())
-    { return; }
+    {
+        _SelectionFacts.Reset();
+
+        if (_DetailPanel.IsValid())
+        { _DetailPanel->Refresh_Contacts(); }
+
+        return;
+    }
 
     // Keyed by the ENTITY, not the body key: a body key can be unset (a baked actor whose bodies are gone)
     // and a re-baked actor keeps its entity while every one of its body ids changes.
@@ -762,17 +829,29 @@ auto
 
     _Selection = *Refreshed;
 
-    // Velocity comes from the facility's own capture, which sampled it in the physics pipeline's async-safe
-    // window. Reading it off the live physics system from here would race the step.
+    // Every fact below comes from the facility's own capture, which sampled it in the physics pipeline's
+    // async-safe window. Reading any of it off the live physics system from here would race the step.
     if (NOT _DebugDrawTarget.IsValid())
+    {
+        _SelectionFacts.Reset();
+
+        if (_DetailPanel.IsValid())
+        { _DetailPanel->Refresh_Contacts(); }
+
+        return;
+    }
+
+    _SelectionFacts.BodySample      = _DebugDrawTarget->Get_BodySample();
+    _SelectionFacts.CharacterSample = _DebugDrawTarget->Get_CharacterSample();
+    _SelectionFacts.Contacts        = _DebugDrawTarget->Get_SelectionContacts();
+
+    if (_DetailPanel.IsValid())
+    { _DetailPanel->Refresh_Contacts(); }
+
+    if (NOT _SelectionFacts.BodySample.IsSet())
     { return; }
 
-    const auto Sample = _DebugDrawTarget->Get_BodySample();
-
-    if (NOT Sample.IsSet())
-    { return; }
-
-    _Selection->LinearVelocity = Sample->Get_LinearVelocity();
+    _Selection->LinearVelocity = _SelectionFacts.BodySample->Get_LinearVelocity();
     _Selection->HasLinearVelocity = true;
 }
 
@@ -783,18 +862,48 @@ auto
         ECkJoltDebugger_SelectionSource InSource)
     -> void
 {
+    auto All = TArray<FCkJoltDebugger_BodySnapshot>{};
+
+    if (InSnapshot.IsSet())
+    { All.Emplace(*InSnapshot); }
+
+    DoApplySelectionSet(MoveTemp(All), MoveTemp(InSnapshot), InSource);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoApplySelectionSet(
+        TArray<FCkJoltDebugger_BodySnapshot> InAll,
+        TOptional<FCkJoltDebugger_BodySnapshot> InPrimary,
+        ECkJoltDebugger_SelectionSource InSource)
+    -> void
+{
     // Anything but an external apply supersedes a route target still waiting for a row: left standing, it
     // would land on the next refresh and take the selection away from whoever just made one.
     if (InSource != ECkJoltDebugger_SelectionSource::External)
     { _PendingTarget.Reset(); }
 
-    _Selection = MoveTemp(InSnapshot);
+    _Selection    = MoveTemp(InPrimary);
+    _SelectionAll = MoveTemp(InAll);
 
     if (_DebugDrawTarget.IsValid())
     {
-        _DebugDrawTarget->Set_HighlightedBody(_Selection.IsSet()
-            ? _Selection->BodyKey
-            : TOptional<uint64>{});
+        // The FIRST key is the PRIMARY on the facility's side — it alone is sampled and asked for its
+        // contacts — and the set arrives primary-first from the outliner's own store.
+        auto Keys = TArray<uint64>{};
+        Keys.Reserve(_SelectionAll.Num());
+
+        for (const auto& Body : _SelectionAll)
+        {
+            if (Body.BodyKey.IsSet())
+            { Keys.Emplace(*Body.BodyKey); }
+        }
+
+        _DebugDrawTarget->Set_HighlightedBodies(MoveTemp(Keys));
+
+        // The contacts query is a NarrowPhaseQuery::CollideShape the facility only runs while a consumer is
+        // showing the result — which is exactly while something is selected.
+        _DebugDrawTarget->Set_WantsSelectionContacts(_Selection.IsSet());
     }
 
     if (_Viewport.IsValid())
@@ -804,9 +913,12 @@ auto
             : TOptional<FBox>{});
     }
 
-    // The outliner is a sink for every source except itself — re-stamping the row the user just clicked
-    // would fight the view's own selection state.
-    if (_OutlinerPanel.IsValid() && InSource != ECkJoltDebugger_SelectionSource::Outliner)
+    // The outliner is a sink for every source except the two that already drove its own store — re-stamping
+    // those would fight the view's selection state, and a single-row stamp would collapse a multi-selection.
+    const auto OutlinerOwnsThisApply = InSource == ECkJoltDebugger_SelectionSource::Outliner
+        || InSource == ECkJoltDebugger_SelectionSource::ViewportAdditive;
+
+    if (_OutlinerPanel.IsValid() && NOT OutlinerOwnsThisApply)
     {
         if (_Selection.IsSet())
         { _OutlinerPanel->SelectByHandle(_Selection->Handle); }
@@ -814,9 +926,14 @@ auto
         { _OutlinerPanel->ClearSelection(); }
     }
 
-    const auto IsUserOriginated = InSource == ECkJoltDebugger_SelectionSource::Outliner
-        || InSource == ECkJoltDebugger_SelectionSource::Viewport;
+    // Isolation names the SELECTED keys, so it has to be re-pushed whenever they change.
+    DoApplyIsolation();
 
+    const auto IsUserOriginated = InSource == ECkJoltDebugger_SelectionSource::Outliner
+        || InSource == ECkJoltDebugger_SelectionSource::Viewport
+        || InSource == ECkJoltDebugger_SelectionSource::ViewportAdditive;
+
+    // Only the PRIMARY is broadcast: the rest of the suite is single-selection, and a set has no meaning there.
     if (IsUserOriginated && _Selection.IsSet())
     { ck::DebugSelectionSync::Broadcast(_Selection->Handle, TabId); }
 }
@@ -826,49 +943,98 @@ auto
 auto
     SCkJoltDebuggerWindow::
     HandleOutlinerRowSelected(
-        TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot)
+        TOptional<FCkJoltDebugger_BodySnapshot> InPrimary,
+        TArray<FCkJoltDebugger_BodySnapshot> InAll)
     -> void
 {
-    DoApplySelection(MoveTemp(InSnapshot), ECkJoltDebugger_SelectionSource::Outliner);
+    DoApplySelectionSet(MoveTemp(InAll), MoveTemp(InPrimary), ECkJoltDebugger_SelectionSource::Outliner);
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    TryFind_RowForBodyKey(
+        uint64 InBodyKey) const
+    -> const FCkJoltDebugger_BodySnapshot*
+{
+    const auto* Found = _Collector.Get_Bodies().FindByPredicate(
+        [InBodyKey](const FCkJoltDebugger_BodySnapshot& InBody)
+        { return InBody.BodyKey.IsSet() && *InBody.BodyKey == InBodyKey; });
+
+    if (Found != nullptr)
+    { return Found; }
+
+    // A baked actor contributes many bodies and ONE row, whose key is only the first of them. Every other
+    // baked body is just as pickable and resolves to its actor through the collector's owner index.
+    const auto* Owner = _Collector.Get_BakedBodyOwners().Find(InBodyKey);
+
+    if (Owner == nullptr)
+    { return nullptr; }
+
+    const auto OwnerHandle = *Owner;
+
+    return _Collector.Get_Bodies().FindByPredicate(
+        [&OwnerHandle](const FCkJoltDebugger_BodySnapshot& InBody) { return InBody.Handle == OwnerHandle; });
 }
 
 auto
     SCkJoltDebuggerWindow::
     HandleViewportBodyPicked(
-        TOptional<uint64> InBodyKey)
+        TOptional<uint64> InBodyKey,
+        bool InIsAdditive)
     -> void
 {
     if (NOT InBodyKey.IsSet())
     {
-        DoApplySelection({}, ECkJoltDebugger_SelectionSource::Viewport);
+        // A Ctrl+click on empty space adds nothing rather than clearing what the user was building up.
+        if (NOT InIsAdditive)
+        { DoApplySelection({}, ECkJoltDebugger_SelectionSource::Viewport); }
+
         return;
     }
 
-    const auto PickedKey = InBodyKey.GetValue();
-    const auto* Picked = _Collector.Get_Bodies().FindByPredicate(
-        [PickedKey](const FCkJoltDebugger_BodySnapshot& InBody)
-        { return InBody.BodyKey.IsSet() && *InBody.BodyKey == PickedKey; });
-
-    if (Picked == nullptr)
-    {
-        // A baked actor contributes many bodies and ONE row, whose key is only the first of them. Every other
-        // baked body is just as pickable and resolves to its actor through the collector's owner index.
-        const auto* Owner = _Collector.Get_BakedBodyOwners().Find(PickedKey);
-
-        if (Owner == nullptr)
-        { return; }
-
-        const auto OwnerHandle = *Owner;
-        Picked = _Collector.Get_Bodies().FindByPredicate(
-            [&OwnerHandle](const FCkJoltDebugger_BodySnapshot& InBody) { return InBody.Handle == OwnerHandle; });
-    }
+    const auto* Picked = TryFind_RowForBodyKey(*InBodyKey);
 
     // A pickable instance the outliner has no row for is a body the collector cannot attribute to an entity.
     // Leave the selection alone rather than clearing it — the click did hit something.
     if (Picked == nullptr)
     { return; }
 
-    DoApplySelection(TOptional<FCkJoltDebugger_BodySnapshot>{*Picked}, ECkJoltDebugger_SelectionSource::Viewport);
+    if (NOT InIsAdditive)
+    {
+        DoApplySelectionSet(
+            TArray<FCkJoltDebugger_BodySnapshot>{*Picked},
+            TOptional<FCkJoltDebugger_BodySnapshot>{*Picked},
+            ECkJoltDebugger_SelectionSource::Viewport);
+        return;
+    }
+
+    // The OUTLINER is the multi-selection store — a Ctrl+click in the viewport is the same act as a
+    // Ctrl+click on its row, and routing it through the panel is what keeps the two from diverging.
+    if (NOT _OutlinerPanel.IsValid())
+    { return; }
+
+    const auto Guard = ck::DebugSelectionSync::FApplyGuard{};
+
+    if (NOT _OutlinerPanel->Add_ToSelection(Picked->Handle).IsSet())
+    { return; }
+
+    DoApplySelectionSet(
+        _OutlinerPanel->Get_SelectedAll(),
+        _OutlinerPanel->Get_Selection(),
+        ECkJoltDebugger_SelectionSource::ViewportAdditive);
+}
+
+/*
+ * A contacts-row click. It is the same key -> row resolution a viewport pick does, and it is just as
+ * user-driven, so it takes the same source and re-broadcasts.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    HandleContactSelected(
+        uint64 InOtherBodyKey)
+    -> void
+{
+    HandleViewportBodyPicked(TOptional<uint64>{InOtherBodyKey}, false);
 }
 
 auto
@@ -946,6 +1112,12 @@ auto
             TEXT("JoltSim"),
             FText::FromString(TEXT("Jolt simulation")),
             BuildSimGroup()),
+        // Isolate, Follow and Drag all act on the SELECTION as it is shown in the pane above, so they are
+        // Primary beside it rather than a property of the target.
+        FCkDebug_CommandGroup::Primary(
+            TEXT("JoltSelection"),
+            FText::FromString(TEXT("Jolt selection")),
+            BuildSelectionGroup()),
         FCkDebug_CommandGroup::Context(
             TEXT("JoltTarget"),
             FText::FromString(TEXT("Jolt world selection")),
@@ -1274,6 +1446,331 @@ auto
 
 auto
     SCkJoltDebuggerWindow::
+    Get_IsAuthorityWorld() const
+    -> bool
+{
+    auto* World = _WorldModel.IsValid() ? _WorldModel->Get_SelectedWorld() : nullptr;
+
+    return ck_jolt_debugger::Get_IsInspectable(World) && World->GetNetMode() != NM_Client;
+}
+
+/*
+ * Isolation is a SET on the facility, re-pushed from the current selection. An empty selection CLEARS it
+ * instead of isolating nothing: a viewport that went blank while the toggle stayed lit is indistinguishable
+ * from a broken draw, and the user's next act would be to turn Isolate off and back on to no effect.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    DoApplyIsolation()
+    -> void
+{
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    if (NOT _IsolateActive)
+    {
+        _DebugDrawTarget->Clear_Isolation();
+        return;
+    }
+
+    auto Keys = TSet<uint64>{};
+    Keys.Reserve(_SelectionAll.Num());
+
+    for (const auto& Body : _SelectionAll)
+    {
+        if (Body.BodyKey.IsSet())
+        { Keys.Emplace(*Body.BodyKey); }
+    }
+
+    if (Keys.IsEmpty())
+    {
+        _DebugDrawTarget->Clear_Isolation();
+        return;
+    }
+
+    _DebugDrawTarget->Set_IsolatedBodies(MoveTemp(Keys));
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Set_IsolateActive(
+        bool InIsActive)
+    -> void
+{
+    _IsolateActive = InIsActive;
+
+    DoApplyIsolation();
+
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    Settings->IsolateActive = InIsActive;
+    Settings->SaveConfig();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    Set_FollowSelection(
+        bool InIsActive)
+    -> void
+{
+    _FollowSelection = InIsActive;
+
+    if (_Viewport.IsValid())
+    { _Viewport->Set_FollowSelection(InIsActive); }
+
+    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+    Settings->FollowSelection = InIsActive;
+    Settings->SaveConfig();
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleToggleIsolate()
+    -> void
+{
+    Set_IsolateActive(NOT _IsolateActive);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+// Debug drag (P7-D54). The VIEWPORT owns the cursor and the deprojection; this window owns the world, the
+// subsystem and the drag plane. Every facility call here is behind the same #if the facility's own drag API
+// is behind — it is the one sim-MUTATING thing this module does.
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleDragArm()
+    -> void
+{
+#if !UE_BUILD_SHIPPING
+    _DragBodyKey.Reset();
+    _IsDragBegun = false;
+
+    if (NOT Get_IsAuthorityWorld() || NOT _Selection.IsSet() || NOT _Selection->BodyKey.IsSet())
+    { return; }
+
+    // Only DYNAMIC bodies can be dragged — the facility drops anything else at Verbose, and arming on a
+    // static body would leave a gesture that eats the mouse and silently does nothing.
+    if (NOT _Selection->HasSimulationState || _Selection->MotionType != ECk_MotionType::Dynamic)
+    { return; }
+
+    _DragBodyKey = *_Selection->BodyKey;
+#endif
+}
+
+/*
+ * The drag OPENS on the first mouse move, not on the press, and that is not a latency compromise — it is the
+ * only way to get the grab point's DEPTH without reading Jolt from Slate. `TryPick_Body` hands back a body
+ * key and nothing else, so the depth has to come from the facility's sample of the primary selection, which
+ * the Ctrl+press just made and the NEXT capture fills in. Until it lands, the gesture is inert.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    HandleDragRay(
+        FVector InRayOrigin,
+        FVector InRayDirection)
+    -> void
+{
+#if !UE_BUILD_SHIPPING
+    if (NOT _DragBodyKey.IsSet() || NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    auto* Subsystem = Get_SelectedJoltSubsystem();
+
+    if (ck::Is_NOT_Valid(Subsystem))
+    { return; }
+
+    if (NOT _IsDragBegun)
+    {
+        const auto Highlighted = _DebugDrawTarget->Get_HighlightedBody();
+
+        if (NOT Highlighted.IsSet() || *Highlighted != *_DragBodyKey)
+        { return; }
+
+        const auto Sample = _DebugDrawTarget->Get_BodySample();
+
+        if (NOT Sample.IsSet() || Sample->Get_WorldBounds().IsValid == 0)
+        { return; }
+
+        _DragPlaneNormal = _Viewport.IsValid()
+            ? _Viewport->Get_ViewRotation().Vector()
+            : FVector::ForwardVector;
+        _DragPlanePoint = Sample->Get_WorldBounds().GetCenter();
+
+        const auto GrabPoint = ck_jolt_debugger::TryIntersect_Plane(
+            InRayOrigin, InRayDirection, _DragPlanePoint, _DragPlaneNormal);
+
+        if (NOT GrabPoint.IsSet())
+        { return; }
+
+        Subsystem->Request_BeginDrag(*_DragBodyKey, *GrabPoint);
+        _IsDragBegun = true;
+
+        // The move that opened the drag is also the move that placed the anchor ON the grab point; pulling
+        // starts with the next one.
+        return;
+    }
+
+    const auto TargetPoint = ck_jolt_debugger::TryIntersect_Plane(
+        InRayOrigin, InRayDirection, _DragPlanePoint, _DragPlaneNormal);
+
+    if (TargetPoint.IsSet())
+    { Subsystem->Request_UpdateDrag(*TargetPoint); }
+#endif
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleDragPlaneShift(
+        float InDirection)
+    -> void
+{
+#if !UE_BUILD_SHIPPING
+    if (NOT _IsDragBegun)
+    { return; }
+
+    // Scaled by how far the plane already is, so one wheel notch means the same thing on a body at arm's
+    // length and on one across a streamed cell.
+    const auto EyeLocation = _Viewport.IsValid() ? _Viewport->Get_ViewLocation() : FVector::ZeroVector;
+    const auto Distance    = FMath::Max(FVector::Dist(EyeLocation, _DragPlanePoint), 1.0);
+
+    _DragPlanePoint += _DragPlaneNormal * (InDirection * Distance * 0.1);
+#endif
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    HandleDragRelease()
+    -> void
+{
+#if !UE_BUILD_SHIPPING
+    if (auto* Subsystem = Get_SelectedJoltSubsystem(); ck::IsValid(Subsystem) && _IsDragBegun)
+    { Subsystem->Request_EndDrag(); }
+
+    _DragBodyKey.Reset();
+    _IsDragBegun = false;
+    _DragLineGrab.Reset();
+    _DragLineAnchor.Reset();
+
+    if (_DebugDrawTarget.IsValid())
+    { _DebugDrawTarget->Clear_External(ck_jolt_debugger::Get_DragChannel()); }
+#endif
+}
+
+/*
+ * The drag line lives in a RETAINED named External sub-channel (P5-D61/S3): the capture re-emits it every
+ * pass without clearing it, so it is pushed only when the grab point or the anchor actually MOVED. Moving it
+ * means clearing that one channel and re-pushing — Draw_External* appends, it does not replace.
+ */
+auto
+    SCkJoltDebuggerWindow::
+    DoUpdateDragLine()
+    -> void
+{
+#if !UE_BUILD_SHIPPING
+    if (NOT _DebugDrawTarget.IsValid())
+    { return; }
+
+    auto* Subsystem = Get_SelectedJoltSubsystem();
+    const auto IsDragging = ck::IsValid(Subsystem) && Subsystem->Get_IsDragging();
+
+    if (NOT IsDragging)
+    {
+        if (_DragLineAnchor.IsSet())
+        {
+            _DebugDrawTarget->Clear_External(ck_jolt_debugger::Get_DragChannel());
+            _DragLineGrab.Reset();
+            _DragLineAnchor.Reset();
+        }
+
+        return;
+    }
+
+    const auto State = Subsystem->Get_DragState();
+
+    if (NOT State.IsSet())
+    { return; }
+
+    const auto GrabPoint   = State->Get_GrabPointWorld();
+    const auto AnchorPoint = State->Get_AnchorPointWorld();
+
+    constexpr auto MovedTolerance = 0.1;
+
+    const auto IsUnchanged = _DragLineGrab.IsSet() && _DragLineAnchor.IsSet()
+        && _DragLineGrab->Equals(GrabPoint, MovedTolerance)
+        && _DragLineAnchor->Equals(AnchorPoint, MovedTolerance);
+
+    if (IsUnchanged)
+    { return; }
+
+    _DebugDrawTarget->Clear_External(ck_jolt_debugger::Get_DragChannel());
+    _DebugDrawTarget->Draw_ExternalLine(
+        ck_jolt_debugger::Get_DragChannel(), GrabPoint, AnchorPoint, FLinearColor::Yellow);
+
+    _DragLineGrab   = GrabPoint;
+    _DragLineAnchor = AnchorPoint;
+#endif
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
+    BuildSelectionGroup()
+    -> TSharedRef<SWidget>
+{
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Lock"))
+            .Label(FText::FromString(TEXT("Isolate")))
+            .ToolTip(FText::FromString(TEXT("Draw ONLY the selected bodies, releasing every other body's instances (I). Inert while nothing is selected.")))
+            .IsOn_Lambda([this]() { return _IsolateActive; })
+            .OnStateChanged_Lambda([this](const bool InIsActive) { Set_IsolateActive(InIsActive); })
+        ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(TEXT("Target"))
+            .Label(FText::FromString(TEXT("Follow")))
+            .ToolTip(FText::FromString(TEXT("Keep the camera's offset to the selection as it moves. The camera follows — it does not re-frame, so rotation and distance stay yours.")))
+            .IsOn_Lambda([this]() { return _FollowSelection; })
+            .OnStateChanged_Lambda([this](const bool InIsActive) { Set_FollowSelection(InIsActive); })
+        ]
+
+        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+        [
+            /*
+             * The drag is armed by the WORLD, not by the user, so this reads as state rather than as a
+             * control: always disabled, lit while the selected world is the authority. The explanation
+             * rides the enabled SBox around it — a disabled widget shows no tooltip of its own, and a
+             * Ctrl+LMB that silently did nothing on a client would read as a broken debugger rather than
+             * as a refused sim mutation.
+             */
+            SNew(SBox)
+            .ToolTipText_Lambda([this]() -> FText
+            {
+                return Get_IsAuthorityWorld()
+                    ? FText::FromString(TEXT("Ctrl+LMB drags a DYNAMIC body by a spring; Ctrl+wheel moves the drag plane along the view; release drops it."))
+                    : FText::FromString(TEXT("Dragging is disabled: the selected world is a CLIENT. A drag here would move a body the server corrects on its next replication."));
+            })
+            [
+                SNew(SCkDebug_IconToggle)
+                .IconId(TEXT("Hand"))
+                .Label(FText::FromString(TEXT("Drag")))
+                .ToolTip(FText::FromString(TEXT("Ctrl+LMB drags a dynamic body. Available only on an authority world.")))
+                .IsEnabled(false)
+                .IsOn_Lambda([this]() { return Get_IsAuthorityWorld(); })
+            ]
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkJoltDebuggerWindow::
     Get_ColorMode() const
     -> ECk_Jolt_DebugDrawColorMode
 {
@@ -1496,8 +1993,18 @@ auto
 
     DoRebuildLegend();
 
+    // Isolate is restored as STATE, not as an act: with nothing selected yet it pushes no isolation set, and
+    // the first selection the user makes arms it through DoApplySelectionSet.
+    _IsolateActive   = Settings->IsolateActive;
+    _FollowSelection = Settings->FollowSelection;
+
+    DoApplyIsolation();
+
     if (_Viewport.IsValid())
-    { _Viewport->ApplyPreset(ck_jolt_debugger::Get_CameraPreset(Settings->CameraPreset)); }
+    {
+        _Viewport->Set_FollowSelection(_FollowSelection);
+        _Viewport->ApplyPreset(ck_jolt_debugger::Get_CameraPreset(Settings->CameraPreset));
+    }
 }
 
 /*

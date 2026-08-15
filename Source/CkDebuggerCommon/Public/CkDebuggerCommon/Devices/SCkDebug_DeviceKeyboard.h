@@ -4,6 +4,7 @@
 #include "CkDebuggerCommon/Devices/SCkDebug_DeviceWidgetBase.h"
 
 #include "CoreMinimal.h"
+#include "Layout/SlateRect.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 // Full-size ANSI keyboard, drawn procedurally from the layout table — no images, crisp at any DPI, restyled by the
@@ -28,9 +29,13 @@ class CKDEBUGGERCOMMON_API SCkDebug_DeviceKeyboard : public SCkDebug_DeviceWidge
 public:
     SLATE_BEGIN_ARGS(SCkDebug_DeviceKeyboard)
         : _Snapshot(nullptr)
+        , _BoundKeysOnly(false)
     {}
         // Owned by the producer (a view-model cache); nullptr renders the board idle-dim.
         SLATE_ATTRIBUTE(const FCkDebug_DeviceSnapshot*, Snapshot)
+        // Opt-in: render only keys the snapshot marks IsActionable, cropped to their bounding box. Default false —
+        // every existing caller renders the full board unchanged.
+        SLATE_ARGUMENT(bool, BoundKeysOnly)
         SLATE_EVENT(FCkDebug_DeviceKeyClicked, OnKeyClicked)
         SLATE_EVENT(FCkDebug_DeviceKeyTooltip, KeyTooltip)
     SLATE_END_ARGS()
@@ -50,6 +55,15 @@ public:
 
 protected:
     virtual auto Get_KeyAtPosition(const FGeometry& InGeometry, const FVector2D& InLocalPos) const -> FKey override;
+
+private:
+    // Key-unit bounding box of the actionable set when BoundKeysOnly is active and that set is non-empty; unset
+    // otherwise (BoundKeysOnly off, no snapshot, or nothing actionable — falls back to full-keyboard rendering so
+    // the widget never renders as nothing). Deliberate quirk: two far-apart actionable keys (e.g. Escape and
+    // Enter) still produce a WIDE crop — this shows the real bound surface, not a compacted strip.
+    auto Get_VisibleCrop() const -> TOptional<FSlateRect>;
+
+    bool _BoundKeysOnly = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

@@ -100,6 +100,14 @@ enum class ECkJoltDebugger_SelectionSource : uint8
 {
     Outliner,
     Viewport,
+
+    /*
+     * A Ctrl+click in the viewport. User-driven like Viewport — it re-broadcasts — but the outliner is NOT
+     * re-stamped from it: the additive pick drove the outliner's own store to build the set in the first
+     * place, and pushing a single-row select back would collapse the multi-selection it just made.
+     */
+    ViewportAdditive,
+
     External
 };
 
@@ -157,17 +165,32 @@ private:
     auto HandleSessionInvalidated() -> void;
     auto HandleTabForegrounded(TSharedPtr<SDockTab> InForegrounded, TSharedPtr<SDockTab> InBackgrounded) -> void;
 
-    auto HandleOutlinerRowSelected(TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot) -> void;
-    auto HandleViewportBodyPicked(TOptional<uint64> InBodyKey) -> void;
+    auto HandleOutlinerRowSelected(
+        TOptional<FCkJoltDebugger_BodySnapshot> InPrimary,
+        TArray<FCkJoltDebugger_BodySnapshot> InAll) -> void;
+    auto HandleViewportBodyPicked(TOptional<uint64> InBodyKey, bool InIsAdditive) -> void;
+    auto HandleContactSelected(uint64 InOtherBodyKey) -> void;
     auto HandleGlobalSelectionSync(const FCk_Handle& InSelected, FName InSource) -> void;
 
     auto DoRefreshBodies(UWorld* InWorld) -> void;
     auto DoApplyPendingTarget(UWorld* InWorld) -> void;
+    /** The single-selection convenience: the primary IS the whole set. */
     auto DoApplySelection(
         TOptional<FCkJoltDebugger_BodySnapshot> InSnapshot,
         ECkJoltDebugger_SelectionSource InSource) -> void;
+
+    /** The ONE writer of the selection model. Primary first — the facility samples the first key alone. */
+    auto DoApplySelectionSet(
+        TArray<FCkJoltDebugger_BodySnapshot> InAll,
+        TOptional<FCkJoltDebugger_BodySnapshot> InPrimary,
+        ECkJoltDebugger_SelectionSource InSource) -> void;
+
     auto DoRefreshSelectionFacts() -> void;
     auto Get_Selection() const -> const TOptional<FCkJoltDebugger_BodySnapshot>& { return _Selection; }
+    auto Get_SelectionFacts() const -> const FCkJoltDebugger_SelectionFacts& { return _SelectionFacts; }
+
+    /** Row for a drawn body key, through the collector's row list and its baked-body owner index. */
+    auto TryFind_RowForBodyKey(uint64 InBodyKey) const -> const FCkJoltDebugger_BodySnapshot*;
 
     auto BuildCommandGroups() -> TArray<FCkDebug_CommandGroup>;
     auto BuildInWorldDrawToggles() const -> TSharedRef<SWidget>;
@@ -175,6 +198,7 @@ private:
     auto BuildCameraGroup() -> TSharedRef<SWidget>;
     auto BuildRenderGroup() -> TSharedRef<SWidget>;
     auto BuildSimGroup() -> TSharedRef<SWidget>;
+    auto BuildSelectionGroup() -> TSharedRef<SWidget>;
     auto BuildDrawGroup() -> TSharedRef<SWidget>;
     auto BuildPopulationGroup() -> TSharedRef<SWidget>;
     auto BuildLegendGroup() -> TSharedRef<SWidget>;
@@ -204,6 +228,31 @@ private:
 
     auto HandleTogglePause() -> void;
     auto HandleStepOnce() -> void;
+    auto HandleToggleIsolate() -> void;
+
+    auto Set_IsolateActive(bool InIsActive) -> void;
+    auto Set_FollowSelection(bool InIsActive) -> void;
+
+    /*
+     * Isolation follows the SELECTION, so it is re-applied every time the selection changes while it is on.
+     * An empty selection clears it rather than isolating nothing — a blank viewport with a lit toggle is
+     * indistinguishable from a broken one.
+     */
+    auto DoApplyIsolation() -> void;
+
+    /*
+     * Whether the selected world is the authority. The debug drag is the only sim-MUTATING thing this module
+     * does, and a drag on a client moves a body the server corrects on the next replication.
+     */
+    auto Get_IsAuthorityWorld() const -> bool;
+
+    auto HandleDragArm() -> void;
+    auto HandleDragRay(FVector InRayOrigin, FVector InRayDirection) -> void;
+    auto HandleDragPlaneShift(float InDirection) -> void;
+    auto HandleDragRelease() -> void;
+
+    /** Push the drag line into its retained External sub-channel — only when it MOVED (P5-D61/S3). */
+    auto DoUpdateDragLine() -> void;
 
     /** Restore the per-user preferences into the target and the camera. Runs once, at the end of Construct. */
     auto DoApplySavedPreferences() -> void;
@@ -225,9 +274,30 @@ private:
 
     FCkJoltDebugger_DataCollector _Collector;
 
-    // The window's whole selection model: one snapshot, or nothing. Cleared through the same
-    // session-invalidated path as the collector, because it carries the only other live handle here.
+    // The window's selection model: the PRIMARY, plus the whole selected set with the primary first.
+    // Cleared through the same session-invalidated path as the collector, because they carry the only
+    // other live handles here.
     TOptional<FCkJoltDebugger_BodySnapshot> _Selection;
+    TArray<FCkJoltDebugger_BodySnapshot>    _SelectionAll;
+
+    // What the FACILITY knows about the primary, refreshed on the gated Tick. Kept beside the snapshot
+    // rather than inside it: the outliner copies a snapshot per row per pass, and three sample structs
+    // plus a contacts array on every one of them would be paid for by every row to serve the one selected.
+    FCkJoltDebugger_SelectionFacts _SelectionFacts;
+
+    bool _IsolateActive   = false;
+    bool _FollowSelection = false;
+
+    // The live drag. _DragBodyKey is armed on the Ctrl+LMB press; _IsDragBegun only becomes true once the
+    // facility's sample has given the grab point its DEPTH, which lands one capture after the press.
+    TOptional<uint64> _DragBodyKey;
+    bool              _IsDragBegun = false;
+    FVector           _DragPlanePoint  = FVector::ZeroVector;
+    FVector           _DragPlaneNormal = FVector::ForwardVector;
+
+    // Last drag line pushed into the External channel, so it is re-pushed only when it actually moved.
+    TOptional<FVector> _DragLineGrab;
+    TOptional<FVector> _DragLineAnchor;
 
     TOptional<FCkJoltDebugger_PendingTarget> _PendingTarget;
 

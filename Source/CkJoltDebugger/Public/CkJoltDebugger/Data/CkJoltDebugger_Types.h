@@ -6,6 +6,7 @@
 
 #include "CkJolt/CkJolt_Common.h"
 #include "CkJolt/Body/CkJoltBody_Fragment_Data.h"
+#include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -54,6 +55,38 @@ struct FCkJoltDebugger_BodySnapshot
 
     FVector LinearVelocity = FVector::ZeroVector;
     bool    HasLinearVelocity = false;
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * Everything the detail panel renders that the OUTLINER row does not carry. Deliberately NOT folded into
+ * FCkJoltDebugger_BodySnapshot: the snapshot is the outliner's flat row, copied per row per refresh, and
+ * three facility structs plus a contacts array on every one of them would be paid for by every row to
+ * serve the one that is selected.
+ *
+ * All three fields come from the facility's capture, which sampled them in the physics pipeline's
+ * async-safe window — this module never reads a JPH body for any of it.
+ */
+struct FCkJoltDebugger_SelectionFacts
+{
+    /// The PRIMARY selection's rigid-body sample. Unset for a character, and for a body the last capture
+    /// did not draw (a sleeping or static body between scene-revision passes).
+    TOptional<FCk_Jolt_DebugDraw_BodySample> BodySample;
+
+    /// The character twin. Mutually exclusive with BodySample — a key is one or the other.
+    TOptional<FCk_Jolt_DebugDraw_CharacterSample> CharacterSample;
+
+    /// Bodies the primary selection is touching. Empty unless the window has asked the facility for them
+    /// (Set_WantsSelectionContacts), and always empty for a character selection.
+    TArray<FCk_Jolt_DebugDraw_ContactEntry> Contacts;
+
+    auto Reset() -> void
+    {
+        BodySample.Reset();
+        CharacterSample.Reset();
+        Contacts.Reset();
+    }
 };
 
 // --------------------------------------------------------------------------------------------------------------------

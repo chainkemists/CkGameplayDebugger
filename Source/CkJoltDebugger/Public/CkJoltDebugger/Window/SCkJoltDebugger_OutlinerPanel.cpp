@@ -22,33 +22,6 @@
 
 namespace ck_jolt_debugger_outliner_panel
 {
-    /*
-     * What makes two rows the same row across refreshes. An entity can back more than one population at once
-     * (a JoltBody entity that also owns a Probe), so the handle alone would collapse those rows into one and
-     * churn the list every pass.
-     */
-    struct FRowIdentity
-    {
-        FCk_Handle _Handle;
-        ECkJoltDebugger_Population _Population = ECkJoltDebugger_Population::JoltBody;
-
-        auto operator==(const FRowIdentity& InOther) const -> bool
-        {
-            return _Handle == InOther._Handle && _Population == InOther._Population;
-        }
-
-        friend auto GetTypeHash(const FRowIdentity& InIdentity) -> uint32
-        {
-            return HashCombine(GetTypeHash(InIdentity._Handle), GetTypeHash(static_cast<uint8>(InIdentity._Population)));
-        }
-    };
-
-    auto Get_RowIdentity(
-        const FCkJoltDebugger_BodySnapshot& InSnapshot) -> FRowIdentity
-    {
-        return FRowIdentity{InSnapshot.Handle, InSnapshot.Population};
-    }
-
     auto Font_RowName() -> FSlateFontInfo
     { return ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall()); }
 
@@ -208,7 +181,9 @@ auto
                 .OnGenerateRow(this, &SCkJoltDebugger_OutlinerPanel::OnGenerateRow)
                 .OnSelectionChanged(this, &SCkJoltDebugger_OutlinerPanel::OnSelectionChanged)
                 .OnContextMenuOpening(this, &SCkJoltDebugger_OutlinerPanel::OnContextMenuOpening)
-                .SelectionMode(ESelectionMode::Single)
+                // Ctrl/Shift build a multi-selection (P7-D53): isolating or highlighting a GROUP of bodies is
+                // the question this outliner exists to answer, and single-select can only ever ask it once.
+                .SelectionMode(ESelectionMode::Multi)
             ]
         ]
     ];
@@ -233,9 +208,13 @@ auto
 {
     _Bodies.Reset();
     _ItemSource.Reset();
+    _SelectedIdentities.Reset();
+    _Primary.Reset();
 
     if (_ListView.IsValid())
     {
+        const auto Guard = TGuardValue<bool>{_IsApplyingSelection, true};
+
         _ListView->ClearSelection();
         _ListView->RequestListRefresh();
     }
@@ -248,31 +227,36 @@ auto
     ApplyFilterPipeline()
     -> void
 {
+    using namespace ck_jolt_debugger_outliner_panel;
+
+    // A selected row whose entity left the world is no longer a selection — dropping it here keeps the pin,
+    // the highlight set and the copy menu from all describing a row that no longer exists.
+    _SelectedIdentities.RemoveAll([this](const FRowIdentity& InIdentity)
+    {
+        return NOT _Bodies.ContainsByPredicate([&InIdentity](const FCkJoltDebugger_BodySnapshot& InBody)
+        { return Get_RowIdentity(InBody) == InIdentity; });
+    });
+
+    if (_Primary.IsSet() && NOT _SelectedIdentities.Contains(*_Primary))
+    {
+        // The primary left the world while the rest of the selection did not. The last survivor takes over
+        // rather than the whole set losing its primary — a multi-selection with none has nothing to show in
+        // the detail panel and nothing to sample on the facility.
+        _Primary = _SelectedIdentities.IsEmpty()
+            ? TOptional<FRowIdentity>{}
+            : TOptional<FRowIdentity>{_SelectedIdentities.Last()};
+    }
+
     // SListView keys selection by pointer identity, so a wholesale rebuild every refresh would eat the
     // user's click before it resolves. Reuse the existing item for a row identity that is still present
     // and update its contents in place; only a change to the visible SET needs a list refresh.
-    auto SelectedItem = ItemPtr{};
-
-    if (_ListView.IsValid())
-    {
-        const auto Selection = _ListView->GetSelectedItems();
-
-        if (Selection.Num() == 1)
-        { SelectedItem = Selection[0]; }
-    }
-
-    auto SelectedIdentity = TOptional<ck_jolt_debugger_outliner_panel::FRowIdentity>{};
-
-    if (SelectedItem.IsValid())
-    { SelectedIdentity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(*SelectedItem); }
-
-    auto Existing = TMap<ck_jolt_debugger_outliner_panel::FRowIdentity, ItemPtr>{};
+    auto Existing = TMap<FRowIdentity, ItemPtr>{};
     Existing.Reserve(_ItemSource.Num());
 
     for (const auto& Item : _ItemSource)
     {
         if (Item.IsValid())
-        { Existing.Add(ck_jolt_debugger_outliner_panel::Get_RowIdentity(*Item), Item); }
+        { Existing.Add(Get_RowIdentity(*Item), Item); }
     }
 
     auto NewItems = TArray<ItemPtr>{};
@@ -281,14 +265,14 @@ auto
 
     for (const auto& Body : _Bodies)
     {
-        const auto Identity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(Body);
+        const auto Identity = Get_RowIdentity(Body);
 
-        // The SELECTED row is listed whatever the filter says. A selection that vanishes because the user
+        // EVERY SELECTED row is listed whatever the filter says. A selection that vanishes because the user
         // narrowed the query afterwards is indistinguishable from no selection at all — and the detail panel
-        // beside it would still be showing the row's facts. It renders dimmed, the way a highlight non-match does.
-        const auto IsPinnedSelection = SelectedIdentity.IsSet() && *SelectedIdentity == Identity;
+        // beside it would still be showing the primary's facts. It renders dimmed, like a highlight non-match.
+        const auto IsPinnedSelection = _SelectedIdentities.Contains(Identity);
 
-        if (NOT IsPinnedSelection && NOT ck_jolt_debugger_outliner_panel::Matches_Query(Body, _FilterString))
+        if (NOT IsPinnedSelection && NOT Matches_Query(Body, _FilterString))
         { continue; }
 
         auto Item = ItemPtr{};
@@ -341,16 +325,11 @@ auto
 
     _ListView->RequestListRefresh();
 
-    // A row that left the visible set and came back is a NEW pointer, so the view lost the selection with
-    // it. Re-stamp it Direct — and only when it is genuinely missing, or the compare-free path would fire
-    // a spurious selection change every refresh.
-    const auto SelectionSurvived = SelectedItem.IsValid() && _ItemSource.Contains(SelectedItem);
-
-    if (NOT SelectedItem.IsValid() || SelectionSurvived)
-    { return; }
-
-    if (const auto Restored = TryFind_Item(*SelectedItem); Restored.IsValid())
-    { _ListView->SetSelection(Restored, ESelectInfo::Direct); }
+    // A row that left the visible set and came back is a NEW pointer, so the view lost the selection with it.
+    // The MODEL still knows what is selected, so it is simply re-stamped — Direct, and under the apply guard,
+    // so the restore cannot be mistaken for a user selecting anything.
+    if (SetChanged)
+    { DoPushSelectionToView(); }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -440,6 +419,12 @@ auto
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/*
+ * The delegate's item parameter is NOT the row the user just clicked — SListView hands back an arbitrary
+ * element of its selection TSet. The primary is therefore derived from the set DELTA: whatever joined the
+ * selection is what the user last acted on. The parameter is used only as a tie-break when more than one
+ * row joined at once (a Shift-range), where the engine's own idea of the anchor is the better answer.
+ */
 auto
     SCkJoltDebugger_OutlinerPanel::
     OnSelectionChanged(
@@ -447,17 +432,63 @@ auto
         ESelectInfo::Type InSelectInfo)
     -> void
 {
+    using namespace ck_jolt_debugger_outliner_panel;
+
+    if (_IsApplyingSelection || NOT _ListView.IsValid())
+    { return; }
+
+    auto ViewSelected = TSet<FRowIdentity>{};
+
+    for (const auto& Item : _ListView->GetSelectedItems())
+    {
+        if (Item.IsValid())
+        { ViewSelected.Add(Get_RowIdentity(*Item)); }
+    }
+
+    // Re-derived in LIST order rather than in the view's set order, so the selection reads the way it looks.
+    auto Ordered = TArray<FRowIdentity>{};
+    Ordered.Reserve(ViewSelected.Num());
+
+    for (const auto& Item : _ItemSource)
+    {
+        if (NOT Item.IsValid())
+        { continue; }
+
+        const auto Identity = Get_RowIdentity(*Item);
+
+        if (ViewSelected.Contains(Identity))
+        { Ordered.Emplace(Identity); }
+    }
+
+    auto Added = TArray<FRowIdentity>{};
+
+    for (const auto& Identity : Ordered)
+    {
+        if (NOT _SelectedIdentities.Contains(Identity))
+        { Added.Emplace(Identity); }
+    }
+
+    if (Added.Num() > 0)
+    {
+        const auto Hint = InItem.IsValid() ? TOptional<FRowIdentity>{Get_RowIdentity(*InItem)} : TOptional<FRowIdentity>{};
+
+        _Primary = Hint.IsSet() && Added.Contains(*Hint) ? *Hint : Added.Last();
+    }
+    else if (NOT _Primary.IsSet() || NOT Ordered.Contains(*_Primary))
+    {
+        // The primary was deselected (a Ctrl+click that removed it): the last row still standing takes over,
+        // because a multi-selection with no primary has nothing to show in the detail panel.
+        _Primary = Ordered.IsEmpty() ? TOptional<FRowIdentity>{} : TOptional<FRowIdentity>{Ordered.Last()};
+    }
+
+    _SelectedIdentities = MoveTemp(Ordered);
+
     // Direct is the programmatic apply (external selection, selection restore) — echoing it back to the
     // window would re-broadcast a selection the window itself just pushed in.
     if (InSelectInfo == ESelectInfo::Direct)
     { return; }
 
-    if (NOT _OnRowSelected.IsBound())
-    { return; }
-
-    _OnRowSelected.Execute(InItem.IsValid()
-        ? TOptional<FCkJoltDebugger_BodySnapshot>{*InItem}
-        : TOptional<FCkJoltDebugger_BodySnapshot>{});
+    DoBroadcastSelection();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -467,28 +498,34 @@ auto
     OnContextMenuOpening()
     -> TSharedPtr<SWidget>
 {
-    if (NOT _ListView.IsValid())
+    const auto Selected = Get_SelectedAll();
+
+    if (Selected.IsEmpty())
     { return nullptr; }
 
-    const auto Selected = _ListView->GetSelectedItems();
+    // Multi-select aware: the copy entries join every selected row with a newline rather than describing
+    // only the primary (CkDebuggerCommon/CLAUDE.md §"Copy menus").
+    auto RowLines = TArray<FString>{};
+    auto EntityLines = TArray<FString>{};
 
-    if (Selected.IsEmpty() || NOT Selected[0].IsValid())
-    { return nullptr; }
-
-    const auto& Item = *Selected[0];
+    for (const auto& Body : Selected)
+    {
+        RowLines.Emplace(ck_jolt_debugger_outliner_panel::Make_CopyText(Body));
+        EntityLines.Emplace(ck::Format_UE(TEXT("{}"), Body.Handle));
+    }
 
     constexpr auto CloseAfterSelection = true;
     auto MenuBuilder = FMenuBuilder{CloseAfterSelection, nullptr};
 
     ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
         NSLOCTEXT("CkJoltOutliner", "CopyRow", "Copy Row"),
-        NSLOCTEXT("CkJoltOutliner", "CopyRowTip", "Copy the row text (name, population, state, body key) to the clipboard."),
-        ck_jolt_debugger_outliner_panel::Make_CopyText(Item));
+        NSLOCTEXT("CkJoltOutliner", "CopyRowTip", "Copy the selected rows' text (name, population, state, body key) to the clipboard."),
+        FString::Join(RowLines, TEXT("\n")));
 
     ck::DebugCopyMenu::AddCopyEntry(MenuBuilder,
         NSLOCTEXT("CkJoltOutliner", "CopyEntity", "Copy Entity"),
-        NSLOCTEXT("CkJoltOutliner", "CopyEntityTip", "Copy the full entity handle (ID|Version + debug name) to the clipboard."),
-        ck::Format_UE(TEXT("{}"), Item.Handle));
+        NSLOCTEXT("CkJoltOutliner", "CopyEntityTip", "Copy the selected rows' full entity handles (ID|Version + debug name) to the clipboard."),
+        FString::Join(EntityLines, TEXT("\n")));
 
     return MenuBuilder.MakeWidget();
 }
@@ -497,14 +534,56 @@ auto
 
 auto
     SCkJoltDebugger_OutlinerPanel::
+    DoPushSelectionToView()
+    -> void
+{
+    if (NOT _ListView.IsValid())
+    { return; }
+
+    const auto Guard = TGuardValue<bool>{_IsApplyingSelection, true};
+
+    _ListView->ClearSelection();
+
+    for (const auto& Identity : _SelectedIdentities)
+    {
+        if (const auto Item = TryFind_ItemByIdentity(Identity); Item.IsValid())
+        { _ListView->SetItemSelection(Item, true, ESelectInfo::Direct); }
+    }
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    DoBroadcastSelection()
+    -> void
+{
+    if (NOT _OnRowSelected.IsBound())
+    { return; }
+
+    _OnRowSelected.Execute(Get_Selection(), Get_SelectedAll());
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
     DoSelectItem(
-        ItemPtr InItem)
+        ItemPtr InItem,
+        bool    InIsAdditive)
     -> TOptional<FCkJoltDebugger_BodySnapshot>
 {
     if (NOT InItem.IsValid() || NOT _ListView.IsValid())
     { return {}; }
 
-    _ListView->SetSelection(InItem, ESelectInfo::Direct);
+    const auto Identity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(*InItem);
+
+    if (NOT InIsAdditive)
+    { _SelectedIdentities.Reset(); }
+
+    _SelectedIdentities.AddUnique(Identity);
+
+    // The row the caller named is what the user last acted on, whether it joined the selection or was
+    // already in it — a Ctrl+click on a selected row promotes it rather than doing nothing.
+    _Primary = Identity;
+
+    DoPushSelectionToView();
     _ListView->RequestScrollIntoView(InItem);
 
     return TOptional<FCkJoltDebugger_BodySnapshot>{*InItem};
@@ -516,7 +595,7 @@ auto
         const FCkJoltDebugger_BodySnapshot& InBody) const
     -> bool
 {
-    // Two reasons a listed row can be off-query: it lost the highlight query, or it is the pinned selection
+    // Two reasons a listed row can be off-query: it lost the highlight query, or it is a pinned selection
     // the filter would otherwise have hidden. Both read the same — this row is not what you asked for.
     return NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _HighlightString)
         || NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _FilterString);
@@ -528,11 +607,18 @@ auto
         const FCkJoltDebugger_BodySnapshot& InBody) const
     -> ItemPtr
 {
-    const auto Identity = ck_jolt_debugger_outliner_panel::Get_RowIdentity(InBody);
+    return TryFind_ItemByIdentity(ck_jolt_debugger_outliner_panel::Get_RowIdentity(InBody));
+}
 
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    TryFind_ItemByIdentity(
+        const FRowIdentity& InIdentity) const
+    -> ItemPtr
+{
     for (const auto& Item : _ItemSource)
     {
-        if (Item.IsValid() && ck_jolt_debugger_outliner_panel::Get_RowIdentity(*Item) == Identity)
+        if (Item.IsValid() && ck_jolt_debugger_outliner_panel::Get_RowIdentity(*Item) == InIdentity)
         { return Item; }
     }
 
@@ -542,7 +628,8 @@ auto
 auto
     SCkJoltDebugger_OutlinerPanel::
     DoSelectMatching(
-        TFunctionRef<bool(const FCkJoltDebugger_BodySnapshot&)> InPredicate)
+        TFunctionRef<bool(const FCkJoltDebugger_BodySnapshot&)> InPredicate,
+        bool InIsAdditive)
     -> TOptional<FCkJoltDebugger_BodySnapshot>
 {
     const auto* Match = _Bodies.FindByPredicate(InPredicate);
@@ -551,13 +638,13 @@ auto
     { return {}; }
 
     if (const auto Visible = TryFind_Item(*Match); Visible.IsValid())
-    { return DoSelectItem(Visible); }
+    { return DoSelectItem(Visible, InIsAdditive); }
 
     // The match survives in the collected set but the filter hides it. Reveal it: a selection the user cannot
     // see is indistinguishable from no selection at all.
     Set_FilterQuery(FString{});
 
-    return DoSelectItem(TryFind_Item(*Match));
+    return DoSelectItem(TryFind_Item(*Match), InIsAdditive);
 }
 
 auto
@@ -567,7 +654,7 @@ auto
     -> TOptional<FCkJoltDebugger_BodySnapshot>
 {
     return DoSelectMatching([&InHandle](const FCkJoltDebugger_BodySnapshot& InBody)
-    { return InBody.Handle == InHandle; });
+    { return InBody.Handle == InHandle; }, false);
 }
 
 auto
@@ -577,7 +664,17 @@ auto
     -> TOptional<FCkJoltDebugger_BodySnapshot>
 {
     return DoSelectMatching([InEntity](const FCkJoltDebugger_BodySnapshot& InBody)
-    { return InBody.Handle.Get_Entity() == InEntity; });
+    { return InBody.Handle.Get_Entity() == InEntity; }, false);
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Add_ToSelection(
+        const FCk_Handle& InHandle)
+    -> TOptional<FCkJoltDebugger_BodySnapshot>
+{
+    return DoSelectMatching([&InHandle](const FCkJoltDebugger_BodySnapshot& InBody)
+    { return InBody.Handle == InHandle; }, true);
 }
 
 auto
@@ -585,26 +682,82 @@ auto
     ClearSelection()
     -> void
 {
+    _SelectedIdentities.Reset();
+    _Primary.Reset();
+
     if (_ListView.IsValid())
-    { _ListView->ClearSelection(); }
+    {
+        const auto Guard = TGuardValue<bool>{_IsApplyingSelection, true};
+        _ListView->ClearSelection();
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
 
 auto
     SCkJoltDebugger_OutlinerPanel::
+    Get_SnapshotsForSelection() const
+    -> TArray<FCkJoltDebugger_BodySnapshot>
+{
+    using namespace ck_jolt_debugger_outliner_panel;
+
+    auto Result = TArray<FCkJoltDebugger_BodySnapshot>{};
+    Result.Reserve(_SelectedIdentities.Num());
+
+    const auto Append = [this, &Result](const FRowIdentity& InIdentity)
+    {
+        const auto* Body = _Bodies.FindByPredicate([&InIdentity](const FCkJoltDebugger_BodySnapshot& InCandidate)
+        { return Get_RowIdentity(InCandidate) == InIdentity; });
+
+        if (Body != nullptr)
+        { Result.Emplace(*Body); }
+    };
+
+    // Primary FIRST: the facility samples and asks for the contacts of the first highlighted key alone.
+    if (_Primary.IsSet())
+    { Append(*_Primary); }
+
+    for (const auto& Identity : _SelectedIdentities)
+    {
+        if (_Primary.IsSet() && Identity == *_Primary)
+        { continue; }
+
+        Append(Identity);
+    }
+
+    return Result;
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
     Get_Selection() const
     -> TOptional<FCkJoltDebugger_BodySnapshot>
 {
-    if (NOT _ListView.IsValid())
+    using namespace ck_jolt_debugger_outliner_panel;
+
+    if (NOT _Primary.IsSet())
     { return {}; }
 
-    const auto Selected = _ListView->GetSelectedItems();
+    const auto* Body = _Bodies.FindByPredicate([this](const FCkJoltDebugger_BodySnapshot& InCandidate)
+    { return Get_RowIdentity(InCandidate) == *_Primary; });
 
-    if (Selected.Num() != 1 || NOT Selected[0].IsValid())
-    { return {}; }
+    return Body != nullptr ? TOptional<FCkJoltDebugger_BodySnapshot>{*Body} : TOptional<FCkJoltDebugger_BodySnapshot>{};
+}
 
-    return TOptional<FCkJoltDebugger_BodySnapshot>{*Selected[0]};
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Get_SelectedAll() const
+    -> TArray<FCkJoltDebugger_BodySnapshot>
+{
+    return Get_SnapshotsForSelection();
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Get_NumSelectedRows() const
+    -> int32
+{
+    return _SelectedIdentities.Num();
 }
 
 auto

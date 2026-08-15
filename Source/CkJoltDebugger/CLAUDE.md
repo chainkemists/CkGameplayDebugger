@@ -202,7 +202,7 @@ Source Actor, Baked Bodies.
 
 **Linear velocity comes from the facility, never from `UCk_Utils_JoltBody_UE`.** The capture processor
 samples the highlighted rigid body's velocity in the physics pipeline's async-safe window and publishes
-it as `FCk_Jolt_DebugDrawTarget::Get_HighlightedBodyLinearVelocity()`; the window copies that into the
+it as `FCk_Jolt_DebugDrawTarget::Get_BodySample()`; the window copies that into the
 selection facts. A Slate-side `Get_LinearVelocity` call would lock a body interface on a world whose
 step may be in flight — intermittently wrong is worse than never. Consequences to expect in the UI:
 the row reads `--` for a character (a `CharacterVirtual` has no rigid-body velocity), and for a

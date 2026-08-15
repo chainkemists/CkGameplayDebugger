@@ -25,6 +25,7 @@ public class CkJoltDebugger : CkModuleRules
             "CkEcs",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkJolt",
+            "CkSpatialQuery", // FFragment_Probe_Current — the sensor population's body key
         });
 
         if (Target.bBuildEditor)

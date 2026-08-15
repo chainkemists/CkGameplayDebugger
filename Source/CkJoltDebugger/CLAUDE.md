@@ -73,8 +73,39 @@ change nothing, and a preview world that simulated would fight the world being i
 | Frame All | unchanged | frames `Get_ContentBounds()`; **Home** |
 | Frame Selection | unchanged | frames `Get_HighlightedBodyBounds()`; **F**; inert with no selection |
 
-Orbit RMB · pan MMB · wheel zoom · RMB+wheel camera speed · WASD / QE / arrows flight (perspective
-only) · **Home** = Frame All · **bare F** = Frame Selection · plain LMB = pick.
+**The camera is the Unreal editor's, gesture for gesture** (P7-D49). The viewport that this shell was copied
+from — Crowd's — still orbits on RMB; that parity was broken deliberately on the Jolt side only, and the Crowd
+file is not to be edited. The divergence is a documented follow-up for the Crowd campaign.
+
+| Gesture | Perspective | Orthographic |
+|---|---|---|
+| RMB drag | look in place — the eye is fixed, the look-at moves | pan |
+| MMB drag | pan (eye and look-at together) | pan |
+| LMB drag (no Alt, no RMB) | vertical tracks along the view, horizontal yaws in place | inert |
+| Alt + LMB drag | orbit about the look-at — the eye moves, the pivot does not | inert (no rotation, ever) |
+| Alt + RMB drag | dolly | inert |
+| Wheel | dolly along the view | ortho-width zoom |
+| RMB + wheel | fly speed | — |
+| WASD / QE / arrows | fly — **only while RMB is held** | — |
+| **Home** | Frame All | Frame All |
+| **bare F** | Frame Selection | Frame Selection |
+| **Space / Enter** | toggle Jolt pause / single step | same |
+| plain LMB click | pick | pick |
+
+**The look-at is real camera state, not a derived value.** `_LookAt` and `_OrbitDistance` are members, and every
+path maintains `eye + forward × distance == look-at`. That invariant is what tells look-in-place from orbit at
+all: one moves the pivot and leaves the eye, the other moves the eye and leaves the pivot, and a look-at
+recomputed from the eye each time could express neither.
+
+**Gesture state is TRACKED in the client, not polled off the viewport's key map.** A gesture is a sequence — the
+button arrives on `InputKey`, the drag on `InputAxis`, which carries no modifier state of its own. Tracking it
+also means the scheme can be driven with no viewport at all, which is the only way a headless spec can pin it
+(`Input_Key` / `Input_MouseAxis` on the widget). The tracked state is refreshed from the viewport's own key map
+whenever one is present, so a modifier already held when focus entered is still seen, and `LostFocus` clears it
+so the next drag cannot open with a button this client still believes is down.
+
+**An ortho preset refuses to rotate.** The presets are axis-locked views; rotating one turns it into an
+arbitrary camera with no projection to go back to, so RMB and MMB both pan and Alt+LMB does nothing.
 
 **`F` requires no modifiers.** `Ctrl+F`, `Alt+F`, `Shift+F` and `Cmd+F` fall through to whatever else
 binds them; only an unmodified F frames the selection. Home is unchanged.
@@ -211,6 +242,31 @@ belongs to a capture rather than to the selection.
 
 ---
 
+## Stat rail
+
+`FCkJoltDebugger_Stats` is refreshed on the gated Tick and read by `TAttribute` lambdas; nothing in the rail is
+rebuilt. Sections: World, **Simulation**, Rigid Bodies, Characters, Static World, Viewport.
+
+**The Simulation section has three different sources, and which one a row comes from is a correctness question,
+not a preference.**
+
+| Rows | Source | Why |
+|---|---|---|
+| Jolt Paused, Last Step, Contact Pairs | `UCk_Jolt_Subsystem` directly | the pause state is not on the target at all, and the other two are only pushed onto it while something is capturing |
+| Active Rigid / Active Soft Bodies | `Get_WorldStats()` LIVE block | plain counters the capture reads every pass |
+| Bodies, Body Budget, Static / Dynamic / Active Dynamic / Kinematic / Active Kinematic / Soft, Constraints | `Get_WorldStats()` SAMPLED block | `GetBodyStats()` walks every body and `GetConstraints()` copies the array |
+
+**The sampled rows are LABELLED "(sampled)", and the label is part of the row's name, not its value.** They
+refresh every 30th capture (`WorldStatsSampleInterval`, a constant, not a knob — P5-D61/S10), so a lagging count
+is designed behaviour. A row with no label would read as a bug the first time the user added a body and the
+number did not move. They read `--` until `_HasSample` is true, which distinguishes "no bodies" from "not asked
+yet".
+
+**Paused rides the SUMMARY line as an `SCkDebug_StatusPill`** (PAUSED / LIVE), not a row in the section: it is
+the one piece of state that changes what every number below it means.
+
+---
+
 ## Target lifecycle and demand
 
 The **window**, not the viewport, owns one `FCk_Jolt_DebugDrawTarget`, constructed against the
@@ -271,15 +327,45 @@ would.
 | Lane | Group | Contents |
 |---|---|---|
 | Primary | `JoltRender` | wireframe/solid toggle (`Grid`) — swaps the facility's materials, rebuilds no geometry |
+| Primary | `JoltSim` | Pause toggle + Step button; both disabled with a tooltip when no world has begun play |
 | Context | `JoltTarget` | `SCkDebug_WorldSelector` |
 | Context | `JoltCamera` | 8 icon buttons (7 presets + Frame All) |
-| Context | `JoltInWorldDraw` | `ck.Jolt.DebugDraw.Enabled` / `.Velocity` |
-| Context | `JoltPopulations` | four class-group toggles |
-| Context | `JoltLegend` | one swatch + label per colour class, colours bound from the target's palette |
+| Context | `JoltDraw` | one `SCkDebug_IconToolbar` per draw-flag group (Bodies / Constraints / Contacts / Labels) + the colour-mode `SSegmentedControl` |
+| Context | `JoltInWorldDraw` | all six in-world CVars — `.Enabled` (master) gating `.SleepColoring` / `.Velocity` / `.WorldTransform` / `.Constraints` / `.Contacts` |
+| Context | `JoltPopulations` | four class-group toggles, disabled outside BodyClass colour mode |
+| Context | `JoltLegend` | one swatch + label per class of the CURRENT colour mode, from `Get_LegendEntries` |
+
+### Draw lane and colour mode
+
+**`JoltSim` is Primary and `JoltDraw` is Context, and the split is the lane doctrine, not a layout accident.**
+Pause and Step act on the world the pane above is showing; the draw flags decide what that pane emits, which is
+a property of the target rather than an action on the viewport.
+
+Each toggle writes the facility (`Set_DrawFlags` / `Set_ColorMode`) **and** the preference, in the toggle's own
+handler, then `SaveConfig()`. Draw flags persist as the RAW bitmask (`UCkJoltDebuggerSettings::DrawFlags`)
+rather than as one property per flag: a per-flag property set would rename its own config keys every time the
+facility gained a flag, and silently drop the user's choice on every one of them.
+
+**The legend is the one surface here that is REBUILT rather than attribute-bound.** A colour mode does not
+merely recolour classes — it changes how many there are and what they are called, so `DoRebuildLegend()`
+repopulates the lane from `Get_LegendEntries(Get_ColorMode())`. It runs from the mode control's own handler and
+from the restore pass, never from `Tick`. The swatch COLOUR stays bound, because the palette can move under a
+fixed set of classes (a Style Lab flip, `Set_Palette`) with no rebuild needed.
+
+**The population toggles are a BodyClass mask, so they are disabled in every other mode.** The facility's
+visibility mask is indexed by the CURRENT mode's class indices, and `Set_ColorMode` clears it outright — index 5
+is `BakedStatic` in one mode and `Cylinder` in another. Two consequences the window owns: the restore pass sets
+the colour mode BEFORE the population visibility (the reverse order would wipe what it just restored), and
+`Set_ColorMode` re-applies the saved visibility whenever the mode returns to BodyClass, or the toggles would
+read "everything visible" while the preferences said otherwise.
+
+**Contact flags are process-wide** and every contacts tooltip says so — Jolt's contact draw switches are plain
+statics with no per-system variant, so arming them here arms contact emission for every world and every other
+debugger preview at once (`CkJolt/Claude.md` § Contact recording).
 
 ### ⚠ In-world draw is NOT this viewport
 
-**The single most confusing thing about this window.** The two CVar toggles in `JoltInWorldDraw` gate
+**The single most confusing thing about this window.** The six CVar toggles in `JoltInWorldDraw` gate
 the *subsystem's* debug draw into the **game viewport**. They do nothing to the pane above them, and the
 viewport renders whether they are on or off. That is why they are labelled "In-world …", why both
 tooltips name the game viewport explicitly, and why they are not in the Primary lane — a lane position
@@ -314,8 +400,16 @@ This is the plugin-wide settings split, not a local choice: see `CkGameplayDebug
 | Preference | Restored into |
 |---|---|
 | `RenderMode` (Solid / Wireframe) | `Set_RenderMode` on the target |
-| `ShowJoltBodies` / `ShowBakedStaticWorld` / `ShowSensors` / `ShowCharacters` | `Set_ClassVisibility` per colour class |
+| `ShowJoltBodies` / `ShowBakedStaticWorld` / `ShowSensors` / `ShowCharacters` | `Set_ClassVisibility` per colour class — **only while the mode is BodyClass** |
 | `CameraPreset` (the 7 orientations) | `ApplyPreset` on the viewport |
+| `DrawFlags` (raw `ECk_Jolt_DebugDrawFlags` bits) | `Set_DrawFlags` on the target |
+| `ColorMode` (`ECkJoltDebugger_ColorModePref`) | `Set_ColorMode`, then the legend rebuild |
+| `IsolateActive` / `FollowSelection` | Unit C (not consumed yet) |
+| `ShowGrid` / `RunawayVelocityCmS` (5000) / `CameraBookmarks` | Phase 8 (not consumed yet) |
+
+**The bool preferences carry no `b` prefix** — the house rule and the four population toggles beside them both
+say `ShowSensors`, not `bShowSensors`. PHASE_7 spells three of them `bIsolateActive` / `bFollowSelection` /
+`bShowGrid`; the fields are `IsolateActive` / `FollowSelection` / `ShowGrid`.
 
 **Written the moment the user flips a control** (`GetMutableDefault<>` + `SaveConfig()` inside the
 toggle's own handler), **read once at the end of `Construct`** (`DoApplySavedPreferences`). Restoring
@@ -343,9 +437,10 @@ whatever is in the world at that moment, not a camera state a window can be rest
 | `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure` | the viewport builds ensure-free and owns a preview world |
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |
 | `Ck.JoltDebugger.Viewport.FrameAllWithoutContentIsInert` | framing invalid bounds leaves the camera untouched instead of snapping to the origin |
+| `Ck.JoltDebugger.Viewport.CameraSchemeIsUnrealStyle` | the four DISCRIMINATING facts of P7-D49, driven through the client's own input entry points: RMB-drag leaves the eye exactly where it was while turning the camera; Alt+LMB-drag moves the eye while the look-at pivot stays put (the reverse of the first, which is what tells orbit from look-in-place); MMB-drag moves the eye with the rotation untouched; and an ortho preset refuses both a rotate gesture and an orbit gesture |
 | `Ck.JoltDebugger.Outliner.ConstructsWithoutEnsure` | the panel builds, reconciles an EMPTY pass and a `Clear` without an ensure, and resolves an absent handle to nothing |
 | `Ck.JoltDebugger.Outliner.RowsSelectFilterAndSurviveRefresh` | three rows on three real entities (a standalone `ck::FEcsWorld`): select-by-handle finds the right row, a refresh over the same entities KEEPS the selection (the pointer-reuse contract), the filter hides non-matches EXCEPT the selected row, which stays pinned and dimmed while the matching row is not, the pin disappears with the selection, and an external select reaches a filtered-out row and reveals every row again |
-| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
+| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. Every preference the restore reads is asserted UNCHANGED afterwards, so a restore that quietly re-saved a default over the developer's own choice surfaces here rather than in an ini. Covers all seven new fields (draw flags, colour mode, isolate, follow, grid, runaway velocity, a bookmark). The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` and reads `--` |
 | `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key), an unsampled velocity reads `--` and a sampled one reaches the row, an unset body key degrades to `--`, and clearing the selection empties every row |
 
@@ -381,6 +476,18 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
   camera orientation all come back as they were left
 - **a selected row stays visible, dimmed, when a filter typed afterwards excludes it**
 - **`Ctrl+F` / `Alt+F` do NOT frame; a drag-then-release does NOT pick; a click does**
+- **the camera gestures, in a live viewport** — RMB-drag looks around without moving the eye; WASD/QE fly ONLY
+  while RMB is held; RMB+wheel changes fly speed; MMB-drag pans; wheel dollies; Alt+LMB orbits the current
+  look-at; Alt+RMB dollies; in an ortho preset RMB and MMB pan, wheel zooms, and the view never rotates. The
+  SIGN of the plain LMB-drag track (drag down = forward) is manual too — a spec can assert that the eye moved
+  along the view, not which way feels right
+- **every Draw-lane toggle visibly changes the viewport** (velocity arrows, AABBs, COM axes, constraints,
+  contacts, labels) and survives an editor restart
+- **switching colour mode recolours the bodies and the legend follows**, the population toggles grey out
+  outside Class mode, and returning to Class restores the toggles the user had set
+- **Pause freezes the sim (in-world too), Step advances exactly one step**, Space/Enter work with the viewport
+  focused, and the stat rail shows the PAUSED pill, the step ms, and a body breakdown that visibly lags by up
+  to 30 captures under its "(sampled)" labels
 - a baked-static click on a NON-first body of an actor selects that actor's row
 - `[PACKAGED-VERIFY]` both engine debug materials render in a packaged Development build — exact
   acceptance steps in `CkJolt/Claude.md` § "Colour + wireframe"

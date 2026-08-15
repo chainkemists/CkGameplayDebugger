@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
+
 #include "Engine/DeveloperSettings.h"
 
 #include "CkJoltDebuggerSettings.generated.h"
@@ -29,6 +31,47 @@ enum class ECkJoltDebugger_CameraPref : uint8
 	Right,
 	Front,
 	Back
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * Mirror of ECk_Jolt_DebugDrawColorMode. The facility's enum is a plain C++ one — it never crosses a reflected
+ * boundary — so a UENUM twin is what lets the choice be stored as a stable name in the per-user ini rather than
+ * as an integer that would silently re-point if the facility ever reorders its modes.
+ */
+UENUM()
+enum class ECkJoltDebugger_ColorModePref : uint8
+{
+	BodyClass,
+	SleepState,
+	ObjectLayer,
+	ShapeType
+};
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * One remembered camera pose. Stored as the eye plus the projection rather than as a look-at, because that is
+ * what the viewport client restores directly — a bookmark that had to re-derive a pivot could not reproduce an
+ * orthographic framing at all.
+ */
+USTRUCT()
+struct FCkJoltDebugger_CameraBookmark
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
+	FVector Location = FVector::ZeroVector;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
+	FRotator Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
+	float OrthoWidth = 0.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport")
+	bool IsOrthographic = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -77,6 +120,39 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Populations",
 		meta = (ToolTip = "Draw CkJoltCharacter capsules."))
 	bool ShowCharacters = true;
+
+	/*
+	 * The RAW bits of ECk_Jolt_DebugDrawFlags. Stored as bits rather than as a reflected flag struct so the ini
+	 * text is one stable integer: a per-flag property set would rename its own config keys every time the
+	 * facility gains a flag, and silently drop the user's choice on every one of them.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Draw",
+		meta = (ToolTip = "Raw bitmask of the Jolt debug-draw flags the viewport's target emits (ECk_Jolt_DebugDrawFlags)."))
+	int32 DrawFlags = static_cast<int32>(ECk_Jolt_DebugDrawFlags::Shape);
+
+	UPROPERTY(Config, EditAnywhere, Category = "Draw",
+		meta = (ToolTip = "What the Jolt debugger viewport colours bodies by."))
+	ECkJoltDebugger_ColorModePref ColorMode = ECkJoltDebugger_ColorModePref::BodyClass;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Selection",
+		meta = (ToolTip = "Draw ONLY the selected bodies, releasing every other body's instances."))
+	bool IsolateActive = false;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Selection",
+		meta = (ToolTip = "Keep the camera's offset to the primary selection as it moves."))
+	bool FollowSelection = false;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport",
+		meta = (ToolTip = "Draw a ground grid in the Jolt debugger viewport."))
+	bool ShowGrid = true;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Diagnostics",
+		meta = (ToolTip = "Linear speed, in cm/s, past which a body is reported as a runaway."))
+	float RunawayVelocityCmS = 5000.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "Viewport",
+		meta = (ToolTip = "Camera poses recalled from the viewport, indexed by their slot."))
+	TArray<FCkJoltDebugger_CameraBookmark> CameraBookmarks;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

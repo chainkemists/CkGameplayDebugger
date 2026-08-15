@@ -652,12 +652,12 @@ auto
     if (NOT _DebugDrawTarget.IsValid())
     { return; }
 
-    const auto Velocity = _DebugDrawTarget->Get_HighlightedBodyLinearVelocity();
+    const auto Sample = _DebugDrawTarget->Get_BodySample();
 
-    if (NOT Velocity.IsSet())
+    if (NOT Sample.IsSet())
     { return; }
 
-    _Selection->LinearVelocity = *Velocity;
+    _Selection->LinearVelocity = Sample->Get_LinearVelocity();
     _Selection->HasLinearVelocity = true;
 }
 

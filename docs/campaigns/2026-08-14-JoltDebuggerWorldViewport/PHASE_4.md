@@ -1,6 +1,6 @@
 # Phase 4 — 100k scale hardening, measurement, polish, docs
 
-> **Status:** ⏳ Pending (authored 2026-08-15; enters when Phase 3 exit is green)
+> **Status:** ✅ Done 2026-08-15 (committed locally; ship withheld pending user; `[EDITOR-VERIFY]` pending)
 > **Depends on:** Phase 3 ✅
 > **Estimate:** 1 session (autonomous — user AFK; commits per phase authorized, ship withheld)
 
@@ -44,6 +44,6 @@ the module docs are the permanent record. Campaign is ship-ready pending user PI
 5. `[PACKAGED-VERIFY]` (P4-D35).
 
 ## Exit criteria — same commit as last work item
-- [ ] Benchmark numbers recorded (before/after) in PROGRESS + `CkJolt/CLAUDE.md`
-- [ ] Full serial suite fails ⊆ baseline named set; scoped serial Jolt+JoltDebugger green; census 3/3
-- [ ] Docs finalized; PLAN/PROGRESS updated; commits landed (local); ship instructions written for the user
+- [x] Benchmark numbers recorded (before/after) in PROGRESS + `CkJolt/CLAUDE.md` (100k: revision re-run 260.5→22.9 ms, selection pass 249.9→23.6 ms, steady 2.1→2.6 ms; reproduced under the serial gate 23.4 / 25.5 / 2.7 ms)
+- [x] Full serial suite 1146/1150, fails ⊆ baseline (Homing_ClearTarget red re-ran green in isolation — known-flaky family); scoped serial 78/78; census 3/3; Probe 27/27
+- [x] Docs finalized; PLAN/PROGRESS updated; commits landed (local: CkFoundation 2d0f71ced, CkTests 59e3d1d6, CkGameplayDebugger 66f1e75); ship instructions in PROGRESS "Ship" section

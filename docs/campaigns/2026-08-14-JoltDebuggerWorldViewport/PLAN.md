@@ -8,9 +8,9 @@
 |---|---|---|---|
 | 1 | World-targetable batched Jolt debug renderer | CkFoundation/CkJolt | ✅ Done 2026-08-15 (uncommitted, pending user commit approval) |
 | 2 | Preview-world viewport shell + wireframe/solid + camera bar | CkGameplayDebugger/CkJoltDebugger | ✅ Done 2026-08-15 (uncommitted; `[EDITOR-VERIFY]` pending) |
-| 3 | Outliner + selection sync + picking + detail | CkGameplayDebugger/CkJoltDebugger (+ CkJolt read APIs as needed) | ⏳ Pending |
-| 4 | 100k scale hardening, measurement, polish, docs | both | ⏳ Pending |
-| — | Ship (ck-ship-dev, user-gated) | both + superproject pointer bumps | ⏳ Pending |
+| 3 | Outliner + selection sync + picking + detail | CkGameplayDebugger/CkJoltDebugger (+ CkJolt read APIs as needed) | ✅ Done 2026-08-15 (committed; `[EDITOR-VERIFY]` pending) |
+| 4 | 100k scale hardening, measurement, polish, docs | both | ✅ Done 2026-08-15 (committed; measured 100k: revision/selection pass 250→23 ms; `[EDITOR-VERIFY]` pending) |
+| — | Ship (ck-ship-dev, user-gated) | both + superproject pointer bumps | 🟢 READY — all commits local; push + pointer bumps await user (P0-D8/P4-D36) |
 
 ## Phase summaries (contracts to be authored at entry)
 

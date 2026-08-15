@@ -1,43 +1,36 @@
 # Jolt Debugger — World Viewport — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY phase boundary and session end -->
-**As of 2026-08-15 (Phase 3 entry):** **PHASE 2 COMMITTED** (CkFoundation 5b3ce3eb3, CkTests
-d039513b, CkGameplayDebugger c1cbd5f + docs 00b4801; branding commits fb90e2f09/5b954c7/a6903924/
-root fd13be1 landed alongside). **PHASE 3 ENTERED** — PHASE_3.md authored with rulings
-P3-D22…D27 (highlight lives in the facility; snapshots collected in the debugger; viewport
-click-pick = JPH-free ray-vs-instance-bounds in the facility; single-select model with 5
-sources/5 sinks; shared predicate for route + picker). User's `[EDITOR-VERIFY]` of Phase 2 in
-progress; first feedback: "no outliner / can't select or focus a body" = exactly Phase 3 scope.
-Facility unit (Unit VIII) dispatching to Opus first, then debugger unit (Unit IX).
-Prior state line follows for history:
-**As of 2026-08-15 (late):** **PHASE 2 DONE, verified, UNCOMMITTED** — awaiting user commit
-approval. Phase 1 committed earlier (CkFoundation 5edf6c152, CkTests fbd99927, CkGameplayDebugger
-c804e7b; local, unpushed). Phase-2 gate of record (orchestrator, serial): full suite 1146/1150
-failing set == baseline's 4 names (delta-zero); scoped Jolt+JoltDebugger 67/67 exit 0 (8/8
-facility + 4/4 debugger specs). Two adversarial review rounds this campaign, 22 findings fixed
-total. `[EDITOR-VERIFY]` A–D (12 steps) in PHASE_2.md awaits a human PIE pass.
-**Commit scope (ours):** CkFoundation `Source/CkJolt/Subsystem/{CkJolt_DebugDrawTarget.h,.cpp,
-_Impl.h, CkJolt_DebugRenderer.cpp}` (Unit V + P2 fix #4); CkTests the same spec file (2 new
-specs + hardening); CkGameplayDebugger `Source/CkJoltDebugger/**` (Build.cs, Module.{h,cpp},
-Window/SCkJoltDebuggerWindow.{h,cpp}, new Viewport/SCkJoltDebugger_3dViewport.{h,cpp}, new
-Private/Tests/CkJoltDebuggerViewport.spec.cpp, new CLAUDE.md) + `docs/campaigns/…/{PHASE_2.md,
-PLAN.md, PROGRESS.md}`. NOT ours: unchanged list from Phase 1.
-**Next:** user commit approval → Phase 3 (outliner + selection sync + picking + detail; re-add
-FrameSelection with a real producer).
-**Commit scope (ours only):** CkFoundation `Source/CkJolt/*` (12 M + 6 new), CkTests
-`Source/CkTests/Private/UnitTests/CkJolt/Test_JoltDebugDraw_TargetReconcile.cpp` (new),
-CkGameplayDebugger `docs/campaigns/2026-08-14-JoltDebuggerWorldViewport/*` (new). NOT ours (never
-stage): CkFoundation `Content/CkUsf/GeneratedLooks/*`, `docs/campaigns/request-completion-delegates/
-CONTINUATION_PROMPT_Gate00CloseAndShip.md`, `docs/reviews/2026-05-08-CkNavigation-CTO-review.md`,
-`docs/superpowers/`; superproject's pre-existing dirt.
-**Baseline being diffed against:** full suite 2026-08-14: **1150 total / 1146 pass / 4 fail /
-0 contaminated** — failing-set (all pre-existing, non-Jolt): Crowd_NavQueryFilter_ForceReplan,
-Homing_Retarget_SwitchesPursuit, PathNetworkFollower_DesiredNavmeshClearanceMovesInward,
-PathNetworkFollower_ProjectsRibbonWaypointWithinNavQueryExtent. Snapshot:
-`C:\Users\sulfu\.claude\reports\baseline_20260814-214144.md`.
-**Next action:** Unit II (CkJolt implementation, Opus, dispatched 2026-08-14 ~22:15) returns →
-orchestrator re-runs full gate vs baseline → adversarial review → accept/bounce.
-**Blocked on:** Unit II completion (in flight). Unit I DONE (report absorbed into P1-D13 ruling).
+**As of 2026-08-15 (campaign close, user AFK):** **ALL FOUR PHASES DONE AND COMMITTED LOCALLY. SHIP
+IS READY BUT WITHHELD** (outward action — needs the user). Nothing pushed; no superproject pointer
+bumps. `[EDITOR-VERIFY]` for Phases 3–4 (+ `[PACKAGED-VERIFY]`) awaits the user's return.
+**Local tips (all `dev`, all ahead of `origin/dev`):**
+- CkFoundation: 2d0f71ced (Phase 4) ← 8e85733f1 (P3) ← 5b3ce3eb3 (P2) ← fb90e2f09 (branding) ← 5edf6c152 (P1)
+- CkTests: 59e3d1d6 (P4) ← 99e8c9f9 (P3) ← d039513b (P2) ← a6903924 (branding) ← fbd99927 (P1)
+- CkGameplayDebugger: [docs commit below] ← 66f1e75 (P4) ← 0271004/f646b4a (P3) ← 00b4801/c1cbd5f (P2) ← 5b954c7 (branding) ← c804e7b (P1 docs)
+- Superproject: local `dev` @ fd13be1 (branding) on top of origin/dev f51209d; HEAD detached at fd13be1.
+**Final gate of record (orchestrator, serial, final artifact):** full suite 1146/1150 with fails ⊆
+baseline named set (one flaky sibling re-ran green in isolation); scoped Jolt+JoltDebugger 78/78 exit 0
+(14 facility + 9 debugger specs); DebuggerLauncher census 3/3; Probe 27/27.
+**Measured (P4 benchmark, 100k static + 1k awake):** steady 2.6 ms; revision re-run 23 ms (was 260);
+selection change 24 ms (was 250); pick 14–16 ms; first pass ~63–70 ms.
+
+## Ship — instructions for the user (NOT executed; cross-repo publish guard)
+1. PIE-verify Phase 3 (7 steps, PHASE_3.md) + Phase 4 (5 steps, PHASE_4.md) + the static-probe line
+   (destroy a Static probe with the debugger open → its instance disappears). Fix-forward anything red.
+2. Publish in dependency order so no tip references an unpushed SHA: push CkFoundation `dev` first,
+   then CkTests `dev`, then CkGameplayDebugger `dev` (each is a fast-forward of origin/dev — verify
+   with `git status -sb`); THEN bump the three gitlinks in the superproject on a `feature/`-prefixed
+   branch (`feature/jolt-debugger-world-viewport`) and push/PR per `ck-ship-dev` / `ck-ship-pr`.
+   The superproject also carries the local branding commit fd13be1 on `dev` (attach with
+   `git checkout dev` once the editor is closed).
+3. `[PACKAGED-VERIFY]`: Development packaged build → open the Jolt debugger → both engine debug
+   materials render (solid + wireframe). If not: switch wireframe to the CkUsf-generated look
+   (P1-D13 branch b, mechanism in `CkJolt/CLAUDE.md`).
+4. Downstream (BusterBlock) pointer bumps after the three pushes.
+5. Next campaign (already scoped by the user): refactor the Crowd debugger onto this facility
+   (carry over: ortho eye-offset fix `SCkCrowdDebugger_3dViewport.cpp:632-637`, preview-world
+   target registration, outliner/selection contracts).
 
 ## Status board
 
@@ -46,9 +39,9 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 | Docs/decisions | ✅ Done 2026-08-14 |
 | 1 — CkJolt renderer facility | ✅ Done 2026-08-15, COMMITTED (5edf6c152 / fbd99927) |
 | 2 — viewport shell | ✅ Done 2026-08-15, COMMITTED (c1cbd5f / 5b3ce3eb3 / d039513b); **`[EDITOR-VERIFY]` A–D 12/12 PASSED by user 2026-08-15** |
-| 3 — outliner + selection | 🟡 In progress (entered 2026-08-15) |
-| 4 — scale + polish | ⏳ Pending |
-| Ship | ⏳ Pending |
+| 3 — outliner + selection | ✅ Done 2026-08-15, COMMITTED (8e85733f1 / 99e8c9f9 / f646b4a / 0271004); gate: full 1146/1150 fails ⊆ baseline (VatProxy red re-ran green = Zen DDC infra noise), scoped serial 75/75; `[EDITOR-VERIFY]` (7 steps in PHASE_3.md) pending user |
+| 4 — scale + polish | ✅ Done 2026-08-15, COMMITTED (2d0f71ced / 59e3d1d6 / 66f1e75); measured; gate: full 1146/1150 ⊆ baseline, scoped 78/78; `[EDITOR-VERIFY]` (5 steps + static-probe) pending user |
+| Ship | 🟢 READY — withheld for user (push/pointer bumps/PACKAGED-VERIFY); instructions in "Ship" section above |
 
 ## Decision log
 | # | Date | Decision | Why | Revisit when |
@@ -98,6 +91,67 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
   green in the serial baseline). Orchestrator's serial full gate is the arbiter.
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-15 — Phase-4 fix-up landed (Opus); gate of record launched
+- F1: `UCk_Jolt_Subsystem::Request_NoteBodyRemoved()` wrapper (no in-tree caller yet — probe uses
+  the FJoltWorld context directly, the processor idiom); Probe EndPlay resolves/caches the world
+  in a new `DoTick` and bumps body-removed ALWAYS + static-scene when the probe is Static (mirrors
+  JoltBody EndPlay); funnel doc rewritten (JoltBody EndPlay, Probe destroy, StaticWorld removals;
+  "any new destroy site must bump"). F2/F3: record gains `_MotionType`+`_IsSensor`, both
+  accepted-gap rationales in its comment. F4: `Settings.ConstructRestoresPreferences` with RAII
+  CDO guard. F5: `LostFocus` clears the pending pick; LMB-consumed documented. F6: both spec
+  files use `Make_BodyKey`. F8/F10 docs. F7 deferred.
+- Executor gates (final binary): Jolt 76/78 auto-lanes → the two lane-noise names 16/16 serial;
+  14/14 DebugDraw incl. Benchmark; JoltDebugger 9/9; DebuggerLauncher 3/3; **Probe 27/27**
+  (`SpatialQuery` pattern matches no tests — probe coverage is `Ck_AutoTest_Probe*`).
+- New `[EDITOR-VERIFY]` line: destroy a Static probe with the debugger open → its sensor instance
+  disappears (static-probe funnel half is reasoned, not headless-covered).
+
+### 2026-08-15 — Phase-4 adversarial review: 10 findings; triage RATIFIED [P4-D37]
+- CLEAN: content bounds, bucket pruning, record invalidation sites (except class), Release_BodySlots
+  reachability, threading, stat split, both new specs discriminating, benchmark teardown, settings
+  class precedent, outliner pin/sort, const& selection, modifier probe, doctrine, PACKAGED-VERIFY.
+- **[P4-D37]** FIX-NOW: **F1** (HIGH — sweep gate lost coverage of bodies destroyed outside JoltBody
+  EndPlay: Probe destruction at `CkProbe_Processor.cpp:1216` bumps nothing → a rested
+  kinematic/dynamic probe's instance/overlay stays drawn indefinitely) → Probe EndPlay resolves
+  `FJoltWorld` context and calls `Request_NoteBodyRemoved()`; add `UCk_Jolt_Subsystem` wrapper;
+  fix the "ONE funnel" doc wording. **F2** (class absent from skip oracle) → RULING: record
+  `IsSensor` + `MotionType` in the record (cheap body reads); the BakedStatic attribution axis is
+  ACCEPTED as a documented gap (attribution flips only when a StaticActor entity dies, which
+  already routes the bodies through the static-revision funnel — the flip is not observable in
+  practice; note it in the record's comment). **F4** (settings spec tautological + restore not
+  failure-safe — a failing prepass could leave test values on the CDO and a later user toggle
+  would persist them to the REAL ini) → rename `ConstructRestoresPreferences`, drop the
+  same-CDO assert, RAII-guard save/restore. **F5** clear `_PendingPickPress` on focus/capture
+  loss; document LMB swallow. **F6** benchmark + reconcile spec use `Make_BodyKey`. **F8/F10**
+  doc wording ("measurement with loose sanity gates"; "position + rotation + shape";
+  `_BodiesCaptured` = drawn). ACCEPT-AS-DESIGNED: **F3** (BodyID recycle alias — record the
+  assumption in the comment), **F9**. DEFER: **F7** (log the layer fallback), F5 DPI scaling.
+- BEFORE column CONFIRMED by orchestrator: executor's report states both columns are verbatim
+  log lines from a same-binary A/B (BEFORE run on the pre-D31/D32 binary, AFTER after) — the
+  report is the evidence; the spec file itself is unchanged between the runs.
+
+### 2026-08-15 — Phase 4 implementation unit done (Opus); MEASURED; review dispatched
+- **Benchmark `Ck.Jolt.DebugDraw.Benchmark.ScaleMatrix` (headless, same binary A/B, ms):**
+  | case | N=1k B→A | N=10k B→A | N=100k B→A |
+  | first_full_pass | 1.67→1.54 | 4.93→6.52 | 57.6→69.8 (writes a record/body; accepted) |
+  | steady_state_avg (1k awake) | 2.06→2.73 | 2.28→2.72 | 2.07→2.59 (flat, O(active)) |
+  | revision_rerun | 5.63→2.83 | 22.7→3.93 | **260.5→22.9** |
+  | pick_body | 0.31→0.32 | 1.08→1.79 | 13.4→14.0 |
+  | highlight_rearmed_pass | 4.63→3.04 | 26.5→4.14 | **249.9→23.6** |
+- Landed (uncommitted): P4-D31 incremental full pass (per-body pos/rot/shape record → skip
+  unchanged, add unslotted, release gone), P4-D32 body-removed revision (`FJoltWorld::
+  _BodyRemovedRevision`, EndPlay funnel for ALL motion types, sweep gated on it), P4-D33 #8/#10/
+  #14(a)/#15/#17/#18, P4-D34 `UCkJoltDebuggerSettings` (Config=GameUserSettings; render mode,
+  populations, camera preset; spec `Settings.RoundTripAndRestore`), docs welded in both
+  CLAUDE.md incl. `[PACKAGED-VERIFY]` steps. Two existing assertions STRENGTHENED (idempotent
+  re-run now asserts 0 updates + moved-static case). #14(b) character-overlay spec SKIPPED —
+  fragment friends are production-only; stays `[EDITOR-VERIFY]`.
+- Executor gates: Jolt 76/78 auto-lanes → both reds green serially (CameraPresets = SQLite lane
+  noise; FrameCostMatrix = documented over-capacity solver ensure under 4-lane load); JoltDebugger
+  9/9 serial; DebuggerLauncher 3/3; 14/14 DebugDraw specs.
+- Inferred: residual ~23 ms at 100k = the walk itself (not profiled per-line); live PIE adds
+  ECS attribution cost the headless fixture short-circuits.
 
 ### 2026-08-15 — Phase-3 fix-up + docs weld landed (Opus); gate of record launched
 - All P3-D29 FIX-NOW items implemented (per-finding file:line table in executor report).
@@ -349,4 +403,5 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 |---|---|---|---|
 | 2026-08-14 | Fable 5 | Campaign opened: research, user rulings P0-D1…D7, doc set authored | 4× Opus Explore (research); no executors yet |
 | 2026-08-14→15 | Fable 5 | Phase 1 executed end-to-end: baseline, rulings P1-D8…D18, facility implemented, adversarially reviewed, 12 fixes, multi-target spec, docs weld, gate of record green | 1× Opus Explore (wireframe investigation), 1× Opus executor (4 sequential units via resume), 1× Opus adversarial reviewer; gates run by orchestrator |
+| 2026-08-15 (cont.) | Fable 5 | Phase 3 + Phase 4 executed end-to-end autonomously (user AFK, P0-D8): outliner/selection/picking/detail, benchmark + incremental pass + sweep revision + settings, 2 review rounds (30 findings, 22 fixed), all committed locally; ship withheld | 3× Opus executors (P3 units VIII/IX/fix-up, P4 impl + fix-up), 2× Opus adversarial reviewers (drafted triage), gates run by orchestrator |
 | 2026-08-15 | Fable 5 | Phase 1 committed; Phase 2 executed end-to-end: facility extensions, viewport shell, review (10 findings) fixed, rulings P2-D19…D21, docs weld, gate of record green | standing Opus executor (Unit V), fresh Opus executor (Units VI/VII + docs), 1× Opus adversarial reviewer; gates run by orchestrator |

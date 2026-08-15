@@ -1048,7 +1048,8 @@ auto
         .ToolTip(FText::FromString(InGroup._ToolTip))
         .IsOn_Lambda([this, RepresentativeClass]()
         {
-            return _DebugDrawTarget.IsValid() && _DebugDrawTarget->Get_IsClassVisible(RepresentativeClass);
+            return _DebugDrawTarget.IsValid() && _DebugDrawTarget->Get_IsClassVisible(
+                ck::jolt::debug_draw::Get_ClassIndex(RepresentativeClass));
         })
         .OnStateChanged_Lambda([this, ColorClasses, Preference](const bool InIsVisible)
         {
@@ -1056,7 +1057,10 @@ auto
             { return; }
 
             for (const auto& ColorClass : ColorClasses)
-            { _DebugDrawTarget->Set_ClassVisibility(ColorClass, InIsVisible); }
+            {
+                _DebugDrawTarget->Set_ClassVisibility(
+                    ck::jolt::debug_draw::Get_ClassIndex(ColorClass), InIsVisible);
+            }
 
             if (Preference == nullptr)
             { return; }
@@ -1088,7 +1092,10 @@ auto
             const auto IsVisible = Settings->*Group._Preference;
 
             for (const auto& ColorClass : Group._ColorClasses)
-            { _DebugDrawTarget->Set_ClassVisibility(ColorClass, IsVisible); }
+            {
+                _DebugDrawTarget->Set_ClassVisibility(
+                    ck::jolt::debug_draw::Get_ClassIndex(ColorClass), IsVisible);
+            }
         }
     }
 
@@ -1118,7 +1125,9 @@ auto
                     .ColorAndOpacity_Lambda([this, ColorClass]() -> FSlateColor
                     {
                         return _DebugDrawTarget.IsValid()
-                            ? FSlateColor{_DebugDrawTarget->Get_Palette().Get_Color(ColorClass)}
+                            ? FSlateColor{_DebugDrawTarget->Get_Palette().Get_Color(
+                                ECk_Jolt_DebugDrawColorMode::BodyClass,
+                                ck::jolt::debug_draw::Get_ClassIndex(ColorClass))}
                             : CkStyle::TextMute();
                     })
                 ]

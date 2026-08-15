@@ -8,6 +8,8 @@
 
 #include "CkEcs/Snapshot/CkSaveKey_Fragment.h"
 
+#include "CkSnapshot/SaveGame/CkSnapshot_SlotMeta.h" // Decode_PngAsTexture — the sidecar thumbnail
+
 #include "CkSaveDebugger/Visualizer/CkSaveDebugger_Visualizer.h"
 #include "CkSaveDebugger/Visualizer/CkSaveDebugger_VisualizerRetained.h"
 
@@ -52,6 +54,7 @@
 #include <GameFramework/Actor.h>
 #include <Selection.h>
 #endif
+#include <Widgets/Images/SImage.h>
 #include <Widgets/Input/SButton.h>
 #include <Widgets/Layout/SBorder.h>
 #include <Widgets/Layout/SBox.h>
@@ -710,15 +713,23 @@ auto
         ]
 
         + SVerticalBox::Slot()
-        .FillHeight(0.72f)
+        .FillHeight(1.0f)
         [
+            // Vertical splitter, not fixed 0.72/0.28 weights: how much height diagnostics deserve depends
+            // entirely on the file — a clean save wants none, a broken one wants most of the window.
             SNew(SSplitter)
-            .Orientation(Orient_Horizontal)
+            .Orientation(Orient_Vertical)
 
             + SSplitter::Slot()
-            .Value(0.32f)
+            .Value(0.72f)
             [
-                SNew(SVerticalBox)
+                SNew(SSplitter)
+                .Orientation(Orient_Horizontal)
+
+                + SSplitter::Slot()
+                .Value(0.32f)
+                [
+                    SNew(SVerticalBox)
 
                 + SVerticalBox::Slot()
                 .AutoHeight()
@@ -850,7 +861,12 @@ auto
                     DoCreate_DiffColumn()
                 ]
             ]
-        ]
+            ]
+
+            + SSplitter::Slot()
+            .Value(0.28f)
+            [
+            SNew(SVerticalBox)
 
         + SVerticalBox::Slot()
         .AutoHeight()
@@ -902,6 +918,7 @@ auto
                     + SHorizontalBox::Slot()
                     .AutoWidth()
                     .VAlign(VAlign_Center)
+                    .Padding(0.0f, 0.0f, CkStyle::SpaceM, 0.0f)
                     [
                         SNew(SCkDebug_CountBadge)
                         .ValueText_Lambda([this]() -> FText
@@ -914,19 +931,54 @@ auto
                         .BackgroundColor(CkStyle::WarnDim())
                         .BorderColor(CkStyle::Warn())
                     ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    [
+                        DoCreate_DiagnosticSeverityPills()
+                    ]
+
+                    + SHorizontalBox::Slot()
+                    .AutoWidth()
+                    .VAlign(VAlign_Center)
+                    .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+                    [
+                        // A long info run can bury the tree; collapsing keeps the counts and pills visible so the
+                        // section still reports what it found while taking one row of height.
+                        SNew(SCkDebug_ToggleSurface)
+                        .AccessibleText(FText::FromString(TEXT("Diagnostics")))
+                        .ToolTipText(FText::FromString(TEXT("Collapse or expand the diagnostics list")))
+                        .IsOn_Lambda([this]() -> bool { return _DiagnosticsExpanded; })
+                        .OnStateChanged_Lambda([this](const bool InIsOn) { _DiagnosticsExpanded = InIsOn; })
+                        [
+                            SNew(STextBlock)
+                            .Text_Lambda([this]() -> FText
+                            {
+                                return FText::FromString(_DiagnosticsExpanded ? TEXT("HIDE") : TEXT("SHOW"));
+                            })
+                            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+                        ]
+                    ]
                 ]
             ]
         ]
 
         + SVerticalBox::Slot()
-        .FillHeight(0.28f)
+        .FillHeight(1.0f)
         [
             SAssignNew(_DiagnosticList, SListView<TSharedPtr<FCkSaveDebugger_DiagnosticRow>>)
+            .Visibility_Lambda([this]() -> EVisibility
+            {
+                return _DiagnosticsExpanded ? EVisibility::Visible : EVisibility::Collapsed;
+            })
             .ListItemsSource(&_DiagnosticRows)
             .OnGenerateRow(this, &SCkSaveDebuggerWindow::DoGenerate_DiagnosticRow)
             .OnSelectionChanged(this, &SCkSaveDebuggerWindow::DoOnDiagnosticSelectionChanged)
             .OnContextMenuOpening(this, &SCkSaveDebuggerWindow::DoOnDiagnosticContextMenu)
             .SelectionMode(ESelectionMode::Single)
+        ]
+            ]
         ];
 }
 
@@ -2121,23 +2173,267 @@ auto
         ]
     ];
 
+    // Header and sidecar sit SIDE BY SIDE, not stacked: each is a narrow column of key/value rows, so stacking
+    // them left the middle of a wide window empty and pushed the ownership tree off the bottom. The splitter
+    // makes the division draggable rather than a fixed guess at how wide either column wants to be.
     _SummaryBox->AddSlot()
     .AutoHeight()
     [
-        SNew(SCkDebug_InspectorPanel)
-        .Title(FText::FromString(TEXT("File & Header")))
-        .IconBrush(Get_IconBrush(FName{TEXT("Cassette")}))
-        .IconColor(CkStyle::Accent())
-        .CountText(FText::FromString(FPaths::GetCleanFilename(_CurrentPath)))
-        .StatusPillText(FText::FromString(FString{ck::snapshot::Get_CompatibilityText(Document.Get_Compatibility())}))
-        .StatusPillTone(ck_save_debugger_model::Get_CompatibilityTone(Document))
-        // Collapsed by default: nine header rows would otherwise eat the ownership tree's height on every open.
-        .StartExpanded(false)
-        .Body()
+        SNew(SSplitter)
+        .Orientation(Orient_Horizontal)
+
+        + SSplitter::Slot()
+        .Value(0.5f)
         [
-            HeaderRows
+            SNew(SCkDebug_InspectorPanel)
+            .Title(FText::FromString(TEXT("File & Header")))
+            .IconBrush(Get_IconBrush(FName{TEXT("Cassette")}))
+            .IconColor(CkStyle::Accent())
+            .CountText(FText::FromString(FPaths::GetCleanFilename(_CurrentPath)))
+            .StatusPillText(FText::FromString(FString{ck::snapshot::Get_CompatibilityText(Document.Get_Compatibility())}))
+            .StatusPillTone(ck_save_debugger_model::Get_CompatibilityTone(Document))
+            // Expanded, matching the sidecar beside it. It was collapsed while the two panels were STACKED, where
+            // nine header rows pushed the ownership tree down; side by side they share one row's height, so
+            // collapsing this one buys nothing and just leaves the pair mismatched.
+            .StartExpanded(true)
+            .Body()
+            [
+                HeaderRows
+            ]
+        ]
+
+        + SSplitter::Slot()
+        .Value(0.5f)
+        [
+            DoCreate_SlotMetaPanel()
         ]
     ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_DiagnosticSeverityPills()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_save_debugger_window;
+
+    auto Row = SNew(SHorizontalBox);
+
+    // Visual Studio's Error List shape: one latch per severity, all on by default, and turning every one off
+    // shows an empty list rather than silently reverting to "all" — an empty result IS the honest answer to
+    // "show me nothing".
+    const auto AddPill = [&Row, this](ECk_SnapshotInspection_Severity InSeverity, const TCHAR* InLabel,
+        const FLinearColor& InColor) -> void
+    {
+        Row->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceXS, 0.0f)
+        [
+            SNew(SCkDebug_ToggleSurface)
+            .AccessibleText(FText::FromString(InLabel))
+            .ToolTipText(FText::FromString(ck::Format_UE(TEXT("Show {} diagnostics"), InLabel)))
+            .IsOn_Lambda([this, InSeverity]() -> bool { return Get_SeverityShown(InSeverity); })
+            .OnStateChanged_Lambda([this, InSeverity](const bool InIsOn)
+            {
+                Set_SeverityShown(InSeverity, InIsOn);
+                DoRebuild_Diagnostics();
+            })
+            [
+                SNew(STextBlock)
+                .Text(FText::FromString(InLabel))
+                .ColorAndOpacity(TAttribute<FSlateColor>::CreateLambda([this, InSeverity, InColor]() -> FSlateColor
+                {
+                    // The latch tints its own glyph rather than repeating the state in a second control.
+                    return FSlateColor{Get_SeverityShown(InSeverity) ? InColor : CkStyle::TextMute()};
+                }))
+            ]
+        ];
+    };
+
+    AddPill(ECk_SnapshotInspection_Severity::Error, TEXT("ERR"), CkStyle::Err());
+    AddPill(ECk_SnapshotInspection_Severity::Warning, TEXT("WARN"), CkStyle::Warn());
+    AddPill(ECk_SnapshotInspection_Severity::Info, TEXT("INFO"), CkStyle::Text());
+
+    return Row;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    Get_SeverityShown(
+        ECk_SnapshotInspection_Severity InSeverity) const
+    -> bool
+{
+    return (_DiagnosticSeverityMask & (1u << static_cast<uint8>(InSeverity))) != 0u;
+}
+
+auto
+    SCkSaveDebuggerWindow::
+    Set_SeverityShown(
+        ECk_SnapshotInspection_Severity InSeverity,
+        bool InShown)
+    -> void
+{
+    const auto Bit = static_cast<uint8>(1u << static_cast<uint8>(InSeverity));
+    _DiagnosticSeverityMask = static_cast<uint8>(InShown
+        ? (_DiagnosticSeverityMask | Bit)
+        : (_DiagnosticSeverityMask & ~Bit));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoCreate_SlotMetaPanel()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_save_debugger_window;
+
+    // The decoded thumbnail is dropped FIRST: it belongs to the previously open save, and a brush outliving its
+    // document would paint the wrong picture beside the new one.
+    _SlotMetaThumbnailBrush.Reset();
+    _SlotMetaThumbnail.Reset();
+
+    const auto& Meta = _Model.Get_Document().Get_SlotMeta();
+
+    // A save with no sidecar is ORDINARY — a bare Request_Save writes none — so this reads Neutral and states the
+    // fact, the same rule the type-availability pills follow. It is never an error tone.
+    const auto Found = Meta.Get_Found();
+
+    auto MetaRows = SNew(SVerticalBox);
+
+    const auto AddRow = [&MetaRows](const FString& InKey, const FString& InValue) -> void
+    {
+        MetaRows->AddSlot()
+        .AutoHeight()
+        [
+            SNew(SCkDebug_KeyValueRow)
+            .KeyText(FText::FromString(InKey))
+            .ValueText(FText::FromString(InValue))
+            .Tone(ECkDebug_KeyValueTone::Custom)
+            .CustomValueColor(CkStyle::Text())
+        ];
+    };
+
+    if (Found)
+    {
+        AddRow(TEXT("Sidecar"), Meta.Get_SourceDescription());
+        AddRow(TEXT("Title"), Meta.Get_Title().ToString());
+        AddRow(TEXT("Saved (UTC)"), Meta.Get_TimestampUTC().ToIso8601());
+        AddRow(TEXT("Map"), Meta.Get_WorldAssetPath());
+
+        // Game-defined and opaque to CkSnapshot: render whatever the game recorded rather than naming fields this
+        // module cannot know about. Sorted so two saves diff by eye.
+        auto FieldKeys = TArray<FName>{};
+        Meta.Get_CustomFields().GenerateKeyArray(FieldKeys);
+        FieldKeys.Sort(FNameLexicalLess{});
+
+        for (const auto& FieldKey : FieldKeys)
+        { AddRow(FieldKey.ToString(), Meta.Get_CustomFields()[FieldKey]); }
+
+        if (Meta.Get_ScreenshotByteCount() > 0)
+        {
+            AddRow(TEXT("Screenshot bytes"), ck::Format_UE(TEXT("{}"), Meta.Get_ScreenshotByteCount()));
+            AddRow(TEXT("Screenshot sha256"), Meta.Get_ScreenshotHashHex());
+
+            // Decoding belongs to CkSnapshot (this module creates no UObjects); the BRUSH is ours. The texture is
+            // transient and unrooted, so it is held strongly here and handed to FDeferredCleanupSlateBrush, which
+            // keeps the resource alive for exactly as long as Slate is still drawing it.
+            _SlotMetaThumbnail.Reset(ck::snapshot::slot_meta::Decode_PngAsTexture(Meta.Get_ScreenshotPng()));
+
+            if (_SlotMetaThumbnail.IsValid())
+            { _SlotMetaThumbnailBrush = FDeferredCleanupSlateBrush::CreateBrush(_SlotMetaThumbnail.Get()); }
+        }
+    }
+    else
+    {
+        AddRow(TEXT("Sidecar"), TEXT("none beside this save"));
+    }
+
+    auto Body = SNew(SHorizontalBox);
+
+    if (_SlotMetaThumbnailBrush.IsValid())
+    {
+        Body->AddSlot()
+        .AutoWidth()
+        .VAlign(VAlign_Top)
+        .Padding(0.0f, 0.0f, CkStyle::SpaceL, 0.0f)
+        [
+            // A button, not a bare image: the inline thumbnail is deliberately small enough to sit beside the
+            // rows, which is too small to actually READ a scene, so clicking opens it at full size.
+            SNew(SButton)
+            .ButtonStyle(FCoreStyle::Get(), TEXT("NoBorder"))
+            .ToolTipText(FText::FromString(TEXT("Click to view this screenshot full size")))
+            .OnClicked(this, &SCkSaveDebuggerWindow::DoOnThumbnailClicked)
+            [
+                SNew(SBox)
+                .WidthOverride(192.0f)
+                .HeightOverride(108.0f)
+                [
+                    SNew(SImage)
+                    .Image(_SlotMetaThumbnailBrush->GetSlateBrush())
+                ]
+            ]
+        ];
+    }
+
+    Body->AddSlot()
+    .FillWidth(1.0f)
+    [
+        MetaRows
+    ];
+
+    return SNew(SCkDebug_InspectorPanel)
+        .Title(FText::FromString(TEXT("Slot Metadata")))
+        .IconBrush(Get_IconBrush(FName{TEXT("Cassette")}))
+        .IconColor(CkStyle::Accent())
+        .CountText(FText::FromString(Found ? Meta.Get_Title().ToString() : FString{}))
+        .StatusPillText(FText::FromString(Found ? TEXT("SIDECAR") : TEXT("NO SIDECAR")))
+        .StatusPillTone(Found ? ECk_Tone::Ok : ECk_Tone::Neutral)
+        .StartExpanded(Found)
+        .Body()
+        [
+            Body
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkSaveDebuggerWindow::
+    DoOnThumbnailClicked()
+    -> FReply
+{
+    if (NOT _SlotMetaThumbnailBrush.IsValid() || NOT _SlotMetaThumbnail.IsValid())
+    { return FReply::Handled(); }
+
+    const auto Texture = _SlotMetaThumbnail.Get();
+    const auto NativeSize = FVector2D{static_cast<double>(Texture->GetSizeX()), static_cast<double>(Texture->GetSizeY())};
+
+    // Sized to the screenshot's own aspect, capped so a 4K capture cannot open larger than the desktop. The brush
+    // is SHARED with the inline thumbnail rather than decoded again — same texture, two views.
+    const auto DesktopSize = FSlateApplication::Get().GetPreferredWorkArea().GetSize();
+    const auto MaxSize = FVector2D{DesktopSize.X * 0.9, DesktopSize.Y * 0.9};
+    const auto Scale = FMath::Min(1.0, FMath::Min(MaxSize.X / NativeSize.X, MaxSize.Y / NativeSize.Y));
+
+    const auto Window = SNew(SWindow)
+        .Title(FText::FromString(TEXT("CK Save — Screenshot")))
+        .ClientSize(NativeSize * Scale)
+        .SupportsMaximize(true)
+        .SupportsMinimize(false)
+        [
+            SNew(SImage)
+            .Image(_SlotMetaThumbnailBrush->GetSlateBrush())
+        ];
+
+    // Non-modal on purpose: the point is comparing the picture against the rows behind it, which a modal blocks.
+    FSlateApplication::Get().AddWindow(Window);
+
+    return FReply::Handled();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -2732,6 +3028,11 @@ auto
 
     for (const auto& Row : _Model.Build_DiagnosticRows())
     {
+        // Filtered HERE rather than in the model: the severity latches are a view preference, and the model's
+        // row set stays the full analysis so the header counts keep reporting what the file actually contains.
+        if (NOT Get_SeverityShown(Row.Severity))
+        { continue; }
+
         auto Item = TSharedPtr<FCkSaveDebugger_DiagnosticRow>{};
         if (auto* Found = Existing.Find(Row.DiagnosticIndex))
         { Item = *Found; }

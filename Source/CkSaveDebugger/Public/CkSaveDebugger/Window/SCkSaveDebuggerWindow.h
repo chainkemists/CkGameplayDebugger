@@ -7,6 +7,8 @@
 #include "CkEditorTools/Style/CkStyle.h"
 
 #include "CoreMinimal.h"
+#include "Slate/DeferredCleanupSlateBrush.h" // sidecar thumbnail — outlives the document it was decoded from
+#include "UObject/StrongObjectPtr.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STreeView.h"
 
@@ -85,6 +87,12 @@ private:
     // ---- Rebuild entry points (never called from Tick) ----
     auto DoRebuild_All() -> void;
     auto DoRebuild_Summary() -> void;
+    // Built by DoRebuild_Summary and seated beside File & Header — the sidecar rides the same document.
+    auto DoCreate_SlotMetaPanel() -> TSharedRef<SWidget>;
+    auto DoCreate_DiagnosticSeverityPills() -> TSharedRef<SWidget>;
+    auto DoOnThumbnailClicked() -> FReply;
+    auto Get_SeverityShown(ECk_SnapshotInspection_Severity InSeverity) const -> bool;
+    auto Set_SeverityShown(ECk_SnapshotInspection_Severity InSeverity, bool InShown) -> void;
     auto DoRebuild_Tree() -> void;
     auto DoRefresh_Filters() -> void;
     auto DoRebuild_EntityDetail() -> void;
@@ -200,6 +208,17 @@ private:
     TSharedPtr<SListView<TSharedPtr<FCkSaveDebugger_DiffGroupRow>>> _DiffGroupList;
     TArray<TSharedPtr<FCkSaveDebugger_DiffGroupRow>> _DiffGroupRows;
     TMap<FString, TSharedPtr<FCkSaveDebugger_DiffGroupRow>> _DiffGroupRowsByPath;
+
+    // The sidecar's thumbnail, decoded on open. The texture is transient and unrooted, so it is held strongly
+    // here — and the brush defers its own cleanup, because Slate may still be drawing it after the next open
+    // replaces both.
+    TStrongObjectPtr<UTexture2D>              _SlotMetaThumbnail;
+    TSharedPtr<FDeferredCleanupSlateBrush>    _SlotMetaThumbnailBrush;
+
+    // One bit per ECk_SnapshotInspection_Severity. All on by default — a file's diagnostics are the reason to
+    // open it, so nothing is hidden until the reader says so.
+    uint8 _DiagnosticSeverityMask = 0xFFu;
+    bool  _DiagnosticsExpanded = true;
 
     TSharedPtr<SVerticalBox> _SummaryBox;
     TSharedPtr<SVerticalBox> _EntityDetailBox;

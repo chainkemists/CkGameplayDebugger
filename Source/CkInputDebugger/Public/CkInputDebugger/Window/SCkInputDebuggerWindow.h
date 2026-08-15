@@ -2,9 +2,9 @@
 
 #include "CkInputDebugger/Data/CkInputDebugger_Snapshot.h"
 #include "CkInputDebugger/Data/CkInputDebugger_Bindings.h"
-#include "CkInputDebugger/Data/CkInputDebugger_KeyActivity.h"
 
 #include "CkDebuggerCommon/Devices/CkDebug_DeviceTypes.h"
+#include "CkDebuggerCommon/Devices/CkDebug_KeyActivityObserver.h"
 
 #include "CoreMinimal.h"
 #include "CkDebuggerCommon/Window/SCkDebugger_WindowBase.h"
@@ -212,7 +212,7 @@ private:
     ECkInputDebugger_BindingsFilterMode _BindingsFilterMode = ECkInputDebugger_BindingsFilterMode::All;
 
     // ---- Live key activity (passive observer; holds keys only, never handles) ----
-    TSharedPtr<FCkInputDebugger_KeyActivityObserver> _KeyObserver;
+    TSharedPtr<FCkDebug_KeyActivityObserver> _KeyObserver;
     int32 _LastActivityRevision = -1;
     FKey  _KeyFilter;
     TSet<FKey> _MappedKeys;

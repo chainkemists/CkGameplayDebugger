@@ -383,7 +383,7 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
 - **`Ctrl+F` / `Alt+F` do NOT frame; a drag-then-release does NOT pick; a click does**
 - a baked-static click on a NON-first body of an actor selects that actor's row
 - `[PACKAGED-VERIFY]` both engine debug materials render in a packaged Development build — exact
-  acceptance steps in `CkJolt/CLAUDE.md` § "Colour + wireframe"
+  acceptance steps in `CkJolt/Claude.md` § "Colour + wireframe"
 
 ---
 
@@ -393,7 +393,7 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
   re-arms the facility's revision-keyed pass so a static or long-asleep body gains its overlay on the
   very next capture. That pass became incremental in Phase 4, so it now draws only the newly selected
   body: **23.6 ms at 100k bodies, down from 249.9 ms** (`Ck.Jolt.DebugDraw.Benchmark.ScaleMatrix`, full
-  table in `CkJolt/CLAUDE.md`). What remains is the walk itself. Accepted.
+  table in `CkJolt/Claude.md`). What remains is the walk itself. Accepted.
 - **`TryPick_Body` is O(live instances) per click — measured, accepted.** 14.0 ms at 100k instances. A
   click handler, not a tick; a seventh of a frame once per click is not a problem worth structure.
 - **Collection and filtering are O(all rows) per refresh — STILL UNMEASURED**, with no virtualisation
@@ -427,7 +427,10 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
 
 ## See also
 
-- `CkJolt/CLAUDE.md` (CkFoundation) — the facility: target, capture processor, palette, bucket model.
+- `CkJolt/Claude.md` (CkFoundation) — the facility: target, capture processor, palette, bucket model,
+  draw channels and draw flags. The filename really is `Claude.md`, not `CLAUDE.md` — the module's own
+  docs are the odd one out in this suite, and a `CLAUDE.md` link from here resolves on Windows and breaks
+  everywhere else.
   The contract this module renders.
 - `CkDebuggerCommon/CLAUDE.md` — shared widgets, chrome and lane rules, row contracts, safety rules.
 - `CkDebuggerLauncher/CLAUDE.md` — the descriptor census this module's tab id is enforced against.

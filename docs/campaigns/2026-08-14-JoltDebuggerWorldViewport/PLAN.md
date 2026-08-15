@@ -7,7 +7,7 @@
 | Phase | Name | Scope (repo) | Status |
 |---|---|---|---|
 | 1 | World-targetable batched Jolt debug renderer | CkFoundation/CkJolt | ✅ Done 2026-08-15 (uncommitted, pending user commit approval) |
-| 2 | Preview-world viewport shell + wireframe/solid + camera bar | CkGameplayDebugger/CkJoltDebugger | ⏳ Pending |
+| 2 | Preview-world viewport shell + wireframe/solid + camera bar | CkGameplayDebugger/CkJoltDebugger | ✅ Done 2026-08-15 (uncommitted; `[EDITOR-VERIFY]` pending) |
 | 3 | Outliner + selection sync + picking + detail | CkGameplayDebugger/CkJoltDebugger (+ CkJolt read APIs as needed) | ⏳ Pending |
 | 4 | 100k scale hardening, measurement, polish, docs | both | ⏳ Pending |
 | — | Ship (ck-ship-dev, user-gated) | both + superproject pointer bumps | ⏳ Pending |

@@ -1,12 +1,20 @@
 # Jolt Debugger — World Viewport — PROGRESS.md (living log)
 
 ## Current state  <!-- supersedes everything below; update at EVERY phase boundary and session end -->
-**As of 2026-08-15 (CkGameplayDebugger dev @ d6b2ad0, CkFoundation dev @ 2234456a7 + uncommitted
-CkJolt work, CkTests dev + 1 uncommitted spec file):** **PHASE 1 DONE, verified, UNCOMMITTED** —
-awaiting user approval to commit. Gate of record (orchestrator-run, serial): full suite 1147/1150
-with failing set ⊆ baseline (zero new); scoped Jolt 62/62 exit 0 (SQLite reds proven lane noise).
-Adversarial review's 12 in-scope findings fixed + re-verified; 6 DebugDraw specs green incl.
-multi-target prune census and preview-world proof. CkJolt/CLAUDE.md rewritten.
+**As of 2026-08-15 (late):** **PHASE 2 DONE, verified, UNCOMMITTED** — awaiting user commit
+approval. Phase 1 committed earlier (CkFoundation 5edf6c152, CkTests fbd99927, CkGameplayDebugger
+c804e7b; local, unpushed). Phase-2 gate of record (orchestrator, serial): full suite 1146/1150
+failing set == baseline's 4 names (delta-zero); scoped Jolt+JoltDebugger 67/67 exit 0 (8/8
+facility + 4/4 debugger specs). Two adversarial review rounds this campaign, 22 findings fixed
+total. `[EDITOR-VERIFY]` A–D (12 steps) in PHASE_2.md awaits a human PIE pass.
+**Commit scope (ours):** CkFoundation `Source/CkJolt/Subsystem/{CkJolt_DebugDrawTarget.h,.cpp,
+_Impl.h, CkJolt_DebugRenderer.cpp}` (Unit V + P2 fix #4); CkTests the same spec file (2 new
+specs + hardening); CkGameplayDebugger `Source/CkJoltDebugger/**` (Build.cs, Module.{h,cpp},
+Window/SCkJoltDebuggerWindow.{h,cpp}, new Viewport/SCkJoltDebugger_3dViewport.{h,cpp}, new
+Private/Tests/CkJoltDebuggerViewport.spec.cpp, new CLAUDE.md) + `docs/campaigns/…/{PHASE_2.md,
+PLAN.md, PROGRESS.md}`. NOT ours: unchanged list from Phase 1.
+**Next:** user commit approval → Phase 3 (outliner + selection sync + picking + detail; re-add
+FrameSelection with a real producer).
 **Commit scope (ours only):** CkFoundation `Source/CkJolt/*` (12 M + 6 new), CkTests
 `Source/CkTests/Private/UnitTests/CkJolt/Test_JoltDebugDraw_TargetReconcile.cpp` (new),
 CkGameplayDebugger `docs/campaigns/2026-08-14-JoltDebuggerWorldViewport/*` (new). NOT ours (never
@@ -27,8 +35,8 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 | Phase | State |
 |---|---|
 | Docs/decisions | ✅ Done 2026-08-14 |
-| 1 — CkJolt renderer facility | ✅ Done 2026-08-15 (uncommitted; gate 62/62 + full suite ⊆ baseline) |
-| 2 — viewport shell | ⏳ Pending |
+| 1 — CkJolt renderer facility | ✅ Done 2026-08-15, COMMITTED (5edf6c152 / fbd99927) |
+| 2 — viewport shell | ✅ Done 2026-08-15 (uncommitted; 67/67 serial + full suite delta-zero; `[EDITOR-VERIFY]` pending) |
 | 3 — outliner + selection | ⏳ Pending |
 | 4 — scale + polish | ⏳ Pending |
 | Ship | ⏳ Pending |
@@ -79,6 +87,80 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
   green in the serial baseline). Orchestrator's serial full gate is the arbiter.
 
 ## Dated entries (append-only, newest first)
+
+### 2026-08-15 — Phase-2 fix-up (Unit VII) landed; [P2-D21] framing-movement assertion ruled OUT
+- All 10 P2-D20 fixes implemented + evidence (executor report): demand push via
+  `FGlobalTabmanager::OnTabForegrounded_Subscribe` (fires both directions; SDockTab has no
+  deactivate delegate; ordering verified `SDockingTabWell.cpp:675→696`) + explicit demand-off
+  before unregister in dtor; FrameSelection removed; lanes restructured (Primary = viewport
+  render mode; "In-world draw" Context group holds the CVar toggles with game-viewport tooltips);
+  `Count` sentinel + `static_assert(<=8)`; dead camera-preset getter removed; `HandleEndPie`
+  DELETED (confirmed redundant: `CkDebuggerCommon_Module.cpp:64-67,109` broadcasts
+  SessionInvalidated on EndPIE); ortho eye backed off `Radius*2` along −view; `[0]` guarded;
+  ContentBounds spec off-origin + restore-on-unhide; viewport specs `CameraPresets` (7 presets,
+  projection + direction) and `FrameAllWithoutContentIsInert`.
+- Scoped gates (executor): JoltDebugger 4/4; Jolt 66/67 (8/8 DebugDraw; sole red = SQLite lane
+  noise, `FrameCostMatrix`, 6th rotation); DebuggerLauncher 3/3. Build exit 0.
+- **[P2-D21]** finding-7 second half (FrameAll moves the camera toward real content bounds)
+  RULED OUT of headless spec coverage: option (a) breaks P1-D9 (debugger never touches
+  `PhysicsSystem`), option (b) adds production API solely for a test. Preset math is
+  spec-covered; framing-on-real-content and the ortho eye offset go to `[EDITOR-VERIFY]`.
+- Crowd follow-up recorded (not chased): `SCkCrowdDebugger_3dViewport.cpp:632-637` ortho
+  FrameBounds places the eye at the box center — carry the Jolt fix over during the Crowd
+  refactor campaign.
+
+### 2026-08-15 — Phase-2 adversarial review: 10 findings; triage ruled [P2-D20]
+- CLEAN: destruction ordering (target dies before preview world), registration/no-dangle,
+  preview world ticked (ISM render-state flushes), GC, Slate contracts, all 9 camera buttons
+  map correctly, all 7 color classes toggleable, ContentBounds zero-instance guard, packaged
+  safety, module lifecycle, doctrine.
+- **[P2-D20] FIX NOW (Unit VII):** #1 demand latches ON when the tab is backgrounded (Tick stops
+  → last-seen visible sticks; capture runs forever into an invisible world) — pull→push:
+  drive demand from tab foreground/activation delegates in addition to Tick, and force
+  demand-off in the window's `OnTabClosed`/destructor path; #2 dead FrameSelection: DELETE the
+  preset, member, button and F-hotkey duplication for Phase 2 (Phase 3 re-adds them WITH a
+  selection producer — recorded as a Phase-3 work item); #3 the Primary-lane CVar toggles gate
+  the in-world draw, not the viewport — MOVE them to a Context group labelled "In-world draw"
+  and give the Primary lane the viewport controls (render mode); #4 `_HiddenClassMask` uint8
+  silent overflow → `static_assert` on class count via a `Count` sentinel; #5 delete dead
+  `Get_CameraPreset`/`_CameraPreset`; #6 route `HandleEndPie` to `HandleSessionInvalidated`
+  (which clears the selector) — or delete it, since DebugSessionLifecycle already broadcasts on
+  EndPIE (executor confirms by reading the lifecycle source, no guessing); #7 viewport spec:
+  add real assertions — ApplyPreset branches set expected projection/rotation, Set_Target +
+  a synthetic bounds → FrameBounds moves the camera; #8 ortho FrameBounds camera at box CENTER
+  (inherited from Crowd — solid ISMs will show half the bodies clipped): back the eye off along
+  the view direction by the bounds' extent (fix here; note as a Crowd follow-up); #9 guard
+  `InColorClasses[0]` with `CK_ENSURE_IF_NOT`; #10 ContentBounds spec asserts restore-on-unhide.
+- Gate of record (launched before review) will be invalidated by the fix-up → re-run after.
+
+### 2026-08-15 — Phase 2 Unit VI done (viewport shell); gate + adversarial review in flight
+- CkJoltDebugger (uncommitted): `Viewport/SCkJoltDebugger_3dViewport.{h,cpp}` (Crowd shell,
+  9 presets, no PDI draw), window migrated to `FCkDebuggerModel_WorldSelector`, SSplitter
+  viewport 0.72 / stat rail 0.28, one target bound to preview world with ungated demand sync +
+  subsystem re-registration on pointer change; `OnWorldChanged`/session-invalidated/`EndPIE` →
+  one handler; module gained canonical `OnEnginePreExit` teardown; Build.cs +RenderCore, RHI,
+  InputCore, UMG; new spec `Ck.JoltDebugger.Viewport.ConstructsWithoutEnsure`.
+  Icons: camera = Crowd's; wireframe = `Grid`; populations = `Jolt`/`World`/`Probe`/`Person`.
+- Executor evidence: builds exit 0 (one with --generate); JoltDebugger specs 2/2; launcher
+  census 3/3. `Get_CameraPreset()` records FrameAll/FrameSelection verbatim (nothing consumes
+  it yet — noted for Phase 3 if an active-button highlight lands).
+- Orchestrator: full serial gate of record launched; fresh adversarial review dispatched.
+
+### 2026-08-15 — Phase 2 Unit V done (facility extensions); Unit VI dispatched to fresh executor
+- CkJolt (uncommitted): `Set_ClassVisibility`/`Get_IsClassVisible` (bucket-level SetVisibility,
+  `_HiddenClassMask`, new buckets seed visibility from class), `Get_ContentBounds()` (JPH-free
+  FBox via `CalcBounds` — the cached `Bounds` lags render-state update; real defect caught by the
+  spec and fixed). Two new specs: `ClassVisibility`, `ContentBounds`. Scoped Jolt 63/64 (8/8
+  DebugDraw green; sole red = 5th rotating SQLite lane-noise victim). Builds exit 0.
+- **[P2-D19] RATIFIED executor semantics:** hidden classes are STILL captured (skipping would
+  freeze slots → stale pose on unhide, and entangles sleep-diff/sweep); `Get_ContentBounds`
+  EXCLUDES hidden classes (consumer is camera framing — never frame invisible content).
+- Executor stopped at the Unit-VI boundary by choice (context ~810k tokens; no ungated Slate).
+  Research banked: `CkJoltDebugger.Build.cs` needs `RenderCore, RHI, InputCore, UMG` for the
+  viewport (⇒ `--generate` on the following build); world lookup migrates from hand-rolled
+  `FindGameWorld` (`SCkJoltDebuggerWindow.cpp:59-81`) to `FCkDebuggerModel_WorldSelector`;
+  Crowd camera shell transfers directly with `Get_AllFrameBounds` → `Target->Get_ContentBounds()`.
+- `[EDITOR-VERIFY]` draft (16 steps, A–D) received; integrated into PHASE_2.md at phase exit.
 
 ### 2026-08-15 — gate of record, part 1 (full suite) PASSED; part 2 (serial Jolt) in flight
 - Full no-pattern serial suite on final artifact: **1150 total / 1147 pass / 3 fail / 0
@@ -182,3 +264,4 @@ orchestrator re-runs full gate vs baseline → adversarial review → accept/bou
 |---|---|---|---|
 | 2026-08-14 | Fable 5 | Campaign opened: research, user rulings P0-D1…D7, doc set authored | 4× Opus Explore (research); no executors yet |
 | 2026-08-14→15 | Fable 5 | Phase 1 executed end-to-end: baseline, rulings P1-D8…D18, facility implemented, adversarially reviewed, 12 fixes, multi-target spec, docs weld, gate of record green | 1× Opus Explore (wireframe investigation), 1× Opus executor (4 sequential units via resume), 1× Opus adversarial reviewer; gates run by orchestrator |
+| 2026-08-15 | Fable 5 | Phase 1 committed; Phase 2 executed end-to-end: facility extensions, viewport shell, review (10 findings) fixed, rulings P2-D19…D21, docs weld, gate of record green | standing Opus executor (Unit V), fresh Opus executor (Units VI/VII + docs), 1× Opus adversarial reviewer; gates run by orchestrator |

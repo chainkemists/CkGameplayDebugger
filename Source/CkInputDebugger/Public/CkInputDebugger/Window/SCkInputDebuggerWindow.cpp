@@ -32,6 +32,8 @@
 
 #include "Framework/Application/SlateApplication.h"
 
+#include "HAL/IConsoleManager.h"
+
 #if WITH_EDITOR
 #include "Editor.h"
 #endif
@@ -122,7 +124,7 @@ auto
     // it can never starve viewport input (ck-slate-tools §3).
     if (FSlateApplication::IsInitialized())
     {
-        _KeyObserver = MakeShared<FCkInputDebugger_KeyActivityObserver>();
+        _KeyObserver = MakeShared<FCkDebug_KeyActivityObserver>();
         FSlateApplication::Get().RegisterInputPreProcessor(_KeyObserver);
     }
 
@@ -147,6 +149,26 @@ auto
                     {
                         _ShowActiveActionsOnly = InIsEnabled;
                         ApplyFilterAndHighlight();
+                    })},
+                FCkDebug_IconToggleAction{
+                    TEXT("InputHudOverlay"),
+                    TEXT("World"),
+                    FText::FromString(TEXT("Input HUD overlay")),
+                    FText::FromString(TEXT("Toggle the on-screen QA input overlay (ck.InputOverlay).\n"
+                         "Off (0) hides it, on (2) shows the auto device visual.")),
+                    TAttribute<bool>::CreateLambda([]() -> bool
+                    {
+                        const auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay"));
+                        return CVar != nullptr && CVar->GetInt() != 0;
+                    }),
+                    FOnCkDebug_IconToggleChanged::CreateLambda([](bool InIsOn)
+                    {
+                        if (auto* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")))
+                        { CVar->Set(InIsOn ? 2 : 0, ECVF_SetByConsole); }
+                    }),
+                    TAttribute<bool>::CreateLambda([]() -> bool
+                    {
+                        return IConsoleManager::Get().FindConsoleVariable(TEXT("ck.InputOverlay")) != nullptr;
                     })}
             })),
             FCkDebug_CommandGroup::Context(TEXT("InputContext"), FText::FromString(TEXT("Player and input search")), BuildToolbar())
@@ -1180,8 +1202,8 @@ auto
     UpdateKeyStrip()
     -> void
 {
-    static const auto EmptyHeld = TArray<FCkInputDebugger_HeldKey>{};
-    static const auto EmptyRecent = TArray<FCkInputDebugger_RecentKey>{};
+    static const auto EmptyHeld = TArray<FCkDebug_HeldKey>{};
+    static const auto EmptyRecent = TArray<FCkDebug_RecentKey>{};
     const auto& Held = _KeyObserver.IsValid() ? _KeyObserver->Get_HeldKeys() : EmptyHeld;
     const auto& Recent = _KeyObserver.IsValid() ? _KeyObserver->Get_RecentKeys() : EmptyRecent;
 

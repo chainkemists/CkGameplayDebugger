@@ -20,6 +20,13 @@ namespace ck_jolt_debugger_detail_panel
     auto Get_UnsetText() -> FText
     { return FText::FromString(TEXT("--")); }
 
+    // The referent an unbound panel hands back, so the whole read path can stay by-reference.
+    auto Get_NoSelection() -> const TOptional<FCkJoltDebugger_BodySnapshot>&
+    {
+        static const auto None = TOptional<FCkJoltDebugger_BodySnapshot>{};
+        return None;
+    }
+
     auto Get_PopulationText(
         ECkJoltDebugger_Population InPopulation) -> FText
     {
@@ -109,7 +116,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet()
                         ? ck_jolt_debugger_detail_panel::Get_PopulationText(Selection->Population)
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -125,7 +132,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet() && Selection->HasSimulationState
                         ? ck_jolt_debugger_detail_panel::Get_MotionText(Selection->MotionType)
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -141,7 +148,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet() && Selection->HasSimulationState
                         ? ck_jolt_debugger_detail_panel::Get_SleepText(Selection->SleepState)
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -157,7 +164,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet() && Selection->BodyKey.IsSet()
                         ? FText::FromString(ck::Format_UE(TEXT("{}"), *Selection->BodyKey))
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -173,7 +180,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
 
                     if (NOT Selection.IsSet() || NOT Selection->HasLinearVelocity)
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
@@ -193,7 +200,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet() && NOT Selection->SourceActorName.IsEmpty()
                         ? FText::FromString(Selection->SourceActorName)
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -209,7 +216,7 @@ auto
                     if (NOT Panel.IsValid())
                     { return ck_jolt_debugger_detail_panel::Get_UnsetText(); }
 
-                    const auto Selection = Panel->Get_Selection();
+                    const auto& Selection = Panel->Get_Selection();
                     return Selection.IsSet() && Selection->Population == ECkJoltDebugger_Population::BakedStatic
                         ? FText::AsNumber(Selection->NumBodies)
                         : ck_jolt_debugger_detail_panel::Get_UnsetText();
@@ -224,9 +231,11 @@ auto
 auto
     SCkJoltDebugger_DetailPanel::
     Get_Selection() const
-    -> TOptional<FCkJoltDebugger_BodySnapshot>
+    -> const TOptional<FCkJoltDebugger_BodySnapshot>&
 {
-    return _GetSelection.IsBound() ? _GetSelection.Execute() : TOptional<FCkJoltDebugger_BodySnapshot>{};
+    return _GetSelection.IsBound()
+        ? _GetSelection.Execute()
+        : ck_jolt_debugger_detail_panel::Get_NoSelection();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -278,7 +287,7 @@ auto
                 if (NOT Panel.IsValid())
                 { return FCk_Handle{}; }
 
-                const auto Selection = Panel->Get_Selection();
+                const auto& Selection = Panel->Get_Selection();
                 return Selection.IsSet() ? Selection->Handle : FCk_Handle{};
             })
         ];

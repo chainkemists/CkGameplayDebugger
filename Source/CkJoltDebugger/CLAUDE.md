@@ -21,8 +21,8 @@ the chrome's `Sync from ECS` action all name that one value.
 
 **Depends on:** `CkCore`, `CkEcs`, `CkJolt`, `CkSpatialQuery` (the Probe fragment behind the sensor
 population), `CkDebuggerCommon`, `CkEditorTools`, plus `RenderCore`, `RHI`, `InputCore` and `UMG` for
-the viewport shell (`FSceneViewport` + `FUMGViewportClient`), and `UnrealEd` /
-`WorkspaceMenuStructure` behind `Target.bBuildEditor`.
+the viewport shell (`FSceneViewport` + `FUMGViewportClient`), `DeveloperSettings` for the per-user
+preferences, and `UnrealEd` / `WorkspaceMenuStructure` behind `Target.bBuildEditor`.
 
 ---
 
@@ -74,7 +74,10 @@ change nothing, and a preview world that simulated would fight the world being i
 | Frame Selection | unchanged | frames `Get_HighlightedBodyBounds()`; **F**; inert with no selection |
 
 Orbit RMB · pan MMB · wheel zoom · RMB+wheel camera speed · WASD / QE / arrows flight (perspective
-only) · **Home** = Frame All · **F** = Frame Selection · plain LMB = pick.
+only) · **Home** = Frame All · **bare F** = Frame Selection · plain LMB = pick.
+
+**`F` requires no modifiers.** `Ctrl+F`, `Alt+F`, `Shift+F` and `Cmd+F` fall through to whatever else
+binds them; only an unmodified F frames the selection. Home is unchanged.
 
 **Ortho framing backs the eye off along −view by the bounding-sphere radius plus a margin.** Sitting the
 eye on the box centre — the shape inherited from the Crowd viewport — puts half the content behind the
@@ -88,12 +91,23 @@ body's NORMAL instance, so a row click frames on THAT click without waiting for 
 
 ### Click-picking
 
-A plain left click (no RMB/MMB held — those are camera drags) deprojects the cursor and asks the
-facility for the nearest live instance: `TryPick_Body(Origin, Direction)`, an oriented-box test in
-instance space. **The widget never raycasts the physics world** — the preview scene has no physics
-scene, and the game world's belongs to a step this module must not touch. A click on empty space
-clears the selection; a click that hits an instance no row can be found for leaves the selection
-alone, because the click did hit something.
+A plain left click deprojects the cursor and asks the facility for the nearest live instance:
+`TryPick_Body(Origin, Direction)`, an oriented-box test in instance space. **The widget never raycasts
+the physics world** — the preview scene has no physics scene, and the game world's belongs to a step
+this module must not touch. A click on empty space clears the selection; a click that hits an instance
+no row can be found for leaves the selection alone, because the click did hit something.
+
+**The pick resolves on RELEASE, not press, and only within ~4 px of where the button went down.** A
+camera drag also opens with a button press, so a press alone cannot tell a click from the start of a
+gesture — picking there means every orbit that happens to begin over a body re-selects it. The press
+position is remembered, the release compares against it, and a right or middle button arriving in
+between cancels the pending pick outright (that gesture became a camera drag after the fact). Losing
+focus clears it too — `FSceneViewport` empties its key state on the way out, so a press that never gets
+its release must not pair with the next release that arrives.
+
+**Plain LMB is CONSUMED by the viewport and never falls through.** Both the press and the release
+return handled, whether or not anything was picked, so nothing behind the viewport sees a left click.
+That is what keeps a click on empty space a deliberate "clear the selection" rather than a stray event.
 
 ---
 
@@ -112,12 +126,22 @@ by `FCkJoltDebugger_DataCollector` on the window's refresh-gated Tick. Four popu
 - **`BodyKey` is `TOptional<uint64>`.** A row with no drawn body behind it — a baked actor whose bodies
   were already removed — has none, and 0 is a VALID Jolt body key, so a sentinel would alias onto the
   first body ever created. Rows are looked up by handle wherever a lookup has the choice.
+- **Rows are sorted by population, then display name, STABLY.** Stable because the collector emits each
+  population in registry order, and two rows with the same name must not swap places between refreshes
+  for no reason the user can see. The list refreshes when the visible SET changes **or when the ORDER
+  does** — a set-only check would leave the view rendering its cached order after a rename moved a row.
 - **Dual search**: the Filter query hides rows; the Highlight query dims the survivors. Both match what
   the row renders (name, population pill, detail text) plus the body key.
+- **The selected row is pinned past the filter, dimmed.** Narrowing the query after selecting a row must
+  not make that row vanish: the selection would be invisible while the detail panel beside it still
+  showed its facts. The pin follows the selection and nothing else — clear the selection and the filter
+  hides the row again. A pinned row renders muted, the same way a highlight non-match does
+  (`Get_IsRowDimmed`).
 - **An external selector reveals its row.** `SelectByHandle` / `SelectByEntity` search the UNFILTERED
-  set; if the match is currently filtered out they clear the FILTER query and then select it. A
-  selection the user cannot see is indistinguishable from no selection, which would read as a broken
-  "Open In". The Highlight query is left alone — it dims, it never hides.
+  set; if the match is currently filtered out they clear the FILTER query and then select it — the pin
+  covers the row that IS selected, not the one about to be. A selection the user cannot see is
+  indistinguishable from no selection, which would read as a broken "Open In". The Highlight query is
+  left alone — it dims, it never hides.
 - Right-click copies the row text or the full entity handle (`SListView::OnContextMenuOpening`, never a
   click-trapping widget inside the row).
 
@@ -279,6 +303,35 @@ framing source) excludes hidden classes because framing invisible content is nev
 
 ---
 
+## Per-user preferences
+
+`UCkJoltDebuggerSettings` (`Public/CkJoltDebugger/Settings/`) — `Config=GameUserSettings`,
+`GetContainerName() == "Editor"`, category `CkGameplayDebugger`. Per-user, never committed, available in
+packaged developer tools, presented under **Editor Preferences → CkGameplayDebugger → Ck Jolt Debugger**.
+This is the plugin-wide settings split, not a local choice: see `CkGameplayDebugger/CLAUDE.md`
+§ "Settings split", precedent `UCkCrowdDebuggerSettings`.
+
+| Preference | Restored into |
+|---|---|
+| `RenderMode` (Solid / Wireframe) | `Set_RenderMode` on the target |
+| `ShowJoltBodies` / `ShowBakedStaticWorld` / `ShowSensors` / `ShowCharacters` | `Set_ClassVisibility` per colour class |
+| `CameraPreset` (the 7 orientations) | `ApplyPreset` on the viewport |
+
+**Written the moment the user flips a control** (`GetMutableDefault<>` + `SaveConfig()` inside the
+toggle's own handler), **read once at the end of `Construct`** (`DoApplySavedPreferences`). Restoring
+after the widget tree is built, not before, is load-bearing: every toggle reads its state back off the
+target, so a restore that ran first would be overwritten by nothing and simply not show.
+
+**One table defines a population toggle** — `ck_jolt_debugger::Get_PopulationGroups()` carries the icon,
+label, tooltip, colour classes AND the `bool UCkJoltDebuggerSettings::*` it persists into. Both the
+toolbar builder and the restore pass read that table, so a toggle and its saved value cannot come to
+describe different colour classes. Add a population by adding a row.
+
+**Framing presets are deliberately not persisted.** Frame All and Frame Selection are actions against
+whatever is in the world at that moment, not a camera state a window can be restored into.
+
+---
+
 ## Tests
 
 `Private/Tests/*.spec.cpp`, whole file inside `#if WITH_EDITOR && WITH_DEV_AUTOMATION_TESTS`,
@@ -291,7 +344,8 @@ framing source) excludes hidden classes because framing invisible content is nev
 | `Ck.JoltDebugger.Viewport.CameraPresets` | every preset sets its projection mode and points the camera down its expected axis (compared as forward vectors — rotator normalization must not make it flaky) |
 | `Ck.JoltDebugger.Viewport.FrameAllWithoutContentIsInert` | framing invalid bounds leaves the camera untouched instead of snapping to the origin |
 | `Ck.JoltDebugger.Outliner.ConstructsWithoutEnsure` | the panel builds, reconciles an EMPTY pass and a `Clear` without an ensure, and resolves an absent handle to nothing |
-| `Ck.JoltDebugger.Outliner.RowsSelectFilterAndSurviveRefresh` | three rows on three real entities (a standalone `ck::FEcsWorld`): select-by-handle finds the right row, a refresh over the same entities KEEPS the selection (the pointer-reuse contract), the filter hides non-matches, and an external select reaches a filtered-out row and reveals every row again |
+| `Ck.JoltDebugger.Outliner.RowsSelectFilterAndSurviveRefresh` | three rows on three real entities (a standalone `ck::FEcsWorld`): select-by-handle finds the right row, a refresh over the same entities KEEPS the selection (the pointer-reuse contract), the filter hides non-matches EXCEPT the selected row, which stays pinned and dimmed while the matching row is not, the pin disappears with the selection, and an external select reaches a filtered-out row and reveals every row again |
+| `Ck.JoltDebugger.Settings.ConstructRestoresPreferences` | the settings live in the `Editor` container, and the window constructs ensure-free with NON-DEFAULT preferences — which is what drives the restore path, camera preset included. The developer's own CDO values are saved and put back by an RAII guard, so a failing prepass cannot leave test values on the real per-user settings |
 | `Ck.JoltDebugger.Detail.ConstructsWithoutEnsure` | every value lambda survives a completely unbound `GetSelection` and reads `--` |
 | `Ck.JoltDebugger.Detail.RowsReflectTheSelection` | the built rows render the bound selection's own values (population / motion / sleep / body key), an unsampled velocity reads `--` and a sampled one reaches the row, an unset body key degrades to `--`, and clearing the selection empties every row |
 
@@ -323,23 +377,29 @@ Headless specs construct widgets; they cannot render, and they cannot give a tar
   a row the filter is currently hiding
 - the game-viewport picker previews and picks only Jolt entities and their owner chain
 - the detail panel's velocity tracks a moving dynamic body, and reads `--` for a character
+- **preferences persist across an editor restart** — render mode, the four population toggles, and the
+  camera orientation all come back as they were left
+- **a selected row stays visible, dimmed, when a filter typed afterwards excludes it**
+- **`Ctrl+F` / `Alt+F` do NOT frame; a drag-then-release does NOT pick; a click does**
+- a baked-static click on a NON-first body of an actor selects that actor's row
+- `[PACKAGED-VERIFY]` both engine debug materials render in a packaged Development build — exact
+  acceptance steps in `CkJolt/CLAUDE.md` § "Colour + wireframe"
 
 ---
 
-## Known costs — unmeasured
+## Known costs
 
-None of these is known to hurt. They are recorded so the next profiling pass starts from a list rather
-than from scratch, and so nobody "optimises" one of them on a hunch:
-
-- **One selection change = one full inactive-body pass.** `Set_HighlightedBody` re-arms the facility's
-  revision-keyed pass so a static or long-asleep body gains its overlay on the very next capture
-  instead of waiting for the scene to change. That pass is O(all bodies), and a DESELECT pays it too.
-  Accepted as the correct-by-construction shape; measure before optimising it into an incremental one.
-- **Collection and filtering are O(all rows) per refresh**, with no virtualisation beyond `SListView`'s
-  own. Never profiled at a 100k-body world — profile the collector walk, the filter pass and the row
-  reconcile together before changing any of them.
-- **`TryPick_Body` is O(live instances) per click.** A click handler, not a tick; only a problem if a
-  pick becomes perceptibly slow at scale.
+- **One selection change = one full inactive-body WALK — CLOSED, measured.** `Set_HighlightedBody`
+  re-arms the facility's revision-keyed pass so a static or long-asleep body gains its overlay on the
+  very next capture. That pass became incremental in Phase 4, so it now draws only the newly selected
+  body: **23.6 ms at 100k bodies, down from 249.9 ms** (`Ck.Jolt.DebugDraw.Benchmark.ScaleMatrix`, full
+  table in `CkJolt/CLAUDE.md`). What remains is the walk itself. Accepted.
+- **`TryPick_Body` is O(live instances) per click — measured, accepted.** 14.0 ms at 100k instances. A
+  click handler, not a tick; a seventh of a frame once per click is not a problem worth structure.
+- **Collection and filtering are O(all rows) per refresh — STILL UNMEASURED**, with no virtualisation
+  beyond `SListView`'s own, and the sort adds an O(n log n) pass on top. The facility benchmark covers
+  the CkJolt side only; a 100k-body world's collector walk, filter pass, sort and row reconcile have
+  never been profiled together. Profile them as one before changing any of them.
 
 ---
 

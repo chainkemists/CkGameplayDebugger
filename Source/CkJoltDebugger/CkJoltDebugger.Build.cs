@@ -11,6 +11,9 @@ public class CkJoltDebugger : CkModuleRules
             "Engine",
             "GameplayTags",
 
+            // UCkJoltDebuggerSettings — the per-user preferences the window restores at construct.
+            "DeveloperSettings",
+
             // Preview-scene viewport: FSceneViewport + FUMGViewportClient + camera input.
             "RenderCore",
             "RHI",

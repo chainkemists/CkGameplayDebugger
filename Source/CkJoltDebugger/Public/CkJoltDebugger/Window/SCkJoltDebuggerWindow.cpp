@@ -1,5 +1,6 @@
 #include "CkJoltDebugger/Window/SCkJoltDebuggerWindow.h"
 
+#include "CkJoltDebugger/Settings/CkJoltDebuggerSettings.h"
 #include "CkJoltDebugger/Viewport/SCkJoltDebugger_3dViewport.h"
 #include "CkJoltDebugger/Window/SCkJoltDebugger_DetailPanel.h"
 #include "CkJoltDebugger/Window/SCkJoltDebugger_OutlinerPanel.h"
@@ -137,6 +138,69 @@ namespace ck_jolt_debugger
             ECk_Jolt_DebugDraw_ColorClass::Character
         };
     }
+
+    // One definition of what a population toggle IS: its chrome, the colour classes it drives, and the
+    // preference it persists into. Both the toolbar that builds the toggles and the restore-at-construct pass
+    // read this, so a toggle and its saved value can never describe different classes.
+    struct FPopulationGroup
+    {
+        FName _IconId;
+        FString _Label;
+        FString _ToolTip;
+        TArray<ECk_Jolt_DebugDraw_ColorClass> _ColorClasses;
+        bool UCkJoltDebuggerSettings::* _Preference = nullptr;
+    };
+
+    static auto Get_PopulationGroups() -> TArray<FPopulationGroup>
+    {
+        return
+        {
+            FPopulationGroup{
+                TEXT("Jolt"),
+                TEXT("Jolt Bodies"),
+                TEXT("Show rigid bodies composed through CkJoltBody — static, kinematic, and dynamic (awake or asleep)."),
+                {
+                    ECk_Jolt_DebugDraw_ColorClass::Static,
+                    ECk_Jolt_DebugDraw_ColorClass::Kinematic,
+                    ECk_Jolt_DebugDraw_ColorClass::Dynamic_Awake,
+                    ECk_Jolt_DebugDraw_ColorClass::Dynamic_Sleeping
+                },
+                &UCkJoltDebuggerSettings::ShowJoltBodies},
+            FPopulationGroup{
+                TEXT("World"),
+                TEXT("Baked Static World"),
+                TEXT("Show the baked level geometry extracted into the Jolt static world."),
+                {ECk_Jolt_DebugDraw_ColorClass::BakedStatic},
+                &UCkJoltDebuggerSettings::ShowBakedStaticWorld},
+            FPopulationGroup{
+                TEXT("Probe"),
+                TEXT("Sensors"),
+                TEXT("Show sensor bodies — the trigger volumes behind CkSpatialQuery probes."),
+                {ECk_Jolt_DebugDraw_ColorClass::Sensor},
+                &UCkJoltDebuggerSettings::ShowSensors},
+            FPopulationGroup{
+                TEXT("Person"),
+                TEXT("Characters"),
+                TEXT("Show CkJoltCharacter capsules. Characters have no broadphase body — they are drawn from their own shape."),
+                {ECk_Jolt_DebugDraw_ColorClass::Character},
+                &UCkJoltDebuggerSettings::ShowCharacters}
+        };
+    }
+
+    static auto Get_CameraPreset(
+        ECkJoltDebugger_CameraPref InPreference) -> ECkJoltDebugger_CameraPreset
+    {
+        switch (InPreference)
+        {
+            case ECkJoltDebugger_CameraPref::Top:    return ECkJoltDebugger_CameraPreset::Top;
+            case ECkJoltDebugger_CameraPref::Bottom: return ECkJoltDebugger_CameraPreset::Bottom;
+            case ECkJoltDebugger_CameraPref::Left:   return ECkJoltDebugger_CameraPreset::Left;
+            case ECkJoltDebugger_CameraPref::Right:  return ECkJoltDebugger_CameraPreset::Right;
+            case ECkJoltDebugger_CameraPref::Front:  return ECkJoltDebugger_CameraPreset::Front;
+            case ECkJoltDebugger_CameraPref::Back:   return ECkJoltDebugger_CameraPreset::Back;
+            default:                                 return ECkJoltDebugger_CameraPreset::Perspective;
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -237,6 +301,10 @@ auto
             ]
         ]
     ];
+
+    // After the tree, not before: the toggles read their state back off the target, so the restore has to be
+    // the last word on it rather than something a freshly-built control overwrites.
+    DoApplySavedPreferences();
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -846,16 +914,26 @@ auto
     const auto MakeCameraButton = [this](
         FName InIconId,
         const TCHAR* InToolTip,
-        ECkJoltDebugger_CameraPreset InPreset) -> TSharedRef<SWidget>
+        ECkJoltDebugger_CameraPreset InPreset,
+        TOptional<ECkJoltDebugger_CameraPref> InPreference) -> TSharedRef<SWidget>
     {
         return SNew(SButton)
             .ButtonStyle(FAppStyle::Get(), "SimpleButton")
             .ToolTipText(FText::FromString(InToolTip))
             .ContentPadding(FMargin{4.0f, 1.0f})
-            .OnClicked_Lambda([this, InPreset]() -> FReply
+            .OnClicked_Lambda([this, InPreset, InPreference]() -> FReply
             {
                 if (_Viewport.IsValid())
                 { _Viewport->ApplyPreset(InPreset); }
+
+                // Only the ORIENTATION presets are a state to come back to; framing is an action against
+                // whatever happens to be in the world at the time.
+                if (InPreference.IsSet())
+                {
+                    auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+                    Settings->CameraPreset = *InPreference;
+                    Settings->SaveConfig();
+                }
 
                 return FReply::Handled();
             })
@@ -866,21 +944,21 @@ auto
 
     return SNew(SHorizontalBox)
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkJoltDebugger_CameraPreset::Perspective) ]
+        [ MakeCameraButton(TEXT("ViewPerspective"), TEXT("Perspective camera"), ECkJoltDebugger_CameraPreset::Perspective, ECkJoltDebugger_CameraPref::Perspective) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkJoltDebugger_CameraPreset::Top) ]
+        [ MakeCameraButton(TEXT("ViewTop"), TEXT("Top orthographic camera"), ECkJoltDebugger_CameraPreset::Top, ECkJoltDebugger_CameraPref::Top) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkJoltDebugger_CameraPreset::Bottom) ]
+        [ MakeCameraButton(TEXT("ViewBottom"), TEXT("Bottom orthographic camera"), ECkJoltDebugger_CameraPreset::Bottom, ECkJoltDebugger_CameraPref::Bottom) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkJoltDebugger_CameraPreset::Left) ]
+        [ MakeCameraButton(TEXT("ViewLeft"), TEXT("Left orthographic camera"), ECkJoltDebugger_CameraPreset::Left, ECkJoltDebugger_CameraPref::Left) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkJoltDebugger_CameraPreset::Right) ]
+        [ MakeCameraButton(TEXT("ViewRight"), TEXT("Right orthographic camera"), ECkJoltDebugger_CameraPreset::Right, ECkJoltDebugger_CameraPref::Right) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkJoltDebugger_CameraPreset::Front) ]
+        [ MakeCameraButton(TEXT("ViewFront"), TEXT("Front orthographic camera"), ECkJoltDebugger_CameraPreset::Front, ECkJoltDebugger_CameraPref::Front) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkJoltDebugger_CameraPreset::Back) ]
+        [ MakeCameraButton(TEXT("ViewBack"), TEXT("Back orthographic camera"), ECkJoltDebugger_CameraPreset::Back, ECkJoltDebugger_CameraPref::Back) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame every drawn Jolt body (Home)"), ECkJoltDebugger_CameraPreset::FrameAll) ]
+        [ MakeCameraButton(TEXT("FrameActor"), TEXT("Frame every drawn Jolt body (Home)"), ECkJoltDebugger_CameraPreset::FrameAll, {}) ]
         + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
         [
             SNew(SButton)
@@ -923,6 +1001,12 @@ auto
             _DebugDrawTarget->Set_RenderMode(InIsWireframe
                 ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
                 : ECk_Jolt_DebugDraw_RenderMode::Solid);
+
+            auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+            Settings->RenderMode = InIsWireframe
+                ? ECkJoltDebugger_RenderModePref::Wireframe
+                : ECkJoltDebugger_RenderModePref::Solid;
+            Settings->SaveConfig();
         });
 }
 
@@ -931,78 +1015,85 @@ auto
     BuildPopulationGroup()
     -> TSharedRef<SWidget>
 {
-    return SNew(SHorizontalBox)
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            MakePopulationToggle(
-                TEXT("Jolt"),
-                TEXT("Jolt Bodies"),
-                TEXT("Show rigid bodies composed through CkJoltBody — static, kinematic, and dynamic (awake or asleep)."),
-                {
-                    ECk_Jolt_DebugDraw_ColorClass::Static,
-                    ECk_Jolt_DebugDraw_ColorClass::Kinematic,
-                    ECk_Jolt_DebugDraw_ColorClass::Dynamic_Awake,
-                    ECk_Jolt_DebugDraw_ColorClass::Dynamic_Sleeping
-                })
-        ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            MakePopulationToggle(
-                TEXT("World"),
-                TEXT("Baked Static World"),
-                TEXT("Show the baked level geometry extracted into the Jolt static world."),
-                { ECk_Jolt_DebugDraw_ColorClass::BakedStatic })
-        ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            MakePopulationToggle(
-                TEXT("Probe"),
-                TEXT("Sensors"),
-                TEXT("Show sensor bodies — the trigger volumes behind CkSpatialQuery probes."),
-                { ECk_Jolt_DebugDraw_ColorClass::Sensor })
-        ]
-        + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-        [
-            MakePopulationToggle(
-                TEXT("Person"),
-                TEXT("Characters"),
-                TEXT("Show CkJoltCharacter capsules. Characters have no broadphase body — they are drawn from their own shape."),
-                { ECk_Jolt_DebugDraw_ColorClass::Character })
-        ];
+    auto Toggles = SNew(SHorizontalBox);
+
+    for (const auto& Group : ck_jolt_debugger::Get_PopulationGroups())
+    {
+        Toggles->AddSlot().AutoWidth().VAlign(VAlign_Center)
+        [ MakePopulationToggle(Group) ];
+    }
+
+    return Toggles;
 }
 
 auto
     SCkJoltDebuggerWindow::
     MakePopulationToggle(
-        FName InIconId,
-        const FString& InLabel,
-        const FString& InToolTip,
-        TArray<ECk_Jolt_DebugDraw_ColorClass> InColorClasses) const
+        const ck_jolt_debugger::FPopulationGroup& InGroup) const
     -> TSharedRef<SWidget>
 {
-    const auto HasColorClasses = NOT InColorClasses.IsEmpty();
-    CK_ENSURE_IF_NOT(HasColorClasses, TEXT("Population toggle [{}] was given no colour classes to drive"), InLabel)
+    const auto HasColorClasses = NOT InGroup._ColorClasses.IsEmpty();
+    CK_ENSURE_IF_NOT(HasColorClasses,
+        TEXT("Population toggle [{}] was given no colour classes to drive"), InGroup._Label)
     { return SNullWidget::NullWidget; }
 
     // The whole group tracks its first class: they are only ever flipped together from here.
-    const auto RepresentativeClass = InColorClasses[0];
+    const auto RepresentativeClass = InGroup._ColorClasses[0];
+    const auto ColorClasses = InGroup._ColorClasses;
+    const auto Preference = InGroup._Preference;
 
     return SNew(SCkDebug_IconToggle)
-        .IconId(InIconId)
-        .Label(FText::FromString(InLabel))
-        .ToolTip(FText::FromString(InToolTip))
+        .IconId(InGroup._IconId)
+        .Label(FText::FromString(InGroup._Label))
+        .ToolTip(FText::FromString(InGroup._ToolTip))
         .IsOn_Lambda([this, RepresentativeClass]()
         {
             return _DebugDrawTarget.IsValid() && _DebugDrawTarget->Get_IsClassVisible(RepresentativeClass);
         })
-        .OnStateChanged_Lambda([this, InColorClasses](const bool InIsVisible)
+        .OnStateChanged_Lambda([this, ColorClasses, Preference](const bool InIsVisible)
         {
             if (NOT _DebugDrawTarget.IsValid())
             { return; }
 
-            for (const auto& ColorClass : InColorClasses)
+            for (const auto& ColorClass : ColorClasses)
             { _DebugDrawTarget->Set_ClassVisibility(ColorClass, InIsVisible); }
+
+            if (Preference == nullptr)
+            { return; }
+
+            auto* Settings = GetMutableDefault<UCkJoltDebuggerSettings>();
+            Settings->*Preference = InIsVisible;
+            Settings->SaveConfig();
         });
+}
+
+auto
+    SCkJoltDebuggerWindow::
+    DoApplySavedPreferences()
+    -> void
+{
+    const auto* Settings = GetDefault<UCkJoltDebuggerSettings>();
+
+    if (_DebugDrawTarget.IsValid())
+    {
+        _DebugDrawTarget->Set_RenderMode(Settings->RenderMode == ECkJoltDebugger_RenderModePref::Wireframe
+            ? ECk_Jolt_DebugDraw_RenderMode::Wireframe
+            : ECk_Jolt_DebugDraw_RenderMode::Solid);
+
+        for (const auto& Group : ck_jolt_debugger::Get_PopulationGroups())
+        {
+            if (Group._Preference == nullptr)
+            { continue; }
+
+            const auto IsVisible = Settings->*Group._Preference;
+
+            for (const auto& ColorClass : Group._ColorClasses)
+            { _DebugDrawTarget->Set_ClassVisibility(ColorClass, IsVisible); }
+        }
+    }
+
+    if (_Viewport.IsValid())
+    { _Viewport->ApplyPreset(ck_jolt_debugger::Get_CameraPreset(Settings->CameraPreset)); }
 }
 
 auto

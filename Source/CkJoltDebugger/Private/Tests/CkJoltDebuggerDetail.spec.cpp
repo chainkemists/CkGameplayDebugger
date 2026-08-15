@@ -45,8 +45,9 @@ auto FCkJoltDebuggerDetail_RowsReflectTheSelection::RunTest(const FString&) -> b
     auto Selection = TOptional<FCkJoltDebugger_BodySnapshot>{Snapshot};
 
     const auto Panel = SNew(SCkJoltDebugger_DetailPanel)
-        .GetSelection(FOnCkJoltDebugger_GetSelection::CreateLambda([&Selection]()
-        { return Selection; }));
+        .GetSelection(FOnCkJoltDebugger_GetSelection::CreateLambda(
+            [&Selection]() -> const TOptional<FCkJoltDebugger_BodySnapshot>&
+            { return Selection; }));
     Panel->SlatePrepass();
 
     TestTrue(TEXT("Jolt debugger detail panel lays out with a selection"), Panel->GetDesiredSize().Y > 0.0f);

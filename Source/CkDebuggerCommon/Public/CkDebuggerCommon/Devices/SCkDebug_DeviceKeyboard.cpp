@@ -21,6 +21,14 @@ namespace ck_debug_device_keyboard
 
     // The gap between caps, as a fraction of a unit — the physical board's bezel line.
     constexpr auto CapGapFraction = 0.08f;
+
+    // Shared by Get_VisibleCrop (building the actionable set) and Get_KeyAtPosition (hit-testing against it) —
+    // OnPaint already has its own per-def State lookup and reuses that instead of calling this.
+    auto Is_KeyActionable(const FCkDebug_DeviceSnapshot* InSnapshot, const FKey& InKey) -> bool
+    {
+        const auto* State = InSnapshot != nullptr ? InSnapshot->TryGet_Key(InKey) : nullptr;
+        return State != nullptr && State->IsActionable;
+    }
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -32,6 +40,48 @@ auto
     -> void
 {
     DoConstruct_DeviceCommon(InArgs._Snapshot, InArgs._OnKeyClicked, InArgs._KeyTooltip);
+    _BoundKeysOnly = InArgs._BoundKeysOnly;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkDebug_DeviceKeyboard::
+    Get_VisibleCrop() const
+    -> TOptional<FSlateRect>
+{
+    if (NOT _BoundKeysOnly)
+    { return {}; }
+
+    const auto* Snapshot = _Snapshot.Get(nullptr);
+    if (Snapshot == nullptr)
+    { return {}; }
+
+    const auto& Layout = ck::debug_devices::Get_KeyboardLayout_AnsiFull();
+
+    auto MinPos = FVector2f{TNumericLimits<float>::Max(), TNumericLimits<float>::Max()};
+    auto MaxPos = FVector2f{TNumericLimits<float>::Lowest(), TNumericLimits<float>::Lowest()};
+    auto FoundAny = false;
+
+    for (const auto& Def : Layout)
+    {
+        if (NOT Def.Key.IsValid())
+        { continue; }
+
+        if (NOT ck_debug_device_keyboard::Is_KeyActionable(Snapshot, Def.Key))
+        { continue; }
+
+        FoundAny = true;
+        MinPos.X = FMath::Min(MinPos.X, Def.X);
+        MinPos.Y = FMath::Min(MinPos.Y, Def.Y);
+        MaxPos.X = FMath::Max(MaxPos.X, Def.X + Def.W);
+        MaxPos.Y = FMath::Max(MaxPos.Y, Def.Y + Def.H);
+    }
+
+    if (NOT FoundAny)
+    { return {}; }
+
+    return FSlateRect{MinPos.X, MinPos.Y, MaxPos.X, MaxPos.Y};
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -44,7 +94,9 @@ auto
     -> FKey
 {
     const auto& Layout = ck::debug_devices::Get_KeyboardLayout_AnsiFull();
-    const auto Extent = ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
+    const auto Crop = Get_VisibleCrop();
+    const auto Origin = Crop.IsSet() ? FVector2D{Crop->GetTopLeft2f()} : FVector2D::ZeroVector;
+    const auto Extent = Crop.IsSet() ? FVector2D{Crop->GetSize2f()} : ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
 
     const auto LocalSize = InGeometry.GetLocalSize();
     const auto Unit = static_cast<float>(FMath::Min(
@@ -55,17 +107,24 @@ auto
     { return FKey{}; }
 
     const auto Gap = Unit * ck_debug_device_keyboard::CapGapFraction;
+    const auto* Snapshot = _Snapshot.Get(nullptr);
 
     for (const auto& Def : Layout)
     {
         if (NOT Def.Key.IsValid())
         { continue; }
 
+        if (Crop.IsSet() && NOT ck_debug_device_keyboard::Is_KeyActionable(Snapshot, Def.Key))
+        { continue; }
+
+        const auto CapX = (Def.X - static_cast<float>(Origin.X)) * Unit;
+        const auto CapY = (Def.Y - static_cast<float>(Origin.Y)) * Unit;
+
         const auto CapRect = FSlateRect{
-            Def.X * Unit,
-            Def.Y * Unit,
-            Def.X * Unit + Def.W * Unit - Gap,
-            Def.Y * Unit + Def.H * Unit - Gap};
+            CapX,
+            CapY,
+            CapX + Def.W * Unit - Gap,
+            CapY + Def.H * Unit - Gap};
 
         if (CapRect.ContainsPoint(InLocalPos))
         { return Def.Key; }
@@ -82,7 +141,8 @@ auto
         float InLayoutScaleMultiplier) const
     -> FVector2D
 {
-    const auto Extent = ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
+    const auto Crop = Get_VisibleCrop();
+    const auto Extent = Crop.IsSet() ? FVector2D{Crop->GetSize2f()} : ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
     return Extent * ck_debug_device_keyboard::UnitPx;
 }
 
@@ -102,7 +162,9 @@ auto
 {
     const auto* Snapshot = _Snapshot.Get(nullptr);
     const auto& Layout = ck::debug_devices::Get_KeyboardLayout_AnsiFull();
-    const auto Extent = ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
+    const auto Crop = Get_VisibleCrop();
+    const auto Origin = Crop.IsSet() ? FVector2D{Crop->GetTopLeft2f()} : FVector2D::ZeroVector;
+    const auto Extent = Crop.IsSet() ? FVector2D{Crop->GetSize2f()} : ck::debug_devices::Get_KeyboardLayout_ExtentUnits();
 
     const auto LocalSize = InAllottedGeometry.GetLocalSize();
     const auto Unit = static_cast<float>(FMath::Min(
@@ -131,15 +193,21 @@ auto
 
     for (const auto& Def : Layout)
     {
-        const auto CapPos = FVector2f{Def.X * Unit, Def.Y * Unit};
-        const auto CapSize = FVector2f{Def.W * Unit - Gap, Def.H * Unit - Gap};
-
         const auto* State = Snapshot != nullptr ? Snapshot->TryGet_Key(Def.Key) : nullptr;
         const auto IsLightable = Def.Key.IsValid();
         const auto IsMinted = State != nullptr && State->IsMinted;
         const auto IsActionable = State != nullptr && State->IsActionable;
         const auto IsRebound = State != nullptr && State->IsRebound;
         const auto IsHighlighted = State != nullptr && State->IsHighlighted;
+
+        // BoundKeysOnly: draw only the actionable set the crop was built from.
+        if (Crop.IsSet() && NOT IsActionable)
+        { continue; }
+
+        const auto CapPos = FVector2f{
+            (Def.X - static_cast<float>(Origin.X)) * Unit,
+            (Def.Y - static_cast<float>(Origin.Y)) * Unit};
+        const auto CapSize = FVector2f{Def.W * Unit - Gap, Def.H * Unit - Gap};
 
         if (IsActionable || IsHighlighted)
         {

@@ -1,7 +1,8 @@
-#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
+﻿#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
+#include "CkCore/Reference/CkAssetReferenceProvider.h"
 
 #if WITH_EDITOR
 #include "AssetRegistry/AssetData.h"
@@ -21,7 +22,7 @@ namespace ck_optimization_debugger_cleanup_impl
 {
     // The progress dialog's steps. Named rather than counted inline so adding a pass cannot silently make the bar
     // finish early.
-    constexpr auto k_ScanStepCount = 4.0f;
+    constexpr auto k_ScanStepCount = 5.0f;
 
 #if WITH_EDITOR
     /** What one `/Game` package's primary asset is, plus the size the package weighs on disk.
@@ -198,6 +199,14 @@ namespace ck_optimization_debugger_cleanup
         // ---- Pass 2: what nothing references ----
         SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Looking for unreferenced assets...")));
 
+        // Resolved ONCE, before the walk. Asking per row would let a provider that unregistered half way through
+        // produce a list whose first half considered script references and whose second half did not — the same
+        // hazard the memory page's streaming guard is asked once for.
+        const auto& ReferenceProviders = FCk_AssetReferenceProviderRegistry::Get();
+        Result.HasExternalReferenceProvider = ReferenceProviders.Get_HasAnyProvider();
+
+        auto ClaimingSourceIds = TSet<FName>{};
+
         auto Referencers = TArray<FName>{};
 
         for (const auto& Entry : EntryByPackage)
@@ -236,9 +245,30 @@ namespace ck_optimization_debugger_cleanup
             if (ExternalReferencerCount > 0)
             { continue; }
 
+            // A package edge is not the only way an asset is reached. A generated AngelScript accessor resolves the
+            // path from TEXT at runtime, so it creates no edge at all — and reporting such an asset as unreferenced
+            // is not merely incomplete, it is confidently wrong: the engine's own delete dialog derives its
+            // referencer list from the same graph, so the reader's safety net agrees with the mistake.
+            //
+            // The registry is asked in the same breath as the graph. A hit means the asset is NOT unreferenced, so
+            // it is counted rather than listed — see `ExternallyReferencedCount` for why the count is on the record
+            // instead of the row being dropped in silence.
+            const auto SoftPath = Entry.Value.Asset.GetSoftObjectPath();
+            const auto ExternalReferences = ReferenceProviders.Get_ExternalReferences(SoftPath);
+
+            if (NOT ExternalReferences.IsEmpty())
+            {
+                ++Result.ExternallyReferencedCount;
+
+                for (const auto& External : ExternalReferences)
+                { ClaimingSourceIds.Add(External.SourceId); }
+
+                continue;
+            }
+
             auto Row = FCkOptimizationDebugger_CleanupRow{};
             Row.Category = ECkOptimizationDebugger_CleanupCategory::Unreferenced;
-            Row.AssetPath = Entry.Value.Asset.GetSoftObjectPath().ToString();
+            Row.AssetPath = SoftPath.ToString();
             Row.DisplayName = Entry.Value.Asset.AssetName.ToString();
             Row.ClassName = ClassName;
             Row.DiskSizeBytes = Entry.Value.DiskSizeBytes;
@@ -254,6 +284,14 @@ namespace ck_optimization_debugger_cleanup
 
             Result.Rows.Add(MoveTemp(Row));
         }
+
+        // Published here rather than accumulated into the result directly: a `TSet`'s iteration order follows its
+        // hash layout, so writing it raw would make the status line read differently on two machines from one scan.
+        Result.ExternalReferenceSourceIds = ClaimingSourceIds.Array();
+        Result.ExternalReferenceSourceIds.Sort([](FName InLhs, FName InRhs) -> bool
+        {
+            return InLhs.LexicalLess(InRhs);
+        });
 
         // ---- Pass 3: what LOOKS like a duplicate ----
         SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Matching possible duplicates...")));
@@ -322,7 +360,7 @@ namespace ck_optimization_debugger_cleanup
                 Row.DisplayName = Entry->Asset.AssetName.ToString();
                 Row.ClassName = Get_ClassName(Entry->Asset);
                 Row.DiskSizeBytes = Entry->DiskSizeBytes;
-                Row.DuplicateGroupKey = Group.Key;
+                Row.GroupKey = Group.Key;
 
                 // "Same as", never "identical to". The match is name + class + size and the wording says exactly that
                 // much — see the module CLAUDE.md's conservative duplicate rule.
@@ -333,7 +371,81 @@ namespace ck_optimization_debugger_cleanup
             }
         }
 
-        // ---- Pass 4: redirectors, and what is still unsaved ----
+        // ---- Pass 4: what answers to the same NAME ----
+        SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Matching name collisions...")));
+
+        // A separate question from pass 3, over the same table and deliberately NOT a relaxation of it. A duplicate
+        // match asks "is one of these redundant" and needs class and size to say so; this asks "does this name
+        // resolve to what the author meant", which class and size have nothing to do with. Two assets named `Rock`
+        // are a collision whether one is a mesh and the other a texture, and folding the two passes together would
+        // split exactly the pairs worth reporting.
+        //
+        // Nothing is reclaimable here and no action can fix it — the answer is a rename, which is a content decision
+        // — so this category carries no action and its rows carry no reclaimable bytes.
+        auto PackagesByNameKey = TMap<FString, TArray<const FPackageEntry*>>{};
+
+        for (const auto& Entry : EntryByPackage)
+        {
+            // Unlike the duplicate pass, a package the registry could not size still takes part: a missing size is
+            // no evidence either way about a NAME, and dropping those would hide a collision for a reason that has
+            // nothing to do with the question.
+            const auto NameKey = Build_NameCollisionGroupKey(Entry.Value.Asset.AssetName.ToString());
+
+            PackagesByNameKey.FindOrAdd(NameKey).Add(&Entry.Value);
+        }
+
+        for (auto& Group : PackagesByNameKey)
+        {
+            if (SlowTask.ShouldCancel())
+            {
+                Result.WasCancelled = true;
+                break;
+            }
+
+            if (Group.Value.Num() < 2)
+            { continue; }
+
+            auto Paths = TArray<FString>{};
+            Paths.Reserve(Group.Value.Num());
+
+            for (const auto* Entry : Group.Value)
+            { Paths.Add(Entry->Asset.GetSoftObjectPath().ToString()); }
+
+            Paths.Sort([](const FString& InLhs, const FString& InRhs)
+            {
+                return InLhs.Compare(InRhs, ESearchCase::CaseSensitive) < 0;
+            });
+
+            for (const auto* Entry : Group.Value)
+            {
+                const auto SelfPath = Entry->Asset.GetSoftObjectPath().ToString();
+
+                auto Siblings = TArray<FString>{};
+
+                for (const auto& Path : Paths)
+                {
+                    if (Path.Equals(SelfPath, ESearchCase::CaseSensitive))
+                    { continue; }
+
+                    Siblings.Add(Path);
+                }
+
+                auto Row = FCkOptimizationDebugger_CleanupRow{};
+                Row.Category = ECkOptimizationDebugger_CleanupCategory::NameCollisions;
+                Row.AssetPath = SelfPath;
+                Row.DisplayName = Entry->Asset.AssetName.ToString();
+                Row.ClassName = Get_ClassName(Entry->Asset);
+                Row.GroupKey = Group.Key;
+
+                // The row's own size is deliberately left at zero. A collision frees nothing when resolved, and a
+                // byte figure in this list would be read as reclaimable next to the tab that genuinely is.
+                Row.Detail = ck::Format_UE(TEXT("Same name as: {}"), FString::Join(Siblings, TEXT(", ")));
+
+                Result.Rows.Add(MoveTemp(Row));
+            }
+        }
+
+        // ---- Pass 5: redirectors, and what is still unsaved ----
         SlowTask.EnterProgressFrame(1.0f, FText::FromString(TEXT("Collecting redirectors and dirty packages...")));
 
         for (const auto& Redirector : Redirectors)

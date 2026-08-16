@@ -64,6 +64,17 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FixInfo
     // turns this into the prompt a batch shows before it runs; "convert 40 actors into instances" is not the same
     // promise as "tick a checkbox".
     bool IsDestructive = false;
+
+    // Whether the fix can change how the game BEHAVES, not only what it costs.
+    //
+    // A SECOND flag rather than a wider reading of `IsDestructive`, which means "removes or replaces objects". One
+    // field meaning two things would leave the confirmation unable to say which risk it is asking about — and the two
+    // are genuinely different: a deleted actor is visibly gone and Undo restores it, while a Blueprint that no longer
+    // ticks from frame zero looks identical until something it was driving quietly stops happening.
+    //
+    // Undo still reverses it (these are transactional property edits); what the flag earns is the PROMPT, because a
+    // reader batch-applying "cheap" fixes must not change behaviour along the way without being told.
+    bool ChangesBehavior = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -114,6 +125,10 @@ struct CKOPTIMIZATIONDEBUGGER_API FCkOptimizationDebugger_FixConfirmation
 
     int32 DestructiveCount = 0;
     int32 ConfigWriteCount = 0;
+
+    // Fixes that alter runtime behaviour rather than only cost. Counted separately from `DestructiveCount` so the
+    // dialog names the right risk — see `FCkOptimizationDebugger_FixInfo::ChangesBehavior`.
+    int32 BehaviorChangeCount = 0;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

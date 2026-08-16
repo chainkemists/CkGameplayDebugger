@@ -21,6 +21,18 @@ namespace ck_optimization_debugger_checks_mesh
         const FCkOptimizationDebugger_ScanContext& InContext,
         const FCkOptimizationDebugger_Thresholds& InThresholds,
         TArray<FCkOptimizationDebugger_FindingRow>& OutFindings) -> void;
+
+    /** Whether a material a Nanite mesh renders through fails to declare `Used With Nanite`.
+     *
+     *  Reads the authored `bUsedWithNanite` flag rather than `CheckMaterialUsage[_Concurrent]`: both usage-check
+     *  calls can block on a shader compile, and an audit tool must never make the editor build shaders to describe
+     *  an asset. The flag is the authored answer to the same question.
+     *
+     *  Exported for the same reason `Is_DataTexture` is — the `Mesh.NaniteMaterialIncompatible` FIX has to re-ask
+     *  the question before it mutates, and a second copy of the rule in the fix would be a second place to drift. */
+    CKOPTIMIZATIONDEBUGGER_API auto
+    Is_NaniteIncompatible(
+        const UMaterialInterface* InMaterial) -> bool;
 }
 
 #endif

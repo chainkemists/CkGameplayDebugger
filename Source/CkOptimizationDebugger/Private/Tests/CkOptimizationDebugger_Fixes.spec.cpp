@@ -57,6 +57,10 @@ namespace ck_optimization_debugger_fixes_spec
             FName{TEXT("Mesh.ComplexCollision")},
             FName{TEXT("Texture.NormalMapCompression")},
             FName{TEXT("Texture.DataTextureSrgb")},
+            FName{TEXT("Texture.MissingMipmaps")},
+            FName{TEXT("Mesh.NaniteMaterialIncompatible")},
+            FName{TEXT("Lighting.LightmapResolution")},
+            FName{TEXT("Blueprint.TickEnabled")},
             FName{TEXT("Lighting.MovableLightCount")},
             FName{TEXT("Actor.EmptyStaticMesh")},
             FName{TEXT("Actor.InstancingCandidate")},
@@ -73,18 +77,18 @@ namespace ck_optimization_debugger_fixes_spec
     {
         return TArray<FName>{
             FName{TEXT("Mesh.TriangleBudget")},
-            FName{TEXT("Mesh.NaniteMaterialIncompatible")},
             FName{TEXT("Mesh.CollisionPrimitiveCount")},
+            // `Texture.MaxSize` is mechanically fixable and deliberately is NOT. The value a fix would write is a
+            // PER-USER threshold and the asset it writes into is SHARED, which is strictly worse than the committed
+            // -config case this module already refuses; moving the threshold to project config to justify it would
+            // put the same number in two places.
             FName{TEXT("Texture.MaxSize")},
             FName{TEXT("Texture.NonPowerOfTwo")},
-            FName{TEXT("Texture.MissingMipmaps")},
             FName{TEXT("Material.SlotCount")},
             FName{TEXT("Material.EmptySlot")},
             FName{TEXT("Material.DuplicateSlots")},
             FName{TEXT("Material.TranslucentTwoSided")},
             FName{TEXT("Material.SamplerBudget")},
-            FName{TEXT("Lighting.LightmapResolution")},
-            FName{TEXT("Blueprint.TickEnabled")},
             FName{TEXT("Blueprint.DependencyChain")},
             FName{TEXT("ProjectSettings.RayTracing")},
             FName{TEXT("ProjectSettings.PathTracing")},
@@ -271,6 +275,21 @@ bool FCkOptimizationDebugger_Fixes_BatchConfirmation::RunTest(const FString& Par
 
     TestFalse(TEXT("An empty selection asks for nothing"),
         Build_BatchConfirmation(TArray<FCkOptimizationDebugger_FindingRow>{}).IsRequired);
+
+    // ---- A behaviour change asks, and is counted as its OWN risk ----
+    // The third reason to prompt, and the reason it is a separate flag from `IsDestructive`. Undo reverses this one
+    // like any property edit, so it is not destructive — but a Blueprint that stops ticking from spawn looks
+    // identical until something it was driving quietly stops happening, and a reader batch-applying COST fixes must
+    // not meet that unannounced. Asserting the counts separately is what stops a later change from collapsing the
+    // two flags back into one and leaving the dialog unable to say which risk it is asking about.
+    const auto BehaviorChange = Build_TestFinding(FName{TEXT("Blueprint.TickEnabled")}, true);
+    const auto WithBehavior = Build_BatchConfirmation(TArray<FCkOptimizationDebugger_FindingRow>{BehaviorChange});
+
+    TestTrue(TEXT("A batch that changes behaviour asks first"), WithBehavior.IsRequired);
+    TestEqual(TEXT("...counted as a behaviour change"), WithBehavior.BehaviorChangeCount, 1);
+    TestEqual(TEXT("...and NOT as a destructive one"), WithBehavior.DestructiveCount, 0);
+    TestEqual(TEXT("...nor as a config write"), WithBehavior.ConfigWriteCount, 0);
+    TestFalse(TEXT("...and it has something to print"), WithBehavior.Body.IsEmpty());
 
     return true;
 }

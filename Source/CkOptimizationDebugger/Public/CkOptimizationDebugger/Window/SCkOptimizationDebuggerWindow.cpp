@@ -1,4 +1,4 @@
-#include "CkOptimizationDebugger/Window/SCkOptimizationDebuggerWindow.h"
+﻿#include "CkOptimizationDebugger/Window/SCkOptimizationDebuggerWindow.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -144,18 +144,22 @@ namespace ck_optimization_debugger_window
 
     // ----------------------------------------------------------------------------------------------------------------
 
+    /** Severity's glyph comes off the SAME axis its colour does.
+     *
+     *  It used to be `Skull` / `Flame` / `Note`, picked out of the decorative `Icons/General/**` set. Two problems,
+     *  and the second is the one that mattered: those are not the pictures UE uses for severity anywhere else, so a
+     *  reader had to learn them here; and `Skull` was simultaneously "Critical" in this tool and "Failed" in the
+     *  gallery and something else again in three sibling debuggers sharing one launcher.
+     *
+     *  `Get_SeverityTone` is already the model's rule, so routing the glyph through it means colour and picture
+     *  cannot drift: one severity, one tone, one pair. */
     auto
         Get_SeverityIconId(
             ECkOptimizationDebugger_Severity InSeverity)
         -> FName
     {
-        switch (InSeverity)
-        {
-            case ECkOptimizationDebugger_Severity::Critical: return FName{TEXT("Skull")};
-            case ECkOptimizationDebugger_Severity::Major:    return FName{TEXT("Flame")};
-            case ECkOptimizationDebugger_Severity::Minor:    return FName{TEXT("Note")};
-            default:                                         return FName{TEXT("Note")};
-        }
+        return ck::debug_axes::Get_ToneIconId(
+            ck_optimization_debugger_model::Get_SeverityTone(InSeverity));
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -440,6 +444,8 @@ namespace ck_optimization_debugger_window
             case ECkOptimizationDebugger_CleanupCategory::Unreferenced:  return FName{TEXT("Package")};
             // Identical crates in two folders.
             case ECkOptimizationDebugger_CleanupCategory::Duplicates:    return FName{TEXT("Crate")};
+            // A name is the key a short-name lookup turns; two assets holding one key is the whole finding.
+            case ECkOptimizationDebugger_CleanupCategory::NameCollisions: return FName{TEXT("Key")};
             // Fixing one up cuts the hop out of every referencing package.
             case ECkOptimizationDebugger_CleanupCategory::Redirectors:   return FName{TEXT("Scissors")};
             case ECkOptimizationDebugger_CleanupCategory::DirtyPackages: return FName{TEXT("Bucket")};
@@ -760,6 +766,10 @@ auto
     // The scope a previous session narrowed to is restored before anything is built, so the level toggles come up
     // showing what the next scan will actually do rather than a default the user has to re-narrow.
     _Model.Set_ExcludedLevelNames(UCkOptimizationDebuggerSettings::Get_ExcludedLevelNameSet());
+
+    // Restored for the same reason: a finding the reader triaged away last week must not reappear on the first scan
+    // of this session, or muting would be a per-session gesture nobody would bother making.
+    _Model.Set_MutedStableKeys(UCkOptimizationDebuggerSettings::Load_MutedStableKeys());
 
     ChildSlot
     [
@@ -1132,6 +1142,155 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoCreate_ScopeFilters()
+    -> TSharedRef<SWidget>
+{
+    using namespace ck_optimization_debugger_model;
+
+    // The three axes a reader actually narrows by, kept OFF the free-text box on purpose. Typing `/Game/Characters`
+    // into Filter also matched any finding whose wording contained the word, which is one control silently answering
+    // two questions.
+    return SNew(SHorizontalBox)
+
+        + SHorizontalBox::Slot()
+        .FillWidth(1.0f)
+        .VAlign(VAlign_Center)
+        [
+            SNew(SCkDebug_SearchBar)
+            .HintText(FText::FromString(TEXT("Scope to path, e.g. /Game/Characters")))
+            .OnSearchTextChanged_Lambda([this](const FString& InText)
+            {
+                if (_Model.Get_PathScope() == InText)
+                { return; }
+
+                _Model.Set_PathScope(InText);
+                DoRebuild_Findings();
+            })
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SCkDebug_IconToggle)
+            .IconId(FName{TEXT("Wrench")})
+            .Label(FText::FromString(TEXT("Has a suggested fix")))
+            .ToolTip(FText::FromString(
+                TEXT("Show only findings whose check offered a fix. Whether the button can RUN one also needs an ")
+                TEXT("editor session, no play session, and a registered fix — the disabled tooltip says which.")))
+            .IsOn_Lambda([this]() -> bool
+            {
+                return _Model.Get_ShowOnlyWithSuggestedFix();
+            })
+            .OnStateChanged_Lambda([this](bool InNewState)
+            {
+                _Model.Set_ShowOnlyWithSuggestedFix(InNewState);
+                DoRebuild_Findings();
+            })
+        ]
+
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SCkDebug_IconToggle)
+            // `Ghost` for things that are present but not shown. There is no eye glyph in the set, and inventing one
+            // for a single toggle is not worth a new icon.
+            .IconId(FName{TEXT("Ghost")})
+            .Label(FText::FromString(TEXT("Show muted")))
+            .ToolTip(FText::FromString(
+                TEXT("Show findings you muted, marked as muted. Muting hides a finding from the list until you ")
+                TEXT("unmute it — it never deletes, fixes, or excludes anything from the scan.")))
+            .IsOn_Lambda([this]() -> bool
+            {
+                return _Model.Get_ShowMuted();
+            })
+            .IsEnabled_Lambda([this]() -> bool
+            {
+                // Nothing muted means nothing to reveal. Disabled rather than hidden: a control that vanished would
+                // teach nobody the feature exists, and its tooltip still explains what it is for.
+                return _Model.Get_MutedFindingCount() > 0;
+            })
+            .OnStateChanged_Lambda([this](bool InNewState)
+            {
+                _Model.Set_ShowMuted(InNewState);
+                DoRebuild_Findings();
+            })
+        ]
+
+        // Deliberately in THIS row rather than the toolbar: the controls to its left are exactly what decide which
+        // findings it will touch, so sitting under them states the scope without a sentence.
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceM, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(SButton)
+            .Text_Lambda([this]() -> FText
+            {
+                return FText::FromString(ck::Format_UE(TEXT("Fix All ({})"), _VisibleFixableCount));
+            })
+            .ToolTipText_Lambda([this]() -> FText
+            {
+                const auto Unavailable = ck_optimization_debugger_fixes::Get_FixesUnavailableReason();
+
+                if (NOT Unavailable.IsEmpty())
+                { return FText::FromString(Unavailable); }
+
+                if (_VisibleFixableCount == 0)
+                {
+                    return FText::FromString(
+                        TEXT("Nothing currently visible has an automatic fix. This acts on the list as filtered — ")
+                        TEXT("narrow it first if you only want part of it."));
+                }
+
+                return FText::FromString(ck::Format_UE(
+                    TEXT("Apply every automatic fix in the {} finding(s) the current filters admit, inside one ")
+                    TEXT("transaction Undo can reverse. Muted and filtered-out findings are NOT touched. Anything ")
+                    TEXT("destructive or behaviour-changing asks first."),
+                    _VisibleFixableCount));
+            })
+            .IsEnabled_Lambda([this]() -> bool
+            {
+                return _VisibleFixableCount > 0 && ck_optimization_debugger_fixes::Get_CanApplyFixes();
+            })
+            .OnClicked_Lambda([this]() -> FReply
+            {
+                DoApply_FixAllVisible();
+                return FReply::Handled();
+            })
+        ]
+
+        // The count sits BESIDE the toggle rather than inside its tooltip, and that is the load-bearing half of this
+        // control. A filter that can silently suppress findings makes the whole tool unreliable, so the reader has to
+        // be able to see that something is hidden WITHOUT hovering to discover it. (`SCkDebug_IconToggle`'s label and
+        // tooltip are both static `FText` arguments, so a live number could not have gone in either.)
+        + SHorizontalBox::Slot()
+        .AutoWidth()
+        .VAlign(VAlign_Center)
+        .Padding(CkStyle::SpaceXS, 0.0f, 0.0f, 0.0f)
+        [
+            SNew(STextBlock)
+            .Text_Lambda([this]() -> FText
+            {
+                return FText::FromString(ck::Format_UE(TEXT("{} muted"), _Model.Get_MutedFindingCount()));
+            })
+            .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
+            .Visibility_Lambda([this]() -> EVisibility
+            {
+                return _Model.Get_MutedFindingCount() > 0
+                    ? EVisibility::HitTestInvisible
+                    : EVisibility::Collapsed;
+            })
+        ];
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoCreate_FindingsPage()
     -> TSharedRef<SWidget>
 {
@@ -1164,6 +1323,13 @@ auto
                 _Model.Get_Filter().HighlightString = InText;
                 DoRebuild_Findings();
             })
+        ]
+
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        .Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+        [
+            DoCreate_ScopeFilters()
         ]
 
         + SVerticalBox::Slot()
@@ -2379,11 +2545,41 @@ auto
 {
     using namespace ck_optimization_debugger_fixes;
 
-    const auto Fixable = Get_FixableFindings(Get_SelectedFindings());
+    DoApply_Fixes(Get_FixableFindings(Get_SelectedFindings()), TEXT("the selection"));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoApply_FixAllVisible()
+    -> void
+{
+    using namespace ck_optimization_debugger_fixes;
+
+    // The VISIBLE findings, never `_Model.Get_Findings()`. The reader has just narrowed the list with a path scope,
+    // a suggested-fix toggle and a mute set; a "Fix All" that ignored those would apply fixes to rows they
+    // deliberately excluded — including MUTED ones, which they explicitly told this tool to leave alone. The button
+    // says the count for the same reason: this must never be a blind action.
+    DoApply_Fixes(Get_FixableFindings(_Model.Get_VisibleFindings()), TEXT("the visible list"));
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
+    DoApply_Fixes(
+        const TArray<FCkOptimizationDebugger_FindingRow>& InFixable,
+        const FString& InScopeLabel)
+    -> void
+{
+    using namespace ck_optimization_debugger_fixes;
+
+    const auto& Fixable = InFixable;
 
     if (Fixable.IsEmpty())
     {
-        DoSet_Status(TEXT("Nothing in the selection has an automatic fix."), ECk_Tone::Neutral);
+        DoSet_Status(ck::Format_UE(TEXT("Nothing in {} has an automatic fix."), InScopeLabel), ECk_Tone::Neutral);
         return;
     }
 
@@ -3341,6 +3537,11 @@ auto
 
     _HasSelectedFinding = NOT Selected.IsEmpty();
     _SelectedFixableCount = Fixable.Num();
+
+    // Cached for the same reason every tab count on this window is: the Fix All button's label, tooltip and enabled
+    // state all read it, and it paints every frame. Re-deriving it there would walk the whole findings list from a
+    // paint-path attribute three times over.
+    _VisibleFixableCount = Get_FixableFindings(_Model.Get_VisibleFindings()).Num();
     _FixButtonLabel = Build_FixButtonLabel(Fixable);
 
     // Session availability is folded in HERE rather than inside the pure projection, exactly as the cleanup page
@@ -3686,6 +3887,32 @@ auto
                 .ShowDot(false)
             ]
 
+            // A muted row only ever reaches the list while "Show muted" is on, and it MUST say so on the row itself.
+            // Without the mark, the reader is looking at a list that silently mixes "this is a live finding" with
+            // "you told me to ignore this", which is the one confusion muting must never create. An inert chip —
+            // an OnClicked here would eat the click that selects the row.
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(0.0f, 0.0f, CkStyle::SpaceS, 0.0f)
+            [
+                SNew(SCkDebug_Chip)
+                .Text(FText::FromString(TEXT("MUTED")))
+                .Kind(ECkDebug_ChipKind::Neutral)
+                .ShowDot(false)
+                .Visibility_Lambda([this, WeakRow]() -> EVisibility
+                {
+                    const auto Row = WeakRow.Pin();
+
+                    if (NOT Row.IsValid())
+                    { return EVisibility::Collapsed; }
+
+                    return _Model.Get_IsMuted(Row->Finding.StableKey)
+                        ? EVisibility::HitTestInvisible
+                        : EVisibility::Collapsed;
+                })
+            ]
+
             + SHorizontalBox::Slot()
             .FillWidth(1.0f)
             .VAlign(VAlign_Center)
@@ -3780,6 +4007,51 @@ auto
 
 auto
     SCkOptimizationDebuggerWindow::
+    DoToggle_MuteOnSelected(
+        bool InMute)
+    -> void
+{
+    if (ck::Is_NOT_Valid(_FindingList))
+    { return; }
+
+    auto ChangedCount = 0;
+
+    for (const auto& Item : _FindingList->GetSelectedItems())
+    {
+        // A group header names a check, not a finding, and has no stable key to mute by. Muting a whole check is a
+        // different feature with a different persistence shape; silently muting its rows here would make one click
+        // do something the label never said.
+        if (NOT Item.IsValid() || Item->IsGroupHeader)
+        { continue; }
+
+        if (_Model.Get_IsMuted(Item->Finding.StableKey) == InMute)
+        { continue; }
+
+        _Model.Set_Muted(Item->Finding.StableKey, InMute);
+        ++ChangedCount;
+    }
+
+    if (ChangedCount == 0)
+    { return; }
+
+    // Persisted immediately, exactly as a level-exclusion toggle is: a triage decision lost to a crash is one the
+    // reader has to make again, and they have no way to know they lost it.
+    UCkOptimizationDebuggerSettings::Save_MutedStableKeys(_Model.Get_MutedStableKeys());
+
+    DoRebuild_Findings();
+
+    DoSet_Status(ck::Format_UE(
+        TEXT("{} finding(s) {} — {} muted in this scan"),
+        ChangedCount,
+        InMute ? TEXT("muted") : TEXT("unmuted"),
+        _Model.Get_MutedFindingCount()),
+        ECk_Tone::Info);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    SCkOptimizationDebuggerWindow::
     DoOnFindingContextMenu()
     -> TSharedPtr<SWidget>
 {
@@ -3836,6 +4108,34 @@ auto
                 : FString{TEXT("Apply every automatic fix in the selection, inside one transaction Undo can reverse")}),
             FSlateIcon{},
             FUIAction{FExecuteAction::CreateSP(this, &SCkOptimizationDebuggerWindow::DoApply_FixToSelected)});
+    }
+
+    // Mute is offered as ONE entry over the whole selection, and its verb is decided by what the selection already
+    // is: all-muted unmutes, anything else mutes. A per-row toggle in a multi-select menu would leave a mixed
+    // selection in a state nobody could predict from the label they clicked.
+    {
+        auto MutedCount = 0;
+
+        for (const auto& Finding : Findings)
+        {
+            if (_Model.Get_IsMuted(Finding.StableKey))
+            { ++MutedCount; }
+        }
+
+        const auto UnmuteInstead = MutedCount == Findings.Num();
+
+        MenuBuilder.AddMenuEntry(
+            FText::FromString(UnmuteInstead
+                ? ck::Format_UE(TEXT("Unmute ({})"), Findings.Num())
+                : ck::Format_UE(TEXT("Mute ({})"), Findings.Num())),
+            FText::FromString(UnmuteInstead
+                ? FString{TEXT("Show these findings in the list again.")}
+                : FString{TEXT("Hide these findings from the list until you unmute them. They stay muted across ")
+                    TEXT("re-scans and editor restarts, and the 'Show muted' toggle above the list always says how ")
+                    TEXT("many this scan is hiding — nothing is deleted and nothing is fixed.")}),
+            FSlateIcon{},
+            FUIAction{FExecuteAction::CreateSP(this,
+                &SCkOptimizationDebuggerWindow::DoToggle_MuteOnSelected, NOT UnmuteInstead)});
     }
 
     MenuBuilder.AddMenuSeparator();
@@ -4225,24 +4525,57 @@ auto
         return Totals.Categories.IsValidIndex(Index) ? Totals.Categories[Index].RowCount : 0;
     };
 
+    // Three different statements about script/config references, and the reader has to get the right one. "Nobody was
+    // there to ask" is NOT "asked and found none": with no provider registered, the unreferenced count silently
+    // excludes nothing, and reporting it bare would present a project this pass could not fully consider as one it
+    // did — the same defect `RequiresEditor` exists to prevent one level up.
+    const auto ExternalNote = [&Result]() -> FString
+    {
+        if (NOT Result.HasExternalReferenceProvider)
+        {
+            return FString{TEXT(" — no external-reference provider was registered, so references made only from ")
+                TEXT("script or config were NOT considered")};
+        }
+
+        if (Result.ExternallyReferencedCount == 0)
+        { return FString{}; }
+
+        auto SourceNames = TArray<FString>{};
+        SourceNames.Reserve(Result.ExternalReferenceSourceIds.Num());
+
+        for (const auto SourceId : Result.ExternalReferenceSourceIds)
+        { SourceNames.Add(SourceId.ToString()); }
+
+        return ck::Format_UE(TEXT(" — {} asset(s) kept off the unreferenced list because {} references them"),
+            Result.ExternallyReferencedCount,
+            FString::Join(SourceNames, TEXT(", ")));
+    }();
+
     const auto Text = ck::Format_UE(
-        TEXT("{} unreferenced / {} possible duplicate(s) / {} redirector(s) / {} dirty — {} reclaimable, scanned at {}{}"),
+        TEXT("{} unreferenced / {} possible duplicate(s) / {} name collision(s) / {} redirector(s) / {} dirty — ")
+        TEXT("{} reclaimable, scanned at {}{}{}"),
         Counted(ECkOptimizationDebugger_CleanupCategory::Unreferenced),
         Counted(ECkOptimizationDebugger_CleanupCategory::Duplicates),
+        Counted(ECkOptimizationDebugger_CleanupCategory::NameCollisions),
         Counted(ECkOptimizationDebugger_CleanupCategory::Redirectors),
         Counted(ECkOptimizationDebugger_CleanupCategory::DirtyPackages),
         Format_ByteSize(Totals.ReclaimableBytes),
         _Model.Get_LastCleanupScanTime().ToString(),
         Result.WasStillIndexing
             ? FString{TEXT(" — the asset registry was still indexing, so these are a floor")}
-            : FString{});
+            : FString{},
+        ExternalNote);
 
     // Cancelled and still-indexing are both partial answers, and the reader has to know that BEFORE they read the
     // counts: "0 unreferenced" is a different sentence when half the project was not looked at.
+    // A missing provider is Warn-toned for the same reason a cancelled or still-indexing scan is: all three are
+    // partial answers, and the tone is what tells the reader that BEFORE they read the counts.
     DoSet_Status(Result.WasCancelled
         ? ck::Format_UE(TEXT("Scan cancelled — {}"), Text)
         : Text,
-        Result.WasCancelled || Result.WasStillIndexing ? ECk_Tone::Warn : ECk_Tone::Ok);
+        Result.WasCancelled || Result.WasStillIndexing || NOT Result.HasExternalReferenceProvider
+            ? ECk_Tone::Warn
+            : ECk_Tone::Ok);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -4320,11 +4653,11 @@ auto
         _CleanupItems.Add(MoveTemp(Item));
     };
 
-    if (_ActiveCleanupCategory == ECkOptimizationDebugger_CleanupCategory::Duplicates)
+    if (Get_IsGroupedCleanupCategory(_ActiveCleanupCategory))
     {
-        // Grouped, because a duplicate only means anything next to the assets it matches. Each group gets one
-        // non-selectable header line, exactly as a finding group does.
-        for (const auto& Group : _Model.Get_CleanupDuplicateGroups())
+        // Grouped, because a duplicate — and a name collision — only means anything next to the assets it matches.
+        // Each group gets one non-selectable header line, exactly as a finding group does.
+        for (const auto& Group : _Model.Get_CleanupGroups(_ActiveCleanupCategory))
         {
             const auto GroupKey = k_GroupKeyPrefix + Group.GroupKey;
 
@@ -4335,9 +4668,15 @@ auto
             HeaderItem->Title = Group.DisplayName;
             HeaderItem->GroupCount = Group.Rows.Num();
 
-            // What keeping ONE copy would free — the number the reader is actually weighing.
+            // What keeping ONE copy would free — the number the reader is actually weighing. Zero for a name
+            // collision, whose group carries no size because resolving one frees nothing.
             HeaderItem->GroupReclaimableBytes = Group.DiskSizeBytes * static_cast<int64>(Group.Rows.Num() - 1);
+
+            // The header carries the active category on its otherwise-empty row so the row generator can word itself
+            // without reaching back for window state. A header that said "copies" over a set of name collisions would
+            // be telling the reader to go delete one of them.
             HeaderItem->Row = FCkOptimizationDebugger_CleanupRow{};
+            HeaderItem->Row.Category = _ActiveCleanupCategory;
 
             _CleanupItemsByKey.Add(GroupKey, HeaderItem);
             NewOrder.Add(GroupKey);
@@ -4429,7 +4768,15 @@ auto
     {
         _CleanupActionEnabled = false;
         _CleanupActionLabel = FString{TEXT("No action")};
-        _CleanupActionTooltip = FString{TEXT("This category has nothing to act on.")};
+
+        // Named rather than shrugged at. "This category has nothing to act on" reads as a tool that has not finished
+        // being written; the reader of the collisions tab needs to know the button is absent BECAUSE the fix is a
+        // rename, which is a content decision no batch action should be making for them.
+        _CleanupActionTooltip =
+            _ActiveCleanupCategory == ECkOptimizationDebugger_CleanupCategory::NameCollisions
+                ? FString{TEXT("Nothing here can be fixed by a button. Resolving a name collision means renaming one ")
+                    TEXT("of the assets, which is a content decision — rename it in the Content Browser and re-scan.")}
+                : FString{TEXT("This category has nothing to act on.")};
         return;
     }
 
@@ -4581,6 +4928,14 @@ auto
                 if (NOT Row.IsValid())
                 { return FText::GetEmpty(); }
 
+                if (Row->Row.Category == ECkOptimizationDebugger_CleanupCategory::NameCollisions)
+                {
+                    return FText::FromString(ck::Format_UE(
+                        TEXT("{} assets answer to this name. Not duplicates — the fix is a rename, and nothing here ")
+                        TEXT("is reclaimable"),
+                        Row->GroupCount));
+                }
+
                 return FText::FromString(ck::Format_UE(
                     TEXT("{} assets share this name, class and size — keeping one would free {}"),
                     Row->GroupCount,
@@ -4597,9 +4952,11 @@ auto
                 .Padding(CkStyle::SpaceS, 0.0f, CkStyle::SpaceS, 0.0f)
                 [
                     SNew(SCkDebug_Icon)
-                    .Brush(Get_IconBrush(Get_CleanupCategoryIconId(
-                        ECkOptimizationDebugger_CleanupCategory::Duplicates)))
-                    .Meaning(FText::FromString(TEXT("A set of possible duplicates")))
+                    .Brush(Get_IconBrush(Get_CleanupCategoryIconId(InItem->Row.Category)))
+                    .Meaning(FText::FromString(
+                        InItem->Row.Category == ECkOptimizationDebugger_CleanupCategory::NameCollisions
+                            ? TEXT("A set of assets sharing one name")
+                            : TEXT("A set of possible duplicates")))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextDim()})
                     .Size(FVector2D{k_RowIconSize, k_RowIconSize})
                 ]
@@ -4621,16 +4978,21 @@ auto
                 .Padding(CkStyle::SpaceS, 0.0f, CkStyle::SpaceM, 0.0f)
                 [
                     SNew(STextBlock)
-                    .Text(FText::FromString(ck::Format_UE(TEXT("{} copies · {} reclaimable"),
-                        InItem->GroupCount, Format_ByteSize(InItem->GroupReclaimableBytes))))
+                    .Text(FText::FromString(
+                        InItem->Row.Category == ECkOptimizationDebugger_CleanupCategory::NameCollisions
+                            // "assets", never "copies": these are unrelated assets that merely share a name, and no
+                            // reclaimable figure, because resolving a collision frees nothing.
+                            ? ck::Format_UE(TEXT("{} assets share this name"), InItem->GroupCount)
+                            : ck::Format_UE(TEXT("{} copies · {} reclaimable"),
+                                InItem->GroupCount, Format_ByteSize(InItem->GroupReclaimableBytes))))
                     .ColorAndOpacity(FSlateColor{CkStyle::TextMute()})
                 ]
             ];
     }
 
-    // Duplicate rows are indented under their header; every other category is a flat list with no header to indent
-    // under, and indenting it would leave a blank column nothing explains.
-    const auto Indent = InItem->Row.Category == ECkOptimizationDebugger_CleanupCategory::Duplicates
+    // A GROUPED category's rows are indented under their header; a flat category has no header to indent under, and
+    // indenting it would leave a blank column nothing explains.
+    const auto Indent = Get_IsGroupedCleanupCategory(InItem->Row.Category)
         ? k_RowIndent
         : CkStyle::SpaceS;
 

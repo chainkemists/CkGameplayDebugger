@@ -1,4 +1,4 @@
-#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
+﻿#include "CkOptimizationDebugger/Analysis/CkOptimizationDebugger_CleanupScan.h"
 #include "CkOptimizationDebugger/Commands/CkOptimizationDebugger_CleanupCommands.h"
 #include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 
@@ -30,7 +30,7 @@ namespace ck_optimization_debugger_cleanup_spec
         Row.DisplayName = InName;
         Row.ClassName = InClassName;
         Row.DiskSizeBytes = InBytes;
-        Row.DuplicateGroupKey =
+        Row.GroupKey =
             ck_optimization_debugger_model::Build_DuplicateGroupKey(InName, InClassName, InBytes);
         Row.Detail = FString{TEXT("Same name, class and size as a sibling")};
 
@@ -133,7 +133,8 @@ bool FCkOptimizationDebugger_Cleanup_DuplicateGrouping::RunTest(const FString& P
 
     // ---- Grouping ----
     const auto Rows = MakeFixture();
-    const auto Groups = Get_CleanupDuplicateGroups(Rows, FString{});
+    const auto Groups = Get_CleanupGroups(Rows,
+        ECkOptimizationDebugger_CleanupCategory::Duplicates, FString{});
 
     TestEqual(TEXT("Two groups, and the lone same-name-different-size row is not one of them"), Groups.Num(), 2);
 
@@ -144,7 +145,7 @@ bool FCkOptimizationDebugger_Cleanup_DuplicateGrouping::RunTest(const FString& P
     // weights, so the group KEY breaks the tie — and it does so deterministically, which is the point.
     TestEqual(TEXT("Every member of a group is present"), Groups[0].Rows.Num() + Groups[1].Rows.Num(), 5);
 
-    const auto FindGroup = [&Groups](const FString& InName) -> const FCkOptimizationDebugger_CleanupDuplicateGroup*
+    const auto FindGroup = [&Groups](const FString& InName) -> const FCkOptimizationDebugger_CleanupGroup*
     {
         for (const auto& Group : Groups)
         {
@@ -169,7 +170,8 @@ bool FCkOptimizationDebugger_Cleanup_DuplicateGrouping::RunTest(const FString& P
     TestEqual(TEXT("The two Bricks group together"), BrickGroup->Rows.Num(), 2);
 
     // ---- Determinism ----
-    const auto Again = Get_CleanupDuplicateGroups(Rows, FString{});
+    const auto Again = Get_CleanupGroups(Rows,
+        ECkOptimizationDebugger_CleanupCategory::Duplicates, FString{});
 
     TestEqual(TEXT("Two calls produce the same number of groups"), Again.Num(), Groups.Num());
 
@@ -190,7 +192,8 @@ bool FCkOptimizationDebugger_Cleanup_DuplicateGrouping::RunTest(const FString& P
     }
 
     // ---- A filter that narrows a pair to one drops the group entirely ----
-    const auto Narrowed = Get_CleanupDuplicateGroups(Rows, FString{TEXT("Env/Brick")});
+    const auto Narrowed = Get_CleanupGroups(Rows,
+        ECkOptimizationDebugger_CleanupCategory::Duplicates, FString{TEXT("Env/Brick")});
 
     TestEqual(TEXT("One asset is not a duplicate of anything — a filtered-down group is dropped, not shown alone"),
         Narrowed.Num(), 0);
@@ -449,7 +452,10 @@ bool FCkOptimizationDebugger_Cleanup_ActionCatalog::RunTest(const FString& Param
         TestNotNull(TEXT("...and by enum"), TryGet_Action(Action.Action));
     }
 
-    // Exactly one action per category, which is what lets the page show ONE button rather than three that disable.
+    // AT MOST one action per category, which is what lets the page show ONE button rather than three that disable.
+    // Not "exactly one": `NameCollisions` deliberately has none, because resolving a collision means renaming an
+    // asset and no batch action should make that content decision for the reader. Asserting it explicitly below is
+    // what keeps "deliberately actionless" distinguishable from "somebody forgot to add the action".
     for (const auto Category : Get_AllCleanupCategories())
     {
         auto ClaimCount = 0;
@@ -460,8 +466,20 @@ bool FCkOptimizationDebugger_Cleanup_ActionCatalog::RunTest(const FString& Param
             { ++ClaimCount; }
         }
 
-        TestEqual(TEXT("Exactly one action claims each category"), ClaimCount, 1);
-        TestNotNull(TEXT("...and the lookup finds it"), TryGet_ActionForCategory(Category));
+        const auto IsActionless =
+            Category == ECkOptimizationDebugger_CleanupCategory::NameCollisions;
+
+        TestEqual(TEXT("At most one action claims each category"), ClaimCount, IsActionless ? 0 : 1);
+
+        if (IsActionless)
+        {
+            TestNull(TEXT("The name-collision category has no action, on purpose"),
+                TryGet_ActionForCategory(Category));
+        }
+        else
+        {
+            TestNotNull(TEXT("...and the lookup finds it"), TryGet_ActionForCategory(Category));
+        }
     }
 
     const auto* Delete = TryGet_Action(ECkOptimizationDebugger_CleanupAction::DeleteAssets);

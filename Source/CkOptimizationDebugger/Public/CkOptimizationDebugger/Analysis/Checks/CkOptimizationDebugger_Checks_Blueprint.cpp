@@ -58,6 +58,9 @@ namespace ck_optimization_debugger_checks_blueprint
                             Asset.UsageCount, Usage),
                         TEXT("Turn Start With Tick Enabled off and drive the behaviour from a timer, an event, or a component that genuinely needs the frame."));
 
+                    Finding.HasAutoFix = true;
+                    Finding.FixDescription = TEXT("Turn off Start With Tick Enabled on the class default object. This CHANGES BEHAVIOUR — the class keeps the ability to tick, but stops ticking from spawn.");
+
                     OutFindings.Add(MoveTemp(Finding));
                 }
             }

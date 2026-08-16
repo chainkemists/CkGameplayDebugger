@@ -1,0 +1,84 @@
+<h2 class="sr-only">Mockup of a per-track spatial panel for the proposed CkAudioDebugger: a top-down radar with the listener at centre, the track plotted by bearing and distance, its inner and falloff attenuation rings, and a falloff curve showing exactly where the current distance lands and therefore why the track's volume is what it is.</h2>
+
+<div style="background: var(--surface-1); border-radius: 12px; padding: 12px;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 0.5px solid var(--border);">
+  <i class="ti ti-radar" style="font-size: 17px; color: var(--text-accent);" aria-hidden="true"></i>
+  <span style="font-size: 13px; font-weight: 500;">Spatial</span>
+  <span style="font-size: 12px; color: var(--text-secondary);">Ambient.Fountain</span>
+  <span style="margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--bg-success); color: var(--text-success); font-weight: 500;">Playing</span>
+  <span style="font-size: 11px; padding: 2px 8px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-secondary);">3D</span>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 250px) minmax(0, 1fr); gap: 14px; padding: 12px 14px;">
+
+  <div>
+    <svg viewBox="0 0 240 240" width="100%" role="img" aria-label="Top-down radar: listener at centre, fountain track at 8.4 metres bearing 47 degrees, inside the falloff radius but outside the inner radius">
+      <circle cx="120" cy="120" r="112" fill="none" stroke="var(--border)" stroke-width="1"/>
+      <circle cx="120" cy="120" r="75" fill="none" stroke="var(--text-warning)" stroke-width="1" stroke-dasharray="4 4"/>
+      <circle cx="120" cy="120" r="34" fill="none" stroke="var(--text-success)" stroke-width="1"/>
+      <line x1="120" y1="8" x2="120" y2="232" stroke="var(--border)" stroke-width="0.5"/>
+      <line x1="8" y1="120" x2="232" y2="120" stroke="var(--border)" stroke-width="0.5"/>
+
+      <path d="M120 106 L128 126 L120 121 L112 126 Z" fill="var(--text-primary)"/>
+      <text x="120" y="98" text-anchor="middle" font-size="10" fill="var(--text-secondary)">listener</text>
+
+      <line x1="120" y1="120" x2="185" y2="59" stroke="var(--text-success)" stroke-width="1" stroke-dasharray="3 3"/>
+      <circle cx="185" cy="59" r="7" fill="var(--text-success)"/>
+      <circle cx="185" cy="59" r="13" fill="none" stroke="var(--text-success)" stroke-width="1" opacity="0.45"/>
+      <text x="185" y="40" text-anchor="middle" font-size="10" fill="var(--text-primary)">8.4 m</text>
+
+      <circle cx="63" cy="171" r="5" fill="var(--text-danger)"/>
+      <text x="63" y="190" text-anchor="middle" font-size="10" fill="var(--text-danger)">virtualized</text>
+
+      <text x="196" y="196" font-size="9" fill="var(--text-muted)">20 m</text>
+    </svg>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--text-success);vertical-align:-1px;margin-right:4px;"></span>inner 3 m</span>
+      <span><span style="display:inline-block;width:9px;height:0;border-top:1px dashed var(--text-warning);vertical-align:3px;margin-right:4px;"></span>falloff 14 m</span>
+    </div>
+  </div>
+
+  <div>
+    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 3px;">Why the volume is 0.42</div>
+    <svg viewBox="0 0 330 96" width="100%" role="img" aria-label="Attenuation falloff curve with the current distance marked at 8.4 metres, giving a 0.42 gain">
+      <line x1="26" y1="78" x2="322" y2="78" stroke="var(--border)" stroke-width="1"/>
+      <line x1="26" y1="8" x2="26" y2="78" stroke="var(--border)" stroke-width="1"/>
+      <path d="M26 12 L70 12 L120 26 L180 46 L240 63 L300 74 L322 76" fill="none" stroke="var(--text-accent)" stroke-width="2"/>
+      <line x1="70" y1="8" x2="70" y2="78" stroke="var(--text-success)" stroke-width="1"/>
+      <line x1="278" y1="8" x2="278" y2="78" stroke="var(--text-warning)" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="160" y1="8" x2="160" y2="78" stroke="var(--text-primary)" stroke-width="1.5"/>
+      <circle cx="160" cy="40" r="4" fill="var(--text-primary)"/>
+      <text x="160" y="93" text-anchor="middle" font-size="10" fill="var(--text-primary)">8.4 m</text>
+      <text x="70" y="93" text-anchor="middle" font-size="9" fill="var(--text-muted)">3</text>
+      <text x="278" y="93" text-anchor="middle" font-size="9" fill="var(--text-muted)">14</text>
+      <text x="8" y="15" font-size="9" fill="var(--text-muted)">1.0</text>
+      <text x="8" y="78" font-size="9" fill="var(--text-muted)">0</text>
+    </svg>
+
+    <table style="width: 100%; font-size: 12px; margin-top: 8px; table-layout: fixed;">
+      <tr><td style="color: var(--text-secondary); padding: 3px 0;">Distance</td><td style="text-align: right; font-family: var(--font-mono);">8.4 m</td></tr>
+      <tr><td style="color: var(--text-secondary); padding: 3px 0;">Bearing</td><td style="text-align: right; font-family: var(--font-mono);">47&deg; front-right</td></tr>
+      <tr><td style="color: var(--text-secondary); padding: 3px 0;">Attenuation gain</td><td style="text-align: right; font-family: var(--font-mono);">0.42</td></tr>
+      <tr><td style="color: var(--text-secondary); padding: 3px 0;">Track volume</td><td style="text-align: right; font-family: var(--font-mono);">1.00</td></tr>
+      <tr style="border-top: 0.5px solid var(--border);"><td style="padding: 5px 0; font-weight: 500;">Audible</td><td style="text-align: right; font-family: var(--font-mono); font-weight: 500;">0.42</td></tr>
+      <tr><td style="color: var(--text-secondary); padding: 3px 0;">Attenuation asset</td><td style="text-align: right; font-size: 11px; color: var(--text-accent); overflow: hidden; text-overflow: ellipsis;">ATT_Ambient_Small</td></tr>
+    </table>
+  </div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 0.5px solid var(--border); background: var(--bg-danger);">
+  <i class="ti ti-alert-triangle" style="font-size: 15px; color: var(--text-danger);" aria-hidden="true"></i>
+  <span style="font-size: 12px; color: var(--text-danger);">Ambient.StoreHum is 22.1 m away &mdash; outside its 14 m falloff. Playing at 0.25, audible 0.00.</span>
+</div>
+
+<div style="display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-top: 0.5px solid var(--border); flex-wrap: wrap;">
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); background: var(--bg-accent); color: var(--text-accent); font-weight: 500;">Draw in world</span>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-secondary);">Draw all tracks</span>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-secondary);">Focus in viewport</span>
+  <span style="margin-left: auto; font-size: 11px; color: var(--text-muted);">listener: PlayerCameraManager</span>
+</div>
+
+</div>
+</div>

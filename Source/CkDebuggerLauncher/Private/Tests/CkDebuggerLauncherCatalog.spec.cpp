@@ -40,6 +40,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
         TEXT("CkMapDebugger"),
         TEXT("CkDialogDebugger"),
         TEXT("CkAggroDebugger"),
+        TEXT("CkAudioDebugger"),
         TEXT("CkStyleLabDebugger"),
         TEXT("CkSaveDebugger"),
         TEXT("CkOptimizationDebugger"),

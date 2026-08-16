@@ -112,31 +112,71 @@ auto
     Select_NearestLabels(
         const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
         const FVector&                         InViewLocation,
+        int32                                  InCap,
+        TArray<int32>&                         OutIndices)
+    -> void
+{
+    // Reset, not Empty: the paint hands the same member array back every pass, and the capacity it reached is
+    // the whole point of handing it back.
+    OutIndices.Reset();
+
+    if (InCap <= 0)
+    { return; }
+
+    const auto NumLabels = InLabels.Num();
+
+    // Under the cap the order is the CAPTURE's, untouched: sorting a set that is going to be drawn in full
+    // would reshuffle the draw order every time the camera moved, for no visible gain.
+    if (NumLabels <= InCap)
+    {
+        OutIndices.Reserve(NumLabels);
+
+        for (auto Index = 0; Index < NumLabels; ++Index)
+        { OutIndices.Emplace(Index); }
+
+        return;
+    }
+
+    const auto Get_DistanceSquared = [&InLabels, &InViewLocation](int32 InIndex)
+    { return FVector::DistSquared(InLabels[InIndex].Get_WorldPosition(), InViewLocation); };
+
+    // FARTHEST at the top, which is what makes the heap bounded: the only element a candidate has to beat is
+    // the worst one kept so far, and beating it is one pop and one push rather than a re-sort.
+    const auto IsFartherFirst = [&Get_DistanceSquared](int32 InLeft, int32 InRight)
+    { return Get_DistanceSquared(InLeft) > Get_DistanceSquared(InRight); };
+
+    OutIndices.Reserve(InCap);
+
+    for (auto Index = 0; Index < InCap; ++Index)
+    { OutIndices.Emplace(Index); }
+
+    OutIndices.Heapify(IsFartherFirst);
+
+    for (auto Index = InCap; Index < NumLabels; ++Index)
+    {
+        if (Get_DistanceSquared(Index) >= Get_DistanceSquared(OutIndices.HeapTop()))
+        { continue; }
+
+        OutIndices.HeapPopDiscard(IsFartherFirst, EAllowShrinking::No);
+        OutIndices.HeapPush(Index, IsFartherFirst);
+    }
+
+    // The kept set is heap-ordered, which is farthest-first — the paint wants nearest-first, so this last pass
+    // orders `InCap` elements rather than all of them.
+    OutIndices.Sort([&Get_DistanceSquared](int32 InLeft, int32 InRight)
+    { return Get_DistanceSquared(InLeft) < Get_DistanceSquared(InRight); });
+}
+
+auto
+    ck_jolt_debugger_viewport::
+    Select_NearestLabels(
+        const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
+        const FVector&                         InViewLocation,
         int32                                  InCap)
     -> TArray<int32>
 {
     auto Indices = TArray<int32>{};
-
-    if (InCap <= 0)
-    { return Indices; }
-
-    Indices.Reserve(InLabels.Num());
-
-    for (auto Index = 0; Index < InLabels.Num(); ++Index)
-    { Indices.Emplace(Index); }
-
-    // Under the cap the order is the CAPTURE's, untouched: sorting a set that is going to be drawn in full
-    // would reshuffle the draw order every time the camera moved, for no visible gain.
-    if (Indices.Num() <= InCap)
-    { return Indices; }
-
-    Indices.Sort([&InLabels, &InViewLocation](int32 InLeft, int32 InRight)
-    {
-        return FVector::DistSquared(InLabels[InLeft].Get_WorldPosition(), InViewLocation) <
-               FVector::DistSquared(InLabels[InRight].Get_WorldPosition(), InViewLocation);
-    });
-
-    Indices.SetNum(InCap, EAllowShrinking::No);
+    Select_NearestLabels(InLabels, InViewLocation, InCap, Indices);
 
     return Indices;
 }
@@ -564,6 +604,19 @@ public:
     {
         FUMGViewportClient::MouseMove(InViewport, InX, InY);
         DoTick_Hover(InViewport);
+    }
+
+    /*
+     * The cursor LEAVING is not a move, so nothing else here ever hears about it (P8-D74/F6). Without this the
+     * last hovered body keeps its half-alpha overlay and its tooltip while the mouse is somewhere else
+     * entirely — and `LostFocus` does not cover it, because moving the cursor out of a viewport that still
+     * holds focus is the common case.
+     */
+    virtual auto MouseLeave(
+        FViewport* InViewport) -> void override
+    {
+        DoClear_Hover();
+        FUMGViewportClient::MouseLeave(InViewport);
     }
 
     // Losing focus eats the release: FSceneViewport empties its key state on the way out, so a left button that
@@ -1360,8 +1413,11 @@ auto
  * The 2D layer over the 3D one (P8-D58): the facility hands out labels as WORLD positions and does not render
  * text itself, so somebody has to project them — and Slate is the only text renderer this preview scene has.
  *
- * Nothing here allocates. The font is a member built at construct, the two colours come off the label and the
- * palette, and the only per-label work is a matrix transform and a MakeText.
+ * Nothing here allocates PER PAINT that it can avoid, which is not the same as allocating nothing (P8-D74/F3).
+ * The font is a member built at construct, the colours come off the label and the palette, and the label
+ * selection writes into a member scratch array that keeps its capacity across paints — so the steady state is
+ * allocation-free. What still allocates is Slate's own: `FSlateDrawElement::MakeText` copies the text into the
+ * element list, exactly as it does for every other text-drawing widget in the suite.
  */
 auto
     SCkJoltDebugger_3dViewport::
@@ -1443,16 +1499,16 @@ auto
 
     const auto& Labels = Target->Get_Labels();
 
-    const auto Selected = ck_jolt_debugger_viewport::Select_NearestLabels(
-        Labels, _ViewportClient->GetViewLocation(), ck_jolt_debugger_viewport::MaxPaintedLabels);
+    ck_jolt_debugger_viewport::Select_NearestLabels(
+        Labels, _ViewportClient->GetViewLocation(), ck_jolt_debugger_viewport::MaxPaintedLabels, _LabelScratch);
 
-    if (Labels.Num() > Selected.Num() && NOT _LabelCapLogged)
+    if (Labels.Num() > _LabelScratch.Num() && NOT _LabelCapLogged)
     {
         _LabelCapLogged = true;
-        ck::jolt_debugger::Display(TEXT("Jolt debugger viewport is painting the {} nearest of {} labels; the rest are dropped by the hard cap"), Selected.Num(), Labels.Num());
+        ck::jolt_debugger::Display(TEXT("Jolt debugger viewport is painting the {} nearest of {} labels; the rest are dropped by the hard cap"), _LabelScratch.Num(), Labels.Num());
     }
 
-    for (const auto Index : Selected)
+    for (const auto Index : _LabelScratch)
     {
         const auto& Label = Labels[Index];
         PaintLabel(Label.Get_WorldPosition(), Label.Get_Text(), Label.Get_Color());

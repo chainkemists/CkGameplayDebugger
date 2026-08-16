@@ -196,6 +196,9 @@ namespace ck_optimization_debugger_checks_texture
                         Width, Height, Usage),
                     TEXT("Set Mip Gen Settings back to FromTextureGroup unless this texture is genuinely never minified."));
 
+                Finding.HasAutoFix = true;
+                Finding.FixDescription = TEXT("Set Mip Gen Settings to FromTextureGroup.");
+
                 OutFindings.Add(MoveTemp(Finding));
             }
 #endif

@@ -1,4 +1,4 @@
-#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
+﻿#include "CkOptimizationDebugger/Model/CkOptimizationDebugger_Model.h"
 
 #include "CkCore/Format/CkFormat.h"
 #include "CkCore/Macros/CkMacros.h"
@@ -277,6 +277,146 @@ auto
 
 auto
     FCkOptimizationDebugger_Model::
+    Get_PathScope() const
+    -> const FString&
+{
+    return _Filter.PathScope;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_PathScope(
+        FString InPathScope)
+    -> void
+{
+    // Trimmed, and a lone trailing slash is kept rather than stripped: `/Game/Char` and `/Game/Char/` are different
+    // questions (the first also admits `/Game/Characters`), and the reader who typed the slash meant it.
+    _Filter.PathScope = InPathScope.TrimStartAndEnd();
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_ShowOnlyWithSuggestedFix() const
+    -> bool
+{
+    return _Filter.ShowOnlyWithSuggestedFix;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_ShowOnlyWithSuggestedFix(
+        bool InShowOnly)
+    -> void
+{
+    _Filter.ShowOnlyWithSuggestedFix = InShowOnly;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_IsMuted(
+        const FString& InStableKey) const
+    -> bool
+{
+    return _Filter.MutedStableKeys.Contains(InStableKey);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_Muted(
+        const FString& InStableKey,
+        bool InMuted)
+    -> void
+{
+    // An empty key would mute nothing and, worse, would sit in the persisted set forever matching a finding that can
+    // never be built — `Build_StableKey` always produces a check id followed by a separator.
+    if (InStableKey.IsEmpty())
+    { return; }
+
+    if (InMuted)
+    {
+        _Filter.MutedStableKeys.Add(InStableKey);
+        return;
+    }
+
+    _Filter.MutedStableKeys.Remove(InStableKey);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_ShowMuted() const
+    -> bool
+{
+    return _Filter.ShowMuted;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_ShowMuted(
+        bool InShowMuted)
+    -> void
+{
+    _Filter.ShowMuted = InShowMuted;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_MutedFindingCount() const
+    -> int32
+{
+    auto Count = 0;
+
+    // Over the CURRENT findings, not over the muted set. The set accumulates keys from other scans and other
+    // branches; printing its size would claim this level hides findings it does not have.
+    for (const auto& Finding : _Findings)
+    {
+        if (_Filter.MutedStableKeys.Contains(Finding.StableKey))
+        { ++Count; }
+    }
+
+    return Count;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Set_MutedStableKeys(
+        TSet<FString> InStableKeys)
+    -> void
+{
+    _Filter.MutedStableKeys = MoveTemp(InStableKeys);
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
+    Get_MutedStableKeys() const
+    -> const TSet<FString>&
+{
+    return _Filter.MutedStableKeys;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    FCkOptimizationDebugger_Model::
     Get_LevelExcluded(
         FName InLevelName) const
     -> bool
@@ -409,10 +549,11 @@ auto
 
 auto
     FCkOptimizationDebugger_Model::
-    Get_CleanupDuplicateGroups() const
-    -> TArray<FCkOptimizationDebugger_CleanupDuplicateGroup>
+    Get_CleanupGroups(
+        ECkOptimizationDebugger_CleanupCategory InCategory) const
+    -> TArray<FCkOptimizationDebugger_CleanupGroup>
 {
-    return ck_optimization_debugger_model::Get_CleanupDuplicateGroups(_CleanupRows, _CleanupFilterString);
+    return ck_optimization_debugger_model::Get_CleanupGroups(_CleanupRows, InCategory, _CleanupFilterString);
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -699,6 +840,29 @@ namespace ck_optimization_debugger_model
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
+        Matches_PathScope(
+            const FCkOptimizationDebugger_FindingRow& InFinding,
+            const FString& InPathScope)
+        -> bool
+    {
+        if (InPathScope.IsEmpty())
+        { return true; }
+
+        const auto Path = InFinding.Target.Path.ToString();
+
+        // A `ProjectSettings` finding has no path at all, so ANY non-empty scope excludes it. Deliberate: a reader
+        // narrowing to a content folder is not asking about the renderer's settings, and silently keeping those rows
+        // in a scoped view would make the scope look like it had failed to apply.
+        if (Path.IsEmpty())
+        { return false; }
+
+        // Case-insensitive because package paths are, on the platform this ships on and in the Content Browser.
+        return Path.StartsWith(InPathScope, ESearchCase::IgnoreCase);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
         Matches_Filter(
             const FCkOptimizationDebugger_FindingRow& InFinding,
             const FCkOptimizationDebugger_FilterState& InFilter)
@@ -708,6 +872,18 @@ namespace ck_optimization_debugger_model
         { return false; }
 
         if ((InFilter.CategoryMask & Get_CategoryBit(InFinding.Category)) == 0)
+        { return false; }
+
+        if (InFilter.ShowOnlyWithSuggestedFix && NOT InFinding.HasAutoFix)
+        { return false; }
+
+        // Muting is a hide, not a delete: `ShowMuted` brings them back marked rather than un-muting them, so the
+        // reader can always audit what they told the tool to stop showing. Checked before the path and text work
+        // because it is a set lookup and they are string scans.
+        if (NOT InFilter.ShowMuted && InFilter.MutedStableKeys.Contains(InFinding.StableKey))
+        { return false; }
+
+        if (NOT Matches_PathScope(InFinding, InFilter.PathScope))
         { return false; }
 
         // The empty-filter case is answered BEFORE the haystack is built. `Passes_TextFilter` early-outs on an empty
@@ -1481,8 +1657,20 @@ namespace ck_optimization_debugger_model
         return {
             ECkOptimizationDebugger_CleanupCategory::Unreferenced,
             ECkOptimizationDebugger_CleanupCategory::Duplicates,
+            ECkOptimizationDebugger_CleanupCategory::NameCollisions,
             ECkOptimizationDebugger_CleanupCategory::Redirectors,
             ECkOptimizationDebugger_CleanupCategory::DirtyPackages};
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Get_IsGroupedCleanupCategory(
+            ECkOptimizationDebugger_CleanupCategory InCategory)
+        -> bool
+    {
+        return InCategory == ECkOptimizationDebugger_CleanupCategory::Duplicates
+            || InCategory == ECkOptimizationDebugger_CleanupCategory::NameCollisions;
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1496,6 +1684,7 @@ namespace ck_optimization_debugger_model
         {
             case ECkOptimizationDebugger_CleanupCategory::Unreferenced:  return FName{TEXT("Cleanup.Unreferenced")};
             case ECkOptimizationDebugger_CleanupCategory::Duplicates:    return FName{TEXT("Cleanup.Duplicates")};
+            case ECkOptimizationDebugger_CleanupCategory::NameCollisions: return FName{TEXT("Cleanup.NameCollisions")};
             case ECkOptimizationDebugger_CleanupCategory::Redirectors:   return FName{TEXT("Cleanup.Redirectors")};
             case ECkOptimizationDebugger_CleanupCategory::DirtyPackages: return FName{TEXT("Cleanup.DirtyPackages")};
             default:                                                     return FName{TEXT("Cleanup.Unreferenced")};
@@ -1515,6 +1704,9 @@ namespace ck_optimization_debugger_model
             // "Possible" is in the LABEL, not only in the hint under it. A tab reading "Duplicates" would be a claim
             // this match cannot support, and the reader who only ever sees the tab is the one most likely to act on it.
             case ECkOptimizationDebugger_CleanupCategory::Duplicates:    return FString{TEXT("Possible duplicates")};
+            // "Name collisions", never "Duplicate names": these assets are not duplicates of each other and saying so
+            // would send the reader looking for something to delete, when the fix is a rename.
+            case ECkOptimizationDebugger_CleanupCategory::NameCollisions: return FString{TEXT("Name collisions")};
             case ECkOptimizationDebugger_CleanupCategory::Redirectors:   return FString{TEXT("Redirectors")};
             case ECkOptimizationDebugger_CleanupCategory::DirtyPackages: return FString{TEXT("Dirty packages")};
             default:                                                     return FString{TEXT("Unreferenced")};
@@ -1548,14 +1740,22 @@ namespace ck_optimization_debugger_model
         {
             case ECkOptimizationDebugger_CleanupCategory::Unreferenced:
             {
-                return FString{TEXT("Assets under /Game that no other package references on disk. Presented for ")
-                    TEXT("review: a reference made only in code, in config or at runtime is invisible here.")};
+                return FString{TEXT("Assets under /Game that no package references on disk AND no registered ")
+                    TEXT("external-reference provider claims. Still presented for review: a reference made in code, ")
+                    TEXT("in config or by a runtime-built path that no provider covers is invisible here.")};
             }
             case ECkOptimizationDebugger_CleanupCategory::Duplicates:
             {
                 // The conservative rule, verbatim, where the reader is standing. Content is never compared.
                 return FString{TEXT("Assets that share a name, a class and a disk size across different folders. ")
                     TEXT("Possible duplicates only — nothing here is claimed to be byte-identical.")};
+            }
+            case ECkOptimizationDebugger_CleanupCategory::NameCollisions:
+            {
+                return FString{TEXT("Assets under /Game that answer to the SAME name in different folders, whatever ")
+                    TEXT("their class or size. Not duplicates — the fix is a rename, never a delete. Anything that ")
+                    TEXT("resolves an asset by short name alone (code, a generated script accessor, a search) has to ")
+                    TEXT("pick one of them, and which one it picks is not something this project decides.")};
             }
             case ECkOptimizationDebugger_CleanupCategory::Redirectors:
             {
@@ -1589,6 +1789,19 @@ namespace ck_optimization_debugger_model
             InDisplayName.ToLower(),
             InClassName.ToLower(),
             InDiskSizeBytes);
+    }
+
+    // ----------------------------------------------------------------------------------------------------------------
+
+    auto
+        Build_NameCollisionGroupKey(
+            const FString& InDisplayName)
+        -> FString
+    {
+        // The name alone. Class and size are what make a DUPLICATE possible and are irrelevant to whether two assets
+        // answer to one name — folding them in here would split exactly the collisions worth reporting, because an
+        // `SM_Rock` and a `T_Rock` differ in both and collide anyway.
+        return InDisplayName.ToLower();
     }
 
     // ----------------------------------------------------------------------------------------------------------------
@@ -1661,44 +1874,62 @@ namespace ck_optimization_debugger_model
     // ----------------------------------------------------------------------------------------------------------------
 
     auto
-        Get_CleanupDuplicateGroups(
+        Get_CleanupGroups(
             const TArray<FCkOptimizationDebugger_CleanupRow>& InRows,
+            ECkOptimizationDebugger_CleanupCategory InCategory,
             const FString& InFilter)
-        -> TArray<FCkOptimizationDebugger_CleanupDuplicateGroup>
+        -> TArray<FCkOptimizationDebugger_CleanupGroup>
     {
-        auto GroupsByKey = TMap<FString, FCkOptimizationDebugger_CleanupDuplicateGroup>{};
+        auto GroupsByKey = TMap<FString, FCkOptimizationDebugger_CleanupGroup>{};
+
+        // A flat category has no group key on its rows, so it would come back empty rather than wrong — but empty is
+        // still an answer to a question nobody should be asking, and the caller that asked it has a bug.
+        if (NOT Get_IsGroupedCleanupCategory(InCategory))
+        { return {}; }
 
         for (const auto& Row : InRows)
         {
-            if (Row.Category != ECkOptimizationDebugger_CleanupCategory::Duplicates)
+            if (Row.Category != InCategory)
             { continue; }
 
-            if (Row.DuplicateGroupKey.IsEmpty())
+            if (Row.GroupKey.IsEmpty())
             { continue; }
 
             if (NOT Matches_CleanupFilter(Row, InFilter))
             { continue; }
 
-            auto& Group = GroupsByKey.FindOrAdd(Row.DuplicateGroupKey);
+            auto& Group = GroupsByKey.FindOrAdd(Row.GroupKey);
 
             if (Group.GroupKey.IsEmpty())
             {
-                Group.GroupKey = Row.DuplicateGroupKey;
+                Group.GroupKey = Row.GroupKey;
                 Group.DisplayName = Row.DisplayName;
-                Group.ClassName = Row.ClassName;
-                Group.DiskSizeBytes = Row.DiskSizeBytes;
+
+                // A DUPLICATE group's members share a class and a size by construction — that IS the match — so the
+                // first member's are the group's. A NAME-COLLISION group's members share only the name: an `SM_Rock`
+                // and a `T_Rock` legitimately differ in both. Copying the first member's class and size onto the
+                // group there would print one member's facts as the group's, which is a claim about the other members
+                // that nothing checked. Left empty and zero instead, and the header prints the member count.
+                const auto MembersShareClassAndSize =
+                    InCategory == ECkOptimizationDebugger_CleanupCategory::Duplicates;
+
+                if (MembersShareClassAndSize)
+                {
+                    Group.ClassName = Row.ClassName;
+                    Group.DiskSizeBytes = Row.DiskSizeBytes;
+                }
             }
 
             Group.Rows.Add(Row);
         }
 
-        auto Groups = TArray<FCkOptimizationDebugger_CleanupDuplicateGroup>{};
+        auto Groups = TArray<FCkOptimizationDebugger_CleanupGroup>{};
         Groups.Reserve(GroupsByKey.Num());
 
         for (auto& Entry : GroupsByKey)
         {
-            // A filter can narrow a pair down to one row, and one asset is not a duplicate of anything — showing it
-            // under a "possible duplicates" heading would be the search box inventing a finding.
+            // A filter can narrow a pair down to one row, and one asset neither duplicates nor collides with anything
+            // — showing it under either heading would be the search box inventing a finding.
             if (Entry.Value.Rows.Num() < 2)
             { continue; }
 
@@ -1711,15 +1942,24 @@ namespace ck_optimization_debugger_model
             Groups.Add(MoveTemp(Entry.Value));
         }
 
-        Groups.Sort([](const FCkOptimizationDebugger_CleanupDuplicateGroup& InLhs,
-                       const FCkOptimizationDebugger_CleanupDuplicateGroup& InRhs)
+        Groups.Sort([](const FCkOptimizationDebugger_CleanupGroup& InLhs,
+                       const FCkOptimizationDebugger_CleanupGroup& InRhs)
         {
             // What keeping ONE copy would free, which is the number the reader is weighing: every member but one.
+            //
+            // A NAME-COLLISION group carries no size — its members are unrelated assets that merely answer to one
+            // name, so they do not share a size and renaming one frees nothing. `DiskSizeBytes` is therefore zero
+            // there by construction, which collapses this weight to zero for every collision group and hands the
+            // ordering to the member-count tie-break below. That is the right ordering for it: the group most worth
+            // looking at is the one the most assets are fighting over.
             const auto LhsWeight = InLhs.DiskSizeBytes * static_cast<int64>(InLhs.Rows.Num() - 1);
             const auto RhsWeight = InRhs.DiskSizeBytes * static_cast<int64>(InRhs.Rows.Num() - 1);
 
             if (LhsWeight != RhsWeight)
             { return LhsWeight > RhsWeight; }
+
+            if (InLhs.Rows.Num() != InRhs.Rows.Num())
+            { return InLhs.Rows.Num() > InRhs.Rows.Num(); }
 
             // The key breaks every tie, and it is unique per group by construction — `TMap` iteration order follows
             // its hash layout, so without this two identical scans would print the groups in different orders.

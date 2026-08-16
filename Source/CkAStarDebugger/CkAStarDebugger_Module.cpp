@@ -72,7 +72,7 @@ auto
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkAStarDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK A* Debugger")),
+        FText::FromString(TEXT("[CK] A* Debugger")),
         FText::FromString(TEXT("Inspect A* search graphs, candidates, and path costs")),
         TEXT("Grid"),
         ECkDebuggerToolCategory::Ai,

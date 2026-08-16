@@ -79,7 +79,7 @@ bool FCkDebuggerLauncherCatalog_AllDebuggersHaveLaunchableDescriptors::RunTest(c
             TestEqual(TEXT("Insights Analyzer descriptor is owned by its debugger module"),
                 Tool.Get_OwnerModule(), FName{TEXT("CkInsightsDebugger")});
             TestEqual(TEXT("Insights Analyzer descriptor keeps its display name"),
-                Tool.Get_DisplayName().ToString(), FString{TEXT("Insights Analyzer")});
+                Tool.Get_DisplayName().ToString(), FString{TEXT("[CK] Insights Analyzer")});
             TestEqual(TEXT("Insights Analyzer descriptor keeps its tooltip"),
                 Tool.Get_Tooltip().ToString(), FString{TEXT("Open .utrace files and analyze frame performance")});
             TestEqual(TEXT("Insights Analyzer descriptor keeps its icon"),

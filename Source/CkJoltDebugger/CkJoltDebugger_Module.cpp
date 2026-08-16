@@ -76,7 +76,7 @@ auto FCkJoltDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkJoltDebugger"),
         Get_DebuggerTabName(),
-        FText::FromString(TEXT("CK Jolt Physics Debugger")),
+        FText::FromString(TEXT("[CK] Jolt Physics Debugger")),
         FText::FromString(TEXT("World-level Jolt physics stats: bodies, characters, and the baked static world")),
         TEXT("Cube"),
         ECkDebuggerToolCategory::Systems,

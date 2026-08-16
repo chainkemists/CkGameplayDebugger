@@ -73,7 +73,7 @@ auto FCkSmDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkSmDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK State Machine Debugger")),
+        FText::FromString(TEXT("[CK] State Machine Debugger")),
         FText::FromString(TEXT("Inspect state-machine graphs, transitions, and history")),
         TEXT("StateMachine"),
         ECkDebuggerToolCategory::Core,

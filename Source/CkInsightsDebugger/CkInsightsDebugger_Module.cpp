@@ -57,7 +57,7 @@ auto FCkInsightsDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkInsightsDebugger"),
         _DebuggerTabName,
-        LOCTEXT("InsightsAnalyzerLauncherName", "Insights Analyzer"),
+        LOCTEXT("InsightsAnalyzerLauncherName", "[CK] Insights Analyzer"),
         LOCTEXT("InsightsAnalyzerLauncherTooltip", "Open .utrace files and analyze frame performance"),
         TEXT("Hourglass"),
         ECkDebuggerToolCategory::Tools,

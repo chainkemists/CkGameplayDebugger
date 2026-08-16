@@ -57,7 +57,7 @@ auto FCkInputDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkInputDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Enhanced Input Debugger")),
+        FText::FromString(TEXT("[CK] Enhanced Input Debugger")),
         FText::FromString(TEXT("Inspect input contexts, actions, bindings, and live values")),
         TEXT("Input"),
         ECkDebuggerToolCategory::Interface,

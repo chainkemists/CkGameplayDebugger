@@ -55,7 +55,7 @@ auto FCkStyleLabDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkStyleLabDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("Debugger Style Lab")),
+        FText::FromString(TEXT("[CK] Debugger Style Lab")),
         FText::FromString(TEXT("Preview and tune the debugger-wide style axes on one worst-case sample document")),
         TEXT("Palette"),
         ECkDebuggerToolCategory::Tools,

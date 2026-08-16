@@ -55,7 +55,7 @@ auto FCkDialogDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkDialogDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Dialog Debugger")),
+        FText::FromString(TEXT("[CK] Dialog Debugger")),
         FText::FromString(TEXT("Inspect dialogue-line registry, emitters, cooldowns, and query history")),
         // Must be the basename of an SVG that actually ships under CkDebugger/Resources/Icons (or Icons/General).
         // An unknown id resolves to nullptr and the launcher silently falls back to the generic warning brush —

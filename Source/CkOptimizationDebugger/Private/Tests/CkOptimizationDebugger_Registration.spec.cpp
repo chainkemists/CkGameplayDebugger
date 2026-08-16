@@ -43,7 +43,7 @@ bool FCkOptimizationDebugger_Registration_TabSpawnerAndDescriptor::RunTest(const
     TestEqual(TEXT("Descriptor is owned by its debugger module"),
         Descriptor->Get_OwnerModule(), FName{TEXT("CkOptimizationDebugger")});
     TestEqual(TEXT("Descriptor keeps its display name"),
-        Descriptor->Get_DisplayName().ToString(), FString{TEXT("CK Optimization Debugger")});
+        Descriptor->Get_DisplayName().ToString(), FString{TEXT("[CK] Optimization Debugger")});
     TestEqual(TEXT("Descriptor keeps its tooltip"),
         Descriptor->Get_Tooltip().ToString(),
         FString{TEXT("Analyze levels and assets offline — findings, memory, profiling, cleanup")});

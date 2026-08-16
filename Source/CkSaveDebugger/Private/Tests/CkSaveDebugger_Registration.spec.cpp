@@ -43,7 +43,7 @@ bool FCkSaveDebugger_Registration_TabSpawnerAndDescriptor::RunTest(const FString
     TestEqual(TEXT("Descriptor is owned by its debugger module"),
         Descriptor->Get_OwnerModule(), FName{TEXT("CkSaveDebugger")});
     TestEqual(TEXT("Descriptor keeps its display name"),
-        Descriptor->Get_DisplayName().ToString(), FString{TEXT("CK Save Debugger")});
+        Descriptor->Get_DisplayName().ToString(), FString{TEXT("[CK] Save Debugger")});
     TestEqual(TEXT("Descriptor keeps its tooltip"),
         Descriptor->Get_Tooltip().ToString(),
         FString{TEXT("Inspect CK .sav snapshot files offline — census, diagnostics, payloads")});

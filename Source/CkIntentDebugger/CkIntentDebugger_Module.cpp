@@ -79,7 +79,7 @@ auto
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkIntentDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Intent Debugger")),
+        FText::FromString(TEXT("[CK] Intent Debugger")),
         FText::FromString(TEXT("Inspect the frame record, layer stack, resolution tables, and near-missed intents")),
         TEXT("Crosshair"),
         ECkDebuggerToolCategory::Interface,

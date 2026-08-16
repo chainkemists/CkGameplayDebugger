@@ -58,7 +58,7 @@ auto FCkOptimizationDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkOptimizationDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Optimization Debugger")),
+        FText::FromString(TEXT("[CK] Optimization Debugger")),
         FText::FromString(TEXT("Analyze levels and assets offline — findings, memory, profiling, cleanup")),
         // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
         // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Stopwatch.svg exists.

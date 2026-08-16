@@ -62,7 +62,7 @@ auto
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkEqsDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK EQS Debugger")),
+        FText::FromString(TEXT("[CK] EQS Debugger")),
         FText::FromString(TEXT("Inspect environmental queries, generators, tests, and scores")),
         TEXT("Eqs"),
         ECkDebuggerToolCategory::Ai,

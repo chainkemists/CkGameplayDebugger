@@ -394,7 +394,7 @@ namespace ck::save_debugger_viz_retained
                         UCk_Utils_IsmProxy_UE::Create(
                             GRootEntity,
                             Template.RelativeTransform * Row.WorldTransform,
-                            FCk_Fragment_IsmProxy_ParamsData{RendererData});
+                            FCk_IsmProxy_Spec{RendererData});
                         ++Stats.GhostMeshCount;
                     }
                     break;

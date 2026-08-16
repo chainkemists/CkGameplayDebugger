@@ -229,4 +229,153 @@ auto FCkJoltDebuggerOutliner_MultiSelectKeepsPrimaryAndSurvivesRefresh::RunTest(
     return true;
 }
 
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerOutliner_ListsConstraintRows,
+    "Ck.JoltDebugger.Outliner.ListsConstraintRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerOutliner_ListsConstraintRows::RunTest(const FString&) -> bool
+{
+    using namespace ck_jolt_debugger_outliner_spec;
+
+    auto EcsWorld = ck::FEcsWorld{};
+    const auto BodyAEntity     = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto BodyBEntity     = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto ConstraintEntity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+
+    auto ConstraintRow = Make_Snapshot(ConstraintEntity, ECkJoltDebugger_Population::Constraint, 0, TEXT("Rope Link"));
+
+    // A constraint row carries NO body key of its own — it draws nothing. What it carries is the pair it joins,
+    // which is what the window turns into a two-body highlight.
+    ConstraintRow.BodyKey.Reset();
+    ConstraintRow.ConstraintBodyKeys = TArray<uint64>{11, 22};
+    ConstraintRow.ConstraintType     = ECk_JoltConstraint_Type::Hinge;
+    ConstraintRow.NumBodies          = 2;
+
+    const auto Bodies = TArray<FCkJoltDebugger_BodySnapshot>
+    {
+        Make_Snapshot(BodyAEntity, ECkJoltDebugger_Population::JoltBody, 11, TEXT("Crate")),
+        Make_Snapshot(BodyBEntity, ECkJoltDebugger_Population::JoltBody, 22, TEXT("Hook")),
+        ConstraintRow
+    };
+
+    const auto Outliner = SNew(SCkJoltDebugger_OutlinerPanel);
+    Outliner->Refresh(Bodies);
+
+    TestEqual(TEXT("the constraint is listed beside the bodies it joins"), Outliner->Get_NumVisibleRows(), 3);
+
+    const auto Selected = Outliner->SelectByHandle(ConstraintEntity);
+
+    if (NOT TestTrue(TEXT("a constraint row is selectable"), Selected.IsSet()))
+    { return false; }
+
+    TestEqual(TEXT("and it reports the population it belongs to"),
+        static_cast<int32>(Selected->Population),
+        static_cast<int32>(ECkJoltDebugger_Population::Constraint));
+
+    TestFalse(TEXT("a constraint row has no drawn body of its own"), Selected->BodyKey.IsSet());
+
+    TestEqual(TEXT("it names BOTH bodies it joins"), Selected->ConstraintBodyKeys.Num(), 2);
+
+    if (Selected->ConstraintBodyKeys.Num() == 2)
+    {
+        TestEqual(TEXT("body A leads, because the facility samples the FIRST highlighted key"),
+            Selected->ConstraintBodyKeys[0], static_cast<uint64>(11));
+        TestEqual(TEXT("body B follows"), Selected->ConstraintBodyKeys[1], static_cast<uint64>(22));
+    }
+
+    TestEqual(TEXT("and it reports its constraint flavour"),
+        static_cast<int32>(Selected->ConstraintType),
+        static_cast<int32>(ECk_JoltConstraint_Type::Hinge));
+
+    // Row identity is (handle, population), so a constraint whose entity is ALSO a body would still be two
+    // rows. Here the plainer proof: a refresh over the same set keeps the constraint selected.
+    Outliner->Refresh(Bodies);
+
+    const auto Survivor = Outliner->Get_Selection();
+    TestTrue(TEXT("a refresh keeps the constraint selected"),
+        Survivor.IsSet() && Survivor->Handle == ConstraintEntity);
+
+    // The row renders through the shared filter path like any other, so its own text is searchable.
+    Outliner->ClearSelection();
+    Outliner->Set_FilterQuery(TEXT("Rope"));
+
+    TestEqual(TEXT("the constraint row answers the text filter"), Outliner->Get_NumVisibleRows(), 1);
+
+    return true;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FCkJoltDebuggerOutliner_ProblemsChipNarrowsToFlaggedRows,
+    "Ck.JoltDebugger.Outliner.ProblemsChipNarrowsToFlaggedRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+auto FCkJoltDebuggerOutliner_ProblemsChipNarrowsToFlaggedRows::RunTest(const FString&) -> bool
+{
+    using namespace ck_jolt_debugger_outliner_spec;
+
+    auto EcsWorld = ck::FEcsWorld{};
+    const auto HealthyEntity = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto BrokenEntity  = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+    const auto OtherEntity   = UCk_Utils_EntityLifetime_UE::Request_CreateEntity(EcsWorld.Get_Registry());
+
+    auto Broken = Make_Snapshot(BrokenEntity, ECkJoltDebugger_Population::JoltBody, 22, TEXT("Runaway"));
+    Broken.ProblemFlags = ECk_Jolt_DebugDraw_ProblemFlags::RunawayVelocity;
+
+    const auto Bodies = TArray<FCkJoltDebugger_BodySnapshot>
+    {
+        Make_Snapshot(HealthyEntity, ECkJoltDebugger_Population::JoltBody, 11, TEXT("Crate")),
+        Broken,
+        Make_Snapshot(OtherEntity, ECkJoltDebugger_Population::Character, 33, TEXT("Walker"))
+    };
+
+    const auto Outliner = SNew(SCkJoltDebugger_OutlinerPanel);
+    Outliner->Refresh(Bodies);
+
+    TestEqual(TEXT("all three rows are listed to begin with"), Outliner->Get_NumVisibleRows(), 3);
+    TestEqual(TEXT("exactly one of them is flagged"), Outliner->Get_NumProblemRows(), 1);
+    TestFalse(TEXT("the chip starts off"), Outliner->Get_IsProblemsFilterActive());
+
+    Outliner->Set_ProblemsFilter(true);
+
+    TestTrue(TEXT("the chip is on"), Outliner->Get_IsProblemsFilterActive());
+    TestEqual(TEXT("and it leaves exactly the flagged row visible"), Outliner->Get_NumVisibleRows(), 1);
+
+    // The pin outranks the chip for the same reason it outranks the text filter: a selection the user cannot
+    // see is indistinguishable from no selection, and the detail panel beside it is still showing that row.
+    Outliner->Set_ProblemsFilter(false);
+    Outliner->SelectByHandle(HealthyEntity);
+    Outliner->Set_ProblemsFilter(true);
+
+    TestEqual(TEXT("a selected healthy row stays pinned beside the flagged one"),
+        Outliner->Get_NumVisibleRows(), 2);
+    TestTrue(TEXT("and it renders dimmed, because it is not what the chip asked for"),
+        Outliner->Get_IsRowDimmed(Bodies[0]));
+
+    Outliner->ClearSelection();
+    Outliner->Refresh(Bodies);
+
+    TestEqual(TEXT("with nothing pinned the chip narrows to one again"), Outliner->Get_NumVisibleRows(), 1);
+
+    Outliner->Set_ProblemsFilter(false);
+
+    TestEqual(TEXT("clearing the chip restores all three"), Outliner->Get_NumVisibleRows(), 3);
+
+    // The flags are LIVE state pushed in by the collector, so a body that stopped being broken stops being
+    // listed by the chip without anyone touching the chip.
+    auto Healed = Bodies;
+    Healed[1].ProblemFlags = ECk_Jolt_DebugDraw_ProblemFlags::None;
+    Outliner->Refresh(Healed);
+    Outliner->Set_ProblemsFilter(true);
+
+    TestEqual(TEXT("a healed body leaves the chip with nothing to show"), Outliner->Get_NumProblemRows(), 0);
+    TestEqual(TEXT("and no row survives it"), Outliner->Get_NumVisibleRows(), 0);
+
+    return true;
+}
+
 #endif

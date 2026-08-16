@@ -2,6 +2,12 @@
 
 #include "CkCore/Macros/CkMacros.h"
 
+#include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
+
+#include "CkEditorTools/Style/CkStyle.h"
+
+#include "CkJoltDebugger/CkJoltDebugger_Log.h"
+
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
 #include "Components/Viewport.h"
@@ -12,6 +18,10 @@
 #include "PreviewScene.h"
 #include "SceneView.h"
 #include "Slate/SceneViewport.h"
+
+#include "Fonts/FontMeasure.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Rendering/DrawElements.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -38,6 +48,11 @@ namespace ck_jolt_debugger_3d_viewport
     auto Get_LookSensitivity() -> double
     { return 0.25; }
 
+    // How long a hover pick may go unrepeated. A pick is O(live instances), and the mouse produces a move event
+    // per pixel — without this the hover would be the most expensive thing this window does (P8-D58).
+    auto Get_HoverThrottleSeconds() -> double
+    { return 0.06; }
+
     auto Get_PresetRotation(
         ECkJoltDebugger_CameraPreset InPreset) -> FRotator
     {
@@ -52,6 +67,42 @@ namespace ck_jolt_debugger_3d_viewport
             default:                                   return Get_DefaultPerspectiveRotation();
         }
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+auto
+    ck_jolt_debugger_viewport::
+    Select_NearestLabels(
+        const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
+        const FVector&                         InViewLocation,
+        int32                                  InCap)
+    -> TArray<int32>
+{
+    auto Indices = TArray<int32>{};
+
+    if (InCap <= 0)
+    { return Indices; }
+
+    Indices.Reserve(InLabels.Num());
+
+    for (auto Index = 0; Index < InLabels.Num(); ++Index)
+    { Indices.Emplace(Index); }
+
+    // Under the cap the order is the CAPTURE's, untouched: sorting a set that is going to be drawn in full
+    // would reshuffle the draw order every time the camera moved, for no visible gain.
+    if (Indices.Num() <= InCap)
+    { return Indices; }
+
+    Indices.Sort([&InLabels, &InViewLocation](int32 InLeft, int32 InRight)
+    {
+        return FVector::DistSquared(InLabels[InLeft].Get_WorldPosition(), InViewLocation) <
+               FVector::DistSquared(InLabels[InRight].Get_WorldPosition(), InViewLocation);
+    });
+
+    Indices.SetNum(InCap, EAllowShrinking::No);
+
+    return Indices;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -104,6 +155,9 @@ public:
     auto Set_OnDragRelease(FSimpleDelegate InDelegate) -> void
     { _OnDragRelease = MoveTemp(InDelegate); }
 
+    auto Set_OnBodyHovered(FOnCkJoltDebugger_BodyHovered InDelegate) -> void
+    { _OnBodyHovered = MoveTemp(InDelegate); }
+
     auto Set_DragEnabled(bool InIsEnabled) -> void
     { _IsDragEnabled = InIsEnabled; }
 
@@ -124,6 +178,43 @@ public:
 
     auto Get_LookAt() const -> FVector
     { return _LookAt; }
+
+    /*
+     * The forward half of GetCursorWorldRay's math, for the label paint: the same FSceneViewInitOptions the
+     * deprojection builds, composed into one world -> clip matrix. Built the same way on purpose — a projection
+     * derived differently from the deprojection would put labels where clicks do not land.
+     */
+    auto TryGet_ViewProjection(
+        FViewport* InViewport,
+        FMatrix&   OutViewProjection,
+        FIntRect&  OutViewRect) const -> bool
+    {
+        if (InViewport == nullptr)
+        { return false; }
+
+        const auto Size = InViewport->GetSizeXY();
+
+        if (Size.X <= 0 || Size.Y <= 0)
+        { return false; }
+
+        auto ViewInitOptions = FSceneViewInitOptions{};
+        ViewInitOptions.SetViewRectangle(FIntRect(0, 0, Size.X, Size.Y));
+        ViewInitOptions.ViewOrigin = GetViewLocation();
+        ViewInitOptions.ViewRotationMatrix = FInverseRotationMatrix(GetViewRotation());
+        ViewInitOptions.ViewRotationMatrix = ViewInitOptions.ViewRotationMatrix * FMatrix(
+            FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+
+        const auto AspectRatioAxisConstraint = GetDefault<ULocalPlayer>()->AspectRatioAxisConstraint;
+        auto ProjectionViewInfo = ViewInfo;
+        FMinimalViewInfo::CalculateProjectionMatrixGivenView(
+            ProjectionViewInfo, AspectRatioAxisConstraint, InViewport, ViewInitOptions);
+
+        OutViewProjection = FTranslationMatrix(-ViewInitOptions.ViewOrigin) *
+            ViewInitOptions.ViewRotationMatrix * ViewInitOptions.ProjectionMatrix;
+        OutViewRect = ViewInitOptions.ViewRect;
+
+        return true;
+    }
 
     auto Invalidate() const -> void
     {
@@ -393,6 +484,20 @@ public:
         return true;
     }
 
+    /*
+     * Hover (P8-D58). MouseMove is the NON-captured move: FSceneViewport routes a move with no button held here
+     * and a move with one held to CapturedMouseMove, which is exactly the split the hover wants — a hover must
+     * never fire while a gesture owns the cursor.
+     */
+    virtual auto MouseMove(
+        FViewport* InViewport,
+        int32      InX,
+        int32      InY) -> void override
+    {
+        FUMGViewportClient::MouseMove(InViewport, InX, InY);
+        DoTick_Hover(InViewport);
+    }
+
     // Losing focus eats the release: FSceneViewport empties its key state on the way out, so a left button that
     // went down in here never reports IE_Released. The press left standing would then pair with whatever
     // release arrives next — a click somewhere else entirely, resolving as a pick. The tracked gesture state
@@ -410,6 +515,8 @@ public:
             _OnDragRelease.ExecuteIfBound();
         }
 #endif
+
+        DoClear_Hover();
 
         DoReset_InputState();
         FUMGViewportClient::LostFocus(InViewport);
@@ -482,6 +589,57 @@ public:
     }
 
 private:
+    auto DoClear_Hover() -> void
+    {
+        if (NOT _HoveredBodyKey.IsSet())
+        { return; }
+
+        _HoveredBodyKey.Reset();
+        _OnBodyHovered.ExecuteIfBound(TOptional<uint64>{});
+    }
+
+    auto DoTick_Hover(
+        FViewport* InViewport) -> void
+    {
+        if (NOT _OnBodyHovered.IsBound() || InViewport == nullptr)
+        { return; }
+
+        // A gesture in flight OWNS the cursor. Hovering through a click would move the subdued overlay under the
+        // body the user is picking, and through a drag it would fight the body they are placing.
+        const auto IsGestureInFlight = _PendingPickPress.IsSet() || _IsCtrlGesture ||
+            _IsLeftMouseDown || _IsRightMouseDown || _IsMiddleMouseDown;
+
+        if (IsGestureInFlight)
+        { return; }
+
+        const auto Now = FPlatformTime::Seconds();
+
+        if (Now - _LastHoverSeconds < ck_jolt_debugger_3d_viewport::Get_HoverThrottleSeconds())
+        { return; }
+
+        _LastHoverSeconds = Now;
+
+        auto RayOrigin = FVector::ZeroVector;
+        auto RayDirection = FVector::ZeroVector;
+
+        if (NOT GetCursorWorldRay(InViewport, RayOrigin, RayDirection))
+        { return; }
+
+        const auto Target = _Target.Pin();
+
+        const auto Hovered = Target.IsValid()
+            ? Target->TryPick_Body(RayOrigin, RayDirection)
+            : TOptional<uint64>{};
+
+        // Reported on CHANGE only: the consumer re-stamps the facility and a tooltip from this, and re-stamping
+        // the same key sixteen times a second would invalidate an overlay that never moved.
+        if (Hovered == _HoveredBodyKey)
+        { return; }
+
+        _HoveredBodyKey = Hovered;
+        _OnBodyHovered.Execute(_HoveredBodyKey);
+    }
+
     /** The one pick path: deproject, ask the facility, report the key and whether the click was additive. */
     auto DoPick(
         FViewport* InViewport,
@@ -748,6 +906,11 @@ private:
     FOnCkJoltDebugger_DragRay _OnDragRay;
     FOnCkJoltDebugger_DragPlaneShift _OnDragPlaneShift;
     FSimpleDelegate _OnDragRelease;
+    FOnCkJoltDebugger_BodyHovered _OnBodyHovered;
+
+    // The last hover answer, so the delegate fires on change alone, plus when it was taken.
+    TOptional<uint64> _HoveredBodyKey;
+    double _LastHoverSeconds = 0.0;
 
     // Where a plain left press landed, until it releases. Unset means no click is in flight — either none
     // started, or a camera button turned the one that did into a drag.
@@ -807,9 +970,43 @@ auto
     _ViewportClient->Set_OnDragRay(InArgs._OnDragRay);
     _ViewportClient->Set_OnDragPlaneShift(InArgs._OnDragPlaneShift);
     _ViewportClient->Set_OnDragRelease(InArgs._OnDragRelease);
+    _ViewportClient->Set_OnBodyHovered(InArgs._OnBodyHovered);
     _SceneViewport = MakeShared<FSceneViewport>(_ViewportClient.Get(), SharedThis(this));
     _ViewportClient->Set_Viewport(_SceneViewport.ToSharedRef());
     SetViewportInterface(_SceneViewport.ToSharedRef());
+
+    // Built once, never in OnPaint (CkDebuggerCommon/CLAUDE.md § OnPaint). It therefore does NOT follow a live
+    // Style Lab text-scale flip; the label size is fixed for the life of the window.
+    _LabelFont = ck::debug_axes::ScaledFont("Regular", CkStyle::FontSizeSmall());
+
+    // The hover name. Empty text shows no tooltip at all, which is what an empty-space hover reports.
+    SetToolTipText(TAttribute<FText>::CreateSP(this, &SCkJoltDebugger_3dViewport::Get_HoverTooltip));
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Set_PrimaryLabel(
+        TOptional<FCkJoltDebugger_ViewportLabel> InLabel)
+    -> void
+{
+    _PrimaryLabel = MoveTemp(InLabel);
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Set_HoverLabel(
+        FText InText)
+    -> void
+{
+    _HoverText = MoveTemp(InText);
+}
+
+auto
+    SCkJoltDebugger_3dViewport::
+    Get_HoverTooltip() const
+    -> FText
+{
+    return _HoverText;
 }
 
 auto
@@ -856,6 +1053,8 @@ auto
         TSharedPtr<FCk_Jolt_DebugDrawTarget> InTarget)
     -> void
 {
+    _Target = InTarget;
+
     if (_ViewportClient.IsValid())
     { _ViewportClient->Set_Target(MoveTemp(InTarget)); }
 }
@@ -943,6 +1142,113 @@ auto
         _ViewportClient->Tick_FollowSelection();
         _ViewportClient->Tick(InDeltaTime);
     }
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * The 2D layer over the 3D one (P8-D58): the facility hands out labels as WORLD positions and does not render
+ * text itself, so somebody has to project them — and Slate is the only text renderer this preview scene has.
+ *
+ * Nothing here allocates. The font is a member built at construct, the two colours come off the label and the
+ * palette, and the only per-label work is a matrix transform and a MakeText.
+ */
+auto
+    SCkJoltDebugger_3dViewport::
+    OnPaint(
+        const FPaintArgs&        InArgs,
+        const FGeometry&         InAllottedGeometry,
+        const FSlateRect&        InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32                    InLayerId,
+        const FWidgetStyle&      InWidgetStyle,
+        bool                     InParentEnabled) const
+    -> int32
+{
+    const auto SceneLayer = SViewport::OnPaint(InArgs, InAllottedGeometry, InCullingRect,
+        OutDrawElements, InLayerId, InWidgetStyle, InParentEnabled);
+
+    const auto Target = _Target.Pin();
+
+    const auto HasLabelWork = _PrimaryLabel.IsSet() ||
+        (Target.IsValid() && NOT Target->Get_Labels().IsEmpty());
+
+    if (NOT HasLabelWork || NOT _ViewportClient.IsValid() || NOT _SceneViewport.IsValid())
+    { return SceneLayer; }
+
+    auto ViewProjection = FMatrix::Identity;
+    auto ViewRect = FIntRect{};
+
+    if (NOT _ViewportClient->TryGet_ViewProjection(_SceneViewport.Get(), ViewProjection, ViewRect))
+    { return SceneLayer; }
+
+    const auto RectSize = ViewRect.Size();
+
+    if (RectSize.X <= 0 || RectSize.Y <= 0)
+    { return SceneLayer; }
+
+    // The viewport's pixels and the widget's local space are the same rectangle at different DPI scales, so a
+    // projected pixel becomes a local point by ratio rather than by another projection.
+    const auto LocalSize = InAllottedGeometry.GetLocalSize();
+    const auto PixelToLocal = FVector2D{
+        LocalSize.X / static_cast<double>(RectSize.X),
+        LocalSize.Y / static_cast<double>(RectSize.Y)};
+
+    const auto LabelLayer = SceneLayer + 1;
+
+    const auto PaintLabel = [&](const FVector& InWorldPosition, const FString& InText, const FLinearColor& InColor)
+    {
+        if (InText.IsEmpty())
+        { return; }
+
+        auto ScreenPosition = FVector2D::ZeroVector;
+
+        // False for anything behind the eye — a label the camera turned away from must not wrap around to the
+        // other side of the screen.
+        if (NOT FSceneView::ProjectWorldToScreen(InWorldPosition, ViewRect, ViewProjection, ScreenPosition))
+        { return; }
+
+        const auto LocalPosition = FVector2D{
+            ScreenPosition.X * PixelToLocal.X,
+            ScreenPosition.Y * PixelToLocal.Y};
+
+        FSlateDrawElement::MakeText(
+            OutDrawElements,
+            LabelLayer,
+            InAllottedGeometry.ToPaintGeometry(
+                FVector2f{LocalSize.X, LocalSize.Y},
+                FSlateLayoutTransform{FVector2f{
+                    static_cast<float>(LocalPosition.X), static_cast<float>(LocalPosition.Y)}}),
+            InText,
+            _LabelFont,
+            ESlateDrawEffect::None,
+            InColor);
+    };
+
+    if (_PrimaryLabel.IsSet())
+    { PaintLabel(_PrimaryLabel->WorldPosition, _PrimaryLabel->Text, _PrimaryLabel->Color); }
+
+    if (NOT Target.IsValid())
+    { return LabelLayer; }
+
+    const auto& Labels = Target->Get_Labels();
+
+    const auto Selected = ck_jolt_debugger_viewport::Select_NearestLabels(
+        Labels, _ViewportClient->GetViewLocation(), ck_jolt_debugger_viewport::MaxPaintedLabels);
+
+    if (Labels.Num() > Selected.Num() && NOT _LabelCapLogged)
+    {
+        _LabelCapLogged = true;
+        ck::jolt_debugger::Display(TEXT("Jolt debugger viewport is painting the {} nearest of {} labels; the rest are dropped by the hard cap"), Selected.Num(), Labels.Num());
+    }
+
+    for (const auto Index : Selected)
+    {
+        const auto& Label = Labels[Index];
+        PaintLabel(Label.Get_WorldPosition(), Label.Get_Text(), Label.Get_Color());
+    }
+
+    return LabelLayer;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

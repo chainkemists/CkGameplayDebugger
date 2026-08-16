@@ -7,6 +7,8 @@
 #include "CkDebuggerCommon/Search/SCkDebug_DualSearchBar.h"
 #include "CkDebuggerCommon/Styles/CkDebuggerAxes.h"
 #include "CkDebuggerCommon/Utils/CkDebug_CopyMenu_Utils.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_Chip.h"
+#include "CkDebuggerCommon/Widgets/SCkDebug_CountBadge.h"
 #include "CkDebuggerCommon/Widgets/SCkDebug_StatusPill.h"
 
 #include "CkEditorTools/Style/CkStyle.h"
@@ -14,6 +16,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
@@ -40,6 +43,7 @@ namespace ck_jolt_debugger_outliner_panel
             case ECkJoltDebugger_Population::BakedStatic: return TEXT("Baked");
             case ECkJoltDebugger_Population::Sensor:      return TEXT("Sensor");
             case ECkJoltDebugger_Population::Character:   return TEXT("Char");
+            case ECkJoltDebugger_Population::Constraint:  return TEXT("Joint");
             default:                                      return TEXT("Unknown");
         }
     }
@@ -53,6 +57,7 @@ namespace ck_jolt_debugger_outliner_panel
             case ECkJoltDebugger_Population::BakedStatic: return ECk_Tone::Neutral;
             case ECkJoltDebugger_Population::Sensor:      return ECk_Tone::Info;
             case ECkJoltDebugger_Population::Character:   return ECk_Tone::Ok;
+            case ECkJoltDebugger_Population::Constraint:  return ECk_Tone::Warn;
             default:                                      return ECk_Tone::Neutral;
         }
     }
@@ -89,6 +94,10 @@ namespace ck_jolt_debugger_outliner_panel
                 return TEXT("sensor");
             case ECkJoltDebugger_Population::Character:
                 return TEXT("capsule");
+            case ECkJoltDebugger_Population::Constraint:
+                return InSnapshot.IsBodyBWorldAnchor
+                    ? ck::Format_UE(TEXT("{} \x00B7 world"), InSnapshot.ConstraintType)
+                    : ck::Format_UE(TEXT("{} \x00B7 {} bodies"), InSnapshot.ConstraintType, InSnapshot.NumBodies);
             default:
                 return {};
         }
@@ -150,6 +159,48 @@ auto
         .Padding(FMargin{0.0f})
         [
             SNew(SVerticalBox)
+
+            // The health narrowing sits ABOVE the query boxes on purpose: it is a different KIND of filter —
+            // one the facility computed, not one the user typed — and stacking it under the text bar would
+            // read as a third search field.
+            + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS, CkStyle::SpaceM, 0.0f)
+            [
+                SNew(SHorizontalBox)
+
+                + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+                [
+                    // Wrapped rather than tooltipped directly: SCkDebug_Chip does not apply the base
+                    // ToolTipText argument, and Slate resolves a tooltip by walking UP the hovered path.
+                    SNew(SBox)
+                    .ToolTipText(FText::FromString(TEXT(
+                        "Narrow to bodies the facility's health scan flagged: NaN transform or velocity, a "
+                        "runaway linear speed, an AABB under the world's KillZ, or a shape with no extent. "
+                        "The scan walks the ACTIVE bodies each capture, so a broken body that has since "
+                        "fallen asleep is not re-flagged.")))
+                    [
+                        SNew(SCkDebug_Chip)
+                        .Text_Lambda([this]() -> FText
+                        {
+                            const auto NumProblems = Get_NumProblemRows();
+
+                            return NumProblems > 0
+                                ? FText::FromString(ck::Format_UE(TEXT("Problems ({})"), NumProblems))
+                                : FText::FromString(TEXT("Problems"));
+                        })
+                        .Kind_Lambda([this]() -> ECkDebug_ChipKind
+                        {
+                            if (_ProblemsOnly)
+                            { return ECkDebug_ChipKind::Unsatisfied; }
+
+                            return Get_NumProblemRows() > 0
+                                ? ECkDebug_ChipKind::Effect
+                                : ECkDebug_ChipKind::Neutral;
+                        })
+                        .Highlighted_Lambda([this]() { return _ProblemsOnly; })
+                        .OnClicked_Lambda([this]() { Set_ProblemsFilter(NOT _ProblemsOnly); })
+                    ]
+                ]
+            ]
 
             + SVerticalBox::Slot().AutoHeight().Padding(CkStyle::SpaceM, CkStyle::SpaceS)
             [
@@ -272,7 +323,11 @@ auto
         // beside it would still be showing the primary's facts. It renders dimmed, like a highlight non-match.
         const auto IsPinnedSelection = _SelectedIdentities.Contains(Identity);
 
-        if (NOT IsPinnedSelection && NOT Matches_Query(Body, _FilterString))
+        // Both stages, and the pin overrides both: the Problems chip is a narrowing, not a different list.
+        const auto SurvivesFilters = Matches_Query(Body, _FilterString) &&
+            (NOT _ProblemsOnly || Body.Get_HasProblem());
+
+        if (NOT IsPinnedSelection && NOT SurvivesFilters)
         { continue; }
 
         auto Item = ItemPtr{};
@@ -595,10 +650,13 @@ auto
         const FCkJoltDebugger_BodySnapshot& InBody) const
     -> bool
 {
-    // Two reasons a listed row can be off-query: it lost the highlight query, or it is a pinned selection
-    // the filter would otherwise have hidden. Both read the same — this row is not what you asked for.
+    // Three reasons a listed row can be off-query: it lost the highlight query, or it is a pinned selection
+    // the text filter — or the Problems chip — would otherwise have hidden. All read the same: this row is
+    // not what you asked for. The chip belongs here for exactly the reason the filter does, or a selected
+    // healthy row would sit un-dimmed in a list the user narrowed to broken ones.
     return NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _HighlightString)
-        || NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _FilterString);
+        || NOT ck_jolt_debugger_outliner_panel::Matches_Query(InBody, _FilterString)
+        || (_ProblemsOnly && NOT InBody.Get_HasProblem());
 }
 
 auto
@@ -782,6 +840,35 @@ auto
 
     _FilterString = InQuery;
     ApplyFilterPipeline();
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Set_ProblemsFilter(
+        bool InIsActive)
+    -> void
+{
+    if (_ProblemsOnly == InIsActive)
+    { return; }
+
+    _ProblemsOnly = InIsActive;
+    ApplyFilterPipeline();
+}
+
+auto
+    SCkJoltDebugger_OutlinerPanel::
+    Get_NumProblemRows() const
+    -> int32
+{
+    auto Count = 0;
+
+    for (const auto& Body : _Bodies)
+    {
+        if (Body.Get_HasProblem())
+        { ++Count; }
+    }
+
+    return Count;
 }
 
 // --------------------------------------------------------------------------------------------------------------------

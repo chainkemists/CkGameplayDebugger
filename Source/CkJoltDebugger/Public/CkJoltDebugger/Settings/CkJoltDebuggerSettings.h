@@ -146,6 +146,10 @@ public:
 		meta = (ToolTip = "Draw a ground grid in the Jolt debugger viewport."))
 	bool ShowGrid = true;
 
+	UPROPERTY(Config, EditAnywhere, Category = "Draw",
+		meta = (ToolTip = "Draw the selected probe's current overlaps: contact points, contact normals, and a line to each overlapping entity."))
+	bool ShowProbeResults = false;
+
 	UPROPERTY(Config, EditAnywhere, Category = "Diagnostics",
 		meta = (ToolTip = "Linear speed, in cm/s, past which a body is reported as a runaway."))
 	float RunawayVelocityCmS = 5000.0f;

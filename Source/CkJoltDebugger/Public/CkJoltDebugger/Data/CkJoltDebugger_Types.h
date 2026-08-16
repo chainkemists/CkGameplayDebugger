@@ -6,21 +6,27 @@
 
 #include "CkJolt/CkJolt_Common.h"
 #include "CkJolt/Body/CkJoltBody_Fragment_Data.h"
+#include "CkJolt/Constraint/CkJoltConstraint_Fragment_Data.h"
 #include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
 
 // --------------------------------------------------------------------------------------------------------------------
 
 /*
- * Which of the four body-backing features produced a row. The debug-draw colour classes are finer-grained
+ * Which of the five Jolt-backing features produced a row. The debug-draw colour classes are finer-grained
  * (a JoltBody splits four ways by motion type and sleep state); this is the ENTITY-shaped grouping the
- * outliner lists by, and it lines up one-to-one with the window's population toggles.
+ * outliner lists by, and the first four line up one-to-one with the window's population toggles.
+ *
+ * Constraint is the odd one out and deliberately so (P8-D55): a constraint entity draws NO body of its own,
+ * so it has no colour class and no population toggle. It is listed because "what is joined to what" is a
+ * question this window is opened to answer, and selecting one highlights the two bodies it joins.
  */
 enum class ECkJoltDebugger_Population : uint8
 {
     JoltBody,
     BakedStatic,
     Sensor,
-    Character
+    Character,
+    Constraint
 };
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -55,6 +61,28 @@ struct FCkJoltDebugger_BodySnapshot
 
     FVector LinearVelocity = FVector::ZeroVector;
     bool    HasLinearVelocity = false;
+
+    /*
+     * CONSTRAINT rows only. The row's own BodyKey stays UNSET — a constraint draws nothing, and a key here
+     * would collide with the body row that already owns it in the shared key -> row lookup. These are the
+     * bodies the constraint JOINS, in A,B order; a world-anchored constraint contributes only A, and the
+     * FIRST is what the facility takes as the primary of the resulting highlight.
+     */
+    TArray<uint64> ConstraintBodyKeys;
+
+    ECk_JoltConstraint_Type ConstraintType = ECk_JoltConstraint_Type::Distance;
+
+    bool IsBodyBWorldAnchor = false;
+
+    /*
+     * What the facility's health scan found wrong with this row's body, stamped onto the snapshot AFTER the
+     * collector pass (the collector reads the ECS, never JPH). None for a row with no drawn body behind it,
+     * and None whenever the scan is unarmed.
+     */
+    ECk_Jolt_DebugDraw_ProblemFlags ProblemFlags = ECk_Jolt_DebugDraw_ProblemFlags::None;
+
+    auto Get_HasProblem() const -> bool
+    { return ProblemFlags != ECk_Jolt_DebugDraw_ProblemFlags::None; }
 };
 
 // --------------------------------------------------------------------------------------------------------------------

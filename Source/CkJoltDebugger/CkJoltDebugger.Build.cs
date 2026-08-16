@@ -26,6 +26,14 @@ public class CkJoltDebugger : CkModuleRules
             "CkCore",
             "CkDebuggerCommon",
             "CkEcs",
+
+            // UCk_Utils_Transform_TypeUnsafe_UE — the world location of an entity a selected probe is
+            // overlapping, which is the far end of the probe-results line. Nothing else here needs it.
+            "CkEcsExt",
+
+            // The module's own log category (ck::jolt_debugger). Named explicitly like every other Ck module
+            // that logs: CkJolt re-exports it publicly, but the import lib does not reach a consumer plugin.
+            "CkLog",
             "CkEditorTools",  // shared CkStyle:: tokens used directly by the window
             "CkJolt",
             "CkSpatialQuery", // FFragment_Probe_Current — the sensor population's body key

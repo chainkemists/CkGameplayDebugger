@@ -169,6 +169,7 @@ private:
         TOptional<FCkJoltDebugger_BodySnapshot> InPrimary,
         TArray<FCkJoltDebugger_BodySnapshot> InAll) -> void;
     auto HandleViewportBodyPicked(TOptional<uint64> InBodyKey, bool InIsAdditive) -> void;
+    auto HandleViewportBodyHovered(TOptional<uint64> InBodyKey) -> void;
     auto HandleContactSelected(uint64 InOtherBodyKey) -> void;
     auto HandleGlobalSelectionSync(const FCk_Handle& InSelected, FName InSource) -> void;
 
@@ -254,6 +255,32 @@ private:
     /** Push the drag line into its retained External sub-channel — only when it MOVED (P5-D61/S3). */
     auto DoUpdateDragLine() -> void;
 
+    /*
+     * The selected probe's overlaps, in their own retained External sub-channel (P8-D56 + P5-D61/S3). Re-pushed
+     * only when the overlap SET changes, because Get_CurrentOverlaps copies a whole TSet and the channel is
+     * retained — a per-tick re-push would pay for the copy and make the result flicker for nothing.
+     */
+    auto DoUpdateProbeResults() -> void;
+
+    auto Set_ShowProbeResults(bool InIsEnabled) -> void;
+
+    /*
+     * The facility's health scan, armed from the window's own policy: the runaway bar is a per-user preference
+     * and KillZ belongs to the selected world's AWorldSettings. CkJolt owns neither, which is why they are
+     * pushed rather than read there (P8-D57).
+     */
+    auto DoApplyProblemThresholds(UWorld* InWorld) -> void;
+
+    /*
+     * ConstraintReferenceFrames while a constraint is selected. Jolt's reference-frame draw is ALL-CONSTRAINTS
+     * (PhysicsSystem::DrawConstraintReferenceFrame takes no constraint), so selecting one turns the whole
+     * world's frames on rather than that constraint's — documented, not faked (P5-D61/S8).
+     */
+    auto DoApplyConstraintReferenceFrames() -> void;
+
+    /** The primary selection's own label, which the viewport paints whatever the Labels draw flag says. */
+    auto DoUpdateViewportLabels() -> void;
+
     /** Restore the per-user preferences into the target and the camera. Runs once, at the end of Construct. */
     auto DoApplySavedPreferences() -> void;
 
@@ -298,6 +325,12 @@ private:
     // Last drag line pushed into the External channel, so it is re-pushed only when it actually moved.
     TOptional<FVector> _DragLineGrab;
     TOptional<FVector> _DragLineAnchor;
+
+    bool _ShowProbeResults = false;
+
+    // A cheap digest of what the probe-results channel currently holds: the overlap set's own contents, so the
+    // channel is rebuilt when they change and left alone when they do not. Unset means the channel is empty.
+    TOptional<uint32> _ProbeResultsSignature;
 
     TOptional<FCkJoltDebugger_PendingTarget> _PendingTarget;
 

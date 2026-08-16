@@ -6,6 +6,9 @@
 #include "Engine/EngineBaseTypes.h"
 #include "InputCoreTypes.h"
 
+#include "CkJolt/Subsystem/CkJolt_DebugDrawTarget.h"
+
+#include "Fonts/SlateFontInfo.h"
 #include "Widgets/SViewport.h"
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -13,8 +16,45 @@
 class FPreviewScene;
 class FSceneViewport;
 class FCkJoltDebugger_3dViewportClient;
-class FCk_Jolt_DebugDrawTarget;
 class UWorld;
+
+// --------------------------------------------------------------------------------------------------------------------
+
+namespace ck_jolt_debugger_viewport
+{
+    /*
+     * The hard cap on how many of the capture's labels one paint may draw (P8-D58). A cap rather than a budget:
+     * at the campaign's 100k bar the Labels flag produces a label per dynamic body, and a paint that tried to
+     * project all of them would cost more than the draw it is annotating.
+     */
+    constexpr int32 MaxPaintedLabels = 500;
+
+    /*
+     * Which labels a paint keeps when there are more than the cap: the NEAREST ones to the eye, nearest first.
+     * Pure, and public, because the paint itself cannot be driven headlessly — this is the half of the labelling
+     * that a spec can pin (the projection below it is engine math with no branch of our own in it).
+     *
+     * Returns INDICES into the source array rather than copies: a label carries an FString, and the caller is
+     * about to read them in order anyway.
+     */
+    auto Select_NearestLabels(
+        const TArray<FCk_Jolt_DebugDrawLabel>& InLabels,
+        const FVector& InViewLocation,
+        int32 InCap) -> TArray<int32>;
+}
+
+// --------------------------------------------------------------------------------------------------------------------
+
+/*
+ * A label the WINDOW owns rather than the capture: the primary selection is labelled whether or not the Labels
+ * draw flag is on, because a selection the user made is not something they should have to turn a flag on to name.
+ */
+struct FCkJoltDebugger_ViewportLabel
+{
+    FVector      WorldPosition = FVector::ZeroVector;
+    FString      Text;
+    FLinearColor Color = FLinearColor::White;
+};
 
 // --------------------------------------------------------------------------------------------------------------------
 
@@ -50,6 +90,12 @@ DECLARE_DELEGATE_TwoParams(FOnCkJoltDebugger_DragRay, FVector, FVector);
 /** Ctrl+wheel during a drag: +1 pushes the drag plane away along the view, -1 pulls it in. */
 DECLARE_DELEGATE_OneParam(FOnCkJoltDebugger_DragPlaneShift, float);
 
+/*
+ * The body under the cursor, throttled (P8-D58). Fires only when the answer CHANGES, and unset means the cursor
+ * left every body — which is also what a lost focus reports, so a hover overlay can never latch on.
+ */
+DECLARE_DELEGATE_OneParam(FOnCkJoltDebugger_BodyHovered, TOptional<uint64>);
+
 // --------------------------------------------------------------------------------------------------------------------
 // Debugger-owned inspection surface for the Jolt physics world. The widget draws NOTHING itself: it hosts an
 // FPreviewScene whose UWorld is the render target of an FCk_Jolt_DebugDrawTarget, and the facility's instanced
@@ -71,6 +117,7 @@ public:
         SLATE_EVENT(FOnCkJoltDebugger_DragRay, OnDragRay)
         SLATE_EVENT(FOnCkJoltDebugger_DragPlaneShift, OnDragPlaneShift)
         SLATE_EVENT(FSimpleDelegate, OnDragRelease)
+        SLATE_EVENT(FOnCkJoltDebugger_BodyHovered, OnBodyHovered)
     SLATE_END_ARGS()
 
     auto Construct(const FArguments& InArgs) -> void;
@@ -120,12 +167,48 @@ public:
     auto Input_Key(const FKey& InKey, EInputEvent InEvent) -> bool;
     auto Input_MouseAxis(const FKey& InAxisKey, float InDelta) -> bool;
 
+    /*
+     * The label on the PRIMARY selection. Painted whatever the Labels draw flag says, because it names something
+     * the user selected rather than something the capture happened to emit.
+     */
+    auto Set_PrimaryLabel(TOptional<FCkJoltDebugger_ViewportLabel> InLabel) -> void;
+
+    /** The hovered body's name, shown as this viewport's tooltip. Empty text shows none. */
+    auto Set_HoverLabel(FText InText) -> void;
+
     virtual auto Tick(const FGeometry& InAllottedGeometry, double InCurrentTime, float InDeltaTime) -> void override;
 
+    virtual auto OnPaint(
+        const FPaintArgs&        InArgs,
+        const FGeometry&         InAllottedGeometry,
+        const FSlateRect&        InCullingRect,
+        FSlateWindowElementList& OutDrawElements,
+        int32                    InLayerId,
+        const FWidgetStyle&      InWidgetStyle,
+        bool                     InParentEnabled) const -> int32 override;
+
 private:
+    auto Get_HoverTooltip() const -> FText;
+
     TSharedPtr<FPreviewScene> _PreviewScene;
     TSharedPtr<FCkJoltDebugger_3dViewportClient> _ViewportClient;
     TSharedPtr<FSceneViewport> _SceneViewport;
+
+    // Held here as well as on the client: OnPaint reads the capture's labels, and the client is a private type
+    // this widget cannot hand a paint pass through.
+    TWeakPtr<FCk_Jolt_DebugDrawTarget> _Target;
+
+    TOptional<FCkJoltDebugger_ViewportLabel> _PrimaryLabel;
+
+    FText _HoverText;
+
+    // Built ONCE. OnPaint must never allocate a font or a brush (CkDebuggerCommon/CLAUDE.md § OnPaint), and a
+    // font built per paint is exactly that.
+    FSlateFontInfo _LabelFont;
+
+    // Whether the 500-label cap has already been reported. The cap is a hard truncation, and a truncation the
+    // user is never told about reads as the facility losing labels — but once per session is enough.
+    mutable bool _LabelCapLogged = false;
 };
 
 // --------------------------------------------------------------------------------------------------------------------

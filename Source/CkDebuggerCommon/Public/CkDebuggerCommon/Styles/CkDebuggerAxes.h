@@ -301,6 +301,32 @@ namespace ck::debug_axes
 
     /** Number of distinct entries before Get_CategoricalColor wraps. */
     CKDEBUGGERCOMMON_API auto Get_CategoricalPaletteSize() -> int32;
+
+    /**
+     * The glyph that means this tone, resolved through `FCkDebuggerStyle::Get_IconBrush` /
+     * `FCkDebuggerCommonStyle::Get_IconBrush` like any other icon id.
+     *
+     * It lives HERE, beside the colour ramps, because tone → colour and tone → glyph are one axis wearing two hats.
+     * A tool that picked its own severity glyphs while binding the shared tone colour is a tool whose picture and
+     * whose colour can disagree, and the suite has already been there: `Skull` currently means "Critical severity" in
+     * one debugger, "Failed" in the gallery, and something else again in three others. One picture, several meanings,
+     * in sibling tools sharing one launcher.
+     *
+     * The four glyphs are UE's own shapes — a triangle-with-`!` for warning, a circle-with-`x` for error, a
+     * circle-with-`i` for info, a circle-with-check for success — because a reader with a decade in the editor
+     * decodes those with no legend. They are AUTHORED here rather than taken from `FAppStyle`: an `FAppStyle` brush
+     * sits outside Style Lab, so it would be the one icon in a window that a style revision cannot restyle, and it is
+     * an editor style set in modules that also ship in packaged Development/DebugGame builds.
+     *
+     * **Severity reads from SHAPE, never from colour.** Every icon in this suite is a monochrome stroke tinted by its
+     * `ColorAndOpacity`, so the four must stay distinguishable with the tint removed — which is why they differ in
+     * outline (triangle vs circle) and not only in the mark inside.
+     *
+     * `Neutral` and `Accent` deliberately have NO glyph and return `NAME_None`: one says "nothing to report" and the
+     * other says "look here", and neither is a severity — a picture for either would be a claim the tone does not
+     * make. A caller must handle the empty id by drawing nothing.
+     */
+    CKDEBUGGERCOMMON_API auto Get_ToneIconId(ECk_Tone InTone) -> FName;
 }
 
 // ====================================================================================================================

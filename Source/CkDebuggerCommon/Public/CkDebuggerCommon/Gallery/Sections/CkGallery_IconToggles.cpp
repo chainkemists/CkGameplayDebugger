@@ -1,4 +1,4 @@
-#include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
+﻿#include "CkDebuggerCommon/Gallery/CkDebuggerGallery_Registry.h"
 #include "CkGallery_SectionUtils.h"
 
 #include "CkDebuggerCommon/Widgets/SCkDebug_IconToggle.h"
@@ -39,7 +39,7 @@ auto MakeToolbarActions() -> TArray<FCkDebug_IconToggleAction>
         MakeAction(TEXT("Grid"), TEXT("Grid"), TEXT("Grid"), TEXT("Show grid lines"), true),
         MakeAction(TEXT("Candidates"), TEXT("People"), TEXT("Candidates"), TEXT("Show candidate markers"), true),
         MakeAction(TEXT("Best"), TEXT("Target"), TEXT("Best result"), TEXT("Highlight the best result"), true),
-        MakeAction(TEXT("Failed"), TEXT("Skull"), TEXT("Failed"), TEXT("Show failed results"), false),
+        MakeAction(TEXT("Failed"), TEXT("Severity_Error"), TEXT("Failed"), TEXT("Show failed results"), false),
         MakeAction(TEXT("Querier"), TEXT("Person"), TEXT("Querier"), TEXT("Show the querier marker"), true),
         MakeAction(TEXT("Line"), TEXT("Rail"), TEXT("Best line"), TEXT("Draw a line to the best result"), true),
         MakeAction(TEXT("Bounds"), TEXT("Cube"), TEXT("Bounds"), TEXT("Show result bounds"), false),

@@ -1,0 +1,130 @@
+<h2 class="sr-only">Mockup of a proposed CkAudioDebugger window, showing the Tracks page: six live audio tracks grouped under two audio directors, each with a state pill, a volume lane showing current volume filling toward a target marker, fade rate and time-to-target, and chips for priority, loop behaviour and virtualization.</h2>
+
+<div style="background: var(--surface-1); border-radius: 12px; padding: 12px;">
+<div style="background: var(--surface-2); border: 0.5px solid var(--border); border-radius: 12px; overflow: hidden;">
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 0.5px solid var(--border);">
+  <i class="ti ti-wave-sine" style="font-size: 18px; color: var(--text-accent);" aria-hidden="true"></i>
+  <span style="font-size: 14px; font-weight: 500;">Ck audio debugger</span>
+  <span style="font-size: 12px; color: var(--text-muted);">PIE · Client 0</span>
+  <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; background: var(--bg-success); color: var(--text-success); padding: 3px 9px; border-radius: 20px;"><i class="ti ti-player-play" style="font-size: 13px;" aria-hidden="true"></i>Live · 10 hz</span>
+  <i class="ti ti-refresh" style="font-size: 16px; color: var(--text-secondary);" aria-hidden="true"></i>
+</div>
+
+<div style="display: flex; align-items: stretch; gap: 2px; padding: 0 14px; border-bottom: 0.5px solid var(--border); font-size: 13px;">
+  <div style="padding: 8px 10px; color: var(--text-secondary);">Directors <span style="font-size: 11px; background: var(--surface-0); padding: 1px 5px; border-radius: 8px;">2</span></div>
+  <div style="padding: 8px 10px; font-weight: 500; border-bottom: 2px solid var(--text-accent); margin-bottom: -1px;">Tracks <span style="font-size: 11px; background: var(--bg-accent); color: var(--text-accent); padding: 1px 5px; border-radius: 8px;">6</span></div>
+  <div style="padding: 8px 10px; color: var(--text-secondary);">Crossfade</div>
+  <div style="padding: 8px 10px; color: var(--text-secondary);">Events</div>
+  <div style="padding: 8px 10px; color: var(--text-secondary);">Overlay</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 12px 14px;">
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 8px 10px;"><div style="font-size: 11px; color: var(--text-secondary);">Active / max</div><div style="font-size: 19px; font-weight: 500;">6 <span style="font-size: 13px; color: var(--text-muted);">/ 16</span></div></div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 8px 10px;"><div style="font-size: 11px; color: var(--text-secondary);">Audible</div><div style="font-size: 19px; font-weight: 500;">4</div></div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 8px 10px;"><div style="font-size: 11px; color: var(--text-secondary);">Fading</div><div style="font-size: 19px; font-weight: 500; color: var(--text-warning);">2</div></div>
+  <div style="background: var(--surface-1); border-radius: var(--radius); padding: 8px 10px;"><div style="font-size: 11px; color: var(--text-secondary);">Virtualized</div><div style="font-size: 19px; font-weight: 500; color: var(--text-danger);">1</div></div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 6px; padding: 0 14px 10px; flex-wrap: wrap;">
+  <div style="flex: 1; min-width: 150px; display: flex; align-items: center; gap: 6px; border: 0.5px solid var(--border); border-radius: var(--radius); padding: 5px 9px;"><i class="ti ti-search" style="font-size: 14px; color: var(--text-muted);" aria-hidden="true"></i><span style="font-size: 12px; color: var(--text-muted);">Filter tracks</span></div>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); background: var(--bg-success); color: var(--text-success); font-weight: 500;">Playing</span>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); background: var(--bg-warning); color: var(--text-warning); font-weight: 500;">Fading</span>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); border: 0.5px solid var(--border); color: var(--text-muted);">Stopped</span>
+  <span style="font-size: 11px; padding: 4px 9px; border-radius: var(--radius); border: 0.5px solid var(--border-strong); color: var(--text-secondary);">Group by director</span>
+</div>
+
+<div style="padding: 0 14px 4px; display: flex; align-items: center; gap: 7px; border-top: 0.5px solid var(--border); padding-top: 9px;">
+  <i class="ti ti-broadcast" style="font-size: 15px; color: var(--text-secondary);" aria-hidden="true"></i>
+  <span style="font-size: 12px; font-weight: 500;">BP_PlayerCharacter</span>
+  <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">e:4127 v:3</span>
+  <span style="margin-left: auto; font-size: 11px; color: var(--text-secondary);">crossfade 1.5 s · same-priority: crossfade</span>
+</div>
+
+<div id="rows"></div>
+
+<div style="padding: 10px 14px 12px; border-top: 0.5px solid var(--border);">
+  <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;">
+    <span style="font-size: 12px; font-weight: 500;">Crossfade lane</span>
+    <span style="font-size: 11px; color: var(--text-muted);">last 4 s of _CurrentVolume</span>
+  </div>
+  <svg viewBox="0 0 620 62" width="100%" height="62" role="img" aria-label="Two volume curves crossing: combat music rising while exploration music falls">
+    <line x1="0" y1="56" x2="620" y2="56" stroke="var(--border)" stroke-width="1"/>
+    <line x1="0" y1="8" x2="620" y2="8" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"/>
+    <polyline id="curveA" fill="none" stroke="var(--text-success)" stroke-width="2" points=""/>
+    <polyline id="curveB" fill="none" stroke="var(--text-warning)" stroke-width="2" points=""/>
+    <line id="playhead" x1="440" y1="4" x2="440" y2="58" stroke="var(--text-muted)" stroke-width="1"/>
+  </svg>
+  <div style="display: flex; gap: 14px; font-size: 11px; color: var(--text-secondary); margin-top: 2px;">
+    <span><span style="display:inline-block;width:9px;height:2px;background:var(--text-success);vertical-align:middle;margin-right:5px;"></span>Music.Combat</span>
+    <span><span style="display:inline-block;width:9px;height:2px;background:var(--text-warning);vertical-align:middle;margin-right:5px;"></span>Music.Exploration</span>
+  </div>
+</div>
+
+</div>
+</div>
+
+<script>
+const T = [
+ {n:'Music.Combat', a:'/Game/Audio/Music/M_Combat_Loop', st:'FadingIn', cur:0.48, tgt:0.80, rate:0.40, pct:12, pri:100, loop:'Loop', ov:'Crossfade', virt:false, live:1},
+ {n:'Music.Exploration', a:'/Game/Audio/Music/M_Explore_Loop', st:'FadingOut', cur:0.32, tgt:0.00, rate:0.40, pct:74, pri:100, loop:'Loop', ov:'Crossfade', virt:false, live:2},
+ {n:'Ambient.Wind', a:'/Game/Audio/Amb/A_Wind_Outdoor', st:'Playing', cur:0.30, tgt:0.30, rate:0, pct:58, pri:20, loop:'Loop', ov:'Interrupt', virt:false, live:0},
+ {n:'Foley.Footsteps', a:'/Game/Audio/Foley/S_Step_Concrete', st:'Playing', cur:0.85, tgt:0.85, rate:0, pct:42, pri:50, loop:'Play once', ov:'Interrupt', virt:false, live:0},
+ {n:'Ambient.StoreHum', a:'/Game/Audio/Amb/A_Store_Hum', st:'Playing', cur:0.25, tgt:0.25, rate:0, pct:31, pri:10, loop:'Loop', ov:'Queue', virt:true, live:0, d2:1},
+ {n:'Music.Radio', a:'/Game/Audio/Music/M_Radio_Jazz', st:'Paused', cur:0.60, tgt:0.60, rate:0, pct:19, pri:80, loop:'Loop', ov:'Queue', virt:false, live:0, d2:1}
+];
+const TONE = {Playing:['var(--bg-success)','var(--text-success)'],FadingIn:['var(--bg-success)','var(--text-success)'],FadingOut:['var(--bg-warning)','var(--text-warning)'],Paused:['var(--bg-warning)','var(--text-warning)'],Stopped:['var(--surface-0)','var(--text-muted)']};
+function chip(t, tone){
+  const c = tone ? `background:${tone[0]};color:${tone[1]};` : 'border:0.5px solid var(--border);color:var(--text-secondary);';
+  return `<span style="font-size:11px;padding:2px 7px;border-radius:var(--radius);${c}white-space:nowrap;">${t}</span>`;
+}
+function row(t){
+  const tn = TONE[t.st], bar = Math.round(t.cur*100), tgt = Math.round(t.tgt*100);
+  const eta = t.rate > 0 ? (Math.abs(t.tgt-t.cur)/t.rate).toFixed(1)+' s' : '';
+  const arrow = t.st==='FadingIn' ? 'ti-arrow-up-right' : (t.st==='FadingOut' ? 'ti-arrow-down-right' : '');
+  return `<div style="padding:8px 14px;border-top:0.5px solid var(--border);">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;background:${tn[0]};color:${tn[1]};min-width:62px;text-align:center;">${t.st}</span>
+    <span style="font-size:13px;font-weight:500;">${t.n}</span>
+    <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;">${t.a}</span>
+    <span style="display:flex;gap:4px;">${t.virt?chip('Virtualized',['var(--bg-danger)','var(--text-danger)']):''}${chip('p'+t.pri)}${chip(t.loop)}${chip(t.ov)}</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:9px;margin-top:6px;">
+    <div style="position:relative;flex:1;height:9px;background:var(--surface-0);border-radius:5px;min-width:0;">
+      <div id="b${t.live}${t.n}" style="position:absolute;left:0;top:0;bottom:0;width:${bar}%;background:${tn[1]};border-radius:5px;${t.virt?'opacity:0.35;':''}"></div>
+      <div id="m${t.live}${t.n}" style="position:absolute;left:${tgt}%;top:-3px;bottom:-3px;width:2px;background:var(--text-primary);"></div>
+    </div>
+    <span id="v${t.live}${t.n}" style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);min-width:96px;text-align:right;">${t.cur.toFixed(2)} ${arrow?'&rarr;':'='} ${t.tgt.toFixed(2)}</span>
+    <span style="font-size:11px;color:var(--text-muted);min-width:74px;text-align:right;">${eta?('&plusmn;'+t.rate.toFixed(2)+'/s &middot; '+eta):(t.pct+'% played')}</span>
+  </div>
+  ${t.virt?'<div style="font-size:11px;color:var(--text-danger);margin-top:5px;display:flex;align-items:center;gap:5px;"><i class="ti ti-alert-triangle" style="font-size:13px;" aria-hidden="true"></i>Playing at 0.25 but virtualized &mdash; inaudible. Concurrency: A_Ambient_Group (3/2)</div>':''}
+</div>`;
+}
+const host = document.getElementById('rows');
+host.innerHTML = T.filter(t=>!t.d2).map(row).join('')
+ + `<div style="padding:9px 14px 4px;display:flex;align-items:center;gap:7px;border-top:0.5px solid var(--border);background:var(--surface-1);">
+    <i class="ti ti-broadcast" style="font-size:15px;color:var(--text-secondary);" aria-hidden="true"></i>
+    <span style="font-size:12px;font-weight:500;">BP_StoreAmbience</span>
+    <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);">e:8802 v:1</span>
+    <span style="margin-left:auto;font-size:11px;color:var(--text-secondary);">crossfade 3.0 s &middot; same-priority: queue</span></div>`
+ + T.filter(t=>t.d2).map(row).join('');
+
+let ph = 0;
+function pts(fn){ let s=''; for(let x=0;x<=620;x+=10){ s += x+','+(56-fn(x/620)*48)+' '; } return s.trim(); }
+function frame(){
+  ph = (ph + 0.004) % 1;
+  const k = Math.min(1, Math.max(0, (ph*4 - 1.2)));
+  const a = 0.48 + (0.80-0.48)*k, b = 0.32 - 0.32*k;
+  const set=(p,n,c,t,ar)=>{const e=document.getElementById(p+'1'+n)||document.getElementById(p+'2'+n);};
+  const bA=document.getElementById('b1Music.Combat'), vA=document.getElementById('v1Music.Combat');
+  const bB=document.getElementById('b2Music.Exploration'), vB=document.getElementById('v2Music.Exploration');
+  if(bA){ bA.style.width=Math.round(a*100)+'%'; vA.innerHTML=a.toFixed(2)+' &rarr; 0.80'; }
+  if(bB){ bB.style.width=Math.round(b*100)+'%'; vB.innerHTML=b.toFixed(2)+' &rarr; 0.00'; }
+  document.getElementById('curveA').setAttribute('points', pts(u=>0.48+(0.80-0.48)*Math.min(1,Math.max(0,(u*4-1.2)))));
+  document.getElementById('curveB').setAttribute('points', pts(u=>0.32-0.32*Math.min(1,Math.max(0,(u*4-1.2)))));
+  document.getElementById('playhead').setAttribute('x1', Math.round(((k*0.7)+0.3)*620));
+  document.getElementById('playhead').setAttribute('x2', Math.round(((k*0.7)+0.3)*620));
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>

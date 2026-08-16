@@ -67,6 +67,16 @@
 			]
 		},
 		{
+			"Name": "CkAudioDebugger",
+			"Type": "DeveloperTool",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [
+				"Win64",
+				"Mac",
+				"Linux"
+			]
+		},
+		{
 			"Name": "CkAggroDebugger",
 			"Type": "DeveloperTool",
 			"LoadingPhase": "Default",

@@ -55,7 +55,7 @@ namespace ck_inspector_fog_of_war
 
     auto Make_BoundsComponents(
         const FCk_Handle& InEntity,
-        TFunction<FVector2D(const FCk_Fragment_FogOfWar_ParamsData&)> InProjector)
+        TFunction<FVector2D(const FCk_FogOfWar_Spec&)> InProjector)
         -> TArray<TAttribute<FText>>
     {
         auto Components = TArray<TAttribute<FText>>{};
@@ -154,12 +154,12 @@ auto FCkInspector_FogOfWar::Build_NativeBody(const FCk_Handle& Entity) const -> 
     Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Bounds Center:")),
         ck_inspector_fog_of_war::Make_BoundsComponents(CapturedEntity,
-            [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_Center(); }));
+            [](const FCk_FogOfWar_Spec& InParams) { return InParams.Get_Bounds().Get_Center(); }));
 
     Builder.AddAlignedNumericRow(
         FText::FromString(TEXT("Bounds Half-Extents:")),
         ck_inspector_fog_of_war::Make_BoundsComponents(CapturedEntity,
-            [](const FCk_Fragment_FogOfWar_ParamsData& InParams) { return InParams.Get_Bounds().Get_HalfExtents(); }));
+            [](const FCk_FogOfWar_Spec& InParams) { return InParams.Get_Bounds().Get_HalfExtents(); }));
 
     // ---- Write surface ----
     //

@@ -68,7 +68,7 @@ namespace ck_inspector_ui
     // the read-modify-write below never holds a fragment reference across a request.
     static auto Get_Params(
         const FCk_Handle& InEntity)
-        -> FCk_Fragment_WorldSpaceWidget_ParamsData
+        -> FCk_WorldSpaceWidget_Spec
     {
         if (ck::Is_NOT_Valid(InEntity) || NOT InEntity.Has<ck::FFragment_WorldSpaceWidget_Params>())
         { return {}; }

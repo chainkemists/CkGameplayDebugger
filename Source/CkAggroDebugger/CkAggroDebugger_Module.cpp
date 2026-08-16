@@ -57,7 +57,7 @@ auto FCkAggroDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkAggroDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Aggro Debugger")),
+        FText::FromString(TEXT("[CK] Aggro Debugger")),
         FText::FromString(TEXT("Inspect threat tables, target scoring, perception, and active-target selection")),
         // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
         // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Aggro.svg exists.

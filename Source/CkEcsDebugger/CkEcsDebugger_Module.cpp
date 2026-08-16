@@ -81,7 +81,7 @@ auto FCkEcsDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkEcsDebugger"),
         DebuggerTabName,
-        FText::FromString(TEXT("CK ECS Debugger")),
+        FText::FromString(TEXT("[CK] ECS Debugger")),
         FText::FromString(TEXT("Browse ECS entities, archetypes, fragments, and relationships")),
         TEXT("EntityCollection"),
         ECkDebuggerToolCategory::Core,

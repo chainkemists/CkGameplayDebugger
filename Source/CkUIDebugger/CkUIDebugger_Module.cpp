@@ -57,7 +57,7 @@ auto FCkUIDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkUIDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK UI Layer Debugger")),
+        FText::FromString(TEXT("[CK] UI Layer Debugger")),
         FText::FromString(TEXT("Inspect UI layers, widgets, and viewport ownership")),
         TEXT("Window"),
         ECkDebuggerToolCategory::Interface,

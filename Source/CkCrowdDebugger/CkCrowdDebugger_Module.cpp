@@ -56,7 +56,7 @@ void FCkCrowdDebuggerModule::StartupModule()
 	_DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
 		TEXT("CkCrowdDebugger"),
 		_TabId,
-		LOCTEXT("LauncherDisplayName", "CK Crowd Debugger"),
+		LOCTEXT("LauncherDisplayName", "[CK] Crowd Debugger"),
 		LOCTEXT("LauncherTooltip", "Inspect crowd agents, navigation, paths, and avoidance"),
 		TEXT("People"),
 		ECkDebuggerToolCategory::Ai,

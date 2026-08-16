@@ -59,7 +59,7 @@ auto FCkSaveDebuggerModule::StartupModule() -> void
     _DebuggerToolRegistrationId = FCkDebuggerToolRegistry::Get().Register(FCkDebuggerToolDescriptor{
         TEXT("CkSaveDebugger"),
         _DebuggerTabName,
-        FText::FromString(TEXT("CK Save Debugger")),
+        FText::FromString(TEXT("[CK] Save Debugger")),
         FText::FromString(TEXT("Inspect CK .sav snapshot files offline — census, diagnostics, payloads")),
         // Must be the basename of an SVG that ships under CkDebugger/Resources/Icons (or Icons/General) — an unknown
         // id resolves to nullptr and the launcher silently falls back to the generic warning brush. Cassette.svg exists.
